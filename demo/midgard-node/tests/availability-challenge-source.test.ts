@@ -1,11 +1,7 @@
 import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  availabilityCommandCanonicalSource,
-  AvailabilityHistoryUnavailableError,
-  availabilityNodeLedgerSource,
-} from "../src/commands/availability-challenge-source.js";
+import { availabilityCommandCanonicalSource } from "../src/commands/availability-challenge-source.js";
 import type { ToolL1Access } from "../src/commands/l1-command-access.js";
 import {
   availabilityKupmiosSource,
@@ -15,95 +11,20 @@ import type { FetchLike } from "../src/l1-external/kupmios-history.js";
 
 const hex = (byte: string) => byte.repeat(32);
 
-type PointStatus = "on_chain" | "not_on_chain" | "immutable";
-
-/** A node-ledger access whose tip and point statuses the test sets. */
-const ledger = (state: {
-  tip: { slot: number; hash: string; blockNo: number };
-  status: Map<string, PointStatus>;
-}) => ({
-  readTip: async () => state.tip,
-  pointStatus: async (point: { slot: number; hash: string }) =>
-    state.status.get(`${point.slot.toString()}:${point.hash}`) ??
-    ("not_on_chain" as const),
-});
-
-describe("availability canonical source on the node ledger (a tool, before listen)", () => {
-  it("anchors on the ledger tip and keeps it while the node still has it", async () => {
-    const state = {
-      tip: { slot: 100, hash: hex("11"), blockNo: 10 },
-      status: new Map<string, PointStatus>([[`100:${hex("11")}`, "on_chain"]]),
-    };
-    const lucid = await Lucid(new Emulator([]), "Custom");
-    const source = availabilityNodeLedgerSource({
-      lucid,
-      access: ledger(state),
-    });
-    const anchor = await source.readBoundary();
-    expect(anchor).toEqual({
-      pointId: `100:${hex("11")}`,
-      slot: 100,
-      blockNo: 10,
-      blockHash: hex("11"),
-    });
-    await expect(
-      source.assertCanonicalAncestor(anchor),
-    ).resolves.toBeUndefined();
-  });
-
-  it("revokes the anchor once the node no longer has it, or it left the volatile window", async () => {
-    const state = {
-      tip: { slot: 100, hash: hex("11"), blockNo: 10 },
-      status: new Map<string, PointStatus>([[`100:${hex("11")}`, "on_chain"]]),
-    };
-    const lucid = await Lucid(new Emulator([]), "Custom");
-    const source = availabilityNodeLedgerSource({
-      lucid,
-      access: ledger(state),
-    });
-    const anchor = await source.readBoundary();
-    state.status.set(`100:${hex("11")}`, "not_on_chain");
-    await expect(source.assertCanonicalAncestor(anchor)).rejects.toThrow(
-      /canonical generation changed.*no longer on the node's chain/,
-    );
-    state.status.set(`100:${hex("11")}`, "immutable");
-    await expect(source.assertCanonicalAncestor(anchor)).rejects.toThrow(
-      /canonical generation changed.*past the node's volatile window/,
-    );
-  });
-
-  it("refuses every history read by name, pointing at --l1 kupmios", async () => {
-    const lucid = await Lucid(new Emulator([]), "Custom");
-    const source = availabilityNodeLedgerSource({
-      lucid,
-      access: ledger({
-        tip: { slot: 1, hash: hex("11"), blockNo: 1 },
-        status: new Map(),
-      }),
-    });
-    const refusal = source.unitHistory({ policyId: "aa", assetName: "bb" });
-    await expect(refusal).rejects.toBeInstanceOf(
-      AvailabilityHistoryUnavailableError,
-    );
-    await expect(refusal).rejects.toMatchObject({
-      reason: "availability_history_unavailable",
-      access: "node",
-    });
-    await expect(refusal).rejects.toThrow(/--l1 kupmios/);
-  });
-
-  it("refuses the Blockfrost access, which has no history reader", async () => {
-    const lucid = await Lucid(new Emulator([]), "Custom");
-    await expect(
-      availabilityCommandCanonicalSource({
+describe("availability canonical source without a history reader", () => {
+  for (const kind of ["node", "blockfrost"] as const)
+    it(`refuses the ${kind} access, naming --l1 kupmios`, async () => {
+      const lucid = await Lucid(new Emulator([]), "Custom");
+      const refusal = availabilityCommandCanonicalSource({
         lucid,
-        access: { kind: "blockfrost" } as ToolL1Access,
-      }),
-    ).rejects.toMatchObject({
-      reason: "availability_history_unavailable",
-      access: "blockfrost",
+        access: { kind } as ToolL1Access,
+      });
+      await expect(refusal).rejects.toMatchObject({
+        reason: "availability_history_unavailable",
+        access: kind,
+      });
+      await expect(refusal).rejects.toThrow(/--l1 kupmios/);
     });
-  });
 });
 
 /** A fetch answering Kupo's /health, /checkpoints and Ogmios's tip. */

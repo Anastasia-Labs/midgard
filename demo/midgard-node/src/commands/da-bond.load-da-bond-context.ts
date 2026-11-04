@@ -43,7 +43,10 @@ import {
   daBondSigningKeyFromSecret,
   readDaBondSecretEnv,
 } from "./da-bond-files.js";
-import { withCommandL1Access } from "./l1-command-access.js";
+import {
+  selectToolL1Access,
+  withCommandL1Access,
+} from "./l1-command-access.js";
 import { assertCommandPayerIsDedicated } from "./operational-wallet-refusal.js";
 
 /**
@@ -203,7 +206,8 @@ export const loadDaBondContext = (
 /**
  * Runs `use` with the production context over the tool L1 access `--l1`
  * selects, on the manifest's network (`l1-command-access.ts`), closing it
- * afterwards.
+ * afterwards. The node's ledger serves no pool, params or payer read, so
+ * `--l1 node` is refused before anything is read.
  */
 const withDaBondContext = async <T>(
   options: DaBondChainOptions,
@@ -215,6 +219,10 @@ const withDaBondContext = async <T>(
     network: Network,
   ) => void,
 ): Promise<T> => {
+  if (selectToolL1Access(env) === "node")
+    throw new Error(
+      "da-bond reads the DA bond pool and wallets the node does not track: pass --l1 kupmios|blockfrost",
+    );
   const manifest = readVerifiedManifest(options.manifest);
   const network = daBondNetwork(manifest.network);
   guard?.(manifest, network);

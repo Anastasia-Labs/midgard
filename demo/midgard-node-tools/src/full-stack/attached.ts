@@ -16,6 +16,7 @@ import { writePrivateEnv } from "./da-services.js";
 import {
   deploymentStatus,
   deploymentSteps,
+  operatorStep,
   restoreDeploymentEnvironment,
   stackPaths,
 } from "./deployment.js";
@@ -57,10 +58,10 @@ export function attachedSteps(processes: StackProcesses): StackStep[] {
     shared.storage!,
     shared.wallets!,
     attachStep(processes),
-    shared.operator!,
     attachedConfigurationStep(processes),
     storageIdentityStep(processes),
     attachedServicesStep(processes),
+    operatorStep(processes),
   ];
 }
 

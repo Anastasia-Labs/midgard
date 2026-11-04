@@ -86,20 +86,23 @@ Every command except `witness` reads the chain and takes the verified finalized
 contract deployment manifest:
 
 ```sh
-node dist/index.js da-bond status \
+node dist/index.js --l1 kupmios da-bond status \
   --manifest /var/lib/midgard/contract-deployment-info.json
 ```
 
-The commands read and submit through the node's cardano-node socket. They
-authenticate the pool's reference scripts through the manifest's
+The commands read and submit through Kupo and Ogmios or Blockfrost: pass
+`--l1 kupmios` (`L1_KUPO_URL`, `L1_OGMIOS_URL`) or `--l1 blockfrost`. The pool,
+the DA params and a dedicated payer are not outputs the node tracks, so
+`--l1 node` is refused before the manifest is read, naming
+`--l1 kupmios|blockfrost`. They authenticate the pool's reference scripts through the manifest's
 reference-script tokens, and the DA params UTxO by the governor NFT at the
 governor address. The withdraw delay is the manifest's
 `deploymentProfile.timing.da_bond_withdraw_delay_ms`.
 
-The network is the manifest's. The slot mapping is the one the local node's
-ledger gives (its system start and era history), taken the way the node takes
-it, never a configured `zeroTime`. If that read fails, the command refuses with
-`Refusing the deployment: the slot mapping from the local node's ledger at <endpoint> failed: ...`
+The network is the manifest's. The slot mapping is the one the L1 access
+gives (the ledger's system start and era history), never a configured
+`zeroTime`. If that read fails, the command refuses with
+`Refusing the deployment: the slot mapping from the L1 access at <endpoint> failed: ...`
 before building anything.
 
 Results are JSON on stdout, with amounts as decimal lovelace strings and times

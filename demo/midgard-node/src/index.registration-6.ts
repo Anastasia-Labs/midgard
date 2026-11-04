@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import {
   failCli,
   provideLucidOnlyServices,
-  provideTxServices,
+  provideOperatorTxServices,
   runCliEffect,
   writeJson,
 } from "./commands/cli-runtime.js";
@@ -215,7 +215,7 @@ program
     "Explicitly register the canonical PHAS membership reward account for an existing deployment",
   )
   .action(async () => {
-    const mainEffect = provideTxServices(
+    const mainEffect = provideOperatorTxServices(
       Effect.gen(function* () {
         const lucidService = yield* Services.Lucid;
         yield* lucidService.switchToOperatorsMainWallet;

@@ -147,10 +147,10 @@ describe("second-instance workflow", () => {
       "storage",
       "wallets",
       "attach",
-      "operator",
       "runtime-configuration",
       "storage-identity",
       "services",
+      "operator",
     ]);
     expect(
       Object.values(journal.steps).every(
@@ -182,7 +182,8 @@ describe("second-instance workflow", () => {
         join(fixture.operator2, "deploymentInfo/contract-deployment-info.json"),
       ),
     ).toEqual(await readFile(fixture.primaryManifest));
-    // Operator-2 registers with its own operator wallet.
+    // Operator-2 registers with its own operator wallet once its node runs,
+    // reading that node's index, never Kupo.
     const register = processes.calls.find(
       (call) => call.id === "operator-register-or-resume",
     )!;
@@ -190,6 +191,12 @@ describe("second-instance workflow", () => {
       register.env.L1_OPERATOR_SEED_PHRASE ===
         fixture.env.L1_OPERATOR_SEED_PHRASE,
     ).toBe(true);
+    expect(ids.indexOf("operator-register-or-resume")).toBeGreaterThan(
+      ids.indexOf("runtime-start"),
+    );
+    expect({ ...register.env, ...register.overrides }.L1_ACCESS).not.toBe(
+      "kupmios",
+    );
   });
   it("runs operator-2's node on the stack's deployment, origin and Cardano node, publishing as the producer the committee admits", async () => {
     const { fixture, run, rendered } = await attachedRun();
@@ -295,13 +302,13 @@ describe("second-instance workflow", () => {
   });
   it("resumes a run stopped after attaching, before its node first ran", async () => {
     const { processes, run } = await attachedRun();
-    const register = processes.responses["operator-register-or-resume"];
-    processes.responses["operator-register-or-resume"] = () => {
+    const build = processes.responses["services-build"];
+    processes.responses["services-build"] = () => {
       throw new Error("stopped");
     };
     await expect(run()).rejects.toThrow("stopped");
     // Its store is still the fresh one the attachment started from.
-    processes.responses["operator-register-or-resume"] = register;
+    processes.responses["services-build"] = build;
     const journal = await run();
     expect(journal.steps.services?.status).toBe("complete");
   });

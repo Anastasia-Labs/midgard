@@ -275,10 +275,14 @@ describe.each(providerAdapters(databases, scratch))(
       expect(await provider.getUtxos(scriptAddress)).toEqual(scripts);
     });
 
-    it("answers an untracked address from the ledger and refuses an untracked credential", async () => {
-      expect(refs(await provider.getUtxos(untracked)).sort()).toEqual(
-        [ref(LEDGER_UNTRACKED), ref(A[3]!)].sort(),
+    it("refuses an untracked address and an untracked credential without asking the ledger", async () => {
+      const silent = new L1FollowerProvider({ store, transport: refusing });
+      await expect(silent.getUtxos(untracked)).rejects.toBeInstanceOf(
+        L1ProviderScopeError,
       );
+      await expect(
+        silent.getUtxosWithUnit(untracked, unit("01")),
+      ).rejects.toBeInstanceOf(L1ProviderScopeError);
       await expect(
         provider.getUtxos({ type: "Key", hash: "ee".repeat(28) }),
       ).rejects.toBeInstanceOf(L1ProviderScopeError);
@@ -438,10 +442,6 @@ describe.each(providerAdapters(databases, scratch))(
         constructor: L1ProviderTransientError,
         source: "transport",
         reason: "node_unavailable",
-      });
-      await expect(refused.getUtxos(untracked)).rejects.toMatchObject({
-        source: "transport",
-        reason: "acquire_failed",
       });
       const closed = await fakeLedgerTransport(scratch, ledger());
       await closed.close();

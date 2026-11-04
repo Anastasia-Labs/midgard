@@ -6,19 +6,14 @@ import {
   failCli,
   parseL1AddressOption,
   parsePositiveIntegerOption,
-  provideTxServices,
+  provideOperatorTxServices,
   runCliEffect,
   tapJson,
-  ToolLucidLive,
-  ToolMidgardContractServices,
 } from "./commands/cli-runtime.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
-import {
-  type IntentJournal,
-  IntentJournalWithoutFollower,
-} from "./services/intent-journal.js";
+import type { IntentJournal } from "./services/intent-journal.js";
 import { stripOperatorWalletScriptRefsProgram } from "./transactions/operator-wallet-script-ref-strip.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
 import {
@@ -85,7 +80,7 @@ program
       readonly execute?: boolean;
       readonly iAmRetiringReferenceScripts?: boolean;
     };
-    const mainEffect = provideTxServices(
+    const mainEffect = provideOperatorTxServices(
       Effect.gen(function* () {
         const nodeConfig = yield* Services.NodeConfig;
         const contracts = yield* Services.MidgardContracts;
@@ -163,7 +158,7 @@ program
       readonly maxReferenceScriptBytesPerBatch?: number;
       readonly execute?: boolean;
     };
-    const mainEffect = provideTxServices(
+    const mainEffect = provideOperatorTxServices(
       Effect.gen(function* () {
         const contracts = yield* Services.MidgardContracts;
         const lucidService = yield* Services.Lucid;
@@ -199,10 +194,7 @@ program
   .action(async () => {
     const mainEffect = pipe(
       RegisterActiveOperator.program,
-      Effect.provide(IntentJournalWithoutFollower),
-      Effect.provide(Services.NodeConfig.layer),
-      Effect.provide(ToolMidgardContractServices),
-      Effect.provide(ToolLucidLive),
+      provideOperatorTxServices,
       Effect.tap((result) =>
         Effect.logInfo(
           `register-active-operator completed: ${JSON.stringify(result)}`,
@@ -239,7 +231,7 @@ export const runOperatorCommand = <A, E>(
           ? Effect.sync(() => failCli(label, error))
           : Effect.fail(error),
       ),
-      provideTxServices,
+      provideOperatorTxServices,
     ),
   );
 };
@@ -293,7 +285,7 @@ program
         }),
         tapJson(),
         Effect.asVoid,
-        provideTxServices,
+        provideOperatorTxServices,
       ),
     );
   });

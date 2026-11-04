@@ -8,7 +8,9 @@
  * the operator binary never carries e2e, stress, or benchmark behavior.
  *
  * Every provider here builds the Lucid service over a tool L1 access
- * (`--l1`, `l1-tool-adapter.ts`). The node's own runtime (`listen`) provides
+ * (`--l1`, `l1-tool-adapter.ts`): an operator command's (`provideOperator*`,
+ * `provideDatabaseTxServices`, `provideNodeRuntimeServices`) reads its running
+ * node's index under `--l1 node`. The node's own runtime (`listen`) provides
  * its services in `listen.cli-runtime.ts`, over its follower.
  */
 import { constants as osConstants } from "node:os";
@@ -24,8 +26,10 @@ import {
   type IntentJournal,
   IntentJournalWithoutFollower,
 } from "../services/intent-journal.js";
+import { NodeIndexLucidLive } from "../services/l1-adapter.follower.js";
 import { errorMessage } from "./cli-options.js";
 import { formatJson } from "./command-utils.js";
+import { selectToolL1Access } from "./l1-command-access.js";
 import {
   ToolLucidLive,
   ToolMidgardContractServices,
@@ -191,6 +195,21 @@ export const runCliEffect = <A, E>(
   });
 };
 
+/**
+ * An operator command's Lucid: under `--l1 node` its running node's own
+ * reader (`NodeIndexLucidLive`), otherwise the tool access `--l1` selects.
+ * A selection that does not resolve takes the tool access, which refuses it
+ * by name when it opens.
+ */
+const operatorLucid = () => {
+  try {
+    if (selectToolL1Access(process.env) === "node") return NodeIndexLucidLive;
+  } catch {
+    // Refused by the tool access below.
+  }
+  return ToolLucidLive;
+};
+
 export const provideTxServices = <A, E>(
   effect: Effect.Effect<
     A,
@@ -200,14 +219,19 @@ export const provideTxServices = <A, E>(
     | Services.Lucid
     | IntentJournal
   >,
+  lucid: ReturnType<typeof operatorLucid> = ToolLucidLive,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
     Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
+    Effect.provide(lucid),
     Effect.provide(ToolMidgardContractServices),
-    Effect.provide(ToolLucidLive),
   );
+
+/** `provideTxServices` for an operator command (`operatorLucid`). */
+export const provideOperatorTxServices: typeof provideTxServices = (effect) =>
+  provideTxServices(effect, operatorLucid());
 
 export const provideReferenceScriptDeploymentServices = <A, E>(
   effect: Effect.Effect<
@@ -278,8 +302,8 @@ export const provideNodeRuntimeServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
+    Effect.provide(operatorLucid()),
     Effect.provide(ToolMidgardContractServices),
-    Effect.provide(ToolLucidLive),
     Effect.provide(Services.Globals.Default),
   );
 
@@ -306,8 +330,8 @@ export const provideDatabaseTxServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
+    Effect.provide(operatorLucid()),
     Effect.provide(ToolMidgardContractServices),
-    Effect.provide(ToolLucidLive),
   );
 
 /**

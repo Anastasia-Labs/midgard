@@ -37,6 +37,11 @@ allow-list. Possessing a funded wallet does not authorize another key to
 register. The fixed P1 operator set has no rekey operation: a replacement key
 requires the program's next deployment, rather than changing a local config.
 
+Under `--l1 node`, `operator-status` and the lifecycle verbs read protocol state
+from the running node's index, so run them while the node runs; a node that has
+not initialized its store fails the read, and `--l1 kupmios|blockfrost` reads
+without it.
+
 Check `operator-status` before each lifecycle action. Registration locks a bond
 and waits for activation; activation makes the key eligible for shifts;
 retirement stops participation but leaves the bond locked until its reported

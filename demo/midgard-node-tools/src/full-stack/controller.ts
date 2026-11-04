@@ -99,6 +99,7 @@ export async function runStackController(options: {
       ? [
           ...(await import("./deployment.js")).deploymentSteps(processes),
           ...(await import("./runtime.js")).runtimeSteps(processes),
+          (await import("./deployment.js")).operatorStep(processes),
           ...(setupOnly
             ? []
             : (await import("./journey.js")).journeySteps(processes)),

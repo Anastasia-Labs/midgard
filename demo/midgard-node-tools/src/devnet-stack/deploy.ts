@@ -269,11 +269,17 @@ export const ensureDeployed = async (
     throw new Error(
       "init returned without recording initProtocol in the manifest",
     );
-  await step(
-    ["reconcile", "phas-registered", "--json"],
-    "phas-reconcile",
-    oneShot,
-  );
-  await step(["register-active-operator"], "register-active-operator", oneShot);
   return oneShot;
+};
+
+/** Registers PHAS and the operator; they read the running node's index. */
+export const ensureRegistered = async (
+  context: DeployContext,
+  oneShot: HubOracleOneShot,
+) => {
+  for (const [args, label] of [
+    [["reconcile", "phas-registered", "--json"], "phas-reconcile"],
+    [["register-active-operator"], "register-active-operator"],
+  ] as const)
+    requireSuccess(await nodeCli(context, args, label, oneShot), label);
 };

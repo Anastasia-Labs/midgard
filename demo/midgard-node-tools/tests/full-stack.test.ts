@@ -365,6 +365,15 @@ describe("published stack readiness schemas", () => {
       }),
     ).toBe(false);
   });
+  it("accepts a node held only by its operator awaiting activation, which the operator step completes", () => {
+    const awaiting = (reasons: string[]) =>
+      stackIsReady({
+        ...ready,
+        node: { ...ready.node, ready: false, reasons },
+      });
+    expect(awaiting(["operator_not_yet_active"])).toBe(true);
+    expect(awaiting(["operator_not_yet_active", "db_unhealthy"])).toBe(false);
+  });
   it("refuses settlement errors even when node HTTP reports ready", () =>
     expect(() =>
       stackIsReady({

@@ -30,6 +30,11 @@ Run these through `midgard-node`:
   `slash-duplicate-operator`; see [Operator Lifecycle](/docs/operators/node/operator-lifecycle)
 - `register-phas-membership-reward-account`
 
+Under `--l1 node`, the operator commands read protocol state from the running
+node's index (its follower store, read-only), never by scanning the ledger: run
+them while the node runs. A store the node has not initialized fails the read;
+start the node and let it catch up, or pass `--l1 kupmios|blockfrost`.
+
 See [Initialization & Deployment](/docs/operators/node/initialization-deployment)
 and [Server HTTP API](/docs/operators/node/server-http-api).
 
@@ -43,7 +48,7 @@ and [Server HTTP API](/docs/operators/node/server-http-api).
 - `address-from-seed` · `utxos` · `l1-utxos` · `l1-provider-preflight`
 - `audit-blocks-immutable` · `mpf-audit` · `mpf-replay`
 - `da-libp2p-preflight` · `da-libp2p-generate-manifest`
-- `availability-challenge`: open, respond, settle, close, time out, inspect or recover a DA challenge using an isolated actor wallet.
+- `availability-challenge`: open, respond, settle, close, time out, inspect or recover a DA challenge using an isolated actor wallet; it reads chain history, so it runs under `--l1 kupmios` only.
 - `da-bond`: read, top up or withdraw from the pooled DA committee bond; see [DA bond pool](#da-bond-pool).
 
 `commit-explicit-block-header` is a separately acknowledged drill command for
@@ -71,7 +76,8 @@ An attestation applies only while the pool is `Bonded` and holds at least
 - `da-bond assemble <unsigned-file> <witness-files...>`: refuses below the DA
   params `update_threshold` and submits nothing; at the threshold it submits.
 
-Every `da-bond` command except `witness` takes `--manifest <path>`. A withdrawal is BeginWithdraw, then the
+Every `da-bond` command except `witness` takes `--manifest <path>` and reads
+through `--l1 kupmios` or `--l1 blockfrost`; `--l1 node` is refused. A withdrawal is BeginWithdraw, then the
 withdraw delay, then CompleteWithdraw, or CancelWithdraw while it is pending. The
 operator guide, `demo/midgard-node/docs/da-bond-commands.md` in the repository,
 covers funding, the multi-signer flow, every refusal and the pool alerts.

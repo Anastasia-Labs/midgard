@@ -7,7 +7,7 @@ import {
   parsePositiveIntegerOption,
   provideDatabaseServices,
   provideDatabaseTxServices,
-  provideLucidOnlyServices,
+  provideOperatorTxServices,
   provideTxServices,
   runCliEffect,
   tapJson,
@@ -98,7 +98,7 @@ reconcile
   .option("--repair", "Run the idempotent PHAS registration repair if missing")
   .option("--json", "Print machine-readable JSON output", true)
   .action(async (options: { readonly repair?: boolean }) => {
-    const mainEffect = provideLucidOnlyServices(
+    const mainEffect = provideOperatorTxServices(
       ReconcileCommand.reconcilePhasRegisteredProgram({
         repair: options.repair === true,
       }).pipe(tapJson()),

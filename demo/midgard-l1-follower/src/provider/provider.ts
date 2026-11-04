@@ -48,17 +48,16 @@ export type L1FollowerProviderOptions = Readonly<{
  * A Lucid provider over the L1 follower (plan §4.4): the node-ledger
  * provider ({@link LedgerProvider}) with the role's fact store over it.
  * UTxO, datum and transaction reads in the tracked scope come from the
- * store; protocol parameters, slot configuration, untracked UTxOs and reward
- * accounts from local state query at the node's tip; submission through
+ * store; protocol parameters, slot configuration, outrefs outside the facts
+ * and reward accounts from local state query at the node's tip; submission through
  * LocalTxSubmission and mempool presence through LocalTxMonitor. It never
  * reads Kupo or Ogmios and never evaluates scripts remotely. Every failure
  * is a typed error; none ends the process.
  *
  * Scope: an address the role tracks (by address or payment credential) is
  * answered from the facts alone, at the follower's tip, seed rows included.
- * An untracked address is answered from the ledger at the node's tip. A
- * payment credential the role does not track is refused: the ledger query
- * cannot enumerate by credential.
+ * An address or payment credential the role does not track is refused,
+ * never scanned for on the ledger.
  */
 export class L1FollowerProvider extends LedgerProvider {
   readonly #store: FactStore;
@@ -241,9 +240,9 @@ export class L1FollowerProvider extends LedgerProvider {
         tracked.paymentCredentials.has(payment.hash.toString("hex")))
     )
       return await this.#factsUtxos(subject);
-    return await this.ledgerUtxos(
-      [{ query: "utxo_by_address", addresses: [subject.address] }],
-      "tip",
+    throw new L1ProviderScopeError(
+      query,
+      `address ${subject.address.toString("hex")} is not tracked`,
     );
   }
 

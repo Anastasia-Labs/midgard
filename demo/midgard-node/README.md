@@ -263,8 +263,6 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    midgard da-libp2p-generate-manifest --target producer \
      --out deploymentInfo/da-libp2p-producer-manifest.json ...
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
-   midgard register-operator
-   midgard activate-operator
    ```
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
@@ -278,11 +276,17 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    profiles and 100,005 ADA on the public ones, on top of the other init costs.
    See [DA bond pool commands](docs/da-bond-commands.md).
 
-7. Run the full stack:
+7. Run the full stack, then register the operator once the node is ready:
 
    ```sh
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
+   midgard register-operator
+   midgard activate-operator
    ```
+
+   The node runs while its operator is unregistered and commits nothing until
+   the operator is active. Operator commands read protocol state from the
+   running node's index (see [Operator Lifecycle](#operator-lifecycle)).
 
    `docker-compose.dev.yaml` is a standalone no-monitoring variant of the base
    file; combine it with the same overlay when you want an in-stack L1 without
@@ -514,7 +518,17 @@ The node exposes the operator lifecycle as CLI verbs: `register-operator`,
 refuses locally, in one line, before it spends anything. A watchdog fiber,
 enabled by `OPERATOR_WATCHDOG_ENABLED` (default `true`) with
 `OPERATOR_WATCHDOG_PATIENCE_MS` (default `120000`), strikes missed shifts
-automatically. See the operator lifecycle page in the docs site
+automatically.
+
+Under `--l1 node`, operator commands (the verbs above, PHAS and reward
+registration, `reference-script-wallet-status`, reserve and reconcile commands)
+read protocol state from the running node's index: its follower store, opened
+read-only, never a ledger scan. Run them while the node runs. A node that has
+not initialized its store, or a database with no store, fails the read; a node
+that lags fails it once its view cannot catch up. Start the node and let it
+catch up, or pass `--l1 kupmios|blockfrost`. `da-bond` and
+`availability-challenge` read state the node does not track and refuse
+`--l1 node`. See the operator lifecycle page in the docs site
 (`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
 vocabulary table, recovery paths, and the status report.
 
@@ -726,8 +740,9 @@ Before publishing or republishing reference scripts, inspect the deploy wallet:
 node dist/index.js reference-script-wallet-status --json
 ```
 
-The status separates explorer-like total ADA from plain ADA-only ADA that can be
-used for deployment funding. If a retired deployment's reference scripts are
+Under `--l1 node` it reads the running node's index; before the node first
+runs, pass `--l1 kupmios|blockfrost`. The status separates explorer-like total
+ADA from plain ADA-only ADA that can be used for deployment funding. If a retired deployment's reference scripts are
 still present, reclaim them with
 `node dist/index.js sweep-reference-script-wallet --retired-auth-policy <policy-id>`.
 Without `--execute` it only prints the batch plan. The sweep spends only UTxOs

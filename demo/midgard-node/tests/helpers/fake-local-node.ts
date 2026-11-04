@@ -27,7 +27,11 @@ const HANDLER_MODULE = fileURLToPath(
   new URL("../fixtures/chain-parameters-handler.mjs", import.meta.url),
 );
 
-export type FakeNodeMode = "answer" | "unavailable" | "slot-length-2000";
+export type FakeNodeMode =
+  | "answer"
+  | "unavailable"
+  | "slot-length-2000"
+  | "preprod";
 
 export type FakeLocalNode = Readonly<{
   nativeLedger: NativeLedgerSettings;
@@ -38,13 +42,16 @@ export type FakeLocalNode = Readonly<{
   remove: () => Promise<void>;
 }>;
 
-export const fakeLocalNode = async (): Promise<FakeLocalNode> => {
+/** A node of the network `networkMagic` names (default a custom one). */
+export const fakeLocalNode = async (
+  networkMagic = 42,
+): Promise<FakeLocalNode> => {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "midgard-fake-local-node-")),
   );
   await writeFile(
     join(directory, "shelley-genesis.json"),
-    JSON.stringify({ networkMagic: 42 }),
+    JSON.stringify({ networkMagic }),
   );
   await writeFile(
     join(directory, "config.json"),

@@ -23,7 +23,7 @@ import {
   roleProcessesFailClosed,
   serviceSpecs,
 } from "../src/devnet-stack/services.js";
-import { waitForServices } from "../src/devnet-stack/stack.js";
+import { serviceReport, waitForServices } from "../src/devnet-stack/stack.js";
 import type { ServiceSpec } from "../src/devnet-stack/supervisor.js";
 
 // These cases exercise ordinary URL waits and start grace, not authenticated
@@ -242,4 +242,46 @@ describe("waitForServices inside a start grace", () => {
     }
     expect(graces).toBe(1);
   }, 20_000);
+});
+
+describe("serviceReport", () => {
+  it("reads a node held only by its operator awaiting activation as ready, keeping the reason", async () => {
+    const reasons = (body: object) => {
+      const server = createServer((request, response) => {
+        response.statusCode = request.url === "/readyz" ? 503 : 200;
+        response.end(JSON.stringify(body));
+      }).listen(0, "127.0.0.1");
+      return server;
+    };
+    const report = async (body: object) => {
+      const server = reasons(body);
+      await new Promise((resolve) => server.once("listening", resolve));
+      const { port } = server.address() as { port: number };
+      try {
+        return await serviceReport(context().layout, {
+          name: "node",
+          command: process.execPath,
+          args: [],
+          cwd: tmpdir(),
+          env: {},
+          healthUrl: `http://127.0.0.1:${port}/healthz`,
+          readyUrl: `http://127.0.0.1:${port}/readyz`,
+        });
+      } finally {
+        server.close();
+      }
+    };
+    await expect(
+      report({ ready: false, reasons: ["operator_not_yet_active"] }),
+    ).resolves.toMatchObject({
+      ready: true,
+      reasons: ["operator_not_yet_active"],
+    });
+    await expect(
+      report({
+        ready: false,
+        reasons: ["operator_not_yet_active", "db_unhealthy"],
+      }),
+    ).resolves.toMatchObject({ ready: false });
+  });
 });

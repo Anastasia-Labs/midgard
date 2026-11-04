@@ -18,6 +18,7 @@ import {
   checkWallets,
   DA_SUBMITTER_WALLET_FLOOR,
   deploymentSteps,
+  operatorStep,
 } from "../src/full-stack/deployment.js";
 import { readJsonIfPresent } from "../src/full-stack/journal.js";
 import { CommandNotStartedError } from "../src/full-stack/process.js";
@@ -321,14 +322,14 @@ describe("deployment steps before initialization", () => {
     });
   });
   it("resumes a started operator registration", async () => {
-    const { processes, steps } = await deployment({ nonceRecorded: true });
+    const { processes } = await deployment({ nonceRecorded: true });
     for (const [state, expected] of [
       ["none", "retry"],
       ["registered", "retry"],
       ["retired", "pending"],
     ]) {
       processes.responses["operator-observation"] = { state };
-      expect(await steps.operator!.reconcile(running)).toEqual({
+      expect(await operatorStep(processes).reconcile(running)).toEqual({
         status: expected,
       });
     }

@@ -56,7 +56,8 @@ reconciler: without `--repair` it inspects; with `--repair` it publishes missing
 node-runtime reference scripts. Inspect its result before deciding to repair.
 
 `reference-script-wallet-status` and `sweep-reference-script-wallet` manage the wallet
-that funds publication.
+that funds publication. Under `--l1 node` they read the running node's index, so
+before the node first runs pass `--l1 kupmios|blockfrost`.
 
 </Step>
 
@@ -101,8 +102,9 @@ deployment. A watcher that cannot match its manifest to L1 must fail closed.
 
 ## After initialization
 
-Register and activate an operator (`register-active-operator`, `activate-operator`),
-then start the node with `listen`. See the
+Start the node with `listen`, then register and activate its operator
+(`register-active-operator`, `activate-operator`): these commands read the
+running node's index. The node commits nothing until its operator is active. See the
 [end-to-end testing flow](/docs/operators/node/e2e-testing-flow) for the full
 acceptance sequence, including the DA committee node and the first merge.
 

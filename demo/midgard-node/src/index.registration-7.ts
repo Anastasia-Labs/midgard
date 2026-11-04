@@ -7,7 +7,7 @@ import {
 import { Effect } from "effect";
 
 import {
-  provideLucidOnlyServices,
+  provideOperatorTxServices,
   provideReferenceScriptDeploymentServices,
   provideTxServices,
   runCliEffect,
@@ -232,7 +232,7 @@ program
   )
   .option("--json", "Print machine-readable JSON", true)
   .action(async () => {
-    const mainEffect = provideLucidOnlyServices(
+    const mainEffect = provideOperatorTxServices(
       Effect.gen(function* () {
         const lucidService = yield* Services.Lucid;
         yield* lucidService.switchToReferenceScriptWallet;

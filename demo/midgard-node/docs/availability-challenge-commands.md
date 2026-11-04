@@ -32,10 +32,10 @@ Choose the L1 access with `--l1` (or `L1_ACCESS`):
 - `--l1 kupmios` (`L1_KUPO_URL`, `L1_OGMIOS_URL`) runs every action. Kupo and
   Ogmios supply the chain history the commands need: the inclusion of each
   operation, foreign spends and retained outputs.
-- `--l1 node`, the default when `L1_NODE_SOCKET_PATH` is set, runs `status`
-  only. The local ledger holds no transaction history, so every other action
-  is refused before anything is built or submitted, naming `--l1 kupmios`.
-- `--l1 blockfrost` is refused: no history reader is built for it.
+- `--l1 node` (the default when `L1_NODE_SOCKET_PATH` is set) and
+  `--l1 blockfrost` are refused, `status` included, before the manifest is
+  read: the local ledger holds no transaction history, and no history reader
+  is built for Blockfrost. The refusal names `--l1 kupmios`.
 
 The journal must have a canonical absolute path on durable storage. Processes
 using the same actor wallet must share that journal. Keep it across restarts:

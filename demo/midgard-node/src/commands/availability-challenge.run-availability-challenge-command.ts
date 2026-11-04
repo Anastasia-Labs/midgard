@@ -22,7 +22,7 @@ import {
 import { prepareAvailabilityOpeningInput } from "./availability-challenge.prepare-availability-opening-input.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
 import {
-  assertAvailabilityActionServed,
+  assertAvailabilityAccessServed,
   availabilityCommandCanonicalSource,
 } from "./availability-challenge-source.js";
 import { readDeploymentManifestFile } from "./contract-deployment-info.js";
@@ -66,9 +66,9 @@ export const runAvailabilityChallengeCommand = async (
     throw new Error(
       `Availability actor seed is missing from ${options.walletSeedEnv}`,
     );
-  // An action the selected access cannot observe is refused before anything
-  // is read, opened, built or submitted.
-  assertAvailabilityActionServed(action, { kind: selectToolL1Access(env) });
+  // An access with no history reader is refused before anything is read,
+  // opened, built or submitted.
+  assertAvailabilityAccessServed({ kind: selectToolL1Access(env) });
   const manifest = readDeploymentManifestFile(options.manifest);
   verifyFinalizedDeploymentManifest(manifest);
   const network = resolveNetwork({ network: manifest.network, env });

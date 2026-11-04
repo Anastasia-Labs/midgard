@@ -54,7 +54,19 @@ export function committeeStopReason(value: unknown) {
   return undefined;
 }
 
-/** The node is ready, with no reasons, and its settlement is healthy. */
+/**
+ * Whether `reasons` hold the node only for its operator awaiting activation.
+ * The operator step activates it, and it runs once the services are up.
+ */
+export const onlyAwaitingActivation = (reasons: unknown) =>
+  Array.isArray(reasons) &&
+  reasons.length > 0 &&
+  reasons.every((reason) => reason === "operator_not_yet_active");
+
+/**
+ * The node is ready, with no reasons but its operator awaiting activation,
+ * and its settlement is healthy.
+ */
 export function nodeIsReady(value: unknown) {
   const node = value as
     | { ready?: boolean; reasons?: unknown[]; settlement?: { state?: string } }
@@ -62,9 +74,9 @@ export function nodeIsReady(value: unknown) {
   if (node?.settlement?.state === "error")
     throw new Error("Automatic settlement is unhealthy");
   return (
-    node?.ready === true &&
-    node.reasons?.length === 0 &&
-    ["running", "waiting"].includes(node.settlement?.state ?? "")
+    ((node?.ready === true && node.reasons?.length === 0) ||
+      onlyAwaitingActivation(node?.reasons)) &&
+    ["running", "waiting"].includes(node?.settlement?.state ?? "")
   );
 }
 

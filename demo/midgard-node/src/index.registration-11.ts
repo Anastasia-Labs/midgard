@@ -6,7 +6,7 @@ import { auditBlocksImmutableProgram } from "./commands/audit-blocks-immutable.j
 import {
   failCli,
   provideDatabaseTxServices,
-  provideTxServices,
+  provideOperatorTxServices,
   runCliEffect,
   tapJson,
   writeJson,
@@ -93,7 +93,7 @@ program
   .command("reserve-utxos")
   .description("Print typed reserve-address UTxOs and aggregate assets")
   .action(async () => {
-    const mainEffect = provideTxServices(
+    const mainEffect = provideOperatorTxServices(
       ReserveInspectionCommand.reserveUtxosProgram.pipe(tapJson()),
     );
 
@@ -202,7 +202,7 @@ program
               ),
         ),
         Effect.provide(Services.Database.layer),
-        provideTxServices,
+        provideOperatorTxServices,
       );
       runCliEffect(mainEffect);
     },

@@ -301,23 +301,25 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         ]);
       },
     },
-    {
-      id: "operator",
-      reconcile: async () => {
-        const status = (await processes.node("operator-observation", [
-          "operator-status",
-        ])) as { state: string };
-        if (status.state === "active")
-          return { status: "complete", data: status };
-        // register-active-operator resumes from registered, and the ordered set refuses a duplicate key.
-        if (["none", "registered"].includes(status.state))
-          return { status: "retry" };
-        return { status: "pending" };
-      },
-      execute: () =>
-        processes.node("operator-register-or-resume", [
-          "register-active-operator",
-        ]),
-    },
   ];
 }
+
+/**
+ * Registers the operator. Its commands read the running node's index, so the
+ * step runs once the node's services are up.
+ */
+export const operatorStep = (processes: StackProcesses): StackStep => ({
+  id: "operator",
+  reconcile: async () => {
+    const status = (await processes.node("operator-observation", [
+      "operator-status",
+    ])) as { state: string };
+    if (status.state === "active") return { status: "complete", data: status };
+    // register-active-operator resumes from registered, and the ordered set refuses a duplicate key.
+    if (["none", "registered"].includes(status.state))
+      return { status: "retry" };
+    return { status: "pending" };
+  },
+  execute: () =>
+    processes.node("operator-register-or-resume", ["register-active-operator"]),
+});

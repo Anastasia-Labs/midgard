@@ -2,9 +2,9 @@
  * A command's commit program builds with the command's own Lucid (option E):
  * `reconcile local-finalization` replays the commit worker program in the
  * CLI process, and passes it `environmentCommitLucidFactory`, the Lucid the
- * command's layers provide. Under `L1_ACCESS=node` that is the node-ledger
- * tool adapter over the local node. The role Lucid over the same node is the
- * control: it is the follower adapter, so the access kind tells them apart.
+ * command's layers provide; here the node-ledger tool adapter over the local
+ * node stands for them. The role Lucid over the same node is the control: it
+ * is the follower adapter, so the access kind tells them apart.
  * The commit worker's role factory builds its Lucid in the worker run's
  * scope, so the access stays open until the run ends.
  */

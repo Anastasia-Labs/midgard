@@ -33,6 +33,7 @@ import {
   type DeployContext,
   ensureArtifacts,
   ensureDeployed,
+  ensureRegistered,
 } from "./devnet-stack/deploy.js";
 import { requireSuccess } from "./devnet-stack/exec.js";
 import {
@@ -158,6 +159,7 @@ const resumeUp = async (
   console.log(
     `services: ready, stable for ${STABLE_WINDOW_MS / 1000} s (${names.join(", ")})`,
   );
+  await ensureRegistered(context, oneShot);
 };
 
 /** Everything a running stack needs, read from the run's records only. */

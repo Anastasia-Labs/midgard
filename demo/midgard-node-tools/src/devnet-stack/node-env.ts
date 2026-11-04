@@ -86,7 +86,14 @@ export const nodeEnvironment = (input: {
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
     // The node reads and submits through the cardano-node socket: `listen`
     // through its follower, a command through the node's ledger (option E).
-    ...(role === "command" ? { L1_ACCESS: "node" } : {}),
+    // `da-bond` passes `--l1 kupmios` for the stack's Kupo and Ogmios.
+    ...(role === "command"
+      ? {
+          L1_ACCESS: "node",
+          L1_KUPO_URL: `http://127.0.0.1:${run.kupoPort}`,
+          L1_OGMIOS_URL: `http://127.0.0.1:${run.ogmiosPort}`,
+        }
+      : {}),
     L1_NODE_SOCKET_PATH: layout.cardanoSocket,
     L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
     L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,

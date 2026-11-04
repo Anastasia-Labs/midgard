@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 
+import { onlyAwaitingActivation } from "../full-stack/readiness.js";
 import { type DeployContext, nodeCli } from "./deploy.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
@@ -139,7 +140,14 @@ export const bondStatus = async (
     requireSuccess(
       await nodeCli(
         context,
-        ["da-bond", "status", "--manifest", context.layout.contractManifest],
+        [
+          "--l1",
+          "kupmios",
+          "da-bond",
+          "status",
+          "--manifest",
+          context.layout.contractManifest,
+        ],
         "da-bond-status",
         oneShot,
       ),
@@ -164,6 +172,8 @@ export const ensureBonded = async (
     await nodeCli(
       context,
       [
+        "--l1",
+        "kupmios",
         "da-bond",
         "top-up",
         "--manifest",
@@ -261,7 +271,10 @@ export const serviceReport = async (
   return {
     ...report,
     live,
-    ready: ready.ok && body.ready !== false,
+    // `up` activates an operator awaiting activation once the services are up.
+    ready:
+      (ready.ok && body.ready !== false) ||
+      onlyAwaitingActivation(body.reasons),
     ...(ready.ok && body.ready !== false
       ? {}
       : { reasons: body.reasons ?? ready.body.slice(0, 300) }),

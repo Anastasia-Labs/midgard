@@ -5,12 +5,15 @@
 // `options.journal`. Every query reads `options.mode` (a file) first: while
 // it is absent the query waits; "answer" answers, "unavailable" refuses as a
 // node that is not up yet (`node_unavailable`, transient), and
-// "slot-length-2000" answers an era history whose slots are 2 s long.
+// "slot-length-2000" answers an era history whose slots are 2 s long, and
+// "preprod" Preprod's chain parameters (a 20 s first era of 86,400 slots).
 import { Buffer } from "node:buffer";
 import { appendFileSync, readFileSync } from "node:fs";
 
 import { encodeCbor } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 
+/** Preprod's second era starts 86,400 slots of 20 s in, in picoseconds. */
+const PREPROD_SHELLEY_PS = 1_728_000n * 1_000_000_000_000n;
 const TIP = { slot: 99n, hash: Buffer.alloc(32, 0xef), blockNo: 42n };
 
 const modeOf = (path) => {
@@ -40,8 +43,19 @@ export default (options) => ({
       return { error: { code: "node_unavailable", message: "starting" } };
     switch (query.query) {
       case "system_start":
-        return encodeCbor([2024n, 1n, 0n]);
+        return encodeCbor(
+          mode === "preprod" ? [2022n, 152n, 0n] : [2024n, 1n, 0n],
+        );
       case "era_history":
+        if (mode === "preprod")
+          return encodeCbor([
+            [
+              [0n, 0n, 0n],
+              [PREPROD_SHELLEY_PS, 86_400n, 4n],
+              [21_600n, 20_000n],
+            ],
+            [[PREPROD_SHELLEY_PS, 86_400n, 4n], null, [432_000n, 1_000n]],
+          ]);
         return encodeCbor([
           [
             [0n, 0n, 0n],

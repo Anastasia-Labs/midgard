@@ -240,7 +240,9 @@ ports, with a configuration copied from
    twin da-bond status
    ```
 
-   Every owner listed in `--signers`, and the fee payer, witnesses. The
+   `da-bond` refuses `--l1 node`: give the container the stack's Kupo and
+   Ogmios (`L1_KUPO_URL`, `L1_OGMIOS_URL`) and pass `--l1 kupmios` before
+   `da-bond`. Every owner listed in `--signers`, and the fee payer, witnesses. The
    container holds the node `.env` secrets but not the `STACK_` ones; witness
    with a `STACK_` key on the host instead, where `witness` is offline and the
    mounted `deploymentInfo/` holds the same files. The

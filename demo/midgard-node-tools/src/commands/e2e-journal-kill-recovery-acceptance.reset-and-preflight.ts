@@ -190,10 +190,6 @@ export const resetAndPreflight = async ({
   );
   const preflights: readonly [string, readonly string[]][] = [
     ["deployment status", [dist, "deployment-status"]],
-    [
-      "reference-script wallet",
-      [dist, "reference-script-wallet-status", "--json"],
-    ],
     ["local Kupmios", [dist, "l1-provider-preflight", "--json"]],
     [
       "node-runtime reference scripts",
