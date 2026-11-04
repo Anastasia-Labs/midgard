@@ -14,7 +14,9 @@ export type TxStatusMergeEvidence = Readonly<{
 }>;
 
 /** Commit finalization is not merge finalization. Read the completed local
- * merge job together with the merge tx the queue-terminal projection
+ * merge job (its id names the header, and it starts only once the header's
+ * root matches the journal, so its payload is not re-read) together with the
+ * merge tx the queue-terminal projection
  * (`node_l1_queue_terminals`) holds for the header, once it is `safe` (at
  * least cd deep at the follower's covered tip). A rollback of the merge tx
  * deletes its row; completed jobs alone survive it. The same statement
@@ -37,7 +39,6 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
     if (tipHeight === null) return empty();
     const safeThroughHeight = heightAtDepth(tipHeight, confirmationDepth);
     const sql = yield* SqlClient.SqlClient;
-    const jobDocument = sql`CASE jsonb_typeof(job.payload) WHEN 'string' THEN (job.payload #>> '{}')::jsonb ELSE job.payload END`;
     return yield* Effect.gen(function* () {
       // One statement observes membership, job, terminal projection and
       // the write gate together, rather than mixing independently read
@@ -56,8 +57,6 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
             WHERE job.job_id = 'confirmed_merge_finalization:' || encode(pending.header_hash, 'hex')
               AND job.kind = 'confirmed_merge_finalization'
               AND job.status = 'completed'
-              AND (${jobDocument}) ->> 'headerHash' = encode(pending.header_hash, 'hex')
-              AND (${jobDocument}) ->> 'confirmedLedgerSnapshotRoot' = pending.expected_utxos_root
               AND outcome.terminal_outcome = 'merged'
               AND outcome.height <= ${safeThroughHeight}
           ) AND EXISTS (

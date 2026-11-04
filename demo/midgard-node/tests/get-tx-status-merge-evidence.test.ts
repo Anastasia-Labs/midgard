@@ -55,7 +55,6 @@ type Options = {
   outcome?: string;
   /** The merge tx is one block short of `safe` (cd deep) at the tip. */
   shallow?: boolean;
-  wrongRoot?: boolean;
   ambiguous?: boolean;
   oldAbandoned?: boolean;
   revoked?: boolean;
@@ -92,7 +91,7 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
               yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${otherHeader}, ${txId})`;
             }
             if (options.job) {
-              yield* sql`INSERT INTO local_mutation_jobs VALUES (${"confirmed_merge_finalization:" + header.toString("hex")}, 'confirmed_merge_finalization', ${options.job}, ${JSON.stringify({ headerHash: header.toString("hex"), confirmedLedgerSnapshotRoot: options.wrongRoot ? "55".repeat(32) : root })}::jsonb)`;
+              yield* sql`INSERT INTO local_mutation_jobs VALUES (${"confirmed_merge_finalization:" + header.toString("hex")}, 'confirmed_merge_finalization', ${options.job}, ${JSON.stringify({ headerHash: header.toString("hex"), confirmedHeaderUtxosRoot: root, ledgerDeltaSpentCount: 1, ledgerDeltaProducedCount: 1 })}::jsonb)`;
             }
             if (options.outcome) {
               // `safe`: at least cd deep at the tip (depth = tip - height + 1).
@@ -174,7 +173,6 @@ for (const route of ["GET", "batch"] as const)
       { outcome: "merged" },
       { job: "completed", outcome: "removed" },
       { job: "completed", outcome: "merged", shallow: true },
-      { job: "completed", outcome: "merged", wrongRoot: true },
       { job: "completed", outcome: "merged", ambiguous: true },
       { job: "completed", outcome: "merged", status: "abandoned" },
       { job: "completed", outcome: "merged", revoked: true },
