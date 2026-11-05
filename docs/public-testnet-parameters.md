@@ -280,9 +280,9 @@ Line numbers are as of this review; the symbol names are the stable reference.
 
 These need an owner decision or a follow-up; none blocks the table above.
 
-- `da_slash_grace_ms` (2 d) and `da_bond_pool_floor_lovelace` (5 ADA) have no
-  recorded owner confirmation. `da_bond_withdraw_delay_ms` follows from the
-  grace.
+- `da_slash_grace_ms` (2 d) and `da_bond_pool_floor_lovelace` (5 ADA) are
+  confirmed for the public testnet and revisited before mainnet (owner,
+  2026-10-28). `da_bond_withdraw_delay_ms` follows from the grace.
 - The challenger bond and the DA fee caps are deploy-time manifest values, not
   profile values, so profile validation does not pin them.
 - The block ex-units budget is to be re-measured on an idle machine.
