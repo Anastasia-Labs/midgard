@@ -183,7 +183,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(outputs[0]).toMatch(/a\.asset_name = \?/u);
     });
 
-    it("answers absent for an unknown or retired id and unavailable when the retained payload is gone", async () => {
+    it("answers absent for an unknown id, retired with its retiring tx and depth for a retired one, and unavailable when the retained payload is gone", async () => {
       const d = await driver();
       const deposit = eventOrder("deposit", nonceRef());
       const withdrawal = eventOrder("withdrawal", nonceRef(), {
@@ -205,7 +205,7 @@ describe.each(["sqlite", "postgres"] as const)(
         { kind: "absent" },
       );
 
-      await d.forward([
+      const [retiringTx] = await d.forward([
         retirementTx(deposit, { txHash: depositTx!, index: 0 }, "absorbed", 4),
         {
           inputs: [{ txHash: retentionHash!, index: 0 }],
@@ -213,7 +213,26 @@ describe.each(["sqlite", "postgres"] as const)(
           nonce: 5,
         },
       ]);
-      expect((await lookup(d.store, "deposit", deposit.nonce)).read).toEqual({
+      const retiredIn = d.tip;
+      const retired = (depth: number): EventOrderRead => ({
+        kind: "retired",
+        retirement: {
+          txHash: retiringTx!,
+          slot: retiredIn.point.slot,
+          blockHash: retiredIn.point.hash,
+          height: retiredIn.height,
+          depth,
+        },
+      });
+      expect((await lookup(d.store, "deposit", deposit.nonce)).read).toEqual(
+        retired(1),
+      );
+      // A later block deepens the retirement; an unknown id stays absent.
+      await d.forward([admissionTx(eventOrder("deposit", nonceRef()), 6)]);
+      expect((await lookup(d.store, "deposit", deposit.nonce)).read).toEqual(
+        retired(2),
+      );
+      expect((await lookup(d.store, "deposit", nonceRef())).read).toEqual({
         kind: "absent",
       });
       expect(
@@ -222,6 +241,12 @@ describe.each(["sqlite", "postgres"] as const)(
         kind: "unavailable",
         detail: "the retained payload output is spent",
       });
+
+      // A rollback of the retirement: the Order is live again.
+      await d.backward(2);
+      expect(
+        ok((await lookup(d.store, "deposit", deposit.nonce)).read).order.txHash,
+      ).toBe(depositTx!.toString("hex"));
     });
   },
 );

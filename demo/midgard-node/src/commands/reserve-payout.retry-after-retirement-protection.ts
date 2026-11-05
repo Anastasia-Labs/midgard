@@ -152,7 +152,9 @@ export const fetchReferenceScripts = (
  * The live Order of the `kind` event with id CBOR `eventId`, opened as the
  * SDK opens it, read by key from the follower's event projection in the
  * node database (NC13): never a scan of the list or its retention address.
- * The settlement retries while the follower has not admitted the event yet.
+ * The settlement retries while the follower has not admitted the event yet;
+ * an event already retired is the settlement job's to complete
+ * (`settlement.settled-on-l1.ts`), never rebuilt here.
  */
 const readEventOrderById = (
   kind: "deposit" | "withdrawal",
@@ -178,6 +180,12 @@ const readEventOrderById = (
     if (read.kind === "absent")
       return yield* Effect.fail(
         new Error(`${label} is not live at the follower's tip.`),
+      );
+    if (read.kind === "retired")
+      return yield* Effect.fail(
+        new Error(
+          `${label} was retired by ${read.retirement.txHash.toString("hex")} (depth ${read.retirement.depth.toString()}).`,
+        ),
       );
     if (read.kind === "unavailable")
       return yield* Effect.fail(

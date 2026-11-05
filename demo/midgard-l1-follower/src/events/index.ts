@@ -8,6 +8,7 @@ export {
   eventOrderByIdIn,
   type EventOrderList,
   type EventOrderRead,
+  type EventRetirement,
 } from "./by-id.js";
 export {
   EVENT_KINDS,

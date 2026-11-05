@@ -37,10 +37,12 @@ import {
   settlementWaitUntil,
   settlementWalletAddress,
 } from "./settlement.reconcile-attempt.js";
+import { settledDepth } from "./settlement.settled-on-l1.js";
 import {
   noOpenAttempt,
   settleAttempts,
   settlementDepthParameters,
+  settlementLevelAtDepth,
 } from "./settlement.status.js";
 import {
   settlementCall,
@@ -51,6 +53,7 @@ import {
 import {
   clearSettlementReconcileFailures,
   recordSettlementReconcileFailure,
+  SETTLEMENT_JOB_BASE_BACKOFF_MS,
   type SettlementReconcileBackoff,
   settlementReconcileBackoff,
   settlementReconcileStuck,
@@ -71,6 +74,21 @@ const buildJob = (
     const plan = yield* journal.openPlan;
     let phase = job.phase;
     if (phase === "complete") return;
+    // Another operator may have settled the event: the job completes once
+    // that settlement is cd deep, as it does from its own attempts, and
+    // waits, counting no failure, while it is shallower. A rollback that
+    // undoes it leaves nothing settled, and the job goes on below.
+    const settled = yield* settledDepth(job.kind, job.event_id);
+    if (settled !== null) {
+      const done = settlementLevelAtDepth(settled, parameters) !== "open";
+      yield* Journal.updateJob(
+        owner,
+        job,
+        done ? "complete" : job.phase,
+        done ? 0 : SETTLEMENT_JOB_BASE_BACKOFF_MS,
+      );
+      return;
+    }
     if (job.kind === "withdrawal") {
       const payout = yield* payoutStatusProgram(job.event_id);
       if (payout.payoutOutRef !== null)

@@ -26,15 +26,23 @@ import { settlementNextPhase } from "./settlement.reconcile-attempt.js";
 
 export type SettlementLevel = "final" | "safe" | "open";
 
+/** The level of a settling tx that landed `depth` deep. */
+export const settlementLevelAtDepth = (
+  depth: number,
+  parameters: DepthParameters,
+): SettlementLevel => {
+  const level = levelAtDepth(depth, parameters);
+  return level === "final" ? "final" : level === "safe" ? "safe" : "open";
+};
+
 /** The level of an attempt whose derived status is `status` (null: not journaled, or pruned). */
 export const settlementLevel = (
   status: IntentStatus | null,
   parameters: DepthParameters,
-): SettlementLevel => {
-  if (status?.kind !== "landed") return "open";
-  const level = levelAtDepth(status.depth, parameters);
-  return level === "final" ? "final" : level === "safe" ? "safe" : "open";
-};
+): SettlementLevel =>
+  status?.kind === "landed"
+    ? settlementLevelAtDepth(status.depth, parameters)
+    : "open";
 
 /**
  * The deployment's cd and k exactly as the node's follower reads them
@@ -77,8 +85,12 @@ const derive = (
  * Derives every open attempt (`Journal.openAttempts`), oldest first, and
  * keeps each job's phase at what its latest attempt reads: the next phase
  * once that attempt is safe or final, the attempt's own phase while it is
- * open (a rollback below cd reverts an advance). Returns the oldest open
- * attempt, which blocks new work until it settles or expires.
+ * open (a rollback below cd reverts an advance). A settled attempt only
+ * advances its job: a job already complete stays complete, whoever settled
+ * its later phases. Only an attempt open again reopens a complete job, as
+ * whatever completed it was that attempt or was built on its outputs, and
+ * the rollback took it too. Returns the oldest open attempt, which blocks
+ * new work until it settles or expires.
  */
 export const settleAttempts = (
   owner: Journal.SettlementOwner,
@@ -91,9 +103,11 @@ export const settleAttempts = (
       const settled = derived.level !== "open";
       if (!settled) blocker ??= derived;
       if (!attempt.latest) continue;
-      const phase = settled
-        ? settlementNextPhase(attempt.phase)
-        : attempt.phase;
+      const phase = !settled
+        ? attempt.phase
+        : attempt.job_phase === "complete"
+          ? "complete"
+          : settlementNextPhase(attempt.phase);
       if (attempt.job_phase !== phase)
         yield* Journal.updateJob(owner, attempt, phase);
     }

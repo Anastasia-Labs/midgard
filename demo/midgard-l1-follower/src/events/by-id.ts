@@ -19,12 +19,13 @@
  */
 import { datumToHash, type UTxO } from "@lucid-evolution/lucid";
 
+import { depth } from "../heads.js";
 import { toLucidUtxo } from "../provider/utxo.js";
 import type { Dialect, SqlTx } from "../sql/backend.js";
 import { liveUtxosIn } from "../store/reads.js";
 import { currentViewIn } from "../store/view.js";
 import type { EventKind } from "./config.js";
-import { EVENTS_TABLE } from "./schema.js";
+import { EVENTS_TABLE, RETIREMENTS_TABLE } from "./schema.js";
 
 export type EventOrderList = Readonly<{
   kind: EventKind;
@@ -32,10 +33,25 @@ export type EventOrderList = Readonly<{
   policyId: string;
 }>;
 
+/** The tx that retired an event, and where it stands under the tip. */
+export type EventRetirement = Readonly<{
+  txHash: Buffer;
+  slot: number;
+  blockHash: Buffer;
+  height: number;
+  /** The heads module's `depth` of its block under the tip (1 at the tip). */
+  depth: number;
+}>;
+
 export type EventOrderRead =
   | Readonly<{ kind: "ok"; order: UTxO; retained: readonly UTxO[] }>
-  /** No live event with this id at the tip: never admitted, or retired. */
+  /**
+   * No event with this id at the tip: never admitted, its admission rolled
+   * back, or retired more than k deep, once pruning removed its rows.
+   */
   | Readonly<{ kind: "absent" }>
+  /** Retired at the tip, by whichever transaction spent its Order. */
+  | Readonly<{ kind: "retired"; retirement: EventRetirement }>
   /** The projection disagrees with the facts; the detail names how. */
   | Readonly<{ kind: "unavailable"; detail: string }>;
 
@@ -45,7 +61,8 @@ export const eventKeyOfId = (eventId: Buffer): Buffer =>
 
 /**
  * The live Order of the `list` event whose id CBOR is `eventId`, and the
- * retention output its external payload lives in, at the follower's tip.
+ * retention output its external payload lives in, at the follower's tip; or
+ * the retirement of that event while its rows are kept.
  */
 export const eventOrderByIdIn = async (
   tx: SqlTx,
@@ -53,18 +70,40 @@ export const eventOrderByIdIn = async (
   list: EventOrderList,
   eventId: Buffer,
 ): Promise<EventOrderRead> => {
-  if ((await currentViewIn(tx, dialect)) === null)
+  const view = await currentViewIn(tx, dialect);
+  if (view === null)
     return { kind: "unavailable", detail: "the follower holds no view yet" };
   const key = eventKeyOfId(eventId);
   const rows = await tx.query(
-    `SELECT event_id, retained_tx_hash, retained_output_index FROM ${EVENTS_TABLE}
-      WHERE kind = ? AND event_key = ? AND retired_slot IS NULL`,
+    `SELECT e.event_id, e.retired_slot, e.retained_tx_hash, e.retained_output_index,
+        r.retirement_tx_hash, r.retired_block_hash, r.retired_height
+      FROM ${EVENTS_TABLE} e
+      LEFT JOIN ${RETIREMENTS_TABLE} r ON r.kind = e.kind AND r.event_key = e.event_key
+      WHERE e.kind = ? AND e.event_key = ?`,
     [list.kind, key],
   );
   const row = rows[0];
   if (row === undefined) return { kind: "absent" };
   if (!Buffer.from(row.event_id as Uint8Array).equals(eventId))
     return { kind: "unavailable", detail: "event key names another event id" };
+  if (row.retired_slot !== null && row.retired_slot !== undefined) {
+    if (row.retired_height === null || row.retired_height === undefined)
+      return {
+        kind: "unavailable",
+        detail: "the retired event has no retirement row",
+      };
+    const height = Number(row.retired_height);
+    return {
+      kind: "retired",
+      retirement: {
+        txHash: Buffer.from(row.retirement_tx_hash as Uint8Array),
+        slot: Number(row.retired_slot),
+        blockHash: Buffer.from(row.retired_block_hash as Uint8Array),
+        height,
+        depth: depth(view.height, height),
+      },
+    };
+  }
   const holders = await liveUtxosIn(tx, dialect, {
     by: "unit",
     policyId: Buffer.from(list.policyId, "hex"),
