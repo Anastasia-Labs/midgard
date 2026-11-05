@@ -1,0 +1,54 @@
+-- | Exact fixed-target Aiken binder/compute/settle validator invocations.
+module Testing.CekCoreValidators (tests) where
+
+import Codec.Serialise (deserialiseOrFail)
+import Data.Aeson
+import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString.Lazy qualified as LBS
+import Data.Text qualified as Text
+import Midgard.Validators.FraudProofs.ValidationTrace.CekCore qualified as Core
+import Midgard.Validators.FraudProofs.ValidationTrace.CekCoreArms qualified as Arms
+import Plutarch.Evaluate (applyArguments, evalScriptHuge)
+import Plutarch.Internal.Term (Config (NoTracing), InternalConfig (..), compileWithInternalConfig)
+import Plutarch.Prelude
+import Plutarch.Script (Script)
+import PlutusCore.Data qualified as D
+import Test.Tasty
+import Test.Tasty.HUnit
+
+data Vector = Vector String Int Bool String
+instance FromJSON Vector where
+  parseJSON = withObject "core invocation" $ \o -> Vector <$> o .: "test" <*> o .: "invocation" <*> o .: "accepts" <*> o .: "argumentsCbor"
+data Vectors = Vectors String [Vector]
+instance FromJSON Vectors where
+  parseJSON = withObject "core invocations" $ \o -> Vectors <$> o .: "sourceCommit" <*> o .: "vectors"
+
+tests :: IO TestTree
+tests = do
+  Vectors commit vectors <- either fail pure =<< eitherDecodeFileStrict' "tests/fixtures/cek-core-validators.json"
+  commit @?= "9797ce41ce5d436e309eca07e2020ee29c395859"
+  length vectors @?= 11
+  length [() | Vector _ _ True _ <- vectors] @?= 6
+  pure $ testGroup "CEK fixed-target core validator invocations" [testCase (name <> "/" <> show index) $ run vector | vector@(Vector name index _ _) <- vectors]
+
+run :: Vector -> Assertion
+run (Vector _ _ accepts encoded) = do
+  bytes <- either assertFailure pure $ Base16.decode $ BS8.pack encoded
+  raw <- either (assertFailure . show) pure $ deserialiseOrFail @D.Data $ LBS.fromStrict bytes
+  (label, arguments) <- case raw of
+    D.List (D.B label : fields) -> case reverse fields of
+      transaction : ownRef : redeemer : datum : reversedParameters -> pure
+        (label, reverse reversedParameters <> [D.Constr 0 [transaction, redeemer, D.Constr 1 [ownRef, datum]]])
+      _ -> assertFailure "Incomplete source invocation"
+    _ -> assertFailure "Malformed source invocation"
+  script <- maybe (assertFailure "Unknown source core validator") pure $ lookup label scripts
+  let (result, _, traces) = evalScriptHuge $ applyArguments script arguments
+  case result of
+    Right _ -> assertBool "Expected on-chain rejection" accepts
+    Left err -> assertBool (show err <> " " <> show traces) (not accepts)
+
+scripts :: [(BS8.ByteString, Script)]
+scripts = [("cek_core_step_semantic_v1", compiled Core.bindValidator), ("cek_core_arm_compute", compiled Arms.computeValidator), ("cek_core_settle", compiled Core.settleValidator)]
+compiled :: (forall s. Term s a) -> Script
+compiled term = either (error . Text.unpack) id $ compileWithInternalConfig (InternalConfig False False) NoTracing term
