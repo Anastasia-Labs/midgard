@@ -5,7 +5,7 @@ import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-ac
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectExecutionNativeScriptInvalidReplay } from "../execution-native-script-invalid/replay.js";
 import { detectExecutionSourceScriptDecodingReplay } from "../execution-source-script-decoding/replay.js";
-import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
+import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/replay.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
 import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
@@ -29,10 +29,10 @@ import { detectScriptIntegrityHashMismatchReplay } from "../script-integrity-has
 import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script-integrity-hash-missing/replay.js";
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
-import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
+import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.detect-transaction-output-non-canonical-complete-replay.js";
 import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessReplay } from "../unused-script-witness/replay.js";
-import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
+import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   detectL2TxMistags,

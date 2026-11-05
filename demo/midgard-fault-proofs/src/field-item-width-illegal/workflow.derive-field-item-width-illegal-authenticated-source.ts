@@ -28,8 +28,8 @@ import {
   type FieldItemWidthStage,
   prepareFieldItemWidthEvidence,
 } from "./field-item-width-illegal.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID } from "./replay.js";
 import {
-  FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
   type FieldItemWidthIllegalAuthenticatedSource,
   type ManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";

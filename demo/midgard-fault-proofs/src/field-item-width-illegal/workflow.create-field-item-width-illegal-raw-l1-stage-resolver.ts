@@ -26,9 +26,6 @@ import {
 export const FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW =
   "midgard-field-item-width-illegal-production-workflow-v1" as const;
 
-export const FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID =
-  "field-item-width-illegal" as const;
-
 export const FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS = Object.freeze({
   step01: "fraudProofFieldItemWidthIllegal",
   step02: "fraudProofFieldItemWidthIllegalStep02",

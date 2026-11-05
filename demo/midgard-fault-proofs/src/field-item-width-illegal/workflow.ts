@@ -21,6 +21,7 @@ import "../workflow/manifest-bound-family-assembly.js";
 import "../workflow/manifest-bound-family-recovery.js";
 import "../workflow/transaction-boundary.js";
 import "./field-item-width-illegal.js";
+import "./replay.js";
 import "./schemas.js";
 import "./submit-cancel.js";
 import "./submit-step-01-accepted.js";
@@ -34,10 +35,13 @@ import "./workflow.derive-field-item-width-illegal-authenticated-source.js";
 import "./workflow.field-item-width-illegal-family-definition.js";
 import "./workflow.run-or-resume-manifest-bound-field-item-width-illegal-workflow.js";
 export {
+  detectFieldItemWidthIllegalCompleteReplay,
+  FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
+} from "./replay.js";
+export {
   bindFieldItemWidthIllegalReferenceScripts,
   createFieldItemWidthIllegalRawL1StageResolver,
   FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
-  FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
   FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
   type FieldItemWidthIllegalAuthenticatedSource,
   type FieldItemWidthIllegalReferenceScripts,
@@ -54,7 +58,6 @@ export {
 } from "./workflow.derive-field-item-width-illegal-authenticated-source.js";
 export {
   createManifestBoundFieldItemWidthIllegalRuntime,
-  detectFieldItemWidthIllegalCompleteReplay,
   FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
   loadManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.field-item-width-illegal-family-definition.js";

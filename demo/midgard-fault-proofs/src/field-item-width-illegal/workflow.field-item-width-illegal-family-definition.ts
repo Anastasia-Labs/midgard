@@ -5,10 +5,8 @@ import {
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
-import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
@@ -20,19 +18,15 @@ import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
-import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import { defineFamily } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import { completeReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
 import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal.js";
 import {
-  fieldItemWidthDetectionId,
   type FieldItemWidthEvidence,
-  fieldItemWidthFindingsFromCanonicalBlock,
   type FieldItemWidthJournal,
   runFieldItemWidthProof,
 } from "./field-item-width-illegal.js";
@@ -44,7 +38,6 @@ import {
   createFieldItemWidthIllegalBoundConfig,
   createFieldItemWidthIllegalRawL1StageResolver,
   FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
-  FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
   FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
   type FieldItemWidthIllegalRuntimeLoader,
   type LoadManifestBoundFieldItemWidthIllegalConfig,
@@ -77,28 +70,6 @@ export const loadManifestBoundFieldItemWidthIllegalConfig = async (
   });
 
   return createFieldItemWidthIllegalBoundConfig(input, binding);
-};
-
-/** Shares exact coordinates and original bytes with public recovery. */
-export const detectFieldItemWidthIllegalCompleteReplay = (
-  block: CanonicalBlockEvidence,
-): readonly CanonicalViolationDetection[] => {
-  const { findings, failures } =
-    fieldItemWidthFindingsFromCanonicalBlock(block);
-  return completeReplayFindings(
-    findings.map(({ evidence, position }) => ({
-      ...verdictDetectionSubject(evidence.subject),
-      detectionId: fieldItemWidthDetectionId(
-        { evidence, position },
-        FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
-      ),
-      headerHash: block.headerHash,
-      violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
-      position,
-      diagnostic: `transaction ${evidence.subject.transaction_id} contradicts its verdict at field ${evidence.fieldIndex.toString()} item ${evidence.itemIndex.toString()}`,
-    })),
-    failures,
-  );
 };
 
 export const createManifestBoundFieldItemWidthIllegalRuntime = ({
