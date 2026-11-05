@@ -149,9 +149,12 @@ export const runNode = (
       globals,
       waiting: (reasons) => startup.setStage("instance_lock", reasons),
     });
-    // The DA identity preflight below is local, too.
+    // The DA identity preflight below is local, too. No step before
+    // `followL1` reads L1 through the follower: the node's L1 reader answers
+    // a protocol address only from the follower's facts, and a fresh
+    // database has no follower cursor before the follower runs.
     yield* startup.setStage("local_preflight");
-    yield* runDaIdentityGatedStartupSequence({
+    const intentJournal = yield* runDaIdentityGatedStartupSequence({
       localPreflight: prepareDaHardeningStartup.pipe(
         Effect.tapError(
           logStartupFailure("Startup DA identity preflight failed"),
@@ -172,10 +175,51 @@ export const runNode = (
           ),
         ),
       // The node never deploys: the deployment's manifest must exist, and
-      // nothing here submits.
+      // nothing here submits. Its reward-account reads go over local state
+      // query, not through the follower.
       initializeProtocol: startup
         .setStage("protocol_initialization")
         .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+      followL1: Effect.gen(function* () {
+        // The native MPF owner the driver's first recompute starts closes
+        // with this scope.
+        yield* Effect.addFinalizer(() =>
+          Effect.gen(function* () {
+            const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+            if (owned !== undefined) {
+              yield* Effect.promise(() => owned.close());
+              yield* Ref.set(globals.NATIVE_MPF_OWNER, undefined);
+            }
+          }),
+        );
+        // One journal for the node process, opened once its database is:
+        // its refusals are `/readyz` holds.
+        const intentJournal = yield* makeIntentJournal;
+        // The L1 follower (N1): its driver writes the event rows, and its
+        // first recompute runs the startup preparation, starts the native
+        // MPF owner and recomputes the node's derived state from the
+        // follower's view. Its intent stage (S6) may resend transactions an
+        // earlier run journaled before the DA provider assertions below
+        // pass; a resend publishes nothing to DA.
+        yield* startL1Follower({
+          startupPreparation: prepareNodeOnStartup,
+          writerLease: instanceLock.followerWriterLease,
+        }).pipe(Effect.provideService(IntentJournal, intentJournal));
+        // Startup recovery seeds the commit base from the landed state queue
+        // (P1, N2): wait, unready, until the follower is at the tip and P1
+        // is healthy there. A transient database failure is ridden out
+        // within `STARTUP_DATABASE_BUDGET`; past it, or on any other read
+        // failure, startup fails by step and reason.
+        yield* startup.setStage("l1_follower_catch_up");
+        yield* awaitLandedStateQueueOnStartup((reasons) =>
+          startup.setStage("l1_follower_catch_up", reasons),
+        );
+        return intentJournal;
+      }),
+      // At the follower's tip, its reader holds the DA params UTxO. These
+      // assertions pass before any DA publication, block production or
+      // other duty starts: a threshold mismatch fails startup at once, a
+      // pending capability quorum waits under its named reason.
       providerAssertions: (preflight) =>
         startup.setStage("provider_assertions").pipe(
           Effect.zipRight(
@@ -198,34 +242,6 @@ export const runNode = (
         ),
     });
 
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-        if (owned !== undefined) {
-          yield* Effect.promise(() => owned.close());
-          yield* Ref.set(globals.NATIVE_MPF_OWNER, undefined);
-        }
-      }),
-    );
-    // One journal for the node process, opened once its database is: its
-    // refusals are `/readyz` holds.
-    const intentJournal = yield* makeIntentJournal;
-    // The L1 follower (N1): its driver writes the event rows, and its first
-    // recompute runs the startup preparation, starts the native MPF owner
-    // and recomputes the node's derived state from the follower's view.
-    yield* startL1Follower({
-      startupPreparation: prepareNodeOnStartup,
-      writerLease: instanceLock.followerWriterLease,
-    }).pipe(Effect.provideService(IntentJournal, intentJournal));
-    // Startup recovery seeds the commit base from the landed state queue
-    // (P1, N2): wait, unready, until the follower is at the tip and P1 is
-    // healthy there. A transient database failure is ridden out within
-    // `STARTUP_DATABASE_BUDGET`; past it, or on any other read failure,
-    // startup fails by step and reason.
-    yield* startup.setStage("l1_follower_catch_up");
-    yield* awaitLandedStateQueueOnStartup((reasons) =>
-      startup.setStage("l1_follower_catch_up", reasons),
-    );
     // Then until the driver published its first view: what holds it is
     // named. A driver failure that is not transient fails startup at once;
     // a transient one held past `STARTUP_DATABASE_BUDGET` fails it too.

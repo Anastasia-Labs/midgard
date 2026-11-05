@@ -76,6 +76,7 @@ describe("DA hardening startup and configuration", () => {
           initializeProtocol: Effect.sync(() =>
             calls.push("protocol-status-init-and-reference-scripts"),
           ).pipe(Effect.asVoid),
+          followL1: Effect.sync(() => calls.push("follow")).pipe(Effect.asVoid),
           providerAssertions: () =>
             Effect.sync(() =>
               calls.push("threshold-and-capability-probes"),

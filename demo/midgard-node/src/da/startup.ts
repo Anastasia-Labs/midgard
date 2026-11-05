@@ -130,7 +130,11 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
   return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;
 });
 
-/** Runs provider-backed DA checks using the manifest retained by preflight. */
+/**
+ * Runs provider-backed DA checks using the manifest retained by preflight.
+ * Its DA params read goes through the follower: run it once the follower
+ * has a cursor (`runDaIdentityGatedStartupSequence`).
+ */
 export const assertDaHardeningProviderStartup = ({
   envelopeMode,
   manifest,
@@ -294,10 +298,25 @@ export const assertDaEnvelopeCapabilityQuorumOnStartup = (
   });
 
 /**
- * Enforces local deployment identity before database, protocol, or provider
- * startup effects can execute.
+ * The node's startup order around its DA checks: the local DA identity
+ * preflight first, so nothing below runs under another deployment's
+ * identity; then the database and protocol initialization; then following
+ * L1 (`followL1`: the follower started and caught up with the node's tip);
+ * then the provider assertions, with what the preflight returned. It
+ * returns what `followL1` returned.
+ *
+ * The provider assertions read the on-chain DA threshold through the node's
+ * L1 reader, which answers a protocol address only from the follower's facts
+ * (`follower:not_initialized` before its first cursor). Nothing before
+ * `followL1` reads L1 through the follower, so a node on a fresh database
+ * starts. While `followL1` runs, the follower's intent stage (S6) may resend
+ * transactions an earlier run journaled before the assertions pass: a resend
+ * publishes nothing to DA. DA publication, block production and every other
+ * duty start only after this sequence.
  */
 export const runDaIdentityGatedStartupSequence = <
+  P,
+  F,
   E1,
   R1,
   E2,
@@ -306,22 +325,26 @@ export const runDaIdentityGatedStartupSequence = <
   R3,
   E4,
   R4,
+  E5,
+  R5,
 >({
   localPreflight,
   initializeDatabase,
   initializeProtocol,
+  followL1,
   providerAssertions,
 }: {
-  readonly localPreflight: Effect.Effect<DaHardeningStartupPreflight, E1, R1>;
+  readonly localPreflight: Effect.Effect<P, E1, R1>;
   readonly initializeDatabase: Effect.Effect<void, E2, R2>;
   readonly initializeProtocol: Effect.Effect<void, E3, R3>;
-  readonly providerAssertions: (
-    preflight: DaHardeningStartupPreflight,
-  ) => Effect.Effect<void, E4, R4>;
-}): Effect.Effect<void, E1 | E2 | E3 | E4, R1 | R2 | R3 | R4> =>
+  readonly followL1: Effect.Effect<F, E4, R4>;
+  readonly providerAssertions: (preflight: P) => Effect.Effect<void, E5, R5>;
+}): Effect.Effect<F, E1 | E2 | E3 | E4 | E5, R1 | R2 | R3 | R4 | R5> =>
   Effect.gen(function* () {
     const preflight = yield* localPreflight;
     yield* initializeDatabase;
     yield* initializeProtocol;
+    const following = yield* followL1;
     yield* providerAssertions(preflight);
+    return following;
   });
