@@ -61,8 +61,9 @@ import {
   supervisorPaths,
 } from "./devnet-stack/services.js";
 import {
+  backBondPoolOnce,
   bondStatus,
-  ensureBonded,
+  devnetBondPool,
   ensureSupervisor,
   recordedOneShot,
   recordSupervisorSpecs,
@@ -138,18 +139,21 @@ const resumeUp = async (
   await ensureDaManifests(context, oneShot);
   await ensureWatcherRelease(context, oneShot);
   console.log(`watcher: release ready under ${layout.watcher}`);
+  const bond = await backBondPoolOnce(
+    devnetBondPool(context, oneShot),
+    journal,
+  );
+  console.log(
+    bond.belowBond
+      ? `da-bond: the pool backs only ${bond.backing} of ${bond.requiredBacking} lovelace; Apply waits until a DA operator tops it up (da-bond top-up)`
+      : `da-bond: backed ${bond.backing} of ${bond.requiredBacking} lovelace`,
+  );
   const specs = serviceSpecs(context, oneShot);
   const supervisor = await ensureSupervisor({
     running: () => runningSupervisor(layout),
     runs: () => supervisorRuns(layout, specs, code.stamp),
     stop: () => stopSupervisor(layout, SUPERVISOR_STOP_MS),
-    start: async () => {
-      const bond = await ensureBonded(context, oneShot);
-      console.log(
-        `da-bond: backed ${bond.backing} of ${bond.requiredBacking} lovelace`,
-      );
-      return startSupervisor(layout);
-    },
+    start: async () => startSupervisor(layout),
   });
   // Ready and then stable: a service in a restart loop answers ready between restarts.
   await waitStablyReady(context, oneShot, readyTimeoutMs, {

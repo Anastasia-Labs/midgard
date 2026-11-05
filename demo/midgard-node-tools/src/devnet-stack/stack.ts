@@ -6,6 +6,7 @@ import { type DeployContext, nodeCli } from "./deploy.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
 import { lastJsonValue, requireSuccess } from "./exec.js";
+import type { Journal } from "./journal.js";
 import type { Layout } from "./layout.js";
 import { lockOwner } from "./lock.js";
 import type { HubOracleOneShot } from "./node-env.js";
@@ -126,7 +127,7 @@ export const startSupervisor = (layout: Layout): number => {
   return child.pid;
 };
 
-type BondStatus = {
+export type BondStatus = {
   belowBond: boolean;
   backing: string;
   requiredBacking: string;
@@ -155,44 +156,65 @@ export const bondStatus = async (
     ).stdout,
   ) as BondStatus;
 
-/**
- * Backs the committee's DA bond pool before any member attests. Only called
- * while no service runs: the operator wallet funds it, and the node spends
- * that same wallet once it is up.
- */
-export const ensureBonded = async (
+/** The committee's DA bond pool on L1, and a top-up paid by the committee. */
+export type BondPool = {
+  readonly status: () => Promise<BondStatus>;
+  readonly topUp: (lovelace: bigint) => Promise<void>;
+};
+
+/** The run's pool, topped up from the cosigner: a committee member's wallet
+ * that no running service spends, and not one of the operator's wallets. */
+export const devnetBondPool = (
   context: DeployContext,
   oneShot: HubOracleOneShot,
-) => {
-  const status = await bondStatus(context, oneShot);
-  if (!status.belowBond) return status;
-  const shortfall = BigInt(status.requiredBacking) - BigInt(status.backing);
-  console.log(`da-bond: pool is ${shortfall} lovelace short; topping up`);
-  requireSuccess(
-    await nodeCli(
-      context,
-      [
-        "--l1",
-        "kupmios",
-        "da-bond",
-        "top-up",
-        "--manifest",
-        context.layout.contractManifest,
-        "--amount",
-        String(shortfall),
-        "--wallet-seed-env",
-        "L1_OPERATOR_SEED_PHRASE",
-      ],
-      "da-bond-top-up",
-      oneShot,
-    ),
-    "da-bond top-up",
-  );
-  const after = await bondStatus(context, oneShot);
+): BondPool => ({
+  status: () => bondStatus(context, oneShot),
+  topUp: async (lovelace) => {
+    requireSuccess(
+      await nodeCli(
+        context,
+        [
+          "--l1",
+          "kupmios",
+          "da-bond",
+          "top-up",
+          "--manifest",
+          context.layout.contractManifest,
+          "--amount",
+          String(lovelace),
+          "--wallet-seed-env",
+          "DA_COSIGNER_SEED_PHRASE",
+        ],
+        "da-bond-top-up",
+        oneShot,
+      ),
+      "da-bond top-up",
+    );
+  },
+});
+
+const BOND_POOL_BACKED = "da-bond-pool-backed";
+
+/**
+ * Backs the committee's DA bond pool once, at the deployment's first start.
+ * A pool below its bond after that was slashed, and topping it up is a DA
+ * operator's decision (`da-bond top-up`), so later starts only return its
+ * status for the caller to report.
+ */
+export const backBondPoolOnce = async (pool: BondPool, journal: Journal) => {
+  const status = await pool.status();
+  if (journal.get(BOND_POOL_BACKED) !== undefined) return status;
+  if (!status.belowBond) {
+    journal.set(BOND_POOL_BACKED, { backing: status.backing });
+    return status;
+  }
+  await pool.topUp(BigInt(status.requiredBacking) - BigInt(status.backing));
+  const after = await pool.status();
   if (after.belowBond)
     throw new Error(
-      "the DA bond pool is still below its bond after the top-up",
+      "the DA bond pool is still below its bond after its first backing",
     );
+  journal.set(BOND_POOL_BACKED, { backing: after.backing });
   return after;
 };
 
