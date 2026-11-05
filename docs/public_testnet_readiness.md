@@ -1,12 +1,12 @@
 # Public Testnet Readiness
 
-Status: no-go. Reviewed 2026-10-13 against the integration branch at
-`a81655e75`.
+Status: no-go. Reviewed 2026-11-05 against the integration branch at
+`2ad2f8418`.
 
 The first public testnet, P1, is a stage-0 network on Cardano Preprod, run from
-the `preprod-public` deployment profile. Its launch is committed for 2026-11-07,
-with 2026-10-31 as the stretch target. A regenesis, P2, is planned for December
-2026 and lifts the P1 limits listed below.
+the `preprod-public` deployment profile. Its launch date follows its scope: the
+full P1 scope ships and the dates move (owner, 2026-10-25). A regenesis, P2, is
+planned for December 2026 and lifts the P1 limits listed below.
 
 This checklist owns the launch decision. It lists the implementation work that
 must merge before launch and the release gates that need evidence from the
@@ -18,12 +18,12 @@ release plan's ticket ids.
 
 Each item carries one status:
 
-- **Done**: merged into the integration branch. The pointer names the merge or
-  commit. Done code still needs the release evidence under
+- **Done**: merged into the integration branch; the pointer names the merge or
+  commit. Done code still needs the evidence under
   [Release verification](#release-verification).
-- **In progress**: part of the work exists, on a lane branch or merged. The
-  entry names what remains.
+- **In progress**: part of the work is merged; the entry names what remains.
 - **Open**: no implementation or evidence yet.
+- **Unverified**: this review found no evidence either way.
 
 Close a release gate only with evidence from the release revision: owner or
 reviewer, exact command and environment, artifact location, result and known
@@ -53,9 +53,8 @@ P1 has these limits, and the security claim (R1) must state each one:
 - The L1 order of a forced transaction carries a closed validity range of at
   most 10 minutes (A2).
 - DA payloads carry neither validation-trace states nor the UTxO set. The
-  nine fault-proof families that read validation-trace states are rebuilt
-  without them, installed, and all in the P1 catalogue (owner, 2026-10-25:
-  each joins once rebuilt); `excluded_fraud_proof_categories` in
+  nine fault-proof families that read those states are rebuilt without them
+  and all in the P1 catalogue; `excluded_fraud_proof_categories` in
   [`preprod-public.yaml`](../config/deployments/preprod-public.yaml) is empty.
   The Plutus execution dispute (`validationTraceDispute`) is in the catalogue
   too (owner, 2026-10-21); `mainnet` still excludes it.
@@ -74,85 +73,79 @@ P1 has these limits, and the security claim (R1) must state each one:
 
 ## Schedule
 
-| Date       | Milestone                                                                                                                               | Status             |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| 2026-10-23 | Allow-list key hashes for `preprod-public` (owner input)                                                                                | Done (`d07f2fda7`) |
-| 2026-10-26 | Validator freeze: every Aiken change merged, blueprint frozen                                                                           | Open               |
-| 2026-10-27 | One golden regeneration; fit rows at the P1 maximum shapes; emulator lifecycles in both polarities over the frozen blueprint            | Open               |
-| 2026-10-28 | Release candidate: frozen build and tag (R11), manifest (R3), devnet journey on `preprod-public` parameters, unattended run starts (R6) | Open               |
-| 2026-10-29 | Fresh `preprod-public` deployment (R6); a second unattended run starts on it                                                            | Open               |
-| 2026-10-30 | Drills on the fresh deployment (R6)                                                                                                     | Open               |
-| 2026-10-31 | Stretch launch: security claim and user docs published (R1, R9), SDK published (R10), status page linked                                | Open               |
-| 2026-11-05 | First live withdrawal payout matures, seven days after the deployment                                                                   | Open               |
-| 2026-11-07 | Committed launch                                                                                                                        | Open               |
+The `preprod-public` allow-list keys are set (`d07f2fda7`). The remaining steps
+run in this order. They carry no dates.
 
-A contract change after the freeze needs an owner decision. A freeze later than
-2026-11-02 moves the launch day for day. If the freeze slips, scope is cut in
-this order and nowhere else:
+| Step | Milestone                                                                                                                                               | Status      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1    | Operator-2 joins the fast-timer `preprod-testing` twin and shares block production with operator-1                                                      | In progress |
+| 2    | Remaining fixes from this checklist, then the validator freeze, one golden regeneration, and fit rows and emulator lifecycles over the frozen blueprint | In progress |
+| 3    | Rehearsal funding                                                                                                                                       | Open        |
+| 4    | Full rehearsal on the `preprod-rehearsal` profile with every drill (R6)                                                                                 | Open        |
+| 5    | Go/no-go (owner), around day 5 of the rehearsal                                                                                                         | Open        |
+| 6    | Fresh `preprod-public` deployment and its unattended run (R6)                                                                                           | Open        |
+| 7    | Tag (R11) and SDK publish (R10) (owner)                                                                                                                 | Open        |
 
-1. the transaction evaluation endpoint (users then declare budgets by hand);
-2. the watcher's persisted replay checkpoint (the watcher then replays from
-   genesis on every restart);
-3. R5.
+A contract change after the freeze needs an owner decision. Nothing is cut from
+P1 to hold a date.
 
 ## Implementation before launch
 
 ### Contracts
 
-Every contract item merges before the 2026-10-26 freeze.
+Every contract item merges before the validator freeze.
 
-| Item                                                               | Status      | Pointer and remaining work                                                                                                                                                                                               |
-| ------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Forced-transaction admission at the tx-order mint (A1)             | Done        | Merge `b06aca902`. `forced_tx_is_admissible_v1` in `onchain/aiken/lib/midgard/user-events/tx-order-v1.ak`; the SDK and node share `screenMidgardForcedTxAdmission` and a golden corpus with Aiken                        |
-| Closed 10-minute validity range on tx orders (A2)                  | Done        | `faee6e018`. The tx-order mint requires a closed L1 validity range of at most `max_event_validity_range_ms` (10 minutes on every profile)                                                                                |
-| Operator allow-list, P1 catalogue and P1 parameters (C1)           | Done        | Merges `63e24132e`, `bf82caf27`; keys `d07f2fda7`. Curated emulator tests in both polarities. Provers and DA challengers are permissionless (PL)                                                                         |
-| Long-gap catch-up after an all-operator outage (C2)                | In progress | Commit time in the state-queue node merged (`19faf4948`); retention clocks merged (`fa0435b97`). Two follow-ups on `p1/c2a-onchain` are not merged. The remaining commit-clock readers and the catch-up planner are open |
-| No empty blocks (C3)                                               | In progress | `6419a5fb2` and `39cde8b6d` on `p1/c2a-onchain`, not merged. The matching block-planner change is open                                                                                                                   |
-| Asset names compare as plain bytes (C5)                            | Done        | `51ec22412`, `113fa9369`                                                                                                                                                                                                 |
-| Datum canonicity fault proof (DC)                                  | Done        | Merges `78943b3c9`, `a81655e75`                                                                                                                                                                                          |
-| Minimum-ADA and network-id routes for accepted forced transactions | In progress | `b742bb756`, `f0ddcfa5b`, `a40099c60` on `p1/pm-post-modes`, not merged; watcher workflow wiring open                                                                                                                    |
+| Item                                                               | Status | Pointer and remaining work                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Forced-transaction admission at the tx-order mint (A1)             | Done   | Merge `b06aca902`. `forced_tx_is_admissible_v1` in `onchain/aiken/lib/midgard/user-events/tx-order-v1.ak`; the SDK and node share `screenMidgardForcedTxAdmission` and a golden corpus with Aiken                                               |
+| Closed 10-minute validity range on tx orders (A2)                  | Done   | `faee6e018`. The tx-order mint requires a closed L1 validity range of at most `max_event_validity_range_ms` (10 minutes on every profile)                                                                                                       |
+| Operator allow-list, P1 catalogue and P1 parameters (C1)           | Done   | Merges `63e24132e`, `bf82caf27`; keys `d07f2fda7`. Curated emulator tests in both polarities. Provers and DA challengers are permissionless (PL)                                                                                                |
+| Long-gap catch-up after an all-operator outage (C2)                | Done   | Merges `19faf4948`, `43cc2c76a` (commit time in the state-queue node), `fa0435b97` (retention clocks) and `db675593c` (fixed commit clocks); the catch-up planner builds frames from authenticated clocks (`a1e6619fe`). The outage drill is R6 |
+| No empty blocks (C3)                                               | Done   | `39cde8b6d`, merged in `43cc2c76a`; the block planner commits nothing when no event is due (`a1e6619fe`)                                                                                                                                        |
+| Asset names compare as plain bytes (C5)                            | Done   | `51ec22412`, `113fa9369`                                                                                                                                                                                                                        |
+| Datum canonicity fault proof (DC)                                  | Done   | Merges `78943b3c9`, `a81655e75`                                                                                                                                                                                                                 |
+| Minimum-ADA and network-id routes for accepted forced transactions | Done   | Merge `5bdcafbec`: both families read committed output bytes and route accepted forced transactions through the watcher workflow                                                                                                                |
 
 ### Node, SDK, committee and watcher
 
-| Item                                                                                         | Status      | Pointer and remaining work                                                                                                                                                                                                                                                             |
-| -------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Placeholder validation descriptors; no trace states in DA (B1)                               | In progress | Merge `e065e47d7`; `026761a97` pins the refusal of outputs with no descriptor. Removal of the retained-witness readers and the excluded families' off-chain code is on `p1/b1-rest`, not merged                                                                                        |
-| Every admitted forced transaction gets a verdict (B2)                                        | In progress | Not committed                                                                                                                                                                                                                                                                          |
-| Normal L2 Plutus (P)                                                                         | Done        | Merges `1fa289e40`, `eac653de0` and `7a9c84a87`: verdict mode on admission and the commit path, per-transaction cap, per-block budget, verdicts on the worker pool, `POST /tx/evaluate`, the Schnorr builtin and `evaluate()` in lucid-midgard. Per-IP limits on `/tx/evaluate` are R7 |
-| Evict normal transactions that cannot be committed (B2-8)                                    | In progress | Not committed                                                                                                                                                                                                                                                                          |
-| Deposit datum decoding in the L1 follower (B3)                                               | In progress | Not committed                                                                                                                                                                                                                                                                          |
-| Withdrawal payability and settlement retries (B4, #820, #821)                                | In progress | Merge `a97f50266`. Two follow-ups on `p1/l6-next`, not merged: the prover sizes the payout from the committed bytes (`1c93ed3e8`), and a failing status read backs off (`64bd913cc`)                                                                                                   |
-| DA payloads carry no UTxO set (DS)                                                           | In progress | Payload and producers merged (`bb888bb2a`); fault-proof ledgers by replay merged (`f49a882cc`). Shared block replay and the watcher's replayed ledger are on `p1/ds3-watcher-ledger`, not merged. Open: watcher production wiring, the node-tools watcher journeys, 120-day retention  |
-| Unattended-liveness musts (B6, #696)                                                         | Done        | Merges `66cb1b6dc`, `aa18a9264`. The final unattended run is R6                                                                                                                                                                                                                        |
-| The operator watchdog holds takeovers while the queue is progressing or cannot progress (B7) | In progress | `ff9dde981` on `p1/l6-next`, not merged                                                                                                                                                                                                                                                |
+| Item                                                                                         | Status | Pointer and remaining work                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Placeholder validation descriptors; no trace states in DA (B1)                               | Done   | Merge `e065e47d7`; `026761a97` pins the refusal of outputs with no descriptor; merge `12b0b5350` removes the retained-witness readers from the installed proof scope                                                                                                                   |
+| Every admitted forced transaction gets a verdict (B2)                                        | Done   | Merge `e23b8a456`: every mint-admitted forced order gets a forced verdict, checked over signed orders with changed fee and validity                                                                                                                                                    |
+| Normal L2 Plutus (P)                                                                         | Done   | Merges `1fa289e40`, `eac653de0` and `7a9c84a87`: verdict mode on admission and the commit path, per-transaction cap, per-block budget, verdicts on the worker pool, `POST /tx/evaluate`, the Schnorr builtin and `evaluate()` in lucid-midgard. Per-IP limits on `/tx/evaluate` are R7 |
+| Evict normal transactions that cannot be committed (B2-8)                                    | Done   | Merge `830fd20cb`                                                                                                                                                                                                                                                                      |
+| Deposit datum decoding in the L1 follower (B3)                                               | Done   | `3c6af325f`, merged in `3654a21a5`                                                                                                                                                                                                                                                     |
+| Withdrawal payability and settlement retries (B4, #820, #821)                                | Done   | Merges `a97f50266`, `3654a21a5`: the prover sizes the payout from the committed bytes (`1c93ed3e8`), and a failing status read backs off (`64bd913cc`)                                                                                                                                 |
+| DA payloads carry no UTxO set (DS)                                                           | Done   | Payload and producers (`bb888bb2a`); fault-proof ledgers by replay (`f49a882cc`); shared node and watcher replay and the watcher's replayed ledger (`5190e0235`); stack replayed-ledger journeys in node CI (`f15f327b6`); 120-day retention on the public profile (`91538258f`)       |
+| Unattended-liveness musts (B6, #696)                                                         | Done   | Merges `66cb1b6dc`, `aa18a9264`. The final unattended run is R6                                                                                                                                                                                                                        |
+| The operator watchdog holds takeovers while the queue is progressing or cannot progress (B7) | Done   | `ff9dde981`, merged in `3654a21a5`                                                                                                                                                                                                                                                     |
+| L1 reads for deployment, operator and user commands (owner, 2026-11-03 and 2026-11-04)       | Done   | Deployment commands read their own outputs and the wallet straight from the Cardano node (`3fe2bcc97`); operator commands read the running node's index (`4fe49bfb7`); deposits and withdrawals go through `midgard-user` (`8242971b4`)                                                |
 
 ## Release verification
 
 ### Security claim and threat model (R1, R2)
 
-- **Security claim.** Open. Publish one stage-0 claim in the announcement and
-  the SDK, operator and challenger docs: the P1 model and every limit above,
-  the enabled fault-proof families, challenge windows, trust assumptions, and
-  the P2 sunset and regenesis notice. The owner ruled a two-stage launch on
-  2026-10-12, so P1 does not accept the full canonical V1 surface; the claim
-  states what P1 disables instead. A draft exists and awaits review.
-- **Curated operators.** In progress. The operator allow-list is enforced
-  on-chain at operator registration and off-chain by the SDK and node (C1).
-  Computation-thread initialization and availability challenge Open are
-  permissionless (PL). The claim
-  must still document the operator-halt and fund-recovery assumptions.
-- **Unsupported scope.** Open. Mark the escape hatch and settlement claims
-  unsupported in the public docs and the manifest.
+- **Security claim.** In progress. Publish one stage-0 claim in the
+  announcement and the SDK, operator and challenger docs: the P1 model and
+  every limit above, the enabled fault-proof families, challenge windows, trust
+  assumptions, and the P2 sunset and regenesis notice, stating what P1
+  disables (owner, 2026-10-12, two-stage launch). The
+  [claim](public-testnet-security-claim.md) is in the tree (`b5d5ea700`).
+- **Curated operators.** In progress. The allow-list is enforced on-chain at
+  registration and off-chain by the SDK and node (C1); proof threads and
+  availability challenges are permissionless (PL). The claim must still
+  document the operator-halt and fund-recovery assumptions.
+- **Unsupported scope.** In progress. The security claim marks the escape
+  hatch and settlement claims unsupported; the manifest is Unverified.
 - **Published catalogue.** In progress. `preprod-public` enables every
   category and excludes none; computation-thread initialization refuses a
   category the catalogue does not hold (C1). The claim and the manifest must
   list the enabled families.
-- **Threat model and disclosure policy.** In progress. Publish the trust model
-  per role, the threat model (runtime, APIs, key and admin compromise, L1
-  provider compromise, spam, operational denial of service, incident
-  assumptions) and `SECURITY.md` with the reporting channel, scope,
-  out-of-scope list and emergency contact. `SECURITY.md` is not yet in this
-  tree.
+- **Threat model and disclosure policy.** Done (`b5d5ea700`). The
+  [threat model](public-testnet-threat-model.md) covers each role, runtime,
+  APIs, key, admin and L1 provider compromise, spam, denial of service and
+  incidents; [`SECURITY.md`](../SECURITY.md) gives the reporting channel,
+  scope, out-of-scope list and emergency contact.
 
 ### Contract release and deployment identity (R3, R4, R5)
 
@@ -160,44 +153,45 @@ Every contract item merges before the 2026-10-26 freeze.
   compiler pinned by `aiken.toml`; CI's rebuild must equal it. Record the source
   revision, compiler, flags, `aiken.lock`, blueprint, script hashes, protocol
   parameters and rule bundle.
-- **Signed manifest.** Open. Publish a manifest with script hashes and
+- **Signed manifest.** In progress. Publish a manifest with script hashes and
   parameters, signed by one release key, and say how anyone verifies it. The
-  signing command exists (`sign-deployment-release`,
-  [deployment-release-tooling.md](deployment-release-tooling.md)); no release
-  has been signed with it yet.
-- **Script registry.** Open. The deploy tooling classifies every validator as
-  deployed, excluded or internal and fails on an unclassified one. Every
-  enabled proof family has its full step chain and parameter links.
-- **Reference-script records.** Open. Every required reference script has a
-  non-null record from the deploy tooling: address, outref, script hash, CBOR
-  hash, lovelace and publisher transaction.
-- **Parameter review.** In progress. [Public-testnet parameters](public-testnet-parameters.md)
-  lists every `preprod-public` value with its unit, profile line and rationale,
-  generated from the profile and checked in CI, and the values set outside the
-  profile: the block ex-units budget, HTTP rate limits, the challenger bond and
-  DA fee caps. Release tooling must refuse placeholder keys and unexplained
-  zero economics.
+  stack signs the release for the deployment it finalized and checks it as
+  public listen does (`3a1cbf5d5`, `392964f03`,
+  [deployment-release-tooling.md](deployment-release-tooling.md)). No public
+  release is signed yet.
+- **Script registry.** In progress. The deploy tooling classifies every
+  validator as deployed, excluded or internal and fails on an unclassified one
+  (`56f329a57`). Unverified: every enabled proof family has its full step chain
+  and parameter links.
+- **Reference-script records.** Unverified. Every required reference script
+  has a non-null record from the deploy tooling: address, outref, script hash,
+  CBOR hash, lovelace and publisher transaction.
+- **Parameter review.** In progress.
+  [Public-testnet parameters](public-testnet-parameters.md) lists every
+  `preprod-public` value with its unit, profile line and rationale, checked in
+  CI, plus the values set outside the profile. Release tooling must refuse
+  placeholder keys and unexplained zero economics.
   - Settled: the 10-minute event validity range (A2, `faee6e018`); 120-day
     payload retention (`91538258f`); the public operator and DA bond figures
-    (owner, 2026-10-22); no excluded fraud-proof category.
-  - Open: the owner's confirmation of the DA slash grace and pool floor; the
-    block ex-units budget, which defaults to 33,000,000 memory and
+    (owner, 2026-10-22); no excluded category; DA slash grace 2 d and pool
+    floor 5 ADA (owner, 2026-10-28); the unused dispute response window
+    removed (`67f390618`); a 2,500 ADA rehearsal challenger bond (owner,
+    2026-10-31, `21b21cb07`).
+  - Open: the block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)
-    and is to be re-measured on an idle machine; the remaining items on the
-    parameter page.
+    and is to be re-measured on an idle machine.
   - The `mainnet` profile still carries a placeholder operator key. It is not
     a P1 target.
 - **Pooled DA bond.** Done ([decision record](midgard/decisions/da-committee-bond-pool.md),
   #686–#691). An attestation applies only while one bonded pool holds at least
-  one DA bond of backing; an availability timeout slashes the pool. Its public
-  figures are part of the parameter review.
-- **Store identity.** In progress. The node's Postgres database records the
-  deployment it serves on first start and refuses to start under another
-  deployment's manifest; the L1 follower store refuses another origin. Open:
-  bind every Postgres, MPF and DA store to the deployment with a marker
-  holding the network, one-shot outref, policy ids, manifest hash and schema
-  version. A missing or mismatched identity fails before serving. Wiping local
-  state requires a fresh on-chain deployment.
+  one DA bond; a timeout slashes the pool, and a top-up after a slash is manual
+  (owner, 2026-11-04, `964ce21b9`).
+- **Store identity.** In progress. The node's database binds to its
+  deployment before any startup write (`e3ebd17ee`); the L1 follower store
+  refuses another origin. Open: bind every Postgres, MPF and DA store with a
+  marker holding the network, one-shot outref, policy ids, manifest hash and
+  schema version, failing before serving on a mismatch. Wiping local state
+  requires a fresh on-chain deployment.
 - **Fee and collateral.** Open. Audit fee and collateral selection across
   protocol transactions: pure-ADA inputs owned by the intended wallet, above
   configured minimums, never protocol or reference-script UTxOs. Fix only what
@@ -208,15 +202,17 @@ Every contract item merges before the 2026-10-26 freeze.
 
 ### Public runtime (R7)
 
-- **Public profile.** Open. Expose only intended ingress, through TLS. Keep
-  Postgres, the observability stack, the Cardano node, and Kupo and Ogmios
+- **Public profile.** In progress. Expose only intended ingress, through TLS.
+  Keep Postgres, the observability stack, the Cardano node, and Kupo and Ogmios
   where tooling runs them, internal or authenticated. Disable anonymous Grafana
   admin. Remove Docker socket and host filesystem mounts. Verify the rendered
-  port bindings.
-- **Fail before binding.** Open. Refuse to bind HTTP on missing public
+  port bindings. The public stack keeps metrics, DA ports and Postgres on the
+  loopback and serves HTTPS from digest-pinned images (`8f6c8f948`).
+- **Fail before binding.** In progress. Refuse to bind HTTP on missing public
   settings, blank admin keys, demo seeds, default database credentials, mutable
   images, exposed internal services, missing identity or placeholder economics.
-  Define image policy, sizing and retention capacity. The owner-set production
+  Define image policy, sizing and retention capacity. The public stack checks
+  every public input before it spends (`8f6c8f948`). The owner-set production
   hardware floor from the
   [economics decision](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
   is accepted and carried here verbatim:
@@ -229,25 +225,32 @@ Every contract item merges before the 2026-10-26 freeze.
   C86 bounded-stress results refine the non-node role sizing but cannot lower
   the node floor.
 
-- **Secrets.** Open. Use mounted secret files and prove that startup errors and
-  logs redact them. Separate operator, reference-script, admin and release
-  keys. Never take seed phrases from process arguments.
+- **Secrets.** In progress. Use mounted secret files and prove that startup
+  errors and logs redact them; node, Postgres and journey secrets now come from
+  private files (`3a1cbf5d5`, `48020abb8`). Separate operator,
+  reference-script, admin and release keys. Never take seeds from arguments.
 - **Action map.** Open. Classify every route and command as public, operator
   only, admin or internal, and test the route graph. Protect `/init`,
   `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB` and `/logGlobals`.
 - **Request limits.** In progress. Bound request bodies, content types, per-IP
   and global rates, and pagination at the proxy and in the app, including
-  `/tx/evaluate`, and prove the bounds with a load test. The app now limits
-  every route per client (IPv6 by /64) and every public route globally, with
-  stricter classes for `/tx/evaluate`, `/submit` and batch status and separate
-  health and admin classes; the load test is open.
+  `/tx/evaluate`, and prove the bounds with a load test. The app limits every
+  route per client (IPv6 by /64) and every public route globally, with stricter
+  classes for `/tx/evaluate`, `/submit` and batch status and separate health
+  and admin classes (`9b6994157`, `10fcf75c8`); the load test is open.
 - **Log redaction.** Open. Public routes never log raw CBOR or request bodies.
   Test redaction of seeds, keys, credentials, transaction CBOR and addresses.
 
 ### Fresh deployment, journeys and drills (R6)
 
-All of these run on the release candidate and on the fresh `preprod-public`
-deployment. Status: Open.
+These run first in a full rehearsal on `preprod-rehearsal` (`preprod-public`
+with testing economics, `7ac572868`), then on the fresh `preprod-public`
+deployment (owner, 2026-10-29). Status: Open. So far only the fast-timer
+`preprod-testing` twin (`4e5cb615f`) has run: a full wallet journey with
+automatic merge and finality, three cycles on 2026-11-04. That covers the
+wallet steps of the clean acceptance sequence and a fast-timer payout, not
+onboarding on the release revision, restarts, the journey, drills, crash
+boundaries, the unattended run, history readiness or a seven-day payout.
 
 - **Clean acceptance sequence.** One command sequence from a fresh on-chain
   deployment and empty local state: operator onboarding, deposit, L2 transfers,
@@ -261,15 +264,14 @@ deployment. Status: Open.
   [manual recovery runbook](fault-proofs/manual-recovery-runbook.md) and the
   [automatic watcher journeys](fault-proofs/automatic-watcher-journeys.md)
   harness.
-- **Payout.** A live withdrawal pays out after the seven-day maturity, on
-  2026-11-05 for a 2026-10-29 deployment. Before launch, payout is evidenced on
-  the emulator and on a `local-devnet-testing` devnet.
+- **Payout.** A live withdrawal pays out after the seven-day maturity, first
+  on the rehearsal.
 - **Drills.** Restart Cardano; lose public retained-DA retrieval; stop every
   operator for at least one hour, then let them catch up (C2). Readiness is
-  held and then recovers, with no manual commit, merge, reset or follower store
-  reset. Record every actor's durable state and pending signed attempts across
-  recovery. Since the L1 follower landed (#814), no role reads Kupo or Ogmios,
-  so there are no Kupo or Ogmios drills.
+  held and then recovers, with no manual commit, merge or store reset. Fault
+  drills run on a subset of families, then all, with operator-2 faulty. Record
+  every actor's durable state and pending signed attempts across recovery. No
+  role reads Kupo or Ogmios (#814), so there are no Kupo or Ogmios drills.
 - **Crash and restart boundaries.** Restart after projection, admission,
   submission, confirmation, merge and payout. Cover a validation lease restart
   after rejections persist but before acceptances; commit, confirmation and
@@ -278,7 +280,7 @@ deployment. Status: Open.
   local job start. No duplicate blocks, lost mempool transactions or
   divergence.
 - **Unattended run.** Complete the unattended lifecycle program (#696) on the
-  release candidate devnet and on the fresh deployment. The availability
+  rehearsal and on the fresh deployment. The availability
   response budget is checked against both testing and both public profiles by
   `demo/da-committee-node/tests/availability-response-budget.test.ts`.
 - **History readiness.** Verify readiness against the full configured recovery
@@ -293,19 +295,17 @@ These capabilities are built; R6 supplies their release evidence:
 - Forced submissions use the
   [immutable-submission format](midgard/decisions/forced-inclusion-submission-verdict.md),
   and the tx-order mint enforces the P1 admission rules (A1).
-- `/healthz` reports liveness and `/readyz` reports readiness, with named hold
-  reasons.
+- `/healthz` reports liveness and `/readyz` readiness, with named hold reasons.
 - Each role (node, watcher, DA committee) reads L1 only through one ChainSync
   follower on its operator's own Cardano node. A rollback rewinds the
-  follower's facts and every role recomputes from them; a rollback deeper than
-  k holds readiness with the process up.
+  follower's facts and every role recomputes; one deeper than k holds
+  readiness with the process up.
 - Deposit, withdrawal and commit observations are anchored to follower chain
-  points, and L2 validity ranges use POSIX milliseconds from chain time.
-- Withdrawal payability is classified with the same rule as the on-chain
-  payout check (#820).
+  points; L2 validity ranges use POSIX milliseconds from chain time.
+- Withdrawal payability uses the on-chain payout rule (#820).
 - There is no operator rekey: an operator retires and a new key registers
-  ([operator lifecycle](../docs-site/content/docs/operators/node/operator-lifecycle.mdx)).
-  In P1 a new key waits for P2.
+  ([operator lifecycle](../docs-site/content/docs/operators/node/operator-lifecycle.mdx)),
+  which in P1 waits for P2.
 - Each block header is bound to its DA commitment, which the DA committee
   attests and serves.
 
@@ -314,28 +314,28 @@ These capabilities are built; R6 supplies their release evidence:
 - **Alerts.** In progress. Page on commit lag, catch-up mode, a watcher
   replay-root mismatch, forced-admission divergence, follower refusals, stuck
   settlements, and expose readiness, worker staleness, admission depth,
-  provider lag, database saturation, disk and payout state. The node's
-  `/readyz` names stuck settlement jobs in its details. Alert delivery is
-  open.
+  provider lag, database saturation, disk and payout state. Node and watcher
+  alert rules ship (`700811aca`, `cf9303980`); alert delivery is open.
 - **Runbooks.** In progress. The [operational runbooks](../docs-site/content/docs/operators/node/operational-runbooks.mdx)
   cover commit lag, catch-up, replay-root mismatch, forced-admission divergence,
-  follower refusals, stuck settlements and proof submission deadlines.
-  Alert delivery, recovery drills and
-  release validation remain open.
+  follower refusals, stuck settlements and proof deadlines, linked from each
+  alert rule (`0b29bce56`). Recovery drills and release validation are open.
 - **User and operator docs.** In progress. The docs describe
   [deposit/withdrawal milestones](../docs-site/content/docs/operators/node/deposits-withdrawals.mdx),
   [forced-transaction limits and the missing L2 upper bound](../docs-site/content/docs/sdk/midgard-sdk/user-events.mdx),
   [`evaluate()`](../docs-site/content/docs/sdk/lucid-midgard/validation-simulation.mdx),
-  the [curated lifecycle](../docs-site/content/docs/operators/node/operator-lifecycle.mdx)
+  deposits and withdrawals through `midgard-user` (`a5e30ef78`), the
+  [curated lifecycle](../docs-site/content/docs/operators/node/operator-lifecycle.mdx)
   and [transaction status transitions](../docs-site/content/docs/sdk/lucid-midgard/submission-observability.mdx).
   Check them against the final deployed revision and complete the release
   journeys before closing R9.
 
 ### SDK and release artifacts (R10, R11)
 
-- **SDK exports.** Open. Audit the public exports. Test the packed tarball's
-  ESM import, CommonJS require and NodeNext types against a public API gate.
-- **Invalid UTxOs.** Open. The SDK fails explicitly on invalid UTxOs or
+- **SDK exports.** In progress. Audit the public exports. Test the packed
+  tarball's ESM import, CommonJS require and NodeNext types against a public
+  API gate. The packages pack and install alone (`7c3eafb98`, `cd456dc6b`).
+- **Invalid UTxOs.** Done (`33e5a1f8e`). The SDK fails on invalid UTxOs or
   partial wallet state instead of discarding data.
 - **Versioned publish.** Open. Publish versioned packages from CI. Reject
   `latest`, local file dependencies and unresolved workspace specifiers.
@@ -344,7 +344,7 @@ These capabilities are built; R6 supplies their release evidence:
   candidate. Retain exact commands and results.
 - **Tag and digests.** Open. Build public artifacts from a tagged revision with
   immutable SHAs and digests for actions, images and release inputs. Release
-  CI fails on mutable selections such as `ubuntu-latest`.
+  CI fails on mutable selections; every workflow still runs on `ubuntu-latest`.
 
 ### Not yet assigned
 
