@@ -112,6 +112,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/validation-trace-defense-readiness.test.ts
  *   tests/block-commitment-validation-trace-defense-skip.test.ts
  *   tests/node-deployment-startup-emulator.test.ts
+ *   tests/da-startup-follower-order.test.ts
+ *   tests/listen-startup.validation-worker-readiness.test.ts   (connects; no tables)
  */
 
 /**

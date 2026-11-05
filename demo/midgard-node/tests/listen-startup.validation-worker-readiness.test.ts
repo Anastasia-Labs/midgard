@@ -1,22 +1,34 @@
 /**
- * The node's startup acquires its validation workers (`validationPoolLayer`,
- * started by `FixedValidationWorkerPool.start`) before `runNode` runs, and
- * each worker initialises its own Ed25519 verifier. Here the real startup
- * graph runs the built worker with that initialisation set per case:
+ * The node's startup acquires its validation workers (`validationPoolLayer`)
+ * before the first step of `runNode`, and each worker initialises its own
+ * Ed25519 verifier. Here the node's real startup (`runNode` under its startup
+ * HTTP listener, over the shared test Postgres) runs the built worker with
+ * that initialisation set per case:
  *
- * - it fails, or never settles: the start is retried on a fresh pool a
+ * - it fails, or never settles: the start is retried on a fresh worker a
  *   bounded number of times, then startup fails exhausted by step and reason
- *   and the process exits non-zero; no instance lock, DA sequence or
- *   follower is reached;
- * - it fails once: the retry starts the node;
- * - it succeeds: the node starts as before, on one pool.
+ *   in its first stage and the process exits non-zero;
+ * - it fails once: the retry gets startup past the validation workers;
+ * - it succeeds: startup gets past the validation workers on one worker.
  *
  * Or a worker stops while it answers its readiness job, on an error it does
- * not handle or at its heap limit: that start is retried on a fresh pool
+ * not handle or at its heap limit: that start is retried on a fresh worker
  * within the same bound, then startup fails exhausted and the process exits
- * non-zero; one that stops once is retried and the node starts. A worker
- * whose module does not load fails startup at once, and the process exits
- * non-zero. No failure leaves the node held up unready.
+ * non-zero; one that stops once is retried and startup gets past the
+ * validation workers. A worker whose module does not load fails startup at
+ * once, and the process exits non-zero. No failure leaves the node held up
+ * unready.
+ *
+ * The node is configured without a settlement wallet, so the first step after
+ * the validation workers (`local_preflight`) holds it: `/readyz` then names
+ * `local_preflight` as the failed stage, which only a startup that got past
+ * its validation workers can reach. A startup that fails in its validation
+ * workers fails in the stage before (`runtime_services`).
+ *
+ * The worker thread is the one seam: `node:worker_threads` starts the test's
+ * worker module, which sets libsodium's initialisation and then loads the
+ * built `dist/validation.js`, in place of that module, and gives the
+ * `out-of-memory` worker a small heap.
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,7 +40,9 @@ import {
   ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { Effect, Exit, Fiber, Logger } from "effect";
+import { HttpServer } from "@effect/platform";
+import { PgClient } from "@effect/sql-pg";
+import { Deferred, Effect, Exit, Fiber, Logger, Redacted } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { runNode } from "../src/commands/listen.run-node.js";
@@ -38,115 +52,43 @@ import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { findStartupStepFailure } from "../src/services/startup-waiting.js";
-import {
-  FixedValidationWorkerPool,
-  ValidationWorkerError,
-} from "../src/services/validation-pool.js";
+import { ValidationWorkerError } from "../src/services/validation-pool.js";
 
-const reached = vi.hoisted(() => ({ instanceLock: 0, da: 0, follower: 0 }));
+/** Every validation worker the node started, and whether it has exited. */
+const spawned = vi.hoisted(() => ({
+  workers: [] as { exited: boolean }[],
+}));
 
-vi.mock("../src/fibers/resolve-worker-entry.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/fibers/resolve-worker-entry.js")
-    >();
-  return {
-    ...actual,
-    resolveWorkerEntry: (moduleUrl: string, fileName: string) =>
-      fileName === "validation.js"
-        ? new URL(
-            "./listen-startup.validation-worker-readiness.worker.mjs",
-            import.meta.url,
-          )
-        : actual.resolveWorkerEntry(moduleUrl, fileName),
-  };
-});
-// A worker started for the `out-of-memory` case gets a small heap, so it
-// reaches its limit at once.
 vi.mock("node:worker_threads", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:worker_threads")>();
+  const testWorker = new URL(
+    "./listen-startup.validation-worker-readiness.worker.mjs",
+    import.meta.url,
+  );
   class Worker extends actual.Worker {
     constructor(
       entry: string | URL,
       options?: import("node:worker_threads").WorkerOptions,
     ) {
+      const mode = process.env.MIDGARD_TEST_WORKER_READINESS_MODE;
+      const validation =
+        mode !== undefined && String(entry).endsWith("/dist/validation.js");
       super(
-        entry,
-        process.env.MIDGARD_TEST_WORKER_READINESS_MODE === "out-of-memory"
+        validation ? testWorker : entry,
+        validation && mode === "out-of-memory"
           ? { ...options, resourceLimits: { maxOldGenerationSizeMb: 32 } }
           : options,
       );
+      if (validation) {
+        const worker = { exited: false };
+        spawned.workers.push(worker);
+        this.once("exit", () => {
+          worker.exited = true;
+        });
+      }
     }
   }
   return { ...actual, default: { ...actual, Worker }, Worker };
-});
-vi.mock("../src/services/index.js", async (importOriginal) => {
-  const { Layer } = await import("effect");
-  return {
-    ...(await importOriginal<typeof import("../src/services/index.js")>()),
-    // validationPoolLayer stays the real one.
-    mempoolLedgerCacheLayer: Layer.empty,
-  };
-});
-vi.mock("../src/services/settlement.js", () => ({
-  settlementWalletAddress: () => "unused-in-local-preflight",
-}));
-vi.mock("../src/e2e/phase1-accept-crash-checkpoint.js", async () => {
-  const { Effect: E } = await import("effect");
-  return { assertPhase1AcceptCrashCheckpointConfiguration: E.void };
-});
-vi.mock("../src/services/native-mpf-startup.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/native-mpf-startup.js")
-    >()),
-    requirePinnedNativeOwnerBinary: () => E.void,
-  };
-});
-vi.mock("../src/services/node-instance-lock.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/node-instance-lock.js")
-    >()),
-    acquireNodeInstanceLock: () =>
-      E.sync(() => {
-        reached.instanceLock += 1;
-        return { followerWriterLease: () => Promise.resolve(null) };
-      }),
-  };
-});
-vi.mock("../src/da/startup.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<typeof import("../src/da/startup.js")>()),
-    runDaIdentityGatedStartupSequence: () =>
-      E.sync(() => {
-        reached.da += 1;
-      }),
-  };
-});
-vi.mock("../src/services/intent-journal.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/intent-journal.js")
-    >()),
-    makeIntentJournal: E.succeed({}),
-  };
-});
-vi.mock("../src/services/l1-follower.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/l1-follower.js")
-    >()),
-    startL1Follower: () =>
-      E.sync(() => {
-        reached.follower += 1;
-      }).pipe(E.zipRight(E.never)),
-  };
 });
 
 // A worker answers its readiness job once it has loaded its module and its
@@ -154,19 +96,14 @@ vi.mock("../src/services/l1-follower.js", async (importOriginal) => {
 // long as the verifier's own bound, which starts only once the worker has
 // loaded, so the job times out first when an initialisation never settles.
 const JOB_TIMEOUT_MS = LEDGER_ED25519_READY_TIMEOUT_MS;
-/** Pool starts in all: the ledger signature verifier's startup bound. */
+/** Worker starts in all: the ledger signature verifier's startup bound. */
 const ATTEMPTS = 3;
 const INJECTED = "injected worker libsodium initialisation failure";
 
-// The configuration a node is started with; the steps it reaches read only
-// these fields.
+// The configuration a node is started with: one validation worker, and no
+// settlement wallet, so `local_preflight` holds the node.
 const startupConfig = {
   PORT: 0,
-  POSTGRES_HOST: "127.0.0.1",
-  POSTGRES_PORT: 5432,
-  POSTGRES_USER: "midgard",
-  POSTGRES_PASSWORD: "midgard",
-  POSTGRES_DB: "midgard",
   VALIDATION_WORKER_POOL_SIZE: 1,
   VALIDATION_WORKER_JOB_TIMEOUT_MS: JOB_TIMEOUT_MS,
   NETWORK: "Preprod",
@@ -174,7 +111,18 @@ const startupConfig = {
   MIN_FEE_B: 0n,
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
   IMPORT_CHECK: DEFAULT_IMPORT_CHECK_CONFIG,
+  L1_SETTLEMENT_SEED_PHRASE: "",
 } as unknown as NodeConfig["Type"];
+
+/** The shared test Postgres the node's runtime services connect to. */
+const testPostgres = PgClient.layer({
+  host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+  port: Number(process.env.POSTGRES_PORT ?? "5433"),
+  username: process.env.POSTGRES_USER ?? "postgres",
+  password: Redacted.make(process.env.POSTGRES_PASSWORD ?? "postgres"),
+  database: "postgres",
+  maxConnections: 1,
+});
 
 type Mode =
   | "fault"
@@ -207,15 +155,24 @@ const causeCodes = (cause: unknown): unknown[] =>
       : undefined,
   );
 
+/** The startup listener's address, from inside its server's scope. */
+const listenerUrl = HttpServer.addressWith((address) =>
+  address._tag === "TcpAddress"
+    ? Effect.succeed(`http://127.0.0.1:${address.port}`)
+    : Effect.die("Expected a TCP listener"),
+);
+
 /** Starts the node with the workers' initialisation set to `mode`, runs
  * `observe` on it, then stops it. */
 const startNode = async (
   mode: Mode,
   observe: (node: {
     readonly fiber: Fiber.RuntimeFiber<void, unknown>;
-    readonly pools: readonly FixedValidationWorkerPool[];
-    readonly failures: readonly unknown[];
+    /** The startup listener's `/readyz` answer. */
+    readonly readyz: () => Promise<unknown>;
     readonly messages: readonly unknown[];
+    /** How many validation workers the node started. */
+    readonly workersStarted: () => number;
     /** How many workers read their libsodium initialisation. */
     readonly workersRead: () => number;
   }) => Promise<void>,
@@ -229,24 +186,15 @@ const startNode = async (
   const marker = join(directory, "read");
   vi.stubEnv("MIDGARD_TEST_WORKER_READINESS_MODE", mode);
   vi.stubEnv("MIDGARD_TEST_WORKER_READINESS_MARKER", marker);
-  reached.instanceLock = 0;
-  reached.da = 0;
-  reached.follower = 0;
-  const pools: FixedValidationWorkerPool[] = [];
-  const failures: unknown[] = [];
+  spawned.workers.splice(0);
   const messages: unknown[] = [];
-  const originalStart = FixedValidationWorkerPool.prototype.start;
-  const startObserver = vi
-    .spyOn(FixedValidationWorkerPool.prototype, "start")
-    .mockImplementation(function (this: FixedValidationWorkerPool) {
-      if (!pools.includes(this)) pools.push(this);
-      return originalStart.call(this);
-    });
+  const listening = Effect.runSync(Deferred.make<string>());
   const fiber = Effect.runFork(
     (
       withStartupHttpServer(0, (startup) =>
-        runNode(startup).pipe(
-          Effect.tapError((error) => Effect.sync(() => failures.push(error))),
+        listenerUrl.pipe(
+          Effect.flatMap((url) => Deferred.succeed(listening, url)),
+          Effect.zipRight(runNode(startup)),
           Effect.provideService(NodeConfig, {
             ...startupConfig,
             VALIDATION_WORKER_JOB_TIMEOUT_MS: jobTimeoutMs,
@@ -259,6 +207,7 @@ const startNode = async (
             }),
           ),
           Effect.provide(Globals.Default),
+          Effect.provide(testPostgres),
         ),
       ) as Effect.Effect<void, unknown>
     ).pipe(
@@ -273,28 +222,67 @@ const startNode = async (
     ),
   );
   try {
+    const url = await Effect.runPromise(
+      Deferred.await(listening).pipe(Effect.timeout("10 seconds")),
+    );
     await observe({
       fiber,
-      pools,
-      failures,
+      readyz: async () => (await fetch(`${url}/readyz`)).json(),
       messages,
+      workersStarted: () => spawned.workers.length,
       workersRead: () =>
         readdirSync(directory).filter((name) => /^read\.\d+$/u.test(name))
           .length,
     });
   } finally {
     await Effect.runPromise(Fiber.interrupt(fiber));
-    expect(pools.every((pool) => pool.isClosed())).toBe(true);
-    startObserver.mockRestore();
+    // Every worker the node started has stopped.
+    await vi.waitFor(() =>
+      expect(spawned.workers.every((worker) => worker.exited)).toBe(true),
+    );
     vi.unstubAllEnvs();
     rmSync(directory, { recursive: true, force: true });
   }
 };
 
-/** The node's exit, once startup ended it; fails if it is still running. */
+/** `/readyz` once startup got past its validation workers: the next step,
+ * `local_preflight`, holds the node (it has no settlement wallet). */
+const PAST_THE_VALIDATION_WORKERS = {
+  ready: false,
+  reasons: ["startup_failed"],
+  stage: "fatal",
+  failedStage: "local_preflight",
+};
+
 /** The outcome a held startup logs: the node stays up, unready. */
 const HELD = expect.stringMatching(/the node stays up, unready/u);
 
+/** Waits until startup got past its validation workers, and is held there,
+ * still running; or fails on the exit of a startup that ended first. */
+const pastTheValidationWorkers = async ({
+  fiber,
+  readyz,
+  messages,
+}: {
+  readonly fiber: Fiber.RuntimeFiber<void, unknown>;
+  readonly readyz: () => Promise<unknown>;
+  readonly messages: readonly unknown[];
+}) => {
+  await vi.waitFor(
+    async () => {
+      if (fiber.unsafePoll() !== null) return;
+      expect(await readyz()).toEqual(PAST_THE_VALIDATION_WORKERS);
+    },
+    { timeout: 3 * JOB_TIMEOUT_MS, interval: 100 },
+  );
+  expect(fiber.unsafePoll()).toBeNull();
+  expect(await readyz()).toEqual(PAST_THE_VALIDATION_WORKERS);
+  expect(messages).toContainEqual(
+    "node_startup_failed stage=local_preflight; the node stays up, unready, until it is restarted",
+  );
+};
+
+/** The node's exit, once startup ended it; fails if it is still running. */
 const nodeExit = (
   fiber: Fiber.RuntimeFiber<void, unknown>,
   withinMs = 5 * JOB_TIMEOUT_MS,
@@ -328,31 +316,31 @@ describe("node startup while its validation workers initialise", () => {
       },
     ],
   ] as const)(
-    "a worker initialisation that %s is retried within the bound, then exits non-zero before any durable work",
+    "a worker initialisation that %s is retried within the bound, then exits non-zero in the first startup stage",
     async (_label, mode, lastCause) => {
-      await startNode(mode, async ({ fiber, pools, messages, workersRead }) => {
-        const exit = await nodeExit(fiber);
-        expect(Exit.isFailure(exit)).toBe(true);
-        const step = Exit.isFailure(exit)
-          ? findStartupStepFailure(exit.cause)
-          : undefined;
-        expect(step).toMatchObject({
-          step: "validation_workers",
-          reason: "ledger_signature_verifier_unavailable",
-          exhausted: true,
-          attempts: ATTEMPTS,
-        });
-        lastCause(step?.cause);
-        expect(reached).toEqual({ instanceLock: 0, da: 0, follower: 0 });
-        expect(pools).toHaveLength(ATTEMPTS);
-        expect(pools.every((pool) => pool.isClosed())).toBe(true);
-        expect(workersRead()).toBe(ATTEMPTS);
-        expect(messages).toContainEqual(
-          expect.stringMatching(
-            /^node_startup_failed stage=\S+ step=validation_workers reason=ledger_signature_verifier_unavailable; a transient failure outlived its bound; the node exits non-zero$/u,
-          ),
-        );
-      });
+      await startNode(
+        mode,
+        async ({ fiber, messages, workersStarted, workersRead }) => {
+          const exit = await nodeExit(fiber);
+          expect(Exit.isFailure(exit)).toBe(true);
+          const step = Exit.isFailure(exit)
+            ? findStartupStepFailure(exit.cause)
+            : undefined;
+          expect(step).toMatchObject({
+            step: "validation_workers",
+            reason: "ledger_signature_verifier_unavailable",
+            exhausted: true,
+            attempts: ATTEMPTS,
+          });
+          lastCause(step?.cause);
+          expect(workersStarted()).toBe(ATTEMPTS);
+          expect(workersRead()).toBe(ATTEMPTS);
+          expect(messages).toContainEqual(
+            "node_startup_failed stage=runtime_services step=validation_workers reason=ledger_signature_verifier_unavailable; a transient failure outlived its bound; the node exits non-zero",
+          );
+          expect(messages).not.toContainEqual(HELD);
+        },
+      );
     },
     120_000,
   );
@@ -381,11 +369,11 @@ describe("node startup while its validation workers initialise", () => {
       90_000,
     ],
   ] as const)(
-    "a worker that %s while it answers its readiness job is retried within the bound, then exits non-zero before any durable work",
+    "a worker that %s while it answers its readiness job is retried within the bound, then exits non-zero in the first startup stage",
     async (_label, mode, lastCause, jobTimeoutMs, exitWithinMs) => {
       await startNode(
         mode,
-        async ({ fiber, pools, messages }) => {
+        async ({ fiber, messages, workersStarted }) => {
           const exit = await nodeExit(fiber, exitWithinMs);
           expect(Exit.isFailure(exit)).toBe(true);
           const step = Exit.isFailure(exit)
@@ -398,13 +386,9 @@ describe("node startup while its validation workers initialise", () => {
             attempts: ATTEMPTS,
           });
           lastCause(step?.cause);
-          expect(reached).toEqual({ instanceLock: 0, da: 0, follower: 0 });
-          expect(pools).toHaveLength(ATTEMPTS);
-          expect(pools.every((pool) => pool.isClosed())).toBe(true);
+          expect(workersStarted()).toBe(ATTEMPTS);
           expect(messages).toContainEqual(
-            expect.stringMatching(
-              /^node_startup_failed stage=\S+ step=validation_workers reason=validation_worker_crashed; a transient failure outlived its bound; the node exits non-zero$/u,
-            ),
+            "node_startup_failed stage=runtime_services step=validation_workers reason=validation_worker_crashed; a transient failure outlived its bound; the node exits non-zero",
           );
           expect(messages).not.toContainEqual(HELD);
         },
@@ -414,8 +398,8 @@ describe("node startup while its validation workers initialise", () => {
     120_000,
   );
 
-  it("a worker whose module does not load fails startup at once and exits non-zero before any durable work", async () => {
-    await startNode("load", async ({ fiber, pools, messages }) => {
+  it("a worker whose module does not load fails startup at once and exits non-zero in the first startup stage", async () => {
+    await startNode("load", async ({ fiber, messages, workersStarted }) => {
       const exit = await nodeExit(fiber);
       expect(Exit.isFailure(exit)).toBe(true);
       const step = Exit.isFailure(exit)
@@ -429,59 +413,39 @@ describe("node startup while its validation workers initialise", () => {
         attempts: 1,
       });
       expect(causeCodes(step?.cause)).toContain("ERR_MODULE_NOT_FOUND");
-      expect(reached).toEqual({ instanceLock: 0, da: 0, follower: 0 });
-      expect(pools).toHaveLength(1);
-      expect(pools[0]!.isClosed()).toBe(true);
+      expect(workersStarted()).toBe(1);
       expect(messages).toContainEqual(
-        expect.stringMatching(
-          /^node_startup_failed stage=\S+ step=validation_workers reason=validation_worker_load_failed; a failure waiting does not clear; the node exits non-zero$/u,
-        ),
+        "node_startup_failed stage=runtime_services step=validation_workers reason=validation_worker_load_failed; a failure waiting does not clear; the node exits non-zero",
       );
       expect(messages).not.toContainEqual(HELD);
     });
   }, 60_000);
 
-  it("a worker that stops once while it answers its readiness job is retried and the node starts", async () => {
-    await startNode("crash-once", async ({ fiber, pools, failures }) => {
-      await vi.waitFor(() => expect(reached.follower).toBe(1), {
-        timeout: 3 * JOB_TIMEOUT_MS,
-      });
-      expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
-      expect(failures).toEqual([]);
-      expect(pools).toHaveLength(2);
-      expect(pools[0]!.isClosed()).toBe(true);
-      expect(pools[1]!.isClosed()).toBe(false);
-      expect(fiber.unsafePoll()).toBeNull();
+  it("a worker that stops once while it answers its readiness job is retried and startup gets past the validation workers", async () => {
+    await startNode("crash-once", async ({ workersStarted, ...node }) => {
+      await pastTheValidationWorkers(node);
+      expect(workersStarted()).toBe(2);
     });
   }, 120_000);
 
-  it("a worker initialisation that fails once is retried and the node starts", async () => {
-    await startNode("fault-once", async ({ pools, failures, workersRead }) => {
-      await vi.waitFor(() => expect(reached.follower).toBe(1), {
-        timeout: 3 * JOB_TIMEOUT_MS,
-      });
-      expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
-      expect(failures).toEqual([]);
-      expect(pools).toHaveLength(2);
-      expect(pools[0]!.isClosed()).toBe(true);
-      expect(pools[1]!.isClosed()).toBe(false);
-      expect(workersRead()).toBe(2);
-    });
+  it("a worker initialisation that fails once is retried and startup gets past the validation workers", async () => {
+    await startNode(
+      "fault-once",
+      async ({ workersStarted, workersRead, ...node }) => {
+        await pastTheValidationWorkers(node);
+        expect(workersStarted()).toBe(2);
+        expect(workersRead()).toBe(2);
+      },
+    );
   }, 120_000);
 
-  it("a worker initialisation that succeeds starts the node as before, on one pool", async () => {
+  it("a worker initialisation that succeeds gets startup past the validation workers on one worker", async () => {
     await startNode(
       "ready",
-      async ({ fiber, pools, failures, workersRead }) => {
-        await vi.waitFor(() => expect(reached.follower).toBe(1), {
-          timeout: 3 * JOB_TIMEOUT_MS,
-        });
-        expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
-        expect(failures).toEqual([]);
-        expect(pools).toHaveLength(1);
-        expect(pools[0]!.isClosed()).toBe(false);
+      async ({ workersStarted, workersRead, ...node }) => {
+        await pastTheValidationWorkers(node);
+        expect(workersStarted()).toBe(1);
         expect(workersRead()).toBe(1);
-        expect(fiber.unsafePoll()).toBeNull();
       },
     );
   }, 120_000);
