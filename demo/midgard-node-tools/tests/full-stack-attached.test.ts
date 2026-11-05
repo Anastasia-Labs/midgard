@@ -198,6 +198,26 @@ describe("second-instance workflow", () => {
       "kupmios",
     );
   });
+  it("reads its wallets through the Kupo and Ogmios of the stack it attaches to", async () => {
+    const fixture = await attachedFixture();
+    fixture.primary.env.OGMIOS_PORT = "22514";
+    fixture.primary.env.KUPO_PORT = "22515";
+    await writeFile(fixture.primary.config.envFile, fixture.primary.envText());
+    const { processes, run } = await runAttached(
+      fixture,
+      await loadAttachedStackConfig(fixture.path),
+    );
+    await run();
+    const walletReads = processes.calls.filter((call) =>
+      call.id.startsWith("wallet-"),
+    );
+    expect(walletReads.length).toBeGreaterThan(0);
+    for (const call of walletReads) {
+      const env = { ...call.env, ...call.overrides };
+      expect(env.L1_OGMIOS_URL).toBe("http://127.0.0.1:22514");
+      expect(env.L1_KUPO_URL).toBe("http://127.0.0.1:22515");
+    }
+  });
   it("runs operator-2's node on the stack's deployment, origin and Cardano node, publishing as the producer the committee admits", async () => {
     const { fixture, run, rendered } = await attachedRun();
     await run();

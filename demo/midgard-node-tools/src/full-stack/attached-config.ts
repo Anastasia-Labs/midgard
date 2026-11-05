@@ -273,6 +273,9 @@ export async function loadAttachedStackConfig(path: string) {
       throw new Error(
         `${variable} is the port of the stack this instance attaches to; give the second instance its own`,
       );
+  // It runs no Kupo or Ogmios: host tools read the L1 through the stack's.
+  for (const variable of ["KUPO_PORT", "OGMIOS_PORT"])
+    env[variable] = String(hostPort(primary, primaryEnv, variable));
   if (
     (env.COMPOSE_PROJECT_NAME ?? "midgard-node") ===
     (primaryEnv.COMPOSE_PROJECT_NAME ?? "midgard-node")
