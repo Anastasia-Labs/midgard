@@ -220,3 +220,23 @@ test(
     );
   },
 );
+
+// The reverse direction: a check whose blocking status comes from the
+// workflows warns only while no workflow runs it, so a new golden channel or
+// gate left out of CI would sit silently warn-only. Every warn-only check is
+// listed here with the reason it is not gated.
+const WARN_ONLY_BY_DESIGN = new Map([
+  ["merge-conflicts", "a predicted conflict is news, not a defect"],
+  [
+    "golden:script-decode-haskell-v1",
+    "its producer needs the Haskell script-decode probe (MIDGARD_SCRIPT_DECODE_PROBE), which CI does not build",
+  ],
+]);
+
+test("every warn-only check in the real registry is warn-only by design", () => {
+  const warnOnly = buildRegistry(repositoryRoot)
+    .checks.filter((check) => check.warnOnly)
+    .map((check) => check.id)
+    .sort();
+  assert.deepEqual(warnOnly, [...WARN_ONLY_BY_DESIGN.keys()].sort());
+});

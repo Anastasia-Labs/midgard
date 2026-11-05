@@ -573,6 +573,32 @@ jobs:
       - name: Check transition-trace ABI golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:transition-trace-abi
+      # The V1 transaction-root channel: the generated Aiken golden of the
+      # roots the node's TypeScript commits. Its `:check` builds midgard-core
+      # and midgard-node first, and runs `aiken fmt` on a temp file.
+      - name: Check V1 transaction-root golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:transaction-root-v1
+      # The `RejectionReasonV1` codec vectors, written by a stand-alone Plutus
+      # Data encoder from the on-chain declaration, so the TypeScript codec's
+      # suite checks it against an independent producer only while the vectors
+      # are what that producer writes.
+      - name: Check RejectionReasonV1 golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:rejection-reason-v1
+      # The Aiken constants rebound from the three native-transaction
+      # conformance fixtures: an edited constant would otherwise pass the
+      # Aiken suite while no longer being the fixture's bytes. lucid-midgard's
+      # suite runs the same `--check` (tests/native-compact-goldens.test.ts);
+      # this step names the channel, so preflight sees CI gating it.
+      - name: Check native-transaction compact golden constants
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:native-compact
+      # The large-integer CEK program material the validation suite decodes
+      # and executes. Its `:check` builds midgard-validation first.
+      - name: Check CEK large-integer program fixture
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-program-large-integer
 
   lucid-midgard:
     name: lucid-midgard

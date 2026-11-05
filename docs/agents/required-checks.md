@@ -475,7 +475,6 @@ Golden channel native-compact (@al-ft/lucid-midgard).
   - `demo/midgard-l1-follower/src/**`
   - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
-- Mode: warns only (no workflow runs this channel, so a red check does not block)
 
 ### `docs:consensus-profile-v1`
 
@@ -674,7 +673,6 @@ Golden channel rejection-reason-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`
-- Mode: warns only (no workflow runs this channel, so a red check does not block)
 
 ### `golden:withdrawal-mistag-agreement`
 
@@ -1088,7 +1086,6 @@ Golden channel cek-program-large-integer (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
   - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
-- Mode: warns only (no workflow runs this channel, so a red check does not block)
 
 ### `golden:cek-cost-v1-aiken`
 
@@ -1254,7 +1251,6 @@ Golden channel transaction-root-v1 (midgard-node).
   - `demo/midgard-l1-follower/src/**`
   - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`
-- Mode: warns only (no workflow runs this channel, so a red check does not block)
 
 ### `golden:native-tx-carriage-wire-v1`
 
