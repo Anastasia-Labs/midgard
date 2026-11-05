@@ -78,7 +78,7 @@ run in this order. They carry no dates.
 
 | Step | Milestone                                                                                                                                               | Status      |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1    | Operator-2 joins the fast-timer `preprod-testing` twin and shares block production with operator-1                                                      | In progress |
+| 1    | Operator-2 joins a fresh fast-timer `preprod-testing` twin before its first block and shares block production with operator-1                           | In progress |
 | 2    | Remaining fixes from this checklist, then the validator freeze, one golden regeneration, and fit rows and emulator lifecycles over the frozen blueprint | In progress |
 | 3    | Rehearsal funding                                                                                                                                       | Open        |
 | 4    | Full rehearsal on the `preprod-rehearsal` profile with every drill (R6)                                                                                 | Open        |
@@ -359,6 +359,11 @@ These requirements have no release ticket yet. Status: Open.
 ## After launch
 
 These are planned after launch and are not P1 release gates:
+
+- Late join (#868). A node with an empty database builds its ledger only from
+  genesis, so an operator joins a deployment before its first block, and a
+  lost node database cannot be rebuilt. Rebuilding the ledger from retained
+  DA history lifts both limits.
 
 - SIGTERM drain that releases leases and leaves durable jobs recoverable.
 - Versioned proof bundles that do not depend on node internals.

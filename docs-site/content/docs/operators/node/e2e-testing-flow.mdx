@@ -143,8 +143,9 @@ no node secrets. It takes the release revision, public origin and images from
 the rehearsal's `.env`. Run `e2e-stack --check` with this configuration: it
 names the address the rehearsal's committee must admit. Put that address in
 the rehearsal configuration's `da.admittedProducers`, run the rehearsal's
-`e2e-stack` until its release is signed, then run `e2e-stack` with
-operator-2's configuration. It registers and activates operator-2 and runs its
+`e2e-stack --setup-only` until its release is signed, then run `e2e-stack` with
+operator-2's configuration, before the rehearsal's first journey: a node with an
+empty database cannot join after the first block (#868). It registers and activates operator-2 and runs its
 node from the rehearsal's node image on loopback only, serving the
 rehearsal's TLS certificate, reading its signed release, and starting no
 ingress. For the fault drills, copy operator-2's
@@ -191,10 +192,10 @@ ports, with a configuration copied from
 (`cycles: 1`, endpoint and DA ports clear of the default example's). Set
 `MIDGARD_NODE_API_HOST_PORT` in its `.env` to the endpoint's port.
 
-1. **Withdrawal payout.** Run `e2e-stack` with the twin configuration until it
-   passes. Its single cycle ends with the withdrawal paid to the exact L1
-   destination.
-2. **Operator-2's node.** From a third linked worktree built for
+1. **Setup.** Run `e2e-stack --setup-only` with the twin configuration until it
+   passes. No block commits yet.
+2. **Operator-2's node.** Before any journey: a node with an empty database
+   cannot join after the first block (#868). From a third linked worktree built for
    `preprod-testing`, copy
    `demo/midgard-node-tools/config/preprod-testing-twin-operator2.example.json`,
    pointing `attachTo` at the twin configuration. In that worktree's `.env`, set
@@ -204,14 +205,18 @@ ports, with a configuration copied from
    persistent `seed:` transport identity. Run `e2e-stack --check` with this
    configuration: it names the address the twin's committee must admit. Add
    that address to the twin configuration's `da.admittedProducers`, rerun the
-   twin's `e2e-stack`, then run `e2e-stack` with operator-2's configuration. It
+   twin's `e2e-stack --setup-only`, then run `e2e-stack` with operator-2's
+   configuration. It
    registers and activates operator-2 and starts its node on the twin's
    deployment and Cardano node. For the fault drills, copy operator-2's
    `STACK_OPERATOR2_DA_TRANSPORT` value into the twin's own `.env` under the
    same name, so the drills publish as operator-2's producer.
    `demo/midgard-node-tools/docs/PREPROD_STACK.md` lists what the second
    instance refuses.
-3. **Operator bond and DA bond.** Only after the run passes, run each command
+3. **Withdrawal payout.** Run `e2e-stack` with the twin configuration until it
+   passes. Its single cycle ends with the withdrawal paid to the exact L1
+   destination.
+4. **Operator bond and DA bond.** Only after the run passes, run each command
    in the twin's node container, from its `demo/midgard-node`:
 
    ```bash
