@@ -7,22 +7,18 @@ import {
 import { type SupportedFaultProofCategoryName } from "./runtime.require-fault-proof-step-reference-script.js";
 
 /**
- * The older families whose deployment resolution checks only their first
- * step. Checking their later steps is a separate owner decision (2026-11-04).
+ * Categories whose deployment resolution still checks only their first step.
+ * Every other category checks every step (owner ruling 2026-11-05).
+ *
+ * validationTraceDispute stays here pending a ruling: core's 147 step names
+ * are an ordered subsequence of the SDK chain's 168 `steps`, not a prefix of
+ * it. They diverge at index 67, where the chain carries the nativeScripts and
+ * scriptIntegrity semantic resolvers that have no core deployment member, so
+ * an index-for-index comparison would check names from index 67 on against
+ * the wrong validators and refuse a deployment whose named steps all match.
  */
 export const FIRST_STEP_ONLY_DEPLOYMENT_CATEGORIES: ReadonlySet<SupportedFaultProofCategoryName> =
-  new Set([
-    "doubleSpend",
-    "nonExistentInput",
-    "nonExistentInputNoIndex",
-    "noReferenceInput",
-    "referenceInputNoIdx",
-    "invalidRange",
-    "zeroInput",
-    "daHashPreimage",
-    "invalidSignature",
-    "validationTraceDispute",
-  ]);
+  new Set(["validationTraceDispute"]);
 
 /**
  * Canonical manifest entries in the same order as each SDK chain's `steps`:
