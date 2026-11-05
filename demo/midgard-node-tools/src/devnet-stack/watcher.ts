@@ -151,7 +151,6 @@ const watcherConfigs = (
         kind: "cardano_node_socket",
         socketPath: layout.cardanoSocket,
         nodeConfigPath: layout.hostCardanoConfig,
-        genesisConfigPath: layout.shelleyGenesis,
         genesisIdentitySha256: createHash("sha256")
           .update(readFileSync(layout.shelleyGenesis))
           .digest("hex"),

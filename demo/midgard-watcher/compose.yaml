@@ -38,8 +38,8 @@ services:
       # locking and its write-ahead log.
       - watcher-state:/var/lib/midgard-watcher
       # The L1 stack's node socket (`socketPath`) and config directory
-      # (`nodeConfigPath`, `genesisConfigPath`). The IPC default moves to
-      # ../l1-stack/ once the shared L1 stack lands there.
+      # (`nodeConfigPath` and the Shelley genesis it declares). The IPC
+      # default moves to ../l1-stack/ once the shared L1 stack lands there.
       - ${MIDGARD_L1_IPC_DIR:-../midgard-node/cardano/ipc}:/ipc
       - ${MIDGARD_L1_CONFIG_DIR:?}:/cardano-config:ro
       # Regular files, not compose `secrets:`: the loader refuses a secret path

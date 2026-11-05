@@ -24,6 +24,14 @@ survive; a previous snapshot format does not itself justify retention.
 | Replay transcript and transcript head | Offline reproducibility and proof/readmission lineage. | Reuse the existing transcript store and its explicit resource ceilings; do not copy its evidence into progress records. |
 | Funding reservations/leases/lineage and workflow journals | Prevent double spending/submission and reconcile crashes. | Existing owners and reconciliation rules remain. They are not catch-up state and must not be rewritten by a progress update. |
 
+Superseded on 2026-11-04 for `watcher_state_queue_observation_v1`: the table
+and its store were removed. Nothing has read or written them since the watcher
+moved onto follower facts (#798); it reads the state queue from its L1
+follower's facts instead. The watcher no longer creates the table. An existing
+`watcher.sqlite` that still holds it opens unchanged: the backend creates its
+tables with `CREATE TABLE IF NOT EXISTS` and never checks the table set, so the
+leftover table is ignored and its rows are never read.
+
 ## Persistence boundary
 
 Use the existing database and transaction owner. Materialize existing state

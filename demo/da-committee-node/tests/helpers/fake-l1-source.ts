@@ -13,7 +13,6 @@ import {
 } from "../../src/l1/follower/landed-queue.js";
 import { obligations } from "../../src/l1/follower/obligations.js";
 import type { QueueExit } from "../../src/l1/follower/projection.js";
-import { decodeQueueOutput } from "../../src/l1/follower/queue-derivation.js";
 import { nodeDatum, rootDatum } from "../l1-follower/queue-sim-traffic.js";
 
 /** cd and k of the fake chain: `minimalConfig`'s finality depth, and k = 2·cd. */
@@ -59,16 +58,10 @@ const queueRow = (
         ? null
         : next.linkedListKey,
   );
-  const decoded = decodeQueueOutput(
+  const decoded = SDK.decodeStateQueueOutput(
     {
-      address: Buffer.alloc(29),
-      paymentCredential: null,
-      stakeCredential: null,
-      lovelace: 5_000_000n,
       assets: new Map([[POLICY, new Map([[node.assetName, 1n]])]]),
-      datumHash: null,
       datum,
-      scriptRef: null,
     },
     POLICY,
   )!;
@@ -111,18 +104,12 @@ export const fakeL1Source = (chain: FakeL1Chain): CommitteeL1Source => {
       ).toString("hex");
       const root: QueueRow = {
         outRef: ROOT_OUT_REF,
-        ...decodeQueueOutput(
+        ...SDK.decodeStateQueueOutput(
           {
-            address: Buffer.alloc(29),
-            paymentCredential: null,
-            stakeCredential: null,
-            lovelace: 5_000_000n,
             assets: new Map([
               [POLICY, new Map([[SDK.STATE_QUEUE_ROOT_ASSET_NAME, 1n]])],
             ]),
-            datumHash: null,
             datum: Buffer.from(rootDatumHex, "hex"),
-            scriptRef: null,
           },
           POLICY,
         )!,

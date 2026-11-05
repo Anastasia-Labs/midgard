@@ -2,10 +2,6 @@ import {
   createDaAvailabilityReadScope,
   type DaAvailabilityReadScope,
 } from "@al-ft/midgard-sdk";
-import type {
-  WatcherNativeChainSyncEventReceipt,
-  WatcherNativeChainSyncRuntime,
-} from "midgard-watcher";
 
 import {
   type AcceptanceNativeReadConfig,
@@ -15,6 +11,13 @@ import {
 import { acceptanceNativeLineageReads } from "./acceptance-native-lineage.js";
 import { openAcceptanceNativeSession } from "./acceptance-native-session.js";
 import type { Layout } from "./layout.js";
+import {
+  readWatcherNativeChainSyncEventReceipt,
+  watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEventReceipt,
+  watcherNativeChainSyncEventReceipt,
+  type WatcherNativeChainSyncRuntime,
+} from "./native-chain-sync.exact-record.js";
 
 export type AcceptanceNativePoint = Readonly<{
   blockHash: string;
@@ -128,10 +131,8 @@ export const captureAcceptanceNativeRead = async <T>(
       nativeRuntime === undefined
     )
       throw new Error("acceptance native current boundary changed");
-    const observed = config.watcher.readWatcherNativeChainSyncEventReceipt(
-      captured.receipt,
-    );
-    const details = config.watcher.watcherNativeChainSyncAuthorityDetails(
+    const observed = readWatcherNativeChainSyncEventReceipt(captured.receipt);
+    const details = watcherNativeChainSyncAuthorityDetails(
       nativeRuntime.authority,
     );
     const source = config.watcherConfig.l1.source;
@@ -205,8 +206,7 @@ export const captureAcceptanceNativeRead = async <T>(
           !same(event, event.tip)
         )
           return;
-        const receipt =
-          config.watcher.watcherNativeChainSyncEventReceipt(event);
+        const receipt = watcherNativeChainSyncEventReceipt(event);
         if (receipt === null)
           throw new Error(
             "acceptance native forward lacks live acquisition provenance",
@@ -311,10 +311,8 @@ export const captureAcceptanceNativeRead = async <T>(
     await verifySelected();
     await config.assertUnchanged(operation);
     assertCurrent();
-    const receipt = config.watcher.readWatcherNativeChainSyncEventReceipt(
-      captured!.receipt,
-    );
-    const details = config.watcher.watcherNativeChainSyncAuthorityDetails(
+    const receipt = readWatcherNativeChainSyncEventReceipt(captured!.receipt);
+    const details = watcherNativeChainSyncAuthorityDetails(
       nativeRuntime.authority,
     )!;
     outcome = {

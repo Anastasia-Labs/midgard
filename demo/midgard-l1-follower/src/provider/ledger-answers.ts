@@ -35,6 +35,16 @@ export const toOutRef = (outRef: LucidOutRef): OutRef => ({
   index: outRef.outputIndex,
 });
 
+/** `outRefs` without repeats, in first-seen order. */
+export const distinctOutRefs = (outRefs: readonly LucidOutRef[]): OutRef[] => [
+  ...new Map(
+    outRefs.map((outRef) => {
+      const parsed = toOutRef(outRef);
+      return [outRefKey(parsed), parsed] as const;
+    }),
+  ).values(),
+];
+
 export const lucidUtxo = (
   row: Readonly<{ outRef: OutRef; output: OutputSummary }>,
 ): UTxO => toLucidUtxo(row.outRef, row.output);

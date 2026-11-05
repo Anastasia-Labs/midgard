@@ -20,7 +20,6 @@ import {
   slotTimeMs,
 } from "../../src/l1/follower/obligations.js";
 import type { CommitteeQueueParameters } from "../../src/l1/follower/queue-derivation.js";
-import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 /** The simulator's rollback bound (the follower suites use the same). */
 export const SIM_K = 6;
 
@@ -196,7 +195,7 @@ export const decodeElement = (outRef: OutRef, output: SimOutput): Element => {
     output,
     assetName,
     datum,
-    headerHash: headerHashOf(node.header),
+    headerHash: SDK.stateQueueHeaderHash(node.header),
     header: node.header,
     status: node.da_attestation,
     rootEndTimeMs: 0,
@@ -283,7 +282,7 @@ export const queueTraffic = (
       rng.chance(options.orphanChance)
     ) {
       const header = simHeader(nonce, GENESIS_HASH, endTimeMs);
-      const hash = headerHashOf(header);
+      const hash = SDK.stateQueueHeaderHash(header);
       return [
         {
           inputs: [chain.outsideInput()],
@@ -310,7 +309,7 @@ export const queueTraffic = (
     const roll = rng.next();
     if (roll < 0.5 || list.nodes.length === 0) {
       const header = simHeader(nonce, tail.headerHash, endTimeMs);
-      const hash = headerHashOf(header);
+      const hash = SDK.stateQueueHeaderHash(header);
       const commit: SimTx = {
         inputs: [tail.outRef],
         outputs: [

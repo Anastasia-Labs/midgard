@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { depth, isFinal } from "@al-ft/midgard-l1-follower";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import {
+  type DaAvailabilityReadScope,
+  stateQueueHeaderHash,
+} from "@al-ft/midgard-sdk";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";
-import { headerHashOf } from "../l1/follower/queue-derivation.js";
 import type { StoreData } from "../store.committee-store.js";
 
 export type CommitteeRetirementBinding = Readonly<{
@@ -270,7 +272,7 @@ export const authenticatedHeaderEnd = (
     typeof end !== "bigint" ||
     end < 0n ||
     end > BigInt(Number.MAX_SAFE_INTEGER) ||
-    headerHashOf(record.header) !== record.headerHash ||
+    stateQueueHeaderHash(record.header) !== record.headerHash ||
     record.computedHeaderHash !== record.headerHash ||
     record.validationErrors.length
   )

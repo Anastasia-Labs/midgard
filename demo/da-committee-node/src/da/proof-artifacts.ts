@@ -5,7 +5,6 @@ import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../l1/follower/queue-derivation.js";
 import "../utils/hex.js";
 import "./payload.js";
 import "./proof-artifacts.da-proof-artifact-reason-code.js";

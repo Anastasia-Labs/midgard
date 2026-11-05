@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 
+import { watcherCanonicalJson } from "midgard-watcher";
+import { describe, expect, it } from "vitest";
+
 import {
   parseWatcherNativeChainSyncEvent,
   readWatcherNativeChainSyncEventReceipt,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-  watcherCanonicalJson,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncEventReceipt,
   watcherNativeChainSyncEventReceipt,
-} from "midgard-watcher";
-import { describe, expect, it } from "vitest";
-
+} from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import {
   startWatcherNativeChainSync,
   startWatcherNativeChainSyncWithRetry,
@@ -351,7 +351,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
           ? NODE_CONFIG_BYTES
           : new TextEncoder().encode(JSON.stringify({ networkMagic: 2 })),
       ),
-    ).rejects.toThrow("network magic differs");
+    ).rejects.toThrow("network magic 2 differs from network Preprod");
     expect(transport.journal()).toEqual([]);
   });
 

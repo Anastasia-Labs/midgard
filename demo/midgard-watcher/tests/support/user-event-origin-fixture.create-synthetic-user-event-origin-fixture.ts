@@ -120,7 +120,7 @@ export const createSyntheticUserEventOriginFixture = async (
       deploymentIdentity,
       blueprintBytes,
     });
-  const watcherConfig = makeConfig(nodeConfig, genesisConfig);
+  const watcherConfig = makeConfig(nodeConfig);
   const blocks: SyntheticUserEventBlock[] = [];
   const creating: Creating[] = [];
   const creatingByHash = new Map<string, Creating>();

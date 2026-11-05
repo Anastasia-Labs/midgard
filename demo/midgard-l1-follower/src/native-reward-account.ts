@@ -14,6 +14,8 @@ import {
   stakeCredentialOf,
 } from "@lucid-evolution/lucid";
 
+import { parseStrictJson } from "./strict-json.js";
+
 /**
  * Reward-account registration read from the local node's ledger.
  *
@@ -24,9 +26,6 @@ import {
  * unregistered accounts. The node transport queries the ledger's deposit map
  * over the node socket instead; registration is membership in that map.
  */
-export const NATIVE_CHAIN_SYNC_SCHEMA_VERSION =
-  "midgard-watcher-native-chain-sync-v1" as const;
-
 export type NativeLedgerNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 
 export const NATIVE_LEDGER_PUBLIC_NETWORK_MAGIC = Object.freeze({
@@ -67,13 +66,6 @@ const record = (value: unknown, subject: string): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
-const readIdentityFile = async (path: string, subject: string) => {
-  const bytes = await readFile(path);
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IDENTITY_FILE_BYTES)
-    throw new Error(`${subject} size is invalid`);
-  return bytes;
-};
-
 const assertCanonicalAbsolutePath = async (path: string, subject: string) => {
   if (
     !isAbsolute(path) ||
@@ -83,25 +75,58 @@ const assertCanonicalAbsolutePath = async (path: string, subject: string) => {
     throw new Error(`${subject} must be an absolute path without symlinks`);
 };
 
+/** Reads one node identity file; a test substitutes in-memory files. */
+export type ReadNativeLedgerFile = (path: string) => Promise<Uint8Array>;
+
+const identityRecord = (bytes: Uint8Array, subject: string) =>
+  record(
+    parseStrictJson(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      (refusal, path) => {
+        throw new Error(`${subject} is not strict JSON: ${refusal} at ${path}`);
+      },
+    ),
+    subject,
+  );
+
+const readIdentityFile = async (
+  path: string,
+  subject: string,
+  unsafeReadFileForTest: ReadNativeLedgerFile | undefined,
+) => {
+  if (unsafeReadFileForTest === undefined)
+    await assertCanonicalAbsolutePath(path, `${subject} path`);
+  const bytes = await (unsafeReadFileForTest ?? readFile)(path);
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IDENTITY_FILE_BYTES)
+    throw new Error(`${subject} size is invalid`);
+  return bytes;
+};
+
 /**
  * The network magic and genesis identity of the node configuration at
  * `nodeConfigPath`, read from that file and the Shelley genesis it declares
  * and checked against `network`. Static files only: the node's socket need
- * not exist yet.
+ * not exist yet. Both files are read through canonical paths without
+ * symlinks and admitted as strict JSON (a repeated key is refused); both
+ * parsed records are returned for a caller that checks more of them.
  */
 export const readNativeLedgerGenesis = async (input: {
   readonly network: NativeLedgerNetwork;
   readonly nodeConfigPath: string;
+  readonly unsafeReadFileForTest?: ReadNativeLedgerFile;
 }): Promise<
-  Readonly<{ genesisIdentitySha256: string; networkMagic: number }>
+  Readonly<{
+    genesis: Readonly<Record<string, unknown>>;
+    genesisIdentitySha256: string;
+    networkMagic: number;
+    nodeConfig: Readonly<Record<string, unknown>>;
+  }>
 > => {
-  await assertCanonicalAbsolutePath(input.nodeConfigPath, "Node config path");
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  const nodeConfig = record(
-    JSON.parse(
-      decoder.decode(
-        await readIdentityFile(input.nodeConfigPath, "Node config"),
-      ),
+  const nodeConfig = identityRecord(
+    await readIdentityFile(
+      input.nodeConfigPath,
+      "Node config",
+      input.unsafeReadFileForTest,
     ),
     "Node config",
   );
@@ -113,11 +138,12 @@ export const readNativeLedgerGenesis = async (input: {
       ? declaredGenesis
       : resolve(dirname(input.nodeConfigPath), declaredGenesis),
   );
-  const genesisBytes = await readIdentityFile(genesisPath, "Shelley genesis");
-  const genesis = record(
-    JSON.parse(decoder.decode(genesisBytes)),
+  const genesisBytes = await readIdentityFile(
+    genesisPath,
     "Shelley genesis",
+    input.unsafeReadFileForTest,
   );
+  const genesis = identityRecord(genesisBytes, "Shelley genesis");
   const magic = genesis.networkMagic;
   if (typeof magic !== "number" || !Number.isSafeInteger(magic) || magic < 0)
     throw new Error("Shelley genesis network magic is invalid");
@@ -133,10 +159,12 @@ export const readNativeLedgerGenesis = async (input: {
       `Shelley genesis network magic ${magic} differs from network ${input.network}`,
     );
   return {
+    genesis,
     genesisIdentitySha256: createHash("sha256")
       .update(genesisBytes)
       .digest("hex"),
     networkMagic: magic,
+    nodeConfig,
   };
 };
 

@@ -1,10 +1,8 @@
-import { watcherNativeChainSyncRecord } from "midgard-watcher";
 import { expect, it, vi } from "vitest";
 
+import { NativeChainSyncStartupFailure } from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import { startWatcherNativeChainSyncWithRetry } from "../src/devnet-stack/native-chain-sync.start-watcher-native-chain-sync-with-retry.js";
 import { config, INTERSECTION } from "./helpers/native-chain-sync.config.js";
-
-const { NativeChainSyncStartupFailure } = watcherNativeChainSyncRecord;
 
 const { start } = vi.hoisted(() => ({ start: vi.fn() }));
 vi.mock(

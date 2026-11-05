@@ -1,10 +1,11 @@
-import { NativeLedgerKupmios } from "@al-ft/midgard-l1-follower/native-ledger-kupmios";
 import { type NativeLedgerAuthority } from "@al-ft/midgard-l1-follower/native-reward-account";
 import { type KupmiosOptions } from "@lucid-evolution/lucid";
 import {
   deriveWatcherNativeGenesisIdentity,
   type WatcherNativeNodeConfig,
 } from "midgard-watcher";
+
+import { NativeLedgerKupmios } from "./native-ledger-kupmios.js";
 
 /** The journey devnet's local node, as the reward-account ledger query reads it. */
 export type JourneyNativeNodeQuery = Readonly<{

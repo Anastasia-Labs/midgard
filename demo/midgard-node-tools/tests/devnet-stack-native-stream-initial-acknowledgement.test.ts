@@ -1,13 +1,13 @@
+import { parseWatcherConfig } from "midgard-watcher";
+import { createSyntheticUserEventOriginFixture } from "midgard-watcher/tests/support/user-event-origin-fixture";
+import { describe, expect, it } from "vitest";
+
 import {
-  parseWatcherConfig,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncRuntime,
-} from "midgard-watcher";
-import { createSyntheticUserEventOriginFixture } from "midgard-watcher/tests/support/user-event-origin-fixture";
-import { describe, expect, it } from "vitest";
-
+} from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import { startWatcherNativeChainSync } from "../src/devnet-stack/native-chain-sync.js";
 
 describe("native stream initial acknowledgement", () => {

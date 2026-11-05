@@ -71,4 +71,19 @@ describe("the landed-queue walk over malformed live rows", () => {
     });
     expect(queue.nodes.map((node) => node.outRef)).toEqual(["a#0", "b#0"]);
   });
+
+  it("names each invalid output's problems in the invalid_output detail", () => {
+    const queue = walkLandedQueue([
+      row("r#0", "root", null, "aa"),
+      row("a#0", "node", "aa", null),
+      { ...row("x#0", "invalid", null, null), problems: ["malformed_nft"] },
+    ]);
+    expect(queue).toMatchObject({
+      healthy: false,
+      reason: "invalid_output",
+      detail: "x#0:malformed_nft",
+      strays: ["x#0"],
+    });
+    expect(queue.nodes.map((node) => node.outRef)).toEqual(["a#0"]);
+  });
 });

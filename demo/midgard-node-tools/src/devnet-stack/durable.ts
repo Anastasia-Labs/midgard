@@ -1,43 +1,18 @@
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  writeSync,
-} from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+
+import { writeTextFileAtomicSync } from "@al-ft/midgard-core/atomic-write";
 
 /**
- * Replaces `path` atomically: the new bytes are fsynced under a temporary
- * name, renamed over the target and the directory entry is fsynced, so a
- * crash leaves either the old or the new file, never a torn one.
+ * Replaces `path` atomically, so a crash leaves either the old or the new
+ * file, never a torn one. Run files are private: the file gets `mode` and
+ * every directory the write creates 0o700.
  */
 export const writeDurableFile = (
   path: string,
   content: string | Uint8Array,
   mode = 0o600,
-): void => {
-  const directory = dirname(path);
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const temporary = join(directory, `.${basename(path)}.${process.pid}.tmp`);
-  const fd = openSync(temporary, "w", mode);
-  try {
-    writeSync(fd, typeof content === "string" ? Buffer.from(content) : content);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  renameSync(temporary, path);
-  const directoryFd = openSync(directory, "r");
-  try {
-    fsyncSync(directoryFd);
-  } finally {
-    closeSync(directoryFd);
-  }
-};
+): void =>
+  writeTextFileAtomicSync(path, content, { mode, directoryMode: 0o700 });
 
 export const writeDurableJson = (
   path: string,

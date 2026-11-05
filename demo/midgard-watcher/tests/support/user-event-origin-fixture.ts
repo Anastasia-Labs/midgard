@@ -11,8 +11,6 @@ import "@al-ft/midgard-fault-proofs";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../../src/l1/native-block-admission.js";
-import "../../src/l1/native-chain-sync.exact-record.js";
 import "../../src/runtime/config.js";
 import "../../src/runtime/deployment-identity.js";
 import "./deployment-authority-fixture.js";

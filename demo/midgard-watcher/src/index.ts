@@ -143,32 +143,9 @@ export {
   type WatcherStateQueueSnapshot,
 } from "./indexers/state-queue-snapshot.js";
 export {
-  admitWatcherNativeRollForwardBlock,
-  WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION,
-  type WatcherNativeBlockAdmission,
-} from "./l1/native-block-admission.js";
-export {
   deriveWatcherNativeGenesisIdentity,
-  parseWatcherNativeChainSyncEvent,
   type WatcherNativeNodeConfig,
 } from "./l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
-export * as watcherNativeGenesisIdentity from "./l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
-export {
-  readWatcherNativeChainSyncEventReceipt,
-  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-  type WatcherNativeChainSyncAuthority,
-  type WatcherNativeChainSyncAuthorityDetails,
-  watcherNativeChainSyncAuthorityDetails,
-  type WatcherNativeChainSyncEvent,
-  type WatcherNativeChainSyncEventReceipt,
-  watcherNativeChainSyncEventReceipt,
-  type WatcherNativeChainSyncPoint,
-  type WatcherNativeChainSyncRollBackward,
-  type WatcherNativeChainSyncRollForward,
-  type WatcherNativeChainSyncRuntime,
-} from "./l1/native-chain-sync.exact-record.js";
-export * as watcherNativeChainSyncRecord from "./l1/native-chain-sync.exact-record.js";
-export { isWatcherNativeNodeUnavailable } from "./l1/transient-failure.js";
 export {
   retryWatcherL1Transient,
   WatcherL1UnavailableError,

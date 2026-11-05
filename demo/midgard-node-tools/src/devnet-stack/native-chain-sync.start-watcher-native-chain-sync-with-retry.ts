@@ -1,24 +1,22 @@
+import type { ReadNativeLedgerFile } from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
-  isWatcherNativeNodeUnavailable,
   retryWatcherL1Transient,
   WATCHER_PACKAGE_NAME,
   WATCHER_STARTUP_L1_BUDGET_MS,
   type WatcherConfig,
-  type WatcherNativeChainSyncEvent,
-  type WatcherNativeChainSyncPoint,
-  type watcherNativeChainSyncRecord,
-  type WatcherNativeChainSyncRuntime,
-  type watcherNativeGenesisIdentity,
 } from "midgard-watcher";
 
+import {
+  isWatcherNativeNodeUnavailable,
+  type NativeChainSyncStartupFailure,
+  type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncPoint,
+  type WatcherNativeChainSyncRuntime,
+} from "./native-chain-sync.exact-record.js";
 import {
   parseIntersectionCandidates,
   startNativeSupervisor,
 } from "./native-chain-sync.start-native-supervisor.js";
-
-type NativeChainSyncStartupFailure =
-  watcherNativeChainSyncRecord.NativeChainSyncStartupFailure;
-type ReadIdentityFile = watcherNativeGenesisIdentity.ReadIdentityFile;
 
 export type WatcherNativeNodeWait = Readonly<{
   event: "native_node_unavailable";
@@ -50,7 +48,7 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly startupTimeoutMs: number;
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
   readonly onAuthorityRevoked?: () => void;
-  readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
+  readonly unsafeReadIdentityFileForTest?: ReadNativeLedgerFile;
   /** Defaults to one JSON line on stderr when the node first does not answer. */
   readonly warn?: (warning: WatcherNativeNodeWait) => void;
   readonly retryDelayMs?: (retry: number) => number;

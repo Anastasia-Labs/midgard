@@ -5,7 +5,6 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { StateQueueHeaderRecord } from "../domain.js";
-import { headerHashOf } from "../l1/follower/queue-derivation.js";
 import { storedHeaderBlockTimeMs } from "../store/retention.block-time.js";
 import type { PromiseCapacityPoint } from "./promise-capacity-evidence.js";
 import type { PromiseCanonicalPointReader } from "./promise-cutoff-source.js";
@@ -124,7 +123,7 @@ export const currentPromiseScheduling = async (
     if (
       digest !== commitmentDigest ||
       commitment.header_hash !== header.headerHash ||
-      headerHashOf(header.header) !== header.headerHash ||
+      SDK.stateQueueHeaderHash(header.header) !== header.headerHash ||
       commitment.deployment_identity !== args.deployment.hubOraclePolicyId
     )
       throw new Error(
@@ -157,7 +156,7 @@ export const currentPromiseScheduling = async (
       (snapshot.queue.datum.key === "Empty" ||
         snapshot.queue.datum.key.Key.key !== header.headerHash ||
         node === undefined ||
-        headerHashOf(node.header) !== header.headerHash)
+        SDK.stateQueueHeaderHash(node.header) !== header.headerHash)
     )
       throw new Error(
         "Scheduling state-queue identity differs from signed header",

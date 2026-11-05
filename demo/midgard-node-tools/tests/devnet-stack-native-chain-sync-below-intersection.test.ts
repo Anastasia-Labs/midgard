@@ -1,10 +1,10 @@
+import { describe, expect, it } from "vitest";
+
 import {
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   watcherNativeChainSyncEventReceipt,
-} from "midgard-watcher";
-import { describe, expect, it } from "vitest";
-
+} from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import { waitFor } from "./helpers/native-chain-sync.config.js";
 import { start } from "./helpers/native-chain-sync.fake-transport.js";
 describe("native below-intersection rollback", () => {

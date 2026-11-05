@@ -29,7 +29,6 @@ export type WatcherL1SourceConfig = Readonly<{
     kind: "cardano_node_socket";
     socketPath: string;
     nodeConfigPath: string;
-    genesisConfigPath: string;
     genesisIdentitySha256: string;
   }>;
 }>;

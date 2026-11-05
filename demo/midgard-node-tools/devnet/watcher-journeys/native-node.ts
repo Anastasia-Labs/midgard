@@ -38,10 +38,6 @@ export const journeyNativeNodeQuery = async (
             kind: "cardano_node_socket",
             socketPath: join(runDirectory, "cardano/ipc/node.socket"),
             nodeConfigPath: join(runDirectory, "config/config.json"),
-            genesisConfigPath: join(
-              runDirectory,
-              "genesis/shelley-genesis.json",
-            ),
             genesisIdentitySha256: createHash("sha256")
               .update(bytes)
               .digest("hex"),

@@ -18,7 +18,7 @@ multiline or helper-based assertions before reporting totals.
 
 ## Candidates requiring individual decisions
 
-- `native-block-admission.test.ts` uses `arrayContaining` with one matcher:
+- `devnet-stack-native-block-admission.test.ts` uses `arrayContaining` with one matcher:
   that checks at least one matching element, not all eight identifiers. If the
   contract requires all IDs, assert each expected member and cardinality.
 - `not.toEqual(arrayContaining([a,b,c,d]))` rejects the complete conjunction,

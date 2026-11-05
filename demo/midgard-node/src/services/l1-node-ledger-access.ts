@@ -105,14 +105,7 @@ export const nodeLedgerAccessOver = (
       : { awaitTxTimeoutMs: input.awaitTxTimeoutMs }),
   });
   const nowMs = input.nowMs ?? Date.now;
-  let slotConfig: Promise<SlotConfig> | undefined;
-  const readSlotConfig = (): Promise<SlotConfig> => {
-    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
-      slotConfig = undefined;
-      throw error;
-    });
-    return slotConfig;
-  };
+  const readSlotConfig = (): Promise<SlotConfig> => provider.cachedSlotConfig();
   const readTip = () => provider.readTip();
   return openL1Access({
     kind: "node",

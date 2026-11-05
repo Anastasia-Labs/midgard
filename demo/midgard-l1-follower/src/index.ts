@@ -359,4 +359,9 @@ export type {
   WalletSeedReadFailed,
   WalletSeedWrite,
 } from "./store/wallet-seeds.js";
+export {
+  parseStrictJson,
+  type StrictJsonRefusal,
+  type StrictJsonRefuse,
+} from "./strict-json.js";
 export type * from "./types.js";

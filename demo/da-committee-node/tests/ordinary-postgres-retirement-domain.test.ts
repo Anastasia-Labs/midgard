@@ -3,7 +3,6 @@ import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 
 import type { StateQueueHeaderRecord } from "../src/domain.js";
-import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.postgres-committee-store.js";
 import { makePayloadFixture } from "./helpers.make-payload-fixture.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
@@ -114,7 +113,7 @@ it("ordinary production header upsert also persists 513 exact linked headers", a
         endTime: BigInt(index * 2 + 2),
         blockSlot: BigInt(index),
       };
-      const headerHash = headerHashOf(header);
+      const headerHash = SDK.stateQueueHeaderHash(header);
       const record: StateQueueHeaderRecord = {
         deploymentFingerprint,
         headerHash,

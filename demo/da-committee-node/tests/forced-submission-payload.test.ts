@@ -17,7 +17,6 @@ import {
   computeDaPayloadRoots,
   decodeDaPayloadStrict,
 } from "../src/da/payload.js";
-import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { makePayloadFixture } from "./helpers.js";
 import { fixtureValidationTrace } from "./helpers.validation-trace.js";
 
@@ -101,7 +100,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
   const roots = await computeDaPayloadRoots(payload);
   const header = { ...payload.block_body.header, ...counts, ...roots };
   payload.block_body.header = header;
-  payload.block_body.header_hash = headerHashOf(header);
+  payload.block_body.header_hash = SDK.stateQueueHeaderHash(header);
   return {
     payload,
     bytes,

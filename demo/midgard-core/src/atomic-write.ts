@@ -1,4 +1,14 @@
 import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import {
   chmod,
   type FileHandle,
   link,
@@ -12,7 +22,14 @@ import { dirname } from "node:path";
 
 export type AtomicWriteOptions = {
   readonly mode?: number;
+  /** Mode of the directories the write creates (before the umask). */
+  readonly directoryMode?: number;
 };
+
+const directoryOptions = (options: AtomicWriteOptions) =>
+  options.directoryMode === undefined
+    ? { recursive: true as const }
+    : { recursive: true as const, mode: options.directoryMode };
 
 const syncDirectory = async (path: string): Promise<void> => {
   const handle = await open(path, "r");
@@ -28,15 +45,25 @@ const syncDirectory = async (path: string): Promise<void> => {
  * each of those parents too, or a crash can drop the new directory (and the
  * file published inside it) even though the file and its parent were synced.
  */
+const createdDirectoryParents = (
+  firstCreated: string | undefined,
+  parentPath: string,
+): string[] => {
+  const parents: string[] = [];
+  if (firstCreated === undefined) return parents;
+  for (let directory = parentPath; ; directory = dirname(directory)) {
+    parents.push(dirname(directory));
+    if (directory === firstCreated || dirname(directory) === directory)
+      return parents;
+  }
+};
+
 const syncCreatedAncestors = async (
   firstCreated: string | undefined,
   parentPath: string,
 ): Promise<void> => {
-  if (firstCreated === undefined) return;
-  for (let directory = parentPath; ; directory = dirname(directory)) {
-    await syncDirectory(dirname(directory));
-    if (directory === firstCreated || dirname(directory) === directory) return;
-  }
+  for (const parent of createdDirectoryParents(firstCreated, parentPath))
+    await syncDirectory(parent);
 };
 
 const tempPathFor = (path: string): string =>
@@ -49,7 +76,7 @@ export const writeTextFileAtomic = async (
   contents: string | Uint8Array,
   options: AtomicWriteOptions = {},
 ): Promise<void> => {
-  const firstCreated = await mkdir(dirname(path), { recursive: true });
+  const firstCreated = await mkdir(dirname(path), directoryOptions(options));
   const parentPath = dirname(path);
   const tempPath = tempPathFor(path);
   let tempHandle: FileHandle | undefined;
@@ -80,7 +107,7 @@ export const writeTextFileAtomicNoReplace = async (
   contents: string | Uint8Array,
   options: AtomicWriteOptions = {},
 ): Promise<void> => {
-  const firstCreated = await mkdir(dirname(path), { recursive: true });
+  const firstCreated = await mkdir(dirname(path), directoryOptions(options));
   const parentPath = dirname(path);
   const tempPath = tempPathFor(path);
   let tempHandle: FileHandle | undefined;
@@ -105,6 +132,59 @@ export const writeTextFileAtomicNoReplace = async (
       await tempHandle.close().catch(() => {});
     }
     await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+};
+
+/** Cleanup after a failed write; the write's own failure is the one thrown. */
+const ignoreCleanupFailure = (cleanup: () => void): void => {
+  try {
+    cleanup();
+  } catch {
+    // Reported through the write's failure instead.
+  }
+};
+
+const syncDirectorySync = (path: string): void => {
+  const fd = openSync(path, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+};
+
+/**
+ * `writeTextFileAtomic` for callers that must not yield, such as one holding a
+ * synchronous lock: the same temp file, file sync, rename and directory syncs.
+ */
+export const writeTextFileAtomicSync = (
+  path: string,
+  contents: string | Uint8Array,
+  options: AtomicWriteOptions = {},
+): void => {
+  const parentPath = dirname(path);
+  const firstCreated = mkdirSync(parentPath, directoryOptions(options));
+  const tempPath = tempPathFor(path);
+  let tempFd: number | undefined;
+  try {
+    tempFd = openSync(tempPath, "wx", options.mode ?? 0o666);
+    writeFileSync(tempFd, contents);
+    if (options.mode !== undefined) {
+      chmodSync(tempPath, options.mode);
+    }
+    fsyncSync(tempFd);
+    closeSync(tempFd);
+    tempFd = undefined;
+
+    renameSync(tempPath, path);
+    syncDirectorySync(parentPath);
+    for (const parent of createdDirectoryParents(firstCreated, parentPath))
+      syncDirectorySync(parent);
+  } catch (error) {
+    const openFd = tempFd;
+    if (openFd !== undefined) ignoreCleanupFailure(() => closeSync(openFd));
+    ignoreCleanupFailure(() => rmSync(tempPath, { force: true }));
     throw error;
   }
 };

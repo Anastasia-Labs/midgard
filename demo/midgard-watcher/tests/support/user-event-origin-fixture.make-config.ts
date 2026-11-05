@@ -17,7 +17,6 @@ import {
 import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { deriveWatcherInitializationFrame } from "midgard-node/tests/helpers/derived-watcher-initialization-frame";
 
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
   makeWatcherAuthorityContracts,
@@ -34,10 +33,7 @@ export const GENESIS_BYTES = JSON.stringify({ networkMagic: 1 });
 
 const GENESIS = createHash("sha256").update(GENESIS_BYTES).digest("hex");
 
-export const makeConfig = (
-  NODE_CONFIG_PATH: string,
-  GENESIS_CONFIG_PATH: string,
-) =>
+export const makeConfig = (NODE_CONFIG_PATH: string) =>
   Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
     mode: "acceptance",
@@ -50,7 +46,6 @@ export const makeConfig = (
           kind: "cardano_node_socket",
           socketPath: "/run/cardano/node.socket",
           nodeConfigPath: NODE_CONFIG_PATH,
-          genesisConfigPath: GENESIS_CONFIG_PATH,
           genesisIdentitySha256: GENESIS,
         }),
       }),
@@ -212,10 +207,17 @@ export type Point = Readonly<{
   pointId: string;
 }>;
 
+/** A synthetic block's raw CBOR and its transactions, in block order. */
+export type SyntheticNativeBlock = Readonly<{
+  rawBlockCbor: string;
+  transactionIds: readonly string[];
+  transactionCbors: readonly string[];
+}>;
+
 export type SyntheticUserEventBlock = Readonly<{
   point: Point;
   parentPoint: Point;
-  nativeBlock: ReturnType<typeof admitWatcherNativeRollForwardBlock>;
+  nativeBlock: SyntheticNativeBlock;
 }>;
 
 export type Creating = Readonly<{

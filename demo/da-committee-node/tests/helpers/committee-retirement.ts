@@ -13,7 +13,6 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import { verifyDaPayloadAgainstHeader } from "../../src/da/payload.js";
 import type { StateQueueHeaderRecord } from "../../src/domain.js";
-import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../../src/peer/signatures.js";
 import { loadDaSigner, signDaAttestation } from "../../src/signer.js";
 import {
@@ -204,7 +203,7 @@ export const retentionFixture = async (
         ? variant.toString(16).padStart(56, "0")
         : base.header.operatorVkey,
     };
-    const headerHash = headerHashOf(h);
+    const headerHash = SDK.stateQueueHeaderHash(h);
     return {
       deploymentFingerprint,
       headerHash,

@@ -19,7 +19,6 @@ import {
   decodeDaPayloadStrict,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
-import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import {
   makePayloadFixture,
   withBuiltValidationTracePair,
@@ -43,7 +42,7 @@ describe("canonical V1 DA payload verification", () => {
       validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       validationTraceCount: 0n,
     };
-    const headerHash = headerHashOf(header);
+    const headerHash = SDK.stateQueueHeaderHash(header);
     const payload: SDK.DaPayload = {
       ...unhashed,
       block_body: {
@@ -311,7 +310,7 @@ describe("canonical V1 DA payload verification", () => {
       ...fixture.header,
       transactionsRoot: "ab".repeat(32),
     };
-    const headerHash = headerHashOf(header);
+    const headerHash = SDK.stateQueueHeaderHash(header);
     const inner = SDK.encodeDaPayload({
       ...fixture.payload,
       block_body: {

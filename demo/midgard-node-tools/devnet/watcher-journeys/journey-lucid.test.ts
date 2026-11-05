@@ -22,7 +22,6 @@ const native: JourneyNativeNodeQuery = {
           kind: "cardano_node_socket",
           socketPath: "/unused/node.socket",
           nodeConfigPath: "/unused/node.json",
-          genesisConfigPath: "/unused/genesis.json",
           genesisIdentitySha256: "ab".repeat(32),
         },
       },

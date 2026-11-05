@@ -9,7 +9,6 @@ import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/config.js";
 import "../src/da/payload.js";
-import "../src/l1/follower/queue-derivation.js";
 import "./helpers.make-payload-fixture.js";
 import "./helpers.minimal-config.js";
 

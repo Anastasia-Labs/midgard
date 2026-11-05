@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,12 +14,12 @@ import {
 } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { NativeLedgerKupmios } from "../src/native-ledger-kupmios.js";
 import {
   admitNativeRewardAccount,
   type NativeLedgerAuthority,
   nativeLedgerAuthoritySource,
   queryNativeRewardAccount,
+  readNativeLedgerGenesis,
   resolveNativeLedgerAuthority,
 } from "../src/native-reward-account.js";
 
@@ -152,6 +152,50 @@ describe("native ledger authority", () => {
     ).rejects.toThrow(/absolute path without symlinks/u);
   });
 
+  it.each([
+    [
+      "a node config repeating a key",
+      '{"ShelleyGenesisFile":"other.json","ShelleyGenesisFile":"shelley.json"}',
+      genesis(1),
+      /Node config is not strict JSON: duplicate_field at \$/u,
+    ],
+    [
+      "a genesis repeating a key",
+      JSON.stringify({ ShelleyGenesisFile: "shelley.json" }),
+      '{"networkMagic":2,"networkMagic":1}',
+      /Shelley genesis is not strict JSON: duplicate_field at \$/u,
+    ],
+  ])("refuses %s", async (_, nodeConfig, genesisText, message) => {
+    await writeFile(join(directory, "shelley.json"), genesisText);
+    await writeFile(join(directory, "config.json"), nodeConfig);
+    await expect(
+      readNativeLedgerGenesis({
+        network: "Preprod",
+        nodeConfigPath: join(directory, "config.json"),
+      }),
+    ).rejects.toThrow(message);
+  });
+
+  it("refuses a node config declaring a genesis reached through a symlink", async () => {
+    await writeNode(1);
+    await symlink(
+      join(directory, "shelley.json"),
+      join(directory, "linked.json"),
+    );
+    await writeFile(
+      join(directory, "config.json"),
+      JSON.stringify({ ShelleyGenesisFile: "linked.json" }),
+    );
+    await expect(
+      readNativeLedgerGenesis({
+        network: "Preprod",
+        nodeConfigPath: join(directory, "config.json"),
+      }),
+    ).rejects.toThrow(
+      "Shelley genesis path must be an absolute path without symlinks",
+    );
+  });
+
   it("reads the address's credential from the node ledger", async () => {
     await writeNode(1);
     await writeTransport({ rewards: 7, pool: POOL_HASH });
@@ -223,16 +267,5 @@ describe("native ledger authority", () => {
     await expect(source()).rejects.toThrow();
     await writeNode(1);
     expect((await source())?.networkMagic).toBe(1);
-  });
-
-  it("fails reward-account reads closed without a local ledger", async () => {
-    const provider = new NativeLedgerKupmios(
-      "http://127.0.0.1:1442",
-      "http://127.0.0.1:1337",
-      nativeLedgerAuthoritySource(undefined),
-    );
-    await expect(
-      provider.getRewardAccount(SCRIPT_REWARD_ADDRESS),
-    ).rejects.toThrow(/requires a local node ledger/u);
   });
 });

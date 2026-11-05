@@ -40,7 +40,6 @@ export const config = (): WatcherConfig =>
           kind: "cardano_node_socket",
           socketPath: "/run/cardano/node.socket",
           nodeConfigPath: NODE_CONFIG_PATH,
-          genesisConfigPath: GENESIS_CONFIG_PATH,
           genesisIdentitySha256: GENESIS,
         }),
       }),

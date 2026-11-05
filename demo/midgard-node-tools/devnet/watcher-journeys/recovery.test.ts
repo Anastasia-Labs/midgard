@@ -2,14 +2,16 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  admitWatcherNativeRollForwardBlock,
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
-  watcherNativeChainSyncAuthorityDetails,
-  type WatcherNativeChainSyncRollForward,
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
+import { admitWatcherNativeRollForwardBlock } from "../../src/devnet-stack/native-block-admission.js";
+import {
+  watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncRollForward,
+} from "../../src/devnet-stack/native-chain-sync.exact-record.js";
 import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 

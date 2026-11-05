@@ -1,8 +1,8 @@
 /**
- * The node identity a watcher admits before it follows the chain: the node
- * config must name the configured Shelley genesis, whose network magic,
- * Custom slot clock and digest match the watcher configuration. Each
- * refusal is exercised over in-memory files.
+ * The node identity a watcher admits before it follows the chain: the
+ * Shelley genesis the node config declares must carry the watcher's network
+ * magic and Custom slot clock, and its digest must match the watcher
+ * configuration. Each refusal is exercised over in-memory files.
  */
 import { createHash } from "node:crypto";
 
@@ -60,7 +60,6 @@ const derive = async (network: Network, files: Files, digest?: string) => {
       source: {
         chainSync: {
           nodeConfigPath: NODE_CONFIG,
-          genesisConfigPath: GENESIS,
           genesisIdentitySha256:
             digest ?? createHash("sha256").update(genesisBytes).digest("hex"),
         },
@@ -69,10 +68,13 @@ const derive = async (network: Network, files: Files, digest?: string) => {
   } as unknown as WatcherNativeNodeConfig;
   return await deriveWatcherNativeGenesisIdentity({
     watcherConfig,
+    // The genesis is read where the node config declares it, beside it.
     unsafeReadIdentityFileForTest: (path) =>
-      Promise.resolve(
-        path === NODE_CONFIG ? encode(files.nodeConfig) : genesisBytes,
-      ),
+      path === NODE_CONFIG
+        ? Promise.resolve(encode(files.nodeConfig))
+        : path === GENESIS
+          ? Promise.resolve(genesisBytes)
+          : Promise.reject(new Error(`unexpected identity file ${path}`)),
   });
 };
 
@@ -109,12 +111,12 @@ describe("deriveWatcherNativeGenesisIdentity", () => {
     [
       "an empty identity file",
       () => ({ nodeConfig: "", genesis: valid("Preprod").genesis }),
-      "identity file size is invalid",
+      "Node config size is invalid",
     ],
     [
       "an identity file that is not an object",
       () => ({ nodeConfig: [], genesis: valid("Preprod").genesis }),
-      "identity file is not an object",
+      "Node config is not a JSON object",
     ],
     [
       "a node config without ShelleyGenesisFile",
@@ -122,20 +124,12 @@ describe("deriveWatcherNativeGenesisIdentity", () => {
       "does not declare ShelleyGenesisFile",
     ],
     [
-      "a node config naming another genesis",
-      () =>
-        edit("Preprod", (f) => {
-          f.nodeConfig.ShelleyGenesisFile = "other-genesis.json";
-        }),
-      "genesis path differs from watcher authority",
-    ],
-    [
       "a genesis of another network",
       () =>
         edit("Preprod", (f) => {
           f.genesis.networkMagic = 2;
         }),
-      "network magic differs from watcher network",
+      "Shelley genesis network magic 2 differs from network Preprod",
     ],
   ])("refuses %s", async (_label, files, message) => {
     await expect(derive("Preprod", files())).rejects.toThrow(message);
@@ -174,6 +168,14 @@ describe("deriveWatcherNativeGenesisIdentity", () => {
     change(files);
     await expect(derive("Custom", files)).rejects.toThrow(
       "Custom network slot clock differs from epoch-zero testnet genesis",
+    );
+  });
+
+  it("refuses a Custom genesis of another network magic", async () => {
+    const files = valid("Custom");
+    (files.genesis as Record<string, unknown>).networkMagic = 43;
+    await expect(derive("Custom", files)).rejects.toThrow(
+      "node genesis network magic differs from watcher network",
     );
   });
 

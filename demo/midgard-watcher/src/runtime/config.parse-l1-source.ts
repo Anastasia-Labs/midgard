@@ -86,7 +86,6 @@ export const parseL1Source = (value: unknown): WatcherL1SourceConfig => {
       "kind",
       "socketPath",
       "nodeConfigPath",
-      "genesisConfigPath",
       "genesisIdentitySha256",
     ]);
     if (chainSync.kind !== "cardano_node_socket") {
@@ -109,11 +108,6 @@ export const parseL1Source = (value: unknown): WatcherL1SourceConfig => {
         nodeConfigPath: requireAbsoluteFilePath(
           chainSync.nodeConfigPath,
           "$.l1.source.chainSync.nodeConfigPath",
-          false,
-        ),
-        genesisConfigPath: requireAbsoluteFilePath(
-          chainSync.genesisConfigPath,
-          "$.l1.source.chainSync.genesisConfigPath",
           false,
         ),
         genesisIdentitySha256: exactString(

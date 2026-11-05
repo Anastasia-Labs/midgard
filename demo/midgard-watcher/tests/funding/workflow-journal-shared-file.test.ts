@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { setImmediate as yieldTurn } from "node:timers/promises";
 import { Worker } from "node:worker_threads";
 
 import {
@@ -10,50 +9,19 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it } from "vitest";
 
-import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { unsafeOpenWatcherSqliteDurableBackendForTest } from "../../src/storage/sqlite-durable-backend.js";
 import {
   cleanupFundingRecoveryFixtures,
   setupFundingRecoveryFixture as setup,
 } from "../support/fault-proof-funding-fixture.js";
 import { prepareThroughPermit } from "./superseded-attempt-replacement.js";
 
-// The workflow journal, the funding reservations and the durable state-queue
-// observations share watcher.sqlite. Each writer takes the write lock up
-// front and waits for it, so writers on the same file queue rather than fail.
+// The workflow journal, the funding reservations and the replay transcripts
+// share watcher.sqlite. Each writer takes the write lock up front and waits
+// for it, so writers on the same file queue rather than fail.
 
 afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
-
-const hex32 = (value: number): string => value.toString(16).padStart(64, "0");
-const observation = (
-  value: number,
-  previousObservationDigest: string | null,
-): WatcherAuthenticatedStateQueueObservation =>
-  Object.freeze({
-    schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: "11".repeat(32),
-    protocolScriptAuthorityDigest: "12".repeat(32),
-    stateQueuePolicyId: "13".repeat(28),
-    hubOraclePolicyId: "14".repeat(28),
-    nativePoint: Object.freeze({
-      blockHash: hex32(value),
-      parentBlockHash: value === 1 ? null : hex32(value - 1),
-      slot: (1_000 + value).toString(),
-      blockNo: (100 + value).toString(),
-      chainPointId: hex32(10_000 + value),
-      finalityDepth: "30",
-    }),
-    sourceId: "test-source",
-    previousObservationDigest,
-    checkpoints: Object.freeze([]),
-    finalizedQueue: Object.freeze([]),
-    finalizedHeaders: Object.freeze([]),
-    finalizedCorrectionLock: null,
-    correctionLockWitnesses: Object.freeze([]),
-    observationDigest: hex32(20_000 + value),
-  });
 
 // Another process on the same file: it holds the write lock for 20 ms at a
 // time until told to stop, and reports how many times it held it.
@@ -76,14 +44,10 @@ database.close();
 parentPort.postMessage(held);
 `;
 
-it("prepares and confirms one attempt while the durable state-queue backend and another process write the same file", async () => {
+it("prepares and confirms one attempt while another process writes the same file", async () => {
   const fixture = await setup(true);
   fixture.useUnspentPendingInputs();
   const path = join(fixture.journalRoot, "watcher.sqlite");
-  const backend = await unsafeOpenWatcherSqliteDurableBackendForTest(
-    { path },
-    () => undefined,
-  );
   const stop = new SharedArrayBuffer(4);
   const holder = new Worker(LOCK_HOLDER, {
     eval: true,
@@ -93,25 +57,8 @@ it("prepares and confirms one attempt while the durable state-queue backend and 
     holder.once("message", resolve);
     holder.once("error", reject);
   });
-  let running = true;
-  let observations = 0;
-  const observing = (async () => {
-    let previous: string | null = null;
-    while (running) {
-      observations += 1;
-      const next = observation(observations, previous);
-      expect(await backend.stateQueueObservations.append(next)).toBe(
-        "appended",
-      );
-      previous = next.observationDigest;
-      await yieldTurn();
-    }
-  })();
-  // A failure surfaces where the loop is awaited.
-  observing.catch(() => undefined);
   try {
     const attempt = await prepareThroughPermit(fixture);
-    await yieldTurn();
     await fixture.run(await fixture.recover());
     const [record] = await fixture.records();
     expect(record).toMatchObject({ state: "active", pendingTransition: null });
@@ -124,18 +71,8 @@ it("prepares and confirms one attempt while the durable state-queue backend and 
     expect(
       events.filter(({ kind }) => kind === "submission_intent"),
     ).toHaveLength(1);
-    running = false;
-    await observing;
-    // Every observation appended meanwhile is in the chain.
-    expect(observations).toBeGreaterThan(1);
-    expect(await backend.stateQueueObservations.readAll()).toHaveLength(
-      observations,
-    );
   } finally {
-    running = false;
-    await observing.catch(() => undefined);
     Atomics.store(new Int32Array(stop), 0, 1);
-    backend.close();
   }
   expect(await held).toBeGreaterThan(0);
 }, 60_000);

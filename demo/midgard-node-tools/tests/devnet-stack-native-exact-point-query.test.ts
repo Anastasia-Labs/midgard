@@ -4,12 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
 import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
-import {
-  parseWatcherConfig,
-  watcherNativeChainSyncAuthorityDetails,
-} from "midgard-watcher";
+import { parseWatcherConfig } from "midgard-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { watcherNativeChainSyncAuthorityDetails } from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import {
   openWatcherNativeExactPointQuery,
   readWatcherNativeExactPointQuery,
@@ -49,7 +47,7 @@ const input = async (mode = "query_idle", timeoutMs = 2000) => {
   });
   return {
     binaryPath,
-    watcherConfig: config(nodeConfig, genesisConfig),
+    watcherConfig: config(nodeConfig),
     predecessor,
     target,
     timeoutMs,

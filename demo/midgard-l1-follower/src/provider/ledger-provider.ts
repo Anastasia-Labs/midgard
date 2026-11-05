@@ -39,21 +39,16 @@ import {
   L1SubmitRejectedError,
   L1TxStatusUnknownError,
 } from "./errors.js";
-import {
-  decodeEraHistory,
-  decodeProtocolParameters,
-  decodeSystemStart,
-  slotConfigFrom,
-} from "./ledger.js";
+import { decodeProtocolParameters, decodeSlotConfig } from "./ledger.js";
 import {
   acquireRefusal,
   decodeBlockNo,
   decodeTipPoint,
+  distinctOutRefs,
   lucidUtxo,
   outputCount,
   outRefKey,
   poolBech32,
-  toOutRef,
   transactionId,
 } from "./ledger-answers.js";
 import { OwnWallets, type OwnWalletsOptions } from "./own-wallets.js";
@@ -135,6 +130,7 @@ export class LedgerProvider implements Provider {
   #pin: Pin | undefined;
   readonly #outputCounts = new Map<string, number>();
   readonly #ownWallets: OwnWallets | undefined;
+  #slotConfig: Promise<SlotConfig> | undefined;
 
   constructor(options: LedgerProviderOptions) {
     this.transport = options.transport;
@@ -159,10 +155,18 @@ export class LedgerProvider implements Provider {
         await state.query({ query: "era_history" }),
       ]),
     );
-    return slotConfigFrom(
-      decodeSystemStart(systemStart!),
-      decodeEraHistory(eraHistory!),
-    );
+    return decodeSlotConfig(systemStart!, eraHistory!);
+  }
+
+  /**
+   * {@link slotConfig} read once, for this provider's life; a failed read is
+   * forgotten so the next call reads again. `slotConfig()` always reads.
+   */
+  cachedSlotConfig(): Promise<SlotConfig> {
+    return (this.#slotConfig ??= this.slotConfig().catch((error: unknown) => {
+      this.#slotConfig = undefined;
+      throw error;
+    }));
   }
 
   /** The node's ledger tip now: its point and block number from one acquired state. */
@@ -256,14 +260,7 @@ export class LedgerProvider implements Provider {
 
   /** The live outputs among `outRefs`, in request order, at the build step's point. */
   async getUtxosByOutRef(outRefs: Array<LucidOutRef>): Promise<UTxO[]> {
-    const wanted = [
-      ...new Map(
-        outRefs.map((outRef) => {
-          const parsed = toOutRef(outRef);
-          return [outRefKey(parsed), parsed] as const;
-        }),
-      ).values(),
-    ];
+    const wanted = distinctOutRefs(outRefs);
     const found = new Map(
       (await this.ledgerUtxosByTxIn(wanted, "build")).map(
         (entry) => [outRefKey(entry.outRef), lucidUtxo(entry)] as const,

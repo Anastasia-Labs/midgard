@@ -23,7 +23,6 @@ import { inject } from "vitest";
 
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
-import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import type {} from "./global-setup.js";
 import { fixtureValidationTrace } from "./helpers.validation-trace.js";
 
@@ -240,7 +239,7 @@ const withHeader = async (
   payloadWithoutHash: SDK.DaPayload,
   header: Header,
 ) => {
-  const headerHash = headerHashOf(header);
+  const headerHash = SDK.stateQueueHeaderHash(header);
   const payload: SDK.DaPayload = {
     ...payloadWithoutHash,
     block_body: {

@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 import {
   admitWatcherNativeRollForwardBlock,
   assertWatcherNativeBlockAdmission,
-} from "../../src/l1/native-block-admission.js";
-import { parseWatcherNativeChainSyncEvent } from "../../src/l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
+} from "../src/devnet-stack/native-block-admission.js";
 import {
+  parseWatcherNativeChainSyncEvent,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncRollForward,
-} from "../../src/l1/native-chain-sync.exact-record.js";
+} from "../src/devnet-stack/native-chain-sync.exact-record.js";
 
 const FIXTURE_METADATA = Object.freeze({
   blockHash: "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
@@ -24,7 +24,7 @@ const FIXTURE_METADATA = Object.freeze({
 const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForward> => {
   const rawBlockCbor = (
     await readFile(
-      new URL("../support/conway-block.hex", import.meta.url),
+      new URL("./support/conway-block.hex", import.meta.url),
       "utf8",
     )
   ).trim();
@@ -47,7 +47,7 @@ describe("native block admission", () => {
     const event = parseWatcherNativeChainSyncEvent(
       JSON.parse(
         await readFile(
-          new URL("../support/devnet-origin-block.json", import.meta.url),
+          new URL("./support/devnet-origin-block.json", import.meta.url),
           "utf8",
         ),
       ),

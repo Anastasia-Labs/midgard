@@ -122,7 +122,7 @@ export const loadAcceptanceNativeReadConfig = async (
     processConfig.faultProofInfrastructure.manifestPath !== paths.manifest ||
     source.chainSync.socketPath !== layout.cardanoSocket ||
     source.chainSync.nodeConfigPath !== layout.hostCardanoConfig ||
-    source.chainSync.genesisConfigPath !== layout.shelleyGenesis ||
+    source.chainSync.genesisIdentitySha256 !== hashes[layout.shelleyGenesis] ||
     canonicalJson(
       processConfig.watcherConfig,
       "acceptance watcher process config",

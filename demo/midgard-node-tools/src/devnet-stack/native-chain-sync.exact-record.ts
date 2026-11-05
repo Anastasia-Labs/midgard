@@ -1,9 +1,14 @@
-import { NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "@al-ft/midgard-l1-follower/native-reward-account";
+import type { ReadNativeLedgerFile } from "@al-ft/midgard-l1-follower/native-reward-account";
+import type { WatcherConfig } from "midgard-watcher";
 
-import { type WatcherConfig } from "../runtime/config.js";
-
+/**
+ * The devnet stack's native chain-sync records: the events its supervisor
+ * reads from the local node (`native-chain-sync.ts`), their exact-record
+ * parsers and the receipts that bind them to one live supervisor. The watcher
+ * itself follows L1 through its chain follower and reads none of these.
+ */
 export const WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION =
-  NATIVE_CHAIN_SYNC_SCHEMA_VERSION;
+  "midgard-watcher-native-chain-sync-v1" as const;
 
 export const HEX_32 = /^[0-9a-f]{64}$/u;
 
@@ -13,15 +18,7 @@ export const MAX_BLOCK_CBOR_HEX = 8 * 1024 * 1024;
 
 export const MAX_INTERSECTIONS = 128;
 
-export const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
-
 export const MAX_UINT64 = (1n << 64n) - 1n;
-
-export const NETWORK_MAGIC = Object.freeze({
-  Mainnet: 764_824_073,
-  Preprod: 1,
-  Preview: 2,
-} as const);
 
 export class NativeChainSyncStartupFailure extends Error {
   readonly code: string;
@@ -32,6 +29,36 @@ export class NativeChainSyncStartupFailure extends Error {
     this.code = code;
   }
 }
+
+/**
+ * Native chain-sync startup failures (the devnet stack retries them with this
+ * test explicitly) that say only that the node did not answer: the node
+ * transport was not ready (its sidecar was starting or restarting, or the
+ * node's socket did not accept or dropped the connection, during the
+ * handshake or after it), an auxiliary node connection could not be opened,
+ * or the read did not start in time. A node that is restarting or still
+ * opening its database gives exactly these. A rejected intersection, an
+ * invalid startup, a refused handshake (`node_handshake_failed`: another
+ * network magic, no common version) and every identity mismatch are not
+ * among them.
+ */
+const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  "sidecar_starting",
+  "sidecar_restarting",
+  "sidecar_unavailable",
+  "sidecar_exited",
+  "node_unreachable",
+  "node_connection_lost",
+  "node_unresponsive",
+  "node_unavailable",
+  "startup_timed_out",
+]);
+
+export const isWatcherNativeNodeUnavailable = (
+  error: unknown,
+): error is NativeChainSyncStartupFailure =>
+  error instanceof NativeChainSyncStartupFailure &&
+  NODE_UNAVAILABLE_CODES.has(error.code);
 
 export type WatcherNativeChainSyncPoint =
   | Readonly<{ kind: "origin" }>
@@ -251,4 +278,77 @@ export const parsePoint = (
     blockHash: string(point.blockHash, HEX_32, `${label} hash`),
     slot: string(point.slot, NATURAL, `${label} slot`),
   });
+};
+
+export const parseWatcherNativeChainSyncEvent = (
+  value: unknown,
+): WatcherNativeChainSyncEvent => {
+  const base = exactRecord(
+    value,
+    typeof value === "object" &&
+      value !== null &&
+      (value as { kind?: unknown }).kind === "roll_forward"
+      ? [
+          "blockHash",
+          "blockNo",
+          "blockType",
+          "kind",
+          "prevHash",
+          "rawBlockCbor",
+          "schemaVersion",
+          "slot",
+          "tip",
+        ]
+      : ["kind", "point", "schemaVersion", "tip"],
+    "native chain-sync event",
+  );
+  if (base.schemaVersion !== WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION) {
+    throw new Error("native chain-sync event schema changed");
+  }
+  const tip = parseTip(base.tip);
+  if (base.kind === "roll_forward") {
+    const rawBlockCbor = string(
+      base.rawBlockCbor,
+      /^(?:[0-9a-f]{2})+$/u,
+      "native raw block CBOR",
+    );
+    if (rawBlockCbor.length > MAX_BLOCK_CBOR_HEX) {
+      throw new Error("native raw block CBOR exceeds the supervisor bound");
+    }
+    return Object.freeze({
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+      kind: "roll_forward",
+      blockHash: string(base.blockHash, HEX_32, "native block hash"),
+      blockType: string(base.blockType, NATURAL, "native block type"),
+      prevHash:
+        base.blockNo === "0" && base.prevHash === ""
+          ? ""
+          : string(base.prevHash, HEX_32, "native previous block hash"),
+      slot: string(base.slot, NATURAL, "native chain-sync slot"),
+      blockNo: string(base.blockNo, NATURAL, "native block number"),
+      rawBlockCbor,
+      tip,
+    });
+  }
+  if (base.kind !== "roll_backward") {
+    throw new Error("native chain-sync event kind is unsupported");
+  }
+  return Object.freeze({
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+    kind: "roll_backward",
+    point: parsePoint(base.point, "native rollback point"),
+    tip,
+  });
+};
+
+export type NativeStreamInput = {
+  readonly binaryPath: string;
+  readonly watcherConfig: WatcherConfig;
+  readonly signal?: AbortSignal;
+  readonly intersection: WatcherNativeChainSyncPoint;
+  readonly startupTimeoutMs: number;
+  readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
+  /** Private runtime lifetime hook, after native admission is revoked. */
+  readonly onAuthorityRevoked?: () => void;
+  readonly unsafeReadIdentityFileForTest?: ReadNativeLedgerFile;
 };

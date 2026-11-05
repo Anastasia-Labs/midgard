@@ -1324,6 +1324,7 @@ jobs:
             watcher-journeys/ledger-tip.test.ts \
             watcher-journeys/live-chain.test.ts \
             watcher-journeys/local-kupmios.test.ts \
+            watcher-journeys/native-ledger-kupmios.test.ts \
             watcher-journeys/native-recorder.test.ts \
             watcher-journeys/operations.test.ts \
             watcher-journeys/operator-pause.test.ts \

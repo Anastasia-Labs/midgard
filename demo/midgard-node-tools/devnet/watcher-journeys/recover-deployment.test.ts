@@ -2,12 +2,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CML, coreToUtxo, validatorToScriptHash } from "@lucid-evolution/lucid";
-import {
-  admitWatcherNativeRollForwardBlock,
-  parseWatcherNativeChainSyncEvent,
-} from "midgard-watcher";
 import { expect, it } from "vitest";
 
+import { admitWatcherNativeRollForwardBlock } from "../../src/devnet-stack/native-block-admission.js";
+import { parseWatcherNativeChainSyncEvent } from "../../src/devnet-stack/native-chain-sync.exact-record.js";
 import { journeyLucid } from "./journey-lucid.js";
 import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";

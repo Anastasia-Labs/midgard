@@ -7,8 +7,6 @@ import {
   L1ProviderTransientError,
 } from "@al-ft/midgard-l1-follower/provider";
 
-import { NativeChainSyncStartupFailure } from "./native-chain-sync.exact-record.js";
-
 /** Socket and resolver codes Node and undici give a request that never completed. */
 const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED",
@@ -22,37 +20,6 @@ const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
 ]);
-
-/**
- * Native chain-sync startup failures (produced by node-tools' devnet stack,
- * which retries them with this test explicitly) that say only that the node
- * did not answer: the node
- * transport was not ready (its sidecar was starting or restarting, or the
- * node's socket did not accept or dropped the connection, during the
- * handshake or after it), an auxiliary node connection could not be opened,
- * or the read did not start in time. A node that is restarting or still
- * opening its database gives exactly these. A rejected intersection, an
- * invalid startup, a refused handshake (`node_handshake_failed`: another
- * network magic, no common version) and every identity mismatch are not
- * among them.
- */
-const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
-  "sidecar_starting",
-  "sidecar_restarting",
-  "sidecar_unavailable",
-  "sidecar_exited",
-  "node_unreachable",
-  "node_connection_lost",
-  "node_unresponsive",
-  "node_unavailable",
-  "startup_timed_out",
-]);
-
-export const isWatcherNativeNodeUnavailable = (
-  error: unknown,
-): error is NativeChainSyncStartupFailure =>
-  error instanceof NativeChainSyncStartupFailure &&
-  NODE_UNAVAILABLE_CODES.has(error.code);
 
 /** How far down a `cause` chain a wrapped transient is still recognised. */
 const MAXIMUM_CAUSE_DEPTH = 8;

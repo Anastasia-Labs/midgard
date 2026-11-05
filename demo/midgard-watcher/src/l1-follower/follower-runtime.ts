@@ -241,19 +241,13 @@ export const openWatcherFollowerRuntime = (
   // (the read queues behind any ledger read, a wallet seed's included).
   type SlotConfig = Awaited<ReturnType<L1FollowerProvider["slotConfig"]>>;
   let slotConfig: SlotConfig | undefined;
-  let readingSlotConfig: Promise<SlotConfig> | undefined;
   const slotTime = (slot: number): number | Promise<number> => {
     const at = ({ zeroTime, zeroSlot, slotLength }: SlotConfig): number =>
       zeroTime + (slot - zeroSlot) * slotLength;
     if (slotConfig !== undefined) return at(slotConfig);
-    readingSlotConfig ??= provider.slotConfig().then(
-      (config) => (slotConfig = config),
-      (error: unknown) => {
-        readingSlotConfig = undefined;
-        throw error;
-      },
-    );
-    return readingSlotConfig.then(at);
+    return provider
+      .cachedSlotConfig()
+      .then((config) => at((slotConfig = config)));
   };
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,

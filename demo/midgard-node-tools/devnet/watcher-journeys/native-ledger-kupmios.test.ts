@@ -6,10 +6,11 @@ import {
 import { createRequire } from "node:module";
 import { type Socket } from "node:net";
 
+import { nativeLedgerAuthoritySource } from "@al-ft/midgard-l1-follower/native-reward-account";
 import { Kupmios, type KupmiosOptions, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { NativeLedgerKupmios } from "../src/native-ledger-kupmios.js";
+import { NativeLedgerKupmios } from "./native-ledger-kupmios.js";
 
 const baseProtocolParameters = {
   minFeeCoefficient: 44,
@@ -370,5 +371,18 @@ describe("NativeLedgerKupmios and Lucid public initialization", () => {
     } finally {
       await fixture.close();
     }
+  });
+
+  it("fails reward-account reads closed without a local ledger", async () => {
+    const provider = new NativeLedgerKupmios(
+      "http://127.0.0.1:1442",
+      "http://127.0.0.1:1337",
+      nativeLedgerAuthoritySource(undefined),
+    );
+    await expect(
+      provider.getRewardAccount(
+        "stake_test17rrxhht4hajr32nu03ymgt6dascxfukfuz5wu3qqefvcdlq4a2z47",
+      ),
+    ).rejects.toThrow(/requires a local node ledger/u);
   });
 });

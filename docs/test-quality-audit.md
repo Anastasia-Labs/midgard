@@ -141,8 +141,8 @@ A non-empty error message is a weak cause discriminator, not a tautology:
 `new Error()` has an empty message. Replace a weak refusal oracle with a stronger
 one before removing it. Non-null assertions (`!`) likewise perform no runtime
 check. An `arrayContaining` with one matcher only establishes one match; the
-watcher's `l1/native-block-admission.test.ts` should be reviewed against its
-claim about every malformed identifier.
+node tools' `tests/devnet-stack-native-block-admission.test.ts` should be
+reviewed against its claim about every malformed identifier.
 
 Do not infer ledger rejection from a `CEKConst` containing False without checking
 the evaluator's script-language success convention. See

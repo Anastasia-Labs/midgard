@@ -14,16 +14,15 @@ import {
   TransportTimeoutError,
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
+
 import {
+  MAX_BLOCK_CBOR_HEX,
+  NativeChainSyncStartupFailure,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncPoint,
-  watcherNativeChainSyncRecord,
   type WatcherNativeChainSyncRollForward,
-} from "midgard-watcher";
-
-const { MAX_BLOCK_CBOR_HEX, NativeChainSyncStartupFailure } =
-  watcherNativeChainSyncRecord;
+} from "./native-chain-sync.exact-record.js";
 
 type NativeTip = WatcherNativeChainSyncRollForward["tip"];
 

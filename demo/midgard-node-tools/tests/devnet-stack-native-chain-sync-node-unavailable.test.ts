@@ -1,6 +1,6 @@
-import { watcherNativeChainSyncAuthorityDetails } from "midgard-watcher";
 import { describe, expect, it, vi } from "vitest";
 
+import { watcherNativeChainSyncAuthorityDetails } from "../src/devnet-stack/native-chain-sync.exact-record.js";
 import {
   startWatcherNativeChainSyncWithRetry,
   watcherNativeChainSyncStartupTimeoutMs,

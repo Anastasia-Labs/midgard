@@ -1,11 +1,11 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { stateQueueHeaderHash } from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { expect, it } from "vitest";
 
 import { CommitteeService } from "../../src/committee-service.js";
 import { daPayloadSha256 } from "../../src/da/payload.js";
 import { type Header } from "../../src/domain.js";
-import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
@@ -441,7 +441,7 @@ export const registerPayloadsTests = () => {
 
 const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const dir = await tempDir();
-  const headerHash = headerHashOf(header);
+  const headerHash = stateQueueHeaderHash(header);
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
   const config = minimalConfig({

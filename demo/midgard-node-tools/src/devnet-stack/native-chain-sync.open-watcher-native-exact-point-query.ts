@@ -1,23 +1,23 @@
 import { performance } from "node:perf_hooks";
 
+import { parseWatcherConfig } from "midgard-watcher";
+
 import {
-  parseWatcherConfig,
+  exactRecord,
+  HEX_32,
+  MAX_UINT64,
+  type NativeBlockPoint,
+  type NativeStreamInput,
+  NATURAL,
   readWatcherNativeChainSyncEventReceipt,
+  string,
   type WatcherNativeChainSyncAuthority,
   type WatcherNativeChainSyncEventReceipt,
   watcherNativeChainSyncEventReceipt,
-  watcherNativeChainSyncRecord,
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
-  type watcherNativeGenesisIdentity,
-} from "midgard-watcher";
-
+} from "./native-chain-sync.exact-record.js";
 import { startNativeSupervisor } from "./native-chain-sync.start-native-supervisor.js";
-
-const { exactRecord, HEX_32, MAX_UINT64, NATURAL, string } =
-  watcherNativeChainSyncRecord;
-type NativeBlockPoint = watcherNativeChainSyncRecord.NativeBlockPoint;
-type NativeStreamInput = watcherNativeGenesisIdentity.NativeStreamInput;
 
 export const startWatcherNativeChainSync = async (
   input: NativeStreamInput,

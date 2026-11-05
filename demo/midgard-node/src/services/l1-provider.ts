@@ -218,14 +218,7 @@ export const nodeL1AccessOver = (
   });
   const provider = new L1FollowerProvider({ store, transport });
   const nowMs = input.nowMs ?? Date.now;
-  let slotConfig: Promise<SlotConfig> | undefined;
-  const readSlotConfig = (): Promise<SlotConfig> => {
-    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
-      slotConfig = undefined;
-      throw error;
-    });
-    return slotConfig;
-  };
+  const readSlotConfig = (): Promise<SlotConfig> => provider.cachedSlotConfig();
   const ledgerTip = async (): Promise<L1ViewPoint> =>
     ledgerTipPointOf(
       await transportCall(() => transport.query({ query: "chain_point" })),

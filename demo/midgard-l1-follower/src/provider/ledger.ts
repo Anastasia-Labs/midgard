@@ -200,3 +200,10 @@ export const slotConfigFrom = (
     slotLength: last.slotLengthMs,
   };
 };
+
+/** Lucid's slot configuration from the `system_start` and `era_history` answers. */
+export const decodeSlotConfig = (
+  systemStart: Uint8Array,
+  eraHistory: Uint8Array,
+): SlotConfig =>
+  slotConfigFrom(decodeSystemStart(systemStart), decodeEraHistory(eraHistory));

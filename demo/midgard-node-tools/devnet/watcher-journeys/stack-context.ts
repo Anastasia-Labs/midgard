@@ -11,7 +11,6 @@ import {
   type AllowList,
   requireAllowListed,
 } from "@al-ft/midgard-core/deployment-profile";
-import { NativeLedgerKupmios } from "@al-ft/midgard-l1-follower/native-ledger-kupmios";
 import {
   nativeLedgerAuthoritySource,
   readNativeLedgerGenesis,
@@ -49,6 +48,7 @@ import {
   journeyNetwork,
 } from "./journey-network.js";
 import { journeyWorkflowChain } from "./live-context.js";
+import { NativeLedgerKupmios } from "./native-ledger-kupmios.js";
 import {
   readStackDaProducerManifest,
   stackDaProducer,

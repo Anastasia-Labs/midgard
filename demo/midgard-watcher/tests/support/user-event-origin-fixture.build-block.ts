@@ -5,10 +5,9 @@ import {
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { decodeBlock } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
 import { type WatcherUserEventScriptBinding } from "../../src/runtime/deployment-identity.js";
 import {
   type MadeOriginDeployment,
@@ -80,27 +79,36 @@ export const buildBlock = (
     headerBody.block_number(),
     headerBody.slot(),
   );
-  const rawBlockCbor = encodeCborArrayRaw([headerBytes, ...bodyParts]).toString(
-    "hex",
-  );
-  const nativeBlock = admitWatcherNativeRollForwardBlock({
-    ...point,
-    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-    kind: "roll_forward",
-    blockType: "7",
-    prevHash: parentPoint.blockHash,
-    rawBlockCbor,
-    tip: { kind: "point", ...point },
-  });
+  const rawBlock = encodeCborArrayRaw([headerBytes, ...bodyParts]);
+  // The follower's decoder reads the block the watcher would follow: it must
+  // name this header and these transactions, in this order.
+  const decoded = decodeBlock(rawBlock);
+  const transactionIds = decoded.txs.map((tx) => tx.hash.toString("hex"));
   if (
-    nativeBlock.transactionIds.length !== frames.length ||
+    decoded.point.hash.toString("hex") !== point.blockHash ||
+    transactionIds.length !== frames.length ||
     frames.some(
       (tx, index) =>
-        CML.hash_transaction(tx.body()).to_hex() !==
-        nativeBlock.transactionIds[index],
+        CML.hash_transaction(tx.body()).to_hex() !== transactionIds[index],
     )
   )
     throw new Error("Synthetic block changed a transaction identity");
+  const nativeBlock = Object.freeze({
+    rawBlockCbor: rawBlock.toString("hex"),
+    transactionIds: Object.freeze(transactionIds),
+    // Each frame as the block carries it: its body, witnesses, validity and
+    // auxiliary data, reassembled.
+    transactionCbors: Object.freeze(
+      frames.map((tx) =>
+        CML.Transaction.new(
+          tx.body(),
+          tx.witness_set(),
+          tx.is_valid(),
+          tx.auxiliary_data(),
+        ).to_cbor_hex(),
+      ),
+    ),
+  });
   return Object.freeze({ point, parentPoint, nativeBlock });
 };
 

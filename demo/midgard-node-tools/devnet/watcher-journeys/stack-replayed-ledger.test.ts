@@ -21,7 +21,6 @@ const stackWatcherConfig = parseWatcherConfig({
         kind: "cardano_node_socket",
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/config.json",
-        genesisConfigPath: "/etc/cardano/shelley-genesis.json",
         genesisIdentitySha256: "11".repeat(32),
       },
     },

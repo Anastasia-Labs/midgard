@@ -12,7 +12,6 @@
           "kind": "cardano_node_socket",
           "socketPath": "/ipc/node.socket",
           "nodeConfigPath": "/cardano-config/config.json",
-          "genesisConfigPath": "/cardano-config/shelley-genesis.json",
           "genesisIdentitySha256": "0000000000000000000000000000000000000000000000000000000000000000"
         }
       },

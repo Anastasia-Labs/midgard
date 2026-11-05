@@ -4,11 +4,14 @@ import {
   type DepthParameters,
   isSafe,
   levelAtDepth,
+  type LinkedQueueEntry,
+  type LinkedQueueUnhealthyReason,
   type SqlRow,
   type SqlTx,
+  walkLinkedQueue,
 } from "@al-ft/midgard-l1-follower";
+import type { StateQueueOutputProblem } from "@al-ft/midgard-sdk";
 
-import type { QueueOutputProblem } from "./queue-derivation.js";
 import { COMMITTEE_QUEUE_TABLE } from "./queue-table.js";
 
 /** One `committee_queue_outputs` row. Hex fields are lowercase. */
@@ -23,7 +26,7 @@ export type QueueRow = Readonly<{
   daStatus: string | null;
   endTimeMs: bigint | null;
   blockTimeMs: bigint | null;
-  problems: readonly QueueOutputProblem[];
+  problems: readonly StateQueueOutputProblem[];
   datumHex: string | null;
   createdSlot: number;
   createdHeight: number;
@@ -73,7 +76,7 @@ const toRow = (row: SqlRow): QueueRow => {
     endTimeMs: asBigInt(row.end_time_ms),
     blockTimeMs: asBigInt(row.block_time_ms),
     problems:
-      problems === "" ? [] : (problems.split(",") as QueueOutputProblem[]),
+      problems === "" ? [] : (problems.split(",") as StateQueueOutputProblem[]),
     datumHex: asBytes(row.datum)?.toString("hex") ?? null,
     createdSlot: asNumber(row.created_slot),
     createdHeight: asNumber(row.created_height),
@@ -117,20 +120,6 @@ export const readQueueHeaderHashesAt = async (
     .map((row) => String(row.header_hash))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-/** Why the landed queue cannot be walked into one list from one root. */
-export type QueueUnhealthyReason =
-  | "no_root"
-  | "multiple_roots"
-  /** An output under the queue policy that is not a root or a V1 node. */
-  | "invalid_output"
-  /** A link names a key no live node has. */
-  | "broken_link"
-  /** Two live nodes share a key. */
-  | "duplicate_key"
-  | "cycle"
-  /** A live node the walk from the root never reaches. */
-  | "orphan_node";
-
 export type QueueNodeStatus = "unattested" | "attested" | "conflicted";
 
 export type LandedQueueNode = Readonly<{
@@ -141,7 +130,7 @@ export type LandedQueueNode = Readonly<{
   /** As the current scanner classifies it: any problem makes it conflicted. */
   status: QueueNodeStatus;
   daStatus: string;
-  problems: readonly QueueOutputProblem[];
+  problems: readonly StateQueueOutputProblem[];
   endTimeMs: bigint;
   blockTimeMs: bigint | null;
   createdSlot: number;
@@ -159,7 +148,7 @@ export type LandedQueueRoot = Readonly<{
 export type LandedQueue = Readonly<{
   healthy: boolean;
   /** Null when healthy. */
-  reason: QueueUnhealthyReason | null;
+  reason: LinkedQueueUnhealthyReason | null;
   detail: string | null;
   root: LandedQueueRoot | null;
   /** The walk from the root, in list order (cut where the walk failed). */
@@ -190,102 +179,49 @@ const toNode = (row: QueueRow): LandedQueueNode => ({
   datumHex: row.datumHex ?? "",
 });
 
+type Entry = LinkedQueueEntry & Readonly<{ row: QueueRow }>;
+
 /**
  * The landed queue: the live queue outputs walked from the single root along
- * the links. A pure function of the rows. Anything that is not one list from
- * one root (a malformed queue output, a broken link, a cycle, a node nothing
- * links to) is unhealthy, never silently dropped.
+ * the links with the follower package's shared walk. A pure function of the
+ * rows. Anything that is not one list from one root (a malformed queue
+ * output, a broken link, a cycle, a node nothing links to) is unhealthy,
+ * never silently dropped. An invalid output's detail names its problems.
  */
 export const walkLandedQueue = (rows: readonly QueueRow[]): LandedQueue => {
-  const roots = rows.filter((row) => row.kind === "root");
-  const nodes = rows.filter((row) => row.kind === "node");
-  const invalid = rows.filter((row) => row.kind === "invalid");
-  const unhealthy = (
-    reason: QueueUnhealthyReason,
-    detail: string,
-    root: LandedQueueRoot | null,
-    walked: readonly LandedQueueNode[],
-  ): LandedQueue => {
-    const reached = new Set(walked.map((node) => node.outRef));
-    if (root !== null) reached.add(root.outRef);
-    return {
-      healthy: false,
-      reason,
-      detail,
-      root,
-      nodes: walked,
-      strays: rows
-        .map((row) => row.outRef)
-        .filter((outRef) => !reached.has(outRef)),
-    };
-  };
-  const first = roots[0];
-  if (first === undefined)
-    return unhealthy("no_root", "no live root", null, []);
-  const root: LandedQueueRoot = {
-    outRef: first.outRef,
-    headerHash: first.headerHash ?? "",
-    nextKey: first.nextKey,
-    createdHeight: first.createdHeight,
-  };
-  if (roots.length > 1)
-    return unhealthy(
-      "multiple_roots",
-      roots.map((row) => row.outRef).join(" "),
-      root,
-      [],
-    );
-  const byKey = new Map<string, QueueRow[]>();
-  for (const row of nodes) {
-    const key = row.nodeKey ?? "";
-    byKey.set(key, [...(byKey.get(key) ?? []), row]);
-  }
-  const walked: LandedQueueNode[] = [];
-  const seen = new Set<string>();
-  let key = root.nextKey;
-  while (key !== null) {
-    if (seen.has(key)) return unhealthy("cycle", key, root, walked);
-    seen.add(key);
-    const matches = byKey.get(key) ?? [];
-    if (matches.length === 0)
-      return unhealthy("broken_link", key, root, walked);
-    if (matches.length > 1)
-      return unhealthy(
-        "duplicate_key",
-        matches.map((row) => row.outRef).join(" "),
-        root,
-        walked,
-      );
-    const row = matches[0]!;
-    walked.push(toNode(row));
-    key = row.nextKey;
-  }
-  if (invalid.length > 0)
-    return unhealthy(
-      "invalid_output",
-      invalid.map((row) => `${row.outRef}:${row.problems.join("+")}`).join(" "),
-      root,
-      walked,
-    );
-  if (walked.length < nodes.length) {
-    const reached = new Set(walked.map((node) => node.outRef));
-    return unhealthy(
-      "orphan_node",
-      nodes
-        .filter((row) => !reached.has(row.outRef))
-        .map((row) => row.outRef)
-        .join(" "),
-      root,
-      walked,
-    );
-  }
+  const walk = walkLinkedQueue(
+    rows.map(
+      (row): Entry => ({
+        id: row.outRef,
+        kind: row.kind,
+        key: row.nodeKey,
+        next: row.nextKey,
+        row,
+      }),
+    ),
+  );
+  const root = walk.root?.row;
   return {
-    healthy: true,
-    reason: null,
-    detail: null,
-    root,
-    nodes: walked,
-    strays: [],
+    healthy: walk.healthy,
+    reason: walk.reason,
+    detail:
+      walk.reason === "invalid_output"
+        ? rows
+            .filter((row) => row.kind === "invalid")
+            .map((row) => `${row.outRef}:${row.problems.join("+")}`)
+            .join(" ")
+        : walk.detail,
+    root:
+      root === undefined
+        ? null
+        : {
+            outRef: root.outRef,
+            headerHash: root.headerHash ?? "",
+            nextKey: root.nextKey,
+            createdHeight: root.createdHeight,
+          },
+    nodes: walk.nodes.map((entry) => toNode(entry.row)),
+    strays: walk.strays,
   };
 };
 

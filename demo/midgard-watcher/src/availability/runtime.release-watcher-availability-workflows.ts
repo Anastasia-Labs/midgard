@@ -13,7 +13,6 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherReleasedHeaderProof,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import { type WatcherDaBondPoolObservation } from "./pool-observation.js";
 
 /** Queued headers merged or removed on L1 at release finality, by hash. */
@@ -168,7 +167,7 @@ export type WatcherAvailabilityRuntime = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
     merged?: ReadonlySet<string>,
   ): Promise<ReadonlySet<string>>;
-  invalidateForRollback(point?: WatcherNativeChainSyncPoint): void;
+  invalidateForRollback(): void;
   invalidateForShutdown(): void;
   status(): WatcherAvailabilityStatus;
   /** True while a header still needs attestation or the last attempt was blocked. */

@@ -139,45 +139,34 @@ afterEach(() => {
 });
 
 describe("availability runtime across a rollback of its finalized observation", () => {
-  it.each([
-    [
-      "an earlier slot",
-      { kind: "point", slot: "3", blockHash: "22".repeat(32) },
-    ],
-    [
-      "the same slot on another block",
-      { kind: "point", slot: "5", blockHash: "33".repeat(32) },
-    ],
-    ["origin", { kind: "origin" }],
-  ] as const)(
-    "rewinds to %s and re-derives without latching the journal",
-    async (_label, point) => {
-      const runtime = await fixture();
+  // The rollback point does not matter: any rollback rewinds the finalized
+  // observation and the next one re-derives every intent.
+  it("rewinds and re-derives without latching the journal", async () => {
+    const runtime = await fixture();
+    try {
+      await runtime.reconcile(observation(5), false);
+      expect(runtime.status().phase).toBe("ready");
+      runtime.invalidateForRollback();
+      expect(runtime.status()).toMatchObject({
+        phase: "waiting",
+        pendingHeaders: [],
+      });
+      await runtime.reconcile(observation(4, "44".repeat(32)), false);
+      expect(io.reconcile).toHaveBeenCalledTimes(2);
+      expect(runtime.status().phase).toBe("ready");
+      // Another process sharing the wallet's journal is not refused either.
+      const shared = openAvailabilityOperationJournal(io.journalPath);
       try {
-        await runtime.reconcile(observation(5), false);
-        expect(runtime.status().phase).toBe("ready");
-        runtime.invalidateForRollback(point);
-        expect(runtime.status()).toMatchObject({
-          phase: "waiting",
-          pendingHeaders: [],
-        });
-        await runtime.reconcile(observation(4, "44".repeat(32)), false);
-        expect(io.reconcile).toHaveBeenCalledTimes(2);
-        expect(runtime.status().phase).toBe("ready");
-        // Another process sharing the wallet's journal is not refused either.
-        const shared = openAvailabilityOperationJournal(io.journalPath);
-        try {
-          expect(() =>
-            shared.acquire("actor", "other-process", Date.now(), 1_000),
-          ).not.toThrow();
-        } finally {
-          shared.close();
-        }
+        expect(() =>
+          shared.acquire("actor", "other-process", Date.now(), 1_000),
+        ).not.toThrow();
       } finally {
-        await runtime.close();
+        shared.close();
       }
-    },
-  );
+    } finally {
+      await runtime.close();
+    }
+  });
 
   it("fails readiness with a held intent's reason until fresh evidence clears it", async () => {
     const runtime = await fixture();

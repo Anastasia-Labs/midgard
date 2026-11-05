@@ -26,7 +26,6 @@ import { committeeAvailabilityReads } from "../../src/l1/follower/availability-r
 import { committeeTracked } from "../../src/l1/follower/committee-follower-config.js";
 import { committeeL1Source } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
-import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
@@ -234,7 +233,7 @@ export const harness = async () => {
     header: async (transactionCount: number): Promise<Committed> => {
       const fixture = await makePayloadFixture(transactionCount);
       payloads.set(fixture.headerHash, fixture.payloadCbor);
-      expect(headerHashOf(fixture.header)).toBe(fixture.headerHash);
+      expect(SDK.stateQueueHeaderHash(fixture.header)).toBe(fixture.headerHash);
       return { header: fixture.header, headerHash: fixture.headerHash };
     },
     /** The commit of `committed` as the first node after the root. */

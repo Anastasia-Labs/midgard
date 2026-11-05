@@ -13,7 +13,6 @@ import {
   slotTimeMs,
 } from "../../src/l1/follower/obligations.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
-import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import {
   nodeDatum,
   queueOutput,
@@ -158,7 +157,7 @@ export class QueueChain {
       tail?.hash ?? root.headerHash,
       slotTimeMs(this.chain.tip.point.slot + 3, this.slotTime),
     );
-    const hash = headerHashOf(header);
+    const hash = SDK.stateQueueHeaderHash(header);
     const relinked =
       tail === undefined
         ? queueOutput(

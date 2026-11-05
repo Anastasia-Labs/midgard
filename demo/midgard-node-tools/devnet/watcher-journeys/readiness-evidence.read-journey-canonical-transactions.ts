@@ -8,12 +8,12 @@ import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { type FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs";
 import { CML, coreToUtxo } from "@lucid-evolution/lucid";
 import {
-  admitWatcherNativeRollForwardBlock,
-  parseWatcherNativeChainSyncEvent,
   readWatcherFaultDecisionEvidence,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
 } from "midgard-watcher";
 
+import { admitWatcherNativeRollForwardBlock } from "../../src/devnet-stack/native-block-admission.js";
+import { parseWatcherNativeChainSyncEvent } from "../../src/devnet-stack/native-chain-sync.exact-record.js";
 import { readJourneyArtifact } from "./artifacts.js";
 import type { JourneyCategory, JourneyContext } from "./fixture.js";
 

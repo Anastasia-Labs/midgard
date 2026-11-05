@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
@@ -9,17 +10,27 @@ import {
 } from "@al-ft/l1-node-transport";
 import {
   deriveWatcherNativeGenesisIdentity,
-  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   watcherCanonicalJson,
+} from "midgard-watcher";
+
+import {
+  authorityDetails,
+  authorityLiveness,
+  eventReceiptBrand,
+  eventReceipts,
+  MAX_INTERSECTIONS,
+  NativeChainSyncStartupFailure,
+  type NativeOperation,
+  type NativeStreamInput,
+  parsePoint,
+  receiptsByEvent,
+  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncPoint,
-  watcherNativeChainSyncRecord,
   type WatcherNativeChainSyncRuntime,
-  watcherNativeGenesisIdentity,
-} from "midgard-watcher";
-
+} from "./native-chain-sync.exact-record.js";
 import {
   fromChainPoint,
   fromChainTip,
@@ -28,18 +39,8 @@ import {
   watcherEvent,
 } from "./native-chain-sync.transport-event.js";
 
-const {
-  authorityDetails,
-  authorityLiveness,
-  eventReceipts,
-  MAX_INTERSECTIONS,
-  NativeChainSyncStartupFailure,
-  parsePoint,
-  receiptsByEvent,
-} = watcherNativeChainSyncRecord;
-const { sha256 } = watcherNativeGenesisIdentity;
-type NativeOperation = watcherNativeChainSyncRecord.NativeOperation;
-type NativeStreamInput = watcherNativeGenesisIdentity.NativeStreamInput;
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value, "utf8").digest("hex");
 
 /**
  * Credit of a following stream: a deep window while it catches up, and one
@@ -355,7 +356,7 @@ export const startNativeSupervisor = async (
     if (eventProvenance.active) {
       const generation = eventProvenance.generation;
       const receipt = Object.freeze({
-        [watcherNativeChainSyncRecord.eventReceiptBrand]: true as const,
+        [eventReceiptBrand]: true as const,
       });
       eventReceipts.set(
         receipt,

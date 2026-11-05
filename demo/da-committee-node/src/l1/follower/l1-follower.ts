@@ -320,14 +320,10 @@ const openFollowerParts = async (
     throw error;
   }
   const provider = new L1FollowerProvider({ store, transport });
-  let slotConfig: Promise<SlotTime> | undefined;
-  const slotTime = (): Promise<SlotTime> => {
-    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
-      slotConfig = undefined;
+  const slotTime = (): Promise<SlotTime> =>
+    provider.cachedSlotConfig().catch((error: unknown) => {
       throw new Error(`L1 slot configuration unavailable: ${message(error)}`);
     });
-    return slotConfig;
-  };
   const network = lucidNetwork(config.network);
   return {
     store,

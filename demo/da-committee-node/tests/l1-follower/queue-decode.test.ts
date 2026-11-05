@@ -5,7 +5,6 @@ import {
   type QueueRow,
   walkLandedQueue,
 } from "../../src/l1/follower/landed-queue.js";
-import { decodeQueueOutput } from "../../src/l1/follower/queue-derivation.js";
 import { makePayloadFixture } from "../helpers.js";
 import { nodeDatum, rootDatum } from "./queue-sim-traffic.js";
 
@@ -14,19 +13,13 @@ const OTHER_HASH = "ee".repeat(28);
 const MREG = Buffer.from("MREG").toString("hex");
 
 const output = (assetName: string, datum: Buffer) => ({
-  address: Buffer.alloc(29),
-  paymentCredential: null,
-  stakeCredential: null,
-  lovelace: 5_000_000n,
   assets: new Map([[POLICY, new Map([[assetName, 1n]])]]),
-  datumHash: null,
   datum,
-  scriptRef: null,
 });
 
 const rowOf = (outRef: string, assetName: string, datum: Buffer): QueueRow => ({
   outRef,
-  ...decodeQueueOutput(output(assetName, datum), POLICY)!,
+  ...SDK.decodeStateQueueOutput(output(assetName, datum), POLICY)!,
   datumHex: datum.toString("hex"),
   createdSlot: 1,
   createdHeight: 1,

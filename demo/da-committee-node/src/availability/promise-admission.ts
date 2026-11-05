@@ -12,7 +12,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CommitteeConfig } from "../config.js";
 import type { StateQueueHeaderRecord, ValidationSummary } from "../domain.js";
-import { headerHashOf } from "../l1/follower/queue-derivation.js";
 import { validateDaSignatureRecord } from "../peer/signatures.js";
 import type { DaSignerValidation } from "../signer.js";
 import type { CommitteeStore } from "../store.js";
@@ -310,7 +309,7 @@ export const committeePromiseAdmission = (args: {
         if (
           header === undefined ||
           header.deploymentFingerprint !== args.config.deploymentFingerprint ||
-          headerHashOf(header.header) !== record.headerHash
+          SDK.stateQueueHeaderHash(header.header) !== record.headerHash
         )
           throw new Error("signed header evidence is unavailable");
         const challenges = snapshot.challenges.filter(
@@ -370,7 +369,8 @@ export const committeePromiseAdmission = (args: {
         candidate.commitment.deployment_identity !==
           args.config.hubOraclePolicyId ||
         digest(candidate.commitment) !== candidate.commitmentDigest ||
-        headerHashOf(candidate.record.header) !== candidate.record.headerHash
+        SDK.stateQueueHeaderHash(candidate.record.header) !==
+          candidate.record.headerHash
       )
         throw new Error("candidate commitment binding is invalid");
       const candidateObligation = potential(candidate.commitment, args.config);

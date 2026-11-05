@@ -24,7 +24,6 @@ export const validConfig = () => ({
         kind: "cardano_node_socket",
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/node-config.json",
-        genesisConfigPath: "/etc/cardano/shelley-genesis.json",
         genesisIdentitySha256: GENESIS_ID,
       },
     },

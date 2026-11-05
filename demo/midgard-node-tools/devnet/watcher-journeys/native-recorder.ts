@@ -2,15 +2,17 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
-import {
-  admitWatcherNativeRollForwardBlock,
-  type WatcherConfig,
-  type WatcherNativeBlockAdmission,
-  watcherNativeChainSyncAuthorityDetails,
-  type WatcherNativeChainSyncEvent,
-} from "midgard-watcher";
+import { type WatcherConfig } from "midgard-watcher";
 import { NativeTransactionNotIncludedError } from "midgard-watcher/tests/support/published-da-target-consumption";
 
+import {
+  admitWatcherNativeRollForwardBlock,
+  type WatcherNativeBlockAdmission,
+} from "../../src/devnet-stack/native-block-admission.js";
+import {
+  watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEvent,
+} from "../../src/devnet-stack/native-chain-sync.exact-record.js";
 import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 
 export const startJourneyNativeRecorder = async (input: {

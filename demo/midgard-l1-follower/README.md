@@ -37,15 +37,14 @@ node: the origin gate and `find-origin` (below) read the chain through a
 caller-supplied `L1NodeTransport`. Only the `find-origin` CLI and the
 reward-account reader below open one.
 
-Three subpaths read the node's ledger for the node, the watcher and the tools,
+Two subpaths read the node's ledger for the node, the watcher and the tools,
 and stay out of the main entry point:
 
 - `./native-reward-account`: a reward account's registration, rewards and
   delegation, queried over the process's shared node transport
   (`queryNativeRewardAccount`), and the node-config genesis identity that
-  query is bound to;
-- `./native-ledger-kupmios`: `NativeLedgerKupmios`, the tool-side Kupmios
-  provider whose reward-account reads go to that query;
+  query is bound to (`readNativeLedgerGenesis`, which reads the node config and
+  its Shelley genesis as strict JSON, refusing repeated keys);
 - `./protocol-parameters`: the deployment manifest's protocol-parameter
   snapshot derived from the raw Conway `protocol_params` answer.
 

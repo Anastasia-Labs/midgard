@@ -1,19 +1,17 @@
 /**
  * A Kupmios provider whose reward-account state comes from the local node's
- * ledger (tools only: the prover CLI and the devnet journeys). Role processes
- * read L1 through the follower and never import this module (the role
- * boundary test pins it).
+ * ledger, for the devnet journeys. Role processes read L1 through the
+ * follower and never import this module (the role boundary test pins it).
  */
+import {
+  type NativeLedgerAuthority,
+  queryNativeRewardAccount,
+} from "@al-ft/midgard-l1-follower/native-reward-account";
 import {
   Kupmios,
   type KupmiosOptions,
   type RewardAccountState,
 } from "@lucid-evolution/lucid";
-
-import {
-  type NativeLedgerAuthority,
-  queryNativeRewardAccount,
-} from "./native-reward-account.js";
 
 /**
  * Kupo/Ogmios transport whose reward-account state comes from the local
