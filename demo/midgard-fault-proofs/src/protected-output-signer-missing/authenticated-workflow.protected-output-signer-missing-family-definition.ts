@@ -17,6 +17,7 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -33,7 +34,6 @@ import {
   createProtectedOutputSignerMissingBoundConfig,
   type LoadManifestBoundProtectedOutputSignerMissingConfig,
   type ManifestBoundProtectedOutputSignerMissingConfig,
-  PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
   PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW,
   type ProtectedOutputSignerMissingDeploymentBinding,
   type ProtectedOutputSignerMissingRuntimeLoader,
@@ -223,13 +223,9 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: PROTECTED_OUTPUT_SIGNER_MISSING_CURSOR_SPEC,
-    stepContractNames: [
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step01,
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step02,
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step03,
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step04,
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step05,
-    ],
+    stepContractNames: cursorStepContractNames(
+      PROTECTED_OUTPUT_SIGNER_MISSING_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const category = "protectedOutputSignerMissing";
       const { config, material } = context.runtime;

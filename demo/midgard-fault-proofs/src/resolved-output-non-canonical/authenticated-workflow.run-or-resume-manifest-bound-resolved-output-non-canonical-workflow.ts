@@ -8,6 +8,7 @@ import {
 } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
 } from "../workflow/family-definition.js";
@@ -32,7 +33,6 @@ import {
   deriveResolvedOutputNonCanonicalAuthenticatedSource,
 } from "./authenticated-workflow.derive-resolved-output-non-canonical-authenticated-source.js";
 import {
-  RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
   RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
   resolvedOutputNonCanonicalConfigFromBinding,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
@@ -212,14 +212,9 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
-    stepContractNames: [
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step01,
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04Datum,
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step05,
-    ],
+    stepContractNames: cursorStepContractNames(
+      RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
+    ),
     transactionPort: (context) => runFor(context).transactions,
   },
   fieldCarriage: [

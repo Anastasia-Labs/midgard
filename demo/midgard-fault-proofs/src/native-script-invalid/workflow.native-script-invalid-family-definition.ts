@@ -9,6 +9,7 @@ import {
 import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.js";
@@ -42,13 +43,9 @@ export const NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofNativeScriptInvalid",
-      "fraudProofNativeScriptInvalidStep02",
-      "fraudProofNativeScriptInvalidStep03",
-      "fraudProofNativeScriptInvalidStep04",
-      "fraudProofNativeScriptInvalidStep05",
-    ],
+    stepContractNames: cursorStepContractNames(
+      NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const { binding, certificate } = context;
       const chain = binding.resolvedContracts.contracts.nativeScriptInvalid;

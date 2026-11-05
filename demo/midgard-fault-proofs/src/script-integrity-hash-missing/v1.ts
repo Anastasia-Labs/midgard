@@ -12,6 +12,7 @@ import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adap
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
@@ -41,15 +42,6 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_WORKFLOW_IDENTITY =
   "script-integrity-hash-missing-production-v1" as const;
 
 export const SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS = Object.freeze({
-  steps: [
-    "fraudProofScriptIntegrityHashMissing",
-    "fraudProofScriptIntegrityHashMissingStep02",
-    "fraudProofScriptIntegrityHashMissingStep03",
-    "fraudProofScriptIntegrityHashMissingScriptGrammar",
-    "fraudProofScriptIntegrityHashMissingScriptScan",
-    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
-    "fraudProofScriptIntegrityHashMissingStep04",
-  ],
   witnesses: {
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -177,7 +169,9 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
-    stepContractNames: SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.steps,
+    stepContractNames: cursorStepContractNames(
+      SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
+    ),
     transactionPort: createTransactionPort,
   },
   fieldCarriage: [

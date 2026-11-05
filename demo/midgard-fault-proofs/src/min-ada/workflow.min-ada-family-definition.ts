@@ -9,6 +9,7 @@ import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-c
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.js";
@@ -107,12 +108,7 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: MIN_ADA_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofMinAda",
-      "fraudProofMinAdaStep02",
-      "fraudProofMinAdaStep03",
-      "fraudProofMinAdaStep04",
-    ],
+    stepContractNames: cursorStepContractNames(MIN_ADA_CURSOR_SPEC),
     transactionPort: (context) => {
       return transactionPort(boundFor(context));
     },

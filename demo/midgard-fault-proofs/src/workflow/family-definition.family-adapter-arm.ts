@@ -318,7 +318,10 @@ export type FamilyAdapterArm<
        */
       kind: "cursor";
       spec: CursorFamilySpec<Category> & Readonly<{ stepCount: StepCount }>;
-      /** Manifest contract names of the chain's steps, in step order. */
+      /**
+       * Manifest contract names of the chain's steps, in step order: core's
+       * deployment step names via `cursorStepContractNames`.
+       */
       stepContractNames: FamilyStepTuple<Category, StepCount, string>;
       refineAction?: NonNullable<
         Parameters<

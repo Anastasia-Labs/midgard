@@ -1,3 +1,4 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 export const LINEAR_FAMILY_SPEC =
@@ -67,19 +68,24 @@ type SuccessorOverrides = Readonly<
   Partial<Record<1 | 2 | 3 | 4, readonly LinearFamilySuccessor[]>>
 >;
 
-/**
- * One spec step per manifest contract name, as a tuple of the same length so
- * a family's step count is visible at the type level (the reference-script
- * types in `family-definition.ts` derive their step tuples from it).
- */
-export type LinearFamilyStepsFor<Names extends readonly string[]> = {
-  readonly [Index in keyof Names]: LinearFamilyStep;
-};
+type LinearFamilyStepCount = LinearFamilyStep["ordinal"];
 
-const steps = <const Names extends readonly [string, ...string[]]>(
-  manifestContractNames: Names,
-  overrides: SuccessorOverrides = {},
-): LinearFamilyStepsFor<Names> => {
+/**
+ * `Count` spec steps as a tuple of that length, so a family's step count is
+ * visible at the type level (the reference-script types in
+ * `family-definition.ts` derive their step tuples from it).
+ */
+export type LinearFamilyStepsFor<
+  Count extends LinearFamilyStepCount,
+  Steps extends readonly LinearFamilyStep[] = readonly [],
+> = Steps["length"] extends Count
+  ? Steps
+  : LinearFamilyStepsFor<Count, readonly [...Steps, LinearFamilyStep]>;
+
+const steps = (
+  manifestContractNames: readonly string[],
+  overrides: SuccessorOverrides,
+): readonly LinearFamilyStep[] => {
   const stepCount = manifestContractNames.length;
   return Object.freeze(
     manifestContractNames.map((manifestContractName, index) => {
@@ -121,104 +127,65 @@ const steps = <const Names extends readonly [string, ...string[]]>(
         terminalStep: successors.includes("proof_token"),
       });
     }),
-  ) as unknown as LinearFamilyStepsFor<Names>;
+  );
 };
 
+/**
+ * A category's spec over core's deployment step names, one spec step per
+ * name. The declared count carries the step tuple length into the types and
+ * must equal core's.
+ */
 const spec = <
   Category extends LinearFamilyCategory,
-  const Names extends readonly [string, ...string[]],
+  const Count extends LinearFamilyStepCount,
 >(
   category: Category,
-  manifestContractNames: Names,
+  stepCount: Count,
   overrides: SuccessorOverrides = {},
 ): LinearFamilySpec &
-  Readonly<{ category: Category; steps: LinearFamilyStepsFor<Names> }> =>
-  Object.freeze({
+  Readonly<{ category: Category; steps: LinearFamilyStepsFor<Count> }> => {
+  const manifestContractNames = deploymentFamilyStepNames(category);
+  if (manifestContractNames.length !== stepCount) {
+    throw new Error(
+      `production linear family ${category} declares ${stepCount.toString()} steps but core deploys ${manifestContractNames.length.toString()}`,
+    );
+  }
+  return Object.freeze({
     schemaVersion: LINEAR_FAMILY_SPEC,
     category,
-    steps: steps(manifestContractNames, overrides),
+    steps: steps(
+      manifestContractNames,
+      overrides,
+    ) as unknown as LinearFamilyStepsFor<Count>,
     terminalSemantics: TERMINAL_SEMANTICS,
   });
+};
 
 const rows = [
-  spec("nonExistentInput", [
-    "fraudProofNonExistentInput",
-    "fraudProofNonExistentInputStep02",
-    "fraudProofNonExistentInputStep03",
-    "fraudProofNonExistentInputStep04",
-  ]),
-  spec("nonExistentInputNoIndex", [
-    "fraudProofNonExistentInputNoIndex",
-    "fraudProofNonExistentInputNoIndexStep02",
-    "fraudProofNonExistentInputNoIndexStep03",
-    "fraudProofNonExistentInputNoIndexStep04",
-  ]),
-  spec("invalidRange", [
-    "fraudProofInvalidRange",
-    "fraudProofInvalidRangeStep02",
-  ]),
-  spec("zeroInput", ["fraudProofZeroInput", "fraudProofZeroInputStep02"]),
-  spec("daHashPreimage", [
-    "fraudProofDaHashPreimage",
-    "fraudProofDaHashPreimageStep02",
-  ]),
-  spec("noReferenceInput", [
-    "fraudProofNoReferenceInput",
-    "fraudProofNoReferenceInputStep02",
-    "fraudProofNoReferenceInputStep03",
-    "fraudProofNoReferenceInputStep04",
-  ]),
-  spec("referenceInputNoIdx", [
-    "fraudProofReferenceInputNoIdx",
-    "fraudProofReferenceInputNoIdxStep02",
-    "fraudProofReferenceInputNoIdxStep03",
-    "fraudProofReferenceInputNoIdxStep04",
-  ]),
-  spec("invalidSignature", [
-    "fraudProofInvalidSignature",
-    "fraudProofInvalidSignatureStep02",
-  ]),
-  spec("fabricatedDeposit", [
-    "fraudProofFabricatedDeposit",
-    "fraudProofFabricatedDepositStep02",
-    "fraudProofFabricatedDepositStep03",
-    "fraudProofFabricatedDepositStep04",
-  ]),
-  spec("fabricatedWithdrawal", [
-    "fraudProofFabricatedWithdrawal",
-    "fraudProofFabricatedWithdrawalStep02",
-    "fraudProofFabricatedWithdrawalStep03",
-    "fraudProofFabricatedWithdrawalStep04",
-  ]),
-  spec("withdrawnReferenceInput", [
-    "fraudProofWithdrawnReferenceInput",
-    "fraudProofWithdrawnReferenceInputStep02",
-    "fraudProofWithdrawnReferenceInputStep03",
-  ]),
-  spec("minFee", ["fraudProofMinFee", "fraudProofMinFeeStep02"]),
-  spec("doubleWithdraw", [
-    "fraudProofDoubleWithdraw",
-    "fraudProofDoubleWithdrawStep02",
-  ]),
-  spec("l2TxMistag", ["fraudProofL2TxMistag", "fraudProofL2TxMistagStep02"]),
-  spec("withdrawnInput", [
-    "fraudProofWithdrawnInput",
-    "fraudProofWithdrawnInputStep02",
-    "fraudProofWithdrawnInputStep03",
-  ]),
+  spec("nonExistentInput", 4),
+  spec("nonExistentInputNoIndex", 4),
+  spec("invalidRange", 2),
+  spec("zeroInput", 2),
+  spec("daHashPreimage", 2),
+  spec("noReferenceInput", 4),
+  spec("referenceInputNoIdx", 4),
+  spec("invalidSignature", 2),
+  spec("fabricatedDeposit", 4),
+  spec("fabricatedWithdrawal", 4),
+  spec("withdrawnReferenceInput", 3),
+  spec("minFee", 2),
+  spec("doubleWithdraw", 2),
+  spec("l2TxMistag", 2),
+  spec("withdrawnInput", 3),
   // Accepted evidence finalizes at step-02; forced evidence branches from
   // step-01 to step-03 and finalizes at step-04 (validators/fraud-proofs/
   // input-set-uniqueness/step-0{1,2,3,4}.ak).
-  spec(
-    "inputSetUniqueness",
-    [
-      "fraudProofInputSetUniqueness",
-      "fraudProofInputSetUniquenessStep02",
-      "fraudProofInputSetUniquenessStep03",
-      "fraudProofInputSetUniquenessStep04",
-    ],
-    { 1: [2, 3], 2: ["proof_token"], 3: [4], 4: ["proof_token"] },
-  ),
+  spec("inputSetUniqueness", 4, {
+    1: [2, 3],
+    2: ["proof_token"],
+    3: [4],
+    4: ["proof_token"],
+  }),
 ] as const satisfies readonly LinearFamilySpec[];
 
 if (

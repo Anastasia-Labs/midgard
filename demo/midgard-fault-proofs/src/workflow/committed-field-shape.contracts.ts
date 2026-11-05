@@ -18,7 +18,7 @@ import {
 import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { type CursorFamilyTransactionPort } from "./cursor-family-adapter.js";
 import { COMMITTED_FIELD_SHAPE_CURSOR_SPEC } from "./cursor-family-spec.js";
-import { defineFamily } from "./family-definition.js";
+import { cursorStepContractNames, defineFamily } from "./family-definition.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import {
   assembleManifestBoundFamilyWorkflow,
@@ -88,10 +88,9 @@ export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofCommittedFieldShape",
-      "fraudProofCommittedFieldShapeStep02",
-    ],
+    stepContractNames: cursorStepContractNames(
+      COMMITTED_FIELD_SHAPE_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createBoundTransactionPort({
         config: {

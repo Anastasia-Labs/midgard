@@ -51,6 +51,7 @@ export {
   MEMBERSHIP_WITNESS_ROLES,
 } from "./family-definition.family-adapter-arm.js";
 export {
+  cursorStepContractNames,
   defineFamily,
   defineLinearFamily,
   type FamilyDefinition,

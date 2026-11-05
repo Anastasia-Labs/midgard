@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -130,36 +131,9 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofExecutionNativeScriptInvalid",
-      "fraudProofExecutionNativeScriptInvalidBindEvent",
-      "fraudProofExecutionNativeScriptInvalidBindPreState",
-      "fraudProofExecutionNativeScriptInvalidSourceStart",
-      "fraudProofExecutionNativeScriptInvalidSourceResolved",
-      "fraudProofExecutionNativeScriptInvalidSourceAuthenticate",
-      "fraudProofExecutionNativeScriptInvalidSourceMap",
-      "fraudProofExecutionNativeScriptInvalidSourceInputFinish",
-      "fraudProofExecutionNativeScriptInvalidSourceGrammar",
-      "fraudProofExecutionNativeScriptInvalidSourceWitnesses",
-      "fraudProofExecutionNativeScriptInvalidSourceFinish",
-      "fraudProofExecutionNativeScriptInvalidFamilyEntry",
-      "fraudProofExecutionNativeScriptInvalidPurposeSelect",
-      "fraudProofExecutionNativeScriptInvalidSpendSelect",
-      "fraudProofExecutionNativeScriptInvalidSpendScan",
-      "fraudProofExecutionNativeScriptInvalidMintGrammar",
-      "fraudProofExecutionNativeScriptInvalidMintScan",
-      "fraudProofExecutionNativeScriptInvalidReceiveStart",
-      "fraudProofExecutionNativeScriptInvalidReceiveGrammar",
-      "fraudProofExecutionNativeScriptInvalidReceiveOutputs",
-      "fraudProofExecutionNativeScriptInvalidReceiveFinish",
-      "fraudProofExecutionNativeScriptInvalidReceiveDeclaration",
-      "fraudProofExecutionNativeScriptInvalidSourceLookup",
-      "fraudProofExecutionNativeScriptInvalidSigners",
-      "fraudProofExecutionNativeScriptInvalidEvaluate",
-      "fraudProofExecutionNativeScriptInvalidSpendKey",
-      "fraudProofExecutionNativeScriptInvalidSpendRank",
-      "fraudProofExecutionNativeScriptInvalidTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(
+      EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createExecutionNativeScriptInvalidTransactionPort({
         ...context,

@@ -104,7 +104,7 @@ The same topology is represented in:
 
 - SDK `FraudProofs` and catalogue types;
 - node/core deployment-manifest identity;
-- runtime reference-script deployment entries;
+- runtime reference-script deployment entries, derived from core deployment identity;
 - contract inspection and catalogue membership proofs;
 - watcher deployment identity.
 

@@ -6,6 +6,7 @@ import { EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../w
 import { EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
@@ -35,11 +36,9 @@ export const EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofExecutionSourceScriptDecoding",
-      "fraudProofExecutionSourceScriptDecodingBindEvent",
-      "fraudProofExecutionSourceScriptDecodingTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(
+      EXECUTION_SOURCE_SCRIPT_DECODING_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createExecutionSourceScriptDecodingTransactionPort({
         ...context,

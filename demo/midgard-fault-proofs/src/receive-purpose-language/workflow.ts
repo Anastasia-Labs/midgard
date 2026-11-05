@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -122,29 +123,9 @@ export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofReceivePurposeLanguage",
-      "fraudProofReceivePurposeLanguageBindEvent",
-      "fraudProofReceivePurposeLanguageBindPreState",
-      "fraudProofReceivePurposeLanguageSourceStart",
-      "fraudProofReceivePurposeLanguageSourceResolved",
-      "fraudProofReceivePurposeLanguageSourceAuthenticate",
-      "fraudProofReceivePurposeLanguageSourceMap",
-      "fraudProofReceivePurposeLanguageSourceInputFinish",
-      "fraudProofReceivePurposeLanguageSourceGrammar",
-      "fraudProofReceivePurposeLanguageSourceWitnesses",
-      "fraudProofReceivePurposeLanguageSourceFinish",
-      "fraudProofReceivePurposeLanguageFamilyEntry",
-      "fraudProofReceivePurposeLanguageReceiveStart",
-      "fraudProofReceivePurposeLanguageReceiveGrammar",
-      "fraudProofReceivePurposeLanguageReceiveOutputs",
-      "fraudProofReceivePurposeLanguageReceiveFinish",
-      "fraudProofReceivePurposeLanguageReceiveDeclaration",
-      "fraudProofReceivePurposeLanguageSourceLookup",
-      "fraudProofReceivePurposeLanguageClaimedRedeemerGrammar",
-      "fraudProofReceivePurposeLanguageClaimedRedeemerScan",
-      "fraudProofReceivePurposeLanguageTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(
+      RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createReceivePurposeLanguageTransactionPort({
         ...context,

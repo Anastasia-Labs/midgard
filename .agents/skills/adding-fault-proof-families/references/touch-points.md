@@ -72,7 +72,7 @@ own correctness. [script: .agents/skills/adding-fault-proof-families/scripts/fam
 | ------- | ----------- |
 | `src/deployable-scripts.publication-order.ts` | Uses core order and SDK recipes; nothing to edit |
 | `src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts`, `src/deployment-manifest.validate-fraud-proof-catalogue.ts` | Core projections; nothing to edit |
-| `src/services/always-succeeds.ts` | The `SDK.FaultProofContractChains` record requires the family; these scripts do not prove real validator wiring |
+| `src/services/always-succeeds.ts` | The `SDK.FaultProofContractChains` record requires the family (`repeatedFaultProofChain(validator, "<category>")` sizes the chain from core); these scripts do not prove real validator wiring |
 | `src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts` | Family loader; the total `SDK.FaultProofContractChains` record and node manifest roundtrip tests check restoration |
 | `tests/deployment-members.test.ts` | Real blueprint/application binding, auxiliary-yield omissions and swapped real step bytes |
 
@@ -87,19 +87,19 @@ own correctness. [script: .agents/skills/adding-fault-proof-families/scripts/fam
 | Surface | Enforced by |
 | ------- | ----------- |
 | `src/<kebab>/` (scan, replay, submit steps, workflow) and `src/index.ts` re-export | `[review]` |
-| A linear or cursor family's `defineFamily` definition: witness roles from `CORE_WITNESS_ROLES`, `CHUNKED_VERIFY_WITNESS_ROLES` or `MEMBERSHIP_WITNESS_ROLES` (`src/workflow/family-definition.ts`), certificate, auxiliary scripts, adapter arm | typecheck; `tests/manifest-bound-family-assembly.test.ts` over `tests/support/registered-family-definitions.ts` |
+| A linear or cursor family's `defineFamily` definition: witness roles from `CORE_WITNESS_ROLES`, `CHUNKED_VERIFY_WITNESS_ROLES` or `MEMBERSHIP_WITNESS_ROLES` (`src/workflow/family-definition.ts`), certificate, auxiliary scripts, adapter arm (a cursor arm's `stepContractNames` is `cursorStepContractNames(spec)`, core's step names) | typecheck; `tests/manifest-bound-family-assembly.test.ts` over `tests/support/registered-family-definitions.ts` |
 | A manifest-bound family's `runOrResumeManifestBound<Name>Workflow`: an alias of `runOrResumeManifestBoundFamilyWorkflow` | `[review]` |
 | Owned-thread cancel: `submitLinearFaultCancel` (`src/linear-fault-cancel.ts`); tests call `submitFamilyCancel` in `tests/support/linear-fault-cancel.ts` | `[review]` |
-| `src/runtime.fraud-proof-deployment-entries-by-category.ts` `FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY` and the `buildOneCategoryFaultProofContracts` switch (`runtime.build-one-category-fault-proof-contracts.ts`) | typecheck |
+| The `buildOneCategoryFaultProofContracts` switch (`runtime.build-one-category-fault-proof-contracts.ts`); `FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY` (`src/runtime.fraud-proof-deployment-entries-by-category.ts`) derives every step from core's deployment members, so a new family adds nothing there | typecheck |
 | `src/runtime.category-label.ts` `CATEGORY_LABEL_OVERRIDES`, only when the label is not the kebab-case category name | `tests/runtime.category-label.test.ts` |
 | `src/workflow/classification.fraud-proof-classification-rules.ts` `FRAUD_PROOF_CLASSIFICATION_RULES` (catalogue order) | module throws at load (`classification.classify-canonical-block-violations.ts`); `tests/workflow.q55-w-o6-deterministic-violation-classification.ts`; `family-checklist.mjs` `classification-rule` |
 | `src/workflow/adapters.workflow-adapter-registration-rows.ts` `missingRows` (keyed by category; the rows are derived in catalogue order) | typecheck; `validateWorkflowAdapterCoverage` (`adapters.install-workflow-application-registry.ts`); `family-checklist.mjs` `adapter-registration` |
 | `src/workflow/complete-replay.create-complete-canonical-replay-union.ts` `completeReplayer([...])` entry | `[review]` |
 | `src/workflow/actuation-permit.ts` (only for bespoke terminal handling, as mint-item has) | `[review]` |
-| `src/workflow/linear-family-spec.ts` `LINEAR_FAMILY_CATEGORIES`, or a cursor definition its registry record is derived from | `family-checklist.mjs` `family-definition` (informational) |
+| `src/workflow/linear-family-spec.ts` `LINEAR_FAMILY_CATEGORIES` and a `spec(category, stepCount)` row (step names come from core; the module throws at load when the count differs), or a cursor definition its registry record is derived from | `family-checklist.mjs` `family-definition` (informational) |
 | `src/workflow/family-application-registry.ts` `FAMILY_APPLICATION_REGISTRY` (a derived record carries its `definition`) | typecheck; `tests/family-application-registry.family-application-rosters-name-deployed-contracts.ts`; `family-checklist.mjs` `application-record` |
 | `tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts` `real<Name>` flag and `buildFamilyContracts` call | `[review]` |
-| `tests/support/emulator/validators.make-always-succeeds-fault-proof-contracts.ts` `scaffoldChain(appendedFamilyFallback, N)` entry | typecheck |
+| `tests/support/emulator/validators.make-always-succeeds-fault-proof-contracts.ts` `scaffoldChain(appendedFamilyFallback, "<category>")` entry (core sizes the chain) | typecheck |
 | `tests/<kebab>-lifecycle.test.ts` and `tests/support/<kebab>-*.ts` | `family-checklist.mjs` `tests` (file name only); both polarities are `[review]` |
 
 ## Watcher (`demo/midgard-watcher`)

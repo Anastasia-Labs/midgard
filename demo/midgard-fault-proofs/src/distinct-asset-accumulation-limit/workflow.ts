@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -102,20 +103,9 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION = defineFamily(
     adapter: {
       kind: "cursor",
       spec: DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC,
-      stepContractNames: [
-        "fraudProofDistinctAssetAccumulationLimit",
-        "fraudProofDistinctAssetAccumulationLimitBindEvent",
-        "fraudProofDistinctAssetAccumulationLimitBindPreState",
-        "fraudProofDistinctAssetAccumulationLimitFamilyEntry",
-        "fraudProofDistinctAssetAccumulationLimitInputs",
-        "fraudProofDistinctAssetAccumulationLimitInputsResolve",
-        "fraudProofDistinctAssetAccumulationLimitInputRank",
-        "fraudProofDistinctAssetAccumulationLimitOutputsGrammar",
-        "fraudProofDistinctAssetAccumulationLimitOutputs",
-        "fraudProofDistinctAssetAccumulationLimitMintGrammar",
-        "fraudProofDistinctAssetAccumulationLimitMint",
-        "fraudProofDistinctAssetAccumulationLimitTerminal",
-      ],
+      stepContractNames: cursorStepContractNames(
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC,
+      ),
       transactionPort: (context) =>
         createDistinctAssetAccumulationLimitTransactionPort({
           ...context,

@@ -12,6 +12,7 @@ import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/comple
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { MINT_AUTHORIZATION_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.js";
@@ -50,15 +51,7 @@ export const MINT_AUTHORIZATION_FAMILY_DEFINITION = defineFamily({
     kind: "cursor",
     spec: MINT_AUTHORIZATION_CURSOR_SPEC,
     createRefineAction: mintAuthorizationRefineAction,
-    stepContractNames: [
-      "fraudProofMintAuthorization",
-      "fraudProofMintAuthorizationStep02",
-      "fraudProofMintAuthorizationStep03",
-      "fraudProofMintAuthorizationStep04",
-      "fraudProofMintAuthorizationStep05",
-      "fraudProofMintAuthorizationStep06",
-      "fraudProofMintAuthorizationStep07",
-    ],
+    stepContractNames: cursorStepContractNames(MINT_AUTHORIZATION_CURSOR_SPEC),
     transactionPort: (context) => {
       const { binding, certificate } = context;
       const chain = binding.resolvedContracts.contracts.mintAuthorization;

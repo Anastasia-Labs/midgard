@@ -20,6 +20,7 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
@@ -40,7 +41,6 @@ import {
 import {
   createFieldItemWidthIllegalBoundConfig,
   createFieldItemWidthIllegalRawL1StageResolver,
-  FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
   FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
   type FieldItemWidthIllegalRuntimeLoader,
   type LoadManifestBoundFieldItemWidthIllegalConfig,
@@ -134,11 +134,9 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC,
-    stepContractNames: [
-      FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS.step01,
-      FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS.step02,
-      FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS.step03,
-    ],
+    stepContractNames: cursorStepContractNames(
+      FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const category = "fieldItemWidthIllegal";
       const { config, material } = context.runtime;

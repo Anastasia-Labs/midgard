@@ -9,6 +9,7 @@ import {
   makeWithdrawalValidator,
   NETWORK,
   repeatedFaultProofChain,
+  repeatedFaultProofChains,
 } from "./always-succeeds.make-spending-validator.js";
 
 /**
@@ -330,13 +331,12 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       transitionTrace,
     ] as const;
     const fraudProofContracts: SDK.FaultProofContractChains = {
-      doubleSpend: repeatedFaultProofChain(doubleSpend, 4),
-      nonExistentInput: repeatedFaultProofChain(nonExistentInput, 4),
-      nonExistentInputNoIndex: repeatedFaultProofChain(
+      ...repeatedFaultProofChains({
+        doubleSpend,
+        nonExistentInput,
         nonExistentInputNoIndex,
-        4,
-      ),
-      invalidRange: repeatedFaultProofChain(invalidRange, 2),
+        invalidRange,
+      }),
       transitionTrace: {
         history: {
           inlineLimitBytes: 512n,
@@ -373,16 +373,16 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
           depositReplay: stateQueueYield,
         },
       },
-      zeroInput: repeatedFaultProofChain(zeroInput, 2),
+      zeroInput: repeatedFaultProofChain(zeroInput, "zeroInput"),
       validationTraceDispute: validationTraceDisputeChain,
-      daHashPreimage: repeatedFaultProofChain(daHashPreimage, 2),
-      noReferenceInput: repeatedFaultProofChain(noReferenceInput, 4),
-      referenceInputNoIdx: repeatedFaultProofChain(referenceInputNoIdx, 4),
-      invalidSignature: repeatedFaultProofChain(invalidSignature, 2),
+      ...repeatedFaultProofChains({
+        daHashPreimage,
+        noReferenceInput,
+        referenceInputNoIdx,
+        invalidSignature,
+      }),
       fabricatedDeposit: {
-        ...repeatedFaultProofChain<
-          SDK.FaultProofContractChains["fabricatedDeposit"]
-        >(zeroInput, 4),
+        ...repeatedFaultProofChain(zeroInput, "fabricatedDeposit"),
         history: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -391,9 +391,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         },
       },
       fabricatedWithdrawal: {
-        ...repeatedFaultProofChain<
-          SDK.FaultProofContractChains["fabricatedWithdrawal"]
-        >(zeroInput, 4),
+        ...repeatedFaultProofChain(zeroInput, "fabricatedWithdrawal"),
         history: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -401,23 +399,28 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
           retentionAddress: zeroInput.spendingScriptAddress,
         },
       },
-      nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
+      nativeScriptDecoding: repeatedFaultProofChain(
+        zeroInput,
+        "nativeScriptDecoding",
+      ),
       missingSignature: {
-        ...repeatedFaultProofChain(invalidSignature, 4),
+        ...repeatedFaultProofChain(invalidSignature, "missingSignature"),
         forcedStep: invalidSignature,
         forcedSigner: invalidSignature,
         forcedWitness: invalidSignature,
       },
-      withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
-      canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),
-      committedFieldShape: repeatedFaultProofChain(zeroInput, 2),
-      minFee: repeatedFaultProofChain(invalidRange, 2),
-      withdrawalMistag: repeatedFaultProofChain(invalidRange, 5),
-      doubleWithdraw: repeatedFaultProofChain(doubleSpend, 2),
-      l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
-      withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
+      ...repeatedFaultProofChains({
+        withdrawnReferenceInput: referenceInputNoIdx,
+        canonicalDecodability: zeroInput,
+        committedFieldShape: zeroInput,
+        minFee: invalidRange,
+        withdrawalMistag: invalidRange,
+        doubleWithdraw: doubleSpend,
+        l2TxMistag: invalidRange,
+        withdrawnInput: nonExistentInput,
+      }),
       valueNotPreserved: {
-        ...repeatedFaultProofChain(zeroInput, 4),
+        ...repeatedFaultProofChain(zeroInput, "valueNotPreserved"),
         unionAcceptedSource: zeroInput,
         unionForcedSource: zeroInput,
         unionEvent: zeroInput,
@@ -432,8 +435,10 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         unionUpdate: zeroInput,
         unionTerminal: zeroInput,
       },
-      inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 4),
-      mintAuthorization: repeatedFaultProofChain(zeroInput, 7),
+      ...repeatedFaultProofChains({
+        inputSetUniqueness: doubleSpend,
+        mintAuthorization: zeroInput,
+      }),
       // `steps` holds the two linear steps; the forced (wrongful-rejection)
       // door and the resumable output scan it hands off to hang off the chain
       // by name, exactly as `buildNetworkIdChain` returns them.
@@ -443,48 +448,52 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         forcedScan: invalidRange,
         steps: [invalidRange, invalidRange],
       },
-      nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 5),
+      nativeScriptInvalid: repeatedFaultProofChain(
+        zeroInput,
+        "nativeScriptInvalid",
+      ),
       minAda: {
-        ...repeatedFaultProofChain(invalidRange, 4),
+        ...repeatedFaultProofChain(invalidRange, "minAda"),
         yields: {
           tx: stateQueueYield,
         },
       },
       fieldPreimageLengthMismatch: {
-        ...repeatedFaultProofChain(zeroInput, 4),
+        ...repeatedFaultProofChain(zeroInput, "fieldPreimageLengthMismatch"),
         acceptedStep02: zeroInput,
         forcedStep02: zeroInput,
       },
-      fieldItemWidthIllegal: repeatedFaultProofChain(zeroInput, 3),
-      witnessScriptDecoding: repeatedFaultProofChain(zeroInput, 4),
+      ...repeatedFaultProofChains({
+        fieldItemWidthIllegal: zeroInput,
+        witnessScriptDecoding: zeroInput,
+      }),
       scriptIntegrityHashMissing: {
-        ...repeatedFaultProofChain(zeroInput, 7),
+        ...repeatedFaultProofChain(zeroInput, "scriptIntegrityHashMissing"),
         scriptGrammar: zeroInput,
         scriptScan: zeroInput,
         redeemerGrammar: zeroInput,
       },
-      transactionOutputNonCanonical: repeatedFaultProofChain(zeroInput, 5),
-      mintItemNonCanonical: repeatedFaultProofChain(zeroInput, 4),
-      resolvedOutputNonCanonical: repeatedFaultProofChain(zeroInput, 6),
-      mintDeclaredAssetLimit: repeatedFaultProofChain(zeroInput, 4),
-      spendInputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
-      protectedOutputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
-      observersForbiddenOnUntaggedNetwork: repeatedFaultProofChain(
-        zeroInput,
-        2,
-      ),
-      outputReferenceScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
-      executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 3),
-      observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
-      redeemerCanonicity: repeatedFaultProofChain(zeroInput, 4),
-      receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 21),
-      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 24),
-      missingScriptSource: repeatedFaultProofChain(zeroInput, 37),
-      missingRedeemer: repeatedFaultProofChain(zeroInput, 39),
-      unusedRedeemer: repeatedFaultProofChain(zeroInput, 25),
-      executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 28),
-      scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 21),
-      distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 12),
+      ...repeatedFaultProofChains({
+        transactionOutputNonCanonical: zeroInput,
+        mintItemNonCanonical: zeroInput,
+        resolvedOutputNonCanonical: zeroInput,
+        mintDeclaredAssetLimit: zeroInput,
+        spendInputSignerMissing: zeroInput,
+        protectedOutputSignerMissing: zeroInput,
+        observersForbiddenOnUntaggedNetwork: zeroInput,
+        outputReferenceScriptDecoding: zeroInput,
+        executionSourceScriptDecoding: zeroInput,
+        observerOrderInvalid: zeroInput,
+        redeemerCanonicity: zeroInput,
+        receivePurposeLanguage: zeroInput,
+        unusedScriptWitness: zeroInput,
+        missingScriptSource: zeroInput,
+        missingRedeemer: zeroInput,
+        unusedRedeemer: zeroInput,
+        executionNativeScriptInvalid: zeroInput,
+        scriptIntegrityHashMismatch: zeroInput,
+        distinctAssetAccumulationLimit: zeroInput,
+      }),
     };
     const fraudProofs =
       SDK.fraudProofContractsToFirstSteps(fraudProofContracts);

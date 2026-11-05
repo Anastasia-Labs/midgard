@@ -11,6 +11,7 @@ import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/co
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { NATIVE_SCRIPT_DECODING_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   type ManifestBoundFamilyWorkflow,
   MEMBERSHIP_WITNESS_ROLES,
@@ -49,14 +50,9 @@ export const NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofNativeScriptDecoding",
-      "fraudProofNativeScriptDecodingStep02",
-      "fraudProofNativeScriptDecodingStep03OpenSubject",
-      "fraudProofNativeScriptDecodingStep03BindDescriptor",
-      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
-      "fraudProofNativeScriptDecodingStep04",
-    ],
+    stepContractNames: cursorStepContractNames(
+      NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const { binding, certificate } = context;
       const chain = binding.resolvedContracts.contracts.nativeScriptDecoding;

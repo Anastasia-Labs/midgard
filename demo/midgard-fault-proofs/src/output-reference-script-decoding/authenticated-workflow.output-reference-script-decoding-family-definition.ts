@@ -16,6 +16,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -36,7 +37,6 @@ import {
   createOutputReferenceScriptDecodingBoundConfig,
   type LoadManifestBoundOutputReferenceScriptDecodingConfig,
   type ManifestBoundOutputReferenceScriptDecodingConfig,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
   type OutputReferenceScriptDecodingDeploymentBinding,
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
@@ -166,14 +166,9 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC,
-    stepContractNames: [
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step01,
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step02,
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step03,
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step04,
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step05,
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step06,
-    ],
+    stepContractNames: cursorStepContractNames(
+      OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const category = "outputReferenceScriptDecoding";
       const { config, material } = context.runtime;

@@ -14,6 +14,7 @@ import {
 } from "../workflow/cursor-family-adapter.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
@@ -209,6 +210,12 @@ const createTransactionPort = (
       }),
   };
 };
+const CURSOR_SPEC = {
+  category: CATEGORY,
+  stepCount: 2,
+  successors: { 1: [2], 2: ["proof_token"] },
+} as const;
+
 export const OBSERVERS_FORBIDDEN_FAMILY_DEFINITION = defineFamily<
   "observersForbiddenOnUntaggedNetwork",
   (typeof WITNESS_ROLES)[number],
@@ -227,15 +234,8 @@ export const OBSERVERS_FORBIDDEN_FAMILY_DEFINITION = defineFamily<
     OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
-    spec: {
-      category: CATEGORY,
-      stepCount: 2,
-      successors: { 1: [2], 2: ["proof_token"] },
-    },
-    stepContractNames: [
-      "fraudProofObserversForbiddenOnUntaggedNetwork",
-      "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
-    ],
+    spec: CURSOR_SPEC,
+    stepContractNames: cursorStepContractNames(CURSOR_SPEC),
     createRefineAction:
       (context) =>
       async ({ observed, artifact }) => {

@@ -6,6 +6,7 @@ import {
 
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
 } from "../workflow/family-definition.js";
@@ -28,7 +29,6 @@ import type {
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
-  FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
   fieldPreimageLengthConfigFromBinding,
   type LoadManifestBoundFieldPreimageLengthConfig,
   type ManifestBoundFieldPreimageLengthConfig,
@@ -126,12 +126,9 @@ export const FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
-    stepContractNames: [
-      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step01,
-      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step02Accepted,
-      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step02Forced,
-      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step03,
-    ],
+    stepContractNames: cursorStepContractNames(
+      FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
+    ),
     transactionPort: (context) => boundFor(context).ports.transactions,
   },
   fieldCarriage: [

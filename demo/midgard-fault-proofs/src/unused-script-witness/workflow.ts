@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { UNUSED_SCRIPT_WITNESS_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -126,32 +127,9 @@ export const UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: UNUSED_SCRIPT_WITNESS_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofUnusedScriptWitness",
-      "fraudProofUnusedScriptWitnessBindEvent",
-      "fraudProofUnusedScriptWitnessBindPreState",
-      "fraudProofUnusedScriptWitnessSourceStart",
-      "fraudProofUnusedScriptWitnessSourceResolved",
-      "fraudProofUnusedScriptWitnessSourceAuthenticate",
-      "fraudProofUnusedScriptWitnessSourceMap",
-      "fraudProofUnusedScriptWitnessSourceInputFinish",
-      "fraudProofUnusedScriptWitnessSourceGrammar",
-      "fraudProofUnusedScriptWitnessSourceWitnesses",
-      "fraudProofUnusedScriptWitnessSourceFinish",
-      "fraudProofUnusedScriptWitnessFamilyEntry",
-      "fraudProofUnusedScriptWitnessAllPurposesSpend",
-      "fraudProofUnusedScriptWitnessAllPurposesSpendResolve",
-      "fraudProofUnusedScriptWitnessAllPurposesMintGrammar",
-      "fraudProofUnusedScriptWitnessAllPurposesMint",
-      "fraudProofUnusedScriptWitnessAllPurposesObserveOpen",
-      "fraudProofUnusedScriptWitnessAllPurposesObserve",
-      "fraudProofUnusedScriptWitnessAllPurposesReceiveGrammar",
-      "fraudProofUnusedScriptWitnessAllPurposesReceive",
-      "fraudProofUnusedScriptWitnessWitnessEntry",
-      "fraudProofUnusedScriptWitnessWitnessGrammar",
-      "fraudProofUnusedScriptWitnessWitnessScan",
-      "fraudProofUnusedScriptWitnessTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(
+      UNUSED_SCRIPT_WITNESS_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createUnusedScriptWitnessTransactionPort({
         ...context,

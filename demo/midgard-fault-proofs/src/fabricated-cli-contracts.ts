@@ -1,3 +1,4 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
@@ -18,23 +19,16 @@ import { type FabricatedWithdrawalContracts } from "./submit-fabricated-withdraw
 import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 
 /**
- * Deployment-info names of the four `fabricated-deposit` step scripts, in step
- * order. These are the same names `submit-init` registers, so a thread opened
- * by the CLI and one opened by the emulator resolve identical script hashes.
+ * Deployment-info names of each fabricated family's four step scripts, in step
+ * order: core's deployment step names, the same names `submit-init` registers,
+ * so a thread opened by the CLI and one opened by the emulator resolve
+ * identical script hashes.
  */
-const FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES = [
-  "fraudProofFabricatedDeposit",
-  "fraudProofFabricatedDepositStep02",
-  "fraudProofFabricatedDepositStep03",
-  "fraudProofFabricatedDepositStep04",
-] as const;
-
-const FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES = [
-  "fraudProofFabricatedWithdrawal",
-  "fraudProofFabricatedWithdrawalStep02",
-  "fraudProofFabricatedWithdrawalStep03",
-  "fraudProofFabricatedWithdrawalStep04",
-] as const;
+const FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES =
+  deploymentFamilyStepNames("fabricatedDeposit");
+const FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES = deploymentFamilyStepNames(
+  "fabricatedWithdrawal",
+);
 
 export type FabricatedCliContractsConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

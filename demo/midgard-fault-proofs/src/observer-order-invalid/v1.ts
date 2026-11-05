@@ -23,6 +23,7 @@ import {
 } from "../workflow/cursor-family-adapter.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import {
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
@@ -243,6 +244,12 @@ const createTransactionPort = (
       }),
   };
 };
+const CURSOR_SPEC = {
+  category: CATEGORY,
+  stepCount: 4,
+  successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
+} as const;
+
 export const OBSERVER_ORDER_INVALID_FAMILY_DEFINITION = defineFamily<
   "observerOrderInvalid",
   (typeof WITNESS_ROLES)[number],
@@ -262,17 +269,8 @@ export const OBSERVER_ORDER_INVALID_FAMILY_DEFINITION = defineFamily<
   replayer: () => OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
-    spec: {
-      category: CATEGORY,
-      stepCount: 4,
-      successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
-    },
-    stepContractNames: [
-      "fraudProofObserverOrderInvalid",
-      "fraudProofObserverOrderInvalidStep02",
-      "fraudProofObserverOrderInvalidStep03",
-      "fraudProofObserverOrderInvalidStep04",
-    ],
+    spec: CURSOR_SPEC,
+    stepContractNames: cursorStepContractNames(CURSOR_SPEC),
     createRefineAction:
       (context) =>
       async ({ observed, artifact }) => {

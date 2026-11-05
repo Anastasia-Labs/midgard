@@ -1,5 +1,8 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type AuthenticatedValidator,
+  type FaultProofContractChains,
+  type FraudProofCatalogueCategoryName,
   makeAuthenticatedValidator as makeSdkAuthenticatedValidator,
   makeMintingPolicy,
   makeSpendingValidator as makeSdkSpendingValidator,
@@ -26,13 +29,32 @@ export const repeatValidator = <const Length extends number>(
     () => validator,
   ) as unknown as RepeatedValidatorTuple<Length>;
 
-export const scaffoldChain = <const Length extends number>(
+type ScaffoldChain<Category extends FraudProofCatalogueCategoryName> = Pick<
+  FaultProofContractChains[Category],
+  "firstStep" | "steps"
+>;
+
+/** `firstStep` at every step of the category's deployment chain. */
+export const scaffoldChain = <Category extends FraudProofCatalogueCategoryName>(
   firstStep: SdkSpendingValidator,
-  length: Length,
-) => ({
-  firstStep,
-  steps: repeatValidator(firstStep, length),
-});
+  category: Category,
+): ScaffoldChain<Category> =>
+  ({
+    firstStep,
+    steps: deploymentFamilyStepNames(category).map(() => firstStep),
+  }) as unknown as ScaffoldChain<Category>;
+
+/** `scaffoldChain` for each category, keyed and ordered as given. */
+export const scaffoldChains = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  firstSteps: Readonly<Record<Category, SdkSpendingValidator>>,
+): { readonly [Name in Category]: ScaffoldChain<Name> } =>
+  Object.fromEntries(
+    (Object.entries(firstSteps) as [Category, SdkSpendingValidator][]).map(
+      ([category, firstStep]) => [category, scaffoldChain(firstStep, category)],
+    ),
+  ) as { readonly [Name in Category]: ScaffoldChain<Name> };
 
 export const makeMintingValidator = makeMintingPolicy;
 

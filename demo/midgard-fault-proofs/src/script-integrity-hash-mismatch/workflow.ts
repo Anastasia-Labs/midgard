@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -123,29 +124,9 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofScriptIntegrityHashMismatch",
-      "fraudProofScriptIntegrityHashMismatchBindEvent",
-      "fraudProofScriptIntegrityHashMismatchBindPreState",
-      "fraudProofScriptIntegrityHashMismatchSourceStart",
-      "fraudProofScriptIntegrityHashMismatchSourceResolved",
-      "fraudProofScriptIntegrityHashMismatchSourceAuthenticate",
-      "fraudProofScriptIntegrityHashMismatchSourceMap",
-      "fraudProofScriptIntegrityHashMismatchSourceInputFinish",
-      "fraudProofScriptIntegrityHashMismatchSourceGrammar",
-      "fraudProofScriptIntegrityHashMismatchSourceWitnesses",
-      "fraudProofScriptIntegrityHashMismatchSourceFinish",
-      "fraudProofScriptIntegrityHashMismatchFamilyEntry",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesSpend",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesSpendResolve",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesMintGrammar",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesMint",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesObserveOpen",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesObserve",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesReceiveGrammar",
-      "fraudProofScriptIntegrityHashMismatchAllPurposesReceive",
-      "fraudProofScriptIntegrityHashMismatchTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(
+      SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createScriptIntegrityHashMismatchTransactionPort({
         ...context,

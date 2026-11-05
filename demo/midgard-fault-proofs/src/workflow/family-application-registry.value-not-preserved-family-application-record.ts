@@ -1,5 +1,6 @@
 import "./family-application-registry.bundle-cursor-family-application-record.js";
 
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
@@ -49,13 +50,6 @@ import {
   withValueConservationOwnThreadReclaim,
 } from "./own-thread-reclaim.special-families.js";
 
-const MISSING_SIGNATURE_STEP_CONTRACT_NAMES = Object.freeze([
-  "fraudProofMissingSignature",
-  "fraudProofMissingSignatureStep02",
-  "fraudProofMissingSignatureStep03",
-  "fraudProofMissingSignatureStep04",
-] as const);
-
 /**
  * Missing-signature has no `FamilyDefinition`: its four-step accepted chain
  * is joined by the forced (wrongful-rejection) door, signer and witness
@@ -72,7 +66,7 @@ export const MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD =
   >({
     category: "missingSignature",
     roster: Object.freeze({
-      ...stepRoster(MISSING_SIGNATURE_STEP_CONTRACT_NAMES),
+      ...stepRoster(deploymentFamilyStepNames("missingSignature")),
       forcedStep: "fraudProofMissingSignatureForcedStep",
       forcedSigner: "fraudProofMissingSignatureForcedSigner",
       forcedWitness: "fraudProofMissingSignatureForcedWitness",
@@ -127,8 +121,7 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
 >({
   category: "networkId",
   roster: Object.freeze({
-    step01: "fraudProofNetworkId",
-    step02: "fraudProofNetworkIdStep02",
+    ...stepRoster(deploymentFamilyStepNames("networkId")),
     forcedStep: "fraudProofNetworkIdForcedStep",
     forcedScan: NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
     ...Object.fromEntries(MEMBERSHIP_WITNESS_ROLES.map((role) => [role, role])),
@@ -164,13 +157,6 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
   bindsDecisionDigest: false,
 });
 
-const VALUE_NOT_PRESERVED_STEP_CONTRACT_NAMES = Object.freeze([
-  "fraudProofValueNotPreserved",
-  "fraudProofValueNotPreservedStep02",
-  "fraudProofValueNotPreservedStep03",
-  "fraudProofValueNotPreservedStep04",
-] as const);
-
 /**
  * Value-conservation has no `FamilyDefinition`: beside its four-step legacy
  * chain it publishes one union contract per conservation position, read from
@@ -188,7 +174,7 @@ export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
   >({
     category: "valueNotPreserved",
     roster: Object.freeze({
-      ...stepRoster(VALUE_NOT_PRESERVED_STEP_CONTRACT_NAMES),
+      ...stepRoster(deploymentFamilyStepNames("valueNotPreserved")),
       ...Object.fromEntries(
         CONSERVATION_POSITIONS.map((position) => [
           position,

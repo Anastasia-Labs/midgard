@@ -17,7 +17,7 @@ import {
 } from "./canonical-decodability.create-transaction-port.js";
 import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { CANONICAL_DECODABILITY_CURSOR_SPEC } from "./cursor-family-spec.js";
-import { defineFamily } from "./family-definition.js";
+import { cursorStepContractNames, defineFamily } from "./family-definition.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import {
   assembleManifestBoundFamilyWorkflow,
@@ -53,10 +53,9 @@ export const CANONICAL_DECODABILITY_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: CANONICAL_DECODABILITY_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofCanonicalDecodability",
-      "fraudProofCanonicalDecodabilityStep02",
-    ],
+    stepContractNames: cursorStepContractNames(
+      CANONICAL_DECODABILITY_CURSOR_SPEC,
+    ),
     transactionPort: (context) =>
       createTransactionPort({
         lucid: context.lucid,

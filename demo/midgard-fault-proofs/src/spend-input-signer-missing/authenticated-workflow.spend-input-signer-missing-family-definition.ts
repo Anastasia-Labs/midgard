@@ -20,6 +20,7 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -35,7 +36,6 @@ import {
   createSpendInputSignerMissingBoundConfig,
   type LoadManifestBoundSpendInputSignerMissingConfig,
   type ManifestBoundSpendInputSignerMissingConfig,
-  SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
   SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
   type SpendInputSignerMissingDeploymentBinding,
   type SpendInputSignerMissingRuntimeLoader,
@@ -189,13 +189,9 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC,
-    stepContractNames: [
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step01,
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step02,
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step03,
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step04,
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step05,
-    ],
+    stepContractNames: cursorStepContractNames(
+      SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC,
+    ),
     transactionPort: (context) => {
       const category = "spendInputSignerMissing";
       const { config, material } = context.runtime;

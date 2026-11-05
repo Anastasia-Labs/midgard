@@ -9,6 +9,7 @@ import {
 } from "../workflow/complete-replay.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyReferenceScripts,
 } from "../workflow/family-definition.js";
@@ -87,10 +88,7 @@ export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: TRANSITION_TRACE_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofTransitionTrace",
-      ...TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
-    ],
+    stepContractNames: cursorStepContractNames(TRANSITION_TRACE_CURSOR_SPEC),
     createRefineAction: (context) => runFor(context).refineAction,
     transactionPort: (context) => runFor(context).transactions,
   },

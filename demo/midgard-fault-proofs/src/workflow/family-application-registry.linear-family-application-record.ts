@@ -1,3 +1,4 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
@@ -177,13 +178,6 @@ export const LINEAR_FAMILY_APPLICATION_RECORDS = Object.freeze(
   ),
 ) as LinearFamilyApplicationRecords;
 
-const DOUBLE_SPEND_STEP_CONTRACT_NAMES = Object.freeze([
-  "fraudProofDoubleSpend",
-  "fraudProofDoubleSpendStep02",
-  "fraudProofDoubleSpendStep03",
-  "fraudProofDoubleSpendStep04",
-] as const);
-
 /**
  * The first hand-written record. Double-spend has no `FamilyDefinition`: it
  * keeps its own four-step adapter and takes the field-preimage certificate as
@@ -196,7 +190,7 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
 >({
   category: "doubleSpend",
   roster: Object.freeze({
-    ...stepRoster(DOUBLE_SPEND_STEP_CONTRACT_NAMES),
+    ...stepRoster(deploymentFamilyStepNames("doubleSpend")),
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",

@@ -103,13 +103,6 @@ export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
 
 export const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
 
-export const STEP_CONTRACT_NAMES = [
-  "fraudProofRedeemerCanonicity",
-  "fraudProofRedeemerCanonicityStep02",
-  "fraudProofRedeemerCanonicityStep02Data",
-  "fraudProofRedeemerCanonicityStep03",
-] as const;
-
 type BoundContext = FamilyAssemblyContext<
   "redeemerCanonicity",
   (typeof WITNESS_ROLES)[number],

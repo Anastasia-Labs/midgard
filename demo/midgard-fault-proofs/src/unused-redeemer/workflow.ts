@@ -8,6 +8,7 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { UNUSED_REDEEMER_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
   type FamilyAssemblyContext,
   type LinearFamilyPrerequisiteInput,
@@ -130,33 +131,7 @@ export const UNUSED_REDEEMER_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: UNUSED_REDEEMER_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofUnusedRedeemer",
-      "fraudProofUnusedRedeemerBindEvent",
-      "fraudProofUnusedRedeemerBindPreState",
-      "fraudProofUnusedRedeemerSourceStart",
-      "fraudProofUnusedRedeemerSourceResolved",
-      "fraudProofUnusedRedeemerSourceAuthenticate",
-      "fraudProofUnusedRedeemerSourceMap",
-      "fraudProofUnusedRedeemerSourceInputFinish",
-      "fraudProofUnusedRedeemerSourceGrammar",
-      "fraudProofUnusedRedeemerSourceWitnesses",
-      "fraudProofUnusedRedeemerSourceFinish",
-      "fraudProofUnusedRedeemerFamilyEntry",
-      "fraudProofUnusedRedeemerRedeemerGrammar",
-      "fraudProofUnusedRedeemerRedeemerScan",
-      "fraudProofUnusedRedeemerClaimStart",
-      "fraudProofUnusedRedeemerClaimSpendStart",
-      "fraudProofUnusedRedeemerClaimSpendScan",
-      "fraudProofUnusedRedeemerClaimMintGrammar",
-      "fraudProofUnusedRedeemerClaimMintScan",
-      "fraudProofUnusedRedeemerClaimReceiveGrammar",
-      "fraudProofUnusedRedeemerClaimReceiveOutputs",
-      "fraudProofUnusedRedeemerClaimReceiveFinish",
-      "fraudProofUnusedRedeemerClaimReceiveDeclaration",
-      "fraudProofUnusedRedeemerClaimAdjudicate",
-      "fraudProofUnusedRedeemerTerminal",
-    ],
+    stepContractNames: cursorStepContractNames(UNUSED_REDEEMER_CURSOR_SPEC),
     transactionPort: (context) =>
       createUnusedRedeemerTransactionPort({
         ...context,

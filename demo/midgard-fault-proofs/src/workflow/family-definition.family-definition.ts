@@ -1,7 +1,10 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
+
 import type {
   CompleteCanonicalReplay,
   CompleteCanonicalReplayContext,
 } from "./complete-replay.js";
+import type { CursorFamilySpec } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   type FamilyAdapterArm,
@@ -202,6 +205,25 @@ export const defineLinearFamily = <
   >,
 ): LinearFamilyDefinition<Category, Witness, Certificate> =>
   defineFamily(definition);
+
+/**
+ * A cursor arm's step contract names: core's deployment step names for the
+ * spec's category, refused at import when core's count is not the spec's.
+ */
+export const cursorStepContractNames = <
+  Category extends FamilyCategory,
+  StepCount extends number,
+>(
+  spec: CursorFamilySpec<Category> & Readonly<{ stepCount: StepCount }>,
+): FamilyStepTuple<Category, StepCount, string> => {
+  const names = deploymentFamilyStepNames(spec.category);
+  if (names.length !== spec.stepCount) {
+    throw new Error(
+      `${spec.category} cursor spec declares ${spec.stepCount.toString()} steps but core deploys ${names.length.toString()}`,
+    );
+  }
+  return names as unknown as FamilyStepTuple<Category, StepCount, string>;
+};
 
 /**
  * The manifest contract names of a definition's chain steps, in step order:

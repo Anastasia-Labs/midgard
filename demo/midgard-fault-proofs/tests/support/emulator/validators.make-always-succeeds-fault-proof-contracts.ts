@@ -11,6 +11,7 @@ import {
   makeWithdrawalValidator,
   repeatValidator,
   scaffoldChain,
+  scaffoldChains,
 } from "./validators.make-isolated-always-succeeds-authenticated-validator.js";
 
 export const makeAlwaysSucceedsFaultProofContracts = (
@@ -56,10 +57,12 @@ export const makeAlwaysSucceedsFaultProofContracts = (
   const transitionTraceYield = () =>
     makeWithdrawalValidator(transitionTraceFirstStep.spendingScriptCBOR);
   const fraudProofContracts: FaultProofContractChains = {
-    doubleSpend: scaffoldChain(appendedFamilyFallback, 4),
-    nonExistentInput: scaffoldChain(nonExistentInputFirstStep, 4),
-    nonExistentInputNoIndex: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
-    invalidRange: scaffoldChain(invalidRangeFirstStep, 2),
+    ...scaffoldChains({
+      doubleSpend: appendedFamilyFallback,
+      nonExistentInput: nonExistentInputFirstStep,
+      nonExistentInputNoIndex: nonExistentInputNoIndexFirstStep,
+      invalidRange: invalidRangeFirstStep,
+    }),
     transitionTrace: {
       history: {
         inlineLimitBytes: 512n,
@@ -70,7 +73,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
           withdrawal: appendedFamilyFallback.spendingScriptAddress,
         },
       },
-      ...scaffoldChain(transitionTraceFirstStep, 9),
+      ...scaffoldChain(transitionTraceFirstStep, "transitionTrace"),
       route: transitionTraceFirstStep,
       finals: repeatValidator(transitionTraceFirstStep, 8),
       yields: {
@@ -95,9 +98,12 @@ export const makeAlwaysSucceedsFaultProofContracts = (
         depositSummaries: transitionTraceYield(),
       },
     },
-    zeroInput: scaffoldChain(zeroInputFirstStep, 2),
+    zeroInput: scaffoldChain(zeroInputFirstStep, "zeroInput"),
     validationTraceDispute: {
-      ...scaffoldChain(alwaysValidationTraceDispute, 1),
+      // Deliberately one step, not core's full chain: only its first step is
+      // a deployment entry.
+      firstStep: alwaysValidationTraceDispute,
+      steps: [alwaysValidationTraceDispute],
       canonicalDecodePrepare: alwaysValidationTraceDispute,
       yields: {
         scriptSourcesStageTwoAdvance: reserve,
@@ -278,12 +284,14 @@ export const makeAlwaysSucceedsFaultProofContracts = (
       semanticResolvers: repeatValidator(alwaysValidationTraceDispute, 83),
       resolvers: repeatValidator(alwaysValidationTraceDispute, 13),
     },
-    daHashPreimage: scaffoldChain(zeroInputFirstStep, 2),
-    noReferenceInput: scaffoldChain(nonExistentInputFirstStep, 4),
-    referenceInputNoIdx: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
-    invalidSignature: scaffoldChain(invalidRangeFirstStep, 2),
+    ...scaffoldChains({
+      daHashPreimage: zeroInputFirstStep,
+      noReferenceInput: nonExistentInputFirstStep,
+      referenceInputNoIdx: nonExistentInputNoIndexFirstStep,
+      invalidSignature: invalidRangeFirstStep,
+    }),
     fabricatedDeposit: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "fabricatedDeposit"),
       history: {
         inlineLimitBytes: 512n,
         maxPayloadBytes: 5000n,
@@ -292,7 +300,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
       },
     },
     fabricatedWithdrawal: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "fabricatedWithdrawal"),
       history: {
         inlineLimitBytes: 512n,
         maxPayloadBytes: 5000n,
@@ -300,23 +308,28 @@ export const makeAlwaysSucceedsFaultProofContracts = (
         retentionAddress: appendedFamilyFallback.spendingScriptAddress,
       },
     },
-    nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
+    nativeScriptDecoding: scaffoldChain(
+      appendedFamilyFallback,
+      "nativeScriptDecoding",
+    ),
     missingSignature: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "missingSignature"),
       forcedStep: appendedFamilyFallback,
       forcedSigner: appendedFamilyFallback,
       forcedWitness: appendedFamilyFallback,
     },
-    withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
-    canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),
-    committedFieldShape: scaffoldChain(appendedFamilyFallback, 2),
-    minFee: scaffoldChain(appendedFamilyFallback, 2),
-    withdrawalMistag: scaffoldChain(appendedFamilyFallback, 5),
-    doubleWithdraw: scaffoldChain(appendedFamilyFallback, 2),
-    l2TxMistag: scaffoldChain(appendedFamilyFallback, 2),
-    withdrawnInput: scaffoldChain(appendedFamilyFallback, 3),
+    ...scaffoldChains({
+      withdrawnReferenceInput: appendedFamilyFallback,
+      canonicalDecodability: appendedFamilyFallback,
+      committedFieldShape: appendedFamilyFallback,
+      minFee: appendedFamilyFallback,
+      withdrawalMistag: appendedFamilyFallback,
+      doubleWithdraw: appendedFamilyFallback,
+      l2TxMistag: appendedFamilyFallback,
+      withdrawnInput: appendedFamilyFallback,
+    }),
     valueNotPreserved: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "valueNotPreserved"),
       unionAcceptedSource: appendedFamilyFallback,
       unionForcedSource: appendedFamilyFallback,
       unionEvent: appendedFamilyFallback,
@@ -331,16 +344,21 @@ export const makeAlwaysSucceedsFaultProofContracts = (
       unionUpdate: appendedFamilyFallback,
       unionTerminal: appendedFamilyFallback,
     },
-    inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 4),
-    mintAuthorization: scaffoldChain(appendedFamilyFallback, 7),
+    ...scaffoldChains({
+      inputSetUniqueness: appendedFamilyFallback,
+      mintAuthorization: appendedFamilyFallback,
+    }),
     networkId: {
-      ...scaffoldChain(appendedFamilyFallback, 2),
+      ...scaffoldChain(appendedFamilyFallback, "networkId"),
       forcedStep: appendedFamilyFallback,
       forcedScan: appendedFamilyFallback,
     },
-    nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
+    nativeScriptInvalid: scaffoldChain(
+      appendedFamilyFallback,
+      "nativeScriptInvalid",
+    ),
     minAda: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "minAda"),
       yields: {
         tx: {
           withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
@@ -350,40 +368,41 @@ export const makeAlwaysSucceedsFaultProofContracts = (
       },
     },
     fieldPreimageLengthMismatch: {
-      ...scaffoldChain(appendedFamilyFallback, 4),
+      ...scaffoldChain(appendedFamilyFallback, "fieldPreimageLengthMismatch"),
       acceptedStep02: appendedFamilyFallback,
       forcedStep02: appendedFamilyFallback,
     },
-    fieldItemWidthIllegal: scaffoldChain(appendedFamilyFallback, 3),
-    witnessScriptDecoding: scaffoldChain(appendedFamilyFallback, 4),
+    ...scaffoldChains({
+      fieldItemWidthIllegal: appendedFamilyFallback,
+      witnessScriptDecoding: appendedFamilyFallback,
+    }),
     scriptIntegrityHashMissing: {
-      ...scaffoldChain(appendedFamilyFallback, 7),
+      ...scaffoldChain(appendedFamilyFallback, "scriptIntegrityHashMissing"),
       scriptGrammar: appendedFamilyFallback,
       scriptScan: appendedFamilyFallback,
       redeemerGrammar: appendedFamilyFallback,
     },
-    transactionOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 5),
-    mintItemNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
-    resolvedOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 6),
-    mintDeclaredAssetLimit: scaffoldChain(appendedFamilyFallback, 4),
-    spendInputSignerMissing: scaffoldChain(appendedFamilyFallback, 5),
-    protectedOutputSignerMissing: scaffoldChain(appendedFamilyFallback, 5),
-    observersForbiddenOnUntaggedNetwork: scaffoldChain(
-      appendedFamilyFallback,
-      2,
-    ),
-    outputReferenceScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
-    executionSourceScriptDecoding: scaffoldChain(appendedFamilyFallback, 3),
-    executionNativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 28),
-    observerOrderInvalid: scaffoldChain(appendedFamilyFallback, 4),
-    redeemerCanonicity: scaffoldChain(appendedFamilyFallback, 4),
-    receivePurposeLanguage: scaffoldChain(appendedFamilyFallback, 21),
-    unusedScriptWitness: scaffoldChain(appendedFamilyFallback, 24),
-    missingScriptSource: scaffoldChain(appendedFamilyFallback, 37),
-    missingRedeemer: scaffoldChain(appendedFamilyFallback, 39),
-    unusedRedeemer: scaffoldChain(appendedFamilyFallback, 25),
-    scriptIntegrityHashMismatch: scaffoldChain(appendedFamilyFallback, 21),
-    distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 12),
+    ...scaffoldChains({
+      transactionOutputNonCanonical: appendedFamilyFallback,
+      mintItemNonCanonical: appendedFamilyFallback,
+      resolvedOutputNonCanonical: appendedFamilyFallback,
+      mintDeclaredAssetLimit: appendedFamilyFallback,
+      spendInputSignerMissing: appendedFamilyFallback,
+      protectedOutputSignerMissing: appendedFamilyFallback,
+      observersForbiddenOnUntaggedNetwork: appendedFamilyFallback,
+      outputReferenceScriptDecoding: appendedFamilyFallback,
+      executionSourceScriptDecoding: appendedFamilyFallback,
+      executionNativeScriptInvalid: appendedFamilyFallback,
+      observerOrderInvalid: appendedFamilyFallback,
+      redeemerCanonicity: appendedFamilyFallback,
+      receivePurposeLanguage: appendedFamilyFallback,
+      unusedScriptWitness: appendedFamilyFallback,
+      missingScriptSource: appendedFamilyFallback,
+      missingRedeemer: appendedFamilyFallback,
+      unusedRedeemer: appendedFamilyFallback,
+      scriptIntegrityHashMismatch: appendedFamilyFallback,
+      distinctAssetAccumulationLimit: appendedFamilyFallback,
+    }),
   };
   return fraudProofContracts;
 };

@@ -1,3 +1,4 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk";
 import {
   DoubleSpendStep02Datum,
@@ -69,12 +70,7 @@ export const createManifestBoundDoubleSpendWorkflow = async (
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
-  const stepNames = [
-    "fraudProofDoubleSpend",
-    "fraudProofDoubleSpendStep02",
-    "fraudProofDoubleSpendStep03",
-    "fraudProofDoubleSpendStep04",
-  ] as const;
+  const stepNames = deploymentFamilyStepNames("doubleSpend");
   const stepReference = (index: 0 | 1 | 2 | 3): UTxO =>
     requireManifestBoundReferenceScriptUtxo({
       binding,

@@ -1,5 +1,4 @@
 import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
   type MidgardValidators,
   referenceScriptAuthPolicyDeploymentInfo,
@@ -16,6 +15,7 @@ import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
+import { FIRST_STEP_ONLY_DEPLOYMENT_CATEGORIES } from "../../../src/runtime.fraud-proof-deployment-entries-by-category.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../../../src/transition-trace/yield-references.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/index.js";
 import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/index.js";
@@ -82,30 +82,11 @@ export const buildRemovalDeploymentInfo = (
       ([category, entryNames]) => {
         const categoryName =
           category as keyof MidgardValidators["fraudProofContracts"];
-        const configuredSteps =
-          contracts.fraudProofContracts[categoryName].steps;
-        // The generic always-succeeds emulator blueprint still exposes the
-        // pre-Wave-8 two-step input-set-uniqueness scaffold. Removal only
-        // needs the immutable deployed hashes, so repeat its terminal stand-in
-        // for the newly registered scan steps. Focused family tests replace
-        // all four positions with their real validators.
-        const steps =
-          categoryName === "inputSetUniqueness" &&
-          configuredSteps.length === 2 &&
-          entryNames.length === 4
-            ? [
-                configuredSteps[0]!,
-                configuredSteps[1]!,
-                configuredSteps[1]!,
-                configuredSteps[1]!,
-              ]
-            : configuredSteps;
-        const requiresFullChain =
-          categoryName === "transitionTrace" ||
-          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(categoryName) >= 11;
+        const steps = contracts.fraudProofContracts[categoryName].steps;
         if (
           steps.length < entryNames.length ||
-          (requiresFullChain && steps.length !== entryNames.length)
+          (!FIRST_STEP_ONLY_DEPLOYMENT_CATEGORIES.has(categoryName) &&
+            steps.length !== entryNames.length)
         ) {
           throw new Error(
             `${category} removal deployment fixture has the wrong chain length: expected ${entryNames.length.toString()}, received ${steps.length.toString()}`,

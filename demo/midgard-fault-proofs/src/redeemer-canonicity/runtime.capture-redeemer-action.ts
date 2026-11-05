@@ -29,7 +29,10 @@ import {
   cursorStringField,
   STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
-import { defineFamily } from "../workflow/family-definition.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
+} from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   type FraudProofWorkflowJournalEntry,
@@ -45,7 +48,6 @@ import {
   redeemerField,
   type RedeemerWorkflowCore,
   selectDetection,
-  STEP_CONTRACT_NAMES,
   WITNESS_ROLES,
 } from "./runtime.admit-redeemer-workflow-artifact.js";
 import {
@@ -62,6 +64,12 @@ import {
 import { submitRedeemerCanonicityStep02 } from "./submit-step-02.js";
 import { submitRedeemerCanonicityStep02Data } from "./submit-step-02-data.js";
 import { submitRedeemerCanonicityStep03 } from "./submit-step-03.js";
+
+const CURSOR_SPEC = {
+  category: "redeemerCanonicity",
+  stepCount: 4,
+  successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
+} as const;
 
 export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
   "redeemerCanonicity",
@@ -82,12 +90,8 @@ export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
   replayer: () => REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
-    spec: {
-      category: "redeemerCanonicity",
-      stepCount: 4,
-      successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
-    },
-    stepContractNames: STEP_CONTRACT_NAMES,
+    spec: CURSOR_SPEC,
+    stepContractNames: cursorStepContractNames(CURSOR_SPEC),
     transactionPort: (context) =>
       createRedeemerCanonicityTransactionPort(boundFor(context)),
   },

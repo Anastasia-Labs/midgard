@@ -33,6 +33,7 @@ import {
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   CORE_WITNESS_ROLES,
+  cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
@@ -295,13 +296,7 @@ export const WITHDRAWAL_MISTAG_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: WITHDRAWAL_MISTAG_CURSOR_SPEC,
-    stepContractNames: [
-      "fraudProofWithdrawalMistag",
-      "fraudProofWithdrawalMistagStep02",
-      "fraudProofWithdrawalMistagStep03",
-      "fraudProofWithdrawalMistagStep04",
-      "fraudProofWithdrawalMistagStep05",
-    ],
+    stepContractNames: cursorStepContractNames(WITHDRAWAL_MISTAG_CURSOR_SPEC),
     transactionPort: (context) => {
       const { binding } = context;
       const chain = binding.resolvedContracts.contracts.withdrawalMistag;

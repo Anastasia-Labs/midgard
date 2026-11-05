@@ -8,7 +8,10 @@ import {
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
-import { defineFamily } from "../workflow/family-definition.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
+} from "../workflow/family-definition.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -29,7 +32,6 @@ import {
   WITNESS_ROLES,
 } from "./workflow.create-witness-script-decoding-recovery-ports.js";
 import {
-  WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   WITNESS_SCRIPT_DECODING_WORKFLOW,
   witnessScriptDecodingConfigFromBinding,
 } from "./workflow.witness-script-decoding-config-from-binding.js";
@@ -117,12 +119,9 @@ export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
-    stepContractNames: [
-      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step01,
-      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step02,
-      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step03,
-      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step04,
-    ],
+    stepContractNames: cursorStepContractNames(
+      WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
+    ),
     transactionPort: (context) => runFor(context).transactions,
   },
   auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,

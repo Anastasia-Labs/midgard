@@ -4,7 +4,10 @@ import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
-import { defineFamily } from "../workflow/family-definition.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
+} from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
@@ -37,7 +40,6 @@ import {
 } from "./workflow.derive-transaction-output-non-canonical-authenticated-source.js";
 import { createTransactionOutputNonCanonicalRawL1StageResolver } from "./workflow.detect-transaction-output-non-canonical-complete-replay.js";
 import {
-  TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
   TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
   transactionOutputNonCanonicalConfigFromBinding,
 } from "./workflow.transaction-output-non-canonical-config-from-binding.js";
@@ -161,13 +163,9 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
   adapter: {
     kind: "cursor",
     spec: TRANSACTION_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
-    stepContractNames: [
-      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step01,
-      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
-      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
-      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03Datum,
-      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
-    ],
+    stepContractNames: cursorStepContractNames(
+      TRANSACTION_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
+    ),
     transactionPort: (context) => runFor(context).transactions,
   },
   fieldCarriage: [
