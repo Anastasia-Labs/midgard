@@ -18,6 +18,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
+  CORE_WITNESS_ROLES,
   type FamilyAssemblyContext,
   type FamilyDeploymentContext,
   type LinearFamilyPrerequisiteInput,
@@ -286,11 +287,7 @@ export const createWitnessScriptDecodingRecoveryPorts = (
   return { transactions, requirementForAction, scriptDecodeItemForAction };
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 type Deployment = FamilyDeploymentContext<
   "witnessScriptDecoding",

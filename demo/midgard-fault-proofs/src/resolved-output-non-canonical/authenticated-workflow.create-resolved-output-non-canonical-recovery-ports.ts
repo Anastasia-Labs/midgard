@@ -21,6 +21,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
+  CORE_WITNESS_ROLES,
   type FamilyDeploymentContext,
   type LinearFamilyPrerequisiteInput,
 } from "../workflow/family-definition.js";
@@ -316,11 +317,7 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
   return { transactions, requirementForAction };
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 type Deployment = FamilyDeploymentContext<
   "resolvedOutputNonCanonical",

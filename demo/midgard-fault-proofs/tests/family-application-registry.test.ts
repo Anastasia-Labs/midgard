@@ -6,7 +6,6 @@ import "../src/remove-fraudulent-block.js";
 import "../src/workflow/family-application.js";
 import "../src/workflow/family-application-registry.js";
 import "../src/workflow/family-definition.js";
-import "../src/workflow/family-definitions.js";
 import "../src/workflow/linear-family-spec.js";
 import "./family-application-registry.bound-steps.js";
 import "./family-application-registry.family-application-rosters-name-deployed-contracts.js";

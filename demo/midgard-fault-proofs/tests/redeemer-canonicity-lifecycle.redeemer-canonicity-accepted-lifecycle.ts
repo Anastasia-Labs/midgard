@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   prepareRedeemerCanonicityEvidence,
-  submitRedeemerCanonicityCancel,
   submitRedeemerCanonicityStep01Accepted,
   submitRedeemerCanonicityStep02,
   submitRedeemerCanonicityStep03,
@@ -35,6 +34,7 @@ import {
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   createRecordingLeaseCoordinator,
   emulatorSuccessorHeaderStart,
@@ -322,7 +322,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         ).threadOutRef;
       }
       const cancel = await captureEmulatorSubmission(harness.emulator, () =>
-        submitRedeemerCanonicityCancel({
+        submitFamilyCancel("redeemer-canonicity", {
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

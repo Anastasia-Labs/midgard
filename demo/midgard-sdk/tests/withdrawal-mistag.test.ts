@@ -1,7 +1,7 @@
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "../src/fraud-proof/catalogue.js";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "../src/fraud-proof/catalogue.js";
 import { committedWithdrawalValueBytes } from "../src/fraud-proof/fabricated-withdrawal.js";
 import {
   withdrawalBodyBytes,
@@ -64,7 +64,9 @@ describe("withdrawal-mistag V1", () => {
   });
 
   it("pins the production category and token name", () => {
-    expect(WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID).toBe("00000014");
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag).toBe(
+      "00000014",
+    );
     expect(withdrawalMistagThreadTokenAssetName(HEADER_HASH)).toBe(
       `00000014${HEADER_HASH}`,
     );

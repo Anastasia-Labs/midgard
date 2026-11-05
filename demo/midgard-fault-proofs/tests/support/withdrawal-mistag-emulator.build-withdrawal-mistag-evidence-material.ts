@@ -317,12 +317,15 @@ export const makeWithdrawalMistagEmulatorHarness = async () => {
       "Harness did not build withdrawal-mistag contracts/category",
     );
   }
-  if (rawCategory.categoryId !== SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID) {
+  if (
+    rawCategory.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag
+  ) {
     throw new Error("Unexpected withdrawal-mistag category id");
   }
   const category: WithdrawalMistagCatalogueCategory = {
     ...rawCategory,
-    categoryId: SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
+    categoryId: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag,
   };
   return { ...harness, withdrawalMistag, category };
 };

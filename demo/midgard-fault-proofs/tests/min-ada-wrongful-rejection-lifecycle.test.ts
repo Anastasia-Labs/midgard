@@ -7,7 +7,8 @@ import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/field-opening.js";
 import "../src/min-ada/forced-artifact.js";
-import "../src/min-ada/submit-cancel.js";
+import "../src/linear-fault-cancel.js";
+import "../src/min-ada/contracts.js";
 import "../src/min-ada/submit-init.js";
 import "../src/min-ada/submit-step-01.js";
 import "../src/min-ada/submit-step-01-forced.js";
@@ -38,7 +39,6 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { admitMinAdaForcedArtifact } from "../src/min-ada/forced-artifact.js";
-import { submitMinAdaCancel } from "../src/min-ada/submit-cancel.js";
 import { submitMinAdaStep01Forced } from "../src/min-ada/submit-step-01-forced.js";
 import { submitMinAdaTxStep02 } from "../src/min-ada/submit-step-02.js";
 import { submitMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
@@ -47,6 +47,7 @@ import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
   buildRemovalDeploymentInfo,
@@ -182,7 +183,7 @@ describe("minimum-Ada forced rejection", () => {
           predicateThread = `${live[0]!.txHash}#${live[0]!.outputIndex}`;
         }
         await f.capture("cancel", () =>
-          submitMinAdaCancel({
+          submitFamilyCancel("min-ada", {
             ...f.common,
             threadOutRef: predicateThread,
             referenceScriptUtxo: f.refs[2]!,

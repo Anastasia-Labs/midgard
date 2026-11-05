@@ -88,12 +88,13 @@ export type WorkflowApplicationRegistry = Readonly<{
   readonly registrations: readonly WorkflowAdapterRegistration[];
 }>;
 
+/** The row of a family whose step chain is still driven by hand. */
 export const manual = (
-  category: FraudProofCatalogueCategoryName,
   existingSurface: readonly string[],
-): WorkflowAdapterRegistration => ({
-  category,
-  status: "missing",
+): Pick<
+  MissingWorkflowAdapterRegistration,
+  "reason" | "existingSurface" | "requiredClosure"
+> => ({
   reason: "manual_step_chain_has_no_atomic_driver",
   existingSurface,
   requiredClosure:

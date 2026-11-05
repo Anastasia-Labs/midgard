@@ -39,7 +39,6 @@ import {
   prepareZeroInputEvidence,
   ZERO_INPUT_CATEGORY_ID,
 } from "../src/zero-input/family.js";
-import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import {
   submitZeroInputStep01Accepted,
   submitZeroInputStep01Forced,
@@ -56,6 +55,7 @@ import {
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
@@ -424,7 +424,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const cancelAtStep01 = await initialize();
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancel({
+        submitFamilyCancel("zero-input", {
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -439,7 +439,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const cancelAtStep02 = await bind(await initialize());
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancel({
+        submitFamilyCancel("zero-input", {
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

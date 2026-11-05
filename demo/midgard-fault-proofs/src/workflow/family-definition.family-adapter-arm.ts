@@ -50,6 +50,29 @@ export type FaultProofWitnessRole =
   | keyof FaultProofWitnessReferenceScripts
   | "stateQueueSpend";
 
+/**
+ * The witness roles every family binds, in the order the shared
+ * `FaultProofWitnessReferenceScripts` type declares them. Families build
+ * their witness roles from these sets rather than restating them.
+ */
+export const CORE_WITNESS_ROLES = Object.freeze([
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const);
+
+/** The core roles and the chunked-proof verifier. */
+export const CHUNKED_VERIFY_WITNESS_ROLES = Object.freeze([
+  ...CORE_WITNESS_ROLES,
+  "chunkedVerifyWithdraw",
+] as const);
+
+/** The chunked-verify roles and the membership-exclusion verifier. */
+export const MEMBERSHIP_WITNESS_ROLES = Object.freeze([
+  ...CHUNKED_VERIFY_WITNESS_ROLES,
+  "pexcludesWithdraw",
+] as const);
+
 type PerStep<Steps extends readonly unknown[], Value> = {
   readonly [Index in keyof Steps]: Value;
 };

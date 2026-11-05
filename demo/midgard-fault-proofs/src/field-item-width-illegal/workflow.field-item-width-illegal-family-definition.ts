@@ -18,7 +18,10 @@ import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
-import { defineFamily } from "../workflow/family-definition.js";
+import {
+  CORE_WITNESS_ROLES,
+  defineFamily,
+} from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -125,11 +128,7 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
     FieldItemWidthStep02DatumSchema,
     FieldItemWidthStep03DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-  ],
+  witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
   adapter: {

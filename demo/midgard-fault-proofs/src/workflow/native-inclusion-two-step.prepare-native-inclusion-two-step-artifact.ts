@@ -24,6 +24,7 @@ import { prepareZeroInputForcedPlan } from "../zero-input/v1.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
+  CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.js";
@@ -302,12 +303,7 @@ export const prepareNativeInclusionTwoStepArtifact = async <
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-] as const;
+export const WITNESS_ROLES = CHUNKED_VERIFY_WITNESS_ROLES;
 
 export type WitnessRole = (typeof WITNESS_ROLES)[number];
 

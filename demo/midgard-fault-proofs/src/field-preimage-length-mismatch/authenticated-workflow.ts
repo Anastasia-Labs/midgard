@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import {
+  CORE_WITNESS_ROLES,
   defineFamily,
   type FamilyAssemblyContext,
 } from "../workflow/family-definition.js";
@@ -62,11 +63,7 @@ export type ManifestBoundFieldPreimageLengthWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+const WITNESS_ROLES = CORE_WITNESS_ROLES;
 type BoundContext = FamilyAssemblyContext<
   "fieldPreimageLengthMismatch",
   (typeof WITNESS_ROLES)[number],

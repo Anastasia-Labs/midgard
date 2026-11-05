@@ -33,7 +33,6 @@ import {
   transitionDepositOpening,
 } from "../../src/transition-trace/history-opening.js";
 import {
-  submitTransitionTraceCancel,
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
 } from "../../src/transition-trace/index.js";
@@ -57,6 +56,7 @@ import {
 } from "./emulator/reference-scripts.js";
 import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.js";
 import { submitInit } from "./legacy-submit-emulator.js";
+import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { expectStateQueueHeaderOrder } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -676,12 +676,11 @@ export const transitionTraceFinalCaseRunner = (
       const reference = Object.values(transitionTraceReferenceScripts).find(
         (entry) => entry.scriptHash === final.spendingScriptHash,
       )!.utxo;
-      await submitTransitionTraceCancel({
+      await submitFamilyCancel("transition-trace", {
         lucid: proverLucid,
         contracts: {
           computationThread: contracts.computationThread,
-          fraudProof: contracts.fraudProof,
-          transitionTrace: contracts.fraudProofContracts.transitionTrace,
+          steps: contracts.fraudProofContracts.transitionTrace.steps,
         },
         categoryId: catalogue.categories.transitionTrace.categoryId,
         signer: proverSigner,

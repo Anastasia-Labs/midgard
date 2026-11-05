@@ -16,6 +16,7 @@ import {
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  CORE_WITNESS_ROLES,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -216,11 +217,7 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
     ProtectedOutputSignerStep04DatumSchema,
     ProtectedOutputSignerStep05DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-  ],
+  witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
   adapter: {

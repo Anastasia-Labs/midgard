@@ -2,8 +2,8 @@ import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
-import { FAMILY_DEFINITIONS } from "../../src/workflow/family-definitions.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
 import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
@@ -20,12 +20,11 @@ export const bindFamilyRecoveryFixture = async (
   >["workflow"],
 ) => {
   const category = workflow.binding.definition.category;
-  if (!(category in FAMILY_DEFINITIONS))
+  const definition = FAMILY_APPLICATION_REGISTRY[category].definition;
+  if (definition === undefined)
     throw new Error(
       `Recovery fixture has no family definition for ${category}`,
     );
-  const definition =
-    FAMILY_DEFINITIONS[category as keyof typeof FAMILY_DEFINITIONS];
   const owner = "aa".repeat(28);
   const address = credentialToAddress("Preprod", { type: "Key", hash: owner });
   const script = { type: "PlutusV3", script: "49480100002221200101" } as const;

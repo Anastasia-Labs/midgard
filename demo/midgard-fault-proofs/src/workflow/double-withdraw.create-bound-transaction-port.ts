@@ -27,6 +27,7 @@ import {
   selectedPairFromClassification,
 } from "./double-withdraw.parse-artifact.js";
 import {
+  CORE_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
   type ManifestBoundLinearFamilyWorkflow,
@@ -106,11 +107,7 @@ const prepareArtifactFromEvidence = async ({
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 export type DoubleWithdrawWorkflowReferenceScripts =
   LinearFamilyReferenceScripts<

@@ -20,6 +20,7 @@ import {
 } from "../submit-reference-input-no-idx-step-04.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
+  CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.js";
@@ -308,12 +309,7 @@ export const prepareReferenceInputNoIdxArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-] as const;
+export const WITNESS_ROLES = CHUNKED_VERIFY_WITNESS_ROLES;
 
 export type ReferenceInputNoIdxWorkflowReferenceScripts =
   LinearFamilyReferenceScripts<

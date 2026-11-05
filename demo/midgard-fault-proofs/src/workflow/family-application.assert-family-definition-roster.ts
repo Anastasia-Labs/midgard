@@ -91,6 +91,11 @@ export type FamilyApplicationRecord<
   roster: Readonly<Record<string, string>>;
   requires: readonly FamilyApplicationRequirement[];
   /**
+   * The definition a derived record is built from, absent on a record written
+   * by hand. Typed on the members the roster is read from.
+   */
+  definition?: FamilyRosterDefinition & Readonly<{ category: Category }>;
+  /**
    * Lays the resolved roster into the family's own manifest-bound config.
    */
   bindConfig: (input: {

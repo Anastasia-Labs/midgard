@@ -14,6 +14,7 @@ import {
 } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
+  CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.js";
@@ -297,12 +298,7 @@ export const prepareL2TxMistagArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-] as const;
+export const WITNESS_ROLES = CHUNKED_VERIFY_WITNESS_ROLES;
 
 export type L2TxMistagWorkflowReferenceScripts = LinearFamilyReferenceScripts<
   "l2TxMistag",

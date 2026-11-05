@@ -1,8 +1,9 @@
 # Manifest-bound family assembly
 
-The production family table in
-`demo/midgard-fault-proofs/src/workflow/family-definitions.ts` contains 18 linear
-and 31 cursor definitions. Each declares its datum schemas, published step and
+Each derived record in `FAMILY_APPLICATION_REGISTRY`
+(`demo/midgard-fault-proofs/src/workflow/family-application-registry.ts`)
+carries the definition it is built from: 16 linear and 30 cursor definitions as
+of 2026-11-04. Each declares its datum schemas, published step and
 witness scripts, certificate requirement, transaction port, complete replayer,
 and ordered field/raw-datum and proof-chunk prerequisites.
 
@@ -26,7 +27,7 @@ workflow has derived it. Saved-intent recovery continues through
 `executeManifestBoundFamilyRecovery`, retaining decision-digest and actuation
 checks. The generic retained-DA runner does not replace those guards.
 
-The table-driven assembly tests exercise all 49 definitions, including exact
+The table-driven assembly tests exercise every registered definition, including exact
 reference-script rejection and prerequisite wiring. Family recovery and emulator
 suites remain necessary: assembly coverage does not establish transaction fit,
 protocol lifecycle acceptance, or live deployment readiness.

@@ -8,19 +8,17 @@ import {
   MintAuthorizationWitnessScanDatum,
 } from "@al-ft/midgard-sdk";
 
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { MINT_AUTHORIZATION_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import { defineFamily } from "../workflow/family-definition.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
+  defineFamily,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import { admitMintAuthorizationWorkflowArtifact } from "./artifact.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
@@ -45,13 +43,7 @@ export const MINT_AUTHORIZATION_FAMILY_DEFINITION = defineFamily({
     MintAuthorizationEvaluateDatum,
     MintAuthorizationWitnessScanDatum,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-    "chunkedVerifyWithdraw",
-    "pexcludesWithdraw",
-  ],
+  witnessRoles: MEMBERSHIP_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY,
   adapter: {
@@ -163,28 +155,5 @@ export const createManifestBoundMintAuthorizationWorkflow = (
     config,
   );
 
-export const runOrResumeManifestBoundMintAuthorizationWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundMintAuthorizationWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY,
-    replayContext: workflow.replayContext,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["mintAuthorization"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+export const runOrResumeManifestBoundMintAuthorizationWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

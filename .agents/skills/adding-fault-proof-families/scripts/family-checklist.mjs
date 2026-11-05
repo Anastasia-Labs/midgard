@@ -18,8 +18,8 @@
 // core protocol identity and complete member coverage of the independent ABI;
 // a reference-script role and token name for every member owned by the family;
 // the SDK build<Name>Chain with a validator file per member title; a family
-// application record; the classification and adapter-registration rows at
-// the catalogue position; a catalogue-status.md row; a devnet journey owner;
+// application record; the classification row at the catalogue position; an
+// adapter-registration row; a catalogue-status.md row; a devnet journey owner;
 // and at least one fault-proofs test file named after the family.
 // Informational: family definition kind, and which
 // matched tests are lifecycles, assert validator refusal, or record coverage.

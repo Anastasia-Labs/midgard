@@ -7,11 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as inspection from "../src/inspect-contracts.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
-import { familyStepContractNames } from "../src/workflow/family-definition.js";
 import {
-  type AssembledFamilyCategory,
-  FAMILY_DEFINITIONS,
-} from "../src/workflow/family-definitions.js";
+  type FamilyCategory,
+  familyStepContractNames,
+} from "../src/workflow/family-definition.js";
 import * as observations from "../src/workflow/family-l1-observation.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
@@ -26,10 +25,13 @@ import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
 import { cursorAssemblyRuntimeFixture } from "./support/cursor-assembly-runtime-fixtures.js";
 import { createAuthenticatedFamilyAssemblyRuntimeFixture } from "./support/family-assembly-runtime-fixtures.js";
+import { REGISTERED_FAMILY_DEFINITIONS } from "./support/registered-family-definitions.js";
 
 afterEach(() => vi.restoreAllMocks());
 
-const categories = Object.keys(FAMILY_DEFINITIONS) as AssembledFamilyCategory[];
+const categories = [...REGISTERED_FAMILY_DEFINITIONS.keys()];
+const definitionOf = (category: FamilyCategory) =>
+  REGISTERED_FAMILY_DEFINITIONS.get(category)!;
 const OWNER = "11".repeat(28);
 const HEADER = "aa".repeat(28);
 const SCRIPT = { type: "PlutusV3", script: "49480100002221200101" } as const;
@@ -42,8 +44,8 @@ const SCRIPT = { type: "PlutusV3", script: "49480100002221200101" } as const;
  * stay real. Step contract names come from whichever spec the definition's
  * arm uses.
  */
-const fixture = (category: AssembledFamilyCategory) => {
-  const definition = FAMILY_DEFINITIONS[category];
+const fixture = (category: FamilyCategory) => {
+  const definition = definitionOf(category);
   const stepNames = familyStepContractNames(definition);
   const address = credentialToAddress("Preprod", { type: "Key", hash: OWNER });
   const names = [
@@ -225,19 +227,19 @@ describe("manifest-bound family assembly", () => {
     );
     expect(
       categories.filter(
-        (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
+        (category) => definitionOf(category).adapter.kind === "linear",
       ),
     ).toHaveLength(16);
     expect(
       categories.filter(
-        (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",
+        (category) => definitionOf(category).adapter.kind === "cursor",
       ),
     ).toHaveLength(30);
     for (const category of categories) {
-      expect(FAMILY_DEFINITIONS[category].category).toBe(category);
+      expect(definitionOf(category).category).toBe(category);
     }
     expect(
-      new Set(categories.map((c) => FAMILY_DEFINITIONS[c].adapter.kind)),
+      new Set(categories.map((c) => definitionOf(c).adapter.kind)),
     ).toEqual(new Set(["linear", "cursor"]));
   });
 
@@ -281,43 +283,40 @@ describe("manifest-bound family assembly", () => {
       expect(referenceOrder).toBeLessThan(observeOrder!);
     });
 
-    describe.each(FAMILY_DEFINITIONS[category].witnessRoles)(
-      "witness %s",
-      (role) => {
-        it("refuses a missing reference before provider startup", async () => {
-          const f = fixture(category);
-          Reflect.deleteProperty(f.config.referenceScripts.witnesses, role);
-          await expect(f.assemble()).rejects.toThrow(
-            `${category} workflow config omitted witness reference script ${role}`,
-          );
-          expect(f.observe).not.toHaveBeenCalled();
-        });
+    describe.each(definitionOf(category).witnessRoles)("witness %s", (role) => {
+      it("refuses a missing reference before provider startup", async () => {
+        const f = fixture(category);
+        Reflect.deleteProperty(f.config.referenceScripts.witnesses, role);
+        await expect(f.assemble()).rejects.toThrow(
+          `${category} workflow config omitted witness reference script ${role}`,
+        );
+        expect(f.observe).not.toHaveBeenCalled();
+      });
 
-        it("refuses a reference from a different output", async () => {
-          const f = fixture(category);
-          f.config.referenceScripts.witnesses[role] = {
-            ...f.references.get(role)!,
-            outputIndex: 99,
-          };
-          await expect(f.assemble()).rejects.toThrow(
-            `${role} reference UTxO differs from finalized manifest identity`,
-          );
-          expect(f.observe).not.toHaveBeenCalled();
-        });
+      it("refuses a reference from a different output", async () => {
+        const f = fixture(category);
+        f.config.referenceScripts.witnesses[role] = {
+          ...f.references.get(role)!,
+          outputIndex: 99,
+        };
+        await expect(f.assemble()).rejects.toThrow(
+          `${role} reference UTxO differs from finalized manifest identity`,
+        );
+        expect(f.observe).not.toHaveBeenCalled();
+      });
 
-        it("refuses a different script at the published output", async () => {
-          const f = fixture(category);
-          f.config.referenceScripts.witnesses[role] = {
-            ...f.references.get(role)!,
-            scriptRef: { type: "Native", script: `8200581c${"44".repeat(28)}` },
-          };
-          await expect(f.assemble()).rejects.toThrow(
-            `${role} reference UTxO script differs from finalized manifest identity`,
-          );
-          expect(f.observe).not.toHaveBeenCalled();
-        });
-      },
-    );
+      it("refuses a different script at the published output", async () => {
+        const f = fixture(category);
+        f.config.referenceScripts.witnesses[role] = {
+          ...f.references.get(role)!,
+          scriptRef: { type: "Native", script: `8200581c${"44".repeat(28)}` },
+        };
+        await expect(f.assemble()).rejects.toThrow(
+          `${role} reference UTxO script differs from finalized manifest identity`,
+        );
+        expect(f.observe).not.toHaveBeenCalled();
+      });
+    });
 
     it("binds the field-preimage certificate mint only when the definition declares it", async () => {
       const f = fixture(category);

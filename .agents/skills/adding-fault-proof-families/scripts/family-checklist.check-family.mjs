@@ -352,8 +352,8 @@ export const checkFamily = (root, category) => {
     );
   }
 
-  // Two tables must hold one row per category at its catalogue position; both
-  // are checked at load by the fault-proofs package.
+  // The classification table must hold one row per category at its catalogue
+  // position; the fault-proofs package checks it at load.
   const orderedRow = (id, sourceKey, constName, consequence) => {
     // A row is `{ category: "x", ... }` or a helper call such as
     // `manual("x", ...)`: take its `category:` value, else its first string.
@@ -399,27 +399,51 @@ export const checkFamily = (root, category) => {
     "FRAUD_PROOF_CLASSIFICATION_RULES",
     "the module throws at load unless row i is catalogue category i",
   );
-  orderedRow(
+
+  // Adapter registration rows are derived in catalogue order from a table
+  // keyed by category. Its type annotation is a `{...}` literal too, so read
+  // the value after the `=`.
+  const adapters = readSource(root, "adapters");
+  const rowsDeclaration = /\bconst missingRows\b[^=]*=/u.exec(adapters);
+  if (rowsDeclaration === null) {
+    throw new CannotLook(
+      `${SOURCES.adapters}: no \`const missingRows = {...}\` found`,
+    );
+  }
+  const adapterRows = topLevelElements(
+    extractLiteral(
+      `const ROWS_VALUE ${adapters.slice(rowsDeclaration.index + rowsDeclaration[0].length)}`,
+      "ROWS_VALUE",
+      SOURCES.adapters,
+    ),
+  )
+    .map(stripComments)
+    .map((element) => /^(\w+)\s*:/u.exec(element.trim())?.[1]);
+  if (adapterRows.length === 0) {
+    throw new CannotLook(`${SOURCES.adapters}: missingRows names no category`);
+  }
+  record(
     "adapter-registration",
-    "adapters",
-    "workflowAdapterRegistrationRows",
-    "validateWorkflowAdapterCoverage refuses a missing or misordered row",
+    adapterRows.includes(category) ? "ok" : "gap",
+    adapterRows.includes(category)
+      ? "missingRows row; workflowAdapterRegistrationRows derives the rows in catalogue order"
+      : `no missingRows row (${SOURCES.adapters}); the table's type refuses a missing category`,
   );
 
-  const cursorKeys = objectKeys(
-    extractLiteral(
-      readSource(root, "definitions"),
-      "CURSOR_FAMILY_DEFINITIONS",
-      SOURCES.definitions,
-    ),
-  );
+  // A cursor family's record is derived from its FamilyDefinition: the
+  // record helper's first argument is the family's definition. A bespoke
+  // family's record is written by hand and names no definition.
+  const derivedFrom = new RegExp(
+    `<\\s*"${category}"\\s*,[^()]*>\\(\\s*([A-Z][A-Z0-9_]*_FAMILY_DEFINITION)\\b`,
+    "u",
+  ).exec(stripComments(registry))?.[1];
   record(
     "family-definition",
     "info",
     linearCategories.includes(category)
       ? "linear FamilyDefinition (LINEAR_FAMILY_CATEGORIES)"
-      : cursorKeys.has(category)
-        ? "cursor FamilyDefinition (CURSOR_FAMILY_DEFINITIONS)"
+      : derivedFrom !== undefined
+        ? `cursor FamilyDefinition (its record is derived from ${derivedFrom})`
         : "none; the family uses a bespoke workflow (allowed, not assembled from a definition)",
   );
 

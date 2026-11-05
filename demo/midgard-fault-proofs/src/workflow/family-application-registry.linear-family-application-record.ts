@@ -108,6 +108,7 @@ const linearFamilyApplicationRecord = (
     category,
     roster,
     requires,
+    definition,
     bindConfig: ({ infrastructure, references }): WidenedLinearConfig =>
       Object.freeze({
         ...commonBoundConfigFields(infrastructure),

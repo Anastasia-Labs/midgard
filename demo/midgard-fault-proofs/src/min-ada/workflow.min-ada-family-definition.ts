@@ -6,19 +6,17 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-contracts.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { defineFamily } from "../workflow/family-definition.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
+  defineFamily,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import type { MinAdaContracts } from "./contracts.js";
 import {
   type BoundConfig,
@@ -100,13 +98,7 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
     MinAdaStep03DatumSchema,
     MinAdaStep04DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-    "chunkedVerifyWithdraw",
-    "pexcludesWithdraw",
-  ],
+  witnessRoles: MEMBERSHIP_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => MIN_ADA_COMPLETE_CANONICAL_REPLAY,
   auxiliaryReferenceScripts: {
@@ -160,27 +152,5 @@ export const createManifestBoundMinAdaWorkflow = async (
     auxiliaryReferenceScripts: config.referenceScripts.yields,
   });
 
-export const runOrResumeManifestBoundMinAdaWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundMinAdaWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["minAda"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+export const runOrResumeManifestBoundMinAdaWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

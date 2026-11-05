@@ -23,7 +23,6 @@ import {
   type ObserverOrderInvalidFinding,
 } from "../src/observer-order-invalid/family.js";
 import { type ObserverOrderInvalidStagedPlan } from "../src/observer-order-invalid/staged-plan.js";
-import { submitObserverOrderInvalidCancel } from "../src/observer-order-invalid/submit-cancel.js";
 import {
   submitObserverOrderInvalidStep01Accepted,
   submitObserverOrderInvalidStep01Forced,
@@ -51,6 +50,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   compactCborHex,
   type ObserverFieldShape,
@@ -492,7 +492,7 @@ export const makeHarness = async () => {
     });
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) => {
     const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidCancel({
+      submitFamilyCancel("observer-order-invalid", {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

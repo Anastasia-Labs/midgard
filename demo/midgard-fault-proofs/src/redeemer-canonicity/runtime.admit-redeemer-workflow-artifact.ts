@@ -16,7 +16,10 @@ import {
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { cursorStringField } from "../workflow/cursor-family-runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
+import {
+  type FamilyAssemblyContext,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { type JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
@@ -98,13 +101,7 @@ export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-  "pexcludesWithdraw",
-] as const;
+export const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
 
 export const STEP_CONTRACT_NAMES = [
   "fraudProofRedeemerCanonicity",

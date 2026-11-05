@@ -25,6 +25,8 @@ import "./linear-family-spec.js";
 import "./family-definition.family-adapter-arm.js";
 import "./family-definition.family-definition.js";
 export {
+  CHUNKED_VERIFY_WITNESS_ROLES,
+  CORE_WITNESS_ROLES,
   type FamilyAdapterArm,
   type FamilyAssemblyContext,
   type FamilyCategory,
@@ -46,6 +48,7 @@ export {
   type LinearFamilyStepReferenceScripts,
   type ManifestBoundFamilyWorkflowConfig,
   type ManifestBoundLinearFamilyWorkflowConfig,
+  MEMBERSHIP_WITNESS_ROLES,
 } from "./family-definition.family-adapter-arm.js";
 export {
   defineFamily,

@@ -18,7 +18,6 @@ import {
   type ObserversForbiddenEvidence,
   type ObserversForbiddenFinding,
 } from "../src/observers-forbidden-on-untagged-network/family.js";
-import { submitObserversForbiddenCancel } from "../src/observers-forbidden-on-untagged-network/submit-cancel.js";
 import {
   submitObserversForbiddenStep01Accepted,
   submitObserversForbiddenStep01Forced,
@@ -43,6 +42,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   compactCborHex,
   observerHashes,
@@ -369,7 +369,7 @@ export const makeHarness = async () => {
     });
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1) => {
     const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserversForbiddenCancel({
+      submitFamilyCancel("observers-forbidden-on-untagged-network", {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

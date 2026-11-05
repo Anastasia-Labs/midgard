@@ -15,7 +15,10 @@ import { submitDaHashPreimageStep01 } from "../submit-da-hash-preimage-step-01.j
 import { submitDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
 import { submitInit } from "../submit-init.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
-import { type LinearFamilyReferenceScripts } from "./family-definition.js";
+import {
+  CORE_WITNESS_ROLES,
+  type LinearFamilyReferenceScripts,
+} from "./family-definition.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 
@@ -205,11 +208,7 @@ export const daHashPreimageArtifact = async (
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 export type DaHashPreimageWorkflowReferenceScripts =
   LinearFamilyReferenceScripts<

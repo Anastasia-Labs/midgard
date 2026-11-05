@@ -169,6 +169,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
     category,
     roster,
     requires,
+    definition,
     bindConfig: ({ infrastructure, references }): Config =>
       // Every step key was found above and every role resolves or throws, so
       // this is the family's exact config shape.
@@ -310,6 +311,7 @@ export const cursorFamilyApplicationRecord = <
     category,
     roster,
     requires: family.requires,
+    definition,
     bindConfig: ({ infrastructure, references }): Config =>
       family.bindConfig({
         common: Object.freeze({

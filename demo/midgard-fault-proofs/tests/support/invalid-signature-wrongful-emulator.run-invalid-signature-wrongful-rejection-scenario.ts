@@ -35,7 +35,6 @@ import {
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
-import { submitZeroInputCancel } from "../../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
@@ -47,6 +46,7 @@ import {
   submitRawInvalidSignatureStep02,
 } from "./invalid-signature-emulator.js";
 import { network } from "./invalid-signature-wrongful-emulator.network.js";
+import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
@@ -349,7 +349,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
   const cancel = async (threadOutRef: string, step: 0 | 1) =>
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancel({
+        submitFamilyCancel("invalid-signature", {
           lucid: harness.proverLucid,
           contracts: contracts as never,
           categoryId: category.categoryId,

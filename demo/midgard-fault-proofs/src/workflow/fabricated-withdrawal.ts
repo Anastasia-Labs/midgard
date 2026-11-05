@@ -29,6 +29,7 @@ import {
   requireFabricatedWithdrawalArtifact,
 } from "./fabricated-withdrawal-evidence.js";
 import {
+  CORE_WITNESS_ROLES,
   defineLinearFamily,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
@@ -50,12 +51,7 @@ import {
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
 
-const WITNESS_ROLES = [
-  "stateQueueSpend",
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+const WITNESS_ROLES = ["stateQueueSpend", ...CORE_WITNESS_ROLES] as const;
 
 type AssemblyContext = LinearFamilyAssemblyContext<
   "fabricatedWithdrawal",

@@ -33,7 +33,7 @@ import {
   TransitionTraceMembershipProofSchema,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
-import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "./catalogue.js";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -49,7 +49,7 @@ export const withdrawalMistagThreadTokenAssetName = (
       "withdrawal-mistag header hash must be 28-byte lowercase hex",
     );
   }
-  return `${WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID}${challengedHeaderHash}`;
+  return `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag}${challengedHeaderHash}`;
 };
 
 export const WithdrawalMistagStep01DatumSchema = faultProofStepDatumSchema(

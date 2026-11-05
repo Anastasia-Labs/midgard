@@ -36,6 +36,7 @@ import {
 import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
+  CORE_WITNESS_ROLES,
   type FamilyAssemblyContext,
   type FamilyReferenceScripts,
   type LinearFamilyPrerequisiteInput,
@@ -123,11 +124,7 @@ const prepareArtifactFromEvidence = async ({
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 export type CommittedFieldShapeWorkflowReferenceScripts =
   FamilyReferenceScripts<

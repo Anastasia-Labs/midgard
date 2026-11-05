@@ -6,19 +6,17 @@ import {
   NativeScriptInvalidStep05DatumSchema,
 } from "@al-ft/midgard-sdk";
 
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
-import { defineFamily } from "../workflow/family-definition.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
+  defineFamily,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import type { NativeScriptInvalidContracts } from "./contracts.js";
 import { scriptFieldPlan, signerFieldPlan } from "./workflow.resolve-field.js";
 import {
@@ -38,13 +36,7 @@ export const NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily({
     NativeScriptInvalidStep04DatumSchema,
     NativeScriptInvalidStep05DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-    "chunkedVerifyWithdraw",
-    "pexcludesWithdraw",
-  ],
+  witnessRoles: MEMBERSHIP_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   adapter: {
@@ -136,27 +128,5 @@ export const createManifestBoundNativeScriptInvalidWorkflow = (
     config,
   );
 
-export const runOrResumeManifestBoundNativeScriptInvalidWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundNativeScriptInvalidWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["nativeScriptInvalid"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+export const runOrResumeManifestBoundNativeScriptInvalidWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

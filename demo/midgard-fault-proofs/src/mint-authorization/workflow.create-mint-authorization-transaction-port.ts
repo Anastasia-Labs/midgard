@@ -23,16 +23,10 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitMintAuthorizationWorkflowArtifact,
@@ -340,12 +334,5 @@ export type ManifestBoundMintAuthorizationWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundMintAuthorizationWorkflow = Readonly<{
-  replayContext?: CompleteCanonicalReplayContext;
-  binding: FraudProofWorkflowDeploymentBinding<"mintAuthorization">;
-  l1: FraudProofFamilyL1ObservationPort<"mintAuthorization">;
-  transactions: CursorFamilyTransactionPort<"mintAuthorization">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundMintAuthorizationWorkflow =
+  ManifestBoundFamilyWorkflow<"mintAuthorization", true, 7>;

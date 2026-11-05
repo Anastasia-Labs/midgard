@@ -4,7 +4,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMinAdaCancel,
   submitMinAdaInit,
   submitMinAdaStep03,
   submitMinAdaStep04,
@@ -17,6 +16,7 @@ import {
   makeMinAdaEmulatorHarness,
   publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -73,7 +73,7 @@ describe("min-ada standalone emulator lifecycle", () => {
     } as const;
 
     const cancelledInit = await submitMinAdaInit(initParams);
-    const cancelled = await submitMinAdaCancel({
+    const cancelled = await submitFamilyCancel("min-ada", {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,

@@ -38,7 +38,6 @@ import {
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
-import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -48,6 +47,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { submitRawNonExistentInputForcedStep } from "./support/non-existent-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -458,7 +458,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
           }),
         ).rejects.toThrow(/script execution|validator|eval/i);
         await captures("honest-cancel", () =>
-          submitZeroInputCancel({
+          submitFamilyCancel("non-existent-input", {
             lucid: harness.proverLucid,
             contracts: contracts as never,
             categoryId,
@@ -504,7 +504,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
               )
             ).nextThreadOutRef!;
           await captures(`cancel-${boundary}`, () =>
-            submitZeroInputCancel({
+            submitFamilyCancel("non-existent-input", {
               lucid: harness.proverLucid,
               contracts: contracts as never,
               categoryId,

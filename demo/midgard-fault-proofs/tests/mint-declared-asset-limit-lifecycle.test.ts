@@ -14,7 +14,7 @@ import "../src/mint-declared-asset-limit/contracts.js";
 import "../src/mint-declared-asset-limit/family.js";
 import "../src/mint-declared-asset-limit/schemas.js";
 import "../src/mint-declared-asset-limit/staged-plan.js";
-import "../src/mint-declared-asset-limit/submit-cancel.js";
+import "../src/linear-fault-cancel.js";
 import "../src/mint-declared-asset-limit/submit-step-01.js";
 import "../src/mint-declared-asset-limit/submit-step-02.js";
 import "../src/mint-declared-asset-limit/submit-step-03.js";
@@ -83,7 +83,6 @@ import {
   planMintDeclaredAssetLimitField,
   planMintDeclaredAssetLimitStagedWalk,
 } from "../src/mint-declared-asset-limit/staged-plan.js";
-import { submitMintDeclaredAssetLimitCancel } from "../src/mint-declared-asset-limit/submit-cancel.js";
 import {
   submitMintDeclaredAssetLimitStep01Accepted,
   submitMintDeclaredAssetLimitStep01Forced,
@@ -136,6 +135,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   setupFraudulentBlock,
@@ -1220,7 +1220,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         referenceScriptUtxo: references[2],
       });
     const cancel = (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      submitMintDeclaredAssetLimitCancel({
+      submitFamilyCancel("mint-declared-asset-limit", {
         ...common,
         threadOutRef,
         referenceScriptUtxo,

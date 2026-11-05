@@ -11,7 +11,7 @@ import "../../src/remove-fraudulent-block.js";
 import "../../src/submit-init.js";
 import "../../src/submit-invalid-signature-step-02.js";
 import "../../src/transition-trace/phas.js";
-import "../../src/zero-input/submit-cancel.js";
+import "../../src/linear-fault-cancel.js";
 import "./emulator/catalogue.js";
 import "./emulator/emulator-context.js";
 import "./emulator/harness.js";

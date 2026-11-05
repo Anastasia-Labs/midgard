@@ -7,29 +7,19 @@ import {
   NativeScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk";
 
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  type CompleteCanonicalReplayContext,
-  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../workflow/complete-replay.js";
-import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { NATIVE_SCRIPT_DECODING_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { defineFamily } from "../workflow/family-definition.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
+  defineFamily,
+  type ManifestBoundFamilyWorkflow,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import { admitNativeScriptDecodingWorkflowArtifact } from "./artifact.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -40,15 +30,8 @@ import {
   subjectPlan,
 } from "./workflow.create-native-script-decoding-transaction-port.js";
 
-export type ManifestBoundNativeScriptDecodingWorkflow = Readonly<{
-  replayContext?: CompleteCanonicalReplayContext;
-  binding: FraudProofWorkflowDeploymentBinding<"nativeScriptDecoding">;
-  l1: FraudProofFamilyL1ObservationPort<"nativeScriptDecoding">;
-  transactions: CursorFamilyTransactionPort<"nativeScriptDecoding">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundNativeScriptDecodingWorkflow =
+  ManifestBoundFamilyWorkflow<"nativeScriptDecoding", true, 6>;
 
 export const NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily({
   category: "nativeScriptDecoding",
@@ -60,13 +43,7 @@ export const NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily({
     NativeScriptDecodingStep03AdvanceOrCloseDatumSchema,
     NativeScriptDecodingStep04DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-    "chunkedVerifyWithdraw",
-    "pexcludesWithdraw",
-  ],
+  witnessRoles: MEMBERSHIP_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
@@ -165,28 +142,5 @@ export const createManifestBoundNativeScriptDecodingWorkflow = (
     config,
   );
 
-export const runOrResumeManifestBoundNativeScriptDecodingWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundNativeScriptDecodingWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-    replayContext: workflow.replayContext,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["nativeScriptDecoding"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+export const runOrResumeManifestBoundNativeScriptDecodingWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

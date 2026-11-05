@@ -12,7 +12,7 @@ import "../src/observers-forbidden-on-untagged-network/actuator.js";
 import "../src/observers-forbidden-on-untagged-network/artifact.js";
 import "../src/observers-forbidden-on-untagged-network/contracts.js";
 import "../src/observers-forbidden-on-untagged-network/family.js";
-import "../src/observers-forbidden-on-untagged-network/submit-cancel.js";
+import "../src/linear-fault-cancel.js";
 import "../src/observers-forbidden-on-untagged-network/submit-step-01.js";
 import "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
 import "../src/remove-fraudulent-block.js";

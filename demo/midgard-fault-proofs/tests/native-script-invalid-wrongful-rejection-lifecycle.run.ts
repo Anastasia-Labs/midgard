@@ -6,7 +6,6 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
-import { submitNativeScriptInvalidCancel } from "../src/native-script-invalid/submit-cancel.js";
 import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
 import { submitNativeScriptInvalidStep03 } from "../src/native-script-invalid/submit-step-03.js";
 import { submitNativeScriptInvalidStep03StartSignerScan } from "../src/native-script-invalid/submit-step-03-staged.js";
@@ -15,6 +14,7 @@ import { submitNativeScriptInvalidStep05 } from "../src/native-script-invalid/su
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   buildRemovalDeploymentInfo,
   network,
@@ -41,7 +41,7 @@ export const run = async (
       : {},
   );
   const cancel = async (threadOutRef: string, index: number) => {
-    await submitNativeScriptInvalidCancel({
+    await submitFamilyCancel("native-script-invalid", {
       ...f.common,
       threadOutRef,
       referenceScriptUtxo: f.refs[index]!,

@@ -15,7 +15,6 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import {
-  submitInputSetUniquenessCancel,
   submitInputSetUniquenessForcedStep01,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep03,
@@ -38,6 +37,7 @@ import {
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
 } from "./support/input-set-uniqueness-emulator.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   expectProofFit,
@@ -294,7 +294,7 @@ export const exerciseForcedLifecycle = async ({
   };
   const cancel = async (threadOutRef: string, stepIndex: 0 | 2 | 3) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInputSetUniquenessCancel({
+      submitFamilyCancel("input-set-uniqueness", {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,

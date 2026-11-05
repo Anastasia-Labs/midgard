@@ -31,7 +31,10 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import { defineFamily } from "../workflow/family-definition.js";
+import {
+  CORE_WITNESS_ROLES,
+  defineFamily,
+} from "../workflow/family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
@@ -275,11 +278,7 @@ export type ManifestBoundWithdrawalMistagWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 export const WITHDRAWAL_MISTAG_FAMILY_DEFINITION = defineFamily({
   category: "withdrawalMistag",

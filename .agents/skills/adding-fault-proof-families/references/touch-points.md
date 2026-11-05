@@ -6,8 +6,8 @@ whenever a `GAP` line from `family-checklist.mjs` names a file you do not
 recognise.
 
 Legacy line references below are a 2026-09-25 snapshot. The deployment metadata
-owners and projections were rechecked on 2026-10-17 and use paths without line
-numbers. The template throughout is
+owners and projections were rechecked on 2026-10-17, and the fault-proofs table
+on 2026-11-04; those rows use paths without line numbers. The template throughout is
 `mintItemNonCanonical` (catalogue ID `00000036`, four steps). It was added in
 `29ecaaae4` (2026-09-11, 75 files), which predates the family application
 registry (`625d00b38`, 2026-09-19); read that commit for the Aiken, SDK and
@@ -84,20 +84,23 @@ own correctness. [script: .agents/skills/adding-fault-proof-families/scripts/fam
 
 ## Fault proofs (`demo/midgard-fault-proofs`)
 
-| Surface                                                                                                                                    | Enforced by                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `src/<kebab>/` (scan, replay, submit steps, cancel, workflow) and `src/index.ts` re-export                                                 | `[review]`                                                                                              |
-| `src/runtime.ts:614` `FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY` and the `categoryLabel` / `buildOneCategoryFaultProofContracts` switches | typecheck                                                                                               |
-| `src/workflow/classification.ts:56` `FRAUD_PROOF_CLASSIFICATION_RULES` (catalogue order)                                                   | module throws at load; `tests/workflow.test.ts:346`; `family-checklist.mjs` `classification-rule`       |
-| `src/workflow/adapters.ts:124` `workflowAdapterRegistrationRows` (catalogue order)                                                         | `validateWorkflowAdapterCoverage` (`adapters.ts:795`); `family-checklist.mjs` `adapter-registration`    |
-| `src/workflow/complete-replay.ts` `completeReplayer([...])` entry                                                                          | `[review]`                                                                                              |
-| `src/workflow/replay-prerequisite.ts:112` `directTransactionCategories` (direct transaction families)                                      | `[review]`                                                                                              |
-| `src/workflow/actuation-permit.ts` (only for bespoke terminal handling, as mint-item has)                                                  | `[review]`                                                                                              |
-| `src/workflow/linear-family-spec.ts` `LINEAR_FAMILY_CATEGORIES` or `family-definitions.ts` `CURSOR_FAMILY_DEFINITIONS`                     | `family-checklist.mjs` `family-definition` (informational)                                              |
-| `src/workflow/family-application-registry.ts` `FAMILY_APPLICATION_REGISTRY`                                                                | typecheck; `tests/family-application-registry.test.ts:312`; `family-checklist.mjs` `application-record` |
-| `tests/support/emulator/contracts.ts` `real<Name>` flag (line 186 for mint-item) and `buildFamilyContracts` call                           | `[review]`                                                                                              |
-| `tests/support/emulator/validators.ts` `scaffoldChain(appendedFamilyFallback, N)` entry (line 472)                                         | typecheck                                                                                               |
-| `tests/<kebab>-lifecycle.test.ts` and `tests/support/<kebab>-*.ts`                                                                         | `family-checklist.mjs` `tests` (file name only); both polarities are `[review]`                         |
+| Surface | Enforced by |
+| ------- | ----------- |
+| `src/<kebab>/` (scan, replay, submit steps, workflow) and `src/index.ts` re-export | `[review]` |
+| A linear or cursor family's `defineFamily` definition: witness roles from `CORE_WITNESS_ROLES`, `CHUNKED_VERIFY_WITNESS_ROLES` or `MEMBERSHIP_WITNESS_ROLES` (`src/workflow/family-definition.ts`), certificate, auxiliary scripts, adapter arm | typecheck; `tests/manifest-bound-family-assembly.test.ts` over `tests/support/registered-family-definitions.ts` |
+| A manifest-bound family's `runOrResumeManifestBound<Name>Workflow`: an alias of `runOrResumeManifestBoundFamilyWorkflow` | `[review]` |
+| Owned-thread cancel: `submitLinearFaultCancel` (`src/linear-fault-cancel.ts`); tests call `submitFamilyCancel` in `tests/support/linear-fault-cancel.ts` | `[review]` |
+| `src/runtime.fraud-proof-deployment-entries-by-category.ts` `FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY` and the `buildOneCategoryFaultProofContracts` switch (`runtime.build-one-category-fault-proof-contracts.ts`) | typecheck |
+| `src/runtime.category-label.ts` `CATEGORY_LABEL_OVERRIDES`, only when the label is not the kebab-case category name | `tests/runtime.category-label.test.ts` |
+| `src/workflow/classification.fraud-proof-classification-rules.ts` `FRAUD_PROOF_CLASSIFICATION_RULES` (catalogue order) | module throws at load (`classification.classify-canonical-block-violations.ts`); `tests/workflow.q55-w-o6-deterministic-violation-classification.ts`; `family-checklist.mjs` `classification-rule` |
+| `src/workflow/adapters.workflow-adapter-registration-rows.ts` `missingRows` (keyed by category; the rows are derived in catalogue order) | typecheck; `validateWorkflowAdapterCoverage` (`adapters.install-workflow-application-registry.ts`); `family-checklist.mjs` `adapter-registration` |
+| `src/workflow/complete-replay.create-complete-canonical-replay-union.ts` `completeReplayer([...])` entry | `[review]` |
+| `src/workflow/actuation-permit.ts` (only for bespoke terminal handling, as mint-item has) | `[review]` |
+| `src/workflow/linear-family-spec.ts` `LINEAR_FAMILY_CATEGORIES`, or a cursor definition its registry record is derived from | `family-checklist.mjs` `family-definition` (informational) |
+| `src/workflow/family-application-registry.ts` `FAMILY_APPLICATION_REGISTRY` (a derived record carries its `definition`) | typecheck; `tests/family-application-registry.family-application-rosters-name-deployed-contracts.ts`; `family-checklist.mjs` `application-record` |
+| `tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts` `real<Name>` flag and `buildFamilyContracts` call | `[review]` |
+| `tests/support/emulator/validators.make-always-succeeds-fault-proof-contracts.ts` `scaffoldChain(appendedFamilyFallback, N)` entry | typecheck |
+| `tests/<kebab>-lifecycle.test.ts` and `tests/support/<kebab>-*.ts` | `family-checklist.mjs` `tests` (file name only); both polarities are `[review]` |
 
 ## Watcher (`demo/midgard-watcher`)
 

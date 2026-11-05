@@ -13,12 +13,9 @@ import {
   resolvedRoles,
   rolesOf,
 } from "./family-application-registry.resolve-roster-parts.js";
+import { CORE_WITNESS_ROLES } from "./family-definition.js";
 
-const WITNESS_ROLES = Object.freeze([
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const);
+const WITNESS_ROLES = CORE_WITNESS_ROLES;
 
 const REQUIRES = Object.freeze(["replayContext"] as const);
 

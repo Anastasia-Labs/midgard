@@ -17,6 +17,7 @@ import {
   defineFamily,
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
+  MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
@@ -103,13 +104,7 @@ export type ManifestBoundMintDeclaredAssetLimitWorkflow =
 
 const CATEGORY = "mintDeclaredAssetLimit" as const;
 
-const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-  "pexcludesWithdraw",
-] as const;
+const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
 type BoundContext = FamilyAssemblyContext<
   "mintDeclaredAssetLimit",
   (typeof WITNESS_ROLES)[number],

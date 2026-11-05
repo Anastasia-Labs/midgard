@@ -8,7 +8,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   buildNetworkIdFaultProofContracts,
-  NETWORK_ID_FRAUD_CATEGORY_ID,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   NetworkIdFault,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
@@ -31,7 +31,8 @@ import {
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export const NETWORK_ID_EMULATOR_CATEGORY_ID = NETWORK_ID_FRAUD_CATEGORY_ID;
+export const NETWORK_ID_EMULATOR_CATEGORY_ID =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.networkId;
 
 export const buildNetworkIdFixture = async ({
   outputNetworkId = 1,

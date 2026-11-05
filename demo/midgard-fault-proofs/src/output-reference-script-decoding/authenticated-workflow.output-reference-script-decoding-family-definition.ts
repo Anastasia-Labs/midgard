@@ -15,6 +15,7 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import {
+  CORE_WITNESS_ROLES,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -147,11 +148,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
     OutputReferenceStep05DatumSchema,
     OutputReferenceStep06DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-  ],
+  witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
   // The record is made before Init, so no thread deadline runs meanwhile;

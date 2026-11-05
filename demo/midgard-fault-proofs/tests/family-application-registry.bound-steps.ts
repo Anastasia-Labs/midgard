@@ -3,7 +3,6 @@ import { expect } from "vitest";
 
 import { type FamilyCommonInfrastructure } from "../src/workflow/family-application.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
-import { FAMILY_DEFINITIONS } from "../src/workflow/family-definitions.js";
 
 /**
  * The reference-script shapes a bound config carries: the bundle shape
@@ -121,6 +120,16 @@ export const registry: Readonly<
       roster: Readonly<Record<string, string>>;
       requires: readonly string[];
       bindsDecisionDigest: boolean;
+      definition?: Readonly<{
+        category: string;
+        witnessRoles: readonly string[];
+        fieldPreimageCertificate: boolean;
+        auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
+        adapter: Readonly<
+          | { kind: "linear" }
+          | { kind: "cursor"; stepContractNames: readonly string[] }
+        >;
+      }>;
       bindConfig: (input: {
         readonly infrastructure: FamilyCommonInfrastructure;
         readonly references: Readonly<Record<string, UTxO>>;
@@ -142,22 +151,14 @@ export const bind = async (
 
 /** Definitions of the registered families that are assembled from one. */
 export const definitions: Readonly<
-  Partial<
-    Record<
-      string,
-      Readonly<{
-        category: string;
-        witnessRoles: readonly string[];
-        fieldPreimageCertificate: boolean;
-        auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
-        adapter: Readonly<
-          | { kind: "linear" }
-          | { kind: "cursor"; stepContractNames: readonly string[] }
-        >;
-      }>
-    >
-  >
-> = FAMILY_DEFINITIONS;
+  Partial<Record<string, NonNullable<Record_["definition"]>>>
+> = Object.fromEntries(
+  Object.values(registry).flatMap((record) =>
+    record.definition === undefined
+      ? []
+      : [[record.category, record.definition]],
+  ),
+);
 
 export const definedCategories = Object.keys(registry).filter(
   (category) => definitions[category] !== undefined,

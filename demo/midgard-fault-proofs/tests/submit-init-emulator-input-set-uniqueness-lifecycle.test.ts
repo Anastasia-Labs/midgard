@@ -30,7 +30,6 @@ import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
-  submitInputSetUniquenessCancel,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
@@ -42,6 +41,7 @@ import {
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -158,7 +158,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       bad_tx_id: fixture.nativeTxId,
     });
     const cancelCapture = await captureEmulatorSubmission(emulator, async () =>
-      submitInputSetUniquenessCancel({
+      submitFamilyCancel("input-set-uniqueness", {
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,

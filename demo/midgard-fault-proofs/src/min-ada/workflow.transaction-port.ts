@@ -13,16 +13,12 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import {
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { submitMinAdaInit } from "./submit-init.js";
 import { submitMinAdaTxStep01 } from "./submit-step-01.js";
@@ -234,14 +230,11 @@ export type ManifestBoundMinAdaWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundMinAdaWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"minAda">;
-  l1: FraudProofFamilyL1ObservationPort<"minAda">;
-  transactions: CursorFamilyTransactionPort<"minAda">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundMinAdaWorkflow = ManifestBoundFamilyWorkflow<
+  "minAda",
+  true,
+  4
+>;
 
 export type AssemblyContext = FamilyAssemblyContext<
   "minAda",

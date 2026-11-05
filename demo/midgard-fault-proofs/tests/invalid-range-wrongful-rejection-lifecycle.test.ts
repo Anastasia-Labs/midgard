@@ -30,7 +30,6 @@ import {
   admitNativeInclusionTwoStepArtifact,
   NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
 } from "../src/workflow/native-inclusion-two-step.js";
-import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -40,6 +39,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -244,7 +244,7 @@ const stageForcedRejection = async (interval: {
   const cancel = async (threadOutRef: string, step: 0 | 1) =>
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancel({
+        submitFamilyCancel("invalid-range", {
           lucid: harness.proverLucid,
           contracts: contracts as never,
           categoryId: category.categoryId,

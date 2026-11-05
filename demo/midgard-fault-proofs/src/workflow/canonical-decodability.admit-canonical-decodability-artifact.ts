@@ -27,7 +27,10 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
-import { type FamilyAssemblyContext } from "./family-definition.js";
+import {
+  CHUNKED_VERIFY_WITNESS_ROLES,
+  type FamilyAssemblyContext,
+} from "./family-definition.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 
 export type CanonicalDecodabilityArtifact = JournalJsonObject &
@@ -318,12 +321,7 @@ export const prepareCanonicalDecodabilityArtifact = async (
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-] as const;
+export const WITNESS_ROLES = CHUNKED_VERIFY_WITNESS_ROLES;
 
 export type AssemblyContext = FamilyAssemblyContext<
   "canonicalDecodability",

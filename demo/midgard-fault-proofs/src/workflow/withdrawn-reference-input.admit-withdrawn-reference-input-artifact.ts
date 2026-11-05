@@ -21,6 +21,7 @@ import {
   verifyWithdrawnReferenceInputMembership,
 } from "../withdrawn-reference-input/prepare-withdrawn-reference-input.js";
 import type { CanonicalBlockClassification } from "./classification.js";
+import { CORE_WITNESS_ROLES } from "./family-definition.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
   admitNativeInclusionArtifact,
@@ -323,8 +324,4 @@ export const prepareWithdrawnReferenceInputArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const;
+export const WITNESS_ROLES = CORE_WITNESS_ROLES;

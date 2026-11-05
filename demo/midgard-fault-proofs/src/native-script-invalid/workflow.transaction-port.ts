@@ -14,15 +14,9 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { submitNativeScriptInvalidInit } from "./submit-init.js";
 import { submitNativeScriptInvalidStep01 } from "./submit-step-01.js";
@@ -321,11 +315,5 @@ export type ManifestBoundNativeScriptInvalidWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundNativeScriptInvalidWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"nativeScriptInvalid">;
-  l1: FraudProofFamilyL1ObservationPort<"nativeScriptInvalid">;
-  transactions: CursorFamilyTransactionPort<"nativeScriptInvalid">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundNativeScriptInvalidWorkflow =
+  ManifestBoundFamilyWorkflow<"nativeScriptInvalid", true, 5>;

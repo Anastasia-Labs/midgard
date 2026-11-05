@@ -1,4 +1,4 @@
-import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
@@ -42,7 +42,7 @@ export const requireWithdrawalMistagThreadUtxo = async ({
     threadToken: requireComputationThreadToken({
       utxo: threadUtxo,
       computationThreadPolicyId: contracts.computationThread.policyId,
-      categoryId: WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
+      categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag,
       categoryLabel: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
     }),
   };

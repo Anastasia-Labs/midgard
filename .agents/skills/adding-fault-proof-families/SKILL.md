@@ -146,7 +146,7 @@ by package with what enforces it. Read it before step 2, and again whenever a
 
 1. **Choose the shape.** Linear (fixed step chain, derived from
    `LINEAR_FAMILY_CATEGORIES` in `linear-family-spec.ts`), cursor
-   (`CURSOR_FAMILY_DEFINITIONS` in `family-definitions.ts`), or bespoke (a
+   (a `defineFamily` definition its record is derived from), or bespoke (a
    hand-written family record, like `mintItemNonCanonical`). Read
    [workflow-family-assembly.md](../../../docs/fault-proofs/workflow-family-assembly.md)
    and the nearest sibling in
@@ -178,11 +178,14 @@ by package with what enforces it. Read it before step 2, and again whenever a
    [references/verification.md](references/verification.md)). Done when the
    node typecheck and the manifest tests pass. [review]
 6. **Write the fault-proofs family.** `src/<kebab>/` (scan, replay, submit
-   steps, cancel, workflow), a `FRAUD_PROOF_CLASSIFICATION_RULES` entry at the
-   category's catalogue position, the reason disposition, complete-replay
-   wiring, and the family record in `FAMILY_APPLICATION_REGISTRY` (derived for
-   linear families). Done when `classification-rule` and `application-record`
-   are `OK`.
+   steps, workflow; witness roles from the shared sets in
+   `workflow/family-definition.ts`), a `FRAUD_PROOF_CLASSIFICATION_RULES`
+   entry at the category's catalogue position, a `missingRows` adapter row,
+   the reason disposition, complete-replay wiring, and the family record in
+   `FAMILY_APPLICATION_REGISTRY` (derived for linear and cursor families).
+   Cancel goes through `submitLinearFaultCancel`; add no per-family copy.
+   Done when `classification-rule`, `adapter-registration` and
+   `application-record` are `OK`.
 7. **Prove both polarities in the emulator.** A lifecycle test that proves the
    real fault through the permanent proof token and removal, refuses honest
    and substituted evidence with `expectOnchainRefusal`, and covers cancel and
@@ -226,10 +229,11 @@ you checked it by reading.
       [runtime: verifyDeploymentMembers]
       Blind spot: the checklist checks source presence; real-blueprint binding,
       ordering and manifest restoration need the node deployment tests.
-- [ ] Family record in `FAMILY_APPLICATION_REGISTRY`, roster names deployed
-      contracts. [ci: Midgard Node CI/Typecheck fault-proof tooling]
+- [ ] Family record in `FAMILY_APPLICATION_REGISTRY`; the roster names
+      deployed contracts. [ci: Midgard Node CI/Typecheck fault-proof tooling]
       [ci: Midgard Node CI/Test fault-proof tooling]
-      (typecheck fails on an omitted category; `family-application-registry.test.ts:312`)
+      (typecheck fails on an omitted category;
+      `family-application-registry.family-application-rosters-name-deployed-contracts.ts`)
 - [ ] Classification rule at the catalogue position.
       [runtime: FRAUD_PROOF_CLASSIFICATION_RULES]
       (the module throws at load; `tests/workflow.test.ts` pins the order)

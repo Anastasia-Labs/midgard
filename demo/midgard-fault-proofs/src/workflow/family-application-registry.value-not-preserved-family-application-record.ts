@@ -35,6 +35,10 @@ import {
   suppliedReplayContext,
 } from "./family-application-registry.resolve-roster-parts.js";
 import {
+  CORE_WITNESS_ROLES,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "./family-definition.js";
+import {
   createManifestBoundMissingSignatureWorkflow,
   type ManifestBoundMissingSignatureWorkflow,
   type ManifestBoundMissingSignatureWorkflowConfig,
@@ -44,22 +48,6 @@ import {
   withMissingSignatureOwnThreadReclaim,
   withValueConservationOwnThreadReclaim,
 } from "./own-thread-reclaim.special-families.js";
-
-/**
- * The witness roles the four hand-written records below spell out, in the
- * order the shared `FaultProofWitnessReferenceScripts` type declares them.
- */
-const CORE_WITNESS_ROLES = Object.freeze([
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-] as const);
-
-const MEMBERSHIP_WITNESS_ROLES = Object.freeze([
-  ...CORE_WITNESS_ROLES,
-  "chunkedVerifyWithdraw",
-  "pexcludesWithdraw",
-] as const);
 
 const MISSING_SIGNATURE_STEP_CONTRACT_NAMES = Object.freeze([
   "fraudProofMissingSignature",

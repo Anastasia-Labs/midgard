@@ -15,7 +15,7 @@ import "../src/observer-order-invalid/artifact.js";
 import "../src/observer-order-invalid/contracts.js";
 import "../src/observer-order-invalid/family.js";
 import "../src/observer-order-invalid/staged-plan.js";
-import "../src/observer-order-invalid/submit-cancel.js";
+import "../src/linear-fault-cancel.js";
 import "../src/observer-order-invalid/submit-step-01.js";
 import "../src/observer-order-invalid/submit-step-02.js";
 import "../src/observer-order-invalid/submit-step-03.js";

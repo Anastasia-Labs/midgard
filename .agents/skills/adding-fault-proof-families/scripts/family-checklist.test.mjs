@@ -101,6 +101,13 @@ export const BAZ_FOO_BAR_TITLES = {
   "onchain/aiken/validators/fraud-proofs/foo-bar/step-02.ak": "",
   "onchain/aiken/validators/fraud-proofs/baz-foo-bar/step-01.ak": "",
   [SOURCES.registry]: `
+export const FOO_BAR_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "fooBar",
+    ManifestBoundFooBarWorkflowConfig,
+    ManifestBoundFooBarWorkflow
+  >(FOO_BAR_FAMILY_DEFINITION, { requires: [] });
+
 export const FAMILY_APPLICATION_REGISTRY: {
   readonly [Category in FraudProofCatalogueCategoryName]: FamilyApplicationRegistryEntry<Category>;
 } = Object.freeze({
@@ -113,11 +120,6 @@ export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "bazFooBar",
 ] as const);
 `,
-  [SOURCES.definitions]: `
-export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
-  { fooBar: FOO_BAR_FAMILY_DEFINITION },
-);
-`,
   [SOURCES.classification]: `
 export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   { category: "fooBar", violationIds: ["foo-bar"] },
@@ -125,11 +127,13 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
 ] as const);
 `,
   [SOURCES.adapters]: `
-const workflowAdapterRegistrationRows = [
-  { category: "fooBar", status: "ready", runner: fooBarRunner },
-  // A helper-call row, as in the real table (manual("transitionTrace", ...)).
-  manual("bazFooBar", ["baz-foo-bar/workflow.ts, with a comma"]),
-] as const satisfies readonly WorkflowAdapterRegistration[];
+const missingRows: {
+  readonly [Category in FraudProofCatalogueCategoryName]: MissingRow;
+} = {
+  fooBar: { existingSurface: ["foo-bar/workflow.ts"], requiredClosure: "x" },
+  // A helper-call row, as in the real table (transitionTrace: manual([...])).
+  bazFooBar: manual(["baz-foo-bar/workflow.ts, with a comma"]),
+};
 `,
   [SOURCES.catalogueStatus]: `
 | ID         | Category    | Watcher installed |
@@ -245,7 +249,7 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   it("derives a linear family's record from LINEAR_FAMILY_CATEGORIES", () => {
     const result = run(writeTree(completeTree()), "bazFooBar");
     assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
-    assert.match(result.out, /OK\s+adapter-registration\s+.*row 1,/u);
+    assert.match(result.out, /OK\s+adapter-registration\s+missingRows row;/u);
     assert.match(result.out, /derived record via LINEAR_FAMILY_CATEGORIES/u);
   });
 
@@ -469,14 +473,14 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     const tree = edit(
       completeTree(),
       SOURCES.adapters,
-      '  { category: "fooBar", status: "ready", runner: fooBarRunner },\n',
+      '  fooBar: { existingSurface: ["foo-bar/workflow.ts"], requiredClosure: "x" },\n',
       "",
     );
     const result = run(writeTree(tree), "fooBar");
     assert.equal(result.code, EXIT_GAPS);
     assert.match(
       result.out,
-      /GAP\s+adapter-registration\s+no workflowAdapterRegistrationRows row/u,
+      /GAP\s+adapter-registration\s+no missingRows row/u,
     );
   });
 

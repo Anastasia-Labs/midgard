@@ -8,6 +8,7 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
 import {
+  CORE_WITNESS_ROLES,
   defineFamily,
   type FamilyReferenceScripts,
 } from "../workflow/family-definition.js";
@@ -54,11 +55,7 @@ export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
 >({
   category: "transitionTrace",
   stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-  ],
+  witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: false,
   auxiliaryReferenceScripts: {
     ...Object.fromEntries(

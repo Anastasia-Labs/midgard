@@ -19,6 +19,7 @@ import {
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  CORE_WITNESS_ROLES,
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
@@ -182,11 +183,7 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
     SpendInputSignerStep04DatumSchema,
     SpendInputSignerStep05DatumSchema,
   ],
-  witnessRoles: [
-    "computationThreadMint",
-    "fraudProofMint",
-    "phasMembershipWithdraw",
-  ],
+  witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
   adapter: {

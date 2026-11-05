@@ -100,6 +100,7 @@ const decisionDigestCursorFamilyApplicationRecord = <
     category,
     roster,
     requires: [],
+    definition,
     bindConfig: ({ infrastructure, references }): Config => {
       const parts = resolveRosterParts(definition, references);
       const bound: DecisionDigestCursorFamilyConfig = Object.freeze({

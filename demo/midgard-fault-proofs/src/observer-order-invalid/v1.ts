@@ -26,6 +26,7 @@ import {
   defineFamily,
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
+  MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
@@ -146,13 +147,7 @@ export type ManifestBoundObserverOrderInvalidWorkflow =
 
 const CATEGORY = "observerOrderInvalid" as const;
 
-const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-  "pexcludesWithdraw",
-] as const;
+const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
 type BoundContext = FamilyAssemblyContext<
   "observerOrderInvalid",
   (typeof WITNESS_ROLES)[number],

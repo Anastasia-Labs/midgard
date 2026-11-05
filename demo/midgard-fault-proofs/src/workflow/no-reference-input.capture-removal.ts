@@ -11,6 +11,7 @@ import {
 import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
+  MEMBERSHIP_WITNESS_ROLES,
 } from "./family-definition.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
@@ -21,13 +22,7 @@ import {
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
 
-export const WITNESS_ROLES = [
-  "computationThreadMint",
-  "fraudProofMint",
-  "phasMembershipWithdraw",
-  "chunkedVerifyWithdraw",
-  "pexcludesWithdraw",
-] as const;
+export const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
 
 export type NoReferenceInputWorkflowReferenceScripts =
   LinearFamilyReferenceScripts<
