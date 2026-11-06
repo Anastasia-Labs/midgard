@@ -88,6 +88,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-script-integrity-witness-set-91.test.ts",
   "./tests/validation-trace-dispute-one-step-script-integrity-finalize-92.test.ts",
   "./tests/validation-trace-dispute-one-step-shared-carried-field.test.ts",
+  "./tests/validation-trace-dispute-one-step-shared-carried-field-other-record.test.ts",
   "./tests/validation-trace-dispute-one-step-resolve-inputs-17.test.ts",
   "./tests/validation-trace-dispute-one-step-resolve-inputs-18.test.ts",
   "./tests/validation-trace-dispute-one-step-resolve-inputs-19.test.ts",

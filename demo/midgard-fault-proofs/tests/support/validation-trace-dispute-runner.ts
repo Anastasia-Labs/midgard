@@ -17,6 +17,7 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
 } from "../../src/workflow/orchestrator.js";
+import type { FraudProofAuthenticatedPublicationObserver } from "../../src/workflow/raw-l1-publication-observation.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   RELEASE_FINALITY_POLICY,
@@ -112,6 +113,11 @@ export const makeRunner = (
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
     /** By default the scene's recorded case history. */
     readonly caseHistory?: ValidationTraceCaseHistory;
+    /** Rewrites where the runner sees a publication of ours stand; by
+     * default the emulator's own view. */
+    readonly publications?: (
+      observer: FraudProofAuthenticatedPublicationObserver,
+    ) => FraudProofAuthenticatedPublicationObserver;
     /** The convicted block's removal; by default none is observed. */
     readonly removal?: ValidationTraceRemovalConfig;
     /** Verifies the completed removal; by default the candidate is kept. */
@@ -148,11 +154,11 @@ export const makeRunner = (
     signedRecovery,
     caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
     // A script-decode record transaction stands as the emulator shows it.
-    publications: {
+    publications: (options.publications ?? ((observer) => observer))({
       ...emulatorPublicationObserver(prover.lucid),
       observeSignedTransaction: signedRecovery.observeSignedTransaction,
       rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
-    },
+    }),
     // With the block's L1 view observed, the adapter is composed as the
     // deployment composes it: the reclaim of our thread in front of it.
     ...(removal === undefined

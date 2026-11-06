@@ -7,11 +7,13 @@
  * publishes it again should it go missing before the move that needs it
  * lands. Threads of one case at steps carrying the same field read the
  * same publications. A publication is spent back by our key once our
- * workflow is done, or once a move that reads it as a reference input, and
- * leaves its thread past every move that reads it, is final at release
- * depth while no thread of the case past the boundary has a move reading
- * it: only while our funding reservation still holds it, when funding
- * signs. A certificate stays where its policy sends it. */
+ * workflow is done (a resolution by another record goes through only once
+ * each spend back is final at release depth), or once a move that reads it
+ * as a reference input, and leaves its thread past every move that reads
+ * it, is final at release depth while no thread of the case past the
+ * boundary has a move reading it: only while our funding reservation still
+ * holds it, when funding signs. A certificate stays where its policy sends
+ * it. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
@@ -64,6 +66,7 @@ import {
 import {
   finalAtReleaseDepth,
   type OwnKeyActions,
+  ownKeySignedBytes,
   withOwnKeyActions,
 } from "./own-key-actions.js";
 import { validationTraceResolvingOutRefs } from "./thread-observation.js";
@@ -77,6 +80,10 @@ const RAW_PUBLICATION_MAX_BYTES = 15_000;
 /** The action that spends a publication of ours back by our key. */
 export const VALIDATION_TRACE_COPY_RECLAIM =
   "midgard-validation-trace-copy-reclaim-v1" as const;
+
+/** A resolution by another record waits on our publications' spend back. */
+export const VALIDATION_TRACE_COPY_OUTSTANDING =
+  "validation-trace field publications of ours are not yet spent back";
 
 const reclaimAction = (outRef: string): FraudProofWorkflowAction =>
   Object.freeze({
@@ -304,16 +311,14 @@ export const validationTraceCarriedFields = ({
 
   /**
    * The publication of ours to spend back now, while the workflow waits or
-   * once it is done: one a resolve move read, final at release depth, that
+   * once it is `done`: one a resolve move read, final at release depth, that
    * left no thread where a later move reads it again, which no move of a
    * thread of our case past the boundary reads; or, once done, any.
    */
   const reclaimable = async (
     context: FraudProofWorkflowAdapterContext,
-    inner: FraudProofWorkflowObservation,
+    done: boolean,
   ): Promise<UTxO | undefined> => {
-    if (inner.kind !== "pending" && inner.kind !== "completed")
-      return undefined;
     const left = journaled(context.entries);
     if (left.length === 0) return undefined;
     const readers = validationTraceResolveReaders(context.entries).filter(
@@ -334,7 +339,7 @@ export const validationTraceCarriedFields = ({
         continue;
       const utxo = await spendable(publication);
       if (utxo === undefined) continue;
-      if (inner.kind === "completed") return utxo;
+      if (done) return utxo;
       for (const reader of readers)
         if (
           reader.reads.has(publication.outRef) &&
@@ -351,16 +356,49 @@ export const validationTraceCarriedFields = ({
     return undefined;
   };
 
+  const spendBack = (
+    publication: UTxO | undefined,
+  ): FraudProofWorkflowObservation | undefined =>
+    publication === undefined
+      ? undefined
+      : { kind: "action_required", action: reclaimAction(label(publication)) };
+
   const own: OwnKeyActions = {
     owns: (action) =>
       action.input.schemaVersion === VALIDATION_TRACE_COPY_RECLAIM,
-    next: async (context, observed) => {
-      const publication = await reclaimable(context, observed);
-      return publication === undefined
+    next: async (context, observed) =>
+      observed.kind === "pending" || observed.kind === "completed"
+        ? spendBack(await reclaimable(context, observed.kind === "completed"))
+        : undefined,
+    // Resolved by another record, our workflow is done, and no thread of
+    // our case is left to read a publication: that resolution is read only
+    // before the case opens or once it has closed. Each publication is
+    // spent back, and final at release depth, before it resolves.
+    resolved: async (context) => {
+      const next = spendBack(await reclaimable(context, true));
+      if (next !== undefined) return next;
+      const outstanding: string[] = [];
+      for (const publication of journaled(context.entries))
+        if ((await spendable(publication)) !== undefined)
+          outstanding.push(`${publication.outRef} does not spend back`);
+      for (const { txHash, durableRecovery } of confirmedIntents(
+        context.entries,
+        VALIDATION_TRACE_COPY_RECLAIM,
+      )) {
+        const signed = ownKeySignedBytes(durableRecovery);
+        if (
+          signed === undefined ||
+          !(await finalAtReleaseDepth(signedRecovery, txHash, signed))
+        )
+          outstanding.push(
+            `the spend back ${txHash} is not yet final at release depth`,
+          );
+      }
+      return outstanding.length === 0
         ? undefined
         : {
-            kind: "action_required",
-            action: reclaimAction(label(publication)),
+            kind: "pending",
+            reason: `${VALIDATION_TRACE_COPY_OUTSTANDING}: ${outstanding.join("; ")}`,
           };
     },
     build: async (_context, action) => {
