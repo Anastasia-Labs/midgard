@@ -58,7 +58,7 @@ export async function removeAttachedFixtures() {
  * Operator-2's node API on loopback: unready until its container starts. A
  * public stack's second instance serves HTTPS with the stack's certificate.
  */
-async function nodeApi(https: boolean) {
+async function nodeApi(https: boolean, reserved: ReadonlySet<number>) {
   const state = { started: false };
   const handler = (
     request: { url?: string },
@@ -81,8 +81,17 @@ async function nodeApi(https: boolean) {
       )
     : createServer(handler);
   servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { state, port: (server.address() as AddressInfo).port };
+  // An OS-assigned port can land on one the stack reserves for its DA
+  // services, which the stack's own port check then refuses. Listen again
+  // until the port is free of them.
+  for (;;) {
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    if (!reserved.has(port)) return { state, port };
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
 
 /** The stack's release settings, which a public stack's second instance runs. */
@@ -212,7 +221,18 @@ export async function attachedFixture(
   const isPublic = options.public !== undefined;
   const primary = isPublic ? await publicStackFixture() : await configFixture();
   const operator2 = await configFixture();
-  const api = await nodeApi(isPublic);
+  const daPorts = primary.config.da.ports;
+  const api = await nodeApi(
+    isPublic,
+    new Set([
+      daPorts.database,
+      daPorts.retainedTransport,
+      ...primary.config.da.members.flatMap((_, index) => [
+        daPorts.committeeApiBase + index,
+        daPorts.committeeTransportBase + index,
+      ]),
+    ]),
+  );
   const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
   const admittedProducer = `/ip4/127.0.0.1/tcp/${OPERATOR2_DA_HOST_PORT}/p2p/${peerId}`;
   if (options.admitted !== false)
