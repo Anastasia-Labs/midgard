@@ -246,6 +246,9 @@ export const describeInlineCap = ({
           `Publish ${phase} field (${bytes.toString()} bytes)`,
           publishes.map(({ cbor }) => cbor),
         );
+        reportFit(`${verifyLabel} reading ${bytes.toString()} bytes`, [
+          drive.cborOf(verifyLabel),
+        ]);
       });
 
       it("spends each publication back to our key address by key once the semantic move is final", async () => {

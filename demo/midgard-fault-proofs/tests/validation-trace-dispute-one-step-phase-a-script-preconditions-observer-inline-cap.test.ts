@@ -20,4 +20,12 @@ describeInlineCap({
   // decode step before the phase.
   stepOf: (items) => 27 + 9 * (items - 1),
   installs: observedBy,
+  // Each reference input adds 2 steps before the phase; the evidence there
+  // carries 2 bytes more.
+  coShape: {
+    label: "510 reference inputs",
+    installs: { failingReferenceInputs: 510 },
+    steps: 2 * 510,
+    besideBytes: 2,
+  },
 });

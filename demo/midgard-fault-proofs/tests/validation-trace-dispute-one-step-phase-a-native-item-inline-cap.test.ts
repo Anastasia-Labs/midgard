@@ -53,4 +53,12 @@ describeInlineCap({
     encodeMidgardVersionedScriptListPreimage([grown(bytes)]).length,
   stepOf: () => 15,
   installs: (bytes) => ({ failingScript: grown(bytes) }),
+  // Each reference input adds 2 steps before the phase; the evidence there
+  // carries 4 bytes more, and its state indices 4.
+  coShape: {
+    label: "510 reference inputs",
+    installs: { failingReferenceInputs: 510 },
+    steps: 2 * 510,
+    besideBytes: 8,
+  },
 });

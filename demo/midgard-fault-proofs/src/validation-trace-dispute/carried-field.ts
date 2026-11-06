@@ -5,10 +5,12 @@
  * prerequisite, which certifies its publications under the dispute's
  * field-preimage certificate policy past one publication's bytes. Either
  * publishes it again should it go missing before the move that needs it
- * lands. Once a move that reads the publications as reference inputs, and
- * leaves the thread past every move that reads them, is final at release
- * depth, or our workflow is done, each publication is spent back by our
- * key: only while our funding reservation still holds it, when funding
+ * lands. Threads of one case at steps carrying the same field read the
+ * same publications. A publication is spent back by our key once our
+ * workflow is done, or once a move that reads it as a reference input, and
+ * leaves its thread past every move that reads it, is final at release
+ * depth while no thread of the case past the boundary has a move reading
+ * it: only while our funding reservation still holds it, when funding
  * signs. A certificate stays where its policy sends it. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -37,13 +39,22 @@ import type {
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import {
+  confirmedValidationTraceStages,
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,
   validationTraceAction,
 } from "./actions.js";
-import { parseValidationTraceDisputeArtifact } from "./artifact.js";
+import {
+  parseValidationTraceDisputeArtifact,
+  validationTraceArtifactOf,
+} from "./artifact.js";
+import type { ValidationTraceCaseHistory } from "./case-history.js";
+import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
-import type { ValidationTraceFieldCarriage } from "./one-step-carriage.js";
+import {
+  carriageReads,
+  type ValidationTraceFieldCarriage,
+} from "./one-step-carriage.js";
 import { validationTraceOneStepHolder } from "./one-step-holders.js";
 import { validationTraceCarriedField } from "./one-step-moves.js";
 import {
@@ -55,6 +66,7 @@ import {
   type OwnKeyActions,
   withOwnKeyActions,
 } from "./own-key-actions.js";
+import { validationTraceResolvingOutRefs } from "./thread-observation.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 const CATEGORY = "validationTraceDispute" as const;
@@ -113,6 +125,7 @@ export const validationTraceCarriedFields = ({
   lucid,
   signer,
   deployment,
+  caseHistory,
   publications,
   signedRecovery,
   materialOf,
@@ -120,6 +133,7 @@ export const validationTraceCarriedFields = ({
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
+  readonly caseHistory: ValidationTraceCaseHistory;
   /** Where a publication of ours stands; without one, none is made. */
   readonly publications: FraudProofAuthenticatedPublicationObserver | undefined;
   readonly signedRecovery: FraudProofSignedTransactionRecovery;
@@ -197,6 +211,66 @@ export const validationTraceCarriedFields = ({
     { port: port(false), raw: false },
   ] as const;
 
+  /** Our publications of the field the move of `action` reads, as our
+   * journal shows them published. */
+  const of = async (
+    context: FraudProofWorkflowAdapterContext,
+    action: Parameters<typeof validationTraceAction>[0],
+  ): Promise<ValidationTraceFieldCarriage | undefined> => {
+    for (const { port } of ports) {
+      if (port === undefined) continue;
+      const resolved = await port.resolveAuthenticated({
+        headerHash: parseValidationTraceDisputeArtifact(context.artifact)
+          .headerHash,
+        action: validationTraceAction(action),
+        artifact: context.artifact,
+        entries: context.entries,
+      });
+      if (resolved.requirement === null) continue;
+      return Object.freeze({
+        publications: resolved.publications,
+        ...(resolved.certificate === undefined
+          ? {}
+          : { certificate: resolved.certificate }),
+      });
+    }
+    return undefined;
+  };
+
+  const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
+  /** The outputs a move of a thread of our case past the boundary reads to
+   * carry its field; undefined while that cannot be told. */
+  const stillNamed = async (
+    context: FraudProofWorkflowAdapterContext,
+  ): Promise<ReadonlySet<string> | undefined> => {
+    const artifact = validationTraceArtifactOf(context);
+    const found = await ourCase(
+      artifact,
+      confirmedValidationTraceStages(context.entries),
+    );
+    if (found === undefined) return new Set();
+    const outRefs = await validationTraceResolvingOutRefs({
+      lucid,
+      signer,
+      deployment,
+      caseHistory,
+      headerHash: artifact.headerHash,
+      caseUnit: found.caseUnit,
+      caseDatum: found.caseDatum,
+    });
+    if (outRefs === undefined) return undefined;
+    const named = new Set<string>();
+    for (const consumes of outRefs) {
+      const carriage = await of(context, { stage: "resolve", consumes }).catch(
+        () => null,
+      );
+      if (carriage === null) return undefined;
+      for (const utxo of carriage === undefined ? [] : carriageReads(carriage))
+        named.add(label(utxo));
+    }
+    return named;
+  };
+
   /** The live publication of ours `publication`, unless funding no longer
    * holds it. */
   const spendable = async (
@@ -231,7 +305,8 @@ export const validationTraceCarriedFields = ({
   /**
    * The publication of ours to spend back now, while the workflow waits or
    * once it is done: one a resolve move read, final at release depth, that
-   * left no thread where a later move reads it again; or, once done, any.
+   * left no thread where a later move reads it again, which no move of a
+   * thread of our case past the boundary reads; or, once done, any.
    */
   const reclaimable = async (
     context: FraudProofWorkflowAdapterContext,
@@ -244,6 +319,12 @@ export const validationTraceCarriedFields = ({
     const readers = validationTraceResolveReaders(context.entries).filter(
       ({ outputs }) => !outputs.some(({ address }) => stillRead.has(address)),
     );
+    let named: Promise<ReadonlySet<string> | undefined> | undefined;
+    const held = async (outRef: string) => {
+      named ??= stillNamed(context);
+      const read = await named;
+      return read === undefined || read.has(outRef);
+    };
     for (const publication of left) {
       if (
         context.unbuiltActionIds?.has(
@@ -262,8 +343,10 @@ export const validationTraceCarriedFields = ({
             reader.txHash,
             reader.signed,
           ))
-        )
-          return utxo;
+        ) {
+          if (!(await held(publication.outRef))) return utxo;
+          break;
+        }
     }
     return undefined;
   };
@@ -316,30 +399,6 @@ export const validationTraceCarriedFields = ({
 
   return {
     wrap,
-    /** Our publications of the field the move of `action` reads, as our
-     * journal shows them published. */
-    of: async (
-      context: FraudProofWorkflowAdapterContext,
-      action: Parameters<typeof validationTraceAction>[0],
-    ): Promise<ValidationTraceFieldCarriage | undefined> => {
-      for (const { port } of ports) {
-        if (port === undefined) continue;
-        const resolved = await port.resolveAuthenticated({
-          headerHash: parseValidationTraceDisputeArtifact(context.artifact)
-            .headerHash,
-          action: validationTraceAction(action),
-          artifact: context.artifact,
-          entries: context.entries,
-        });
-        if (resolved.requirement === null) continue;
-        return Object.freeze({
-          publications: resolved.publications,
-          ...(resolved.certificate === undefined
-            ? {}
-            : { certificate: resolved.certificate }),
-        });
-      }
-      return undefined;
-    },
+    of,
   };
 };

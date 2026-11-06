@@ -82,12 +82,16 @@ export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
 } as const satisfies Readonly<Record<SingleHopCekContextStage, number>>);
 
 /** What the failing transaction carries for a stage's step that the plain
- * fixture's does not reach, and the operator's last agreed state on its
- * trace, the first CEK compute step's as on the plain one: a mint, for the
- * mint item stage. */
+ * fixture's does not reach, or beside it, and the operator's last agreed
+ * state on its trace, the first CEK compute step's as on the plain one: a
+ * mint, for the mint item stage. */
 export type ContextInstalls = Pick<
   Parameters<typeof defendTwoThreads>[0],
-  "failingNativeMint" | "failingNative" | "operatorFrom" | "certifies"
+  | "failingNativeMint"
+  | "failingNative"
+  | "failingReferenceInputs"
+  | "operatorFrom"
+  | "certifies"
 >;
 
 const CONTEXT_STAGE_INSTALLS: Readonly<

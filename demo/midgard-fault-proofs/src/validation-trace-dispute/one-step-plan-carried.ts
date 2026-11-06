@@ -26,6 +26,7 @@ import {
   CEK_OBSERVER_FIELD,
   cekContextRouteOf,
   planValidationTraceContextStep,
+  type ValidationTraceContextStep,
 } from "./one-step-context.js";
 import {
   CEK_CONTEXT_STAGE_HOLDERS,
@@ -54,14 +55,16 @@ import type {
  * (the validation-trace dispute one-step CEK observer inline-cap test). */
 export const VALIDATION_TRACE_CEK_OBSERVER_INLINE_MAX_PREIMAGE_BYTES = 8_913;
 
-/** That limit, with what its step carried beside the field there (at 297
- * observers). What a CEK observer step carries beside the field varies from
+/** That limit, with what its longest move, the observer fold, carried
+ * beside the field there (at 297 observers): its transition and auxiliary
+ * evidence, and the step's control, context, native facts and successor it
+ * carries on. What a CEK observer step carries beside the field varies from
  * one observer count to the next, as well as with the transaction's other
  * fields. */
 export const VALIDATION_TRACE_CEK_OBSERVER_INLINE_LIMIT: ValidationTraceInlineLimitAt =
   measuredAt(
     VALIDATION_TRACE_CEK_OBSERVER_INLINE_MAX_PREIMAGE_BYTES,
-    2_002,
+    5_576,
     55_351,
   );
 
@@ -73,6 +76,28 @@ const besideBytesOf = (
 ) => transitionCbor.length + auxiliaryCbor.length + stepIndexBytes(stateIndex);
 
 type Argument = ReturnType<typeof buildValidationOneStepArgument>;
+
+/** The bytes the longest move of the CEK context step from state
+ * `stateIndex` whose evidence is that of `argument`, and whose resolution
+ * is `context`, carries beside the field it reads by reference: the
+ * observer fold, redeemed with the transition and auxiliary evidence,
+ * carries on the step's control, context, native facts and successor. */
+const contextBesideBytesOf = (
+  argument: Argument,
+  stateIndex: number,
+  {
+    controlCbor,
+    contextCbor,
+    nativeFactsCbor,
+    successorCbor,
+  }: ValidationTraceContextStep,
+) =>
+  besideBytesOf(argument, stateIndex) +
+  (controlCbor.length +
+    contextCbor.length +
+    nativeFactsCbor.length +
+    successorCbor.length) /
+    2;
 
 type Reason = Readonly<{ reason: string }>;
 
@@ -183,15 +208,26 @@ export const planCarriedContextStep = ({
 }): ValidationTraceContextStepPlan | Reason =>
   withCarried<ValidationTraceContextStepPlan>({
     build,
-    inlineMax: (argument, { fieldIndex }) =>
-      fieldIndex === CEK_OBSERVER_FIELD &&
-      cekContextRouteOf(witnessCbor, argument.auxiliaryCbor.toString("hex")) ===
-        "observerAuthenticate"
-        ? inlineMaxPreimageBytesBeside(
-            VALIDATION_TRACE_CEK_OBSERVER_INLINE_LIMIT,
-            besideBytesOf(argument, stateIndex),
-          )
-        : undefined,
+    inlineMax: (argument, { fieldIndex, preimage }) => {
+      const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
+      if (
+        fieldIndex !== CEK_OBSERVER_FIELD ||
+        cekContextRouteOf(witnessCbor, auxiliaryCbor) !== "observerAuthenticate"
+      )
+        return undefined;
+      const context = planValidationTraceContextStep({
+        witnessCbor,
+        auxiliaryCbor,
+        successorWitnessCbor,
+        carried: preimage,
+      });
+      return inlineMaxPreimageBytesBeside(
+        VALIDATION_TRACE_CEK_OBSERVER_INLINE_LIMIT,
+        "driven" in context
+          ? besideBytesOf(argument, stateIndex)
+          : contextBesideBytesOf(argument, stateIndex, context),
+      );
+    },
     plan: (argument, carried) => {
       const common = commonOf(stateIndex, preState, argument);
       const context = planValidationTraceContextStep({

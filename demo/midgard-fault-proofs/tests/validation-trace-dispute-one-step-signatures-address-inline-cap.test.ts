@@ -26,6 +26,14 @@ describeInlineCap({
   // signatures phase.
   stepOf: (items) => items + 11,
   installs: (items) => ({ failingSigners: { extraSigners: items - 1 } }),
+  // Each reference input adds 2 steps before the phase; the evidence there
+  // carries 3 bytes more, and its state indices 2.
+  coShape: {
+    label: "510 reference inputs",
+    installs: { failingReferenceInputs: 510 },
+    steps: 2 * 510,
+    besideBytes: 5,
+  },
   overAt: [
     ["at one raw publication's largest", MIDGARD_CHUNK_BYTES_K],
     [

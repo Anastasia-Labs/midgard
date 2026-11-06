@@ -19,4 +19,12 @@ describeInlineCap({
   // the signatures phase, whose address witness comes first.
   stepOf: (items) => items + 12,
   installs: (items) => ({ failingSigners: { requiredOwner: items } }),
+  // Each reference input adds 2 steps before the phase; the evidence there
+  // carries 2 bytes more.
+  coShape: {
+    label: "510 reference inputs",
+    installs: { failingReferenceInputs: 510 },
+    steps: 2 * 510,
+    besideBytes: 2,
+  },
 });

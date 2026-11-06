@@ -147,6 +147,44 @@ export const discoverValidationTraceThreads = async ({
   });
 };
 
+/**
+ * The out-ref of each thread of case `caseUnit` past the boundary at a
+ * one-step holder, while the threads read account for every thread the
+ * case holds open; otherwise undefined, as some open thread was not seen.
+ */
+export const validationTraceResolvingOutRefs = async ({
+  lucid,
+  signer,
+  deployment,
+  caseHistory,
+  headerHash,
+  caseUnit,
+  caseDatum,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly signer: ResolvedProverSigner;
+  readonly deployment: ValidationTraceDisputeDeployment;
+  readonly caseHistory: ValidationTraceCaseHistory;
+  readonly headerHash: string;
+  readonly caseUnit: string;
+  readonly caseDatum: SDK.Case;
+}): Promise<readonly string[] | undefined> => {
+  const { threads, resolving } = await discoverValidationTraceThreads({
+    lucid,
+    deployment,
+    recorded: await validationTraceRecordedThreads({
+      caseHistory,
+      headerHash,
+      caseUnit,
+    }),
+    caseUnit,
+    prover: signer.paymentKeyHash,
+  });
+  return BigInt(threads.length + resolving.length) === caseDatum.open_threads
+    ? resolving.map(({ outRef }) => outRef)
+    : undefined;
+};
+
 /** The plan of each thread ReadyForOneStep on our trace, by its out-ref. */
 const planReadyThreads = async (
   deployment: ValidationTraceDisputeDeployment,

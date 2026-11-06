@@ -11,7 +11,10 @@
  * (past one publication, under the field-preimage certificate); the
  * observer authenticate opens it from them, the observer fold and the
  * context settle read them too, and each publication is spent back by key
- * once the thread has left them behind
+ * once the thread has left them behind. Beside reference inputs, which
+ * grow what the moves carry beside the field, the field at the limit goes
+ * by reference, and the largest the runner carries inline there, within
+ * the limit less those bytes, still fits
  * (support/validation-trace-dispute-one-step-context-observer-drive.ts). */
 import {
   decodeMidgardFieldPreimage,
@@ -81,11 +84,28 @@ const READERS = [
   "ContextSettle",
 ] as const;
 
-const driveOf = (observers: number) =>
-  contextObserverDrive({
-    from: observerItemStepFrom(observers),
+/** Reference inputs beside the observers: each adds 16 steps before the
+ * observer step, and grows what its moves carry beside the field. */
+const REFERENCE_INPUTS = 510;
+
+/** The most observers whose field the runner carries inline beside
+ * `REFERENCE_INPUTS`: there the step's observer fold carries 691 bytes more
+ * beside the field than where the limit was measured, and from one more
+ * observer up to the limit the field passes the limit less what it
+ * carries. */
+const INLINE_BESIDE = 273;
+
+const driveOf = (observers: number, referenceInputs = 0) => {
+  const steps = 16 * referenceInputs;
+  const trace = observedTrace(observers);
+  return contextObserverDrive({
+    from: observerItemStepFrom(observers) + steps,
     installs: {
-      ...observedTrace(observers),
+      ...trace,
+      operatorFrom: trace.operatorFrom + steps,
+      ...(referenceInputs === 0
+        ? {}
+        : { failingReferenceInputs: referenceInputs }),
       ...(fieldBytes(observers) > RAW_PUBLICATION_MAX_BYTES
         ? { certifies: true }
         : {}),
@@ -95,6 +115,7 @@ const driveOf = (observers: number) =>
     // so our wallet pays them: their largest shape.
     minFeeA: 80,
   });
+};
 
 describe("validation-trace dispute runner: a CEK context step opening a required observer, its field at the inline CEK observer limit", () => {
   const drive = driveOf(largest);
@@ -210,5 +231,53 @@ describe.each([
       "pays each move from its thread when its fee fits under the cap, and from our wallet when it does not",
       drive.pays,
     );
+  },
+);
+
+describe.each<
+  readonly [label: string, observers: number, byReference: boolean]
+>([
+  ["at the inline CEK observer limit", largest, true],
+  [
+    "within the inline CEK observer limit less what they add beside the field",
+    INLINE_BESIDE,
+    false,
+  ],
+  [
+    "one observer past the inline CEK observer limit less what they add beside the field",
+    INLINE_BESIDE + 1,
+    true,
+  ],
+])(
+  `validation-trace dispute runner: a CEK context step opening a required observer beside ${REFERENCE_INPUTS.toString()} reference inputs, its field %s`,
+  (_, observers, byReference) => {
+    const drive = driveOf(observers, REFERENCE_INPUTS);
+
+    beforeAll(drive.setUp, 1_800_000);
+
+    it(
+      "moves the thread through the observer fold and the context step's resolution to the award, and closes it",
+      drive.awards,
+      1_200_000,
+    );
+
+    it(`${byReference ? "reads the field by reference" : "carries the field inline"}, its longest move within the transaction size limit less its reserve even when our wallet pays it`, () => {
+      const { scene } = drive.dispute();
+      expect(ownReadsOf(scene, drive.cborOf("ObserverPending"))).toHaveLength(
+        byReference ? 1 : 0,
+      );
+      const longest = CARRIERS.reduce((most, label) =>
+        drive.bytesOf(label) > drive.bytesOf(most) ? label : most,
+      );
+      expect(drive.bytesOf(longest)).toBeLessThanOrEqual(
+        MAX_TX_SIZE - SIZE_RESERVE,
+      );
+      if (!byReference)
+        expect(drive.bytesOf(longest)).toBeGreaterThan(fieldBytes(observers));
+      reportFit(
+        `${longest} beside ${REFERENCE_INPUTS.toString()} reference inputs (${fieldBytes(observers).toString()} bytes)`,
+        [drive.cborOf(longest)],
+      );
+    });
   },
 );

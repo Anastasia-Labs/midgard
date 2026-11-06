@@ -19,4 +19,12 @@ describeInlineCap({
   itemBytes: 40,
   stepOf: (items) => items + 11,
   installs: (items) => ({ failingReferenceInputs: items }),
+  // Each required signer adds a canonical-decode step before the phase;
+  // the evidence there carries 2 bytes more.
+  coShape: {
+    label: "100 required signers",
+    installs: { failingSigners: { requiredOwner: 100 } },
+    steps: 99,
+    besideBytes: 2,
+  },
 });

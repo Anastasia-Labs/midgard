@@ -162,13 +162,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   });
   const materialOf = (headerHash: string) => materials.get(headerHash);
   const own = { lucid, signer, deployment };
+  const withHistory = { ...own, caseHistory };
   const removalStage = createValidationTraceRemoval({ ...own, removal });
-  const deadlines = validationTraceLostDefenseSlashDeadlines({
-    ...own,
-    caseHistory,
-  });
+  const deadlines = validationTraceLostDefenseSlashDeadlines(withHistory);
   const copy = validationTraceCarriedFields({
-    ...own,
+    ...withHistory,
     publications,
     signedRecovery,
     materialOf,

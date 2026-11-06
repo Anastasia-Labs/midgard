@@ -6,8 +6,8 @@
  * evidence to our live publications, at the positions they hold among the
  * reader's reference inputs. The reader, and for a CEK context step the
  * observer fold and the settle past it, read the publications as reference
- * inputs, which keeps them ours to spend back only once the thread has left
- * them behind (carried-field.ts). */
+ * inputs, which keeps them ours to spend back only once every thread of
+ * the case reading them has left them behind (carried-field.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
