@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { betweenSignersNativeScript } from "./helpers/native-script-shapes.js";
 import { extraSignerKeyHash } from "./helpers/plutus-execution-block-fixture.js";
 import { ownerKeyHash } from "./helpers/plutus-execution-seeds.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { describePhaseStep } from "./support/validation-trace-dispute-one-step-phase-step.js";
 
 /** The most address witnesses, 103 bytes each, the witness field holds. */
@@ -37,23 +38,35 @@ const signers = [
   ),
 ];
 
-const drive = describePhaseStep({
-  role: "phase-A native scripts signature between, across two whole chunks,",
-  refusedBy: "phase_a_native_scripts_signature_between_payload_semantic_v1",
-  from: FROM,
-  phase: "phaseANativeScripts",
-  semantic: 12,
-  evidence: { auxiliary: 3 },
-  at: "phaseANativeScriptsSignatureBetweenSemantic",
-  // A raised per-byte fee prices the moves over the per-move cap, so our
-  // wallet pays them: their largest shape.
-  minFeeA: 80,
-  failingNative: {
-    script: betweenSignersNativeScript(signers, LOWER, BETWEEN),
+const drive = describePhaseStep(
+  {
+    role: "phase-A native scripts signature between, across two whole chunks,",
+    from: FROM,
+    phase: "phaseANativeScripts",
+    semantic: 12,
+    evidence: { auxiliary: 3 },
+    at: "phaseANativeScriptsSignatureBetweenSemantic",
+    // A raised per-byte fee prices the moves over the per-move cap, so our
+    // wallet pays them: their largest shape.
+    minFeeA: 80,
+    failingNative: {
+      script: betweenSignersNativeScript(signers, LOWER, BETWEEN),
+    },
+    failingNativeMint: true,
+    failingSigners: { extraSigners: SIGNERS - 1 },
   },
-  failingNativeMint: true,
-  failingSigners: { extraSigners: SIGNERS - 1 },
-});
+  (drive) => {
+    it("refuses a transition other than the one the phase resolver committed, at the phase-A native scripts signature between, across two whole chunks, semantic resolver", async () => {
+      const refused = await drive.otherTransition();
+      await expectOnchainRefusal(refused.build, {
+        refusedBy:
+          "fraud_proofs/validation_trace/phase_a_native_scripts_signature_between_payload_semantic_v1",
+        check: /^Validator returned false$/u,
+      });
+      await refused.unmoved();
+    }, 600_000);
+  },
+);
 
 describe("validation-trace dispute runner: the largest native-script token witness", () => {
   it("reads the token across two whole chunks, proving the key between two signers by the deepest siblings", async () => {

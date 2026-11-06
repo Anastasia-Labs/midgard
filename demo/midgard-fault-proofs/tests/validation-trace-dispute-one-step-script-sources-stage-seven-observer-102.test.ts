@@ -3,24 +3,39 @@
  * transaction requires, as a script purpose, driven through the phase
  * resolver and the script-sources stage-seven observer semantic resolver to
  * the award (support/validation-trace-dispute-one-step-phase-step.ts). */
+import { it } from "vitest";
+
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   OBSERVED,
   OBSERVER_HASH,
 } from "./support/validation-trace-dispute-native-failing-shapes.js";
 import { describePhaseStep } from "./support/validation-trace-dispute-one-step-phase-step.js";
 
-describePhaseStep({
-  role: "script-sources stage-seven observer",
-  refusedBy: "script_sources_stage_seven_observer_semantic_v1",
-  from: 102,
-  phase: "scriptSources",
-  semantic: 25,
-  evidence: {
-    fieldIndex: 3,
-    itemIndex: 0,
-    claims: [OBSERVER_HASH, 1n],
-    yieldFields: ["scriptSourcesObserverItem", "scriptSourcesObserverBound"],
+describePhaseStep(
+  {
+    role: "script-sources stage-seven observer",
+    from: 102,
+    phase: "scriptSources",
+    semantic: 25,
+    evidence: {
+      fieldIndex: 3,
+      itemIndex: 0,
+      claims: [OBSERVER_HASH, 1n],
+      yieldFields: ["scriptSourcesObserverItem", "scriptSourcesObserverBound"],
+    },
+    at: "scriptSourcesStageSevenObserverSemantic",
+    ...OBSERVED,
   },
-  at: "scriptSourcesStageSevenObserverSemantic",
-  ...OBSERVED,
-});
+  (drive) => {
+    it("refuses a transition other than the one the phase resolver committed, at the script-sources stage-seven observer semantic resolver", async () => {
+      const refused = await drive.otherTransition();
+      await expectOnchainRefusal(refused.build, {
+        refusedBy:
+          "fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1",
+        check: /^Validator returned false$/u,
+      });
+      await refused.unmoved();
+    }, 600_000);
+  },
+);
