@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { localUrl, parseStackConfig } from "../src/full-stack/config.js";
@@ -15,10 +14,7 @@ import {
   readJsonIfPresent,
   writeDurableJson,
 } from "../src/full-stack/journal.js";
-import {
-  equalAssets,
-  verifyPayoutBody,
-} from "../src/full-stack/payout-body.js";
+import { equalAssets } from "../src/full-stack/payout-body.js";
 import { stackIsReady } from "../src/full-stack/readiness.js";
 import {
   runStackWorkflow,
@@ -259,56 +255,6 @@ describe("stack input and payout verification", () => {
         { lovelace: 10000000n },
       ),
     ).toBe(false);
-  });
-  const address = walletFromSeed(
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-    { network: "Preprod" },
-  ).address;
-  function payout(amounts: bigint[], to = address) {
-    const outputs = CML.TransactionOutputList.new();
-    for (const amount of amounts)
-      outputs.add(
-        CML.TransactionOutput.new(
-          CML.Address.from_bech32(to),
-          CML.Value.from_coin(amount),
-        ),
-      );
-    return CML.Transaction.new(
-      CML.TransactionBody.new(
-        CML.TransactionInputList.new(),
-        outputs,
-        250_000n,
-      ),
-      CML.TransactionWitnessSet.new(),
-      true,
-    ).to_cbor_hex();
-  }
-  it("verifies payout value separately from L1 transaction fees", () =>
-    expect(
-      verifyPayoutBody(payout([10_000_000n]), address, {
-        lovelace: "10000000",
-      }),
-    ).toEqual({ outputIndex: 0 }));
-  it("rejects short, excessive and duplicate payments", () => {
-    for (const amounts of [
-      [9_750_000n],
-      [10_250_000n],
-      [10_000_000n, 10_000_000n],
-    ])
-      expect(() =>
-        verifyPayoutBody(payout(amounts), address, { lovelace: "10000000" }),
-      ).toThrow("exactly one output");
-  });
-  it("rejects the exact value paid to another address", () => {
-    const other = walletFromSeed(
-      "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
-      { network: "Preprod" },
-    ).address;
-    expect(() =>
-      verifyPayoutBody(payout([10_000_000n], other), address, {
-        lovelace: "10000000",
-      }),
-    ).toThrow("exactly one output");
   });
 });
 

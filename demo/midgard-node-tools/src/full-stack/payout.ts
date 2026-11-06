@@ -7,6 +7,7 @@ import {
   includedPayout,
   payoutConclusion,
   payoutOutRef,
+  payoutTokenQuery,
   type SettlementObservation,
 } from "./payout-body.js";
 import { poll, type StackProcesses } from "./process.js";
@@ -19,10 +20,19 @@ export async function settlementEvidence(
   if (!/^[0-9a-f]+$/.test(eventId)) throw new Error("Noncanonical event ID");
   const manifest = (await readJsonIfPresent(
     stackPaths(processes).manifest,
-  )) as { manifestId: string };
+  )) as {
+    manifestId: string;
+    contracts: { payoutMint: { scriptHash: string } };
+  };
   if (!/^[0-9a-f]{64}$/.test(manifest.manifestId))
     throw new Error("Noncanonical deployment ID");
-  const query = `SELECT json_build_object('jobs', (SELECT json_agg(json_build_object('phase', phase)) FROM settlement_jobs WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}'), 'attempts', (SELECT json_agg(json_build_object('phase',phase,'status',status,'txHash',tx_hash,'signedCbor',signed_cbor)) FROM settlement_attempts WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}'))`;
+  // A withdrawal's payout is judged from the follower's L1 facts, since any
+  // operator may send its conclusion; the local rows only gate its depth.
+  const payoutToken =
+    kind === "withdrawal"
+      ? `, 'payoutToken', (${payoutTokenQuery(manifest.contracts.payoutMint.scriptHash, eventId)})`
+      : "";
+  const query = `SELECT json_build_object('jobs', (SELECT json_agg(json_build_object('phase', phase)) FROM settlement_jobs WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}'), 'attempts', (SELECT json_agg(json_build_object('phase',phase,'status',status,'txHash',tx_hash,'signedCbor',signed_cbor)) FROM settlement_attempts WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}')${payoutToken})`;
   return (await processes.compose(`settlement-${kind}-observation`, [
     "exec",
     "-T",
@@ -60,9 +70,9 @@ async function queryPayoutOutput(
 }
 
 /**
- * Waits until the withdrawal's single confirmed conclusion is on L1 with the
- * exact payout output. A provider that cannot answer yet is waited out, never
- * a failure; a conclusion that is not the exact payout is refused.
+ * Waits until the withdrawal's payout is concluded on L1, by any operator,
+ * with the exact payout output. A provider that cannot answer yet is waited
+ * out, never a failure; a conclusion that is not the exact payout is refused.
  */
 export async function awaitExactPayout(
   processes: StackProcesses,
@@ -75,9 +85,9 @@ export async function awaitExactPayout(
     processes.config.timeoutMs,
     async () => {
       const status = await settlementEvidence(processes, "withdrawal", eventId);
-      const attempt = payoutConclusion(status);
-      if (attempt === undefined) return undefined;
-      const outRef = payoutOutRef(attempt, address, assets);
+      const conclusion = payoutConclusion(status);
+      if (conclusion === undefined) return undefined;
+      const outRef = payoutOutRef(conclusion, address, assets);
       const answer = await queryPayoutOutput(processes, outRef).catch(
         () => undefined,
       );
@@ -86,7 +96,7 @@ export async function awaitExactPayout(
       if (output === undefined) return undefined;
       return {
         eventId,
-        txHash: attempt.txHash,
+        txHash: conclusion.txHash,
         outputIndex: output.outputIndex,
         address,
         assets,

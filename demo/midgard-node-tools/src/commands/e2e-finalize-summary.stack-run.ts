@@ -7,7 +7,6 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import type { DbEvidence } from "../e2e/summary.js";
 import {
@@ -22,8 +21,9 @@ import {
 } from "../full-stack/journey-balances.js";
 import {
   equalAssets,
+  payoutConclusion,
+  payoutOutRef,
   type SettlementObservation,
-  verifyPayoutBody,
 } from "../full-stack/payout-body.js";
 
 /** What one stack configuration must have left in its run directory. */
@@ -38,6 +38,15 @@ export type StackRunExpectation = {
   readonly depositLovelace: string;
   readonly transferLovelace: string;
 };
+
+/**
+ * The stack database's L1 facts for one withdrawal event (stack-database.ts
+ * `collectStackDatabase`): its settlement job and attempts and the payout
+ * token's outputs; undefined when the database holds none.
+ */
+export type WithdrawalOnL1 = (
+  eventId: string,
+) => Promise<SettlementObservation | undefined>;
 
 export type StackRunRecords = {
   /** The journal, when it exists and belongs to this configuration. */
@@ -230,12 +239,17 @@ async function checkTransfer(
   return txId;
 }
 
-/** journey.ts withdrawal step, payout.ts and payout-body.ts: the transferred output, one included payout of the exact value, exact L2 debit. */
+/**
+ * journey.ts withdrawal step, payout.ts and payout-body.ts: the transferred
+ * output, the journal's payout as the transaction that concluded it on L1
+ * (whichever operator sent it), its exact payout output, exact L2 debit.
+ */
 async function checkWithdrawal(
   expectation: StackRunExpectation,
   journal: StackJournal,
   prefix: string,
   transferTxId: string,
+  withdrawalOnL1: WithdrawalOnL1,
 ) {
   const directory = expectation.runDirectory;
   const intent = await record(directory, `${prefix}-withdrawal-intent.json`);
@@ -265,24 +279,17 @@ async function checkWithdrawal(
     !equalAssets(assets(payout.assets, "payout assets"), withdrawn)
   )
     throw new Error("payout destination or value differs from the withdrawal");
-  const observation = isFields(payout.observation) ? payout.observation : {};
-  if (observation.status !== "included")
-    throw new Error("payout was not observed included on Cardano");
-  const txHash = payout.txHash;
-  const cbor = observation.signedTransactionCborHex;
-  if (
-    typeof txHash !== "string" ||
-    !/^[0-9a-f]{64}$/.test(txHash) ||
-    observation.transactionHash !== txHash ||
-    typeof cbor !== "string" ||
-    CML.hash_transaction(
-      CML.Transaction.from_cbor_hex(cbor).body(),
-    ).to_hex() !== txHash
-  )
-    throw new Error(
-      "Workflow recovery signed bytes differ from their durable transaction identity",
-    );
-  const { outputIndex } = verifyPayoutBody(cbor, address, withdrawn);
+  const conclusion = payoutConclusion(
+    (await withdrawalOnL1(eventId)) ?? {
+      jobs: null,
+      attempts: null,
+    },
+  );
+  if (conclusion === undefined)
+    throw new Error("payout is not concluded on L1");
+  if (payout.txHash !== conclusion.txHash)
+    throw new Error("L1 payout differs from the journal's payout");
+  const { outputIndex } = payoutOutRef(conclusion, address, withdrawn);
   if (payout.outputIndex !== outputIndex)
     throw new Error("payout output index differs from the exact payout output");
   const balance = await record(directory, `${prefix}-withdrawal-balance.json`);
@@ -324,10 +331,12 @@ function cycleGate(
  * run directory: the journal, the journey summary and each cycle's receipts.
  * Each check is the one the stack made before confirming the step, applied to
  * what it saved, so a record changed afterwards or a step never confirmed
- * fails here with the stack's own message.
+ * fails here with the stack's own message. A payout is judged from the L1
+ * facts `withdrawalOnL1` reads, as payout.ts judged it.
  */
 export async function readStackRun(
   expectation: StackRunExpectation,
+  withdrawalOnL1: WithdrawalOnL1,
 ): Promise<StackRunRecords> {
   let journal: StackJournal | undefined;
   let identityFailure: string | undefined;
@@ -370,6 +379,7 @@ export async function readStackRun(
             journal,
             prefix,
             transferTxId,
+            withdrawalOnL1,
           ).then(() => undefined, message),
     );
   }

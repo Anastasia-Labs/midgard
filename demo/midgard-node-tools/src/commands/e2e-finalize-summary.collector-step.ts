@@ -20,7 +20,10 @@ import type { StressMetricWindow } from "./stress-stage-metrics.js";
 
 export type FinalizeSummaryOptions = {
   /** The `e2e-stack` run whose records and database the summary reads. */
-  readonly stackRun: Pick<StackRunInputs, "expectation" | "endpoint">;
+  readonly stackRun: Pick<
+    StackRunInputs,
+    "expectation" | "payoutPolicyId" | "endpoint"
+  >;
   readonly outDir?: string;
   readonly mode?: "attach" | "resume" | "fresh" | "unknown";
   readonly adminApiKey?: string;

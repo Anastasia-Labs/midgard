@@ -6,6 +6,8 @@ import type { StackRunExpectation } from "./e2e-finalize-summary.stack-run.js";
 
 export type StackRunInputs = {
   readonly expectation: StackRunExpectation;
+  /** The deployment's payout minting policy, which names each payout token. */
+  readonly payoutPolicyId: string;
   /** The node endpoint the stack configuration binds. */
   readonly endpoint: string;
   /** The environment the stack gives its host node commands. */
@@ -45,6 +47,9 @@ export async function loadStackRunInputs(
   if (manifest === undefined)
     throw new Error(`No finalized deployment manifest at ${manifestPath}`);
   const { manifestId } = verifyFinalizedDeploymentManifest(manifest);
+  const { contracts } = manifest as {
+    contracts: { payoutMint: { scriptHash: string } };
+  };
   // The controller's own step list, so the expected journal cannot drift from it.
   const stepIds = [
     ...deployment.deploymentSteps(processes),
@@ -63,6 +68,7 @@ export async function loadStackRunInputs(
       depositLovelace: config.journey.depositLovelace,
       transferLovelace: config.journey.transferLovelace,
     },
+    payoutPolicyId: contracts.payoutMint.scriptHash,
     endpoint: config.endpoint,
     // As StackProcesses.node: the stack's own database on its host port.
     nodeEnvironment: {

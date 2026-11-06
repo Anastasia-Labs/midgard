@@ -13,6 +13,7 @@ import {
 
 import type { StackRunExpectation } from "../src/commands/e2e-finalize-summary.js";
 import { writeDurableJson } from "../src/full-stack/journal.js";
+import type { SettlementObservation } from "../src/full-stack/payout-body.js";
 
 export const makeRunDirectory = createTrackedTempDirFactory(
   "midgard-finalize-stack-run-",
@@ -24,6 +25,7 @@ export const RUN_ID = "stack-run-honest";
 export const DEPOSIT_EVENT = "de".repeat(32);
 export const WITHDRAWAL_EVENT = "ee".repeat(32);
 export const HEADER_HASH = "cd".repeat(28);
+const FUND_TX = "1f".repeat(32);
 const DEPOSIT = 20_000_000n;
 const TRANSFER = 10_000_000n;
 const USER_FUNDS = 50_000_000n;
@@ -44,7 +46,7 @@ export const wallets = () => ({
   }),
 });
 
-/** A Cardano payout transaction with the given outputs, as payout-body.ts reads it. */
+/** A Cardano payout transaction with the given outputs, and its body as L1 carries it. */
 export function payoutTransaction(
   outputs: readonly { address: string; lovelace: bigint }[],
 ) {
@@ -68,14 +70,38 @@ export function payoutTransaction(
       true,
     ).to_cbor_hex(),
     txHash: CML.hash_transaction(body).to_hex(),
+    bodyCbor: body.to_cbor_hex(),
   };
 }
+
+/**
+ * The stack database's L1 facts for a payout that `conclusion` burned: the
+ * complete job and the payout token's funded output, spent by it.
+ */
+export const payoutOnL1 = (conclusion: {
+  readonly txHash: string;
+  readonly bodyCbor: string;
+}): SettlementObservation => ({
+  jobs: [{ phase: "complete" }],
+  attempts: [],
+  payoutToken: [
+    {
+      txHash: FUND_TX,
+      spentTx: conclusion.txHash,
+      spenderBody: conclusion.bodyCbor,
+    },
+  ],
+});
 
 export type HonestRun = {
   readonly expectation: StackRunExpectation;
   readonly transferTxId: string;
-  readonly payout: { readonly cbor: string; readonly txHash: string };
+  readonly payout: ReturnType<typeof payoutTransaction>;
   readonly recipientAddress: string;
+  /** The stack database's L1 facts for the withdrawal; tests may replace them. */
+  l1: SettlementObservation | undefined;
+  /** The lookup the finalizer passes the reader: the L1 facts per event. */
+  withdrawalOnL1(eventId: string): Promise<SettlementObservation | undefined>;
   /** Rewrites one JSON record of the run directory. */
   edit(name: string, change: (value: any) => unknown): Promise<void>;
   /** Rewrites one confirmed step's journal data. */
@@ -190,11 +216,6 @@ export async function honestRun(): Promise<HonestRun> {
       outputIndex: 0,
       address: recipient.address,
       assets,
-      observation: {
-        transactionHash: payout.txHash,
-        signedTransactionCborHex: payout.cbor,
-        status: "included",
-      },
     },
   };
   for (const [name, value] of Object.entries(records))
@@ -227,7 +248,7 @@ export async function honestRun(): Promise<HonestRun> {
     const value = JSON.parse(await readFile(path, "utf8"));
     await writeDurableJson(path, change(value) ?? value);
   };
-  return {
+  const run: HonestRun = {
     expectation: {
       runDirectory,
       intentDigest: INTENT_DIGEST,
@@ -240,6 +261,9 @@ export async function honestRun(): Promise<HonestRun> {
     transferTxId: txId,
     payout,
     recipientAddress: recipient.address,
+    l1: payoutOnL1(payout),
+    withdrawalOnL1: async (eventId) =>
+      eventId === WITHDRAWAL_EVENT ? run.l1 : undefined,
     edit,
     editStep: (id, change) =>
       edit("stack-journal.json", (value) => {
@@ -247,4 +271,5 @@ export async function honestRun(): Promise<HonestRun> {
         step.data = change(step.data) ?? step.data;
       }),
   };
+  return run;
 }

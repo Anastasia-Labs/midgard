@@ -22,6 +22,7 @@ import {
   WITHDRAWAL_EVENT,
 } from "./e2e-finalize-stack-run.fixture.js";
 import { step } from "./e2e-summary.stress-summary.js";
+import { fundedOnly, payoutToken } from "./full-stack-payout.fixtures.js";
 
 const uuid = (n: number) =>
   `${n.toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`;
@@ -167,11 +168,12 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
           attempts: [
             {
               phase: "conclude",
-              status: "final",
+              status: "pending",
               txHash: run.payout.txHash,
               signedCbor: run.payout.cbor,
             },
           ],
+          payoutToken: payoutToken(run.payout),
         },
       ],
     ]);
@@ -216,10 +218,19 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
       details: { reason: "the database has no stack identity" },
     });
   });
+  it("accepts a payout another operator concluded", async () => {
+    const value = await database((settlements) => {
+      settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).attempts = fundedOnly;
+    });
+    expect(gates(value)[1]).toMatchObject({
+      status: "satisfied",
+      details: { "cycle-0": "verified" },
+    });
+  });
   it("refuses a withdrawal with no confirmed payout", async () => {
     const value = await database((settlements) => {
-      settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).attempts[0].status =
-        "expired";
+      settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).payoutToken =
+        payoutToken(null);
     });
     expect(gates(value)[1]).toMatchObject({
       status: "failed",
@@ -242,7 +253,7 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
   });
   it("refuses a confirmed payout that is not the journal's", async () => {
     const value = await database((settlements) => {
-      settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).attempts[0].txHash =
+      settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).payoutToken[1].spentTx =
         "0f".repeat(32);
     });
     expect(gates(value)[1].details["cycle-0"]).toBe(

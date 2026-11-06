@@ -8,6 +8,7 @@ import type { DbEvidence } from "../src/e2e/summary.js";
 import {
   HEADER_HASH,
   honestRun,
+  payoutOnL1,
   payoutTransaction,
   STEP_IDS,
 } from "./e2e-finalize-stack-run.fixture.js";
@@ -23,7 +24,7 @@ async function refusal(
   run: Awaited<ReturnType<typeof honestRun>>,
   label: string,
 ) {
-  const { db } = await readStackRun(run.expectation);
+  const { db } = await readStackRun(run.expectation, run.withdrawalOnL1);
   const refused = gate(db, label);
   expect(refused.status).toBe("failed");
   for (const other of db)
@@ -37,7 +38,10 @@ async function refusal(
 describe("e2e-finalize-summary stack-run reader", () => {
   it("verifies an honest wallet-journey run from its records", async () => {
     const run = await honestRun();
-    const { journal, db } = await readStackRun(run.expectation);
+    const { journal, db } = await readStackRun(
+      run.expectation,
+      run.withdrawalOnL1,
+    );
     expect(journal?.runId).toBe("stack-run-honest");
     expect(db.map(({ label, status }) => [label, status])).toEqual([
       ["stack_run_identity", "satisfied"],
@@ -54,7 +58,10 @@ describe("e2e-finalize-summary stack-run reader", () => {
     it("refuses a missing journal and verifies no cycle", async () => {
       const run = await honestRun();
       await rm(join(run.expectation.runDirectory, "stack-journal.json"));
-      const { journal, db } = await readStackRun(run.expectation);
+      const { journal, db } = await readStackRun(
+        run.expectation,
+        run.withdrawalOnL1,
+      );
       expect(journal).toBeUndefined();
       expect(gate(db, "stack_run_identity").details.reason).toBe(
         "missing stack-journal.json",
@@ -74,7 +81,10 @@ describe("e2e-finalize-summary stack-run reader", () => {
       await run.edit("stack-journal.json", (journal) => {
         journal.intentDigest = "f".repeat(64);
       });
-      const { journal, db } = await readStackRun(run.expectation);
+      const { journal, db } = await readStackRun(
+        run.expectation,
+        run.withdrawalOnL1,
+      );
       expect(journal).toBeUndefined();
       expect(gate(db, "stack_run_identity").details.reason).toBe(
         "Saved stack identity differs from this configuration; preserve the run directory",
@@ -170,7 +180,7 @@ describe("e2e-finalize-summary stack-run reader", () => {
       await run.editStep("cycle-0-transfer", (data) => {
         data.merged.confirmedLedgerFinalized = false;
       });
-      const { db } = await readStackRun(run.expectation);
+      const { db } = await readStackRun(run.expectation, run.withdrawalOnL1);
       expect(gate(db, "stack_transfer_finality").details["cycle-0"]).toBe(
         "Transfer did not reach confirmed-ledger finality",
       );
@@ -210,13 +220,21 @@ describe("e2e-finalize-summary stack-run reader", () => {
         "missing cycle-0-withdrawal.json",
       );
     });
-    it("refuses a payout Cardano has not included", async () => {
+    it("refuses a payout no transaction has concluded on L1", async () => {
       const run = await honestRun();
-      await run.editStep("cycle-0-withdrawal", (data) => {
-        data.observation.status = "pending";
-      });
+      // The funded output is still unspent: no conclusion has landed.
+      run.l1 = {
+        ...run.l1!,
+        payoutToken: [
+          { ...run.l1!.payoutToken![0]!, spentTx: null, spenderBody: null },
+        ],
+      };
       expect(await refusal(run, "stack_withdrawal_payout")).toBe(
-        "payout was not observed included on Cardano",
+        "payout is not concluded on L1",
+      );
+      run.l1 = undefined;
+      expect(await refusal(run, "stack_withdrawal_payout")).toBe(
+        "payout is not concluded on L1",
       );
     });
     it("refuses a journal payout of another value", async () => {
@@ -228,28 +246,26 @@ describe("e2e-finalize-summary stack-run reader", () => {
         "payout destination or value differs from the withdrawal",
       );
     });
-    it("refuses a payout transaction that pays another value", async () => {
+    it("refuses an L1 conclusion that pays another value", async () => {
       const run = await honestRun();
       const other = payoutTransaction([
         { address: run.recipientAddress, lovelace: 9_999_999n },
       ]);
       await run.editStep("cycle-0-withdrawal", (data) => {
         data.txHash = other.txHash;
-        data.observation.transactionHash = other.txHash;
-        data.observation.signedTransactionCborHex = other.cbor;
       });
+      run.l1 = payoutOnL1(other);
       expect(await refusal(run, "stack_withdrawal_payout")).toBe(
         "Payout must contain exactly one output with the exact destination and value",
       );
     });
-    it("refuses payout bytes that are not the journal's transaction", async () => {
+    it("refuses a journal payout that is not the transaction L1 concluded with", async () => {
       const run = await honestRun();
       await run.editStep("cycle-0-withdrawal", (data) => {
         data.txHash = "0f".repeat(32);
-        data.observation.transactionHash = "0f".repeat(32);
       });
       expect(await refusal(run, "stack_withdrawal_payout")).toBe(
-        "Workflow recovery signed bytes differ from their durable transaction identity",
+        "L1 payout differs from the journal's payout",
       );
     });
     it("refuses a payout output index that is not the exact output", async () => {
@@ -394,7 +410,7 @@ describe("e2e-finalize-summary stack-run reader", () => {
     async (label, reason, tamper) => {
       const run = await honestRun();
       await tamper(run);
-      const { db } = await readStackRun(run.expectation);
+      const { db } = await readStackRun(run.expectation, run.withdrawalOnL1);
       expect(gate(db, label).details["cycle-0"]).toBe(reason);
     },
   );

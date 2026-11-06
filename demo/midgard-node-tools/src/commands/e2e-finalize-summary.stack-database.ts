@@ -6,6 +6,8 @@ import type { DbEvidence } from "../e2e/summary.js";
 import type { StackJournal } from "../full-stack/journal.js";
 import {
   payoutConclusion,
+  type PayoutTokenOutput,
+  payoutTokenQuery,
   type SettlementObservation,
 } from "../full-stack/payout-body.js";
 
@@ -52,10 +54,11 @@ export function stackSettlementTargets(
   return targets;
 }
 
-/** The stack database's identity row and the settlement rows payout.ts reads. */
+/** The stack database's identity row and the settlement rows and L1 facts payout.ts reads. */
 export const collectStackDatabase = (
   manifestId: string,
-  targets: readonly StackSettlementTarget[],
+  payoutPolicyId: string,
+  targets: readonly Pick<StackSettlementTarget, "kind" | "eventId">[],
 ): Effect.Effect<StackDatabaseObservation, never, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -84,9 +87,16 @@ export const collectStackDatabase = (
           FROM settlement_attempts
           WHERE deployment_id = ${manifestId} AND kind = ${kind} AND event_id = ${eventId}
       `;
+      const [token] =
+        kind === "withdrawal"
+          ? yield* sql.unsafe<{
+              readonly outputs: PayoutTokenOutput[] | null;
+            }>(payoutTokenQuery(payoutPolicyId, eventId))
+          : [];
       settlements.set(settlementKey(kind, eventId), {
         jobs: jobs.map(({ phase }) => ({ phase })),
         attempts: attempts.map((attempt) => ({ ...attempt })),
+        ...(token === undefined ? {} : { payoutToken: token.outputs }),
       });
     }
     return {
@@ -97,6 +107,20 @@ export const collectStackDatabase = (
       settlements,
     };
   }).pipe(Effect.orDie);
+
+/** One withdrawal's settlement rows and payout-token L1 facts, as `collectStackDatabase` reads them. */
+export const withdrawalOnL1 = (
+  manifestId: string,
+  payoutPolicyId: string,
+  eventId: string,
+): Effect.Effect<SettlementObservation | undefined, never, Database> =>
+  collectStackDatabase(manifestId, payoutPolicyId, [
+    { kind: "withdrawal", eventId },
+  ]).pipe(
+    Effect.map(({ settlements }) =>
+      settlements.get(settlementKey("withdrawal", eventId)),
+    ),
+  );
 
 function settlementFailure(
   journal: StackJournal,
@@ -125,21 +149,16 @@ function settlementFailure(
   }
   if (conclusion === undefined)
     return "withdrawal settlement has no confirmed payout of a complete job";
-  const recorded = payout.observation as
-    | { readonly signedTransactionCborHex?: unknown }
-    | undefined;
-  if (
-    conclusion.txHash !== payout.txHash ||
-    conclusion.signedCbor !== recorded?.signedTransactionCborHex
-  )
+  if (conclusion.txHash !== payout.txHash)
     return "confirmed payout differs from the journal's payout";
   return undefined;
 }
 
 /**
  * The database the finalizer reads is this run's (storage.ts identity row),
- * and its settlement rows still hold one complete deposit job and exactly one
- * confirmed payout per cycle (payout-body.ts `payoutConclusion`).
+ * and per cycle it still holds one complete deposit job and the journal's
+ * payout as the L1 conclusion of a complete job (payout-body.ts
+ * `payoutConclusion`), whichever operator sent it.
  */
 export function stackDatabaseGates({
   journal,

@@ -274,6 +274,7 @@ program
       E2EFinalizeSummaryCommand.finalizeE2ESummaryProgram({
         stackRun: {
           expectation: stackRun.expectation,
+          payoutPolicyId: stackRun.payoutPolicyId,
           endpoint: stackRun.endpoint,
         },
         ...(typeof opts.outDir === "string" ? { outDir: opts.outDir } : {}),

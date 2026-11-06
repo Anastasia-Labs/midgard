@@ -16,12 +16,6 @@ import {
   assertTransferDeltas,
   assertWithdrawalDebit,
 } from "../src/full-stack/journey-balances.js";
-import {
-  includedPayout,
-  payoutConclusion,
-  payoutOutRef,
-  type SettlementAttempt,
-} from "../src/full-stack/payout-body.js";
 import { runStackWorkflow } from "../src/full-stack/workflow.js";
 import {
   type RecordedCall,
@@ -80,119 +74,6 @@ describe("exact journey balances", () => {
     expect(() => assertDepositFunding(14_999_999n, 10_000_000n)).toThrow(
       "including fee headroom",
     );
-  });
-});
-
-describe("withdrawal payout decision", () => {
-  const conclusion: SettlementAttempt = {
-    phase: "conclude",
-    status: "pending",
-    txHash: "a".repeat(64),
-    signedCbor: "",
-  };
-  const complete = [{ phase: "complete" }];
-  it("refuses two unexpired conclusions for one withdrawal", () =>
-    expect(() =>
-      payoutConclusion({
-        jobs: complete,
-        attempts: [
-          conclusion,
-          { ...conclusion, status: "final", txHash: "b".repeat(64) },
-        ],
-      }),
-    ).toThrow("More than one unexpired payout"));
-  it("waits for a complete job with one unexpired conclusion", () => {
-    expect(
-      payoutConclusion({
-        jobs: [{ phase: "concluding" }],
-        attempts: [conclusion],
-      }),
-    ).toBeUndefined();
-    expect(
-      payoutConclusion({
-        jobs: complete,
-        attempts: [{ ...conclusion, status: "expired" }],
-      }),
-    ).toBeUndefined();
-    const final = { ...conclusion, status: "final" };
-    expect(
-      payoutConclusion({
-        jobs: complete,
-        attempts: [{ ...conclusion, status: "expired" }, final],
-      }),
-    ).toBe(final);
-    expect(payoutConclusion({ jobs: complete, attempts: [conclusion] })).toBe(
-      conclusion,
-    );
-  });
-  describe("payout inclusion", () => {
-    const address = walletFromSeed(
-      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-      { network: "Preprod" },
-    ).address;
-    const outputs = CML.TransactionOutputList.new();
-    outputs.add(
-      CML.TransactionOutput.new(
-        CML.Address.from_bech32(address),
-        CML.Value.from_coin(10_000_000n),
-      ),
-    );
-    const transaction = CML.Transaction.new(
-      CML.TransactionBody.new(CML.TransactionInputList.new(), outputs, 1n),
-      CML.TransactionWitnessSet.new(),
-      true,
-    );
-    const txHash = CML.hash_transaction(transaction.body()).to_hex();
-    const attempt = {
-      ...conclusion,
-      txHash,
-      signedCbor: transaction.to_cbor_hex(),
-    };
-    const assets = { lovelace: "10000000" };
-    // A `utxo_by_txin` answer: a CBOR map from `[txHash, index]` to the
-    // ledger's output (here the payout output's own bytes).
-    const outputCbor = Buffer.from(outputs.get(0).to_cbor_bytes());
-    const answer = (rows: readonly (readonly [string, number])[]) =>
-      Buffer.concat([
-        Buffer.from([0xa0 + rows.length]),
-        ...rows.flatMap(([id, index]) => [
-          Buffer.from([0x82, 0x58, 0x20]),
-          Buffer.from(id, "hex"),
-          Buffer.from([index]),
-          outputCbor,
-        ]),
-      ]);
-    it("binds the payout output to the recorded transaction id", () => {
-      expect(payoutOutRef(attempt, address, assets)).toEqual({
-        txHash,
-        outputIndex: 0,
-      });
-      expect(() =>
-        payoutOutRef({ ...attempt, txHash: "b".repeat(64) }, address, assets),
-      ).toThrow("does not hash to its recorded id");
-    });
-    it("waits until the node's ledger holds the payout output", () => {
-      const outRef = payoutOutRef(attempt, address, assets);
-      expect(includedPayout(outRef, answer([]))).toBeUndefined();
-      expect(includedPayout(outRef, answer([[txHash, 0]]))).toEqual({
-        outputIndex: 0,
-      });
-    });
-    it("refuses an answer for another output", () => {
-      const outRef = payoutOutRef(attempt, address, assets);
-      for (const rows of [
-        [["c".repeat(64), 0]],
-        [[txHash, 1]],
-        [
-          [txHash, 0],
-          [txHash, 1],
-        ],
-      ] as const)
-        expect(() => includedPayout(outRef, answer(rows))).toThrow(
-          "another output",
-        );
-      expect(() => includedPayout(outRef, Buffer.from([0x80]))).toThrow();
-    });
   });
 });
 

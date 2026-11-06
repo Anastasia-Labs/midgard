@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Runtime } from "effect";
 import type { Database } from "midgard-node/services/database";
 
 import {
@@ -33,6 +33,7 @@ import {
   collectStackDatabase,
   stackDatabaseGates,
   stackSettlementTargets,
+  withdrawalOnL1,
 } from "./e2e-finalize-summary.stack-database.js";
 import { readStackRun } from "./e2e-finalize-summary.stack-run.js";
 import { stressEvidenceFromSummary } from "./e2e-finalize-summary.stress-evidence-from-summary.js";
@@ -51,7 +52,18 @@ export const finalizeE2ESummaryProgram = (
     const startedAt = new Date().toISOString();
     const mode = options.mode ?? "unknown";
     const { expectation } = options.stackRun;
-    const stackRun = yield* Effect.promise(() => readStackRun(expectation));
+    const runPromise = Runtime.runPromise(yield* Effect.runtime<Database>());
+    const stackRun = yield* Effect.promise(() =>
+      readStackRun(expectation, (eventId) =>
+        runPromise(
+          withdrawalOnL1(
+            expectation.manifestId,
+            options.stackRun.payoutPolicyId,
+            eventId,
+          ),
+        ),
+      ),
+    );
     const stackAttempts =
       mode === "fresh"
         ? yield* Effect.promise(() =>
@@ -60,6 +72,7 @@ export const finalizeE2ESummaryProgram = (
         : undefined;
     const stackDatabase = yield* collectStackDatabase(
       expectation.manifestId,
+      options.stackRun.payoutPolicyId,
       stackSettlementTargets(stackRun.journal, expectation.cycles),
     );
     const runId = stackRun.journal?.runId ?? `e2e-run-${timestampForPath()}`;
@@ -113,7 +126,7 @@ export const finalizeE2ESummaryProgram = (
       counts.get("pending_finalizations_finalized_tx_headers") ?? 0n;
     const consumedDeposits = counts.get("deposits_consumed") ?? 0n;
     const acceptedL2Txs = counts.get("tx_admissions_accepted") ?? 0n;
-    const immutableRows = counts.get("immutable") ?? 0n;
+    const committedL2Txs = counts.get("committed_l2_txs") ?? 0n;
     const confirmedLedgerRows = counts.get("confirmed_ledger") ?? 0n;
     const daPayloads = counts.get("da_payloads") ?? 0n;
     const stressEvidence = stressEvidenceFromSummary({
@@ -306,7 +319,7 @@ export const finalizeE2ESummaryProgram = (
               (stressSummary === undefined
                 ? acceptedL2Txs === expectedL2Count
                 : acceptedL2Txs >= expectedL2Count) &&
-              immutableRows >= expectedL2Count
+              committedL2Txs >= expectedL2Count
                 ? "satisfied"
                 : "failed",
             source: "postgres",
@@ -315,14 +328,14 @@ export const finalizeE2ESummaryProgram = (
                 ? {
                     accepted: acceptedL2Txs.toString(),
                     expectedAccepted: expectedL2Count.toString(),
-                    immutable: immutableRows.toString(),
-                    expectedImmutableMinimum: expectedL2Count.toString(),
+                    committed: committedL2Txs.toString(),
+                    expectedCommittedMinimum: expectedL2Count.toString(),
                   }
                 : {
                     accepted: acceptedL2Txs.toString(),
                     expectedAcceptedMinimum: expectedL2Count.toString(),
-                    immutable: immutableRows.toString(),
-                    expectedImmutableMinimum: expectedL2Count.toString(),
+                    committed: committedL2Txs.toString(),
+                    expectedCommittedMinimum: expectedL2Count.toString(),
                   },
           },
           {
