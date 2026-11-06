@@ -64,6 +64,11 @@ const findLastMemberNode = (
       candidate.datum.key !== "Empty" && candidate.datum.next === "Empty",
   );
 
+/**
+ * The refresh that moves the scheduler from `currentOperator` towards
+ * `targetOperator`: the target itself when it is the one legal successor,
+ * otherwise that successor (see `appointedSchedulerOperator`).
+ */
 export const resolveSchedulerRefreshWitnessSelection = ({
   currentOperator,
   targetOperator,
@@ -87,14 +92,15 @@ export const resolveSchedulerRefreshWitnessSelection = ({
     findRootNode(registeredNodes, "Registered-operators");
 
   if (allowGenesisRewind) {
-    if (targetNode.datum.next !== "Empty") {
-      throw new Error(
-        `Operator ${targetOperator} cannot be appointed first because it is not the last active-operators node`,
-      );
+    // Only the tail may be appointed first, and anyone may appoint it, so a
+    // target that is not the tail appoints the tail and pushes on from there.
+    const activeTailNode = findLastMemberNode(activeNodes);
+    if (activeTailNode === undefined) {
+      throw new Error("Active-operators tail node is missing");
     }
     return {
       kind: "AppointFirst",
-      activeNode: targetNode,
+      activeNode: activeTailNode,
       registeredWitnessNode,
     };
   }
@@ -106,28 +112,48 @@ export const resolveSchedulerRefreshWitnessSelection = ({
     };
   }
 
+  // The target cannot take the turn in one hop. An ended shift passes only to
+  // its one legal successor, and anyone may submit that, so the selection
+  // appoints the successor instead: the target pushes the turn one hop
+  // towards itself and takes it once the pushed shift ends.
   const activeRootNode = findRootNode(activeNodes, "Active-operators");
-  const currentOperatorIsActiveHead =
-    linkKeyBytes(activeRootNode.datum) === currentOperator;
-  const targetNodeIsActiveTail = targetNode.datum.next === "Empty";
-  if (!targetNodeIsActiveTail) {
+  if (linkKeyBytes(activeRootNode.datum) === currentOperator) {
+    const activeTailNode = findLastMemberNode(activeNodes);
+    if (activeTailNode === undefined) {
+      throw new Error("Active-operators tail node is missing");
+    }
+    return {
+      kind: "Rewind",
+      activeNode: activeTailNode,
+      activeRootNode,
+      registeredWitnessNode,
+    };
+  }
+  const successorNode = activeNodes.find(
+    (candidate) =>
+      candidate.datum.key !== "Empty" &&
+      linkKeyBytes(candidate.datum) === currentOperator,
+  );
+  if (successorNode === undefined) {
     throw new Error(
-      `Operator ${targetOperator} is not the next scheduled operator for current scheduler operator ${currentOperator}`,
+      `Current scheduler operator ${currentOperator} has no successor in the active-operators list`,
     );
   }
-
-  if (!currentOperatorIsActiveHead) {
-    throw new Error(
-      `Operator ${targetOperator} cannot rewind scheduler from current operator ${currentOperator}`,
-    );
-  }
-
   return {
-    kind: "Rewind",
-    activeNode: targetNode,
-    activeRootNode,
-    registeredWitnessNode,
+    kind: "Advance",
+    activeNode: successorNode,
   };
+};
+
+/** The operator a refresh with `selection` appoints. */
+export const appointedSchedulerOperator = (
+  selection: SchedulerRefreshWitnessSelection,
+): string => {
+  const appointed = nodeKeyBytes(selection.activeNode.datum.key);
+  if (appointed === undefined) {
+    throw new Error("A scheduler refresh cannot appoint the root node");
+  }
+  return appointed;
 };
 
 export const toSdkSchedulerRefreshWitnessSelection = (
@@ -310,10 +336,11 @@ export const awaitSubmittedSchedulerTx = (
 ): Effect.Effect<void, SDK.StateQueueError> =>
   Effect.gen(function* () {
     yield* Effect.tryPromise({
-      try: () =>
+      try: (signal) =>
         awaitExactTransactionConfirmation(lucid, txHash, {
           timeout: SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS,
           checkInterval: SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
+          signal,
         }),
       catch: (cause) =>
         new SDK.StateQueueError({

@@ -51,6 +51,29 @@ database.
 **Escalate** when `/readyz` names no reason that explains the lag, or the lag
 persists after the named dependency has recovered.
 
+### MidgardCommitSchedulerAlignmentFailing
+
+**Meaning.** Work is waiting to be committed, but for ten minutes every commit
+tick failed to align the L1 scheduler before the commit worker
+(`midgard_liveness_reason_age_ms{source="commit_scheduler"}`). The node cannot
+take its scheduler turn, or push an expired turn on to the next operator, so
+its users' transactions are not reaching blocks. The node logs the same
+failure at error level after ten minutes.
+
+**First checks.** `GET /readyz` names the reason
+`commit_scheduler_alignment_failed`; its `livenessReasons` entry carries the
+first line of the last failure. Common causes: an operator wallet with no
+plain ADA to pay the scheduler transaction, an L1 provider that cannot read
+the scheduler or operator lists, or a registered operator due for activation
+that blocks the scheduler's rewind.
+
+**Action.** Fix what the detail names (fund the operator wallet, restore the
+provider, or activate the registered operator). The next tick that aligns or
+waits clears the reason. Do not edit the database.
+
+**Escalate** when the detail names none of these, or the reason stays raised
+after its cause is fixed.
+
 ### MidgardCommitPlanningCatchUp
 
 **Meaning.** For 30 minutes the commit planner has selected catch-up plans

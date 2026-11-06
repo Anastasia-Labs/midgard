@@ -6,6 +6,10 @@ import {
   Lucid,
   MidgardContracts,
 } from "../services/index.js";
+import {
+  clearLivenessIncident,
+  raiseLivenessIncident,
+} from "../services/liveness-halt.js";
 import type { EarliestCommitSchedulerPlan } from "../workers/utils/commit-block-planner.js";
 import { fetchRealStateQueueWitnessContext } from "../workers/utils/scheduler-refresh.js";
 import {
@@ -19,6 +23,11 @@ import {
   preLeaseCommitSchedulerTargetMs,
   shouldSkipForDetailedSchedulerDueWork,
 } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import {
+  COMMIT_SCHEDULER_ALIGNMENT_FAILED,
+  COMMIT_SCHEDULER_SOURCE,
+  COMMIT_WORKER_FAILED_ESCALATION_MS,
+} from "./block-commitment.worker-readiness.js";
 import {
   checkSlotAwareDueWork,
   peekSlotAwareDueWork,
@@ -131,19 +140,38 @@ export const shouldRunPreLeaseSchedulerAlignment = (
   (plan.status === "ambiguous" &&
     plan.reason === "scheduler_has_no_active_operator");
 
-const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
-  const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
-  if (plan._tag === "Left") {
-    yield* Effect.logWarning(
-      `🔹 Pre-lease scheduler alignment probe failed; skipping this tick before the mutation lease: ${String(plan.left)}`,
+/**
+ * Skips a tick whose pre-lease scheduler `stage` failed. The tick only runs
+ * with commit work pending, so the failure is raised on readiness: a node that
+ * cannot take its turn must not stay silently ready.
+ */
+const skipOnSchedulerAlignmentFailure = (stage: string, error: unknown) =>
+  Effect.gen(function* () {
+    const detail = `Pre-lease scheduler ${stage} failed; skipping this tick before the mutation lease: ${String(error)}`;
+    yield* Effect.logWarning(`🔹 ${detail}`);
+    yield* raiseLivenessIncident(
+      yield* Globals,
+      COMMIT_SCHEDULER_SOURCE,
+      COMMIT_SCHEDULER_ALIGNMENT_FAILED,
+      detail,
+      { escalateAfterMs: COMMIT_WORKER_FAILED_ESCALATION_MS },
     );
     return true;
+  });
+
+const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
+  if (plan._tag === "Left") {
+    return yield* skipOnSchedulerAlignmentFailure("alignment probe", plan.left);
   }
   if (plan.right.status === "register_due_work") {
+    yield* clearLivenessIncident(globals, COMMIT_SCHEDULER_SOURCE);
     yield* registerPreLeaseCommitSchedulerDueWork(plan.right);
     return true;
   }
   if (!shouldRunPreLeaseSchedulerAlignment(plan.right)) {
+    yield* clearLivenessIncident(globals, COMMIT_SCHEDULER_SOURCE);
     return false;
   }
   const lucid = yield* Lucid;
@@ -160,11 +188,9 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
     ),
   );
   if (alignment._tag === "Left") {
-    yield* Effect.logWarning(
-      `🔹 Pre-lease scheduler alignment failed; skipping this tick before the mutation lease: ${String(alignment.left)}`,
-    );
-    return true;
+    return yield* skipOnSchedulerAlignmentFailure("alignment", alignment.left);
   }
+  yield* clearLivenessIncident(globals, COMMIT_SCHEDULER_SOURCE);
   if ("dueWork" in alignment.right) {
     registerSlotAwareDueWork(alignment.right.dueWork);
     yield* Effect.logInfo(

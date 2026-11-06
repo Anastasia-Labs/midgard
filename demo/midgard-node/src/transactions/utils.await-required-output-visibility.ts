@@ -53,6 +53,7 @@ export type SignSubmitContext = {
 type AwaitTxConfirmationOptions = {
   readonly timeout?: number;
   readonly checkInterval?: number;
+  readonly signal?: AbortSignal;
 };
 
 /**

@@ -144,16 +144,16 @@ describe("scheduler refresh witness selection", () => {
     );
   });
 
-  it("rejects an operator that is not next in schedule order", () => {
-    expect(() =>
-      resolveSchedulerRefreshWitnessSelection({
-        currentOperator: "bb",
-        targetOperator: "bb",
-        activeNodes: [activeRoot, activeHead, activeTail],
-        registeredNodes: [activeRoot],
-        allowGenesisRewind: false,
-      }),
-    ).toThrow("cannot rewind scheduler");
+  it("pushes the turn to the one legal successor when the target is not next", () => {
+    const selection = resolveSchedulerRefreshWitnessSelection({
+      currentOperator: "bb",
+      targetOperator: "bb",
+      activeNodes: [activeRoot, activeHead, activeTail],
+      registeredNodes: [activeRoot],
+      allowGenesisRewind: false,
+    });
+    expect(selection.kind).toBe("Advance");
+    expect(selection.activeNode.utxo.txHash).toBe(activeHead.utxo.txHash);
   });
 
   it("encodes scheduler datums with a definite root array for deployed validators", () => {

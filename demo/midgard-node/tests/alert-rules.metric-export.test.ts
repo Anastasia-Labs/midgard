@@ -22,11 +22,13 @@ import {
   nodeRoleWallets,
   sampleWalletBalances,
 } from "../src/fibers/alert-signals.wallet-balances.js";
+import { COMMIT_SCHEDULER_SOURCE } from "../src/fibers/block-commitment.worker-readiness.js";
 import {
   forcedAdmissionDivergenceCounter,
   SCREEN_FAILED,
 } from "../src/forced-orders/admission-divergence.js";
 import { Globals } from "../src/services/globals.js";
+import { livenessReasonAgeGauge } from "../src/services/globals.liveness-reasons.js";
 import {
   IntentJournal,
   IntentJournalWithoutFollower,
@@ -107,6 +109,13 @@ const exportedFamilies = () =>
           ),
         );
         yield* Metric.value(mergeFailureCounter);
+        yield* Metric.value(
+          Metric.tagged(
+            livenessReasonAgeGauge,
+            "source",
+            COMMIT_SCHEDULER_SOURCE,
+          ),
+        );
         return prometheusFamilies(
           yield* Effect.promise(() => exporter.scrape()),
         );
@@ -123,7 +132,7 @@ describe("the node's alert rules", () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../alert-rules.yml", import.meta.url), "utf8"),
     );
-    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(8);
+    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(9);
     for (const { alert, metric } of selectors)
       expect(families, `${alert} selects ${metric}`).toContain(metric);
   });

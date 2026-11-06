@@ -54,6 +54,18 @@ export const COMMIT_WINDOW_SOURCE = "commit_window";
  */
 export const COMMIT_WINDOW_PENDING = "commit_window_pending";
 
+/** The liveness source `commit_scheduler_alignment_failed` is raised under. */
+export const COMMIT_SCHEDULER_SOURCE = "commit_scheduler";
+/**
+ * Scheduler alignment before the commit worker failed while commit work is
+ * pending, so the node cannot take its turn. It holds no fiber: the tick is
+ * skipped and retried. It escalates after `COMMIT_WORKER_FAILED_ESCALATION_MS`
+ * like a failing worker, and clears on the next alignment that succeeds or
+ * waits, or the next tick with no work.
+ */
+export const COMMIT_SCHEDULER_ALIGNMENT_FAILED =
+  "commit_scheduler_alignment_failed";
+
 /** Reports worker failure without holding the commit fibers: they must retry
  * through their ordinary journal and lease gates. A failure is escalated
  * after `COMMIT_WORKER_FAILED_ESCALATION_MS`. Only actual worker success
@@ -134,6 +146,7 @@ export const clearCommitWorkerFailure = (
       clearLivenessIncident(globals, COMMIT_WORKER_SOURCE),
       clearLivenessIncident(globals, COMMIT_BASE_SOURCE),
       clearLivenessIncident(globals, COMMIT_WINDOW_SOURCE),
+      clearLivenessIncident(globals, COMMIT_SCHEDULER_SOURCE),
     ],
     { discard: true },
   );

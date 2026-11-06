@@ -2,7 +2,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 
 import {
   type IntentJournal,
@@ -20,6 +20,7 @@ import { readSelectedWalletView } from "../../transactions/utils.wallet-view.js"
 import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import { getSchedulerDatumFromUTxO } from "./scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
 import {
+  appointedSchedulerOperator,
   awaitSubmittedSchedulerTx,
   describeSchedulerDatum,
   parseNodeSetUtxos,
@@ -37,6 +38,7 @@ import {
   SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
   SCHEDULER_REFRESH_MAX_POLLS,
   SCHEDULER_REFRESH_POLL_INTERVAL,
+  SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
   type SchedulerAlignmentResult,
   schedulerRefreshDependencyKey,
   schedulerRefreshDueWorkFromNoInlineSubmitDefer,
@@ -129,15 +131,22 @@ export const ensureSchedulerAlignedForCommit = (
         submitSlot === undefined
           ? captureSchedulerSlotSnapshot(lucid)
           : schedulerSlotSnapshotFromSubmitSlot(lucid, submitSlot);
-      const selection = yield* Effect.try({
-        try: () =>
-          resolveSchedulerRefreshWitnessSelection({
+      // The operator appointed is itself, or the successor it pushes the turn
+      // to (see the selection).
+      const { selection, appointedOperator } = yield* Effect.try({
+        try: () => {
+          const selection = resolveSchedulerRefreshWitnessSelection({
             currentOperator,
             targetOperator: operatorKeyHash,
             activeNodes,
             registeredNodes,
             allowGenesisRewind,
-          }),
+          });
+          return {
+            selection,
+            appointedOperator: appointedSchedulerOperator(selection),
+          };
+        },
         catch: (cause) =>
           new SDK.StateQueueError({
             message:
@@ -166,18 +175,6 @@ export const ensureSchedulerAlignedForCommit = (
               currentStartTime,
               schedulerSlotSnapshot,
             );
-      const previousShiftCatchUp =
-        startTimeMode === "previous-shift-end" &&
-        currentStartTime <= targetStartTime;
-      if (targetStartTime < validFrom && !previousShiftCatchUp) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Resolved commit end-time falls before the scheduler refresh window",
-            cause: `commit_end=${targetStartTime.toString()},scheduler_valid_from=${validFrom.toString()}`,
-          }),
-        );
-      }
       const submitTimingSnapshot: SubmitSlotSnapshot = submitSlot ?? {
         source: "test",
         currentSlot: schedulerSlotSnapshot.currentSlot,
@@ -192,7 +189,7 @@ export const ensureSchedulerAlignedForCommit = (
         schedulerOutRef: outRefLabel(currentSchedulerRefInput),
         currentOperator,
         currentStartTime,
-        targetOperator: operatorKeyHash,
+        targetOperator: appointedOperator,
         selectionKind: selection.kind,
       });
       const submitTiming = planSubmitTiming({
@@ -230,6 +227,22 @@ export const ensureSchedulerAlignedForCommit = (
           `🔹 Scheduler refresh is not due yet; registering slot-aware due work discovery_stage=scheduler_refresh_deep (kind=${entry.kind},key=${entry.key},current_slot=${entry.observedSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()},slot_source=${entry.slotSource},dependency_key=${entry.dependencyKey}).`,
         );
         return dueWorkOutput;
+      }
+      // A window that has not opened yet is a wait, handled above, and never
+      // a failure: after pushing the turn to its successor the node waits
+      // here for that shift to end. Only an open window can leave a stale
+      // commit target behind.
+      const previousShiftCatchUp =
+        startTimeMode === "previous-shift-end" &&
+        currentStartTime <= targetStartTime;
+      if (targetStartTime < validFrom && !previousShiftCatchUp) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Resolved commit end-time falls before the scheduler refresh window",
+            cause: `commit_end=${targetStartTime.toString()},scheduler_valid_from=${validFrom.toString()}`,
+          }),
+        );
       }
       if (!allowSchedulerRefresh) {
         const dueWorkOutput =
@@ -269,7 +282,7 @@ export const ensureSchedulerAlignedForCommit = (
           }),
       });
       const refreshedSchedulerDatum = activeSchedulerDatum(
-        operatorKeyHash,
+        appointedOperator,
         refreshedSchedulerStartTime,
       );
       if (selection.kind !== "Advance") {
@@ -304,7 +317,7 @@ export const ensureSchedulerAlignedForCommit = (
         "scheduler refresh tx",
       );
       yield* Effect.logInfo(
-        `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (attempt=${(
+        `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind}, appointing ${appointedOperator === operatorKeyHash ? "self" : "the successor this node pushes the turn to"} (attempt=${(
           refreshCount + 1
         ).toString()}/${SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL.toString()}, from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, target=${targetStartTime.toString()}, validTo=${validTo.toString()}).`,
       );
@@ -368,40 +381,46 @@ export const ensureSchedulerAlignedForCommit = (
       yield* Effect.logInfo(
         `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
       );
-      yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
+      // The scheduler output that replaced the one this tx spends, whoever's
+      // tx landed it: at a shift end the successor may take the same turn
+      // itself, and then this tx never lands. The loop replans from it.
+      const spentInput = outRefLabel(currentSchedulerRefInput);
+      const nextSchedulerUtxo = Effect.tryPromise({
+        try: () =>
+          lucid.utxosAtWithUnit(
+            contracts.scheduler.spendingScriptAddress,
+            schedulerWitnessUnit,
+          ),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
+            cause,
+          }),
+      }).pipe(
+        Effect.map((utxos) =>
+          [...utxos]
+            .sort(compareOutRefs)
+            .find((utxo) => outRefLabel(utxo) !== spentInput),
+        ),
+      );
+      yield* Effect.raceFirst(
+        awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh"),
+        Effect.either(nextSchedulerUtxo).pipe(
+          Effect.repeat({
+            until: (next) => next._tag === "Right" && next.right !== undefined,
+            schedule: Schedule.spaced(
+              SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
+            ),
+          }),
+          Effect.asVoid,
+        ),
+      );
 
       let refreshedSchedulerRefInput: UTxO | undefined;
       let pollCount = 0;
       while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
-        const schedulerWitnessUtxos = yield* Effect.tryPromise({
-          try: () =>
-            lucid.utxosAtWithUnit(
-              contracts.scheduler.spendingScriptAddress,
-              schedulerWitnessUnit,
-            ),
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
-              cause,
-            }),
-        });
-        for (const utxo of [...schedulerWitnessUtxos].sort(compareOutRefs)) {
-          const utxoDatumEither = yield* Effect.either(
-            getSchedulerDatumFromUTxO(utxo),
-          );
-          if (utxoDatumEither._tag === "Left") {
-            continue;
-          }
-          const active = activeSchedulerState(utxoDatumEither.right);
-          if (
-            active?.operator === operatorKeyHash &&
-            active.startTime === refreshedSchedulerStartTime
-          ) {
-            refreshedSchedulerRefInput = utxo;
-            break;
-          }
-        }
+        refreshedSchedulerRefInput = yield* nextSchedulerUtxo;
         if (refreshedSchedulerRefInput !== undefined) {
           break;
         }
