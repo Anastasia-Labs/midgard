@@ -34,9 +34,19 @@ export const SCRIPT_SOURCES_YIELDS = Object.freeze([
   "scriptSourcesRedeemerDescriptor",
 ] as const);
 
+/** The yields the script-sources required-observer semantic resolver
+ * invokes beside its item, each at a reference-input index of its own: the
+ * one that verifies the observer its item names, then the one that bounds
+ * the field's active observers. */
+export const SCRIPT_SOURCES_OBSERVER_YIELDS = Object.freeze([
+  "scriptSourcesObserverItem",
+  "scriptSourcesObserverBound",
+] as const);
+
 export type ValidationTracePhaseYield =
   | (typeof PHASE_A_NATIVE_ITEM_YIELDS)[number]
   | (typeof SCRIPT_SOURCES_YIELDS)[number]
+  | (typeof SCRIPT_SOURCES_OBSERVER_YIELDS)[number]
   | LedgerOutputProofYield;
 
 /** The yield a semantic resolver invokes beside the item it reads: its
@@ -81,10 +91,13 @@ export type ValidationTracePhaseYieldReads = Readonly<{
 }>;
 
 /** The yield list a semantic resolver's hop invokes, as the hop reads it:
- * each yield's reference and withdrawal script, in the list's order. */
+ * each yield's reference and withdrawal script, in the list's order, and
+ * whether the redeemer carries their reference-input indices each as a
+ * field of its own rather than as one list. */
 export type ValidationTracePhaseYieldListReads = Readonly<{
   references: readonly UTxO[];
   scripts: readonly Script[];
+  fields?: true;
 }>;
 
 const yieldRead = (
@@ -119,10 +132,12 @@ export const phaseYieldListReads = (
   deployment: ValidationTraceDisputeDeployment,
   step: ValidationTracePhaseStep,
 ): ValidationTracePhaseYieldListReads | undefined => {
-  if (step.yieldList === undefined) return undefined;
-  const reads = step.yieldList.map((name) => yieldRead(deployment, name));
+  const names = step.yieldList ?? step.yieldFields;
+  if (names === undefined) return undefined;
+  const reads = names.map((name) => yieldRead(deployment, name));
   return Object.freeze({
     references: Object.freeze(reads.map(({ reference }) => reference)),
     scripts: Object.freeze(reads.map(({ script }) => script)),
+    ...(step.yieldList === undefined ? { fields: true as const } : {}),
   });
 };

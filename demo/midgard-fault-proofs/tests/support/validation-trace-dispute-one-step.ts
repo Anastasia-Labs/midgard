@@ -14,6 +14,7 @@ import {
   canonicalDecodeValidators,
   type ValidationTraceCanonicalDecodeHolder,
 } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
+import type { ValidationTraceFieldPreimageCertificate } from "../../src/validation-trace-dispute/one-step-carriage.js";
 import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
   CONTEXT_FOLLOWER_HOLDERS,
@@ -339,6 +340,21 @@ const yieldRole = (name: ValidationTracePhaseYield) => {
   return role as Parameters<typeof publishAuthenticated>[1];
 };
 
+/** Publishes the field-preimage certificate policy's minting script: the
+ * deployment's `fieldPreimageCertificate`. */
+export const publishFieldPreimageCertificate = async (
+  scene: SceneContracts,
+): Promise<ValidationTraceFieldPreimageCertificate> => {
+  const { policyId, mintingScript } =
+    scene.h.contracts.fieldPreimageCertificate;
+  const { utxo } = await publishPlainReferenceScriptUtxo({
+    lucid: scene.h.proverLucid,
+    script: mintingScript,
+    label: "field-preimage certificate",
+  });
+  return Object.freeze({ policyId, mintingScript, reference: utxo });
+};
+
 /** Publishes the yields the phases' semantic resolvers invoke, under their
  * roles' authentication tokens; the scene's setup registers the yields'
  * reward accounts. */
@@ -368,10 +384,14 @@ export const oneStepDeployment = (
   scene: Scene,
   oneStep: ValidationTraceOneStepReferences,
   deploymentFingerprint?: string,
+  fieldPreimageCertificate?: ValidationTraceFieldPreimageCertificate,
 ): ValidationTraceDisputeDeployment => {
   const deployment = runnerDeployment(scene, deploymentFingerprint);
   return {
     ...deployment,
+    ...(fieldPreimageCertificate === undefined
+      ? {}
+      : { fieldPreimageCertificate }),
     references: { ...deployment.references, oneStep },
     ...(oneStep.cekSelection === undefined
       ? {}

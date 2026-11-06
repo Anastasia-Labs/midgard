@@ -153,12 +153,12 @@ export const inlineFieldCarriageResolver: ValidationMachineFieldCarriageResolver
  * the one §8.4's partition admits for the preimage it was asked about.
  *
  * The resolver is the dispute submitter's, and the submitter is not trusted to
- * pick a tier: §8.4 is a *partition*, so the preimage's own length names
- * exactly one admissible carriage and there is no choice to delegate (#597
- * Ruling 1). Without this check the seam would encode whatever came back — a
- * tier-1 `Inline` above §8.3's cap, or an index tier below it — a carriage the
- * observe-stage door's §8.4 partition refuses on-chain, discovered only at
- * submission.
+ * pick a tier past what §8 admits (#597 Ruling 1: never emit a carriage §8.4
+ * does not admit): the preimage's length names its tier, and below the tier-3
+ * boundary §8 admits tier 2 as well as tier 1 (`admitsFieldCarriageTier`).
+ * Without this check the seam would encode whatever came back — a tier-1
+ * `Inline` above §8.3's cap, or a tier-3 `Certified` below its boundary — a
+ * carriage the door refuses on-chain, discovered only at submission.
  */
 export class ValidationMachineCarriageTierMismatchError extends Error {
   override readonly name = "ValidationMachineCarriageTierMismatchErrorV1";
@@ -181,10 +181,10 @@ export class ValidationMachineCarriageTierMismatchError extends Error {
     super(
       `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
         `which §8.4's partition carries as \`${expectedTier}\`, but the supplied carriage ` +
-        `resolver returned \`${returnedTier}\`. §8.4 admits exactly one tier per length, so a ` +
-        "resolver names indices for the tier the length selects and never chooses the tier " +
-        "itself; encoding this carriage would build a step the observe-stage door's §8.4 " +
-        "partition refuses.",
+        `resolver returned \`${returnedTier}\`. §8.4 admits the tier the length selects, and ` +
+        "below it only tier 2 for a tier-1 preimage (§8's one open tier choice), so a resolver " +
+        "never chooses any other tier; encoding this carriage would build a step the door " +
+        "refuses.",
     );
     this.fieldIndex = fieldIndex;
     this.preimageLength = preimageLength;
@@ -192,6 +192,22 @@ export class ValidationMachineCarriageTierMismatchError extends Error {
     this.returnedTier = returnedTier;
   }
 }
+
+/**
+ * Whether §8 admits the carriage tier `returned` for a preimage §8.4's
+ * partition carries as `expected`: that tier, or tier-2 `RawUtxo` for a
+ * tier-1 preimage. Demoting tier 1 to tier 2 is the one tier choice §8 leaves
+ * open (`planMidgardFieldCarriage`'s `publish`): below the tier-3 boundary the
+ * door hashes the same bytes against the same commitment whether a redeemer or
+ * a referenced datum carries them, so a consuming transaction with no room to
+ * carry a field inline reads it from a publication instead. Tier 3 below its
+ * boundary stays refused, as the door refuses it.
+ */
+export const admitsFieldCarriageTier = (
+  expected: MidgardFieldCarriage["carriage"],
+  returned: MidgardFieldCarriage["carriage"],
+): boolean =>
+  returned === expected || (expected === "Inline" && returned === "RawUtxo");
 
 /**
  * Raised when a resolver returns tier-1 `Inline` carrying bytes that are not the

@@ -38,6 +38,7 @@ import {
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-decode.js";
+import type { ValidationTraceFieldPreimageCertificate } from "./one-step-carriage.js";
 import type { DrivenCekContextStage } from "./one-step-context.js";
 import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
 import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
@@ -193,6 +194,8 @@ export type ValidationTraceDisputeDeployment = Readonly<{
    * thread at a Plutus script selection waits.
    */
   scriptDecode?: ScriptDecodeDeployment;
+  /** The policy certifying a field of ours too long for one publication. */
+  fieldPreimageCertificate?: ValidationTraceFieldPreimageCertificate;
 }>;
 
 export type CapturedValidationTraceStage = Readonly<{

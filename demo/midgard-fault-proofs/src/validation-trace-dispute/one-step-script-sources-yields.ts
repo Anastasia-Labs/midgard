@@ -22,6 +22,10 @@ import {
   decodeRedeemerItemWitnessData,
 } from "../redeemer-item-data.js";
 import { constr, integer } from "./one-step-data.js";
+import {
+  VALIDATION_TRACE_SCRIPT_SOURCES_OBSERVER_INLINE_LIMIT,
+  type ValidationTraceInlineLimitAt,
+} from "./one-step-phase-evidence.js";
 import type {
   ValidationTracePhaseItemYield,
   ValidationTracePhaseYield,
@@ -29,25 +33,20 @@ import type {
 
 /** The evidence a script-sources yield step's semantic resolver takes
  * beside the transition: the fields its action carries after it, the
- * action's constructor, and the yield it invokes, if any; or why the
- * runner does not drive the step; undefined for a step the runner does not
- * yet drive. */
+ * action's constructor, and the yield it invokes, if any; undefined for a
+ * step the runner does not yet drive. */
 export type ScriptSourcesYieldEvidence =
   | Readonly<{
       evidenceCbors: readonly string[];
       action: number;
       itemYield?: ValidationTracePhaseItemYield;
     }>
-  | Readonly<{ reason: string }>
   | undefined;
 
 type EvidenceSource = Readonly<{
   transitionCbor: string;
   auxiliaryCbor: string;
 }>;
-
-/** `Inline`'s constructor among the field carriages. */
-const INLINE_CARRIAGE = 0;
 
 /** Each non-output step, by its script-sources stage and its auxiliary
  * evidence's constructor: its role (`middle_role`) and that role's yield. */
@@ -64,12 +63,14 @@ const MIDDLE_ROLES: Readonly<
   "6:0": [7, "scriptSourcesStageSixFinish"],
 });
 
-/** The field carriage of the evidence of each role that reads a field's
- * item through it, by role: the stage-four begin evidence's only field, and
- * the stage-six begin-policy evidence's third. */
-const ROLE_CARRIAGES: Readonly<Partial<Record<number, number>>> = Object.freeze(
-  { 3: 0, 5: 2 },
-);
+/** The inline limit of a non-output step's resolution, for the roles that
+ * read a field's item (the stage-four begin and the stage-six
+ * begin-policy): past it the evidence names our publications of the field
+ * instead. Their evidence carries the auxiliary witness whole beside the
+ * field, as a script-sources observer step's does, so this is that step's
+ * limit (`VALIDATION_TRACE_SCRIPT_SOURCES_OBSERVER_INLINE_LIMIT`). */
+export const VALIDATION_TRACE_SCRIPT_SOURCES_NON_OUTPUT_INLINE_LIMIT =
+  VALIDATION_TRACE_SCRIPT_SOURCES_OBSERVER_INLINE_LIMIT;
 
 const auxiliaryOf = (auxiliaryCbor: string): Constr<Data> => {
   const auxiliary = Data.from(auxiliaryCbor);
@@ -105,17 +106,6 @@ export const scriptSourcesNonOutputEvidence = ({
     MIDDLE_ROLES[`${stageOf(transitionCbor).toString()}:${auxiliary.index}`];
   if (role === undefined) return undefined;
   const [index, name] = role;
-  const carriageField = ROLE_CARRIAGES[index];
-  if (carriageField !== undefined) {
-    const carriage = auxiliary.fields[carriageField];
-    if (
-      !(carriage instanceof Constr) ||
-      Number(carriage.index) !== INLINE_CARRIAGE
-    )
-      return {
-        reason: "a scriptSources item of a field delivered by reference",
-      };
-  }
   return Object.freeze({
     evidenceCbors: Object.freeze([auxiliaryCbor, integer(index)]),
     action: 0,
@@ -183,12 +173,22 @@ export const scriptSourcesDescriptorEvidence = ({
   });
 };
 
+/** A script-sources semantic resolver whose evidence is derived here: its
+ * evidence, every yield it may invoke, and, for a step that reads a field,
+ * the inline limit of its resolution. */
+export type ScriptSourcesYieldSemantic = Readonly<{
+  evidence: (source: EvidenceSource) => ScriptSourcesYieldEvidence;
+  yields: readonly ValidationTracePhaseYield[];
+  inlineLimit?: ValidationTraceInlineLimitAt;
+}>;
+
 /** The script-sources semantic resolvers whose evidence is derived here,
  * with every yield each may invoke. */
 export const SCRIPT_SOURCES_YIELD_SEMANTICS = Object.freeze({
   scriptSourcesNonOutputSemantic: {
     evidence: scriptSourcesNonOutputEvidence,
     yields: Object.values(MIDDLE_ROLES).map(([, name]) => name),
+    inlineLimit: VALIDATION_TRACE_SCRIPT_SOURCES_NON_OUTPUT_INLINE_LIMIT,
   },
   scriptSourcesStageTwelveRedeemerSemantic: {
     evidence: scriptSourcesDescriptorEvidence,
@@ -202,12 +202,4 @@ export const SCRIPT_SOURCES_YIELD_SEMANTICS = Object.freeze({
     evidence: scriptSourcesDescriptorEvidence,
     yields: ["scriptSourcesRedeemerDescriptor"],
   },
-} as const satisfies Readonly<
-  Record<
-    string,
-    Readonly<{
-      evidence: (source: EvidenceSource) => ScriptSourcesYieldEvidence;
-      yields: readonly ValidationTracePhaseYield[];
-    }>
-  >
->);
+} as const satisfies Readonly<Record<string, ScriptSourcesYieldSemantic>>);

@@ -9,8 +9,8 @@
  * defender by the thread's receipt (lost-defense-slash.ts) and, once none is
  * open, closes the case as an undefended one. On a deployment that drives
  * CEK script selections, the decode record of every script our trace selects
- * is made before Init (script-decode-records.ts); an observe move of a field
- * too long to carry inline reads our published copy (observe-copy.ts), and
+ * is made before Init (script-decode-records.ts); a move reading a field by
+ * reference reads our publications of it (carried-field.ts), and
  * a staged builtin step's operands are staged before it (one-step-staging.ts).
  * The staging sits in front of our thread's reclaim (own-thread-reclaim.ts).
  * Every output of ours is claimed by out-ref from our own signed body before
@@ -47,6 +47,7 @@ import {
   validationTraceAction,
 } from "./actions.js";
 import { validationTraceArtifactOf } from "./artifact.js";
+import { validationTraceCarriedFields } from "./carried-field.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseOrigin } from "./case-origin.js";
 import { validationTraceCaseReads } from "./case-reads.js";
@@ -62,7 +63,6 @@ import {
   captureValidationTraceThreadMove,
   isValidationTraceBuildPassedOn,
 } from "./move-dispatch.js";
-import { validationTraceObserveCopy } from "./observe-copy.js";
 import { validationTraceStaging } from "./one-step-staging.js";
 import { validationTraceReconcile } from "./reconcile.js";
 import {
@@ -167,7 +167,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     ...own,
     caseHistory,
   });
-  const copy = validationTraceObserveCopy({
+  const copy = validationTraceCarriedFields({
     ...own,
     publications,
     signedRecovery,
@@ -392,7 +392,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           caseUnit: found.caseUnit,
           caseOpenerOutRef: found.openerOutRef,
           material: materials.get(input.artifact.headerHash),
-          observeCopy: async () => await copy.of(context, action),
+          fieldCarriage: async () => await copy.of(context, action),
           staging: staging.lookup(context),
         },
         caseOutRef: found.outRef,

@@ -9,7 +9,9 @@ import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
+import type { ValidationTraceFieldPreimageCertificate } from "../../src/validation-trace-dispute/one-step-carriage.js";
 import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "../../src/validation-trace-dispute/one-step-holders.js";
+import { FIELD_PREIMAGE_CERTIFICATE_MINT } from "../../src/validation-trace-dispute/one-step-references.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "../../src/validation-trace-dispute/workflow.js";
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
@@ -22,6 +24,7 @@ import {
   publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
+  publishFieldPreimageCertificate,
   publishOneStepReferences,
   publishPhaseReferences,
   publishPhaseYieldReferences,
@@ -44,13 +47,17 @@ export type InstalledScene = Readonly<{
   scene: Scene;
   /** The one-step references as the drive tests publish them. */
   oneStep: ValidationTraceOneStepReferences;
+  /** The field-preimage certificate policy's published minting script. */
+  certificate: ValidationTraceFieldPreimageCertificate;
   removal: Removal;
 }>;
 
 export const setUpInstalledScene = async (): Promise<InstalledScene> => {
   let oneStep: ValidationTraceOneStepReferences | undefined;
   let removal: Removal | undefined;
+  let certificate: ValidationTraceFieldPreimageCertificate | undefined;
   const scene = await setUpScene(async (contracts) => {
+    certificate = await publishFieldPreimageCertificate(contracts);
     oneStep = {
       ...(await publishOneStepReferences(contracts)),
       cekSelection: await publishSelectionReferences(contracts),
@@ -69,7 +76,12 @@ export const setUpInstalledScene = async (): Promise<InstalledScene> => {
   });
   // The prover's wallet holds its collateral and the dispute's funding.
   await drainProver(scene.h as never, FUNDED);
-  return { scene, oneStep: oneStep!, removal: removal! };
+  return {
+    scene,
+    oneStep: oneStep!,
+    certificate: certificate!,
+    removal: removal!,
+  };
 };
 
 /** Every reference UTxO inside `value`. */
@@ -89,7 +101,11 @@ export const scriptHashOf = (utxo: UTxO): string =>
  * (found by the script the scene deployed for it) and the script-decode
  * deployment.
  */
-export const sceneRoster = ({ scene, oneStep }: InstalledScene) => {
+export const sceneRoster = ({
+  scene,
+  oneStep,
+  certificate,
+}: InstalledScene) => {
   const { h, chain } = scene;
   const byHash = new Map(
     utxosIn(oneStep).map((utxo) => [scriptHashOf(utxo), utxo]),
@@ -146,6 +162,7 @@ export const sceneRoster = ({ scene, oneStep }: InstalledScene) => {
     ),
     ...yieldMembers,
     [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.reference],
+    [FIELD_PREIMAGE_CERTIFICATE_MINT, certificate.reference],
     ...SDK.SCRIPT_DECODE_STAKER_CLASS_NAMES.map((name): [string, UTxO] => [
       SDK.SCRIPT_DECODE_STAKER_MEMBERS[name],
       scriptDecode.stakerReferences[name],

@@ -32,6 +32,14 @@ import {
   buildValidationTraceHop,
   validationTraceHop,
 } from "./one-step-builders.js";
+import {
+  type ValidationTraceCarriedField,
+  type ValidationTraceFieldCarriage,
+} from "./one-step-carriage.js";
+import {
+  validationTraceCarriedFieldAt,
+  validationTraceCarriedMove,
+} from "./one-step-carried-moves.js";
 import { isValidationTraceContextItemChainHolder } from "./one-step-context-item-holders.js";
 import {
   contextItemReads,
@@ -66,8 +74,10 @@ import {
 
 type MaterialInput = ValidationTraceMoveInput & {
   readonly material: ValidationTraceClaimMaterial | undefined;
-  /** Our published copy of a field too long to observe inline. */
-  readonly observeCopy?: () => Promise<UTxO | undefined>;
+  /** Our publications of the field the move reads by reference. */
+  readonly fieldCarriage?: () => Promise<
+    ValidationTraceFieldCarriage | undefined
+  >;
   /** Where we staged a staged step's operands. */
   readonly staging?: ValidationTraceStagingLookup;
 };
@@ -178,10 +188,11 @@ const resolvingThread = async (
   return Object.freeze({ utxo, ...recorded, holder, caseThread });
 };
 
-/** The field the observe move of our thread `utxo` reads from our published
- * copy, by our trace in `material`; none off that stage or where it fits
- * inline. */
-export const validationTraceObserveCopyPreimage = async ({
+/** The field the move of our thread `utxo` reads by reference, or binds
+ * its evidence to our publications of, by our trace in `material`; none
+ * where its step's evidence carries every field it reads inline. A thread
+ * along a shared item chain, or at a staged step's holders, reads none. */
+export const validationTraceCarriedField = async ({
   deployment,
   material,
   utxo,
@@ -189,9 +200,16 @@ export const validationTraceObserveCopyPreimage = async ({
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly material: ValidationTraceClaimMaterial | undefined;
   readonly utxo: UTxO;
-}): Promise<Buffer | undefined> => {
+}): Promise<ValidationTraceCarriedField | undefined> => {
   const holder = validationTraceOneStepHolderAt(deployment, utxo.address);
-  if (holder?.holder !== "canonicalDecodeItemObserve") return undefined;
+  if (
+    holder === undefined ||
+    holder.holder === "award" ||
+    holder.holder === "boundary" ||
+    isValidationTraceContextItemChainHolder(holder.holder) ||
+    isScriptSourcesRedeemerOwnHolder(holder.holder)
+  )
+    return undefined;
   const plan = await resolvingPlan({
     deployment,
     material,
@@ -200,9 +218,7 @@ export const validationTraceObserveCopyPreimage = async ({
     caseThread: undefined,
     carried: undefined,
   });
-  return plan.kind === "canonicalDecode"
-    ? plan.canonicalDecode.item?.copied
-    : undefined;
+  return validationTraceCarriedFieldAt(plan, holder.holder);
 };
 
 /** A hop of our thread through its one-step resolution, now; along the
@@ -250,37 +266,52 @@ export const captureValidationTraceResolve = async (
     carried,
     staging: input.staging,
   });
-  const hop = validationTraceHop({
+  const holder = from.holder;
+  const field = validationTraceCarriedFieldAt(plan, holder);
+  const carriage =
+    field === undefined ? undefined : await input.fieldCarriage?.();
+  if (field !== undefined && carriage === undefined)
+    throw new Error(
+      `validation-trace ${from.holder} move has no publication of the ${field.preimage.length.toString()}-byte field it reads`,
+    );
+  const selection =
+    from.holder === "selection"
+      ? await validationTraceSelectionReads({ input, plan })
+      : undefined;
+  const staging = await stagingOutputs(lucid, plan);
+  const hop = validationTraceCarriedMove({
+    deployment,
     plan,
     holder: from.holder,
-    utxo: thread.utxo,
-    prover: signer.paymentKeyHash,
-    ...(from.holder === "selection"
-      ? { selection: await validationTraceSelectionReads({ input, plan }) }
-      : {}),
-    ...(plan.kind === "context" && plan.context.item !== undefined
-      ? { item: contextItemReads(deployment, carried?.stateCbor) }
-      : {}),
-    ...(plan.kind === "phase" && from.holder === plan.phase.semantic
-      ? {
-          phaseYield: phaseYieldReads(deployment, plan.phase),
-          phaseYieldList: phaseYieldListReads(deployment, plan.phase),
-        }
-      : {}),
-    ...(plan.kind === "phase"
-      ? {
-          redeemerChain: scriptSourcesRedeemerReads(
-            deployment,
-            carried?.stateCbor,
-          ),
-        }
-      : {}),
-    ...(plan.kind === "canonicalDecode" &&
-    from.holder === "canonicalDecodeItemObserve" &&
-    plan.canonicalDecode.item?.copied !== undefined
-      ? { copy: await input.observeCopy?.() }
-      : {}),
-    staging: await stagingOutputs(lucid, plan),
+    datum: thread.utxo.datum ?? "",
+    carriage,
+    hop: (bound) =>
+      validationTraceHop({
+        plan: bound,
+        holder,
+        utxo: thread.utxo,
+        prover: signer.paymentKeyHash,
+        ...(selection === undefined ? {} : { selection }),
+        ...(bound.kind === "context" && bound.context.item !== undefined
+          ? { item: contextItemReads(deployment, carried?.stateCbor) }
+          : {}),
+        ...(bound.kind === "phase" && from.holder === bound.phase.semantic
+          ? {
+              phaseYield: phaseYieldReads(deployment, bound.phase),
+              phaseYieldList: phaseYieldListReads(deployment, bound.phase),
+            }
+          : {}),
+        ...(bound.kind === "phase"
+          ? {
+              redeemerChain: scriptSourcesRedeemerReads(
+                deployment,
+                carried?.stateCbor,
+              ),
+            }
+          : {}),
+        ...(bound.kind === "canonicalDecode" ? { carriage } : {}),
+        staging,
+      }),
   });
   const to = validationTraceOneStepHolder(deployment, hop.next);
   const reference = from.reference;

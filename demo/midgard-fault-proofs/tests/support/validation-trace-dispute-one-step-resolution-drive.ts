@@ -101,7 +101,9 @@ export const resolutionDrive = <
     | "operatorFrom"
     | "failingNativeSpend"
     | "failingNativeMint"
+    | "failingNative"
     | "releaseDepth"
+    | "certifies"
   >;
   /** Whether the runner observes the disputed block's removal over the
    * recorded L1, so a case the challenger won completes. */
@@ -344,7 +346,8 @@ export const resolutionDrive = <
                   installs.failingSigners !== undefined ||
                   installs.failingScript !== undefined ||
                   installs.failingNativeSpend !== undefined ||
-                  installs.failingNativeMint !== undefined)) ||
+                  installs.failingNativeMint !== undefined ||
+                  installs.failingNative !== undefined)) ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,

@@ -102,3 +102,23 @@ export const expectReclaimedByKey = (scene: Scene, spender: Landed) => {
       scene.h.proverSigner.address,
     );
 };
+
+/** The outputs at our key address the transaction `cbor` reads as
+ * reference inputs, each with its inline datum's CBOR, from the
+ * transactions the emulator accepted. */
+export const ownReadsOf = (scene: Scene, cbor: string) => {
+  const prover = scene.h.proverSigner.address;
+  const created = new Map(landed(scene).map(({ hash, tx }) => [hash, tx]));
+  return outRefsOf(
+    CML.Transaction.from_cbor_hex(cbor).body().reference_inputs(),
+  ).flatMap((outRef) => {
+    const [hash, index] = outRef.split("#");
+    const output = created.get(hash!)?.body().outputs().get(Number(index));
+    const datum = output?.datum()?.as_datum();
+    return output?.address().to_bech32(undefined) === prover &&
+      output.script_ref() === undefined &&
+      datum !== undefined
+      ? [{ outRef, datumCbor: datum.to_cbor_hex() }]
+      : [];
+  });
+};

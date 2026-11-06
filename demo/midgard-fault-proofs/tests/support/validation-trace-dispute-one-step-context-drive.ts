@@ -53,6 +53,7 @@ import {
   playThreads,
   type PreparedMove,
   threadPlace,
+  withLedgerParameters,
 } from "./validation-trace-dispute-one-step-play.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
@@ -74,10 +75,24 @@ export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
   output: 100,
   signer: 102,
   mintInit: 105,
+  mintItem: 140,
   assemble: 113,
   txInfo: 114,
   seed: 115,
 } as const satisfies Readonly<Record<SingleHopCekContextStage, number>>);
+
+/** What the failing transaction carries for a stage's step that the plain
+ * fixture's does not reach, and the operator's last agreed state on its
+ * trace, the first CEK compute step's as on the plain one: a mint, for the
+ * mint item stage. */
+export type ContextInstalls = Pick<
+  Parameters<typeof defendTwoThreads>[0],
+  "failingNativeMint" | "failingNative" | "operatorFrom" | "certifies"
+>;
+
+const CONTEXT_STAGE_INSTALLS: Readonly<
+  Partial<Record<SingleHopCekContextStage, ContextInstalls>>
+> = Object.freeze({ mintItem: { failingNativeMint: true, operatorFrom: 153 } });
 
 const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -86,24 +101,32 @@ const outRefOf = (utxo: UTxO) =>
  * The drive of the successor's thread through the context step after our
  * trace's state `from`, to `holder`, past the context control: the thread
  * goes on along `path` to the context settle, each resolution move labelled
- * by `labels` in its fit.
+ * by `labels` in its fit. The failing transaction carries `installs`.
  */
 export const contextStepDrive = ({
   from,
   holder,
   path,
   labels,
+  installs = {},
+  minFeeA,
 }: {
   readonly from: number;
+  readonly installs?: ContextInstalls;
   readonly holder: ValidationTraceOneStepHolder;
   /** The holders the thread visits from `holder` up to the context settle. */
   readonly path: readonly ValidationTraceOneStepHolder[];
   /** The fit label of each move from `holder` up to the context settle. */
   readonly labels: readonly string[];
+  /** The ledger's per-byte fee while the resolution plays, when raised so
+   * its largest moves are priced over the per-move cap. */
+  readonly minFeeA?: number;
 }) => {
   let dispute: TwoThreadCase;
   /** The successor thread's moves past the game, and its awarded close. */
   let moves: PreparedMove[];
+  /** Each move's transaction, by its fit label. */
+  const reported = new Map<string, string>();
 
   /** The body of a transaction the emulator accepted. */
   const bodyOf = (hash: string) =>
@@ -210,6 +233,7 @@ export const contextStepDrive = ({
         withRemoval: false,
         successorFrom: from,
         contexts: true,
+        ...installs,
       });
       const { scene, runner, a, b } = dispute;
       await playThreads({
@@ -224,15 +248,20 @@ export const contextStepDrive = ({
     /** Plays the thread through the resolution to the award and its close. */
     awards: async () => {
       const { scene, deployment, runner, prepared, a, b } = dispute;
-      await playThreads({
+      await withLedgerParameters(
         scene,
-        runner,
-        sides: [a, b],
-        until: async () =>
-          (await threadClosed(dispute, a.unit)) &&
-          (await threadClosed(dispute, b.unit)),
-        limit: 40 + 2 * path.length,
-      });
+        minFeeA === undefined ? {} : { minFeeA },
+        async () =>
+          await playThreads({
+            scene,
+            runner,
+            sides: [a, b],
+            until: async () =>
+              (await threadClosed(dispute, a.unit)) &&
+              (await threadClosed(dispute, b.unit)),
+            limit: 40 + 2 * path.length,
+          }),
+      );
       moves = prepared.filter(
         ({ stage: moved, cbor }) =>
           (moved === "enter_resolution" || moved === "resolve") &&
@@ -272,10 +301,18 @@ export const contextStepDrive = ({
         "ContextStaged",
         ...labels,
         "ContextSettle",
-      ].entries())
+      ].entries()) {
         reportFit(label, [moves[index]!.cbor]);
+        reported.set(label, moves[index]!.cbor);
+      }
       reportFit("CloseAwardedThread", [close!.cbor]);
     },
+
+    /** The signed move reported under `label`. */
+    cborOf: (label: string) => reported.get(label)!,
+
+    /** The size in bytes of the move reported under `label`. */
+    bytesOf: (label: string) => reported.get(label)!.length / 2,
 
     /** Each move's fee is paid by its thread when it fits under the cap, and
      * by our wallet when it does not; every move the runner landed fits the
@@ -314,10 +351,13 @@ export const contextStepDrive = ({
 };
 
 /** The drive of the successor's thread through the context step of `stage`
- * after our trace's state `from`, by default the stage's first. */
+ * after our trace's state `from`, by default the stage's first, over a
+ * failing transaction that carries `installs`, by default what the stage's
+ * first step needs. */
 export const contextStageDrive = (
   stage: SingleHopCekContextStage,
   from: number = CONTEXT_STAGE_STEP_FROM[stage],
+  installs: ContextInstalls | undefined = CONTEXT_STAGE_INSTALLS[stage],
 ) => {
   const holder = CEK_CONTEXT_STAGE_HOLDERS[stage];
   const drive = contextStepDrive({
@@ -325,9 +365,12 @@ export const contextStageDrive = (
     holder,
     path: [],
     labels: [`ContextVerified ${stage}`],
+    ...(installs === undefined ? {} : { installs }),
   });
   return {
     setUp: drive.setUp,
+    /** Our plan of the thread's step where it stands. */
+    plan: async () => await drive.contextPlan((await drive.placeOfB()).utxo),
     /** Our plan routes the thread's step to the stage. */
     routes: async () => {
       const plan = await drive.contextPlan((await drive.placeOfB()).utxo);
@@ -364,5 +407,6 @@ export const contextStageDrive = (
 
     awards: drive.awards,
     pays: drive.pays,
+    bytesOf: drive.bytesOf,
   };
 };

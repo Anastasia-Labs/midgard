@@ -35,6 +35,9 @@ import {
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
   referenceSeedDeposits,
+  type ScenarioMint,
+  type ScenarioNative,
+  scenarioSeedLovelace,
   type ScenarioSigners,
   type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
@@ -113,7 +116,10 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * `failingScript`, by default the failing script, under `failingExUnits`
  * when given, and with
  * `failingNativeSpend` it also spends an output a native script holds;
- * with `failingNativeMint` it also mints under a native script's policy;
+ * with `failingNativeMint` it also mints under a native script's policy,
+ * and under others as it says;
+ * `failingNative` shapes the native script it witnesses and what else it
+ * does with it;
  * with `failingStampedInvalid` the failing block stamps that transaction
  * TxIsInvalid, as an honest block does.
  * The passing transaction spends under `passingSpend` when given.
@@ -128,6 +134,7 @@ export const setUpScene = async (
     failingExUnits,
     failingNativeSpend = false,
     failingNativeMint = false,
+    failingNative,
     failingStampedInvalid = false,
     passingSpend,
   }: {
@@ -137,7 +144,8 @@ export const setUpScene = async (
     readonly failingScript?: MidgardVersionedScript;
     readonly failingExUnits?: readonly [bigint, bigint];
     readonly failingNativeSpend?: boolean;
-    readonly failingNativeMint?: boolean;
+    readonly failingNativeMint?: ScenarioMint;
+    readonly failingNative?: ScenarioNative;
     readonly failingStampedInvalid?: boolean;
     readonly passingSpend?: ScriptSpend;
   } = {},
@@ -220,6 +228,9 @@ export const setUpScene = async (
           scenario as PlutusExecutionScenario,
           byte,
           scenarioSpend(scenario as PlutusExecutionScenario),
+          isFailing(scenario as PlutusExecutionScenario)
+            ? scenarioSeedLovelace(failingNativeMint, failingNative)
+            : undefined,
         ),
       ),
       ...references.deposits,
@@ -268,6 +279,7 @@ export const setUpScene = async (
               : { signers: failingSigners }),
             nativeSpend: failingNativeSpend,
             nativeMint: failingNativeMint,
+            ...(failingNative === undefined ? {} : { native: failingNative }),
           }
         : {}),
       ...(spend === undefined ? {} : { spend }),

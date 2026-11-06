@@ -14,7 +14,8 @@ import type {
  * auxiliary evidence whose fields are `evidenceCbors`, and the yield
  * `itemYield` invokes beside them (its reference-input index, then its
  * kind, if it has one), or the yields `yieldList`, whose reference-input
- * indices follow them, if any, and awards the step. */
+ * indices follow them as one list or each as a field of its own, if any,
+ * and awards the step. */
 export const phaseSemanticHop = ({
   prover,
   action = 0,
@@ -60,13 +61,17 @@ export const phaseSemanticHop = ({
               ]),
           ...(yieldList === undefined
             ? []
-            : [
-                Data.to(
-                  yieldList.references.map((reference) =>
-                    indexOf(context, reference),
+            : yieldList.fields === true
+              ? yieldList.references.map((reference) =>
+                  integer(indexOf(context, reference)),
+                )
+              : [
+                  Data.to(
+                    yieldList.references.map((reference) =>
+                      indexOf(context, reference),
+                    ),
                   ),
-                ),
-              ]),
+                ]),
         ]),
       ),
     proverOnly: false,

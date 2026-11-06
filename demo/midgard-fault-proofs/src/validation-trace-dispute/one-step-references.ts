@@ -60,6 +60,10 @@ const YIELD_MEMBERS: Readonly<Record<string, string>> = Object.freeze(
   ),
 );
 
+/** The manifest member whose minting script certifies a field of ours too
+ * long for one publication (transactions.ts `fieldPreimageCertificate`). */
+export const FIELD_PREIMAGE_CERTIFICATE_MINT = "fieldPreimageCertificateMint";
+
 /**
  * The one-step resolution's roster entries: each role is the manifest
  * member it names, for the holders, the yields and the script-decode
@@ -73,6 +77,7 @@ export const VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS: Readonly<
       ...Object.values(VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES),
       ...Object.values(YIELD_MEMBERS),
       ...Object.values(SCRIPT_DECODE_REFERENCE_SCRIPTS),
+      FIELD_PREIMAGE_CERTIFICATE_MINT,
     ].map((member) => [member, member]),
   ),
 );

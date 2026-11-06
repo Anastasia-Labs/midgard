@@ -24,6 +24,7 @@ import {
   planValidationTraceOneStep,
   type ValidationTraceCanonicalDecodePlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
+import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
 import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-drive.js";
 
 /** The holders a thread visits past the boundary, and each move's fit
@@ -88,6 +89,8 @@ export const canonicalDecodeDrive = ({
   kind,
   at,
   failingRedeemerData,
+  failingSigners,
+  certifies,
   minFeeA,
   releaseDepth,
 }: {
@@ -96,6 +99,11 @@ export const canonicalDecodeDrive = ({
   readonly at: ValidationTraceCanonicalDecodeHolder;
   /** The failing transaction's redeemer, as Plutus Data CBOR. */
   readonly failingRedeemerData?: Uint8Array;
+  /** Who signs the failing transaction beside its owner. */
+  readonly failingSigners?: ScenarioSigners;
+  /** Whether the deployment publishes the field-preimage certificate
+   * policy. */
+  readonly certifies?: boolean;
   /** The ledger's per-byte fee while the resolution plays. */
   readonly minFeeA?: number;
   /** How many blocks below the tip the runner's release-final point
@@ -109,6 +117,8 @@ export const canonicalDecodeDrive = ({
     installs: {
       canonicalDecode: true,
       ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
+      ...(failingSigners === undefined ? {} : { failingSigners }),
+      ...(certifies === undefined ? {} : { certifies }),
       ...(releaseDepth === undefined ? {} : { releaseDepth }),
     },
     ...(minFeeA === undefined ? {} : { minFeeA }),
@@ -139,6 +149,7 @@ export const canonicalDecodeDrive = ({
     awards: drive.awards,
     pays: drive.pays,
     bytesOf: drive.bytesOf,
+    cborOf: drive.cborOf,
     unbuilt: drive.unbuilt,
 
     /** Our plan sends the thread's step to the semantic resolver of

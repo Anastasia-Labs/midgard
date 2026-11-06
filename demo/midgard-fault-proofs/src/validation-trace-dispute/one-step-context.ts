@@ -12,6 +12,7 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { midgardEnvelopeDataFromCborIterative } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
+import { requiredObserverAt } from "./one-step-carriage.js";
 import {
   planValidationTraceContextFinalization,
   type ValidationTraceContextFinalization,
@@ -66,6 +67,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "signer",
   "observerAuthenticate",
   "mintInit",
+  "mintItem",
   "redeemerSelectAuthenticate",
   "finalizeAuthenticate",
   "assemble",
@@ -219,45 +221,86 @@ const contextRoute = (
 const OBSERVER_COUNT = 15;
 const OBSERVER_ITEMS = 16;
 
+/** The required-observer field, and `Inline`'s constructor among the field
+ * carriages. */
+export const CEK_OBSERVER_FIELD = 3;
+const INLINE_CARRIAGE = 0;
+
 /**
  * The `ObserverOpening` of an observer step on `context` whose evidence is
  * `auxiliaryCbor`, as Data CBOR: with no evidence, the observers' finish
  * once every one the transaction requires is folded, or their absence
- * before any is; undefined for the evidence of an observer item, which the
- * runner does not drive.
+ * before any is; with an item of the required-observer field, carried
+ * inline or, as `carried`, by reference, that observer, the next the fold
+ * takes from the last, beside how many there are.
  */
 export const cekContextObserverOpening = (
   context: Constr<Data>,
   auxiliaryCbor: string,
+  carried?: Buffer,
 ): string | undefined => {
   const auxiliary = Data.from(auxiliaryCbor);
-  if (
-    !(auxiliary instanceof Constr) ||
-    auxiliary.index !== 0 ||
-    auxiliary.fields.length !== 0
-  )
-    return undefined;
+  if (!(auxiliary instanceof Constr)) return undefined;
   const count = context.fields[OBSERVER_COUNT] as bigint;
   const folded = (context.fields[OBSERVER_ITEMS] as Constr<Data>)
     .fields[1] as bigint;
-  // FinishedObservers, or EmptyObservers.
-  return Data.to(new Constr(count > 0n && folded === count ? 1 : 0, []));
+  if (auxiliary.index === 0 && auxiliary.fields.length === 0)
+    // FinishedObservers, or EmptyObservers.
+    return Data.to(new Constr(count > 0n && folded === count ? 1 : 0, []));
+  const [field, index, carriage] = auxiliary.fields;
+  if (
+    auxiliary.index !== 1 ||
+    field !== BigInt(CEK_OBSERVER_FIELD) ||
+    typeof index !== "bigint" ||
+    !(carriage instanceof Constr)
+  )
+    return undefined;
+  const inline =
+    carriage.index === INLINE_CARRIAGE && typeof carriage.fields[0] === "string"
+      ? Buffer.from(carriage.fields[0], "hex")
+      : undefined;
+  const preimage = inline ?? carried;
+  if (
+    preimage === undefined ||
+    (inline !== undefined) === (carried !== undefined)
+  )
+    return undefined;
+  const observer = requiredObserverAt(preimage, Number(index));
+  // ObserverItem.
+  return Data.to(
+    new Constr(2, [count > 0n ? count : BigInt(observer.count), observer.hash]),
+  );
 };
+
+/** The stage the context step from the witness `witnessCbor` with
+ * auxiliary evidence `auxiliaryCbor` routes to. */
+export const cekContextRouteOf = (
+  witnessCbor: string,
+  auxiliaryCbor: string,
+): CekContextRoute =>
+  contextRoute(
+    cekContextControlData(bytes(envelope(witnessCbor, 11, "witness")[1])),
+    auxiliaryCbor,
+  );
 
 /**
  * The context step from the witness `witnessCbor` with auxiliary evidence
  * `auxiliaryCbor`, whose next state carries the witness
- * `successorWitnessCbor`: the stage it routes to, or that stage alone when
- * the runner does not drive it.
+ * `successorWitnessCbor`, whose evidence reads the field preimage `carried`
+ * by reference, if any: the stage it routes to, or that stage alone when
+ * the runner does not drive it. Only the observer authenticate opens a
+ * field the runner carries by reference.
  */
 export const planValidationTraceContextStep = ({
   witnessCbor,
   auxiliaryCbor,
   successorWitnessCbor,
+  carried,
 }: {
   readonly witnessCbor: string;
   readonly auxiliaryCbor: string;
   readonly successorWitnessCbor: string;
+  readonly carried?: Buffer | undefined;
 }):
   | ValidationTraceContextStep
   | Readonly<{ stage: CekContextRoute; driven: false }> => {
@@ -267,7 +310,7 @@ export const planValidationTraceContextStep = ({
   const stage = contextRoute(context, auxiliaryCbor);
   const observerOpeningCbor =
     stage === "observerAuthenticate"
-      ? cekContextObserverOpening(context, auxiliaryCbor)
+      ? cekContextObserverOpening(context, auxiliaryCbor, carried)
       : undefined;
   const finalization =
     stage === "finalizeAuthenticate"
@@ -275,6 +318,7 @@ export const planValidationTraceContextStep = ({
       : undefined;
   if (
     !isDriven(stage) ||
+    (carried !== undefined && stage !== "observerAuthenticate") ||
     (stage === "observerAuthenticate" && observerOpeningCbor === undefined) ||
     (stage === "finalizeAuthenticate" && finalization === undefined)
   )

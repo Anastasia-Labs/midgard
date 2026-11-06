@@ -21,4 +21,12 @@ describeInlineCap({
   installs: (bytes) => ({
     failingRedeemerData: redeemerDataForFieldPreimage(bytes),
   }),
+  // Each reference input adds 14 steps before the stage; the evidence
+  // there carries 6 bytes more, and its state indices 2.
+  coShape: {
+    label: "510 reference inputs",
+    installs: { failingReferenceInputs: 510 },
+    steps: 14 * 510,
+    besideBytes: 8,
+  },
 });

@@ -1,33 +1,43 @@
 /** The validation-trace dispute runner at a phase step whose semantic
- * resolver reads one item of a field the prepare and semantic moves carry
- * whole, inline, with the field grown one unit at a time: by default an
- * item, or as the caller grows it. At the largest field within the phase's
- * inline limit the runner drives the step to the award, its prepare move
- * within the transaction size limit less its reserve even when our wallet
- * pays it, and one more unit would pass it. One unit over the limit, and at
- * the inline carriage's largest, it does not drive the step, and the thread
- * waits at ReadyForOneStep under the one-step-required alarm
- * (validation-trace-dispute-one-step-phase-drive.ts). */
+ * resolver reads one item of a field, with the field grown one unit at a
+ * time: by default an item, or as the caller grows it. At the largest field
+ * within the phase's inline limit the prepare and semantic moves carry the
+ * field whole, inline, and the runner drives the step to the award, its
+ * prepare move within the transaction size limit less its reserve even when
+ * our wallet pays it; one more unit would pass it. Past the limit the
+ * runner publishes the field at our key address first (past one
+ * publication, under the field-preimage certificate), the semantic move
+ * reads it by reference, the step is driven to the award all the same, and
+ * each publication is spent back by key once that move is final
+ * (validation-trace-dispute-one-step-phase-drive.ts). Beside a co-shape
+ * that grows what the step's evidence carries beside the field, the field
+ * at the limit goes by reference, and the largest within the limit less
+ * those bytes goes inline, its prepare move still within the limit. */
+import {
+  decodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { ValidationTracePhase } from "../../src/validation-trace-dispute/one-step-phase.js";
-import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
-import { validationTraceRunState } from "../../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
-  defendTwoThreads,
-  type TwoThreadCase,
-} from "./validation-trace-dispute-one-step-case.js";
+  expectReclaimedByKey,
+  landed,
+  ownReadsOf,
+  spenderOf,
+} from "./validation-trace-dispute-observe-copies.js";
+import type { defendTwoThreads } from "./validation-trace-dispute-one-step-case.js";
 import {
   phaseDrive,
   type PhaseEvidence,
 } from "./validation-trace-dispute-one-step-phase-drive.js";
-import {
-  isPendingFor,
-  playThreads,
-  threadPlace,
-} from "./validation-trace-dispute-one-step-play.js";
-import { threadOf } from "./validation-trace-dispute-scripted-defender.js";
+import { playThreads } from "./validation-trace-dispute-one-step-play.js";
+import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
+
+/** The longest field our raw-datum publication carries in one output; a
+ * longer one is published under the field-preimage certificate. */
+const RAW_PUBLICATION_MAX_BYTES = 15_000;
 
 /** The ledger's transaction size limit, and the reserve a move keeps under
  * it. */
@@ -46,7 +56,19 @@ type Installs = Pick<
   | "failingSigners"
   | "failingScript"
   | "failingRedeemerData"
+  | "failingNative"
 >;
+
+/** A failing transaction grown elsewhere beside the field (`installs`):
+ * it moves the step `steps` states on, and the step's moves there carry at
+ * most `besideBytes` more beside the field than where the limit was
+ * measured, in its evidence and its state indices. */
+type CoShape = Readonly<{
+  label: string;
+  installs: Installs;
+  steps: number;
+  besideBytes: number;
+}>;
 
 /** How the field grows: an item of `itemBytes` bytes at a time, or a
  * `unit` at a time, its preimage `fieldBytes(units)` bytes at `units`
@@ -77,6 +99,7 @@ export const describeInlineCap = ({
   stepOf,
   installs,
   overAt = [],
+  coShape,
   ...growth
 }: {
   readonly field: string;
@@ -88,6 +111,7 @@ export const describeInlineCap = ({
   readonly stepOf: (units: number) => number;
   readonly installs: (units: number) => Installs;
   readonly overAt?: readonly (readonly [label: string, bytes: number])[];
+  readonly coShape?: CoShape;
 } & Growth) => {
   const { unit, fieldBytes } =
     "itemBytes" in growth
@@ -153,12 +177,20 @@ export const describeInlineCap = ({
     );
   });
 
-  /** Whether `result` waits under the one-step-required state on the
-   * thread holding `unit`. */
-  const waitsOn = (result: FraudProofWorkflowRunResult, unit: string) =>
-    isPendingFor(result, VALIDATION_TRACE_ONE_STEP_REQUIRED) &&
-    "reason" in result &&
-    result.reason.includes(`thread ${unit} at `);
+  if (coShape !== undefined)
+    describeCoShape({
+      phase,
+      semantic,
+      at,
+      evidence,
+      stepOf,
+      installs,
+      coShape,
+      fieldBytes,
+      largest,
+      field,
+      limit,
+    });
 
   describe.each<readonly [label: string, units: number]>([
     [`one ${unit} over the inline ${phase} limit`, largest + 1],
@@ -166,64 +198,162 @@ export const describeInlineCap = ({
     ...overAt.map(([label, bytes]) => [label, within(bytes)] as const),
   ])(
     `validation-trace dispute runner: a step of ${phase}, its ${field} %s`,
-    (_, items) => {
-      let dispute: TwoThreadCase;
-      let waited: FraudProofWorkflowRunResult;
+    (_, units) => {
+      const bytes = fieldBytes(units);
+      const drive = phaseDrive({
+        from: stepOf(units),
+        phase,
+        semantic,
+        evidence: evidence(units),
+        at,
+        ...(bytes > RAW_PUBLICATION_MAX_BYTES ? { certifies: true } : {}),
+        ...installs(units),
+      });
 
-      beforeAll(async () => {
-        dispute = await defendTwoThreads({
-          withRemoval: false,
-          successorFrom: stepOf(items),
-          phases: true,
-          ...installs(items),
-        });
-        const { scene, runner, a, b } = dispute;
-        ({ result: waited } = await playThreads({
-          scene,
-          runner,
-          sides: [a, b],
-          until: async (run) => waitsOn(run, b.unit),
-          limit: 80,
-        }));
-      }, 1_800_000);
+      beforeAll(drive.setUp, 1_800_000);
 
-      it("does not drive the step: the thread waits at ReadyForOneStep under the one-step-required alarm, naming the limit", async () => {
-        const { scene, deployment, b } = dispute;
-        const place = await threadPlace(scene, deployment, b.unit);
-        expect(place!.holder).toBe("game");
-        expect(threadOf(place!.utxo).turn).toBe("ReadyForOneStep");
-        expect(threadOf(place!.utxo).low_index).toBe(BigInt(stepOf(items)));
-        const state = validationTraceRunState(waited);
-        expect("namedState" in state && state.namedState?.alarm).toBe(true);
-        expect("reason" in waited && waited.reason).toContain(
-          `a ${phase} item of a ${fieldBytes(items).toString()}-byte field, over the ${limit.toString()}-byte inline ${phase} limit`,
+      it(
+        "moves the thread through the step's resolution to the award, and closes it",
+        drive.awards,
+        1_200_000,
+      );
+
+      it(`reads the field by reference: the semantic move reads our publication${bytes > MIDGARD_CHUNK_BYTES_K ? "s" : ""} of its ${bytes.toString()} bytes, and neither move carries it`, () => {
+        const { scene } = drive.dispute();
+        const reads = ownReadsOf(scene, drive.cborOf(verifyLabel));
+        const chunks = reads.map(({ datumCbor }) =>
+          Buffer.from(Data.from<string>(datumCbor), "hex"),
         );
-      }, 300_000);
+        expect(chunks).toHaveLength(Math.ceil(bytes / MIDGARD_CHUNK_BYTES_K));
+        expect(chunks.reduce((total, chunk) => total + chunk.length, 0)).toBe(
+          bytes,
+        );
+        if (chunks.length === 1 && "itemBytes" in growth)
+          expect(decodeMidgardFieldPreimage(chunks[0]!)).toHaveLength(units);
+        expect(ownReadsOf(scene, drive.cborOf(prepareLabel))).toStrictEqual([]);
+        for (const label of [prepareLabel, verifyLabel]) {
+          expect(drive.bytesOf(label)).toBeLessThan(bytes);
+          expect(drive.bytesOf(label)).toBeLessThanOrEqual(
+            MAX_TX_SIZE - SIZE_RESERVE,
+          );
+        }
+        const publishes = landed(scene).filter(({ hash }) =>
+          reads.some(({ outRef }) => outRef.startsWith(`${hash}#`)),
+        );
+        for (const { cbor } of publishes)
+          expect(cbor.length / 2).toBeLessThanOrEqual(MAX_TX_SIZE);
+        reportFit(
+          `Publish ${phase} field (${bytes.toString()} bytes)`,
+          publishes.map(({ cbor }) => cbor),
+        );
+      });
 
-      it("never enters the step's resolution", async () => {
-        const { scene, deployment, runner, prepared, a, b } = dispute;
-        const before = await threadPlace(scene, deployment, b.unit);
+      it("spends each publication back to our key address by key once the semantic move is final", async () => {
+        const dispute = drive.dispute();
+        const { scene, runner, a, b } = dispute;
+        const reads = ownReadsOf(scene, drive.cborOf(verifyLabel));
         await playThreads({
           scene,
           runner,
           sides: [a, b],
-          until: async (run) => waitsOn(run, b.unit),
-          limit: 1,
+          until: async () =>
+            reads.every(({ outRef }) => spenderOf(scene, outRef) !== undefined),
+          limit: 40,
         });
-        const after = await threadPlace(scene, deployment, b.unit);
-        expect(after!.utxo.txHash).toBe(before!.utxo.txHash);
-        expect(after!.utxo.outputIndex).toBe(before!.utxo.outputIndex);
-        // Our other thread parts from ours at a step of another phase, which
-        // the runner may resolve; this thread's place is never spent into one.
-        expect(
-          prepared.filter(
-            ({ stage, consumes }) =>
-              stage === "enter_resolution" &&
-              consumes ===
-                `${before!.utxo.txHash}#${before!.utxo.outputIndex.toString()}`,
-          ),
-        ).toStrictEqual([]);
-      }, 300_000);
+        for (const { outRef } of reads)
+          expectReclaimedByKey(scene, spenderOf(scene, outRef)!);
+      }, 600_000);
+
+      it(
+        "pays each move from its thread when its fee fits under the cap, and from our wallet when it does not",
+        drive.pays,
+      );
+    },
+  );
+};
+
+/** The rows of the step `describeInlineCap` describes beside `coShape`:
+ * the field at the limit, which goes by reference, and the largest within
+ * the limit less what the co-shape adds beside it, which goes inline. */
+const describeCoShape = ({
+  phase,
+  semantic,
+  at,
+  evidence,
+  stepOf,
+  installs,
+  coShape,
+  fieldBytes,
+  largest,
+  field,
+  limit,
+}: Pick<
+  Parameters<typeof describeInlineCap>[0],
+  | "phase"
+  | "semantic"
+  | "at"
+  | "evidence"
+  | "stepOf"
+  | "installs"
+  | "field"
+  | "limit"
+> & {
+  readonly coShape: CoShape;
+  readonly fieldBytes: (units: number) => number;
+  readonly largest: number;
+}) => {
+  let inline = largest;
+  while (inline > 1 && fieldBytes(inline) > limit - coShape.besideBytes)
+    inline -= 1;
+  const prepareLabel = `PrepareSelected ${phase}`;
+  const verifyLabel = `Verify ${phase} ${semantic.toString()}`;
+  describe.each<readonly [label: string, units: number, byReference: boolean]>([
+    [`at the inline ${phase} limit`, largest, true],
+    [
+      `within the inline ${phase} limit less what it adds beside the field`,
+      inline,
+      false,
+    ],
+  ])(
+    `validation-trace dispute runner: a step of ${phase}, its ${field} beside ${coShape.label}, %s`,
+    (_, units, byReference) => {
+      const drive = phaseDrive({
+        from: stepOf(units) + coShape.steps,
+        phase,
+        semantic,
+        evidence: evidence(units),
+        at,
+        minFeeA: 80,
+        ...installs(units),
+        ...coShape.installs,
+      });
+
+      beforeAll(drive.setUp, 1_800_000);
+
+      it(
+        "moves the thread through the step's resolution to the award, and closes it",
+        drive.awards,
+        1_200_000,
+      );
+
+      it(`${byReference ? "reads the field by reference" : "carries the field inline"}, each move within the transaction size limit less its reserve even when our wallet pays it`, () => {
+        const { scene } = drive.dispute();
+        const reads = ownReadsOf(scene, drive.cborOf(verifyLabel));
+        expect(reads).toHaveLength(byReference ? 1 : 0);
+        expect(ownReadsOf(scene, drive.cborOf(prepareLabel))).toStrictEqual([]);
+        for (const label of [prepareLabel, verifyLabel])
+          expect(drive.bytesOf(label)).toBeLessThanOrEqual(
+            MAX_TX_SIZE - SIZE_RESERVE,
+          );
+        if (!byReference)
+          expect(drive.bytesOf(prepareLabel)).toBeGreaterThan(
+            fieldBytes(units),
+          );
+        reportFit(
+          `${prepareLabel} beside ${coShape.label} (${fieldBytes(units).toString()} bytes)`,
+          [drive.cborOf(prepareLabel)],
+        );
+      });
     },
   );
 };

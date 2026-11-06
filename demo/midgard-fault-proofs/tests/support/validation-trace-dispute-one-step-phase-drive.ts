@@ -30,7 +30,10 @@ import {
   planValidationTraceOneStep,
   type ValidationTracePhasePlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
-import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
+import type {
+  ScenarioNative,
+  ScenarioSigners,
+} from "../helpers/plutus-execution-block-fixture.js";
 import type { TwoThreadCase } from "./validation-trace-dispute-one-step-case.js";
 import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-drive.js";
 
@@ -46,10 +49,13 @@ const TRANSACTION_FIELD_ITEM_WITNESS = 28;
  * trace reads at the step; a step whose control fixes the item takes the
  * field alone), whose preimage it carries inline, with the
  * yield `itemYield` its semantic resolver invokes beside it, at its
- * `yield_kind` `kind`, if any; or a required-signer item, whose field it
+ * `yield_kind` `kind`, if any, or, beside what it claims of the item,
+ * `claims`, the yields `yieldFields`, each at a field of its own; or a
+ * required-signer item, whose field it
  * carries inline beside the proof that the signer signed; or our trace's
  * own auxiliary witness at the step, of the constructor `auxiliary`, whose
- * fields the semantic resolver takes, or, with `yieldList`, from which it
+ * fields the semantic resolver takes but those `fixed` names at the values
+ * it fixes them to, or, with `yieldList`, from which it
  * derives its evidence, invoking the yields `yieldList` in order; or that
  * auxiliary witness whole beside its role `role`, with the yield
  * `itemYield` of that role; or the descriptor step claim of that auxiliary
@@ -60,6 +66,7 @@ export type PhaseEvidence =
   | Readonly<{
       auxiliary: number;
       yieldList?: readonly ValidationTracePhaseYield[];
+      fixed?: Readonly<Record<number, Data>>;
     }>
   | Readonly<{
       auxiliary: number;
@@ -75,6 +82,8 @@ export type PhaseEvidence =
       fieldIndex: number;
       itemIndex?: number;
       itemYield?: PhaseItemYield;
+      claims?: readonly Data[];
+      yieldFields?: readonly ValidationTracePhaseYield[];
     }>
   | Readonly<{ requiredSigner: true }>;
 
@@ -109,6 +118,8 @@ export const phaseDrive = ({
   failingScript,
   failingNativeSpend,
   failingNativeMint,
+  failingNative,
+  certifies,
 }: {
   readonly from: number;
   readonly phase: ValidationTracePhase;
@@ -135,6 +146,12 @@ export const phaseDrive = ({
   /** Whether the failing transaction also mints under a native script's
    * policy. */
   readonly failingNativeMint?: boolean;
+  /** The native script the failing transaction witnesses, and what else it
+   * does with it. */
+  readonly failingNative?: ScenarioNative;
+  /** Whether the deployment publishes the field-preimage certificate
+   * policy. */
+  readonly certifies?: boolean;
 }) => {
   const resolution = PHASE_RESOLUTIONS[phase];
   const semanticHolder: ValidationTracePhaseHolder =
@@ -146,6 +163,10 @@ export const phaseDrive = ({
   const yieldList =
     evidence !== undefined && "yieldList" in evidence
       ? evidence.yieldList
+      : undefined;
+  const yieldFields =
+    evidence !== undefined && "yieldFields" in evidence
+      ? evidence.yieldFields
       : undefined;
   const drive = resolutionDrive({
     from,
@@ -167,6 +188,8 @@ export const phaseDrive = ({
       ...(failingScript === undefined ? {} : { failingScript }),
       ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
       ...(failingNativeMint === undefined ? {} : { failingNativeMint }),
+      ...(failingNative === undefined ? {} : { failingNative }),
+      ...(certifies === undefined ? {} : { certifies }),
     },
     ...(minFeeA === undefined ? {} : { minFeeA }),
     /** Our plan of the step, by the successor hash the holder keeps. */
@@ -196,6 +219,7 @@ export const phaseDrive = ({
     awards: drive.awards,
     pays: drive.pays,
     bytesOf: drive.bytesOf,
+    cborOf: drive.cborOf,
     unbuilt: drive.unbuilt,
     otherTransition: drive.otherTransition,
 
@@ -225,7 +249,9 @@ export const phaseDrive = ({
           evidenceCbors: plan.phase.evidenceCbors,
           yieldList: phaseYieldListReads(drive.dispute().deployment, {
             ...plan.phase,
-            yieldList: other,
+            ...(plan.phase.yieldFields === undefined
+              ? { yieldList: other }
+              : { yieldFields: other }),
           })!,
         });
         return hop.reads === undefined
@@ -277,6 +303,7 @@ export const phaseDrive = ({
         ...(action === undefined ? {} : { action }),
         ...(itemYield === undefined ? {} : { itemYield }),
         ...(yieldList === undefined ? {} : { yieldList }),
+        ...(yieldFields === undefined ? {} : { yieldFields }),
       });
       const fields = evidenceCbors.map((field) => Data.from(field));
       if (evidence !== undefined && "role" in evidence)
@@ -293,8 +320,22 @@ export const phaseDrive = ({
         expect(claim.fields[1]).toStrictEqual(
           new Constr(evidence.opens === "tail" ? 1 : 0, []),
         );
+      } else if (evidence !== undefined && "fixed" in evidence) {
+        // It takes the fields but those it fixes, which our evidence carries
+        // at the values it fixes them to.
+        const fixed = evidence.fixed ?? {};
+        for (const [index, value] of Object.entries(fixed))
+          expect(expected.fields[Number(index)]).toStrictEqual(value);
+        expect(fields).toStrictEqual(
+          expected.fields.filter((_, index) => !Object.hasOwn(fixed, index)),
+        );
       } else if (yieldList === undefined)
-        expect(fields).toStrictEqual(expected.fields);
+        expect(fields).toStrictEqual([
+          ...expected.fields,
+          ...(evidence !== undefined && "claims" in evidence
+            ? (evidence.claims ?? [])
+            : []),
+        ]);
     },
   };
 };

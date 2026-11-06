@@ -5,6 +5,8 @@ import {
   computeHash28,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
+import { protectMidgardAddress } from "@al-ft/midgard-core/codec/address";
 import * as SDK from "@al-ft/midgard-sdk";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import {
@@ -54,10 +56,12 @@ export const seedDepositEvent = (
     },
   }) satisfies SDK.DepositEvent;
 
-/** A deposit's canonical ledger insertion, exactly as block production derives it. */
+/** The canonical ledger insertion of a deposit of `lovelace`, exactly as
+ * block production derives it. */
 export const depositSeed = (
   byte: number,
   paymentCredential: SeedCredential,
+  lovelace: bigint = SEED_LOVELACE,
 ): LedgerEntry => {
   const event = seedDepositEvent(byte, paymentCredential);
   const effect = deriveCanonicalOriginalDepositTransitionEffect({
@@ -66,7 +70,7 @@ export const depositSeed = (
     l2Address: event.info.l2_address,
     l2NetworkId: event.info.l2_network_id,
     l2DatumCbor: null,
-    originalAssets: { lovelace: SEED_LOVELACE },
+    originalAssets: { lovelace },
   });
   const operation = effect.operations[0];
   if (operation?.type !== "insert")
@@ -86,25 +90,98 @@ export const NATIVE_SPEND_SCRIPT = nativeScriptWitness({
 });
 const NATIVE_SPEND_SEED_BYTE = 0x66;
 
-/** The asset a transaction mints under the native script's policy: the
- * value it adds to an output (none when it does not mint), and its mint
- * field. */
+/** What a transaction mints: how many policies, the first the native
+ * script's and each other one an always-satisfied native script of its own
+ * (`mintPolicyScript`), and how many assets under each, under the last
+ * `lastAssets` when given. With `shortNames`, each policy names its assets
+ * from the shortest names up. `true` mints one asset under the native
+ * script's policy. */
+export type ScenarioMint =
+  | boolean
+  | Readonly<{
+      policies?: number;
+      assets?: number;
+      lastAssets?: number;
+      shortNames?: boolean;
+    }>;
+
+/** The `index`th minting policy beyond the native script's, which any
+ * transaction satisfies. */
+export const mintPolicyScript = (index: number) =>
+  nativeScriptWitness({
+    type: "atLeast",
+    required: 0n,
+    scripts: [{ type: "after", slot: BigInt(MINT_POLICY_SLOT_BASE + index) }],
+  });
+const MINT_POLICY_SLOT_BASE = 1_000_000;
+
+/** The native scripts whose policies `mint` mints under, the native script
+ * `script` first. */
+export const mintPolicies = (
+  mint: ScenarioMint,
+  script: MidgardVersionedScript = NATIVE_SPEND_SCRIPT,
+): readonly MidgardVersionedScript[] =>
+  mint === false
+    ? []
+    : [
+        script,
+        ...Array.from(
+          { length: (mint === true ? 1 : (mint.policies ?? 1)) - 1 },
+          (_, index) => mintPolicyScript(index),
+        ),
+      ];
+
+/** The name of the `index`th asset a policy mints: one byte for the first,
+ * two past it; or, with `short`, the empty name first, then each one-byte
+ * name, then two-byte ones. */
 const NATIVE_MINT_ASSET = "4d";
-export const nativeMintAssets = (nativeMint: boolean) =>
-  new Map(
-    nativeMint
-      ? [
-          [
-            hashScriptWitness(NATIVE_SPEND_SCRIPT),
-            new Map([[NATIVE_MINT_ASSET, 1n]]),
-          ],
-        ]
-      : [],
+const mintAssetName = (index: number, short: boolean) =>
+  short
+    ? index === 0
+      ? ""
+      : index <= 256
+        ? (index - 1).toString(16).padStart(2, "0")
+        : index.toString(16).padStart(4, "0")
+    : index === 0
+      ? NATIVE_MINT_ASSET
+      : index.toString(16).padStart(4, "0");
+
+/** How many assets `mint` mints under its `index`th policy of `count`. */
+const policyAssets = (mint: ScenarioMint, index: number, count: number) =>
+  mint === true || mint === false
+    ? 1
+    : index === count - 1
+      ? (mint.lastAssets ?? mint.assets ?? 1)
+      : (mint.assets ?? 1);
+
+/** The assets `mint` mints under the native script `script`'s policy and
+ * the others: the value it adds to an output (none when it does not mint),
+ * and its mint field. */
+export const nativeMintAssets = (
+  mint: ScenarioMint,
+  script: MidgardVersionedScript = NATIVE_SPEND_SCRIPT,
+) => {
+  const policies = mintPolicies(mint, script);
+  const short = typeof mint === "object" && mint.shortNames === true;
+  return new Map(
+    policies.map((policy, at) => [
+      hashScriptWitness(policy),
+      new Map(
+        Array.from(
+          { length: policyAssets(mint, at, policies.length) },
+          (_, index) => [mintAssetName(index, short), 1n] as const,
+        ),
+      ),
+    ]),
   );
-export const nativeMintPreimageCbor = () =>
+};
+export const nativeMintPreimageCbor = (
+  mint: ScenarioMint,
+  script: MidgardVersionedScript = NATIVE_SPEND_SCRIPT,
+) =>
   makeMintPreimageCbor(
     new Map(
-      [...nativeMintAssets(true)].map(([policy, assets]) => [
+      [...nativeMintAssets(mint, script)].map(([policy, assets]) => [
         Buffer.from(policy, "hex"),
         new Map(
           [...assets].map(([name, quantity]) => [
@@ -115,6 +192,22 @@ export const nativeMintPreimageCbor = () =>
       ]),
     ),
   );
+
+/** The protected address whose payment credential is `script`. */
+export const protectedScriptAddress = (script: MidgardVersionedScript) =>
+  protectMidgardAddress(
+    Buffer.from(
+      CML.EnterpriseAddress.new(
+        0,
+        CML.Credential.new_script(
+          CML.ScriptHash.from_hex(hashScriptWitness(script)),
+        ),
+      )
+        .to_address()
+        .to_raw_bytes(),
+    ),
+  );
+
 const nativeSpendCredential = (): SeedCredential => ({
   ScriptCredential: [hashScriptWitness(NATIVE_SPEND_SCRIPT)],
 });

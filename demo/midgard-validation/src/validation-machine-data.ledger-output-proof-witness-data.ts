@@ -21,6 +21,7 @@ import {
   type ValidationMachineSignerSetProof,
 } from "./validation-machine/index.js";
 import {
+  admitsFieldCarriageTier,
   byteList,
   bytes,
   type ConstructorData,
@@ -37,8 +38,8 @@ import {
 
 /**
  * The seam itself: resolve one step's carriage, then check the answer against
- * §8.4's partition — and, at tier 1, against the step's own bytes — before it
- * can reach `evidence_hash`.
+ * §8.4's partition (admitsFieldCarriageTier) — and, at tier 1, against the
+ * step's own bytes — before it can reach `evidence_hash`.
  *
  * Every field-reading auxiliary arm goes through here rather than calling the
  * resolver directly, so the invariant is structural — a misbehaving or merely
@@ -58,7 +59,7 @@ export const resolvedFieldCarriageData = (
   const expectedTier = selectMidgardFieldCarriageTier(
     planInput.fieldPreimage.length,
   );
-  if (carriage.carriage !== expectedTier) {
+  if (!admitsFieldCarriageTier(expectedTier, carriage.carriage)) {
     throw new ValidationMachineCarriageTierMismatchError({
       fieldIndex: planInput.fieldIndex,
       preimageLength: planInput.fieldPreimage.length,

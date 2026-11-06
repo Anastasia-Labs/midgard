@@ -192,12 +192,28 @@ describe("§8 carriage seam refusals V1", () => {
     }
   });
 
-  it("refuses a resolver that returns an indexed tier below §8.3's cap", () => {
+  it("encodes a resolver's tier-2 RawUtxo below §8.3's cap, §8's one open tier choice", () => {
+    // A consuming transaction with no room for the field inline reads it from
+    // a publication: the door hashes the same bytes either way.
+    expect(selectMidgardFieldCarriageTier(BELOW_CAP_PREIMAGE_BYTES)).toBe(
+      "Inline",
+    );
+    for (const { kind, auxiliary } of carriageAuxiliaries(
+      BELOW_CAP_PREIMAGE_BYTES,
+    )) {
+      const encoded = encodeValidationAuxiliaryWitnessCbor(
+        auxiliary,
+        fixedResolver({ carriage: "RawUtxo", refInputIndex: 1 }),
+      );
+      expect(encoded.length, kind).toBeLessThan(BELOW_CAP_PREIMAGE_BYTES);
+    }
+  });
+
+  it("refuses a resolver that returns tier-3 Certified below §8.3's cap", () => {
     expect(selectMidgardFieldCarriageTier(BELOW_CAP_PREIMAGE_BYTES)).toBe(
       "Inline",
     );
     for (const returned of [
-      { carriage: "RawUtxo", refInputIndex: 1 },
       {
         carriage: "Certified",
         certRefInputIndex: 3,

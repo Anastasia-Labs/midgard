@@ -44,6 +44,7 @@ import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
 import {
+  FIELD_PREIMAGE_CERTIFICATE_MINT,
   validationTraceOneStepReferences,
   validationTraceScriptDecodeReferences,
 } from "./one-step-references.js";
@@ -201,6 +202,14 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       network: binding.network,
       references: validationTraceScriptDecodeReferences(member),
     }),
+    ...(binding.fieldPreimageCertificate === null
+      ? {}
+      : {
+          fieldPreimageCertificate: Object.freeze({
+            ...binding.fieldPreimageCertificate,
+            reference: member(FIELD_PREIMAGE_CERTIFICATE_MINT),
+          }),
+        }),
   });
   const l1 = createFraudProofFamilyL1ObservationPort({
     l1: config.l1Source,

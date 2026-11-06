@@ -5,6 +5,7 @@
  * a CEK machine step. The runner records each transaction it signs and, when
  * asked, observes the convicted block's removal over the recorded L1. */
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
+import { parseOutRefLabel as outRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Constr,
@@ -28,7 +29,11 @@ import {
   type ValidationTraceDisputeDeployment,
   type ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
-import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
+import type {
+  ScenarioMint,
+  ScenarioNative,
+  ScenarioSigners,
+} from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
@@ -42,6 +47,7 @@ import {
   publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
+  publishFieldPreimageCertificate,
   publishOneStepReferences,
   publishPhaseReferences,
   publishPhaseYieldReferences,
@@ -101,11 +107,6 @@ export type TwoThreadCase = Readonly<{
   removal: RecordedRemoval | undefined;
 }>;
 
-const outRef = (text: string) => ({
-  txHash: text.split("#")[0]!,
-  outputIndex: Number(text.split("#")[1]),
-});
-
 /** Opens our case and has both operators defend it, each on its own thread
  * on its defender's turn; the operator's trace agrees with ours up to
  * `operatorFrom` and the successor's up to `successorFrom`. */
@@ -119,6 +120,7 @@ export const defendTwoThreads = async ({
   canonicalDecode = false,
   phases = false,
   scriptSourcesRedeemers = false,
+  certifies = false,
   failingRedeemerData,
   failingReferenceInputs,
   failingSigners,
@@ -126,6 +128,7 @@ export const defendTwoThreads = async ({
   failingExUnits,
   failingNativeSpend,
   failingNativeMint,
+  failingNative,
   wrap,
   releaseDepth,
 }: {
@@ -152,6 +155,8 @@ export const defendTwoThreads = async ({
   /** Whether the deployment publishes the script-sources redeemer item
    * chain past its entry. */
   readonly scriptSourcesRedeemers?: boolean;
+  /** Whether it publishes the field-preimage certificate policy. */
+  readonly certifies?: boolean;
   /** The failing transaction's redeemer, as Plutus Data CBOR. */
   readonly failingRedeemerData?: Uint8Array;
   /** How many reference inputs the failing transaction reads. */
@@ -165,9 +170,12 @@ export const defendTwoThreads = async ({
   /** Whether the failing transaction also spends an output a native script
    * holds. */
   readonly failingNativeSpend?: boolean;
-  /** Whether the failing transaction also mints under a native script's
-   * policy. */
-  readonly failingNativeMint?: boolean;
+  /** What the failing transaction also mints, under a native script's
+   * policy and any others. */
+  readonly failingNativeMint?: ScenarioMint;
+  /** The native script the failing transaction witnesses, and what else it
+   * does with it. */
+  readonly failingNative?: ScenarioNative;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
   /** How many blocks below the tip the runner's release-final point stands;
@@ -179,8 +187,11 @@ export const defendTwoThreads = async ({
   // Published before the scene's blocks, so the publications take none of
   // the source verification's window from the failing block's end.
   let oneStep: ValidationTraceOneStepReferences | undefined;
+  let certificate: Parameters<typeof oneStepDeployment>[3];
   const scene = await setUpScene(
     async (contracts) => {
+      if (certifies)
+        certificate = await publishFieldPreimageCertificate(contracts);
       oneStep = {
         ...(await publishOneStepReferences(contracts)),
         ...(selections
@@ -222,6 +233,7 @@ export const defendTwoThreads = async ({
       ...(failingExUnits === undefined ? {} : { failingExUnits }),
       ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
       ...(failingNativeMint === undefined ? {} : { failingNativeMint }),
+      ...(failingNative === undefined ? {} : { failingNative }),
     },
   );
   const removal =
@@ -230,7 +242,7 @@ export const defendTwoThreads = async ({
     scene.h as never,
     scene.operator.vkey,
   );
-  const deployment = oneStepDeployment(scene, oneStep!);
+  const deployment = oneStepDeployment(scene, oneStep!, undefined, certificate);
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,

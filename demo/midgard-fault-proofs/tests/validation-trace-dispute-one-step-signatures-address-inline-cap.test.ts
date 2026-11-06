@@ -1,9 +1,16 @@
 /** The validation-trace dispute runner at the signatures step that reads
  * the first address witness of a failing transaction its owner and other
  * keys sign, a field of 103-byte witnesses the prepare and semantic moves
- * carry whole, inline: at, one item over, and far over the inline
- * signatures limit for an address witness
+ * carry whole, inline, at the inline signatures limit for an address
+ * witness; past it, read by reference from one publication of ours or, past
+ * one publication's bytes, from publications under the field-preimage
+ * certificate, up to the consensus bound on a field
  * (support/validation-trace-dispute-one-step-inline-cap.ts). */
+import {
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
+
 import { VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase-evidence.js";
 import { describeInlineCap } from "./support/validation-trace-dispute-one-step-inline-cap.js";
 
@@ -19,4 +26,11 @@ describeInlineCap({
   // signatures phase.
   stepOf: (items) => items + 11,
   installs: (items) => ({ failingSigners: { extraSigners: items - 1 } }),
+  overAt: [
+    ["at one raw publication's largest", MIDGARD_CHUNK_BYTES_K],
+    [
+      "at the consensus field's largest",
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+    ],
+  ],
 });

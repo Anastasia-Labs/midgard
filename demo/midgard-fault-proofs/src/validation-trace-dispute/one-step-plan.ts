@@ -11,35 +11,36 @@
  * phases one-step-phase.ts names; any other step is reported as one the
  * runner does not drive, and its thread waits under the one-step-required
  * state, which raises the operator's alarm while our deadline runs. */
-import {
-  hashMidgardValidationMachineState,
-  type MidgardValidationMachineState,
-} from "@al-ft/midgard-core";
-import {
-  aikenSerialisedPlutusDataCborPreservingMapOrder,
-  plutusConstrFieldCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import type * as SDK from "@al-ft/midgard-sdk";
 import {
   buildValidationOneStepArgument,
   CekDecodeRecordRequiredError,
   type CekSelectionDecodeRecordResolver,
+  type ValidationMachineFieldCarriageResolver,
   type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import { plutusItemScriptDecode } from "../script-decode/item-record.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
+  commonOf,
+  hashOneStepEvidence,
+  type ValidationTraceOneStepArgument,
+} from "./one-step-argument.js";
+import {
   CANONICAL_DECODE_RESOLVER_INDEX,
+  canonicalDecodeFieldCarriage,
   planValidationTraceCanonicalDecodeStep,
   type ValidationTraceCanonicalDecodeStep,
 } from "./one-step-canonical-decode.js";
 import {
-  planValidationTraceContextStep,
-  type ValidationTraceContextStep,
-} from "./one-step-context.js";
+  placeholderCarriageResolver,
+  type ValidationTraceCarriedField,
+} from "./one-step-carriage.js";
+import type { ValidationTraceContextStep } from "./one-step-context.js";
 import {
   type CekCoreArmHops,
   cekCoreArmHops,
@@ -50,16 +51,26 @@ import {
 import { cekCoreGroup } from "./one-step-core-group.js";
 import {
   isValidationTracePhase,
-  planValidationTracePhaseStep,
   type ValidationTracePhase,
   type ValidationTracePhaseStep,
 } from "./one-step-phase.js";
+import {
+  planCarriedContextStep,
+  planCarriedPhaseStep,
+} from "./one-step-plan-carried.js";
 import {
   stagedTraceOf,
   type ValidationTraceStagedStep,
   type ValidationTraceStagingLookup,
 } from "./one-step-staged.js";
 import { recordedSelectionOf } from "./selected-scripts.js";
+
+export {
+  hashOneStepEvidence,
+  hashSerialisedData,
+  type ValidationTraceCarriedStep,
+  type ValidationTraceOneStepArgument,
+} from "./one-step-argument.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
 export const CEK_RESOLVER_INDEX = 11;
@@ -72,44 +83,6 @@ export const CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX = 2;
 
 /** The CEK core step's semantic resolver in the CEK group. */
 export const CEK_CORE_SEMANTIC_RESOLVER_INDEX = 3;
-
-/** `hash_one_step_evidence`'s domain (validation-resolution-v1). */
-const ONE_STEP_EVIDENCE_DOMAIN =
-  "4d69646761726456616c69646174696f6e4f6e655374657045766964656e63655631";
-
-const blake2b256 = (hex: string): string =>
-  Effect.runSync(SDK.hashHexWithBlake2b(hex, 32));
-
-/** `blake2b_256(cbor.serialise(data))` of the Data whose CBOR is `cbor`. */
-export const hashSerialisedData = (cbor: string): string =>
-  blake2b256(aikenSerialisedPlutusDataCborPreservingMapOrder(cbor));
-
-/** `hash_one_step_evidence(transition, auxiliary)`. */
-export const hashOneStepEvidence = (
-  transitionCbor: string,
-  auxiliaryCbor: string,
-): string =>
-  blake2b256(
-    ONE_STEP_EVIDENCE_DOMAIN +
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        `9f${transitionCbor}${auxiliaryCbor}ff`,
-      ),
-  );
-
-/** What every step's one-step resolution carries. */
-type ValidationTraceOneStepArgument = Readonly<{
-  /** The agreed state's index: the step is `stateIndex` to `stateIndex + 1`. */
-  stateIndex: number;
-  preState: MidgardValidationMachineState;
-  resolverIndex: number;
-  /** The semantic resolver of the CEK group the step selects. */
-  semanticResolverIndex: number;
-  /** The transition and its auxiliary evidence, as their Data's CBOR. */
-  transitionCbor: string;
-  auxiliaryCbor: string;
-  /** `hash_one_step_evidence(transition, auxiliary)`. */
-  evidenceHash: string;
-}>;
 
 /** A CEK core step's resolution, as the runner drives it. */
 export type ValidationTraceCoreStepPlan = ValidationTraceOneStepArgument &
@@ -199,25 +172,6 @@ const constrOf = (cbor: string): Constr<Data> => {
   return data;
 };
 
-/** What every step's resolution carries, from its one-step argument. */
-const commonOf = (
-  stateIndex: number,
-  preState: MidgardValidationMachineState,
-  argument: ReturnType<typeof buildValidationOneStepArgument>,
-): ValidationTraceOneStepArgument => {
-  const transitionCbor = argument.transitionCbor.toString("hex");
-  const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
-  return {
-    stateIndex,
-    preState,
-    resolverIndex: argument.resolverIndex,
-    semanticResolverIndex: argument.semanticResolverIndex,
-    transitionCbor,
-    auxiliaryCbor,
-    evidenceHash: hashOneStepEvidence(transitionCbor, auxiliaryCbor),
-  };
-};
-
 /**
  * The one-step resolution of the step of our trace (in `material`) to our
  * successor hashing to `challengerHighHash`, from the agreed state hashing
@@ -276,7 +230,11 @@ export const planValidationTraceOneStep = async ({
       return unsupported(
         "a canonicalDecode step, whose resolution the deployment does not install",
       );
-    const argument = buildValidationOneStepArgument({ trace, stateIndex });
+    const argument = buildValidationOneStepArgument({
+      trace,
+      stateIndex,
+      resolveFieldCarriage: canonicalDecodeFieldCarriage,
+    });
     const common = commonOf(stateIndex, preState, argument);
     if (argument.resolverIndex !== CANONICAL_DECODE_RESOLVER_INDEX)
       throw new Error(
@@ -303,10 +261,10 @@ export const planValidationTraceOneStep = async ({
     isValidationTracePhase(preState.phase) &&
     phases.includes(preState.phase)
   ) {
-    const argument = buildValidationOneStepArgument({ trace, stateIndex });
-    const common = commonOf(stateIndex, preState, argument);
-    const phase = planValidationTracePhaseStep({
-      ...common,
+    const plan = planCarriedPhaseStep({
+      trace,
+      stateIndex,
+      preState,
       phase: preState.phase,
       redeemerChain: scriptSourcesRedeemers,
       successorWitnessCbor:
@@ -314,11 +272,7 @@ export const planValidationTraceOneStep = async ({
           ? undefined
           : trace.witnesses[stateIndex + 1]?.cbor,
     });
-    if ("reason" in phase) return unsupported(phase.reason);
-    return {
-      kind: "plan",
-      plan: Object.freeze({ ...common, kind: "phase" as const, phase }),
-    };
+    return "reason" in plan ? unsupported(plan.reason) : { kind: "plan", plan };
   }
   if (preState.phase !== "cek") return unsupported(`a ${preState.phase} step`);
   // A selection whose successor rests on the selected script's decode record
@@ -350,13 +304,17 @@ export const planValidationTraceOneStep = async ({
       phase2Class: record.phase2Class,
     });
   }
-  const argumentOf = (window: ValidationTraceSteps) =>
+  const argumentOf = (
+    window: ValidationTraceSteps,
+    resolveFieldCarriage?: ValidationMachineFieldCarriageResolver,
+  ) =>
     buildValidationOneStepArgument({
       trace: window,
       stateIndex,
       ...(resolveCekDecodeRecord === undefined
         ? {}
         : { resolveCekDecodeRecord }),
+      ...(resolveFieldCarriage === undefined ? {} : { resolveFieldCarriage }),
     });
   // A staged step's evidence names its staging outputs.
   const { trace: window, staged } = builtins
@@ -371,9 +329,19 @@ export const planValidationTraceOneStep = async ({
                 .evidenceHash === committedEvidenceHash(),
       )
     : { trace, staged: undefined };
-  const argument = argumentOf(window);
+  // A field past §8.4's tier-1 bound is named at placeholder positions,
+  // which only a context step's resolution binds to our publications of it.
+  const carried: ValidationTraceCarriedField[] = [];
+  const argument = argumentOf(window, placeholderCarriageResolver(carried));
   const common = commonOf(stateIndex, preState, argument);
   const { auxiliaryCbor } = common;
+  const isContext =
+    argument.resolverIndex === CEK_RESOLVER_INDEX &&
+    argument.semanticResolverIndex === CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX;
+  if (carried.length > 0 && !isContext)
+    return unsupported(
+      `a CEK step for semantic resolver ${argument.semanticResolverIndex.toString()} reading a field by reference`,
+    );
   if (
     argument.resolverIndex === CEK_RESOLVER_INDEX &&
     argument.semanticResolverIndex === CEK_SELECTION_SEMANTIC_RESOLVER_INDEX
@@ -382,26 +350,20 @@ export const planValidationTraceOneStep = async ({
       kind: "plan",
       plan: Object.freeze({ ...common, kind: "selection" as const, script }),
     };
-  if (
-    argument.resolverIndex === CEK_RESOLVER_INDEX &&
-    argument.semanticResolverIndex === CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX
-  ) {
+  if (isContext) {
     if (!contexts)
       return unsupported(
         "a CEK context step, whose resolution the deployment does not install",
       );
-    const context = planValidationTraceContextStep({
+    const plan = planCarriedContextStep({
+      build: (resolve) => argumentOf(window, resolve),
+      stateIndex,
+      preState,
       witnessCbor: trace.witnesses[stateIndex]!.cbor.toString("hex"),
-      auxiliaryCbor,
       successorWitnessCbor:
         trace.witnesses[stateIndex + 1]!.cbor.toString("hex"),
     });
-    if ("driven" in context)
-      return unsupported(`a CEK context step at its ${context.stage} stage`);
-    return {
-      kind: "plan",
-      plan: Object.freeze({ ...common, kind: "context" as const, context }),
-    };
+    return "reason" in plan ? unsupported(plan.reason) : { kind: "plan", plan };
   }
   if (
     argument.resolverIndex !== CEK_RESOLVER_INDEX ||

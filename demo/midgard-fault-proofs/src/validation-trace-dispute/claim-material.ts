@@ -2,6 +2,9 @@
  * witness that names and authenticates the event, and the challenger's own
  * trace root, step count and Terminal Rejected leaf, built from DA replay. */
 import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
@@ -153,6 +156,37 @@ export type ValidationTraceClaimMaterial = {
    * unless it is the item the selection commits to.
    */
   readonly scriptItem: (selection: ValidationTraceSelectionSource) => Buffer;
+  /** The disputed transaction as a certificate of one of its fields names
+   * it: a normal transaction, its id, and its compact and witness-set
+   * compact bytes. */
+  readonly fieldSource: () => ValidationTraceFieldSource;
+};
+
+/** A disputed transaction's identity as field carriage names it. */
+export type ValidationTraceFieldSource = Readonly<{
+  sourceKind: 0n;
+  nativeTxId: string;
+  compactCbor: string;
+  witnessSetCompactCbor: string;
+}>;
+
+/** The field source of the normal transaction `transactionCbor`. */
+const fieldSourceOf = (transactionCbor: Uint8Array) => {
+  let source: ValidationTraceFieldSource | undefined;
+  return (): ValidationTraceFieldSource => {
+    if (source !== undefined) return source;
+    const { compactCbor, witnessSetCompactCbor } =
+      deriveMidgardNativeTxProofSourceFromCanonicalCbor(transactionCbor);
+    source = Object.freeze({
+      sourceKind: 0n,
+      nativeTxId: computeMidgardNativeTxId(
+        decodeMidgardNativeTxCompact(compactCbor),
+      ).toString("hex"),
+      compactCbor: compactCbor.toString("hex"),
+      witnessSetCompactCbor: witnessSetCompactCbor.toString("hex"),
+    });
+    return source;
+  };
 };
 
 /** States `stateIndex` and `stateIndex + 1` of `trace`, as `steps` holds them. */
@@ -288,5 +322,6 @@ export const buildValidationTraceClaimMaterial = async ({
       transactionCbor: event.entry.fullTransactionCbor,
       ledger,
     }),
+    fieldSource: fieldSourceOf(event.entry.fullTransactionCbor),
   };
 };

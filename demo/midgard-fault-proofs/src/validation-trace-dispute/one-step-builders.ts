@@ -38,6 +38,7 @@ import {
   canonicalDecodeHop,
   isValidationTraceCanonicalDecodeHolder,
 } from "./one-step-canonical-decode.js";
+import type { ValidationTraceFieldCarriage } from "./one-step-carriage.js";
 import {
   isValidationTraceContextHolder,
   validationTraceContextHop,
@@ -157,7 +158,7 @@ const datumOf = (utxo: UTxO): string => {
  * semantic resolver's hop reads `phaseYield`, the yield it invokes, and a
  * hop through a script-sources redeemer normalization step reads
  * `redeemerChain`, a canonical-decode item's observe hop of a field too
- * long to carry inline reads our published `copy` of it, and a staged
+ * long to carry inline reads our publications of it, `carriage`, and a staged
  * step's hops from the PrepareSelected move through its arm chain read its
  * `staging` outputs (one-step-staged.ts).
  */
@@ -171,7 +172,7 @@ export const validationTraceHop = ({
   phaseYield,
   phaseYieldList,
   redeemerChain,
-  copy,
+  carriage,
   staging,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
@@ -183,7 +184,7 @@ export const validationTraceHop = ({
   readonly phaseYield?: ValidationTracePhaseYieldReads | undefined;
   readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
   readonly redeemerChain?: ValidationTraceScriptSourcesRedeemerReads;
-  readonly copy?: UTxO | undefined;
+  readonly carriage?: ValidationTraceFieldCarriage | undefined;
   readonly staging?: readonly UTxO[] | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
@@ -216,7 +217,7 @@ export const validationTraceHop = ({
       semanticResolverIndex: plan.semanticResolverIndex,
       transitionCbor: plan.transitionCbor,
       step: plan.canonicalDecode,
-      copy,
+      carriage,
     });
   }
   if (isValidationTracePhaseHolder(holder)) {

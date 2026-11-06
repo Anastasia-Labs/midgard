@@ -159,7 +159,10 @@ export const installValidationTraceApplication = async ({
         h.contracts.fraudProofCatalogue.spendingScriptAddress,
       root: h.catalogue.root,
     },
-    fieldPreimageCertificate: null,
+    fieldPreimageCertificate: {
+      policyId: installed.certificate.policyId,
+      mintingScript: installed.certificate.mintingScript,
+    },
     referenceScriptsByContract: Object.fromEntries(
       [...roster].map(([name, utxo]) => [
         name,
