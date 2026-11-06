@@ -324,3 +324,106 @@ export const cekStagedContracts = new Set<string>(
 export const cekStagedRoles = new Set<string>(
   CEK_STAGED_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The native-scripts, script-integrity and value-and-mint phases' prepare and
+// semantic resolvers, the last validation-trace steps to gain members. Each
+// is a spend reference script that only the node runtime publishes.
+export const REMAINING_PHASE_CATALOGUE_ADDITIONS = (
+  [
+    {
+      contract: "validationTraceDisputeNativeScriptsPrepare",
+      role: "V1 validation-trace native-scripts prepare",
+    },
+    {
+      contract: "validationTraceDisputeNativeScriptsTerminalSemantic",
+      role: "V1 validation-trace native-scripts terminal semantic",
+    },
+    {
+      contract: "validationTraceDisputeNativeScriptsNativeSemantic",
+      role: "V1 validation-trace native-scripts native semantic",
+    },
+    {
+      contract: "validationTraceDisputeNativeScriptsEffectfulSemantic",
+      role: "V1 validation-trace native-scripts effectful semantic",
+    },
+    {
+      contract: "validationTraceDisputeScriptIntegrityPrepare",
+      role: "V1 validation-trace script-integrity prepare",
+    },
+    {
+      contract: "validationTraceDisputeScriptIntegrityAuthenticationSemantic",
+      role: "V1 validation-trace script-integrity authentication semantic",
+    },
+    {
+      contract: "validationTraceDisputeScriptIntegrityCompactSemantic",
+      role: "V1 validation-trace script-integrity compact semantic",
+    },
+    {
+      contract: "validationTraceDisputeScriptIntegrityWitnessSetSemantic",
+      role: "V1 validation-trace script-integrity witness set semantic",
+    },
+    {
+      contract: "validationTraceDisputeScriptIntegrityFinalizeSemantic",
+      role: "V1 validation-trace script-integrity finalize semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintPrepare",
+      role: "V1 validation-trace value-and-mint prepare",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintBeginSemantic",
+      role: "V1 validation-trace value-and-mint begin semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintReplayBeginSemantic",
+      role: "V1 validation-trace value-and-mint replay begin semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintReplayInputSemantic",
+      role: "V1 validation-trace value-and-mint replay input semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintReplayAssetSemantic",
+      role: "V1 validation-trace value-and-mint replay asset semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintReplayFinishSemantic",
+      role: "V1 validation-trace value-and-mint replay finish semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintOutputDescriptorSemantic",
+      role: "V1 validation-trace value-and-mint output descriptor semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintOutputAssetSemantic",
+      role: "V1 validation-trace value-and-mint output asset semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintOutputFinishSemantic",
+      role: "V1 validation-trace value-and-mint output finish semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintMintAssetSemantic",
+      role: "V1 validation-trace value-and-mint mint asset semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintMintFinishSemantic",
+      role: "V1 validation-trace value-and-mint mint finish semantic",
+    },
+    {
+      contract: "validationTraceDisputeValueAndMintFinalizeSemantic",
+      role: "V1 validation-trace value-and-mint finalize semantic",
+    },
+  ] as const
+).map((addition) => ({
+  ...addition,
+  purpose: "spend" as const,
+  commands: [] as const,
+}));
+
+export const remainingPhaseContracts = new Set<string>(
+  REMAINING_PHASE_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const remainingPhaseRoles = new Set<string>(
+  REMAINING_PHASE_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

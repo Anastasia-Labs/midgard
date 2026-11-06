@@ -45,7 +45,6 @@ import {
   testReferenceScriptAuthPolicy,
   validatorHashesByPath,
 } from "./contract-deployment-info.validator-hashes-by-path.js";
-import { unrecordedValidationTraceSlots } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -845,12 +844,9 @@ describe("contract deployment info", () => {
       const restored = validatorHashesByPath(reconstructed);
       const real = validatorHashesByPath(contracts);
       expect(real.failClosed).toEqual([]);
-
-      // The validation-trace members the manifest records no bytes for fail
-      // closed on read rather than borrowing a locally built script.
-      const vtd = "$.fraudProofContracts.validationTraceDispute";
-      const unrecorded = unrecordedValidationTraceSlots(vtd);
-      expect([...restored.failClosed].sort()).toEqual([...unrecorded].sort());
+      // Every validator, including each validation-trace step, is a recorded
+      // member, so no restored path fails closed.
+      expect(restored.failClosed).toEqual([]);
 
       // The SDK builder spreads untyped copies of the top-level shared
       // validators into the chain record. Each copy must equal its top-level
@@ -870,13 +866,7 @@ describe("contract deployment info", () => {
       // one it takes from anywhere but the manifest carries another hash.
       const comparable = (hashes: Record<string, string>) =>
         Object.fromEntries(
-          Object.entries(hashes).filter(
-            ([path]) =>
-              !sharedCopy.test(path) &&
-              !unrecorded.some(
-                (member) => path === member || path.startsWith(`${member}.`),
-              ),
-          ),
+          Object.entries(hashes).filter(([path]) => !sharedCopy.test(path)),
         );
       expect(comparable(restored.hashes)).toEqual({
         ...comparable(real.hashes),

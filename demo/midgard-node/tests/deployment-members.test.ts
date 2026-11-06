@@ -4,17 +4,12 @@ import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-iden
 import {
   cekContextItemReferenceScripts,
   restoreValidationTraceDisputeScripts,
+  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   verifyDeploymentScriptBindings,
 } from "@al-ft/midgard-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { faultProofMemberFromManifest } from "../src/services/midgard-contracts.linear-fault-proof-chain-from-manifest.js";
-import {
-  isRecordedValidationTracePrepare,
-  isRecordedValidationTraceSemantic,
-  VALIDATION_TRACE_PREPARE_KEYS,
-  VALIDATION_TRACE_SEMANTIC_KEYS,
-} from "./helpers/deployment-member-baseline.js";
 import { makeGenuineDeploymentRegistryForTest } from "./helpers/deployment-parameter-registry.js";
 
 describe("deployment member blueprint bindings", () => {
@@ -32,7 +27,7 @@ describe("deployment member blueprint bindings", () => {
     ).not.toThrow();
   });
 
-  it("restores a complete usable validation-trace SDK surface with explicit unavailable members", () => {
+  it("restores every validation-trace resolver and step from the manifest", () => {
     const restored = restoreValidationTraceDisputeScripts({
       resolve: (contract) =>
         faultProofMemberFromManifest(
@@ -59,31 +54,20 @@ describe("deployment member blueprint bindings", () => {
     expect(itemReferences(restored.cekContextItemStages)).toEqual(
       itemReferences(original.cekContextItemStages),
     );
-    expect(() => restored.steps).toThrow("Unrecorded SDK member:");
-    for (const [list, label] of [
-      ["prepareResolvers", "prepare resolver"],
-      ["resolvers", "resolver"],
+    // Every resolver and step is a recorded member, so no slot refuses.
+    const hashes = (list: readonly { spendingScriptHash: string }[]) =>
+      list.map(({ spendingScriptHash }) => spendingScriptHash);
+    for (const list of [
+      "prepareResolvers",
+      "resolvers",
+      "semanticResolvers",
+      "steps",
     ] as const)
-      VALIDATION_TRACE_PREPARE_KEYS.forEach((key, index) => {
-        if (isRecordedValidationTracePrepare(key))
-          expect(restored[list][index]?.spendingScriptHash).toBe(
-            original[list][index]?.spendingScriptHash,
-          );
-        else
-          expect(() => restored[list][index]).toThrow(
-            `Unrecorded SDK member: ${label} ${key}`,
-          );
+      expect({ list, hashes: hashes(restored[list]) }).toEqual({
+        list,
+        hashes: hashes(original[list]),
       });
-    VALIDATION_TRACE_SEMANTIC_KEYS.forEach((key, index) => {
-      if (isRecordedValidationTraceSemantic(key))
-        expect(restored.semanticResolvers[index]?.spendingScriptHash).toBe(
-          original.semanticResolvers[index]?.spendingScriptHash,
-        );
-      else
-        expect(() => restored.semanticResolvers[index]).toThrow(
-          `Unrecorded SDK member: semantic resolver ${key}`,
-        );
-    });
+    expect(restored.steps).toHaveLength(VALIDATION_TRACE_DISPUTE_STEP_COUNT);
   });
 
   it("rejects the min-Ada yield omitted from the complete deployment", () => {

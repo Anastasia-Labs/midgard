@@ -106,11 +106,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     ),
     resolveInputs: title("validationTraceDisputeResolveInputsPrepare"),
     scriptSources: title("validationTraceDisputeScriptSourcesPrepare"),
-    nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
-    scriptIntegrity:
-      "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
+    nativeScripts: title("validationTraceDisputeNativeScriptsPrepare"),
+    scriptIntegrity: title("validationTraceDisputeScriptIntegrityPrepare"),
     cek: title("validationTraceDisputeCekPrepare"),
-    valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
+    valueAndMint: title("validationTraceDisputeValueAndMintPrepare"),
   },
   semantics: {
     canonicalDecodeEmpty: title(
@@ -281,48 +280,64 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     scriptSourcesStageSevenFinish: title(
       "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
     ),
-    nativeScriptsTerminal:
-      "fraud_proofs/validation_trace/native_scripts_terminal_semantic_v1.main.spend",
-    nativeScriptsNative:
-      "fraud_proofs/validation_trace/native_scripts_native_semantic_v1.main.spend",
-    nativeScriptsEffectful:
-      "fraud_proofs/validation_trace/native_scripts_effectful_semantic_v1.main.spend",
-    scriptIntegrityAuthentication:
-      "fraud_proofs/validation_trace/script_integrity_authentication_semantic_v1.main.spend",
-    scriptIntegrityCompact:
-      "fraud_proofs/validation_trace/script_integrity_compact_semantic_v1.main.spend",
-    scriptIntegrityWitnessSet:
-      "fraud_proofs/validation_trace/script_integrity_witness_set_semantic_v1.main.spend",
-    scriptIntegrityFinalize:
-      "fraud_proofs/validation_trace/script_integrity_finalize_semantic_v1.main.spend",
+    nativeScriptsTerminal: title(
+      "validationTraceDisputeNativeScriptsTerminalSemantic",
+    ),
+    nativeScriptsNative: title(
+      "validationTraceDisputeNativeScriptsNativeSemantic",
+    ),
+    nativeScriptsEffectful: title(
+      "validationTraceDisputeNativeScriptsEffectfulSemantic",
+    ),
+    scriptIntegrityAuthentication: title(
+      "validationTraceDisputeScriptIntegrityAuthenticationSemantic",
+    ),
+    scriptIntegrityCompact: title(
+      "validationTraceDisputeScriptIntegrityCompactSemantic",
+    ),
+    scriptIntegrityWitnessSet: title(
+      "validationTraceDisputeScriptIntegrityWitnessSetSemantic",
+    ),
+    scriptIntegrityFinalize: title(
+      "validationTraceDisputeScriptIntegrityFinalizeSemantic",
+    ),
     cekFinish: title("validationTraceDisputeCekFinishSemantic"),
     cekExecutionSelection: title(
       "validationTraceDisputeCekExecutionSelectionSemantic",
     ),
     cekContextStep: title("validationTraceDisputeCekContextStepSemantic"),
     cekCoreStep: title("validationTraceDisputeCekCoreStepSemantic"),
-    valueAndMintBegin:
-      "fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1.main.spend",
-    valueAndMintReplayBegin:
-      "fraud_proofs/validation_trace/value_and_mint_replay_begin_semantic_v1.main.spend",
-    valueAndMintReplayInput:
-      "fraud_proofs/validation_trace/value_and_mint_replay_input_semantic_v1.main.spend",
-    valueAndMintReplayAsset:
-      "fraud_proofs/validation_trace/value_and_mint_replay_asset_semantic_v1.main.spend",
-    valueAndMintReplayFinish:
-      "fraud_proofs/validation_trace/value_and_mint_replay_finish_semantic_v1.main.spend",
-    valueAndMintOutputDescriptor:
-      "fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend",
-    valueAndMintOutputAsset:
-      "fraud_proofs/validation_trace/value_and_mint_output_asset_semantic_v1.main.spend",
-    valueAndMintOutputFinish:
-      "fraud_proofs/validation_trace/value_and_mint_output_finish_semantic_v1.main.spend",
-    valueAndMintMintAsset:
-      "fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1.main.spend",
-    valueAndMintMintFinish:
-      "fraud_proofs/validation_trace/value_and_mint_mint_finish_semantic_v1.main.spend",
-    valueAndMintFinalize:
-      "fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend",
+    valueAndMintBegin: title("validationTraceDisputeValueAndMintBeginSemantic"),
+    valueAndMintReplayBegin: title(
+      "validationTraceDisputeValueAndMintReplayBeginSemantic",
+    ),
+    valueAndMintReplayInput: title(
+      "validationTraceDisputeValueAndMintReplayInputSemantic",
+    ),
+    valueAndMintReplayAsset: title(
+      "validationTraceDisputeValueAndMintReplayAssetSemantic",
+    ),
+    valueAndMintReplayFinish: title(
+      "validationTraceDisputeValueAndMintReplayFinishSemantic",
+    ),
+    valueAndMintOutputDescriptor: title(
+      "validationTraceDisputeValueAndMintOutputDescriptorSemantic",
+    ),
+    valueAndMintOutputAsset: title(
+      "validationTraceDisputeValueAndMintOutputAssetSemantic",
+    ),
+    valueAndMintOutputFinish: title(
+      "validationTraceDisputeValueAndMintOutputFinishSemantic",
+    ),
+    valueAndMintMintAsset: title(
+      "validationTraceDisputeValueAndMintMintAssetSemantic",
+    ),
+    valueAndMintMintFinish: title(
+      "validationTraceDisputeValueAndMintMintFinishSemantic",
+    ),
+    valueAndMintFinalize: title(
+      "validationTraceDisputeValueAndMintFinalizeSemantic",
+    ),
   },
   yields: {
     scriptSourcesStageTwoAdvance: title(

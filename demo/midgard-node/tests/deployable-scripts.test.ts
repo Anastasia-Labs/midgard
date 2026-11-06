@@ -28,6 +28,9 @@ import {
   POOL_CATALOGUE_ADDITIONS,
   poolContracts,
   poolRoles,
+  REMAINING_PHASE_CATALOGUE_ADDITIONS,
+  remainingPhaseContracts,
+  remainingPhaseRoles,
   withRetiredBondRole,
 } from "./helpers/deployable-catalogue-additions.js";
 import {
@@ -41,6 +44,15 @@ import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contract
 
 /** The manifest and publication lengths before the staged-operand additions. */
 const PRE_CEK_STAGED_LENGTHS = [694, 689] as const;
+/** The manifest and publication lengths before the remaining phases' additions. */
+const PRE_REMAINING_PHASE_LENGTHS = [705, 700] as const;
+
+type CatalogueAddition = {
+  readonly contract: string;
+  readonly role: string;
+  readonly purpose: string;
+  readonly commands: readonly string[];
+};
 
 const orderDigest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -61,11 +73,11 @@ const commandOrder = (contracts: SDK.MidgardValidators) => {
 };
 
 /**
- * Every order of `sets` (the real contract set first) with the staged-operand
- * additions and exactly the given contracts and roles excluded: the manifest
- * and publication lengths, and
- * the manifest, publication and per-command order digests an older
- * generation pinned.
+ * Every order of `sets` (the real contract set first) with the remaining
+ * phases' additions, the staged-operand additions unless `keepStaged`, and
+ * exactly the given contracts and roles excluded: the manifest and
+ * publication lengths, and the manifest, publication and per-command order
+ * digests an older generation pinned.
  */
 const expectOrdersWithout = (
   [real, ...others]: readonly SDK.MidgardValidators[],
@@ -75,6 +87,7 @@ const expectOrdersWithout = (
     lengths: [manifestLength, targetLength],
     pins,
     restoreRetiredBond,
+    keepStaged,
   }: {
     readonly contracts: readonly ReadonlySet<string>[];
     readonly roles: readonly ReadonlySet<string>[];
@@ -82,10 +95,14 @@ const expectOrdersWithout = (
     readonly pins: Readonly<Record<string, string>>;
     /** Older generations still listed the retired per-header bond yield. */
     readonly restoreRetiredBond?: boolean;
+    /** The pre-remaining-phase generation already listed the staged steps. */
+    readonly keepStaged?: boolean;
   },
 ) => {
-  const excludedContracts = [cekStagedContracts, ...contracts];
-  const excludedRoles = [cekStagedRoles, ...roles];
+  const staged = keepStaged === true ? [] : [cekStagedContracts];
+  const stagedRoles = keepStaged === true ? [] : [cekStagedRoles];
+  const excludedContracts = [remainingPhaseContracts, ...staged, ...contracts];
+  const excludedRoles = [remainingPhaseRoles, ...stagedRoles, ...roles];
   const restore = <T extends string | null>(names: readonly T[]) =>
     restoreRetiredBond === true ? withRetiredBondRole(names) : names;
   const without = (names: readonly string[]) =>
@@ -145,7 +162,7 @@ describe("deployable-script catalogue", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
       expect(manifest).toHaveLength(
-        PRE_CEK_STAGED_LENGTHS[0] + cekStagedContracts.size,
+        PRE_REMAINING_PHASE_LENGTHS[0] + remainingPhaseContracts.size,
       );
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         orderPins.MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -159,7 +176,7 @@ describe("deployable-script catalogue", () => {
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
     expect(realTargets).toHaveLength(
-      PRE_CEK_STAGED_LENGTHS[1] + cekStagedRoles.size,
+      PRE_REMAINING_PHASE_LENGTHS[1] + remainingPhaseRoles.size,
     );
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       orderPins.REAL_PUBLICATION_ORDER_DIGEST,
@@ -181,7 +198,17 @@ describe("deployable-script catalogue", () => {
     );
   });
 
-  it("preserves every pre-staged-operand order after excluding exactly the staged-operand additions", () => {
+  it("preserves every pre-remaining-phase order after excluding exactly the remaining phases' additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [],
+      roles: [],
+      keepStaged: true,
+      lengths: PRE_REMAINING_PHASE_LENGTHS,
+      pins: orderPins.PRE_REMAINING_PHASE_PINS,
+    });
+  });
+
+  it("preserves every pre-staged-operand order after excluding exactly the staged-operand and remaining phases' additions", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [],
       roles: [],
@@ -369,81 +396,53 @@ describe("deployable-script catalogue", () => {
     }
   });
 
-  it("publishes all six history additions with their exact roles, purposes and command coverage", () => {
-    expect(historyContracts.size).toBe(6);
-    expect(historyRoles.size).toBe(6);
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts);
-      expect(
-        manifest
-          .filter(({ contract }) => historyContracts.has(contract))
-          .map(({ contract, role, purpose, commands }) => ({
-            contract,
-            role,
-            purpose,
-            commands,
-          })),
-      ).toEqual(HISTORY_CATALOGUE_ADDITIONS);
-      const targets = nodeRuntimeReferenceScriptTargets(contracts);
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      for (const addition of HISTORY_CATALOGUE_ADDITIONS) {
-        const matching = targets.filter(({ name }) => name === addition.role);
-        expect(matching).toHaveLength(1);
-        expect(CONTRACT_BY_ROLE[addition.role]).toBe(addition.contract);
-        expect(matching[0]!.script).toEqual(
-          manifest.find(({ contract }) => contract === addition.contract)!
-            .script,
-        );
-        for (const commandName of REFERENCE_SCRIPT_COMMAND_NAMES) {
-          expect(
-            byCommand[commandName].filter(({ name }) => name === addition.role),
-          ).toHaveLength(
-            commandName === "node-runtime" ||
-              (addition.commands as readonly string[]).includes(commandName)
-              ? 1
-              : 0,
+  for (const [label, count, additions] of [
+    ["all six history", 6, HISTORY_CATALOGUE_ADDITIONS],
+    ["both pool", 2, POOL_CATALOGUE_ADDITIONS],
+    ["all 21 remaining-phase", 21, REMAINING_PHASE_CATALOGUE_ADDITIONS],
+  ] as readonly (readonly [string, number, readonly CatalogueAddition[]])[])
+    it(`publishes ${label} additions with their exact roles, purposes and command coverage`, () => {
+      const additionContracts = new Set<string>(
+        additions.map(({ contract }) => contract),
+      );
+      expect(additionContracts.size).toBe(count);
+      expect(new Set(additions.map(({ role }) => role)).size).toBe(count);
+      for (const contracts of [real, placeholder]) {
+        const manifest = manifestDeployableScripts(contracts);
+        expect(
+          manifest
+            .filter(({ contract }) => additionContracts.has(contract))
+            .map(({ contract, role, purpose, commands }) => ({
+              contract,
+              role,
+              purpose,
+              commands,
+            })),
+        ).toEqual(additions);
+        const targets = nodeRuntimeReferenceScriptTargets(contracts);
+        const byCommand = referenceScriptTargetsByCommand(contracts);
+        for (const addition of additions) {
+          const matching = targets.filter(({ name }) => name === addition.role);
+          expect(matching).toHaveLength(1);
+          expect(CONTRACT_BY_ROLE[addition.role]).toBe(addition.contract);
+          expect(matching[0]!.script).toEqual(
+            manifest.find(({ contract }) => contract === addition.contract)!
+              .script,
           );
+          for (const commandName of REFERENCE_SCRIPT_COMMAND_NAMES)
+            expect(
+              byCommand[commandName].filter(
+                ({ name }) => name === addition.role,
+              ),
+            ).toHaveLength(
+              commandName === "node-runtime" ||
+                addition.commands.includes(commandName)
+                ? 1
+                : 0,
+            );
         }
       }
-    }
-  });
-
-  it("publishes both pool additions with their exact roles, purposes and command coverage", () => {
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts);
-      expect(
-        manifest
-          .filter(({ contract }) => poolContracts.has(contract))
-          .map(({ contract, role, purpose, commands }) => ({
-            contract,
-            role,
-            purpose,
-            commands,
-          })),
-      ).toEqual(POOL_CATALOGUE_ADDITIONS);
-      const targets = nodeRuntimeReferenceScriptTargets(contracts);
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      for (const addition of POOL_CATALOGUE_ADDITIONS) {
-        const matching = targets.filter(({ name }) => name === addition.role);
-        expect(matching).toHaveLength(1);
-        expect(CONTRACT_BY_ROLE[addition.role]).toBe(addition.contract);
-        expect(matching[0]!.script).toEqual(
-          manifest.find(({ contract }) => contract === addition.contract)!
-            .script,
-        );
-        for (const commandName of REFERENCE_SCRIPT_COMMAND_NAMES) {
-          expect(
-            byCommand[commandName].filter(({ name }) => name === addition.role),
-          ).toHaveLength(
-            commandName === "node-runtime" ||
-              (addition.commands as readonly string[]).includes(commandName)
-              ? 1
-              : 0,
-          );
-        }
-      }
-    }
-  });
+    });
 
   it("gives every descriptor exactly the manifest role of its contract", () => {
     const descriptors = collectScriptDescriptors(real);

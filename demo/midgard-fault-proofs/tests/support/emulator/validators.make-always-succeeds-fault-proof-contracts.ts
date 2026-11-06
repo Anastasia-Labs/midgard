@@ -100,10 +100,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
     },
     zeroInput: scaffoldChain(zeroInputFirstStep, "zeroInput"),
     validationTraceDispute: {
-      // Deliberately one step, not core's full chain: only its first step is
-      // a deployment entry.
-      firstStep: alwaysValidationTraceDispute,
-      steps: [alwaysValidationTraceDispute],
+      ...scaffoldChain(alwaysValidationTraceDispute, "validationTraceDispute"),
       canonicalDecodePrepare: alwaysValidationTraceDispute,
       yields: {
         scriptSourcesStageTwoAdvance: reserve,

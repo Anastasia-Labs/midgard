@@ -235,5 +235,50 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "163"],
       ],
     },
+    validationTraceDisputeNativeScriptsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace native-scripts prepare",
+      manifestPosition: 720,
+      publicationPosition: 715,
+      referenceRolePosition: 715,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "9"],
+        ["resolvers", "9"],
+        ["steps", "164"],
+      ],
+    },
+    validationTraceDisputeScriptIntegrityPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace script-integrity prepare",
+      manifestPosition: 724,
+      publicationPosition: 719,
+      referenceRolePosition: 719,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "10"],
+        ["resolvers", "10"],
+        ["steps", "165"],
+      ],
+    },
+    validationTraceDisputeValueAndMintPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace value-and-mint prepare",
+      manifestPosition: 729,
+      publicationPosition: 724,
+      referenceRolePosition: 724,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "12"],
+        ["resolvers", "12"],
+        ["steps", "167"],
+      ],
+    },
   },
 );

@@ -15,7 +15,6 @@ import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
-import { FIRST_STEP_ONLY_DEPLOYMENT_CATEGORIES } from "../../../src/runtime.fraud-proof-deployment-entries-by-category.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../../../src/transition-trace/yield-references.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/index.js";
 import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/index.js";
@@ -83,11 +82,7 @@ export const buildRemovalDeploymentInfo = (
         const categoryName =
           category as keyof MidgardValidators["fraudProofContracts"];
         const steps = contracts.fraudProofContracts[categoryName].steps;
-        if (
-          steps.length < entryNames.length ||
-          (!FIRST_STEP_ONLY_DEPLOYMENT_CATEGORIES.has(categoryName) &&
-            steps.length !== entryNames.length)
-        ) {
+        if (steps.length !== entryNames.length) {
           throw new Error(
             `${category} removal deployment fixture has the wrong chain length: expected ${entryNames.length.toString()}, received ${steps.length.toString()}`,
           );

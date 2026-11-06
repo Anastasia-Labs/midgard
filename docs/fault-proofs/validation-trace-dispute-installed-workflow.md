@@ -36,6 +36,13 @@ proof item, semantic resolvers, the shared ScriptSources item chain, the CEK
 context and item stages, the canonical decode item stages and the prepare
 resolvers) and fails the build if its length differs from that constant.
 
+Every step is a
+[core deployment member](../../demo/midgard-core/src/deployment-manifest-identity/members.data.ts)
+whose `steps` family path is its index in that array, so the members' step
+names list the whole chain in order. Each is published as a reference script
+and carried in the deployment manifest. Deployment resolution compares every
+recorded step, not only the first, with the compiled step at its index.
+
 ## Verification
 
 [Resolver publication](../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts)

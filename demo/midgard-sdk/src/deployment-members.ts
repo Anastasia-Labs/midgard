@@ -26,6 +26,7 @@ import type { FaultProofBlueprint } from "./fraud-proof/contracts/blueprint.pars
 import { blueprintApplicationRecords } from "./fraud-proof/contracts/blueprint-applications.js";
 import { REDEEMER_ITEM_EXECUTOR_KEYS } from "./fraud-proof/contracts/families/shared-redeemer-item.js";
 import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "./fraud-proof/contracts/families/validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
+import { VALIDATION_TRACE_DISPUTE_STEP_COUNT } from "./fraud-proof/contracts/titles.js";
 import type { FaultProofContractChains } from "./fraud-proof/contracts/types.js";
 
 export { DEPLOYMENT_RECIPES } from "./deployment-members/recipes.js";
@@ -150,30 +151,44 @@ export type FamilyMemberValidator =
 /**
  * The raw projection may contain sparse arrays and omits shared-family aliases.
  * Members of different purposes at one path form one validator (for example a
- * spending script and its minting policy).
+ * spending script and its minting policy), and a member at several paths is
+ * that one validator at each of them.
  */
 const restoreRecordedFamilyScriptPaths = (
   family: keyof FaultProofContractChains,
   resolve: (contract: DeploymentContract) => FamilyMemberValidator,
 ): Record<string, unknown> => {
   const restored: Record<string, unknown> = {};
-  for (const contract of deploymentMembersForFamily(family)) {
+  const slot = (path: readonly string[]) => {
+    let target = restored;
+    for (let index = 0; index < path.length - 1; index++) {
+      const key = path[index]!;
+      if (target[key] === undefined)
+        target[key] = /^\d+$/u.test(path[index + 1]!) ? [] : {};
+      target = target[key] as Record<string, unknown>;
+    }
+    return { target, key: path[path.length - 1]! };
+  };
+  const members = deploymentMembersForFamily(family);
+  for (const contract of members) {
     const member: DeploymentMember = DEPLOYMENT_MEMBERS[contract];
     const validator = resolve(contract);
     for (const path of member.familyPaths) {
-      let target = restored;
-      for (let index = 0; index < path.length - 1; index++) {
-        const key = path[index]!;
-        if (target[key] === undefined)
-          target[key] = /^\d+$/u.test(path[index + 1]!) ? [] : {};
-        target = target[key] as Record<string, unknown>;
-      }
-      const key = path[path.length - 1]!;
+      const { target, key } = slot(path);
       target[key] =
         target[key] === undefined
           ? validator
           : { ...(target[key] as FamilyMemberValidator), ...validator };
     }
+  }
+  for (const contract of members) {
+    const paths = DEPLOYMENT_MEMBERS[contract].familyPaths.map(slot);
+    if (paths.length < 2) continue;
+    const merged = Object.assign(
+      {},
+      ...paths.map(({ target, key }) => target[key]),
+    ) as FamilyMemberValidator;
+    for (const { target, key } of paths) target[key] = merged;
   }
   return restored;
 };
@@ -197,7 +212,7 @@ type ValidationTraceScripts =
   FaultProofContractChains["validationTraceDispute"];
 type RecordedValidationTraceScripts = Omit<
   ValidationTraceScripts,
-  "cekContextItemStages" | "steps"
+  "cekContextItemStages"
 > & {
   readonly cekContextItemStages: Pick<
     ValidationTraceScripts["cekContextItemStages"],
@@ -207,8 +222,9 @@ type RecordedValidationTraceScripts = Omit<
 
 /**
  * Finalize the recorded validation-trace scripts before exposing the SDK chain.
- * Unpublished members explicitly refuse reads; shared CEK aliases use the
- * published redeemer-item programs.
+ * Every resolver and step slot is a core deployment member; a slot without
+ * one explicitly refuses reads. Shared CEK aliases use the published
+ * redeemer-item programs.
  */
 export const restoreValidationTraceDisputeScripts = ({
   resolve,
@@ -221,7 +237,7 @@ export const restoreValidationTraceDisputeScripts = ({
     "validationTraceDispute",
     resolve,
   );
-  // Each resolver list keeps its recorded slots; every other slot refuses.
+  // Each list keeps its recorded slots; every other slot refuses.
   const refuseUnrecorded = (
     list: unknown,
     keys: readonly string[],
@@ -255,9 +271,14 @@ export const restoreValidationTraceDisputeScripts = ({
     Object.keys(titles.prepares),
     "resolver",
   );
-  // Every resolver slot now resolves or refuses. The step list, which
-  // includes unrecorded members, is omitted from this private projection
-  // type and replaced below.
+  refuseUnrecorded(
+    projection.steps,
+    Array.from({ length: VALIDATION_TRACE_DISPUTE_STEP_COUNT }, (_, index) =>
+      index.toString(),
+    ),
+    "step",
+  );
+  // Every resolver and step slot now resolves or refuses.
   const recorded = projection as RecordedValidationTraceScripts;
   const redeemer = recorded.scriptSourcesStageOneRedeemerStages;
   return {
@@ -271,9 +292,6 @@ export const restoreValidationTraceDisputeScripts = ({
         0,
         REDEEMER_ITEM_EXECUTOR_KEYS.length,
       ),
-    },
-    get steps() {
-      return missingMember("steps (the full list includes unrecorded members)");
     },
   };
 };
