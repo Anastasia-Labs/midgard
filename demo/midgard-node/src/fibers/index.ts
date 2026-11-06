@@ -9,6 +9,7 @@ export * from "./block-commitment.js";
 export * from "./block-confirmation.js";
 export * from "./da-publication-reconciler.js";
 export * from "./l1-provider-readiness-refresher.js";
+export * from "./l2-tx-peer-forwarder.js";
 export * from "./merge.js";
 export * from "./monitor-mempool.js";
 export * from "./mpf-payload-audit.js";

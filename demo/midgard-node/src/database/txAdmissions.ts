@@ -32,6 +32,7 @@ export {
 } from "./txAdmissions.admit-without-byte-quota.js";
 export {
   claimBatchLease,
+  forgetLeasedPeerRows,
   loadClaimedPayloads,
   releaseForRetry,
 } from "./txAdmissions.claim-batch-lease.js";

@@ -178,6 +178,20 @@ describe("HTTP admission quotas and admin replay", () => {
     expect(recovered.accepted).toBe(true);
     if (recovered.accepted) recovered.release();
   });
+  it("keeps operator-peer clients, which no global bucket bounds, out of the public client table", () => {
+    let now = 0;
+    const ingress = createHttpIngress({ now: () => now });
+    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES + 100; index += 1) {
+      now += 1;
+      const result = ingress.reserve(`peer-${index}`, "peer", 0);
+      expect(result.accepted).toBe(true);
+      if (result.accepted) result.release();
+    }
+    expect(ingress.snapshot().peers).toBe(0);
+    const reader = ingress.reserve("reader", "read", 0);
+    expect(reader.accepted).toBe(true);
+    if (reader.accepted) reader.release();
+  });
   it("binds mutation signatures to method/target/session and claims even failed execution", async () => {
     const id = await session();
     const headers = signed(id);

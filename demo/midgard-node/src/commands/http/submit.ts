@@ -1,29 +1,10 @@
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
-import { SqlClient } from "@effect/sql/SqlClient";
-import { Cause, Duration, Effect, Exit, Metric, Option } from "effect";
+import { Duration, Effect, Metric, Option } from "effect";
 
-import { TxAdmissionsDB } from "../../database/index.js";
-import { DatabaseError } from "../../database/utils/common.js";
-import {
-  admissionFailureDefinitelyDidNotInsert,
-  commitAdmissionBacklogSlot,
-  releaseAdmissionBacklogSlot,
-  reserveAdmissionBacklogSlot,
-} from "../../fibers/index.js";
-import {
-  AdmissionWriter,
-  type AdmissionWriterShutdownError,
-  NodeConfig,
-} from "../../services/index.js";
+import { NodeConfig } from "../../services/index.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import { failWith500 } from "../listen-response.js";
-import {
-  normalizeSubmitTxCanonicalCborToNative,
-  validateSubmitTxCanonicalCbor,
-} from "../listen-utils.js";
 import {
   readSubmitBodyWithProtocolLimit,
   requestMediaType,
@@ -41,6 +22,10 @@ import {
   submitResponseDurationTimer,
   txCounter,
 } from "./submission-metrics.js";
+import {
+  admitCheckedTransaction,
+  checkSubmittedTransaction,
+} from "./transaction-admission.js";
 
 /**
  * A full submission queue answers 503 with this Retry-After, about one
@@ -173,136 +158,37 @@ export const postSubmitHandler = <R>(
           const transactionBytes = decodedSubmission.right.transactionCbor;
 
           const normalizeStartedAt = Date.now();
-          const validation = validateSubmitTxCanonicalCbor(
+          const checked = checkSubmittedTransaction(
             transactionBytes,
-            Math.min(
-              nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-              MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
-            ),
+            nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
           );
-          if (!validation.ok) {
-            yield* submitNormalizeDurationTimer(
-              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-            );
-            yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: publicSubmissionDiagnostic(
-                  validation.error,
-                  "E_INVALID_CANONICAL_TX",
-                ),
-              },
-              { status: validation.status },
-            );
-          }
-
-          const normalized = normalizeSubmitTxCanonicalCborToNative(
-            validation.txCanonicalCbor,
-          );
-          if (!normalized.ok) {
-            yield* submitNormalizeDurationTimer(
-              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-            );
-            yield* Effect.logInfo(`▫️ ${normalized.error}`);
-            yield* Effect.logInfo(`▫️ ${normalized.detail}`);
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: publicSubmissionDiagnostic(
-                  normalized.error,
-                  "E_INVALID_NATIVE_TX",
-                ),
-              },
-              { status: 400 },
-            );
-          }
-          const proofViolation = validateMidgardConsensusTxCbor(
-            normalized.txCanonicalCbor,
-          );
-          if (proofViolation !== null) {
-            yield* submitNormalizeDurationTimer(
-              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-            );
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: proofViolation.code,
-                feature: proofViolation.featureId,
-                detail: proofViolation.detail,
-              },
-              { status: 400 },
-            );
-          }
           yield* submitNormalizeDurationTimer(
             Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
           );
+          if (!checked.ok) {
+            for (const line of checked.log) yield* Effect.logInfo(`▫️ ${line}`);
+            yield* recordLatency();
+            return HttpServerResponse.json(checked.body, {
+              status: checked.status,
+            });
+          }
+          const normalized = checked.normalized;
 
           // Return the durable work as a suspended effect so both ingress
           // permits are released immediately after verification. PostgreSQL's
           // direct/microbatch admission quotas remain the durable queue bound.
           return Effect.gen(function* () {
             const durableAdmissionStartedAt = Date.now();
-            const reservation = yield* reserveAdmissionBacklogSlot(
-              nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-            );
-            const admissionWriter = yield* AdmissionWriter;
-            const admissionEffect: Effect.Effect<
-              TxAdmissionsDB.AdmitResult,
-              | DatabaseError
-              | TxAdmissionsDB.TxAdmissionConflictError
-              | TxAdmissionsDB.TxAdmissionBacklogFullError
-              | AdmissionWriterShutdownError,
-              SqlClient
-            > = reservation.reserved
-              ? admissionWriter.admitReserved({
-                  txId: normalized.txId,
-                  txCanonicalCbor: normalized.txCanonicalCbor,
-                  submitSource: normalized.source,
-                  maxBacklogBytes:
-                    nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-                })
-              : TxAdmissionsDB.admit({
-                  txId: normalized.txId,
-                  txCanonicalCbor: normalized.txCanonicalCbor,
-                  submitSource: normalized.source,
-                  currentBacklog: reservation.currentBacklog,
-                  maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-                  maxBacklogBytes:
-                    nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-                });
-            const admitted = yield* admissionEffect.pipe(
-              Effect.onExit((exit) => {
-                if (!reservation.reserved) return Effect.void;
-                if (Exit.isSuccess(exit)) {
-                  return exit.value.kind === "new"
-                    ? commitAdmissionBacklogSlot
-                    : releaseAdmissionBacklogSlot;
-                }
-                const failure = Option.getOrUndefined(
-                  Cause.failureOption(exit.cause),
-                );
-                // Conflict/backlog errors prove no row was inserted. A SqlError,
-                // interruption, or defect can be observed after PostgreSQL committed,
-                // so retain the slot conservatively until the next live-count refresh.
-                return admissionFailureDefinitelyDidNotInsert(failure)
-                  ? releaseAdmissionBacklogSlot
-                  : commitAdmissionBacklogSlot;
-              }),
-            );
+            const admitted = yield* admitCheckedTransaction({
+              normalized,
+              submitSource: normalized.source,
+              wakeTxQueueProcessor,
+            });
             yield* submitDurableAdmissionDurationTimer(
               Effect.succeed(
                 Duration.millis(Date.now() - durableAdmissionStartedAt),
               ),
             );
-            if (admitted.kind === "new") {
-              if (!reservation.reserved) {
-                return yield* Effect.dieMessage(
-                  "Durable admission inserted without a reserved backlog slot",
-                );
-              }
-              yield* wakeTxQueueProcessor;
-            }
 
             Effect.runSync(Metric.increment(txCounter));
             yield* recordLatency();

@@ -460,7 +460,19 @@ The main listener exposes a small operator-facing API. Common routes include:
   address (`GET`) or by a requested list of `txHash#outputIndex` references
   at `POST /utxos?by-outrefs`,
 - `/tx-status` for resolving the node's canonical status for a transaction,
-- `/healthz` and `/readyz` for health and readiness checks.
+- `/healthz` and `/readyz` for health and readiness checks,
+- `POST /peer/txs` and `POST /peer/inventory`, where the other active
+  operators share the L2 transactions they accepted.
+
+Set `L2_TX_PEERS` to the other operators' base URLs (comma separated) and the
+node forwards each transaction it accepts from its users to them, signed with
+its operator key. On each L1 advance, while it still has pending
+transactions, it also offers their ids and sends only those a peer has never
+seen. Whichever operator holds the next turn can then commit them. A receiver
+answers only keys in its on-chain active operator set and validates every
+transaction itself. A down peer costs a warning and the
+`l2_peer_forward_failures_total` metric, never a commit or readiness. Empty
+(the default) turns sharing off.
 
 The listener also exposes admin/operator routes for initialization, state
 inspection, and operational control. See

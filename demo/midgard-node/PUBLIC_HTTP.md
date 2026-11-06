@@ -56,6 +56,18 @@ Readonly batches are `POST /tx-status` and `POST /utxos`.
 `POST /submit` and `/tx/evaluate` have their declared bounded request
 envelopes. Other CLI operations have no HTTP dispatcher.
 
+Peer routes are **POST** `/peer/txs` and `/peer/inventory`, for operators
+sharing accepted L2 transactions (`L2_TX_PEERS`). Each takes
+`Content-Type: application/cbor`, a canonical CBOR array of byte strings
+(transactions, or 32-byte transaction ids), and two headers:
+`X-Midgard-Operator-Key`, the 32-byte Ed25519 operator verification key as
+lowercase hex, and `X-Midgard-Operator-Signature`, its signature over
+SHA-256 of `"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id ||
+body`. A missing or invalid signature returns 401 and a key outside the
+node's on-chain active operator set returns 403. Transactions pass the
+`/submit` checks and are admitted with source `peer`; `/peer/inventory`
+answers the ids the node has no admission row for.
+
 Protected reads are `GET /stateQueue`, `/operator/status` and `/admin/session`.
 They require `X-Midgard-Admin-Key`; the session response is not cacheable.
 Protected mutations are **POST** `/init`, `/commit`, `/merge`, `/logBlocksDB` and
@@ -78,7 +90,16 @@ create a fresh signed request if the operation is still required.
 ## Bounds and operator holds
 
 JSON bodies are at most 64 KiB; proof submission/evaluation bodies use the compiled
-64 MiB protocol envelope. Targets are at most 2 KiB and responses at most 1 MiB.
+64 MiB protocol envelope. A `/peer/txs` body holds at most one largest transaction
+(about 288 KiB) and a `/peer/inventory` body at most 20,000 ids (about 664 KiB); peer
+bodies are read under an ingress pool of their own, apart from `/submit`'s, and a
+peer body of unknown length holds only the larger of those two bounds against the
+shared ingress byte budget. Peers and users never hold each other's permits or
+rate tokens, but their admissions share the durable admission backlog: a peer
+burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
+The `peer` rate class has no global bucket, because it is charged before the
+signature is checked. Targets
+are at most 2 KiB and responses at most 1 MiB.
 Pages use `limit` (default 25, maximum 100) and an exclusive lowercase hex `cursor`;
 `nextCursor` is null at the end. Address-history and block cursors are transaction
 IDs; UTXO cursors are the canonical thirty-eight-byte ledger references. State-queue

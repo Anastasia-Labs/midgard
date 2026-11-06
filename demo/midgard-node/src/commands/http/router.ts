@@ -12,6 +12,7 @@ import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect } from "effect";
 
 import { requestTxQueueProcessorWakeup } from "../../fibers/index.js";
+import { PEER_INVENTORY_PATH, PEER_TXS_PATH } from "../../l2-peer/protocol.js";
 import {
   AdmissionWriter,
   BatchSql,
@@ -48,6 +49,7 @@ import {
   getOperatorStatusHandler,
   getStateQueueHandler,
 } from "./operator-inspection.js";
+import { postPeerInventoryHandler, postPeerTxsHandler } from "./peer-routes.js";
 import { getPipelineStatusHandler } from "./pipeline-status.js";
 import {
   getBlockHandler,
@@ -222,6 +224,11 @@ export const buildListenRouter = (
         postSubmitHandler(withMonitoring, requestTxQueueProcessorWakeup),
       ),
       HttpRouter.post(`/${TX_EVALUATE_ENDPOINT}`, postTxEvaluateHandler),
+      HttpRouter.post(
+        PEER_TXS_PATH,
+        postPeerTxsHandler(requestTxQueueProcessorWakeup),
+      ),
+      HttpRouter.post(PEER_INVENTORY_PATH, postPeerInventoryHandler),
     )
     .pipe(
       Effect.catchAllCause((cause) => failWith500("GET", "router", cause)),

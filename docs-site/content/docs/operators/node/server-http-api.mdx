@@ -109,9 +109,11 @@ until every refusing bucket has a token again, and this body:
 | `batch`    | `POST /tx-status`                        | 4, 1/s                     | 16, 4/s                |
 | `write`    | `POST /submit`                           | 4, 1/s                     | 16, 4/s                |
 | `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | 8, 1/s                 |
+| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 8, 4/s                     | none                   |
 
-Health and admin routes have no global bucket and keep their clients in a table
-of their own. They also have their own concurrency budget, and `/readyz` and the
+Health, admin and peer routes have no global bucket and keep their clients in a
+table of their own. A peer request is charged before its signature is checked,
+so a shared bucket would let unsigned traffic refuse the operators. They also have their own concurrency budget, and `/readyz` and the
 admin database reads use a database connection of their own. Neither a
 flood of public requests nor slow public requests holding every public slot
 can refuse them.
@@ -126,7 +128,7 @@ entries idle for 60 seconds are evicted; a new client that still finds no room
 gets `429` with `Retry-After: 5` and the error `Peer quota capacity is full`.
 The global rates keep it from filling: the node refuses to start when the sum of
 `globalBurst + 60 × globalPerSecond` over the public classes exceeds 8,192. The
-health and admin table, and the public table while rate limits are disabled,
+health, admin and peer table, and the public table while rate limits are disabled,
 evict the least recently used entry instead and never refuse a new client.
 
 Public requests are capped at 64 in flight plus a bound on in-flight body
@@ -137,7 +139,7 @@ table. Overflow answers `503` with `Retry-After: 5` and
 | Variable                                                                                             | Default         | Meaning                                                                                         |
 | ---------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
 | `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
-| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`                                                    | the table above | `peerBurst,peerPerSecond`                                                                       |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`                            | the table above | `peerBurst,peerPerSecond`                                                                       |
 | `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                           |
 | `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
 
@@ -147,6 +149,47 @@ health, readiness and admin routes use a per-IP zone of their own and no global
 zone. A CDN or load balancer in front of that proxy makes every client behind it
 look like the CDN's addresses, so they share those buckets; rate limit at the
 CDN as well, or keep the proxy as the first hop.
+
+## Peer routes
+
+Operators share the L2 transactions they accept so that whichever operator
+holds the next turn can commit them. A node with `L2_TX_PEERS` set (the other
+operators' base URLs, comma separated, at most 16; empty turns sharing off)
+sends each transaction it accepts from its users to every peer, and on each
+L1 advance, while it still has pending transactions, offers their ids and
+sends only those a peer has never seen.
+
+- `POST /peer/txs` takes a batch of transactions and admits each with source
+  `peer` after the same checks as `POST /submit`. It answers
+  `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
+  when the admission backlog is full.
+- `POST /peer/inventory` takes transaction ids and answers the ids the node has
+  no admission row for, as the same CBOR list.
+- A `/peer/txs` body holds at most one largest transaction (about 288 KiB) and
+  a `/peer/inventory` body at most 20,000 ids. Peer bodies are read under an
+  ingress pool of their own, as many requests deep as `/submit`'s, so peers
+  and users never hold each other's permits; a full pool answers `503`. Peer
+  and user admissions do share the durable admission backlog, so a peer burst
+  that fills it makes `/submit` answer `503` until it drains, and the reverse. A peer body of
+  unknown length holds only the larger of those two bounds against the node's
+  shared ingress byte budget, never the 64 MiB proof envelope.
+
+Both take `Content-Type: application/cbor`, a canonical CBOR array of byte
+strings, and two headers: `X-Midgard-Operator-Key`, the sender's 32-byte
+Ed25519 operator verification key as lowercase hex, and
+`X-Midgard-Operator-Signature`, its signature over SHA-256 of
+`"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id || body`. A
+missing or invalid signature answers `401`; a key outside the node's on-chain
+active operator set answers `403`.
+
+The receiver validates every transaction against its own ledger. A peer
+transaction refused only because its input is not there yet
+(`E_INPUT_NOT_FOUND`, `E_DEPENDS_ON_REJECTED_TX`) is forgotten rather than
+rejected, so a later offer can deliver it again; every other refusal is
+final. A down, slow or hung peer never holds commits, readiness or the other
+peers: each peer has its own lane, which backs off, logs a warning and counts
+`l2_peer_forward_failures_total`. A peer that refuses the sender's key (`403`)
+is retried at the longest backoff and warned about once.
 
 ## Admin routes
 

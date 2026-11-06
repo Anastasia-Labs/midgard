@@ -10,6 +10,7 @@ import {
   daPublicationReconcilerFiber,
   L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS,
   l1ProviderReadinessRefresherFiber,
+  l2TxPeerForwarderFiber,
   mergeFiber,
   monitorMempoolFiber,
   mpfPayloadAuditFiber,
@@ -174,6 +175,7 @@ export const nodeFibers = ({
     mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS),
   ),
   importCheck: importCheckFiber,
+  l2TxPeerForwarder: l2TxPeerForwarderFiber,
 });
 
 /**

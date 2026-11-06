@@ -827,7 +827,9 @@ Columns:
 - `next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 - `reject_code TEXT`
 - `reject_detail TEXT`
-- `submit_source TEXT NOT NULL`
+- `submit_source TEXT NOT NULL` (`native` from `/submit`, `peer` from another
+  operator's `/peer/txs`; a peer row whose verdict is `E_INPUT_NOT_FOUND` or
+  `E_DEPENDS_ON_REJECTED_TX` is deleted instead of rejected)
 - `request_count BIGINT NOT NULL DEFAULT 1`
 
 After applying the [Flat-script migration](src/database/migrations/sql/0029_drop_cek_program_material.sql),

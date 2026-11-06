@@ -57,7 +57,7 @@ http {
   uwsgi_temp_path /tmp/uwsgi;
   scgi_temp_path /tmp/scgi;
   map $request_method $log_method { default other; GET GET; POST POST; OPTIONS OPTIONS; }
-  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /init init; /commit commit; /merge merge; }
+  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /init init; /commit commit; /merge merge; /peer/txs peer-txs; /peer/inventory peer-inventory; }
   log_format public escape=json '{"method":"$log_method","route":"$log_route","status":$status,"bytes":$body_bytes_sent,"seconds":$request_time}';
   access_log /dev/stdout public;
   limit_req_zone $binary_remote_addr zone=per_ip:1m rate=10r/s;
@@ -89,6 +89,8 @@ http {
     proxy_set_header X-Midgard-Admin-Timestamp $http_x_midgard_admin_timestamp;
     proxy_set_header X-Midgard-Admin-Nonce $http_x_midgard_admin_nonce;
     proxy_set_header X-Midgard-Admin-Signature $http_x_midgard_admin_signature;
+    proxy_set_header X-Midgard-Operator-Key $http_x_midgard_operator_key;
+    proxy_set_header X-Midgard-Operator-Signature $http_x_midgard_operator_signature;
     proxy_http_version 1.1;
     proxy_request_buffering off;
     proxy_buffering off;
@@ -104,6 +106,8 @@ http {
     proxy_ssl_protocols TLSv1.3;
     location = /submit { client_max_body_size 64m; proxy_pass ${upstream}; }
     location = /tx/evaluate { client_max_body_size 64m; proxy_pass ${upstream}; }
+    location = /peer/txs { client_max_body_size 1m; proxy_pass ${upstream}; }
+    location = /peer/inventory { client_max_body_size 1m; proxy_pass ${upstream}; }
     location ~ ^/(healthz|readyz|init|commit|merge|stateQueue|logBlocksDB|logGlobals|operator/status|admin/session)$ { limit_req zone=liveness_ip burst=30 nodelay; proxy_pass ${upstream}; }
     location / { proxy_pass ${upstream}; }
   }

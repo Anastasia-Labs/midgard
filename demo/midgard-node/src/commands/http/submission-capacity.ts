@@ -16,13 +16,15 @@ type SubmitIngressPool = {
 const submitIngressPools = new Map<string, SubmitIngressPool>();
 
 const submitIngressPool = ({
+  pool,
   maxConcurrency,
   maxInFlightBytes,
 }: {
+  readonly pool: string;
   readonly maxConcurrency: number;
   readonly maxInFlightBytes: number;
 }): SubmitIngressPool => {
-  const key = `${maxConcurrency.toString()}:${maxInFlightBytes.toString()}`;
+  const key = `${pool}:${maxConcurrency.toString()}:${maxInFlightBytes.toString()}`;
   const existing = submitIngressPools.get(key);
   if (existing !== undefined) return existing;
   const created = {
@@ -92,14 +94,17 @@ export const readSubmitBodyWithProtocolLimit = (
  * Runs the body-read/decode/verification path only while both global
  * request-count and byte-weighted permits are held. Ingress is fail-fast when
  * either bound is exhausted so waiting sockets cannot become an unbounded
- * queue. Both permits are released by Effect on every exit.
+ * queue. Both permits are released by Effect on every exit. Each named
+ * `pool` has its own permits, so traffic of one pool never takes another's.
  */
 export const withSubmitIngressPermit = <A, E, R>({
+  pool = "submit",
   maxConcurrency,
   maxInFlightBytes,
   permitBytes,
   effect,
 }: {
+  readonly pool?: string;
   readonly maxConcurrency: number;
   readonly maxInFlightBytes: number;
   readonly permitBytes: number;
@@ -116,11 +121,11 @@ export const withSubmitIngressPermit = <A, E, R>({
   ) {
     return Effect.dieMessage("Invalid submit ingress permit configuration");
   }
-  const pool = submitIngressPool({ maxConcurrency, maxInFlightBytes });
-  return pool.concurrency
+  const permits = submitIngressPool({ pool, maxConcurrency, maxInFlightBytes });
+  return permits.concurrency
     .withPermitsIfAvailable(
       1,
-    )(pool.bytes.withPermitsIfAvailable(permitBytes)(effect))
+    )(permits.bytes.withPermitsIfAvailable(permitBytes)(effect))
     .pipe(Effect.map(Option.flatten));
 };
 

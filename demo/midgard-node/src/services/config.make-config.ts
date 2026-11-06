@@ -19,6 +19,7 @@ import { httpIngressConfig } from "./config.http-proxy-peers.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { importCheckConfig } from "./config.import-check.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
+import { l2TxPeersConfig } from "./config.l2-tx-peers.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
 import {
   boundedValidationInteger,
@@ -278,6 +279,7 @@ const makeConfig = Effect.gen(function* () {
     Config.map((value) => value.trim().toLowerCase() === "true"),
   );
   const httpIngress = yield* httpIngressConfig;
+  const l2TxPeers = yield* l2TxPeersConfig;
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
   ).pipe(Config.withDefault(10_000));
@@ -887,6 +889,7 @@ const makeConfig = Effect.gen(function* () {
     MIN_FEE_B: minFeeB,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ...httpIngress,
+    L2_TX_PEERS: l2TxPeers,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,

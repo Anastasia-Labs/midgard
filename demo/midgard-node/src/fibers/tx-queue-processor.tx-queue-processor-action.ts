@@ -1,6 +1,9 @@
-import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
+import {
+  processedTxFromValidatedTx,
+  RejectCodes,
+} from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Duration, Effect, Exit, Metric, Ref } from "effect";
+import { Duration, Effect, Exit, Metric, Ref, SubscriptionRef } from "effect";
 
 import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -46,6 +49,12 @@ import {
   selectValidationBatchSize,
   type TxQueueProcessorActionResult,
 } from "./tx-queue-processor.run-phase-afor-batch.js";
+
+/** The verdicts that only say "not yet" for a peer-forwarded transaction. */
+const PEER_RETRYABLE_CODES: ReadonlySet<string> = new Set([
+  RejectCodes.InputNotFound,
+  RejectCodes.DependsOnRejectedTx,
+]);
 
 export const txQueueProcessorAction = (
   recoverySweep: boolean,
@@ -264,12 +273,29 @@ export const txQueueProcessorAction = (
 
             yield* phaseBSequence.runPersistence(
               Effect.gen(function* () {
-                if (allRejected.length > 0) {
+                // A peer-forwarded row whose verdict only says "not yet" is
+                // forgotten, not rejected: the sender offers it again later.
+                const forgotten = new Set(
+                  (yield* TxAdmissionsDB.forgetLeasedPeerRows({
+                    txIds: allRejected
+                      .filter(({ code }) => PEER_RETRYABLE_CODES.has(code))
+                      .map(({ txId }) => txId),
+                    leaseOwner,
+                  })).map((txId) => txId.toString("hex")),
+                );
+                if (forgotten.size > 0)
+                  yield* Effect.logInfo(
+                    `Forgot ${forgotten.size.toString()} peer-forwarded L2 txs this node cannot validate yet; the peer-admission log names who sent them`,
+                  ).pipe(Effect.annotateLogs({ txIds: [...forgotten] }));
+                const rejected = allRejected.filter(
+                  ({ txId }) => !forgotten.has(txId.toString("hex")),
+                );
+                if (rejected.length > 0) {
                   const rejectionInsertStart = Date.now();
                   yield* TxAdmissionsDB.markRejected({
                     rows: admittedRows,
                     leaseOwner,
-                    rejectedTxs: allRejected,
+                    rejectedTxs: rejected,
                   });
                   yield* validationRejectionInsertDurationTimer(
                     Effect.succeed(
@@ -278,7 +304,7 @@ export const txQueueProcessorAction = (
                   );
                   yield* Metric.incrementBy(
                     validationRejectCounter,
-                    BigInt(allRejected.length),
+                    BigInt(rejected.length),
                   );
                 }
 
@@ -291,6 +317,10 @@ export const txQueueProcessorAction = (
                       processedTxFromValidatedTx,
                     ),
                   });
+                  yield* SubscriptionRef.update(
+                    globals.L2_PEER_FORWARD_GENERATION,
+                    (generation) => generation + 1,
+                  );
                   yield* validationMempoolInsertDurationTimer(
                     Effect.succeed(
                       Duration.millis(Date.now() - mempoolInsertStart),

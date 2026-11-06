@@ -30,6 +30,7 @@ import importChecksSql from "./sql/0028_import_checks.sql";
 import dropCekProgramMaterialSql from "./sql/0029_drop_cek_program_material.sql";
 import importCheckRetriesSql from "./sql/0030_import_check_retries.sql";
 import dropUserSubmissionRecordsSql from "./sql/0031_drop_user_submission_records.sql";
+import peerSubmitSourceSql from "./sql/0032_peer_submit_source.sql";
 
 export type Migration = {
   readonly version: number;
@@ -255,6 +256,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_user_submission_records",
     checksumSha256: sha256Hex(dropUserSubmissionRecordsSql),
     sql: dropUserSubmissionRecordsSql,
+    transactional: true,
+  },
+  {
+    version: 32,
+    name: "peer_submit_source",
+    checksumSha256: sha256Hex(peerSubmitSourceSql),
+    sql: peerSubmitSourceSql,
     transactional: true,
   },
 ] as const;

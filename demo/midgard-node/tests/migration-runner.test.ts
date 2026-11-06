@@ -107,6 +107,7 @@ describe("splitSqlStatements", () => {
       [29, "drop_cek_program_material", true],
       [30, "import_check_retries", true],
       [31, "drop_user_submission_records", true],
+      [32, "peer_submit_source", true],
     ]);
   });
 

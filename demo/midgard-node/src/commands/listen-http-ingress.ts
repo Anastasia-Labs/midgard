@@ -9,6 +9,7 @@ import {
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { Effect, Option } from "effect";
 
+import { PEER_MAX_BODY_BYTES } from "../l2-peer/protocol.js";
 import { NodeConfig } from "../services/config.js";
 import type { NodeConfigDep } from "../services/config.node-config-dep.js";
 import {
@@ -212,20 +213,26 @@ export const withHttpIngress = <E, R>(
         ? "health"
         : actions[0]![2] === "admin"
           ? "admin"
-          : path === "/tx/evaluate"
-            ? "evaluate"
-            : request.method === "POST" && path === "/tx-status"
-              ? "batch"
-              : request.method === "POST" && path !== "/utxos"
-                ? "write"
-                : "read";
+          : actions[0]![2] === "peer"
+            ? "peer"
+            : path === "/tx/evaluate"
+              ? "evaluate"
+              : request.method === "POST" && path === "/tx-status"
+                ? "batch"
+                : request.method === "POST" && path !== "/utxos"
+                  ? "write"
+                  : "read";
+    // Binary bodies: up to the DA proof bound for a submission or an
+    // evaluation, up to the peer bound for a peer's CBOR list.
     const proofBody = path === "/submit" || path === "/tx/evaluate";
     const maxBody =
       request.method === "GET"
         ? 0
-        : proofBody
-          ? MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
-          : HTTP_JSON_BODY_MAX_BYTES;
+        : kind === "peer"
+          ? PEER_MAX_BODY_BYTES
+          : proofBody
+            ? MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
+            : HTTP_JSON_BODY_MAX_BYTES;
     const rawLength = request.headers["content-length"];
     if (rawLength !== undefined && !/^(0|[1-9][0-9]*)$/u.test(rawLength))
       return yield* HttpServerResponse.json(
@@ -241,6 +248,7 @@ export const withHttpIngress = <E, R>(
     if (
       request.method === "POST" &&
       !proofBody &&
+      kind !== "peer" &&
       !["/init", "/commit", "/merge", "/logBlocksDB", "/logGlobals"].includes(
         path,
       ) &&

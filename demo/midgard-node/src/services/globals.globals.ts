@@ -179,6 +179,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Bumped by the follower driver each time it applies a new view (N2):
     // the head change the planner fibers wake on (`l1-head-trigger.ts`).
     const L1_HEAD_SEQUENCE = yield* SubscriptionRef.make<number>(0);
+    // Bumped after the tx-queue processor accepts transactions: the wake of
+    // the forwarder that shares them with the other operators.
+    const L2_PEER_FORWARD_GENERATION = yield* SubscriptionRef.make<number>(0);
 
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
@@ -293,6 +296,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       FOLLOWER_WRITE_GATE,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,
+      L2_PEER_FORWARD_GENERATION,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,

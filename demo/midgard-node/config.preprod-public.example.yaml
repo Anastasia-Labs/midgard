@@ -60,6 +60,10 @@ POSTGRES_DB: "midgard"
 HTTP_TRUSTED_PROXY_PEERS: "10.91.7.2"
 # The public runtime refuses fewer than 2 validation workers.
 VALIDATION_WORKER_POOL_SIZE: "4"
+# Other operators' node API base URLs (comma separated, at most 16). The node
+# sends them the L2 transactions it accepts so the operator holding the next
+# turn can commit them. Empty turns sharing off.
+L2_TX_PEERS: ""
 
 # --- Public release identity (required) -----------------------------------------
 # The API does not open until the signed release verifies against these.

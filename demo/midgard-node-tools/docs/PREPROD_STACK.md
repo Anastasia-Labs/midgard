@@ -248,6 +248,13 @@ origin once the stack has initialized, registers and activates its operator,
 and runs the node on the stack's Cardano node socket, publishing to the stack's
 committee. It never runs wallet journeys. Rerun the same command to resume or confirm it.
 
+To let each operator commit the other's L2 transactions, set `L2_TX_PEERS` in
+both nodes' `.env` to the other node's API as its container reaches it, for
+example `L2_TX_PEERS=http://host.docker.internal:3020` in the stack's `.env`
+and `L2_TX_PEERS=http://host.docker.internal:3010` in the second instance's
+(the endpoints of the example configurations). Rerun each command to apply
+it. Empty, the default, leaves sharing off.
+
 A second instance of a public stack (`preprod-rehearsal` or `preprod-public`)
 runs from a linked worktree built for the stack's profile, with
 `MIDGARD_DEPLOYMENT_PROFILE` naming it and `RUN_GENESIS_ON_STARTUP=false`; copy

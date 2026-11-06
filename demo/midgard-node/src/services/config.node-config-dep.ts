@@ -152,6 +152,9 @@ export type NodeConfigDep = {
   ADMIN_API_KEY: string;
   HTTP_TRUSTED_PROXY_PEERS: readonly string[];
   HTTP_RATE_LIMITS: HttpRateLimitPolicy;
+  /** The other operators' node URLs this node shares accepted L2
+   * transactions with (`config.l2-tx-peers.ts`); empty turns sharing off. */
+  L2_TX_PEERS: readonly string[];
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   SUBMIT_INGRESS_MAX_CONCURRENCY: number;

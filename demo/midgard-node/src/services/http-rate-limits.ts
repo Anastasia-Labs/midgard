@@ -4,10 +4,13 @@
  */
 
 /**
- * `health` (`/healthz`, `/readyz`) and `admin` (operator routes) have no global
- * bucket, so a public flood cannot starve them; their clients live in a table
- * of their own. `batch` is `POST /tx-status`; `POST /utxos` stays `read`
- * because the CLI pages it at about eight requests a second.
+ * `health` (`/healthz`, `/readyz`), `admin` (operator routes) and `peer` (the
+ * operator-to-operator sharing routes `/peer/txs` and `/peer/inventory`) have
+ * no global bucket, so a public flood cannot starve them; their clients live
+ * in a table of their own. A `peer` request is charged before its signature
+ * is checked, so a shared bucket would let unsigned traffic refuse the
+ * operators. `batch` is `POST /tx-status`; `POST /utxos` stays `read` because
+ * the CLI pages it at about eight requests a second.
  */
 export const HTTP_RATE_CLASSES = [
   "health",
@@ -16,6 +19,7 @@ export const HTTP_RATE_CLASSES = [
   "batch",
   "write",
   "evaluate",
+  "peer",
 ] as const;
 export type HttpRateClass = (typeof HTTP_RATE_CLASSES)[number];
 export const HTTP_GLOBAL_RATE_CLASSES = [
@@ -80,5 +84,6 @@ export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
       peer: { burst: 2, perSecond: 0.2 },
       global: { burst: 8, perSecond: 1 },
     },
+    peer: { peer: { burst: 8, perSecond: 4 } },
   },
 };

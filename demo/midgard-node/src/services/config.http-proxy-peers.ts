@@ -63,7 +63,7 @@ const parseRate = (
 
 /**
  * `HTTP_RATE_LIMIT_<CLASS>` overrides one class: `peerBurst,peerPerSecond` for
- * HEALTH and ADMIN, and `peerBurst,peerPerSecond,globalBurst,globalPerSecond`
+ * HEALTH, ADMIN and PEER, and `peerBurst,peerPerSecond,globalBurst,globalPerSecond`
  * for READ, BATCH, WRITE and EVALUATE. Unset keeps the default.
  */
 const httpRateClassConfig = (kind: HttpRateClass) => {

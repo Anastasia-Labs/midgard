@@ -101,9 +101,10 @@ const evictLeastRecent = (table: Map<string, HttpRatePeer>): boolean => {
 
 /**
  * Token buckets per client key and class, plus one global bucket per public
- * class. Health and admin clients live in their own table, so neither a public
- * flood nor an address spray against public routes can refuse them. Each
- * table keeps its keys in least-recently-used order.
+ * class. Clients of a class with no global bucket (health, admin, peer) live
+ * in their own table, so neither a public flood nor an address spray against
+ * public routes can refuse them. Each table keeps its keys in
+ * least-recently-used order.
  */
 export const createHttpRateLimiter = (
   policy: HttpRateLimitPolicy,
@@ -118,8 +119,9 @@ export const createHttpRateLimiter = (
         tokens: rates.global.burst,
         updatedAt: start,
       };
+  // Only global buckets bound how fast the public table fills.
   const tableFor = (kind: HttpRateClass) =>
-    kind === "health" || kind === "admin" ? livenessPeers : publicPeers;
+    policy.classes[kind].global === undefined ? livenessPeers : publicPeers;
 
   /** Checks every bucket a request draws from. Allocates nothing. */
   const check = (
@@ -153,7 +155,8 @@ export const createHttpRateLimiter = (
    * - the enabled public table evicts only keys idle for the whole window, so
    *   eviction cannot reset a public client's quota, and refuses otherwise;
    *   the global rates keep it from filling (checked when config loads);
-   * - the health/admin table, and the public table with rate limits disabled,
+   * - the health/admin/peer table, and the public table with rate limits
+   *   disabled,
    *   evict the least recently used key, because losing such a quota costs
    *   nothing and refusing the client is the harm.
    * At most 72 requests are in flight, so an evictable key always exists.

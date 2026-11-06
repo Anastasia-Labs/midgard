@@ -9,6 +9,7 @@ export * as DepositsDB from "./deposits.js";
 export * as ForcedTransactionsDB from "./forcedTransactions.js";
 export * as ImmutableDB from "./immutable.js";
 export * as InitDB from "./init.js";
+export * as L2PeerShareDB from "./l2PeerShare.js";
 export * as MempoolDB from "./mempool.js";
 export * as MempoolInclusionsDB from "./mempoolInclusions.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";

@@ -76,7 +76,7 @@ export const Status = {
 
 export type Status = (typeof Status)[keyof typeof Status];
 
-export type SubmitSource = "native" | "backfill";
+export type SubmitSource = "native" | "backfill" | "peer";
 
 export enum Columns {
   TX_ID = "tx_id",

@@ -232,3 +232,33 @@ export const releaseForRetry = ({
       "Failed to release admissions for retry",
     ),
   );
+
+/**
+ * Deletes the peer-forwarded rows among `txIds` that this owner still leases,
+ * with their payloads, and returns the ids it deleted. A peer row whose
+ * verdict only says "not yet" (an input this node has not seen) is forgotten
+ * rather than rejected, so the sender's next offer is admitted afresh.
+ */
+export const forgetLeasedPeerRows = ({
+  txIds,
+  leaseOwner,
+}: {
+  readonly txIds: readonly Buffer[];
+  readonly leaseOwner: string;
+}): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (txIds.length === 0) return [];
+    const sql = yield* SqlClient.SqlClient;
+    // The payload row goes with it (ON DELETE CASCADE).
+    const deleted = yield* sql<{
+      readonly tx_id: Buffer;
+    }>`DELETE FROM ${sql(tableName)}
+      WHERE ${sql.in(Columns.TX_ID, txIds)}
+        AND ${sql(Columns.SUBMIT_SOURCE)} = 'peer'
+        AND ${sql(Columns.STATUS)} = 'validating'
+        AND ${sql(Columns.LEASE_OWNER)} = ${leaseOwner}
+      RETURNING ${sql(Columns.TX_ID)}`;
+    return deleted.map((row) => row.tx_id);
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to forget peer admissions"),
+  );

@@ -34,7 +34,10 @@ export const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 
 export const HEALTH_ENDPOINT: string = "healthz";
 
-/** Installed HTTP surface. CLI-only operator commands are never dispatched over HTTP. */
+/**
+ * Installed HTTP surface. CLI-only operator commands are never dispatched over
+ * HTTP. `peer` routes take requests signed by an active operator's key.
+ */
 export const HTTP_ROUTE_ACTIONS = [
   ["GET", "/healthz", "public"],
   ["GET", "/readyz", "public"],
@@ -51,6 +54,8 @@ export const HTTP_ROUTE_ACTIONS = [
   ["GET", "/block", "public"],
   ["POST", "/submit", "public"],
   ["POST", "/tx/evaluate", "public"],
+  ["POST", "/peer/txs", "peer"],
+  ["POST", "/peer/inventory", "peer"],
   ["POST", "/init", "admin"],
   ["POST", "/commit", "admin"],
   ["POST", "/merge", "admin"],
