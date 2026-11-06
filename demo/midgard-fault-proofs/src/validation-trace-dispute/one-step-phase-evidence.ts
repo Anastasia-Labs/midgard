@@ -189,6 +189,9 @@ export type PhaseSemanticEvidence = Readonly<{
   /** The fields of the auxiliary witness it fixes itself, by position,
    * at the Data CBOR it fixes each to: it takes the others alone. */
   fixes?: Readonly<Record<number, string>>;
+  /** The optional fields of the auxiliary witness it takes the value of,
+   * by position: it wraps each itself. */
+  unwraps?: readonly number[];
   /** What it claims of the item beside the evidence, as Data CBOR, from
    * the field's preimage and the item's index. */
   claims?: (preimage: string, itemIndex: number) => readonly string[];
@@ -210,6 +213,10 @@ export type PhaseSemanticEvidence = Readonly<{
  * the source scan witness. */
 const NO_SIGNER_SET_PROOF_CBOR = constr(0, []);
 const NATIVE_LANGUAGE_TAG_CBOR = integer(0);
+
+/** `None`, and the empty list. */
+const NONE_CBOR = constr(1, []);
+const EMPTY_LIST_CBOR = "80";
 
 /** `NativeScriptTokenWitness { chunk_proof, next_chunk_proof }` beside
  * `NoSignerSetProof`. */
@@ -318,6 +325,19 @@ export const PHASE_SEMANTIC_EVIDENCE: Readonly<
     inlineLimit: VALIDATION_TRACE_SCRIPT_SOURCES_OBSERVER_INLINE_LIMIT,
     claims: observerClaims,
     yieldFields: SCRIPT_SOURCES_OBSERVER_YIELDS,
+  },
+  // `NativeExecutionDescriptorWitness`: the native descriptor fixes the
+  // native language tag and wraps its first chunk's proof itself; the
+  // effectful descriptor fixes that it has neither a first chunk's proof
+  // nor signer peaks.
+  nativeScriptsNativeSemantic: {
+    auxiliary: 33,
+    fixes: Object.freeze({ 1: NATIVE_LANGUAGE_TAG_CBOR }),
+    unwraps: Object.freeze([15]),
+  },
+  nativeScriptsEffectfulSemantic: {
+    auxiliary: 33,
+    fixes: Object.freeze({ 15: NONE_CBOR, 16: EMPTY_LIST_CBOR }),
   },
 });
 

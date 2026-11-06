@@ -55,7 +55,8 @@ const TRANSACTION_FIELD_ITEM_WITNESS = 28;
  * carries inline beside the proof that the signer signed; or our trace's
  * own auxiliary witness at the step, of the constructor `auxiliary`, whose
  * fields the semantic resolver takes but those `fixed` names at the values
- * it fixes them to, or, with `yieldList`, from which it
+ * it fixes them to, and of the options `unwrapped` names the values, or,
+ * with `yieldList`, from which it
  * derives its evidence, invoking the yields `yieldList` in order; or that
  * auxiliary witness whole beside its role `role`, with the yield
  * `itemYield` of that role; or the descriptor step claim of that auxiliary
@@ -67,6 +68,7 @@ export type PhaseEvidence =
       auxiliary: number;
       yieldList?: readonly ValidationTracePhaseYield[];
       fixed?: Readonly<Record<number, Data>>;
+      unwrapped?: readonly number[];
     }>
   | Readonly<{
       auxiliary: number;
@@ -322,12 +324,20 @@ export const phaseDrive = ({
         );
       } else if (evidence !== undefined && "fixed" in evidence) {
         // It takes the fields but those it fixes, which our evidence carries
-        // at the values it fixes them to.
+        // at the values it fixes them to, and of an option it wraps itself,
+        // the value.
         const fixed = evidence.fixed ?? {};
+        const unwrapped = evidence.unwrapped ?? [];
         for (const [index, value] of Object.entries(fixed))
           expect(expected.fields[Number(index)]).toStrictEqual(value);
         expect(fields).toStrictEqual(
-          expected.fields.filter((_, index) => !Object.hasOwn(fixed, index)),
+          expected.fields.flatMap((field, index) =>
+            Object.hasOwn(fixed, index)
+              ? []
+              : unwrapped.includes(index)
+                ? [(field as Constr<Data>).fields[0]]
+                : [field],
+          ),
         );
       } else if (yieldList === undefined)
         expect(fields).toStrictEqual([

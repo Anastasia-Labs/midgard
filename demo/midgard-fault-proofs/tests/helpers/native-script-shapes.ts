@@ -81,3 +81,15 @@ export const betweenSignersNativeScript = (
     ],
   });
 };
+
+/** An `any` script the owner's signature satisfies first, whose `count`
+ * other branches are each the signature of a key nobody holds, the least
+ * key hash: 128 of them take the script past one chunk. */
+export const ownerAmongManyNativeScript = (count: number) =>
+  nativeScriptWitness({
+    type: "any",
+    scripts: [
+      sig(Buffer.from(ownerKeyHash(), "hex")),
+      ...Array.from({ length: count }, () => sig(Buffer.alloc(28, 0))),
+    ],
+  });

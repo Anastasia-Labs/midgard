@@ -121,6 +121,22 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
     "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
   [SCRIPT_SOURCES_REDEEMER_SEMANTIC]:
     "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+  nativeScriptsPrepare: "validationTraceDisputeNativeScriptsPrepare",
+  nativeScriptsTerminalSemantic:
+    "validationTraceDisputeNativeScriptsTerminalSemantic",
+  nativeScriptsNativeSemantic:
+    "validationTraceDisputeNativeScriptsNativeSemantic",
+  nativeScriptsEffectfulSemantic:
+    "validationTraceDisputeNativeScriptsEffectfulSemantic",
+  scriptIntegrityPrepare: "validationTraceDisputeScriptIntegrityPrepare",
+  scriptIntegrityAuthenticationSemantic:
+    "validationTraceDisputeScriptIntegrityAuthenticationSemantic",
+  scriptIntegrityCompactSemantic:
+    "validationTraceDisputeScriptIntegrityCompactSemantic",
+  scriptIntegrityWitnessSetSemantic:
+    "validationTraceDisputeScriptIntegrityWitnessSetSemantic",
+  scriptIntegrityFinalizeSemantic:
+    "validationTraceDisputeScriptIntegrityFinalizeSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
