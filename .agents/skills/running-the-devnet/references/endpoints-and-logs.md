@@ -284,6 +284,11 @@ Commitment and liveness (raised by fibers, cleared by them):
 
 - `commit_base_pending`: the commit waits for a foreign tail block that
   landed-block processing has not applied yet. Wait.
+- `commit_scheduler_alignment_failed`: commit work is pending, but this
+  node's scheduler alignment failed on its last tick, so it cannot take or
+  pass on the scheduler turn. It escalates after ten minutes. Read the
+  "Pre-lease scheduler alignment" warning in the log for the cause, such as
+  an empty operator wallet.
 - `commit_window_pending`: the commit waits for the next scheduler window,
   because an abandoned journal whose commit was signed holds its header
   hash. Wait.
