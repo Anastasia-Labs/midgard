@@ -62,6 +62,19 @@ see [Request rate limits](#request-rate-limits).
 | `GET`  | `/tx`          | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                                   |
 | `GET`  | `/txs`         | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                                   |
 
+`/tx-status` answers `committed` once a block includes the transaction, with
+that block's `headerHash`, and `committedMeaning` says how the node knows:
+`immutable_db_inclusion_not_confirmed_ledger_merge` when the block is one of
+this node's own, `landed_block_inclusion_not_confirmed_ledger_merge` when it
+is a block another operator committed and this node saw land on L1. Neither
+means the merge is final: `confirmedLedgerFinalized` turns `true` once the
+block is merged into the confirmed ledger and that merge is confirmation-depth
+deep. A rollback that takes the landed block off L1 returns the transaction
+to `accepted`. Once no rollback can reach the block's merge, the node keeps a
+landed-block inclusion for as long as it keeps its own committed transactions,
+so the answer stays `committed`. `/pipeline-status` lists both meanings, as an
+array, under `finalityVocabulary.txStatusCommittedMeaning`.
+
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
 `200` for a duplicate, `415` for the wrong media type, `413` for a body that
 exceeds or fails its bounded read, `400` for malformed content, and `409` for a

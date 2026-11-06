@@ -11,7 +11,8 @@
  *   block's journal.
  * - Deleted (rows and deltas): once the block's fold is final, by the prune
  *   that releases it (`landed-blocks/final-folds.ts`), never at the fold
- *   itself, so an unfold has nothing to restore.
+ *   itself, so an unfold has nothing to restore. Another operator's block's
+ *   inclusion outlives the row in `node_foreign_tx_inclusions`.
  *
  * A pending row is an unmarked one. Every reader that means "pending" reads
  * through the helpers here (or filters `included_by IS NULL` itself).
@@ -143,7 +144,11 @@ export const clearMarks = (
     ),
   );
 
-/** Deletes the rows `headerHash` marked, and their deltas: the block's fold is final. */
+/** Deletes the rows `headerHash` marked, and their deltas: the block's fold
+ * is final. A deleted tx that is not in `immutable` (this node's own blocks
+ * put theirs there) was included by another operator's block: its inclusion
+ * is recorded in `node_foreign_tx_inclusions` (migration 0033) and kept as
+ * `immutable` is, so it stays committed. */
 export const deleteIncluded = (
   headerHash: string | Buffer,
 ): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
@@ -157,6 +162,12 @@ export const deleteIncluded = (
         RETURNING ${sql(Tx.Columns.TX_ID)}`;
       deleted.push(...rows.map((row) => row.tx_id));
     }
+    if (deleted.length > 0)
+      yield* sql`INSERT INTO node_foreign_tx_inclusions (tx_id, header_hash)
+        SELECT included.tx_id, ${header}
+        FROM unnest(${(sql as PgClient).array(bytea(deleted))}::bytea[]) AS included(tx_id)
+        WHERE NOT EXISTS (SELECT 1 FROM immutable WHERE immutable.tx_id = included.tx_id)
+        ON CONFLICT (tx_id) DO NOTHING`;
     yield* MempoolTxDeltasDB.clearTxs(deleted);
     return deleted;
   }).pipe(

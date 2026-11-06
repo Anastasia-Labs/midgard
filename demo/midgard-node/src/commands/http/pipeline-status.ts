@@ -12,6 +12,7 @@ import * as SettlementJournal from "../../database/settlement.js";
 import { ContractDeploymentIdentity, Globals } from "../../services/index.js";
 import { publicReadinessPresentation } from "../listen-readiness-public-presentation.js";
 import { failWith500 } from "../listen-response.js";
+import { TX_STATUS_COMMITTED_MEANINGS } from "../tx-status.js";
 import { PIPELINE_STATUS_ENDPOINT } from "./routes.js";
 
 type PipelineStatusCountRow = {
@@ -149,8 +150,7 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
       status: "ok",
       now: now.toISOString(),
       finalityVocabulary: {
-        txStatusCommittedMeaning:
-          "immutable_db_inclusion_not_confirmed_ledger_merge",
+        txStatusCommittedMeaning: TX_STATUS_COMMITTED_MEANINGS,
         confirmedDrainMeaning:
           "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation",
       },

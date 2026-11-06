@@ -18,7 +18,8 @@
  *
  * Released here, for each block:
  * - the pending-table rows it marked included (`included_by`) and their
- *   deltas (`MempoolInclusionsDB.deleteIncluded`);
+ *   deltas (`MempoolInclusionsDB.deleteIncluded`); a foreign block's
+ *   inclusion of each row's tx is kept in `node_foreign_tx_inclusions`;
  * - an own block's bodies, its `blocks` rows (`BlocksDB.clearBlock`; a
  *   foreign block has none). A merge that a rollback undoes leaves the block
  *   queued, and merging it again reads them.

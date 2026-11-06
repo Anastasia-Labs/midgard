@@ -31,6 +31,7 @@ import dropCekProgramMaterialSql from "./sql/0029_drop_cek_program_material.sql"
 import importCheckRetriesSql from "./sql/0030_import_check_retries.sql";
 import dropUserSubmissionRecordsSql from "./sql/0031_drop_user_submission_records.sql";
 import peerSubmitSourceSql from "./sql/0032_peer_submit_source.sql";
+import foreignTxInclusionsSql from "./sql/0033_foreign_tx_inclusions.sql";
 
 export type Migration = {
   readonly version: number;
@@ -265,6 +266,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: peerSubmitSourceSql,
     transactional: true,
   },
+  {
+    version: 33,
+    name: "foreign_tx_inclusions",
+    checksumSha256: sha256Hex(foreignTxInclusionsSql),
+    sql: foreignTxInclusionsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -341,6 +349,7 @@ export const APPLICATION_TABLE_NAMES = [
   "node_import_check_blocks",
   "node_import_checks",
   "node_import_check_outputs",
+  "node_foreign_tx_inclusions",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [

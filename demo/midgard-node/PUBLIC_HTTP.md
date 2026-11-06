@@ -68,6 +68,19 @@ node's on-chain active operator set returns 403. Transactions pass the
 `/submit` checks and are admitted with source `peer`; `/peer/inventory`
 answers the ids the node has no admission row for.
 
+`/tx-status` answers `committed` once a block includes the transaction, with
+that block's `headerHash`, and `committedMeaning` says how the node knows:
+`immutable_db_inclusion_not_confirmed_ledger_merge` when the block is one of
+this node's own, `landed_block_inclusion_not_confirmed_ledger_merge` when it
+is a block another operator committed and this node saw land on L1. Neither
+means the merge is final: `confirmedLedgerFinalized` turns `true` once the
+block is merged into the confirmed ledger and that merge is confirmation-depth
+deep. A rollback that takes the landed block off L1 returns the transaction
+to `accepted`. Once no rollback can reach the block's merge, the node keeps a
+landed-block inclusion for as long as it keeps its own committed transactions,
+so the answer stays `committed`. `/pipeline-status` lists both meanings, as an
+array, under `finalityVocabulary.txStatusCommittedMeaning`.
+
 Protected reads are `GET /stateQueue`, `/operator/status` and `/admin/session`.
 They require `X-Midgard-Admin-Key`; the session response is not cacheable.
 Protected mutations are **POST** `/init`, `/commit`, `/merge`, `/logBlocksDB` and

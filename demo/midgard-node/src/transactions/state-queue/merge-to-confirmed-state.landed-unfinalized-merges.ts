@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Metric, Option } from "effect";
 
@@ -8,7 +9,10 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
-import { DatabaseError } from "../../database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "../../database/utils/common.js";
 import { Database, Globals } from "../../services/index.js";
 import {
   fetchLandedConfirmedState,
@@ -42,10 +46,33 @@ const decodeJournalHeader = (
  * at genesis, at a header whose confirmed-merge job completed (every earlier
  * one did too, since a merge is built only after this walk from the confirmed
  * state it spends has finalized everything), or at a header this database
- * holds no journal for (another operator's block, which this node never
- * finalized). Only a merge that landed can be the confirmed state's header or
- * its ancestor, so an unlanded merge is never returned.
+ * holds neither a journal nor a landed row for. Another operator's block has
+ * no journal here: the walk passes it through its landed row's parent, so
+ * this node's own merges below it (merged by any operator) are finalized
+ * too. Only a merge that landed can be the confirmed state's header or its
+ * ancestor, so an unlanded merge is never returned.
  */
+/** The parent of `headerHash` as its landed row (processed or folded) holds
+ * it, or undefined when no landed row names it. */
+const landedParentOf = (headerHash: Buffer) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ parent_header_hash: Buffer }>`
+      SELECT parent_header_hash FROM node_landed_blocks
+      WHERE header_hash = ${headerHash} AND state = 'processed'
+      UNION
+      SELECT parent_header_hash FROM node_confirmed_merges
+      WHERE header_hash = ${headerHash}`;
+    return rows.length === 1
+      ? Buffer.from(rows[0]!.parent_header_hash).toString("hex")
+      : undefined;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      "node_landed_blocks",
+      "Failed to read a landed block's parent",
+    ),
+  );
+
 const landedUnfinalizedMerges = (
   confirmedState: SDK.ConfirmedState,
 ): Effect.Effect<
@@ -80,7 +107,14 @@ const landedUnfinalizedMerges = (
         break;
       const journal =
         yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
-      if (Option.isNone(journal)) break;
+      if (Option.isNone(journal)) {
+        const parent = yield* landedParentOf(headerHash);
+        if (parent === undefined) break;
+        // Its root binds nothing this node journaled.
+        confirmedUtxosRoot = undefined;
+        current = parent;
+        continue;
+      }
       const header = yield* decodeJournalHeader(journal.value);
       const recomputedHeaderHash = yield* SDK.hashBlockHeader(header);
       if (recomputedHeaderHash !== current) {

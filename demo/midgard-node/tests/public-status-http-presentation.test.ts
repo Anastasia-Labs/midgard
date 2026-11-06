@@ -321,6 +321,15 @@ describe("public status HTTP presentation", () => {
           const body: unknown = JSON.parse(text);
           expect(body).toMatchObject({
             status: "ok",
+            finalityVocabulary: {
+              // Both meanings a `committed` /tx-status can carry.
+              txStatusCommittedMeaning: [
+                "immutable_db_inclusion_not_confirmed_ledger_merge",
+                "landed_block_inclusion_not_confirmed_ledger_merge",
+              ],
+              confirmedDrainMeaning:
+                "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation",
+            },
             stateQueue: {
               unconfirmedSubmittedBlockTxHash: PENDING_BLOCK_TX_HASH,
               unconfirmedSubmittedBlockAgeMs: expect.any(Number),

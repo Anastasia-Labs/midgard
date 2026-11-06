@@ -3,6 +3,8 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
 
+import { TX_STATUS_COMMITTED_MEANINGS } from "./tx-status.js";
+
 const REDACTED = "[redacted]";
 const DIAGNOSTIC_REDACTED = "E_READINESS_DIAGNOSTIC_REDACTED";
 const secretName =
@@ -355,7 +357,7 @@ export const publicReadinessPresentation = (
       }
       if (
         (path === "finalityVocabulary.txStatusCommittedMeaning" &&
-          safe === "immutable_db_inclusion_not_confirmed_ledger_merge") ||
+          (TX_STATUS_COMMITTED_MEANINGS as readonly string[]).includes(safe)) ||
         (path === "finalityVocabulary.confirmedDrainMeaning" &&
           safe ===
             "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation")

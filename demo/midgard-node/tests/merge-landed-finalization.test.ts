@@ -11,6 +11,7 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
+import { processRow } from "../src/landed-blocks/settlements.js";
 import { Globals } from "../src/services/index.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
@@ -237,6 +238,47 @@ describe("landed-merge finalization walk", () => {
           expect(
             yield* finalizeMergesLandedThrough(confirmedAt(c.headerHash)),
           ).toEqual([]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "finalizes this node's merges below another operator's merged block, and stops where no landed fact names a header",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const a = yield* block(1, SDK.GENESIS_HEADER_HASH);
+          yield* finalizedJournal(a);
+          // Another operator's block on top of A: this node holds no journal
+          // for it, only its landed row.
+          const foreign = "f2".repeat(28);
+          yield* processRow({
+            headerHash: foreign,
+            parentHeaderHash: a.headerHash,
+            parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            kind: "foreign",
+            state: "processed",
+            applied: true,
+            spent: [],
+            produced: [],
+            depositIds: [],
+            withdrawals: [],
+            forcedIds: [],
+            txIds: [],
+          });
+          expect(
+            yield* finalizeMergesLandedThrough(confirmedAt(foreign)),
+          ).toEqual([a.headerHash]);
+          yield* expectFinalized(a.headerHash, 1);
+
+          // A header no journal and no landed row names ends the walk.
+          const b = yield* block(2, SDK.GENESIS_HEADER_HASH);
+          yield* finalizedJournal(b);
+          expect(
+            yield* finalizeMergesLandedThrough(confirmedAt("f3".repeat(28))),
+          ).toEqual([]);
+          yield* expectUntouched(b.headerHash);
         }),
       ),
   );
