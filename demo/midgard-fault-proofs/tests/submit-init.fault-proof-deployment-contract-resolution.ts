@@ -1,3 +1,4 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildDoubleSpendFaultProofContracts,
@@ -5,6 +6,7 @@ import {
   buildTransitionTraceFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   FAULT_PROOF_SHARED_TITLES,
+  type FaultProofBlueprint,
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
@@ -31,6 +33,7 @@ import {
   readBlueprint,
   referenceScriptAuthNativeScript,
 } from "./submit-init.submit-init-signer-resolution.js";
+import { laterStepEntries } from "./support/emulator/header-fixtures.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 
 const caseConfigInitializationNonce = {
@@ -38,26 +41,30 @@ const caseConfigInitializationNonce = {
   outputIndex: 0,
 };
 
+/** Every family's contracts, applied from the real blueprint. */
+const buildAllFaultProofContracts = (blueprint: FaultProofBlueprint) =>
+  Effect.runPromise(
+    buildFaultProofContracts({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      disputeBondLovelace: 10_000_000_000n,
+      caseConfigInitializationNonce,
+      eventHistoryBounds: {
+        inlineLimitBytes: 512n,
+        maxPayloadBytes: 5000n,
+        maxPayloadNodes: 512n,
+      },
+      blueprint,
+      network: "Preprod",
+      hubOraclePolicyId: h28,
+      fraudProofCataloguePolicyId: h28b,
+      referenceScriptAuthPolicyId: h28b,
+    }),
+  );
+
 describe("fault-proof deployment contract resolution", () => {
   it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
     const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        disputeBondLovelace: 10_000_000_000n,
-        caseConfigInitializationNonce,
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
-      }),
-    );
+    const contracts = await buildAllFaultProofContracts(blueprint);
     // Q13/F20-01: the no-index first step is now derived from the compiled
     // blueprint like every other family, so the deployment must record exactly
     // the applied `input_no_idx/step_01` script.
@@ -87,6 +94,10 @@ describe("fault-proof deployment contract resolution", () => {
         scriptHash: contracts.nonExistentInput.firstStep.spendingScriptHash,
       },
       fraudProofNonExistentInputNoIndex: noIndexDeploymentEntry,
+      ...laterStepEntries(
+        "nonExistentInputNoIndex",
+        contracts.nonExistentInputNoIndex.steps,
+      ),
       stateQueueMint: { scriptHash: "66".repeat(28) },
     });
 
@@ -228,6 +239,7 @@ describe("fault-proof deployment contract resolution", () => {
         fraudProofDoubleSpend: {
           scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
         },
+        ...laterStepEntries("doubleSpend", contracts.doubleSpend.steps),
       }),
       network: "Preprod",
     });
@@ -236,18 +248,13 @@ describe("fault-proof deployment contract resolution", () => {
     expect(resolved.contracts.doubleSpend.steps).toHaveLength(4);
   });
 
-  it("requires the invalid-range deployment entry for invalid-range resolution", async () => {
-    const blueprint = readBlueprint();
+  it("refuses a deployment that omits a later step's entry", async () => {
+    const blueprint = filterBlueprint(readBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(DOUBLE_SPEND_FAULT_PROOF_TITLES),
+    ]);
     const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        disputeBondLovelace: 10_000_000_000n,
-        caseConfigInitializationNonce,
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
+      buildDoubleSpendFaultProofContracts({
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28,
@@ -255,6 +262,37 @@ describe("fault-proof deployment contract resolution", () => {
         referenceScriptAuthPolicyId: h28b,
       }),
     );
+    const steps = contracts.doubleSpend.steps;
+    const omitted = deploymentFamilyStepNames("doubleSpend")[2]!;
+    const recorded: Record<string, { scriptHash: string }> = {
+      fraudProofDoubleSpend: { scriptHash: steps[0]!.spendingScriptHash },
+      ...laterStepEntries("doubleSpend", steps),
+    };
+    delete recorded[omitted];
+    await expect(
+      resolveDoubleSpendDeploymentContracts({
+        blueprint,
+        deploymentInfo: deploymentManifest({
+          hubOracleMint: { scriptHash: h28 },
+          fraudProofCatalogueMint: {
+            scriptHash: h28b,
+            fraudProofCatalogue: await catalogueFor({
+              doubleSpend: steps[0]!.spendingScriptHash,
+            }),
+          },
+          fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+          ...recorded,
+        }),
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      `Deployment info is missing "${omitted}" for its step-03 script`,
+    );
+  });
+
+  it("requires the invalid-range deployment entry for invalid-range resolution", async () => {
+    const blueprint = readBlueprint();
+    const contracts = await buildAllFaultProofContracts(blueprint);
     const fraudProofCatalogue = await catalogueFor({
       invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     });
@@ -280,23 +318,7 @@ describe("fault-proof deployment contract resolution", () => {
 
   it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
     const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        disputeBondLovelace: 10_000_000_000n,
-        caseConfigInitializationNonce,
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
-      }),
-    );
+    const contracts = await buildAllFaultProofContracts(blueprint);
     const fraudProofCatalogue = await catalogueFor({
       invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     });
@@ -328,6 +350,7 @@ describe("fault-proof deployment contract resolution", () => {
           fraudProofInvalidRange: {
             scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
           },
+          ...laterStepEntries("invalidRange", contracts.invalidRange.steps),
         }),
         network: "Preprod",
       }),
@@ -395,6 +418,7 @@ describe("fault-proof deployment contract resolution", () => {
             contracts.transitionTrace.history.retentionAddresses,
           scriptHash: contracts.transitionTrace.firstStep.spendingScriptHash,
         },
+        ...laterStepEntries("transitionTrace", contracts.transitionTrace.steps),
       }),
       network: "Preprod",
     });
@@ -409,23 +433,7 @@ describe("fault-proof deployment contract resolution", () => {
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        disputeBondLovelace: 10_000_000_000n,
-        caseConfigInitializationNonce,
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
-      }),
-    );
+    const contracts = await buildAllFaultProofContracts(blueprint);
     const fraudProofCatalogue = await catalogueFor({
       doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
       invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
@@ -456,6 +464,7 @@ describe("fault-proof deployment contract resolution", () => {
           fraudProofDoubleSpend: {
             scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
           },
+          ...laterStepEntries("doubleSpend", contracts.doubleSpend.steps),
           fraudProofInvalidRange: {
             scriptHash: placeholderInvalidRange,
           },
@@ -476,23 +485,7 @@ describe("fault-proof deployment contract resolution", () => {
 
   it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
     const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        disputeBondLovelace: 10_000_000_000n,
-        caseConfigInitializationNonce,
-        eventHistoryBounds: {
-          inlineLimitBytes: 512n,
-          maxPayloadBytes: 5000n,
-          maxPayloadNodes: 512n,
-        },
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
-      }),
-    );
+    const contracts = await buildAllFaultProofContracts(blueprint);
     const fraudProofCatalogue = await catalogueFor({
       doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
       invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
@@ -526,6 +519,7 @@ describe("fault-proof deployment contract resolution", () => {
           fraudProofInvalidRange: {
             scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
           },
+          ...laterStepEntries("invalidRange", contracts.invalidRange.steps),
         }),
         network: "Preprod",
         signer: {

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   DEPLOYMENT_MANIFEST_MEMBERS,
   DEPLOYMENT_MEMBERS,
@@ -169,6 +171,26 @@ const restoreRecordedFamilyScriptPaths = (
     }
     return { target, key: path[path.length - 1]! };
   };
+  // Merged validators must agree on every key they share.
+  const mergeAgreeing = (
+    contract: DeploymentContract,
+    parts: readonly FamilyMemberValidator[],
+  ): FamilyMemberValidator => {
+    const merged: Record<string, unknown> = {};
+    for (const part of parts)
+      for (const [key, value] of Object.entries(part)) {
+        if (key in merged && !isDeepStrictEqual(merged[key], value))
+          throw new Error(
+            `Deployment member ${contract} restores conflicting ${key} values at ${DEPLOYMENT_MEMBERS[
+              contract
+            ].familyPaths
+              .map((path) => path.join("."))
+              .join(", ")}`,
+          );
+        merged[key] = value;
+      }
+    return merged as FamilyMemberValidator;
+  };
   const members = deploymentMembersForFamily(family);
   for (const contract of members) {
     const member: DeploymentMember = DEPLOYMENT_MEMBERS[contract];
@@ -178,16 +200,19 @@ const restoreRecordedFamilyScriptPaths = (
       target[key] =
         target[key] === undefined
           ? validator
-          : { ...(target[key] as FamilyMemberValidator), ...validator };
+          : mergeAgreeing(contract, [
+              target[key] as FamilyMemberValidator,
+              validator,
+            ]);
     }
   }
   for (const contract of members) {
     const paths = DEPLOYMENT_MEMBERS[contract].familyPaths.map(slot);
     if (paths.length < 2) continue;
-    const merged = Object.assign(
-      {},
-      ...paths.map(({ target, key }) => target[key]),
-    ) as FamilyMemberValidator;
+    const merged = mergeAgreeing(
+      contract,
+      paths.map(({ target, key }) => target[key] as FamilyMemberValidator),
+    );
     for (const { target, key } of paths) target[key] = merged;
   }
   return restored;

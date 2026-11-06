@@ -1,5 +1,8 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  deploymentFamilyStepNames,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -25,6 +28,46 @@ export const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
 } as const;
 
 export const h32 = (byte: string): string => byte.repeat(32);
+
+/** The deployment entries of a family's later steps, named by core's members:
+ * a complete deployment records every step. */
+export const laterStepEntries = (
+  family: Parameters<typeof deploymentFamilyStepNames>[0],
+  steps: readonly { readonly spendingScriptHash: string }[],
+) => {
+  const names = deploymentFamilyStepNames(family);
+  if (names.length !== steps.length)
+    throw new Error(`${family} fixture has ${steps.length.toString()} steps`);
+  return Object.fromEntries(
+    names
+      .slice(1)
+      .map((name, index) => [
+        name,
+        { scriptHash: steps[index + 1]!.spendingScriptHash },
+      ]),
+  );
+};
+
+/** Every step's deployment entry, the first included, from a family's chain. */
+export const familyStepEntries = <
+  Family extends Parameters<typeof deploymentFamilyStepNames>[0],
+>(
+  family: Family,
+  chains: Readonly<
+    Record<
+      Family,
+      { readonly steps: readonly { readonly spendingScriptHash: string }[] }
+    >
+  >,
+) => {
+  const { steps } = chains[family];
+  return {
+    [deploymentFamilyStepNames(family)[0]!]: {
+      scriptHash: steps[0]!.spendingScriptHash,
+    },
+    ...laterStepEntries(family, steps),
+  };
+};
 
 export const deploymentManifest = (
   contracts: Record<string, unknown>,

@@ -68,6 +68,7 @@ import {
   deploymentManifest,
   expectProofFit,
   expectSingleUtxoWithUnit,
+  familyStepEntries,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarness,
   makeHeader,
@@ -193,9 +194,7 @@ describe("fault-proof emulator integration", () => {
         fraudProofSpend: {
           scriptHash: contracts.fraudProof.spendingScriptHash,
         },
-        fraudProofDoubleSpend: {
-          scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-        },
+        ...familyStepEntries("doubleSpend", contracts.fraudProofContracts),
         stateQueueMint: deploymentEntry(
           contracts.stateQueue.policyId,
           contracts.stateQueue.mintingScript,

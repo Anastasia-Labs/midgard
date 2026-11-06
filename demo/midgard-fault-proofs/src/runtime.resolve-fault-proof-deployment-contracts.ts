@@ -206,15 +206,15 @@ export const resolveFaultProofDeploymentContracts = async ({
         `${categoryLabel(categoryName)} is missing compiled step ${(stepIndex + 1).toString()}.`,
       );
     }
-    const deployedStepHash =
-      stepIndex === 0
-        ? requireDeploymentScriptHash(parsedDeploymentInfo, deploymentEntry)
-        : parsedDeploymentInfo[deploymentEntry]?.scriptHash;
-    if (deployedStepHash === undefined) {
-      continue;
-    }
+    const step = `step-${(stepIndex + 1).toString().padStart(2, "0")}`;
+    // Every step is recorded: a missing reference script fails at startup.
+    const deployedStepHash = parsedDeploymentInfo[deploymentEntry]?.scriptHash;
+    if (deployedStepHash === undefined)
+      throw new Error(
+        `Deployment info is missing "${deploymentEntry}" for its ${step} script`,
+      );
     requireMatchingScriptHash({
-      label: `${deploymentEntry} step-${(stepIndex + 1).toString().padStart(2, "0")} script`,
+      label: `${deploymentEntry} ${step} script`,
       deployed: deployedStepHash,
       derived: derivedStep.spendingScriptHash,
     });
