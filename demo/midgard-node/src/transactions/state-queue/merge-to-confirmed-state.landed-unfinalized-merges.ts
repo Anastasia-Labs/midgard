@@ -39,19 +39,6 @@ const decodeJournalHeader = (
       }),
   });
 
-/**
- * The merges L1 has confirmed that this database has not finalized, oldest
- * first. The walk starts at the header L1's confirmed state names and follows
- * each header's authenticated predecessor through the local journals. It stops
- * at genesis, at a header whose confirmed-merge job completed (every earlier
- * one did too, since a merge is built only after this walk from the confirmed
- * state it spends has finalized everything), or at a header this database
- * holds neither a journal nor a landed row for. Another operator's block has
- * no journal here: the walk passes it through its landed row's parent, so
- * this node's own merges below it (merged by any operator) are finalized
- * too. Only a merge that landed can be the confirmed state's header or its
- * ancestor, so an unlanded merge is never returned.
- */
 /** The parent of `headerHash` as its landed row (processed or folded) holds
  * it, or undefined when no landed row names it. */
 const landedParentOf = (headerHash: Buffer) =>
@@ -73,6 +60,85 @@ const landedParentOf = (headerHash: Buffer) =>
     ),
   );
 
+/**
+ * Whether the walk to `confirmedState` can stop at a journal of this node
+ * whose confirmed-merge job has not completed (to return it or to refuse
+ * it); every other header it passes without stopping, so without one there
+ * is nothing to walk for. Such a journal is reachable only if it is the
+ * confirmed header, or if it ends no later than the confirmed header (each
+ * header starts where its parent ends, and ends after it starts) and a
+ * header the walk can step from names it as parent: a processed landed row,
+ * a retained fold, or a locally applied journal whose job has not completed
+ * (its base is its header's parent; finalization refuses one where it is
+ * not). So a run of another operator's blocks is walked only while a merge
+ * of this node below it can still be finalized, and costs nothing once
+ * there is none.
+ */
+const unfinishedMergeReachable = (
+  confirmedState: SDK.ConfirmedState,
+): Effect.Effect<boolean, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const J = PendingBlockFinalizationsDB.Columns;
+    const Job = MutationJobsDB.Columns;
+    const confirmedHeaderHash = Buffer.from(confirmedState.headerHash, "hex");
+    const rows = yield* sql<{ header_hash: Buffer; header_cbor: Buffer }>`
+      WITH unfinished AS (
+        SELECT j.${sql(J.HEADER_HASH)}, j.${sql(J.HEADER_CBOR)},
+          j.${sql(J.STATUS)}, j.${sql(J.BASE_TAIL_HEADER_HASH)}
+        FROM ${sql(PendingBlockFinalizationsDB.tableName)} j
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ${sql(MutationJobsDB.tableName)} job
+          WHERE job.${sql(Job.JOB_ID)} =
+              ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
+              encode(j.${sql(J.HEADER_HASH)}, 'hex')
+            AND job.${sql(Job.STATUS)} = ${MutationJobsDB.Status.Completed}))
+      SELECT u.${sql(J.HEADER_HASH)} AS header_hash,
+        u.${sql(J.HEADER_CBOR)} AS header_cbor
+      FROM unfinished u
+      WHERE u.${sql(J.HEADER_HASH)} = ${confirmedHeaderHash}
+        OR EXISTS (SELECT 1 FROM node_landed_blocks l
+          WHERE l.parent_header_hash = u.${sql(J.HEADER_HASH)}
+            AND l.state = 'processed')
+        OR EXISTS (SELECT 1 FROM node_confirmed_merges m
+          WHERE m.parent_header_hash = u.${sql(J.HEADER_HASH)})
+        OR EXISTS (SELECT 1 FROM unfinished child
+          WHERE child.${sql(J.BASE_TAIL_HEADER_HASH)} = u.${sql(J.HEADER_HASH)}
+            AND child.${sql(J.STATUS)} = ${PendingBlockFinalizationsDB.Status.LocallyApplied})`;
+    return rows.some((row) => {
+      if (Buffer.from(row.header_hash).equals(confirmedHeaderHash)) return true;
+      try {
+        const header = Data.from(
+          Buffer.from(row.header_cbor).toString("hex"),
+          SDK.Header,
+        ) as SDK.Header;
+        return header.endTime <= confirmedState.endTime;
+      } catch {
+        // The walk reports a journal it cannot decode.
+        return true;
+      }
+    });
+  }).pipe(
+    sqlErrorToDatabaseError(
+      PendingBlockFinalizationsDB.tableName,
+      "Failed to read the unfinished merges a landed-merge walk can reach",
+    ),
+  );
+
+/**
+ * The merges L1 has confirmed that this database has not finalized, oldest
+ * first. The walk starts at the header L1's confirmed state names and follows
+ * each header's authenticated predecessor through the local journals. It stops
+ * at genesis, at a header whose confirmed-merge job completed (every earlier
+ * one did too, since a merge is built only after this walk from the confirmed
+ * state it spends has finalized everything), or at a header this database
+ * holds neither a journal nor a landed row for. Another operator's block has
+ * no journal here: the walk passes it through its landed row's parent, so
+ * this node's own merges below it (merged by any operator) are finalized
+ * too. Only a merge that landed can be the confirmed state's header or its
+ * ancestor, so an unlanded merge is never returned. The walk runs only when
+ * unfinishedMergeReachable says it can stop at one of this node's merges.
+ */
 const landedUnfinalizedMerges = (
   confirmedState: SDK.ConfirmedState,
 ): Effect.Effect<
@@ -81,6 +147,7 @@ const landedUnfinalizedMerges = (
   Database
 > =>
   Effect.gen(function* () {
+    if (!(yield* unfinishedMergeReachable(confirmedState))) return [];
     const pending: LandedUnfinalizedMerge[] = [];
     let current = confirmedState.headerHash;
     // The confirmed state carries its header's UTxO root; every older header

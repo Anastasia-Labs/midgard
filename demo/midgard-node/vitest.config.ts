@@ -52,6 +52,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/deposit-flow-emulator-merge-payout.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts
  *   tests/merge-landed-finalization.test.ts
+ *   tests/merge-landed-finalization-cost.test.ts
  *   tests/merge-landed-finalization-emulator.test.ts
  *   tests/merge-maturity-preflight.test.ts
  *   tests/migration-locking.test.ts

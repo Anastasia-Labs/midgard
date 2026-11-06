@@ -1,213 +1,32 @@
-import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
-import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Either, Fiber, Ref } from "effect";
+import { Deferred, Effect, Either, Fiber } from "effect";
 import { describe, expect } from "vitest";
 
-import {
-  BlocksDB,
-  MutationJobsDB,
-  PendingBlockFinalizationsDB,
-} from "../src/database/index.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { processRow } from "../src/landed-blocks/settlements.js";
-import { Globals } from "../src/services/index.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
-import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
+import {
+  type Block,
+  block,
+  confirmedAt,
+  confirmedAtBlock,
+  DURABLE_ROOT,
+  expectFinalized,
+  expectUntouched,
+  finalizedJournal,
+  fold,
+  foreignRow,
+  isolatedDb,
+  journal,
+} from "./merge-landed-finalization.fixtures.js";
 
 /**
  * The landed-merge walk over real journals: which merges it finalizes, in
  * which order, where it stops, and the journal checks that refuse a merge
- * before anything is written. Every block is empty, so each finalization
- * takes the confirmed ledger's already-at-root path and only the walk varies.
+ * before anything is written.
  */
-
-const DURABLE_ROOT = "ab".repeat(32);
-
-/** Restores the worker's empty application state, then runs `effect` with an
- * Architecture G native owner whose diagnostics `diagnostics` answers. */
-const isolatedDb = <A, E>(
-  effect: Effect.Effect<A, E, any>,
-  diagnostics: () => Promise<{
-    readonly durableRoot: string;
-    readonly activeGenerations: number;
-  }> = async () => ({ durableRoot: DURABLE_ROOT, activeGenerations: 1 }),
-) =>
-  provideDatabaseLayers(
-    Effect.gen(function* () {
-      yield* resetApplicationTables;
-      const globals = yield* Globals;
-      yield* Ref.set(globals.NATIVE_MPF_OWNER, { diagnostics } as never);
-      return yield* effect;
-    }).pipe(Effect.provide(Globals.Default)),
-  ) as Effect.Effect<A, E, never>;
-
-const emptyRoots = {
-  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-};
-const expectedRoots = {
-  ...emptyRoots,
-  transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-};
-const expectedCounts = {
-  withdrawalCount: 0n,
-  forcedTransactionCount: 0n,
-  l2TransactionCount: 0n,
-  depositCount: 0n,
-  totalEventCount: 0n,
-  transitionStepCount: 0n,
-  validationTraceCount: 0n,
-};
-
-/** An empty block's header; `index` sets its time window. */
-const blockHeader = (index: number, prevHeaderHash: string): SDK.Header => ({
-  prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  ...expectedRoots,
-  ...expectedCounts,
-  startTime: BigInt(index * 1_000),
-  endTime: BigInt(index * 1_000 + 999),
-  blockSlot: BigInt(index),
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  prevHeaderHash,
-  operatorVkey: "22".repeat(28),
-  protocolVersion: 1n,
-});
-
-type Block = {
-  readonly header: SDK.Header;
-  readonly headerHash: string;
-};
-
-const block = (index: number, prev: string) =>
-  Effect.map(SDK.hashBlockHeader(blockHeader(index, prev)), (headerHash) => ({
-    header: blockHeader(index, prev),
-    headerHash,
-  }));
-
-/**
- * Journals `stored` under `headerHash` with one block-row tx, advanced to
- * `status` (Finalized or ObservedWaitingStability).
- */
-const journal = ({
-  headerHash,
-  stored,
-  status,
-}: {
-  readonly headerHash: string;
-  readonly stored: SDK.Header;
-  readonly status:
-    | typeof PendingBlockFinalizationsDB.Status.LocallyApplied
-    | typeof PendingBlockFinalizationsDB.Status.ObservedWaitingStability;
-}) =>
-  Effect.gen(function* () {
-    const hash = Buffer.from(headerHash, "hex");
-    const blockStartTime = new Date("2026-06-12T00:00:00.000Z");
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-      headerHash: hash,
-      headerCbor: Buffer.from(
-        LucidData.to(stored as never, SDK.Header as never),
-        "hex",
-      ),
-      metadata: {
-        deploymentMarker: makeDeploymentMarker("de".repeat(32)),
-        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-        stateQueueLeaseToken: "lease-token",
-        baseSnapshotId: "snapshot",
-        baseTailOutRef: `${headerHash}#0`,
-        baseTailHeaderHash: Buffer.from(stored.prevHeaderHash, "hex"),
-        baseTailDatumCbor: "d87980",
-        baseRoots: emptyRoots,
-        blockStartTime,
-        expectedRoots,
-        expectedCounts,
-      },
-      blockEndTime: new Date(blockStartTime.getTime() + 60_000),
-      blockTime: new Date(blockStartTime.getTime() + 60_000),
-      depositEventIds: [],
-      depositEntries: [],
-      forcedTransactionEventIds: [],
-      forcedTransactionEntries: [],
-      withdrawalEventIds: [],
-      withdrawalEntries: [],
-      mempoolTxIds: [],
-      mempoolTxs: [],
-      mempoolTxSourceTable: "none",
-      transitionTraceMembers: [],
-      eventToStepMembers: [],
-      validationTraceMembers: [],
-      ledgerDelta: { spent: [], produced: [] },
-    });
-    yield* PendingBlockFinalizationsDB.markSubmitted(
-      hash,
-      Buffer.from(headerHash.padEnd(64, "7"), "hex"),
-    );
-    yield* PendingBlockFinalizationsDB.markObservedWaitingStability(hash, 1n);
-    if (status === PendingBlockFinalizationsDB.Status.LocallyApplied)
-      yield* PendingBlockFinalizationsDB.markFinalized(hash);
-    yield* BlocksDB.insert(hash, [
-      Buffer.from(headerHash.padEnd(64, "0"), "hex"),
-    ]);
-  });
-
-const finalizedJournal = ({ header, headerHash }: Block) =>
-  journal({
-    headerHash,
-    stored: header,
-    status: PendingBlockFinalizationsDB.Status.LocallyApplied,
-  });
-
-/** L1's confirmed state naming `headerHash`. */
-const confirmedAt = (
-  headerHash: string,
-  utxoRoot: string = SDK.EMPTY_MERKLE_TREE_ROOT,
-): SDK.ConfirmedState => ({
-  headerHash,
-  prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  utxoRoot,
-  startTime: 0n,
-  endTime: 0n,
-  protocolVersion: 1n,
-});
-
-const mergeJob = (headerHash: string) =>
-  MutationJobsDB.retrieveByJobId(
-    MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
-  );
-
-const blockRows = (headerHash: string) =>
-  Effect.map(
-    BlocksDB.retrieveTxHashesByHeaderHash(Buffer.from(headerHash, "hex")),
-    (rows) => rows.length,
-  );
-
-/**
- * The job completed after `attempts` attempts; the block rows stay until
- * its fold is final (`releaseFinalFolds`).
- */
-const expectFinalized = (headerHash: string, attempts: number) =>
-  Effect.gen(function* () {
-    expect(yield* mergeJob(headerHash)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-      [MutationJobsDB.Columns.ATTEMPTS]: attempts,
-    });
-    expect(yield* blockRows(headerHash)).toBe(1);
-  });
-
-/** No job was started and the block rows are still there. */
-const expectUntouched = (headerHash: string) =>
-  Effect.gen(function* () {
-    expect(yield* mergeJob(headerHash)).toBeUndefined();
-    expect(yield* blockRows(headerHash)).toBe(1);
-  });
 
 describe("landed-merge finalization walk", () => {
   it.effect(
@@ -221,7 +40,7 @@ describe("landed-merge finalization walk", () => {
           const unlanded = yield* block(4, c.headerHash);
           for (const each of [a, b, c, unlanded]) yield* finalizedJournal(each);
           expect(
-            yield* finalizeMergesLandedThrough(confirmedAt(a.headerHash)),
+            yield* finalizeMergesLandedThrough(confirmedAtBlock(a)),
           ).toEqual([a.headerHash]);
           yield* expectFinalized(a.headerHash, 1);
           yield* expectUntouched(b.headerHash);
@@ -229,14 +48,14 @@ describe("landed-merge finalization walk", () => {
           // A's job completed, so the walk from C stops there and does not
           // run A's finalization again; the block past C has not landed.
           expect(
-            yield* finalizeMergesLandedThrough(confirmedAt(c.headerHash)),
+            yield* finalizeMergesLandedThrough(confirmedAtBlock(c)),
           ).toEqual([b.headerHash, c.headerHash]);
           yield* expectFinalized(a.headerHash, 1);
           yield* expectFinalized(b.headerHash, 1);
           yield* expectFinalized(c.headerHash, 1);
           yield* expectUntouched(unlanded.headerHash);
           expect(
-            yield* finalizeMergesLandedThrough(confirmedAt(c.headerHash)),
+            yield* finalizeMergesLandedThrough(confirmedAtBlock(c)),
           ).toEqual([]);
         }),
       ),
@@ -268,7 +87,7 @@ describe("landed-merge finalization walk", () => {
             txIds: [],
           });
           expect(
-            yield* finalizeMergesLandedThrough(confirmedAt(foreign)),
+            yield* finalizeMergesLandedThrough(confirmedAt(foreign, 2_999n)),
           ).toEqual([a.headerHash]);
           yield* expectFinalized(a.headerHash, 1);
 
@@ -276,9 +95,72 @@ describe("landed-merge finalization walk", () => {
           const b = yield* block(2, SDK.GENESIS_HEADER_HASH);
           yield* finalizedJournal(b);
           expect(
-            yield* finalizeMergesLandedThrough(confirmedAt("f3".repeat(28))),
+            yield* finalizeMergesLandedThrough(
+              confirmedAt("f3".repeat(28), 2_999n),
+            ),
           ).toEqual([]);
           yield* expectUntouched(b.headerHash);
+        }),
+      ),
+  );
+
+  it.effect(
+    "finalizes this node's merge below another operator's block whose fold already took its landed row",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const a = yield* block(1, SDK.GENESIS_HEADER_HASH);
+          yield* finalizedJournal(a);
+          const foreign = foreignRow("f2".repeat(28), a.headerHash);
+          yield* processRow(foreign);
+          yield* Frontier.upsert({
+            headerHash: a.headerHash,
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          });
+          yield* fold(foreign);
+          expect(
+            yield* finalizeMergesLandedThrough(
+              confirmedAt(foreign.headerHash, 2_999n),
+            ),
+          ).toEqual([a.headerHash]);
+          yield* expectFinalized(a.headerHash, 1);
+        }),
+      ),
+  );
+
+  it.effect(
+    "stops at this node's completed merge above another operator's folded block",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          // Own A, then another operator's F on A, then own B on F.
+          const a = yield* block(1, SDK.GENESIS_HEADER_HASH);
+          yield* finalizedJournal(a);
+          const foreign = foreignRow("f2".repeat(28), a.headerHash);
+          const b = yield* block(3, foreign.headerHash);
+          yield* finalizedJournal(b);
+          // B's merge finalizes while F is not processed yet, so the walk
+          // from B ends at F and B's job completes without A.
+          expect(
+            yield* finalizeMergesLandedThrough(confirmedAtBlock(b)),
+          ).toEqual([b.headerHash]);
+          yield* processRow(foreign);
+          yield* Frontier.upsert({
+            headerHash: a.headerHash,
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          });
+          yield* fold(foreign);
+          // Another operator's block on B: the walk from it passes it and
+          // stops at B, never reaching F's fold or A.
+          const above = foreignRow("f4".repeat(28), b.headerHash);
+          yield* processRow(above);
+          expect(
+            yield* finalizeMergesLandedThrough(
+              confirmedAt(above.headerHash, 4_999n),
+            ),
+          ).toEqual([]);
+          yield* expectFinalized(b.headerHash, 1);
+          yield* expectUntouched(a.headerHash);
         }),
       ),
   );
@@ -295,7 +177,7 @@ describe("landed-merge finalization walk", () => {
             stored: forged.header,
             status: PendingBlockFinalizationsDB.Status.LocallyApplied,
           }),
-          confirmedAt(landed.headerHash),
+          confirmedAtBlock(landed),
         ),
     },
     {
@@ -305,7 +187,7 @@ describe("landed-merge finalization walk", () => {
       arrange: (landed: Block) =>
         Effect.as(
           finalizedJournal(landed),
-          confirmedAt(landed.headerHash, "cd".repeat(32)),
+          confirmedAtBlock(landed, "cd".repeat(32)),
         ),
     },
     {
@@ -319,7 +201,7 @@ describe("landed-merge finalization walk", () => {
             stored: landed.header,
             status: PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
           }),
-          confirmedAt(landed.headerHash),
+          confirmedAtBlock(landed),
         ),
     },
   ] as const;
@@ -351,7 +233,7 @@ describe("landed-merge finalization walk", () => {
           const landed = yield* block(1, SDK.GENESIS_HEADER_HASH);
           yield* finalizedJournal(landed);
           const walk = yield* Effect.fork(
-            finalizeMergesLandedThrough(confirmedAt(landed.headerHash)),
+            finalizeMergesLandedThrough(confirmedAtBlock(landed)),
           );
           // The finalization's SQL fold has committed; the MPF check is the
           // last step before the job completes.
