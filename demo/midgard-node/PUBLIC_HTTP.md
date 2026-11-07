@@ -130,7 +130,8 @@ burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
 The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`) and by payload
 bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`). Both are checked against an
 in-memory gauge before the write, so a full backlog answers 503 with no
-database work, a resubmitted duplicate included. `/submit` and `/peer/txs`
+database work. A duplicate costs no backlog, so it still answers 200 while the
+backlog is full. `/submit` and `/peer/txs`
 answer from memory: a 202 means the node accepted the transaction, not that it
 is stored. The admission writer holds each accepted transaction in a bounded
 pending set and writes it to Postgres in group commits after the answer, so a
