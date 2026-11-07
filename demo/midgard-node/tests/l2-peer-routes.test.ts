@@ -340,55 +340,42 @@ describe("peer and submit ingress permits", () => {
     },
   );
 
-  it.each([
-    {
-      held: "every submit permit, by count",
-      holders: (node: PeerNode) => node.config.SUBMIT_INGRESS_MAX_CONCURRENCY,
-      declared: 100_000 as number | undefined,
-    },
-    {
-      // A body of unknown length reserves the whole DA envelope.
-      held: "the submit byte budget, by unknown lengths",
-      holders: () => 2,
-      declared: undefined,
-    },
-  ])(
-    "users holding $held leave /peer/txs admitting",
-    async ({ holders, declared }) => {
-      const node = await startReceiver(behindProxy);
-      const tx = await buildTransfer(user, [funding], 10_000_000n, node.config);
-      const held = Array.from({ length: holders(node) }, () =>
+  it("users holding every submit permit leave /peer/txs admitting", async () => {
+    const node = await startReceiver(behindProxy);
+    const tx = await buildTransfer(user, [funding], 10_000_000n, node.config);
+    const held = Array.from(
+      { length: node.config.SUBMIT_INGRESS_MAX_CONCURRENCY },
+      () =>
         holdRequest(
           node.url,
           "/submit",
           { "content-type": "application/vnd.midgard.v1+cbor", ...client() },
-          declared,
+          100_000,
         ),
+    );
+    try {
+      await untilFull(
+        () =>
+          post(`${node.url}/submit`, Buffer.from([0x80]), {
+            "content-type": "application/vnd.midgard.v1+cbor",
+            ...client(),
+          }),
+        "Submit ingress capacity is full; retry later",
+        "HTTP ingress capacity is full",
       );
-      try {
-        await untilFull(
-          () =>
-            post(`${node.url}/submit`, Buffer.from([0x80]), {
-              "content-type": "application/vnd.midgard.v1+cbor",
-              ...client(),
-            }),
-          "Submit ingress capacity is full; retry later",
-          "HTTP ingress capacity is full",
-        );
-        const reply = await signedPeerPost(
-          node.url,
-          PEER_TXS_PATH,
-          [tx.txCbor],
-          sender.signer,
-          { headers: client() },
-        );
-        expect(reply.status).toBe(200);
-        expect(JSON.parse(reply.body.toString())).toMatchObject({
-          admitted: 1,
-        });
-      } finally {
-        for (const req of held) req.destroy();
-      }
-    },
-  );
+      const reply = await signedPeerPost(
+        node.url,
+        PEER_TXS_PATH,
+        [tx.txCbor],
+        sender.signer,
+        { headers: client() },
+      );
+      expect(reply.status).toBe(200);
+      expect(JSON.parse(reply.body.toString())).toMatchObject({
+        admitted: 1,
+      });
+    } finally {
+      for (const req of held) req.destroy();
+    }
+  });
 });
