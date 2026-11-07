@@ -1,20 +1,22 @@
 /**
  * The check of one `/submit` body: the V1 proof-submission envelope, then
  * `checkSubmittedTransaction` on the transaction it carries. A pure function
- * of the body bytes and `SubmissionCheckConfig` (plain data), so the submit
- * check workers (`workers/submit-check.ts`) import and run this module as
- * it is.
+ * of the body bytes, `SubmissionCheckConfig` (plain data) and the clock, so
+ * the submit check workers (`workers/submit-check.ts`) import and run this
+ * module as it is, each reading its own clock.
  */
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 
 import {
   checkSubmittedTransaction,
   type SubmittedTxCheck,
+  type SubmittedTxRules,
 } from "./transaction-admission.js";
 
 export type SubmissionRefusalReason =
   | "malformed_envelope"
-  | "invalid_transaction";
+  | "invalid_transaction"
+  | "signature_verifier_unavailable";
 
 export type SubmissionCheck =
   | Extract<SubmittedTxCheck, { readonly ok: true }>
@@ -28,18 +30,24 @@ export type SubmissionCheck =
  */
 export type SubmissionCheckConfig = {
   readonly maxSubmitTxCborBytes: number;
+  /** Network, fee rule and L1 slot mapping (`submittedTxRules`), read on
+   * the main thread: a worker holds no Lucid. */
+  readonly rules: SubmittedTxRules;
 };
 
-/** The check configuration of a node configuration. */
-export const submissionCheckConfig = (config: {
-  readonly MAX_SUBMIT_TX_CBOR_BYTES: number;
-}): SubmissionCheckConfig => ({
+/** The check configuration of a node configuration and its rules. */
+export const submissionCheckConfig = (
+  config: { readonly MAX_SUBMIT_TX_CBOR_BYTES: number },
+  rules: SubmittedTxRules,
+): SubmissionCheckConfig => ({
   maxSubmitTxCborBytes: config.MAX_SUBMIT_TX_CBOR_BYTES,
+  rules,
 });
 
 export const checkSubmissionBody = (
   body: Uint8Array,
   config: SubmissionCheckConfig,
+  nowMs: number,
 ): SubmissionCheck => {
   let transactionCbor: Uint8Array;
   try {
@@ -56,6 +64,17 @@ export const checkSubmissionBody = (
   const checked = checkSubmittedTransaction(
     transactionCbor,
     config.maxSubmitTxCborBytes,
+    config.rules,
+    nowMs,
   );
-  return checked.ok ? checked : { ...checked, reason: "invalid_transaction" };
+  if (checked.ok) return checked;
+  // A 503 is the only verdict that is not about the tx: the signature
+  // verifier could not answer, and the sender retries.
+  return {
+    ...checked,
+    reason:
+      checked.status === 503
+        ? "signature_verifier_unavailable"
+        : "invalid_transaction",
+  };
 };

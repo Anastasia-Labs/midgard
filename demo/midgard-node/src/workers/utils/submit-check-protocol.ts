@@ -40,7 +40,8 @@ export type SubmitCheckWireResult =
   | {
       readonly ok: false;
       readonly reason: SubmissionRefusalReason;
-      readonly status: 400 | 413;
+      /** 503 only when the signature verifier could not answer. */
+      readonly status: 400 | 413 | 503;
       readonly body: Readonly<Record<string, unknown>>;
       readonly log: readonly string[];
     }

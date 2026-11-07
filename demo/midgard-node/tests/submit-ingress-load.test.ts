@@ -49,9 +49,11 @@ const EVERY_JUNK_KIND =
 
 type Verdict = { readonly stage: string; readonly code: string };
 
-// Runs each corpus request the way the node does: `/submit`'s check, then
+// Runs each corpus request the way the node does: `/submit`'s check (which
+// refuses Phase A's stateless junk classes) with the corpus rules, then
 // Phase A with the corpus fee parameters, then Phase B against the corpus
-// genesis, all in one batch in send order.
+// genesis, all in one batch in send order. A valid tx that reaches Phase B
+// accepted is one ingress did not refuse.
 const verdictsOf = async (directory: string) => {
   const { manifest, requests } = readCorpus(directory);
   const genesis = new Map<string, Buffer>();
@@ -60,9 +62,21 @@ const verdictsOf = async (directory: string) => {
   const verdicts = new Map<number, Verdict>();
   const queued: QueuedTx[] = [];
   const indexByTxId = new Map<string, number>();
+  const rules = {
+    expectedNetworkId: BigInt(manifest.networkId),
+    minFeeA: BigInt(manifest.minFeeA),
+    minFeeB: BigInt(manifest.minFeeB),
+    slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+  };
+  const nowMs = Date.now();
   requests.forEach((request, index) => {
     const { transactionCbor } = decodeMidgardProofSubmission(request.body);
-    const checked = checkSubmittedTransaction(transactionCbor, 32_768);
+    const checked = checkSubmittedTransaction(
+      transactionCbor,
+      32_768,
+      rules,
+      nowMs,
+    );
     if (!checked.ok) {
       verdicts.set(index, {
         stage: "ingress",
@@ -80,9 +94,7 @@ const verdictsOf = async (directory: string) => {
   });
   const phaseA = await Effect.runPromise(
     runPhaseAValidation(queued, {
-      expectedNetworkId: BigInt(manifest.networkId),
-      minFeeA: BigInt(manifest.minFeeA),
-      minFeeB: BigInt(manifest.minFeeB),
+      ...rules,
       concurrency: 1,
       strictnessProfile: "phase1_midgard",
     }),
@@ -134,8 +146,11 @@ describe("submit-ingress load corpus", () => {
         stage: "ingress",
         code: "400 Invalid canonical transaction CBOR payload",
       },
-      "bad-signature": { stage: "phase-a", code: RejectCodes.InvalidSignature },
-      "low-fee": { stage: "phase-a", code: RejectCodes.MinFee },
+      "bad-signature": {
+        stage: "ingress",
+        code: `400 ${RejectCodes.InvalidSignature}`,
+      },
+      "low-fee": { stage: "ingress", code: `400 ${RejectCodes.MinFee}` },
       "missing-input": { stage: "phase-b", code: RejectCodes.InputNotFound },
       "double-spend": { stage: "phase-b", code: RejectCodes.DoubleSpend },
     };

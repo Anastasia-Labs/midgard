@@ -77,7 +77,8 @@ lowercase hex, and `X-Midgard-Operator-Signature`, its signature over
 SHA-256 of `"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id ||
 body`. A missing or invalid signature returns 401 and a key outside the
 node's on-chain active operator set returns 403. Transactions pass the
-`/submit` checks and are admitted with source `peer`, a body's transactions
+`/submit` checks, including the stateless validation checks below (a refused
+one counts in `refused`), and are admitted with source `peer`, a body's transactions
 all in one admission-writer submission with one answer. A 503 (full backlog,
 full or stalled writer) can follow the admission of the body's other
 transactions; the sender's next inventory offer finds the ones still
@@ -118,6 +119,21 @@ execution; replay returns 409, invalid signatures return 401, and a full bounded
 replay table returns 503. A process restart changes the session. Do not retry a
 mutation automatically: first resolve its existing durable intent/state, then
 create a fresh signed request if the operation is still required.
+
+Before admission `/submit` runs the stateless part of validation on each
+transaction: Phase A with the node's fee rule and network, then the expiry
+check. It refuses with 400 and validation's own code, the same verdict the
+validation pool would reach later: `E_INVALID_SIGNATURE` for an address
+witness that does not verify over the transaction id, `E_MIN_FEE` for a fee
+under `MIN_FEE_A` × size + `MIN_FEE_B` (`detail` is `<fee> < <minimum>`),
+`E_NETWORK_ID_MISMATCH` for a body network id other than the node's, and
+`E_VALIDITY_INTERVAL_MISMATCH` for a validity interval that ended at or
+before the slot 60 seconds before the node's wall clock (the margin covers a
+node clock running ahead; a tx expiring inside the margin is admitted and
+validation refuses it later). These checks read no database, so they refuse
+even while Postgres is down. Phase A's other verdicts are left to the
+validation pool. If the node's signature verifier is not initialised,
+`/submit` answers 503 with `Retry-After: 5`.
 
 ## Bounds and operator holds
 

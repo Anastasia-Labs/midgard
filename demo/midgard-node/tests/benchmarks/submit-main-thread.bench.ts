@@ -34,8 +34,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   Effect,
   Either,
@@ -57,7 +59,10 @@ import {
 } from "../../scripts/submit-ingress-load.report.mjs";
 import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
-import { checkSubmittedTransaction } from "../../src/commands/http/transaction-admission.js";
+import {
+  checkSubmittedTransaction,
+  type SubmittedTxRules,
+} from "../../src/commands/http/transaction-admission.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
@@ -97,6 +102,13 @@ const stubWriter = Layer.succeed(AdmissionWriter, {
   stats: Effect.succeed({} as never),
 });
 
+// The corpus's network and fee rule; the corpus sets no validity interval.
+const RULES: SubmittedTxRules = {
+  expectedNetworkId: 0n,
+  minFeeA: 1n,
+  minFeeB: 2_000n,
+  slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+};
 // The fields the submit route and the ingress read.
 const benchConfig = Layer.succeed(NodeConfig, {
   HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
@@ -121,9 +133,12 @@ describe("submit main-thread cost (M2)", () => {
       const txs = readCorpus(corpusDirectory).requests.map(
         ({ body }) => decodeMidgardProofSubmission(body).transactionCbor,
       );
-      for (const tx of txs.slice(0, 500)) checkSubmittedTransaction(tx, 32_768);
+      await ledgerEd25519SignatureReady();
+      for (const tx of txs.slice(0, 500))
+        checkSubmittedTransaction(tx, 32_768, RULES, Date.now());
       const checkStartedAt = process.hrtime.bigint();
-      for (const tx of txs) checkSubmittedTransaction(tx, 32_768);
+      for (const tx of txs)
+        checkSubmittedTransaction(tx, 32_768, RULES, Date.now());
       const checkUsPerTx =
         Number(process.hrtime.bigint() - checkStartedAt) / 1e3 / txs.length;
 
@@ -139,10 +154,13 @@ describe("submit main-thread cost (M2)", () => {
         size: WORKERS,
         maxQueued: 256,
         maxQueuedBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
-        config: submissionCheckConfig({
-          MAX_SUBMIT_TX_CBOR_BYTES:
-            MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
-        }),
+        config: submissionCheckConfig(
+          {
+            MAX_SUBMIT_TX_CBOR_BYTES:
+              MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+          },
+          RULES,
+        ),
       });
       // The load starts once every worker has loaded the check.
       const loadDeadline = Date.now() + 60_000;

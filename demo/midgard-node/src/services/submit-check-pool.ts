@@ -26,7 +26,10 @@ import {
   type SubmissionCheckConfig,
   submissionCheckConfig,
 } from "../commands/http/submission-check.js";
-import type { CheckedSubmittedTx } from "../commands/http/transaction-admission.js";
+import {
+  type CheckedSubmittedTx,
+  submittedTxRules,
+} from "../commands/http/transaction-admission.js";
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
 import {
   SUBMIT_CHECK_FULL_HASH_END,
@@ -37,6 +40,7 @@ import {
   type SubmitCheckWorkerMessage,
 } from "../workers/utils/submit-check-protocol.js";
 import { NodeConfig } from "./config.js";
+import { Lucid } from "./lucid.js";
 import { BUNDLED_WORKER_EXEC_ARGV } from "./validation-pool.bundled-worker-exec-argv.js";
 
 /** What became of one posted body. */
@@ -421,14 +425,16 @@ export const createSubmitCheckPool = ({
 /**
  * The node's submit check pool for the enclosing scope, sized by
  * `SUBMIT_INGRESS_WORKER_POOL_SIZE`, `SUBMIT_INGRESS_WORKER_QUEUE` and
- * `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES`. Worker stops are logged.
+ * `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES`, checking with the node's rules
+ * (`submittedTxRules`, read once here). Worker stops are logged.
  */
 export const acquireSubmitCheckPool: Effect.Effect<
   SubmitCheckPool,
   never,
-  NodeConfig | Scope.Scope
+  NodeConfig | Lucid | Scope.Scope
 > = Effect.gen(function* () {
   const config = yield* NodeConfig;
+  const rules = yield* submittedTxRules;
   const runFork = Runtime.runFork(yield* Effect.runtime<never>());
   return yield* Effect.acquireRelease(
     Effect.sync(() =>
@@ -436,7 +442,7 @@ export const acquireSubmitCheckPool: Effect.Effect<
         size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
         maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
         maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-        config: submissionCheckConfig(config),
+        config: submissionCheckConfig(config, rules),
         onWorkerStopped: (_, detail) => {
           runFork(Effect.logError(`${detail}; replacing it`));
         },

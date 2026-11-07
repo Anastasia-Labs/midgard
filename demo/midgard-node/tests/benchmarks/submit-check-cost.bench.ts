@@ -6,7 +6,9 @@
 //   pnpm --dir demo --filter midgard-node run bench:submit-check
 //
 // `check` is the check as it runs now: one decode, the consensus check on the
-// decoded tx, and the facts admission needs. `twoDecodes` is the earlier
+// decoded tx, Phase A with the public fee rule (1 lovelace per byte plus
+// 2,000) and the expiry check, and the facts admission needs. `twoDecodes` is
+// the earlier
 // pipeline, rebuilt from the same parts: the submitted-tx decode, then the
 // consensus check decoding the bytes again.
 //
@@ -16,12 +18,17 @@
 //   SUBMIT_CHECK_BENCH_SHAPE=16/16 SUBMIT_CHECK_BENCH_VARIANT=check
 // SUBMIT_CHECK_BENCH_TXS sets the distinct txs per shape (default 256) and
 // SUBMIT_CHECK_BENCH_ROUNDS the timed passes over them (default 30).
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
 import { buildLoadTxShape } from "../../scripts/submit-ingress-load.tx.mjs";
-import { checkSubmittedTransaction } from "../../src/commands/http/transaction-admission.js";
+import {
+  checkSubmittedTransaction,
+  type SubmittedTxRules,
+} from "../../src/commands/http/transaction-admission.js";
 import {
   normalizeSubmitTxCanonicalCborToNative,
   validateSubmitTxCanonicalCbor,
@@ -30,6 +37,13 @@ import {
 const TXS_PER_SHAPE = Number(process.env.SUBMIT_CHECK_BENCH_TXS ?? "256");
 const ROUNDS = Number(process.env.SUBMIT_CHECK_BENCH_ROUNDS ?? "30");
 const MAX_TX_BYTES = 32_768;
+// The public testnet's rules, which `buildLoadTxShape` pays.
+const RULES: SubmittedTxRules = {
+  expectedNetworkId: 0n,
+  minFeeA: 1n,
+  minFeeB: 2_000n,
+  slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+};
 
 const SHAPES = [
   { inputCount: 1, outputCount: 2 },
@@ -58,7 +72,8 @@ const twoDecodes = (txCbor: Uint8Array): boolean => {
 };
 
 const VARIANTS: Readonly<Record<string, (txCbor: Uint8Array) => boolean>> = {
-  check: (txCbor) => checkSubmittedTransaction(txCbor, MAX_TX_BYTES).ok,
+  check: (txCbor) =>
+    checkSubmittedTransaction(txCbor, MAX_TX_BYTES, RULES, Date.now()).ok,
   twoDecodes,
 };
 
@@ -68,7 +83,8 @@ const median = (values: readonly number[]): number => {
 };
 
 describe("submit check cost", () => {
-  it("measures the submit check per tx", () => {
+  it("measures the submit check per tx", async () => {
+    await ledgerEd25519SignatureReady();
     const variants = Object.entries(VARIANTS).filter(
       ([name]) =>
         process.env.SUBMIT_CHECK_BENCH_VARIANT === undefined ||

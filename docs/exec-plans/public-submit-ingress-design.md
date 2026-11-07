@@ -297,7 +297,8 @@ by inventory instead of holding its one request for 30 s).
 
 ### D6 — Fail fast before the durable write
 
-**Stateless, in the worker. Definitive.** These reuse Phase A
+**Stateless, in the worker. Definitive (done, #886; in the submit check
+workers since #885).** These reuse Phase A
 (`validatePhaseASingle`, midgard-validation
 `phase-a.validate-phase-asingle.ts:243`) and its reject codes, so ingress and
 validation cannot disagree:
@@ -309,6 +310,26 @@ validation cannot disagree:
 - The validity interval has not passed, judged with a margin for the node's
   clock.
 - The network id is correct.
+
+As built (#886), `checkSubmittedTransaction` runs the whole of
+`validatePhaseASingle` with the validation pool's settings and refuses only
+on `E_INVALID_SIGNATURE`, `E_MIN_FEE` and `E_NETWORK_ID_MISMATCH`, so every
+refusal is one Phase A itself makes; Phase A's other verdicts go on to the
+validation pool. Expiry is Phase B's check (`E_VALIDITY_INTERVAL_MISMATCH`)
+judged against the wall clock 60 s back (`SUBMIT_EXPIRY_CLOCK_MARGIN_MS`),
+not the follower's slot estimate, so a node clock running ahead does not
+refuse what validation would accept. The check stays a pure function of the
+bytes, the rules (network, fee rule, L1 slot mapping) and the clock. A
+signature verifier that is not initialised answers 503, not a verdict. In
+the submit check workers the rules are read once on the main thread (the
+slot mapping from Lucid) and handed to every worker as plain data; each
+worker reads its own clock. A worker says it is ready only once libsodium
+has initialised (bounded at 10 s, under the pool's 30 s start bound); one
+that cannot initialise stops, so its waiting bodies answer 503 and a fresh
+worker is started.
+`/peer/txs` runs the same checks: only the stateful check is skipped for
+peers (below). Phase A takes bytes, not a decoded tx, so the check pays
+Phase A's own decode on top of its own; see the capacity table.
 
 **Stateful, on the main thread. Advisory.**
 - Each input must be in the mempool ledger state, or be an output of a pending
@@ -442,7 +463,8 @@ them for a cloud vCPU.
 | HTTP framework (main thread), Effect stack | ~90 µs/request | ~10k req/s |
 | HTTP framework, raw Node | ~24 µs/request | ~42k req/s |
 | Hand-off to workers (main thread) | 45 µs one tx per message; 4–6 µs at 16–64 per message | 22k tx/s single, 170–250k batched |
-| Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16); +52 µs per vkey witness with D6 | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
+| Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16) | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
+| Worker checks with D6, Phase A run whole (measured on #886) | 0.46 ms (1/2), 0.76 ms (4/4), 2.1 ms (16/16); Phase A alone is 0.41 ms (1/2) and 1.79 ms (16/16), of which one Ed25519 verify is 55 µs and Phase A's decode and scans up to its fee check 0.32 ms (1/2) | ~17k tx/s (1/2) to ~3.8k tx/s (16/16) on 8 workers; ~2.2k tx/s (1/2) if it ran on the main thread |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |

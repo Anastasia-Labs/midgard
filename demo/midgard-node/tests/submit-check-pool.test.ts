@@ -9,8 +9,10 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -30,8 +32,15 @@ import {
   type SubmitCheckPoolOptions,
 } from "../src/services/submit-check-pool.js";
 
+// The public testnet's rules, which the load corpus's valid txs pay.
 const config: SubmissionCheckConfig = {
   maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+  rules: {
+    expectedNetworkId: 0n,
+    minFeeA: 1n,
+    minFeeB: 2_000n,
+    slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+  },
 };
 const cannedWorker = pathToFileURL(
   path.resolve("tests/fixtures/submit-check-canned-worker.mjs"),
@@ -109,11 +118,13 @@ describe("submit check pool", () => {
     ];
     const pool = startPool();
     const outcomes = await Promise.all(bodies.map((body) => check(pool, body)));
+    // The inline check below verifies signatures on this thread.
+    await ledgerEd25519SignatureReady();
     const kinds = new Set<string>();
     outcomes.forEach((outcome, index) => {
       expect(outcome.kind).toBe("checked");
       if (outcome.kind !== "checked") return;
-      const inline = checkSubmissionBody(bodies[index]!, config);
+      const inline = checkSubmissionBody(bodies[index]!, config, Date.now());
       expect(plain(outcome.check)).toEqual(plain(inline));
       kinds.add(inline.ok ? "accepted" : `${inline.reason}:${inline.status}`);
     });

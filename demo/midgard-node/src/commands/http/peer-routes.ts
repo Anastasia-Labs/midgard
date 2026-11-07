@@ -43,6 +43,7 @@ import {
   admitCheckedTransactions,
   type CheckedSubmittedTx,
   checkSubmittedTransaction,
+  submittedTxRules,
 } from "./transaction-admission.js";
 
 const UNAVAILABLE = {
@@ -156,15 +157,25 @@ export const postPeerTxsHandler = <R>(
       PEER_TXS_MAX_BODY_BYTES,
     );
     const txs = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
+    // A peer's tx passes the same stateless checks as a user's (design D6):
+    // they read no ledger, so a tx the sender admitted passes them here too.
+    const rules = yield* submittedTxRules;
+    const nowMs = Date.now();
     let refused = 0;
+    let verifierUnavailable = false;
     const candidates: CheckedSubmittedTx[] = [];
     for (const tx of txs) {
       const checked = checkSubmittedTransaction(
         tx,
         nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+        rules,
+        nowMs,
       );
       if (checked.ok) candidates.push(checked.normalized);
-      else refused++;
+      else {
+        refused++;
+        if (checked.status === 503) verifierUnavailable = true;
+      }
     }
     const results = yield* admitCheckedTransactions({
       candidates,
@@ -202,6 +213,11 @@ export const postPeerTxsHandler = <R>(
     if (capacityRefusal !== undefined)
       return yield* HttpServerResponse.json(
         { error: CAPACITY_REFUSALS[capacityRefusal] },
+        UNAVAILABLE,
+      );
+    if (verifierUnavailable)
+      return yield* HttpServerResponse.json(
+        { error: "Signature verification is unavailable" },
         UNAVAILABLE,
       );
     return yield* HttpServerResponse.json({ admitted, duplicates, refused });

@@ -7,6 +7,8 @@
  */
 import { parentPort, workerData } from "node:worker_threads";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+
 import { checkSubmissionBody } from "../commands/http/submission-check.js";
 import {
   SUBMIT_CHECK_FULL_HASH_END,
@@ -27,10 +29,11 @@ const { config } = workerData as SubmitCheckWorkerInit;
 
 const checkOne = (
   body: ArrayBuffer,
+  nowMs: number,
   transfer: ArrayBuffer[],
 ): SubmitCheckWireResult => {
   try {
-    const checked = checkSubmissionBody(new Uint8Array(body), config);
+    const checked = checkSubmissionBody(new Uint8Array(body), config, nowMs);
     if (!checked.ok)
       return {
         ok: false,
@@ -67,11 +70,26 @@ const checkOne = (
 
 port.on("message", ({ batch, bodies }: SubmitCheckBatch) => {
   const transfer: ArrayBuffer[] = [];
-  const results = bodies.map((body) => checkOne(body, transfer));
+  // This worker's own clock, read once per batch, for the expiry check.
+  const nowMs = Date.now();
+  const results = bodies.map((body) => checkOne(body, nowMs, transfer));
   const reply: SubmitCheckBatchResult = { batch, results };
   port.postMessage(reply, transfer);
 });
 
-// The imports above have loaded: the pool may send batches.
+// The imports above have loaded. Witness signatures are verified by
+// libsodium, which initialises asynchronously within a bound
+// (`LEDGER_ED25519_READY_TIMEOUT_MS`, under the pool's start timeout): the
+// pool may send batches once it can answer. A verifier that cannot
+// initialise stops this worker on an uncaught error, so the pool answers its
+// waiting bodies `unavailable` (503, retry) and starts a fresh worker, which
+// loads libsodium again.
 const ready: SubmitCheckWorkerReady = { ready: true };
-port.postMessage(ready);
+void ledgerEd25519SignatureReady().then(
+  () => port.postMessage(ready),
+  (error: unknown) => {
+    setImmediate(() => {
+      throw error;
+    });
+  },
+);

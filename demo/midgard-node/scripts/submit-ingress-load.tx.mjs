@@ -72,7 +72,14 @@ export const loadOutRef = (txId, outputIndex) =>
 
 const encodeByteList = (items) => encodeCbor([...items]);
 
-const encodeSignedTx = ({ inputs, outputs, fee, signedTxId }) => {
+const encodeSignedTx = ({
+  inputs,
+  outputs,
+  fee,
+  signedTxId,
+  networkId = LOAD_TX_NETWORK_ID,
+  validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
+}) => {
   const spendItems = inputs
     .map((input) => input.outRef)
     .sort((left, right) => Buffer.compare(left, right));
@@ -82,13 +89,13 @@ const encodeSignedTx = ({ inputs, outputs, fee, signedTxId }) => {
     outputsPreimageCbor: encodeByteList(outputs),
     fee,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd,
     requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
     mintPreimageCbor: EMPTY_CBOR_LIST,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
-    networkId: LOAD_TX_NETWORK_ID,
+    networkId,
   };
   const txId = computeMidgardNativeTxId(
     deriveMidgardNativeTxCompact(body, EMPTY_WITNESS_SET, "TxIsValid"),
@@ -125,6 +132,8 @@ const encodeSignedTx = ({ inputs, outputs, fee, signedTxId }) => {
  * the first output takes the remainder. `feeOverride` pins the fee instead
  * (junk corpora use it for a fee below the minimum), and `signedTxId` is an
  * id the witnesses sign in place of the tx's own (for a bad signature).
+ * `networkId` replaces the body network id and `validityIntervalEnd` (an L1
+ * slot) bounds the tx's validity; by default it has none.
  */
 export const buildLoadTx = ({
   inputs,
@@ -133,6 +142,8 @@ export const buildLoadTx = ({
   minFeeB,
   feeOverride,
   signedTxId,
+  networkId,
+  validityIntervalEnd,
 }) => {
   if (inputs.length === 0) throw new Error("a load tx needs an input");
   if (outputAddresses.length === 0)
@@ -150,7 +161,14 @@ export const buildLoadTx = ({
       makeLoadOutput(address, index === 0 ? share + remainder : share),
     );
     return {
-      ...encodeSignedTx({ inputs, outputs, fee, signedTxId }),
+      ...encodeSignedTx({
+        inputs,
+        outputs,
+        fee,
+        signedTxId,
+        networkId,
+        validityIntervalEnd,
+      }),
       fee,
       outputs,
     };
@@ -169,7 +187,7 @@ export const buildLoadTx = ({
 /**
  * A tx of `inputCount` inputs and `outputCount` outputs over synthetic
  * genesis outputs: the shapes the submit-check cost is measured on. `nonce`
- * makes each tx distinct.
+ * makes each tx distinct; any other option is passed to `buildLoadTx`.
  */
 export const buildLoadTxShape = ({
   inputCount,
@@ -177,6 +195,7 @@ export const buildLoadTxShape = ({
   nonce = 0,
   minFeeA = 1n,
   minFeeB = 2_000n,
+  ...txOptions
 }) => {
   const inputs = Array.from({ length: inputCount }, (_, index) => {
     const key = makeLoadKey(`shape-${nonce.toString()}`, index);
@@ -197,7 +216,13 @@ export const buildLoadTxShape = ({
       makeLoadKey(`shape-out-${nonce.toString()}`, index).addressBytes,
   );
   return {
-    ...buildLoadTx({ inputs, outputAddresses, minFeeA, minFeeB }),
+    ...buildLoadTx({
+      inputs,
+      outputAddresses,
+      minFeeA,
+      minFeeB,
+      ...txOptions,
+    }),
     inputs,
   };
 };

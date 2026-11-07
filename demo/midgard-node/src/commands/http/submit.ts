@@ -364,8 +364,15 @@ export const makeSubmitRequestHandler = <R>({
             if (!check.ok) {
               refuse(
                 check.reason,
-                { status: check.status, body: check.body },
-                () => check.log.join("; "),
+                // Only an unavailable signature verifier answers 503, and
+                // the sender retries it.
+                check.status === 503
+                  ? { status: 503, headers: RETRY_LATER, body: check.body }
+                  : { status: check.status, body: check.body },
+                () =>
+                  check.log.length > 0
+                    ? check.log.join("; ")
+                    : String(check.body.error),
               );
               return;
             }

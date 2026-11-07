@@ -97,6 +97,16 @@ is distinct from successful ledger validation or settlement. With
 `submit_refusal_count{reason}`; the node logs only the first refusal of each
 reason per second, with the number left unlogged since the previous line.
 
+Before admission the node runs the stateless part of validation (Phase A with
+its fee rule and network, then expiry) and refuses with `400` and
+validation's own code: `E_INVALID_SIGNATURE` (an address witness that does
+not verify), `E_MIN_FEE` (a fee under `MIN_FEE_A` × size + `MIN_FEE_B`),
+`E_NETWORK_ID_MISMATCH` (a body network id other than the node's) and
+`E_VALIDITY_INTERVAL_MISMATCH` (a validity interval that ended 60 seconds or
+more before the node's wall clock). These checks need no database. Phase A's
+other verdicts are left to the validation pool. A node whose signature
+verifier is not initialised answers `503`.
+
 The node answers `/submit` from memory: a `202` means accepted, not stored.
 Each accepted transaction waits in a bounded pending set until the admission
 writer's next group commit to Postgres, so a node crash can lose transactions
@@ -263,7 +273,8 @@ L1 advance, while it still has pending transactions, offers their ids and
 sends only those a peer has never seen.
 
 - `POST /peer/txs` takes a batch of transactions and admits each with source
-  `peer` after the same checks as `POST /submit`, the whole body in one
+  `peer` after the same checks as `POST /submit`, including the stateless
+  validation checks (a refused one counts in `refused`), the whole body in one
   admission-writer submission. It answers
   `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
   when the admission backlog is full or its writes are stalled; the rest of

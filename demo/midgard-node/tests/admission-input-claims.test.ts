@@ -176,20 +176,18 @@ describe("first-seen input claims", () => {
 
   it("releases a rejected tx's claims, so the next spender is admitted", async () => {
     const node = await startNode();
-    const { first, second } = await doubleSpend(node);
-    // The first transfer with one bit of its signature flipped.
-    const forged = Buffer.from(first.txCbor);
-    const key = Buffer.concat([
-      Buffer.from([0x58, 0x20]),
-      Buffer.from(user.signer.verificationKeyHex, "hex"),
-    ]);
-    const signatureAt = forged.indexOf(key) + key.length;
-    expect(forged.subarray(signatureAt, signatureAt + 2)).toEqual(
-      Buffer.from([0x58, 0x40]),
+    const { second } = await doubleSpend(node);
+    // A transfer of `funding` and an output the ledger never held. Ingress
+    // admits it (the ledger view is still cold, so it cannot tell), and it
+    // claims `funding`; validation then rejects it for the missing input.
+    const first = await buildTransfer(
+      user,
+      [funding, l2Output(user, 0x33, 50_000_000n)],
+      60_000_000n,
+      node.config,
     );
-    forged[signatureAt + 2] ^= 0x01;
 
-    expect((await submit(node, forged)).status).toBe(202);
+    expect((await submit(node, first.txCbor)).status).toBe(202);
     await expectSpent(node, second, {
       reason: "claimed",
       spentBy: first.txIdHex,

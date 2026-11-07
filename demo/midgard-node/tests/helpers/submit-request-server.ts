@@ -11,11 +11,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect, Either, Layer, Logger, ManagedRuntime, Metric } from "effect";
 
 import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { submitRefusalCounter } from "../../src/commands/http/submission-metrics.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
+import type { SubmittedTxRules } from "../../src/commands/http/transaction-admission.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import {
   AdmissionWriter,
@@ -25,7 +27,7 @@ import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateLimitPolicy,
 } from "../../src/services/http-rate-limits.js";
-import { Globals, NodeConfig } from "../../src/services/index.js";
+import { Globals, Lucid, NodeConfig } from "../../src/services/index.js";
 import {
   createSubmitCheckPool,
   type SubmitCheckPool,
@@ -69,8 +71,24 @@ export const stubWriter = Layer.succeed(AdmissionWriter, {
   stats: Effect.succeed({} as never),
 });
 
+/** Preprod with no fee floor, as the database fixtures' txs are built for. */
+export const RULES: SubmittedTxRules = {
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
+  slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+};
+
+/** A Lucid service holding only the rules' L1 slot mapping. */
+export const lucidLayer = Layer.succeed(Lucid, {
+  api: { config: () => ({ slotConfig: RULES.slotConfig }) },
+} as never);
+
 export const configLayer = (policy: HttpRateLimitPolicy) =>
   Layer.succeed(NodeConfig, {
+    NETWORK: "Preprod",
+    MIN_FEE_A: RULES.minFeeA,
+    MIN_FEE_B: RULES.minFeeB,
     HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
     HTTP_RATE_LIMITS: policy,
     MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
@@ -82,9 +100,12 @@ export const configLayer = (policy: HttpRateLimitPolicy) =>
     MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
   } as never);
 
-const checkConfig = submissionCheckConfig({
-  MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
-});
+const checkConfig = submissionCheckConfig(
+  {
+    MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+  },
+  RULES,
+);
 
 export const fixtureWorker = (name: string) =>
   pathToFileURL(path.resolve("tests/fixtures", name));

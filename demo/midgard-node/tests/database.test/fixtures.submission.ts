@@ -17,12 +17,18 @@ import {
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect, Option } from "effect";
 import { expect } from "vitest";
 
 import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
+import {
+  type SubmittedTxRules,
+  submittedTxRules,
+} from "../../src/commands/http/transaction-admission.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { MempoolDB, TxAdmissionsDB } from "../../src/database/index.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
@@ -58,23 +64,78 @@ export type TxQueueWakeRequirements =
   | ValidationPool
   | MempoolLedgerCache;
 
+/** A Lucid service holding only the Preprod slot mapping. */
+const PREPROD_SLOT_LUCID = {
+  api: {
+    config: () => ({
+      slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+    }),
+  },
+} as unknown as Lucid;
+
+// A fixed key: ed25519 signatures are deterministic, so a fixture built twice
+// has the same bytes.
+const FIXTURE_SIGNING_KEY = CML.PrivateKey.from_normal_bytes(
+  Buffer.alloc(32, 7),
+);
+
+/**
+ * The tx with its address witnesses replaced by one fixed key's signature
+ * over its Midgard id, so `/submit`'s signature check passes. The id covers
+ * only the body, so it is unchanged.
+ */
+const signedOverMidgardId = (txCanonicalCbor: Buffer): Buffer => {
+  const full = decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
+  const witness = CML.make_vkey_witness(
+    CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxId(full)),
+    FIXTURE_SIGNING_KEY,
+  );
+  return encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: full.version,
+      validity: full.validity,
+      body: full.body,
+      witnessSet: {
+        ...full.witnessSet,
+        addrTxWitsPreimageCbor: encodeCbor([
+          Buffer.from(witness.to_cbor_bytes()),
+        ]),
+      },
+    }),
+  );
+};
+
 /** The fixture isolates the admission contract, so it sets no rate limits. */
 const fixtureIngress = createHttpIngress({
   policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
 });
 
 /**
- * One submit check pool for every fixture submission, sized from the first
- * caller's configuration; its workers do not hold the process open.
+ * One submit check pool per check configuration (size limit and rules) for
+ * every fixture submission, sized from the first such caller's
+ * configuration; its workers do not hold the process open.
  */
-let fixtureCheckPool: SubmitCheckPool | undefined;
-const checkPoolFor = (config: NodeConfigDep): SubmitCheckPool =>
-  (fixtureCheckPool ??= createSubmitCheckPool({
-    size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
-    maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
-    maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-    config: submissionCheckConfig(config),
-  }));
+const fixtureCheckPools = new Map<string, SubmitCheckPool>();
+const checkPoolFor = (
+  config: NodeConfigDep,
+  rules: SubmittedTxRules,
+): SubmitCheckPool => {
+  const checkConfig = submissionCheckConfig(config, rules);
+  const key = JSON.stringify(checkConfig, (_, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
+  let pool = fixtureCheckPools.get(key);
+  if (pool === undefined) {
+    pool = createSubmitCheckPool({
+      size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
+      maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
+      maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+      config: checkConfig,
+    });
+    fixtureCheckPools.set(key, pool);
+  }
+  return pool;
+};
 
 /**
  * Each POST comes from a loopback address of its own, so the ingress's
@@ -152,9 +213,18 @@ export const submitThroughRouter = <R>(
   R | SqlClient.SqlClient | NodeConfig | Globals | AdmissionWriter
 > =>
   Effect.gen(function* () {
+    // The check reads the L1 slot mapping from Lucid; a test that runs the
+    // tx-queue processor provides its own.
+    const lucid = Option.getOrElse(
+      yield* Effect.serviceOption(Lucid),
+      () => PREPROD_SLOT_LUCID,
+    );
+    const rules = yield* submittedTxRules.pipe(
+      Effect.provideService(Lucid, lucid),
+    );
     const handler = yield* makeSubmitRequestHandler({
       wakeTxQueueProcessor,
-      checkPool: checkPoolFor(yield* NodeConfig),
+      checkPool: checkPoolFor(yield* NodeConfig, rules),
       ingress: fixtureIngress,
     });
     const result = yield* Effect.acquireUseRelease(
@@ -194,8 +264,10 @@ export const makeNativeSubmitTx = (
   readonly txIdHex: string;
   readonly txCanonicalCbor: Buffer;
 } => {
-  const txCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
-    makeCardanoSignedMapOutputTxBytes(undefined, spentInputIndex),
+  const txCanonicalCbor = signedOverMidgardId(
+    cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+      makeCardanoSignedMapOutputTxBytes(undefined, spentInputIndex),
+    ),
   );
   const txId = computeMidgardNativeTxId(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
@@ -265,8 +337,10 @@ export const makeScriptProofSubmitTx = (
       ]),
     },
   };
-  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
-    materializeMidgardNativeTxFromCanonical(canonical),
+  const txCanonicalCbor = signedOverMidgardId(
+    encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical(canonical),
+    ),
   );
   const txId = computeMidgardNativeTxId(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
@@ -321,8 +395,10 @@ export const makeReferenceScriptProofSubmitTx = (nonce: number) => {
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   };
-  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
-    materializeMidgardNativeTxFromCanonical(canonical),
+  const txCanonicalCbor = signedOverMidgardId(
+    encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical(canonical),
+    ),
   );
   const txId = computeMidgardNativeTxId(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),

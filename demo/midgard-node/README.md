@@ -1026,8 +1026,9 @@ The report holds the admitted rate, the outcome mix overall and per corpus
 kind, p50/p90/p99 latency, admission rows/s and Postgres tuple and commit
 rates, and the node's main-thread and whole-process CPU (from
 `/proc/<pid>/task/<pid>/stat`; a containerized node's host pid comes from
-`docker inspect -f '{{.State.Pid}}' <container>`). Bad CBOR is refused at
-ingress; the other junk kinds are well-formed txs that validation refuses.
+`docker inspect -f '{{.State.Pid}}' <container>`). Bad CBOR, a bad
+signature and a low fee are refused at ingress (400) and never stored; a
+missing input and a double spend are well-formed txs that validation refuses.
 
 - **Drain stub.** `--drain-rate` (or `drain` on its own) marks queued
   admissions `rejected` with `E_LOAD_DRAIN_STUB`, oldest first. It takes rows

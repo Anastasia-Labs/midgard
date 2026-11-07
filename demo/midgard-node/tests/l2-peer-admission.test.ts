@@ -129,7 +129,7 @@ describe("peer admission forget rule", () => {
     });
   });
 
-  it("keeps a peer transaction with a wrong witness rejected", async () => {
+  it("refuses a peer transaction with a forged witness before admission", async () => {
     const node = await startReceiver();
     // The user's own transfer with one bit of its signature flipped.
     const honest = await buildTransfer(
@@ -138,29 +138,49 @@ describe("peer admission forget rule", () => {
       10_000_000n,
       node.config,
     );
-    const forged = { txCbor: Buffer.from(honest.txCbor) };
+    const forged = Buffer.from(honest.txCbor);
     const key = Buffer.concat([
       Buffer.from([0x58, 0x20]),
       Buffer.from(user.signer.verificationKeyHex, "hex"),
     ]);
-    const signatureAt = forged.txCbor.indexOf(key) + key.length;
-    expect(forged.txCbor.subarray(signatureAt, signatureAt + 2)).toEqual(
+    const signatureAt = forged.indexOf(key) + key.length;
+    expect(forged.subarray(signatureAt, signatureAt + 2)).toEqual(
       Buffer.from([0x58, 0x40]),
     );
-    forged.txCbor[signatureAt + 2] ^= 0x01;
+    forged[signatureAt + 2] ^= 0x01;
 
-    expect(await offer(node, [forged.txCbor])).toMatchObject({ admitted: 1 });
+    // Peers pass the same stateless checks as `/submit` (design D6).
+    expect(await offer(node, [forged])).toEqual({
+      admitted: 0,
+      duplicates: 0,
+      refused: 1,
+    });
+    expect(await node.admissions()).toEqual([]);
+  });
+
+  it("keeps a peer transaction signed by the wrong key rejected", async () => {
+    const node = await startReceiver();
+    // A well-formed signature, by a key that does not own the input: only
+    // the ledger check finds it.
+    const stolen = await buildTransfer(
+      sender,
+      [funding],
+      10_000_000n,
+      node.config,
+    );
+
+    expect(await offer(node, [stolen.txCbor])).toMatchObject({ admitted: 1 });
     await node.drain();
     const [verdict] = await node.admissions();
     expect(verdict).toMatchObject({
       status: "rejected",
-      reject_code: "E_INVALID_SIGNATURE",
+      reject_code: "E_MISSING_REQUIRED_WITNESS",
     });
 
     // The writer keeps no recent peer ids (a forgotten peer row must be
     // admitted again), so the re-offer is acknowledged and its write then
     // resolves against the stored rejection, which stays as it was.
-    expect(await offer(node, [forged.txCbor])).toEqual({
+    expect(await offer(node, [stolen.txCbor])).toEqual({
       admitted: 1,
       duplicates: 0,
       refused: 0,

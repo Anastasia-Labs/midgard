@@ -36,6 +36,7 @@ import {
   isSubmitRequest,
   makeSubmitRequestHandler,
 } from "../../src/commands/http/submit.js";
+import { submittedTxRules } from "../../src/commands/http/transaction-admission.js";
 import {
   createHttpIngress,
   withHttpIngress,
@@ -313,7 +314,7 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
     size: 1,
     maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
     maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-    config: submissionCheckConfig(config),
+    config: submissionCheckConfig(config, await run(submittedTxRules)),
   });
   const submitHandler = await run(
     makeSubmitRequestHandler({

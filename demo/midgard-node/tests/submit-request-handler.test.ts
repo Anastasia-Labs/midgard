@@ -22,6 +22,7 @@ import {
   CLIENT,
   closeSharedPool,
   configLayer,
+  lucidLayer,
   MEDIA,
   noLimits,
   refusals,
@@ -196,6 +197,7 @@ describe("startup listener dispatch", () => {
     );
     const services = Layer.mergeAll(
       configLayer(noLimits),
+      lucidLayer,
       Globals.Default,
       stubWriter,
     );
