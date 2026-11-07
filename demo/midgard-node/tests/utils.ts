@@ -9,7 +9,7 @@ import { MIGRATIONS } from "../src/database/migrations/index.js";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
-  ADMISSION_WRITE_BATCH_TARGET_ROWS,
+  ADMISSION_WRITE_QUEUE_BYTES,
   ADMISSION_WRITE_QUEUE_CAPACITY,
   ADMISSION_WRITE_SHARD_COUNT,
   AdmissionWriter,
@@ -43,9 +43,8 @@ const AdmissionWriterTestLive = Layer.scoped(
       {
         shardCount: ADMISSION_WRITE_SHARD_COUNT,
         batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
-        batchTargetRows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-        batchDeadlineMs: 0,
         queueCapacity: ADMISSION_WRITE_QUEUE_CAPACITY,
+        queueBytes: ADMISSION_WRITE_QUEUE_BYTES,
       },
     );
   }),

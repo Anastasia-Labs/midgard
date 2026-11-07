@@ -1,13 +1,11 @@
 import {
   Cause,
   Chunk,
-  Clock,
   Deferred,
   Duration,
   Effect,
   Exit,
   Metric,
-  Option,
   Queue,
   Scope,
 } from "effect";
@@ -19,12 +17,13 @@ import {
   type AdmissionCompletion,
   admissionWriteBatchDurationTimer,
   admissionWriteBatchRowsHistogram,
+  admissionWriteBytesUsedGauge,
   admissionWriteCapacityUsedGauge,
-  admissionWriteCapacityWaitersGauge,
   type AdmissionWriteError,
   type AdmissionWriteItem,
   admissionWriteQueueDepthGauge,
   admissionWriteQueueMaxDepthGauge,
+  AdmissionWriterFullError,
   type AdmissionWriterOptions,
   type AdmissionWriterService,
   admissionWriterShardForTxId,
@@ -59,9 +58,16 @@ export const makeAdmissionWriterWithOptions = <R>(
       Array.from({ length: options.shardCount }),
       () => Queue.unbounded<AdmissionCompletion>(),
     );
-    const capacity = yield* Effect.makeSemaphore(options.queueCapacity);
+    // Group commit: a persister offers one token each time it is free, and
+    // its collector waits for that token before taking what is queued. The
+    // batch therefore holds everything that arrived during the previous
+    // write, with no timer.
+    const persisterFree = yield* Effect.forEach(
+      Array.from({ length: options.shardCount }),
+      () => Queue.bounded<void>(1),
+    );
     let capacityUsed = 0;
-    let waitingCapacity = 0;
+    let bytesUsed = 0;
     let maxQueueDepth = 0;
     const stageDepths = Array.from({ length: options.shardCount }, () => ({
       input: 0,
@@ -117,9 +123,6 @@ export const makeAdmissionWriterWithOptions = <R>(
     const decrementPhase = (item: AdmissionWriteItem): void => {
       const stages = stageDepths[item.lane]!;
       switch (item.phase) {
-        case "waiting_capacity":
-          waitingCapacity -= 1;
-          break;
         case "registered":
           stages.input -= 1;
           break;
@@ -142,9 +145,6 @@ export const makeAdmissionWriterWithOptions = <R>(
       item.phase = phase;
       const stages = stageDepths[item.lane]!;
       switch (phase) {
-        case "waiting_capacity":
-          waitingCapacity += 1;
-          break;
         case "registered":
           stages.input += 1;
           break;
@@ -175,7 +175,7 @@ export const makeAdmissionWriterWithOptions = <R>(
 
     const stageSnapshot = () => ({
       capacityUsed,
-      waitingCapacity,
+      bytesUsed,
       lanes: stageDepths.map((stages) => ({ ...stages })),
       queueDepths: stageDepths.map((stages) => stages.input + stages.prepared),
       maxQueueDepth,
@@ -191,9 +191,7 @@ export const makeAdmissionWriterWithOptions = <R>(
       yield* admissionWriteCapacityUsedGauge(
         Effect.succeed(snapshot.capacityUsed),
       );
-      yield* admissionWriteCapacityWaitersGauge(
-        Effect.succeed(snapshot.waitingCapacity),
-      );
+      yield* admissionWriteBytesUsedGauge(Effect.succeed(snapshot.bytesUsed));
       for (const [lane, stages] of snapshot.lanes.entries()) {
         for (const [stage, value] of Object.entries({
           input: stages.input,
@@ -221,27 +219,17 @@ export const makeAdmissionWriterWithOptions = <R>(
       Effect.uninterruptible(
         Effect.gen(function* () {
           const claimed = yield* Effect.sync(() => {
-            if (item.completed) return { complete: false, release: false };
+            if (item.completed) return false;
             decrementPhase(item);
             item.completed = true;
             pending.delete(item);
-            const release = item.capacityHeld;
-            if (release) {
-              item.capacityHeld = false;
-              capacityUsed -= 1;
-            }
+            capacityUsed -= 1;
+            bytesUsed -= item.request.txCanonicalCbor.length;
             updateMaxDepths();
-            return { complete: true, release };
+            return true;
           });
-          if (!claimed.complete) return;
-          yield* effect.pipe(
-            Effect.ensuring(
-              claimed.release
-                ? capacity.release(1).pipe(Effect.asVoid)
-                : Effect.void,
-            ),
-            Effect.asVoid,
-          );
+          if (!claimed) return;
+          yield* Effect.asVoid(effect);
         }),
       );
 
@@ -282,38 +270,18 @@ export const makeAdmissionWriterWithOptions = <R>(
         }
       });
 
+    // Whatever is queued once the persister is free, up to batchMaxRows: the
+    // first row waits for work, the rest never wait.
     const collectBatch = (queue: Queue.Queue<AdmissionWriteItem>) =>
       Effect.gen(function* () {
         const first = yield* Queue.take(queue);
-        const deadlineAt =
-          (yield* Clock.currentTimeMillis) + options.batchDeadlineMs;
-        const items: AdmissionWriteItem[] = [first];
-        while (
-          items.length < options.batchTargetRows &&
-          items.length < options.batchMaxRows
-        ) {
-          const available = yield* Queue.takeUpTo(
-            queue,
-            options.batchMaxRows - items.length,
-          );
-          if (!Chunk.isEmpty(available)) {
-            items.push(...Chunk.toReadonlyArray(available));
-            if (items.length >= options.batchTargetRows) break;
-            continue;
-          }
-          const remainingMs = deadlineAt - (yield* Clock.currentTimeMillis);
-          if (remainingMs <= 0) break;
-          const next = yield* Queue.take(queue).pipe(
-            Effect.timeoutOption(Duration.millis(remainingMs)),
-          );
-          if (Option.isNone(next)) break;
-          items.push(next.value);
-        }
-        return items;
+        const rest = yield* Queue.takeUpTo(queue, options.batchMaxRows - 1);
+        return [first, ...Chunk.toReadonlyArray(rest)];
       });
 
     const runCollector = (lane: number) =>
       Effect.gen(function* () {
+        yield* Queue.take(persisterFree[lane]!);
         if (testHooks.beforeCollect !== undefined) {
           yield* testHooks.beforeCollect(lane);
         }
@@ -328,6 +296,7 @@ export const makeAdmissionWriterWithOptions = <R>(
         if (testHooks.beforePersist !== undefined) {
           yield* testHooks.beforePersist(lane);
         }
+        yield* Queue.offer(persisterFree[lane]!, undefined);
         const items = yield* Queue.take(preparedQueues[lane]!);
         yield* transitionItems(items, "inflight");
         yield* reportDepth;
@@ -392,69 +361,46 @@ export const makeAdmissionWriterWithOptions = <R>(
             request,
             lane: admissionWriterShardForTxId(request.txId, options.shardCount),
             deferred,
-            phase: "waiting_capacity",
-            capacityHeld: false,
+            phase: "registered",
             completed: false,
           };
-          const registered = yield* Effect.sync(() => {
-            if (!accepting) return false;
-            pending.add(item);
-            incrementPhase(item, "waiting_capacity");
-            updateMaxDepths();
-            return true;
-          });
-          if (!registered) {
-            return yield* Effect.fail(
-              new AdmissionWriterShutdownError({
+          const bytes = request.txCanonicalCbor.length;
+          // Fail fast: a full writer refuses now rather than queueing the
+          // caller behind a permit. The check and the registration run in one
+          // synchronous section, so concurrent callers cannot overshoot.
+          const refusal = yield* Effect.sync(() => {
+            if (!accepting) {
+              return new AdmissionWriterShutdownError({
                 message: "Admission writer is shutting down",
                 mayHaveCommitted: false,
-              }),
-            );
-          }
-          const enqueue = Effect.uninterruptibleMask((restore) =>
-            Effect.gen(function* () {
-              yield* restore(capacity.take(1));
-              const shouldEnqueue = yield* Effect.sync(() => {
-                if (!accepting || item.completed) return false;
-                decrementPhase(item);
-                item.capacityHeld = true;
-                capacityUsed += 1;
-                incrementPhase(item, "registered");
-                updateMaxDepths();
-                return true;
               });
-              if (!shouldEnqueue) {
-                yield* capacity.release(1);
-                return;
-              }
-              yield* Queue.offer(inputQueues[item.lane]!, item);
-            }),
-          );
-          yield* Effect.raceFirst(
-            enqueue,
-            Deferred.await(deferred).pipe(Effect.asVoid),
-          ).pipe(
-            Effect.onInterrupt(() =>
-              Effect.sync(() => {
-                if (item.phase !== "waiting_capacity" || item.completed) return;
-                decrementPhase(item);
-                item.completed = true;
-                pending.delete(item);
-                updateMaxDepths();
-              }),
-            ),
-          );
-          return yield* Deferred.await(deferred).pipe(
-            Effect.onInterrupt(() =>
-              Effect.sync(() => {
-                if (item.phase !== "waiting_capacity" || item.completed) return;
-                decrementPhase(item);
-                item.completed = true;
-                pending.delete(item);
-                updateMaxDepths();
-              }),
-            ),
-          );
+            }
+            if (capacityUsed >= options.queueCapacity) {
+              return new AdmissionWriterFullError({
+                message: "Admission writer row bound is full",
+                unit: "rows",
+                used: capacityUsed,
+                capacity: options.queueCapacity,
+              });
+            }
+            if (bytesUsed + bytes > options.queueBytes) {
+              return new AdmissionWriterFullError({
+                message: "Admission writer byte bound is full",
+                unit: "bytes",
+                used: bytesUsed,
+                capacity: options.queueBytes,
+              });
+            }
+            pending.add(item);
+            capacityUsed += 1;
+            bytesUsed += bytes;
+            incrementPhase(item, "registered");
+            updateMaxDepths();
+            return null;
+          });
+          if (refusal !== null) return yield* Effect.fail(refusal);
+          yield* Queue.offer(inputQueues[item.lane]!, item);
+          return yield* Deferred.await(deferred);
         }),
       stats: Effect.sync(() => {
         const snapshot = stageSnapshot();
@@ -496,7 +442,8 @@ export const makeAdmissionWriterWithOptions = <R>(
           pending: pending.size,
           capacity: options.queueCapacity,
           capacityUsed: snapshot.capacityUsed,
-          waitingCapacity: snapshot.waitingCapacity,
+          capacityBytes: options.queueBytes,
+          bytesUsed: snapshot.bytesUsed,
           queueDepths: snapshot.queueDepths,
           queueDepth: snapshot.queueDepths.reduce(
             (sum, value) => sum + value,
@@ -547,6 +494,10 @@ export const makeAdmissionWriterWithOptions = <R>(
           );
         }
         yield* Effect.forEach(inputQueues, Queue.shutdown, {
+          concurrency: "unbounded",
+          discard: true,
+        });
+        yield* Effect.forEach(persisterFree, Queue.shutdown, {
           concurrency: "unbounded",
           discard: true,
         });

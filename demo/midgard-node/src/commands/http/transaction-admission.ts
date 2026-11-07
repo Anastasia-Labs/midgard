@@ -180,7 +180,7 @@ export const admitCheckedTransaction = <R>({
           const failure = Option.getOrUndefined(
             Cause.failureOption(exit.cause),
           );
-          // A conflict proves no row was inserted. A SqlError, interruption,
+          // A conflict or a full writer proves no row was inserted. A SqlError, interruption,
           // or defect can be observed after PostgreSQL committed, so retain
           // the slot conservatively until the next live-count refresh.
           return admissionFailureDefinitelyDidNotInsert(failure)

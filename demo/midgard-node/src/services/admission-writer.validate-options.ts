@@ -15,11 +15,10 @@ export const ADMISSION_WRITE_SHARD_COUNT = 2;
 
 export const ADMISSION_WRITE_BATCH_MAX_ROWS = 256;
 
-export const ADMISSION_WRITE_BATCH_TARGET_ROWS = 128;
-
-export const ADMISSION_WRITE_BATCH_DEADLINE_MS = 100;
-
 export const ADMISSION_WRITE_QUEUE_CAPACITY = 20_000;
+
+/** Payload bytes the writer may hold across all its stages (64 MiB). */
+export const ADMISSION_WRITE_QUEUE_BYTES = 64 * 1024 * 1024;
 
 export class AdmissionWriterShutdownError extends Data.TaggedError(
   "AdmissionWriterShutdownError",
@@ -28,10 +27,24 @@ export class AdmissionWriterShutdownError extends Data.TaggedError(
   readonly mayHaveCommitted: boolean;
 }> {}
 
+/**
+ * The writer already holds its row or byte bound. It refuses at once instead
+ * of making the caller wait for a slot; nothing was written.
+ */
+export class AdmissionWriterFullError extends Data.TaggedError(
+  "AdmissionWriterFullError",
+)<{
+  readonly message: string;
+  readonly unit: "rows" | "bytes";
+  readonly used: number;
+  readonly capacity: number;
+}> {}
+
 export type AdmissionWriteError =
   | DatabaseError
   | TxAdmissionsDB.TxAdmissionConflictError
-  | AdmissionWriterShutdownError;
+  | AdmissionWriterShutdownError
+  | AdmissionWriterFullError;
 
 export type AdmissionWriteItem = {
   readonly request: TxAdmissionsDB.ReservedAdmissionRequest;
@@ -40,13 +53,7 @@ export type AdmissionWriteItem = {
     TxAdmissionsDB.AdmitResult,
     AdmissionWriteError
   >;
-  phase:
-    | "waiting_capacity"
-    | "registered"
-    | "collected"
-    | "inflight"
-    | "completing";
-  capacityHeld: boolean;
+  phase: "registered" | "collected" | "inflight" | "completing";
   completed: boolean;
 };
 
@@ -63,7 +70,8 @@ export type AdmissionWriterStats = {
   readonly pending: number;
   readonly capacity: number;
   readonly capacityUsed: number;
-  readonly waitingCapacity: number;
+  readonly capacityBytes: number;
+  readonly bytesUsed: number;
   readonly queueDepths: readonly number[];
   readonly queueDepth: number;
   readonly maxQueueDepth: number;
@@ -112,9 +120,8 @@ export class AdmissionWriter extends Context.Tag("AdmissionWriter")<
 export type AdmissionWriterOptions = {
   readonly shardCount: number;
   readonly batchMaxRows: number;
-  readonly batchTargetRows: number;
-  readonly batchDeadlineMs: number;
   readonly queueCapacity: number;
+  readonly queueBytes: number;
 };
 
 export type AdmissionWriterTestHooks = {
@@ -134,9 +141,8 @@ export type AdmissionBatchPersistence<R> = (
 export const DEFAULT_OPTIONS: AdmissionWriterOptions = {
   shardCount: ADMISSION_WRITE_SHARD_COUNT,
   batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
-  batchTargetRows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-  batchDeadlineMs: ADMISSION_WRITE_BATCH_DEADLINE_MS,
   queueCapacity: ADMISSION_WRITE_QUEUE_CAPACITY,
+  queueBytes: ADMISSION_WRITE_QUEUE_BYTES,
 };
 
 /**
@@ -189,34 +195,21 @@ export const admissionWriteCapacityUsedGauge = Metric.gauge(
   { description: "Admission writer permits held across all pipeline stages" },
 );
 
-export const admissionWriteCapacityWaitersGauge = Metric.gauge(
-  "admission_write_capacity_waiters",
-  { description: "Admission requests waiting for a global writer permit" },
+export const admissionWriteBytesUsedGauge = Metric.gauge(
+  "admission_write_bytes_used",
+  { description: "Payload bytes held across all admission writer stages" },
 );
 
 export const validateOptions = (options: AdmissionWriterOptions): void => {
   for (const [name, value] of Object.entries({
     shardCount: options.shardCount,
     batchMaxRows: options.batchMaxRows,
-    batchTargetRows: options.batchTargetRows,
     queueCapacity: options.queueCapacity,
+    queueBytes: options.queueBytes,
   })) {
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new Error(`admission writer ${name} must be a positive integer`);
     }
-  }
-  if (
-    !Number.isSafeInteger(options.batchDeadlineMs) ||
-    options.batchDeadlineMs < 0
-  ) {
-    throw new Error(
-      "admission writer batchDeadlineMs must be a non-negative integer",
-    );
-  }
-  if (options.batchTargetRows > options.batchMaxRows) {
-    throw new Error(
-      "admission writer batchTargetRows must not exceed batchMaxRows",
-    );
   }
   if (options.queueCapacity < options.shardCount) {
     throw new Error(

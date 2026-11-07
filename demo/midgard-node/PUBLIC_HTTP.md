@@ -130,7 +130,12 @@ burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
 The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`) and by payload
 bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`). Both are checked against an
 in-memory gauge before the write, so a full backlog answers 503 with no
-database work, a resubmitted duplicate included.
+database work, a resubmitted duplicate included. The writer in front of
+Postgres also has a row and a 64 MiB byte bound and refuses with 503 at once
+when either is full, instead of holding the request. `/readyz` reports
+`queue_depth_exceeded` once the backlog passes 95 % of
+`MAX_DURABLE_ADMISSION_BACKLOG`, so load balancers drain the node just before
+its backlog fills.
 The `peer` rate class has no global bucket, because it is charged before the
 signature is checked. Targets
 are at most 2 KiB and responses at most 1 MiB.

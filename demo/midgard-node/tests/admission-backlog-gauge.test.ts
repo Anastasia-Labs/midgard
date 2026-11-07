@@ -23,7 +23,10 @@ import {
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
 } from "../src/fibers/admission-backlog-gauge.js";
-import { AdmissionWriterShutdownError } from "../src/services/admission-writer.js";
+import {
+  AdmissionWriterFullError,
+  AdmissionWriterShutdownError,
+} from "../src/services/admission-writer.js";
 import {
   type AdmissionBacklogGaugeState,
   Globals,
@@ -353,6 +356,16 @@ describe("admission backlog gauge", () => {
         expect(admissionFailureDefinitelyDidNotInsert(durabilityUnknown)).toBe(
           false,
         );
+        expect(
+          admissionFailureDefinitelyDidNotInsert(
+            new AdmissionWriterFullError({
+              message: "writer full",
+              unit: "rows",
+              used: 1,
+              capacity: 1,
+            }),
+          ),
+        ).toBe(true);
 
         for (const error of [knownUnstarted, durabilityUnknown]) {
           const limits = { maxRows: 10, maxBytes: 1_000, bytes: 10 };

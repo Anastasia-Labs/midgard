@@ -11,19 +11,19 @@ export {
 } from "./admission-writer.make-admission-writer.js";
 export { makeAdmissionWriterWithOptions } from "./admission-writer.make-admission-writer-with-options.js";
 export {
-  ADMISSION_WRITE_BATCH_DEADLINE_MS,
   ADMISSION_WRITE_BATCH_MAX_ROWS,
-  ADMISSION_WRITE_BATCH_TARGET_ROWS,
+  ADMISSION_WRITE_QUEUE_BYTES,
   ADMISSION_WRITE_QUEUE_CAPACITY,
   ADMISSION_WRITE_SHARD_COUNT,
   admissionWriteBatchDurationTimer,
   admissionWriteBatchRowsHistogram,
+  admissionWriteBytesUsedGauge,
   admissionWriteCapacityUsedGauge,
-  admissionWriteCapacityWaitersGauge,
   type AdmissionWriteError,
   admissionWriteQueueDepthGauge,
   admissionWriteQueueMaxDepthGauge,
   AdmissionWriter,
+  AdmissionWriterFullError,
   type AdmissionWriterOptions,
   type AdmissionWriterService,
   admissionWriterShardForTxId,

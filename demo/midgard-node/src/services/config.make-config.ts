@@ -15,6 +15,7 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
+import { readinessDurableAdmissionBacklogLimit } from "./config.admission-backlog.js";
 import { blockExUnitsBudgetConfig } from "./config.block-ex-units-budget.js";
 import { httpIngressConfig } from "./config.http-proxy-peers.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
@@ -339,9 +340,8 @@ const makeConfig = Effect.gen(function* () {
     "READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS",
     30_000,
   );
-  const readinessMaxDurableAdmissionBacklog = yield* Config.integer(
-    "READINESS_MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(10_000));
+  const readinessMaxDurableAdmissionBacklog =
+    readinessDurableAdmissionBacklogLimit(maxDurableAdmissionBacklog);
   const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
   ).pipe(Config.withDefault(120_000));

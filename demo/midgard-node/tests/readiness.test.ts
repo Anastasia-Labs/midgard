@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { evaluateReadiness } from "../src/commands/readiness.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../src/fibers/attestation-timeout-correction.js";
+import { readinessDurableAdmissionBacklogLimit } from "../src/services/config.admission-backlog.js";
 
 const now = 1_000_000;
 type ReadinessInput = Parameters<typeof evaluateReadiness>[0];
@@ -70,6 +71,17 @@ describe("evaluateReadiness", () => {
 
     expect(readiness.ready).toBe(false);
     expect(readiness.reasons.some((r) => r.includes("queue_depth"))).toBe(true);
+  });
+
+  it("turns not-ready only above 95 % of the admission backlog bound", () => {
+    const maxQueueDepth = readinessDurableAdmissionBacklogLimit(10_000);
+    expect(maxQueueDepth).toBe(9_500);
+    expect(
+      evaluateReadiness(readinessInput({ maxQueueDepth, queueDepth: 9_500 })),
+    ).toEqual({ ready: true, reasons: [] });
+    expect(
+      evaluateReadiness(readinessInput({ maxQueueDepth, queueDepth: 9_501 })),
+    ).toEqual({ ready: false, reasons: ["queue_depth_exceeded:9501:9500"] });
   });
 
   it("fails readiness when local finalization is pending", () => {

@@ -180,8 +180,7 @@ describe("durable admission microbatch writer", () => {
           {
             shardCount: 1,
             batchMaxRows: 1,
-            batchTargetRows: 1,
-            batchDeadlineMs: 0,
+            queueBytes: 1_048_576,
             queueCapacity: 4,
           },
         );
@@ -316,7 +315,7 @@ describe("durable admission microbatch writer", () => {
     );
   });
 
-  it("fails in-flight and capacity-backpressured waiters on scoped shutdown", async () => {
+  it("fails in-flight and queued requests on scoped shutdown", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const scope = yield* Scope.make();
@@ -332,35 +331,26 @@ describe("durable admission microbatch writer", () => {
             {
               shardCount: 1,
               batchMaxRows: 1,
-              batchTargetRows: 1,
-              batchDeadlineMs: 100,
-              queueCapacity: 1,
+              queueBytes: 1_048_576,
+              queueCapacity: 2,
             },
           ),
           scope,
         );
         const fibers = yield* Effect.forEach(
-          [
-            request("shutdown-inflight"),
-            request("shutdown-queued"),
-            request("shutdown-backpressure"),
-          ],
+          [request("shutdown-inflight"), request("shutdown-queued")],
           (entry) =>
             Effect.forkDaemon(Effect.exit(writer.admitReserved(entry))),
         );
         yield* Deferred.await(persistStarted);
         yield* waitUntil(
-          writer.stats.pipe(Effect.map((stats) => stats.pending === 3)),
+          writer.stats.pipe(Effect.map((stats) => stats.pending === 2)),
         );
-        const beforeShutdown = yield* writer.stats;
-        expect(beforeShutdown).toMatchObject({
+        expect(yield* writer.stats).toMatchObject({
           accepting: true,
-          pending: 3,
-        });
-        expect(beforeShutdown).toMatchObject({
-          capacityUsed: 1,
-          waitingCapacity: 2,
-          queueDepths: [0],
+          pending: 2,
+          capacityUsed: 2,
+          queueDepths: [1],
         });
 
         yield* Scope.close(scope, Exit.void);
@@ -381,12 +371,12 @@ describe("durable admission microbatch writer", () => {
             }
           }
         }
-        expect(mayHaveCommitted.sort()).toEqual([false, false, true]);
+        expect(mayHaveCommitted.sort()).toEqual([false, true]);
       }),
     );
   });
 
-  it("continues queued writes after caller interruption without leaking bounded capacity", async () => {
+  it("continues queued writes after caller interruption without leaking the row bound", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const firstStarted = yield* Deferred.make<void>();
@@ -416,15 +406,14 @@ describe("durable admission microbatch writer", () => {
           {
             shardCount: 1,
             batchMaxRows: 1,
-            batchTargetRows: 1,
-            batchDeadlineMs: 100,
+            queueBytes: 1_048_576,
             queueCapacity: 3,
           },
         );
         const entries = [
           request("interrupt-inflight"),
           request("interrupt-queued"),
-          request("interrupt-backpressured"),
+          request("interrupt-third"),
         ];
         const first = yield* Effect.fork(writer.admitReserved(entries[0]!));
         yield* Deferred.await(firstStarted);

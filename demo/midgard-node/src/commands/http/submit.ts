@@ -262,6 +262,19 @@ export const postSubmitHandler = <R>(
           );
         }),
       ),
+      Effect.catchTag("AdmissionWriterFullError", (e) =>
+        Effect.gen(function* () {
+          yield* Metric.increment(submitQueueOfferFailureCounter);
+          yield* recordLatency();
+          return yield* HttpServerResponse.json(
+            {
+              error: "Durable submission admission writer is full",
+              unit: e.unit,
+            },
+            SUBMIT_UNAVAILABLE,
+          );
+        }),
+      ),
       Effect.catchTag("AdmissionWriterShutdownError", (e) =>
         Effect.gen(function* () {
           yield* Metric.increment(submitQueueOfferFailureCounter);

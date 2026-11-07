@@ -23,9 +23,14 @@ import {
 } from "./utils/common.js";
 
 /**
- * Durably admits one batch of reserved requests in one transaction. The caller
+ * Admits one batch of reserved requests in one transaction. The caller
  * reserved each request's backlog row and bytes in memory beforehand, so the
  * batch takes no lock and reads no backlog total: shards write in parallel.
+ *
+ * The transaction commits asynchronously (owner ruling 2026-11-06): a
+ * PostgreSQL crash can lose the last few hundred milliseconds of admissions,
+ * which the submitter recovers by resubmitting. Terminal marks stay
+ * synchronous, and their commit flushes these earlier records in WAL order.
  */
 export const admitReservedBatch = (
   requests: readonly ReservedAdmissionRequest[],
@@ -37,7 +42,11 @@ export const admitReservedBatch = (
   Effect.gen(function* () {
     if (requests.length === 0) return [];
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(persistReservedAdmissionBatch(requests));
+    return yield* sql.withTransaction(
+      sql`SET LOCAL synchronous_commit = off`.pipe(
+        Effect.zipRight(persistReservedAdmissionBatch(requests)),
+      ),
+    );
   }).pipe(
     Effect.tapErrorTag("SqlError", (error) =>
       logDatabaseError(tableName, "admitReservedBatch", error),

@@ -1,14 +1,12 @@
 import { createHash } from "node:crypto";
 
 import { it } from "@effect/vitest";
-import { Deferred, Duration, Effect, Fiber, Ref, TestClock } from "effect";
+import { Deferred, Effect, Fiber, Ref } from "effect";
 import { describe, expect } from "vitest";
 
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import {
-  ADMISSION_WRITE_BATCH_DEADLINE_MS,
   ADMISSION_WRITE_BATCH_MAX_ROWS,
-  ADMISSION_WRITE_BATCH_TARGET_ROWS,
   makeAdmissionWriterWithOptions,
 } from "../src/services/admission-writer.js";
 
@@ -29,92 +27,89 @@ const conflicts = (
     }),
   }));
 
-describe("adaptive admission writer collector", () => {
-  it.effect(
-    "flushes immediately at the target and preserves FIFO request order",
-    () =>
-      Effect.gen(function* () {
-        const captured = yield* Deferred.make<readonly string[]>();
-        const writer = yield* makeAdmissionWriterWithOptions(
-          (requests) =>
-            Deferred.succeed(
-              captured,
+describe("group-commit admission writer collector", () => {
+  it.effect("takes up to batchMaxRows queued requests in one FIFO batch", () =>
+    Effect.gen(function* () {
+      const firstStarted = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const batches = yield* Ref.make<readonly (readonly string[])[]>([]);
+      const writer = yield* makeAdmissionWriterWithOptions(
+        (requests) =>
+          Effect.gen(function* () {
+            const seen = yield* Ref.updateAndGet(batches, (current) => [
+              ...current,
               requests.map((entry) => entry.txCanonicalCbor.toString()),
-            ).pipe(Effect.as(conflicts(requests))),
-          {
-            shardCount: 1,
-            batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
-            batchTargetRows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-            batchDeadlineMs: ADMISSION_WRITE_BATCH_DEADLINE_MS,
-            queueCapacity: 128,
-          },
-        );
-        const labels = Array.from(
-          { length: ADMISSION_WRITE_BATCH_TARGET_ROWS },
-          (_, index) => `fifo-${index.toString().padStart(2, "0")}`,
-        );
-        const fibers = [];
-        for (const label of labels) {
-          fibers.push(
-            yield* Effect.fork(
-              Effect.either(writer.admitReserved(request(label))),
-            ),
-          );
-          yield* Effect.yieldNow();
-        }
-        expect(yield* Deferred.await(captured)).toEqual(labels);
-        expect(
-          (yield* Effect.forEach(fibers, Fiber.join)).every(
-            (result) => result._tag === "Left",
+            ]);
+            if (seen.length === 1) {
+              yield* Deferred.succeed(firstStarted, undefined);
+              yield* Deferred.await(release);
+            }
+            return conflicts(requests);
+          }),
+        {
+          shardCount: 1,
+          batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
+          queueCapacity: ADMISSION_WRITE_BATCH_MAX_ROWS + 2,
+          queueBytes: 1_048_576,
+        },
+      );
+      const labels = Array.from(
+        { length: ADMISSION_WRITE_BATCH_MAX_ROWS + 2 },
+        (_, index) => `fifo-${index.toString().padStart(3, "0")}`,
+      );
+      const fibers = [
+        yield* Effect.fork(
+          Effect.either(writer.admitReserved(request(labels[0]!))),
+        ),
+      ];
+      yield* Deferred.await(firstStarted);
+      for (const label of labels.slice(1)) {
+        fibers.push(
+          yield* Effect.fork(
+            Effect.either(writer.admitReserved(request(label))),
           ),
-        ).toBe(true);
-        const stats = yield* writer.stats;
-        expect(stats.shards[0]).toMatchObject({
-          batches: 1,
-          rows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-          maxRowsPerBatch: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-          batchSizeCounts: {
-            [ADMISSION_WRITE_BATCH_TARGET_ROWS.toString()]: 1,
-          },
-        });
-      }).pipe(Effect.scoped),
+        );
+        yield* Effect.yieldNow();
+      }
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.forEach(fibers, Fiber.join);
+      expect(yield* Ref.get(batches)).toEqual([
+        labels.slice(0, 1),
+        labels.slice(1, ADMISSION_WRITE_BATCH_MAX_ROWS + 1),
+        labels.slice(ADMISSION_WRITE_BATCH_MAX_ROWS + 1),
+      ]);
+    }).pipe(Effect.scoped),
   );
 
-  it.effect("flushes a partial batch only at the absolute deadline", () =>
+  it.effect("writes a lone request without waiting on a clock", () =>
     Effect.gen(function* () {
-      const captured = yield* Deferred.make<readonly string[]>();
       const calls = yield* Ref.make(0);
       const writer = yield* makeAdmissionWriterWithOptions(
         (requests) =>
           Ref.update(calls, (value) => value + 1).pipe(
-            Effect.zipRight(
-              Deferred.succeed(
-                captured,
-                requests.map((entry) => entry.txCanonicalCbor.toString()),
-              ),
-            ),
             Effect.as(conflicts(requests)),
           ),
         {
           shardCount: 1,
           batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
-          batchTargetRows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
-          batchDeadlineMs: ADMISSION_WRITE_BATCH_DEADLINE_MS,
           queueCapacity: 128,
+          queueBytes: 1_048_576,
         },
       );
       const caller = yield* Effect.fork(
-        Effect.either(writer.admitReserved(request("partial"))),
+        Effect.either(writer.admitReserved(request("lone"))),
       );
-      yield* Effect.yieldNow();
-      yield* TestClock.adjust(
-        Duration.millis(ADMISSION_WRITE_BATCH_DEADLINE_MS - 1),
-      );
-      expect(yield* Ref.get(calls)).toBe(0);
-      yield* TestClock.adjust("1 millis");
-      expect(yield* Deferred.await(captured)).toEqual(["partial"]);
-      expect((yield* Fiber.join(caller))._tag).toBe("Left");
+      // The TestClock never moves here, so a batch deadline would hold the
+      // request forever; the write must happen within plain fiber yields.
+      for (
+        let step = 0;
+        step < 1_000 && (yield* Ref.get(calls)) === 0;
+        step++
+      ) {
+        yield* Effect.yieldNow();
+      }
       expect(yield* Ref.get(calls)).toBe(1);
+      expect((yield* Fiber.join(caller))._tag).toBe("Left");
     }).pipe(Effect.scoped),
   );
 });

@@ -57,9 +57,10 @@ const entryColumnList = (alias: string): string =>
  * follow-up touch because PostgreSQL's statement snapshot cannot see the row
  * whose conflicting insert it just waited for.
  * The first byte variant for an absent tx id wins; existing rows instead match
- * their persisted full hash. Deterministic tx-id ordering prevents
- * opposite-order microbatches from acquiring conflicting unique-index locks in
- * opposite order.
+ * their persisted full hash. Rows are inserted in tx-id order, so overlapping
+ * batches never take unique-index locks in opposite orders, but `arrival_seq`
+ * is drawn in request order: a group commit of many requests keeps the order
+ * they reached the writer.
  */
 export const persistReservedAdmissionBatch = (
   requests: readonly ReservedAdmissionRequest[],
@@ -83,7 +84,8 @@ export const persistReservedAdmissionBatch = (
           ${pg.array(variants.map((value) => value.submitSource))}::text[],
           ${pg.array(variants.map((value) => value.requestIndices.length))}::integer[],
           ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
-          ${pg.array(variants.map((value) => value.firstVariantForTxId))}::boolean[]
+          ${pg.array(variants.map((value) => value.firstVariantForTxId))}::boolean[],
+          ${pg.array(variants.map((value) => value.requestIndices[0]!))}::integer[]
         ) AS batch_input(
           tx_id,
           tx_canonical_cbor,
@@ -92,11 +94,25 @@ export const persistReservedAdmissionBatch = (
           submit_source,
           request_count,
           variant_ordinal,
-          first_variant_for_tx_id
+          first_variant_for_tx_id,
+          arrival_ordinal
         )
+      ), arrival AS (
+        -- The subquery's ORDER BY fixes the order nextval runs in. A row
+        -- that loses ON CONFLICT leaves a gap, which arrival_seq allows.
+        SELECT
+          ordered.variant_ordinal,
+          nextval('public.tx_admissions_arrival_seq_seq'::regclass) AS arrival_seq
+        FROM (
+          SELECT input.variant_ordinal
+          FROM input
+          WHERE input.first_variant_for_tx_id
+          ORDER BY input.arrival_ordinal
+        ) ordered
       ), inserted_admission AS (
         INSERT INTO ${sql(tableName)} (
           ${sql(Columns.TX_ID)},
+          ${sql(Columns.ARRIVAL_SEQ)},
           ${sql(Columns.STATUS)},
           ${sql(Columns.SUBMIT_SOURCE)},
           ${sql(Columns.REQUEST_COUNT)},
@@ -105,12 +121,15 @@ export const persistReservedAdmissionBatch = (
         )
         SELECT
           input.tx_id,
+          arrival.arrival_seq,
           'queued',
           input.submit_source,
           input.request_count,
           input.payload_bytes,
           input.tx_full_hash_v1
         FROM input
+        INNER JOIN arrival
+          ON arrival.variant_ordinal = input.variant_ordinal
         WHERE input.first_variant_for_tx_id
         ORDER BY input.variant_ordinal
         ON CONFLICT (${sql(Columns.TX_ID)}) DO NOTHING

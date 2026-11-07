@@ -246,6 +246,7 @@ export const admissionFailureDefinitelyDidNotInsert = (
     | undefined,
 ): boolean =>
   failure?._tag === "TxAdmissionConflictError" ||
+  failure?._tag === "AdmissionWriterFullError" ||
   (failure?._tag === "AdmissionWriterShutdownError" &&
     failure.mayHaveCommitted === false);
 

@@ -89,8 +89,7 @@ describe("two-lane admission writer pipeline", () => {
         {
           shardCount: 2,
           batchMaxRows: 1,
-          batchTargetRows: 1,
-          batchDeadlineMs: 0,
+          queueBytes: 1_048_576,
           queueCapacity: 4,
         },
       );
@@ -108,83 +107,69 @@ describe("two-lane admission writer pipeline", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("keeps collecting to max while the lane persister is blocked", () =>
-    Effect.gen(function* () {
-      const firstPersistStarted = yield* Deferred.make<void>();
-      const persistRelease = yield* Deferred.make<void>();
-      const continueCollecting = yield* Deferred.make<void>();
-      const batches = yield* Ref.make<readonly (readonly string[])[]>([]);
-      let collectCalls = 0;
-      let persistCalls = 0;
-      const writer = yield* makeAdmissionWriterWithOptions(
-        (requests) =>
-          Effect.gen(function* () {
-            persistCalls += 1;
-            yield* Ref.update(batches, (current) => [
-              ...current,
-              requests.map((entry) => entry.txCanonicalCbor.toString()),
-            ]);
-            if (persistCalls === 1) {
-              yield* Deferred.succeed(firstPersistStarted, undefined);
-              yield* Deferred.await(persistRelease);
-            }
-            return conflicts(requests);
-          }),
-        {
-          shardCount: 1,
-          batchMaxRows: 4,
-          batchTargetRows: 2,
-          batchDeadlineMs: 1_000,
-          queueCapacity: 8,
-        },
-        {
-          beforeCollect: () => {
-            collectCalls += 1;
-            return collectCalls === 1
-              ? Effect.void
-              : Deferred.await(continueCollecting);
+  it.effect(
+    "groups everything that arrived during a write into the next batch",
+    () =>
+      Effect.gen(function* () {
+        const firstPersistStarted = yield* Deferred.make<void>();
+        const persistRelease = yield* Deferred.make<void>();
+        const batches = yield* Ref.make<readonly (readonly string[])[]>([]);
+        let persistCalls = 0;
+        const writer = yield* makeAdmissionWriterWithOptions(
+          (requests) =>
+            Effect.gen(function* () {
+              persistCalls += 1;
+              yield* Ref.update(batches, (current) => [
+                ...current,
+                requests.map((entry) => entry.txCanonicalCbor.toString()),
+              ]);
+              if (persistCalls === 1) {
+                yield* Deferred.succeed(firstPersistStarted, undefined);
+                yield* Deferred.await(persistRelease);
+              }
+              return conflicts(requests);
+            }),
+          {
+            shardCount: 1,
+            batchMaxRows: 4,
+            queueCapacity: 8,
+            queueBytes: 1_048_576,
           },
-        },
-      );
-      const entries = Array.from({ length: 6 }, (_, index) =>
-        request(`collect-${index.toString()}`),
-      );
-      const callers: Fiber.RuntimeFiber<unknown, unknown>[] = [];
-      for (const entry of entries.slice(0, 2)) {
-        callers.push(
-          yield* Effect.fork(Effect.either(writer.admitReserved(entry))),
         );
-        yield* Effect.yieldNow();
-      }
-      yield* Deferred.await(firstPersistStarted);
-      for (const entry of entries.slice(2)) {
-        callers.push(
-          yield* Effect.fork(Effect.either(writer.admitReserved(entry))),
+        const entries = Array.from({ length: 6 }, (_, index) =>
+          request(`group-${index.toString()}`),
         );
-        yield* Effect.yieldNow();
-      }
-      yield* waitUntil(
-        writer.stats.pipe(
-          Effect.map((stats) => stats.lanes[0]!.stages.input === 4),
-        ),
-      );
-      yield* Deferred.succeed(continueCollecting, undefined);
-      yield* waitUntil(
-        writer.stats.pipe(
-          Effect.map((stats) => stats.lanes[0]!.stages.prepared === 4),
-        ),
-      );
-      expect((yield* writer.stats).lanes[0]!.stages).toMatchObject({
-        persisting: 2,
-        prepared: 4,
-      });
-      yield* Deferred.succeed(persistRelease, undefined);
-      yield* Effect.forEach(callers, Fiber.join);
-      expect(yield* Ref.get(batches)).toEqual([
-        entries.slice(0, 2).map((entry) => entry.txCanonicalCbor.toString()),
-        entries.slice(2).map((entry) => entry.txCanonicalCbor.toString()),
-      ]);
-    }).pipe(Effect.scoped),
+        const callers: Fiber.RuntimeFiber<unknown, unknown>[] = [];
+        callers.push(
+          yield* Effect.fork(Effect.either(writer.admitReserved(entries[0]!))),
+        );
+        yield* Deferred.await(firstPersistStarted);
+        for (const entry of entries.slice(1)) {
+          callers.push(
+            yield* Effect.fork(Effect.either(writer.admitReserved(entry))),
+          );
+        }
+        yield* waitUntil(
+          writer.stats.pipe(
+            Effect.map((stats) => stats.lanes[0]!.stages.input === 5),
+          ),
+        );
+        // While the persister is busy nothing is collected: the rows wait in
+        // the input queue so the next batch can take all of them.
+        expect((yield* writer.stats).lanes[0]!.stages).toMatchObject({
+          input: 5,
+          prepared: 0,
+          persisting: 1,
+        });
+        yield* Deferred.succeed(persistRelease, undefined);
+        yield* Effect.forEach(callers, Fiber.join);
+        const labels = entries.map((entry) => entry.txCanonicalCbor.toString());
+        expect(yield* Ref.get(batches)).toEqual([
+          labels.slice(0, 1),
+          labels.slice(1, 5),
+          labels.slice(5),
+        ]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("continues persistence while completion is blocked", () =>
@@ -200,8 +185,7 @@ describe("two-lane admission writer pipeline", () => {
         {
           shardCount: 1,
           batchMaxRows: 1,
-          batchTargetRows: 1,
-          batchDeadlineMs: 0,
+          queueBytes: 1_048_576,
           queueCapacity: 4,
         },
         { beforeComplete: () => Deferred.await(completionRelease) },
@@ -225,58 +209,8 @@ describe("two-lane admission writer pipeline", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("backpressures globally across every held pipeline stage", () =>
-    Effect.gen(function* () {
-      const completionRelease = yield* Deferred.make<void>();
-      const persisted = yield* Ref.make(0);
-      const writer = yield* makeAdmissionWriterWithOptions(
-        (requests) =>
-          Ref.update(persisted, (value) => value + requests.length).pipe(
-            Effect.as(conflicts(requests)),
-          ),
-        {
-          shardCount: 1,
-          batchMaxRows: 1,
-          batchTargetRows: 1,
-          batchDeadlineMs: 0,
-          queueCapacity: 2,
-        },
-        { beforeComplete: () => Deferred.await(completionRelease) },
-      );
-      const firstTwo = yield* Effect.forEach(
-        [request("capacity-0"), request("capacity-1")],
-        (entry) => Effect.fork(Effect.either(writer.admitReserved(entry))),
-      );
-      yield* waitUntil(
-        writer.stats.pipe(
-          Effect.map(
-            (stats) =>
-              stats.capacityUsed === 2 &&
-              stats.lanes[0]!.stages.completion === 2,
-          ),
-        ),
-      );
-      const third = yield* Effect.fork(
-        Effect.either(writer.admitReserved(request("capacity-2"))),
-      );
-      yield* waitUntil(
-        writer.stats.pipe(Effect.map((stats) => stats.waitingCapacity === 1)),
-      );
-      expect(yield* Ref.get(persisted)).toBe(2);
-      expect(yield* writer.stats).toMatchObject({
-        pending: 3,
-        capacity: 2,
-        capacityUsed: 2,
-        waitingCapacity: 1,
-      });
-      yield* Deferred.succeed(completionRelease, undefined);
-      yield* Effect.forEach([...firstTwo, third], Fiber.join);
-      expect(yield* Ref.get(persisted)).toBe(3);
-    }).pipe(Effect.scoped),
-  );
-
   it.effect(
-    "cancels a pre-permit waiter without persistence or capacity loss",
+    "refuses at once when every stage together holds the row bound",
     () =>
       Effect.gen(function* () {
         const completionRelease = yield* Deferred.make<void>();
@@ -289,14 +223,13 @@ describe("two-lane admission writer pipeline", () => {
           {
             shardCount: 1,
             batchMaxRows: 1,
-            batchTargetRows: 1,
-            batchDeadlineMs: 0,
             queueCapacity: 2,
+            queueBytes: 1_048_576,
           },
           { beforeComplete: () => Deferred.await(completionRelease) },
         );
-        const held = yield* Effect.forEach(
-          [request("interrupt-capacity-0"), request("interrupt-capacity-1")],
+        const firstTwo = yield* Effect.forEach(
+          [request("capacity-0"), request("capacity-1")],
           (entry) => Effect.fork(Effect.either(writer.admitReserved(entry))),
         );
         yield* waitUntil(
@@ -308,59 +241,84 @@ describe("two-lane admission writer pipeline", () => {
             ),
           ),
         );
-        const waiting = yield* Effect.fork(
-          Effect.either(
-            writer.admitReserved(request("interrupt-capacity-waiter")),
-          ),
+        const refused = yield* Effect.either(
+          writer.admitReserved(request("capacity-2")),
         );
-        yield* waitUntil(
-          writer.stats.pipe(
-            Effect.map(
-              (stats) => stats.pending === 3 && stats.waitingCapacity === 1,
-            ),
-          ),
-        );
-        yield* Fiber.interrupt(waiting);
-        yield* waitUntil(
-          writer.stats.pipe(
-            Effect.map(
-              (stats) => stats.pending === 2 && stats.waitingCapacity === 0,
-            ),
-          ),
-        );
-        expect(yield* Ref.get(persisted)).toBe(2);
+        expect(refused).toMatchObject({
+          _tag: "Left",
+          left: {
+            _tag: "AdmissionWriterFullError",
+            unit: "rows",
+            used: 2,
+            capacity: 2,
+          },
+        });
         expect(yield* writer.stats).toMatchObject({
+          pending: 2,
           capacity: 2,
           capacityUsed: 2,
-          pending: 2,
-          waitingCapacity: 0,
         });
-
         yield* Deferred.succeed(completionRelease, undefined);
-        yield* Effect.forEach(held, Fiber.join);
-        const reuse = yield* Effect.fork(
-          Effect.either(
-            writer.admitReserved(request("interrupt-capacity-reused")),
-          ),
-        );
-        yield* Fiber.join(reuse);
+        yield* Effect.forEach(firstTwo, Fiber.join);
+        // The freed rows take a new request.
+        yield* Effect.either(writer.admitReserved(request("capacity-3")));
         expect(yield* Ref.get(persisted)).toBe(3);
         expect(yield* writer.stats).toMatchObject({
           capacityUsed: 0,
+          bytesUsed: 0,
           pending: 0,
-          waitingCapacity: 0,
-          lanes: [
-            {
-              stages: {
-                input: 0,
-                prepared: 0,
-                persisting: 0,
-                completion: 0,
-              },
-            },
-          ],
         });
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("refuses a request that would overrun the byte bound", () =>
+    Effect.gen(function* () {
+      const completionRelease = yield* Deferred.make<void>();
+      const persisted = yield* Ref.make<readonly string[]>([]);
+      const writer = yield* makeAdmissionWriterWithOptions(
+        (requests) =>
+          Ref.update(persisted, (current) => [
+            ...current,
+            ...requests.map((entry) => entry.txCanonicalCbor.toString()),
+          ]).pipe(Effect.as(conflicts(requests))),
+        {
+          shardCount: 1,
+          batchMaxRows: 1,
+          queueCapacity: 8,
+          queueBytes: 10,
+        },
+        { beforeComplete: () => Deferred.await(completionRelease) },
+      );
+      const held = yield* Effect.fork(
+        Effect.either(writer.admitReserved(request("sixsix"))),
+      );
+      yield* waitUntil(
+        writer.stats.pipe(Effect.map((stats) => stats.bytesUsed === 6)),
+      );
+      // 6 held + 5 would be 11 bytes, one past the bound of 10.
+      expect(
+        yield* Effect.either(writer.admitReserved(request("fivee"))),
+      ).toMatchObject({
+        _tag: "Left",
+        left: {
+          _tag: "AdmissionWriterFullError",
+          unit: "bytes",
+          used: 6,
+          capacity: 10,
+        },
+      });
+      // 6 + 4 fills the bound exactly and is taken.
+      const fits = yield* Effect.fork(
+        Effect.either(writer.admitReserved(request("four"))),
+      );
+      yield* waitUntil(
+        writer.stats.pipe(Effect.map((stats) => stats.bytesUsed === 10)),
+      );
+      yield* Deferred.succeed(completionRelease, undefined);
+      yield* Effect.forEach([held, fits], Fiber.join);
+      expect(yield* Ref.get(persisted)).toEqual(["sixsix", "four"]);
+      expect(yield* writer.stats).toMatchObject({ bytesUsed: 0, pending: 0 });
+    }).pipe(Effect.scoped),
   );
 
   it.effect("keeps same-id variants ordered across persistence batches", () =>
@@ -375,8 +333,7 @@ describe("two-lane admission writer pipeline", () => {
         {
           shardCount: 2,
           batchMaxRows: 1,
-          batchTargetRows: 1,
-          batchDeadlineMs: 0,
+          queueBytes: 1_048_576,
           queueCapacity: 4,
         },
       );
@@ -405,60 +362,47 @@ describe("two-lane admission writer pipeline", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "fails input, prepared, inflight, and completion stages precisely",
-    () =>
-      Effect.gen(function* () {
-        for (const stage of [
-          "input",
-          "prepared",
-          "inflight",
-          "completion",
-        ] as const) {
-          const statsStage: "input" | "prepared" | "persisting" | "completion" =
-            stage === "inflight" ? "persisting" : stage;
-          const scope = yield* Scope.make();
-          const gate = yield* Deferred.make<void>();
-          const writer = yield* Scope.extend(
-            makeAdmissionWriterWithOptions(
-              (requests) =>
-                (stage === "inflight"
-                  ? Deferred.await(gate)
-                  : Effect.void
-                ).pipe(Effect.as(conflicts(requests))),
-              {
-                shardCount: 1,
-                batchMaxRows: 1,
-                batchTargetRows: 1,
-                batchDeadlineMs: 0,
-                queueCapacity: 2,
-              },
-              {
-                beforeCollect:
-                  stage === "input" ? () => Deferred.await(gate) : undefined,
-                beforePersist:
-                  stage === "prepared" ? () => Deferred.await(gate) : undefined,
-                beforeComplete:
-                  stage === "completion"
-                    ? () => Deferred.await(gate)
-                    : undefined,
-              },
-            ),
-            scope,
-          );
-          const caller = yield* Effect.forkDaemon(
-            Effect.exit(writer.admitReserved(request(`shutdown-${stage}`))),
-          );
-          yield* waitUntil(
-            writer.stats.pipe(
-              Effect.map((stats) => stats.lanes[0]!.stages[statsStage] === 1),
-            ),
-          );
-          yield* Scope.close(scope, Exit.void);
-          expect(shutdownMayHaveCommitted(yield* Fiber.join(caller))).toBe(
-            stage === "inflight" || stage === "completion",
-          );
-        }
-      }),
+  it.effect("fails input, inflight, and completion stages precisely", () =>
+    Effect.gen(function* () {
+      for (const stage of ["input", "inflight", "completion"] as const) {
+        const statsStage: "input" | "persisting" | "completion" =
+          stage === "inflight" ? "persisting" : stage;
+        const scope = yield* Scope.make();
+        const gate = yield* Deferred.make<void>();
+        const writer = yield* Scope.extend(
+          makeAdmissionWriterWithOptions(
+            (requests) =>
+              (stage === "inflight" ? Deferred.await(gate) : Effect.void).pipe(
+                Effect.as(conflicts(requests)),
+              ),
+            {
+              shardCount: 1,
+              batchMaxRows: 1,
+              queueBytes: 1_048_576,
+              queueCapacity: 2,
+            },
+            {
+              beforeCollect:
+                stage === "input" ? () => Deferred.await(gate) : undefined,
+              beforeComplete:
+                stage === "completion" ? () => Deferred.await(gate) : undefined,
+            },
+          ),
+          scope,
+        );
+        const caller = yield* Effect.forkDaemon(
+          Effect.exit(writer.admitReserved(request(`shutdown-${stage}`))),
+        );
+        yield* waitUntil(
+          writer.stats.pipe(
+            Effect.map((stats) => stats.lanes[0]!.stages[statsStage] === 1),
+          ),
+        );
+        yield* Scope.close(scope, Exit.void);
+        expect(shutdownMayHaveCommitted(yield* Fiber.join(caller))).toBe(
+          stage === "inflight" || stage === "completion",
+        );
+      }
+    }),
   );
 });

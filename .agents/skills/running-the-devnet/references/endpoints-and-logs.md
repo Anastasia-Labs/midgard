@@ -230,7 +230,7 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
   `READINESS_MAX_HEARTBEAT_AGE_MS`. Read that worker's log lines; a worker
   that keeps failing names its error there.
 - `queue_depth_exceeded:<depth>:<limit>`: the durable admission backlog is
-  over `READINESS_MAX_DURABLE_ADMISSION_BACKLOG`. Wait for the queue
+  over 95 % of `MAX_DURABLE_ADMISSION_BACKLOG`. Wait for the queue
   processor to drain it; if it does not, check `stale_heartbeat` and the
   validation pool.
 - `durable_admission_oldest_age_exceeded:<age_ms>:<limit_ms>`: the oldest

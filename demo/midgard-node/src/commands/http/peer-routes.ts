@@ -181,6 +181,11 @@ export const postPeerTxsHandler = <R>(
           { error: "Durable admission backlog is full" },
           UNAVAILABLE,
         ),
+      AdmissionWriterFullError: () =>
+        HttpServerResponse.json(
+          { error: "Durable admission writer is full" },
+          UNAVAILABLE,
+        ),
       AdmissionWriterShutdownError: () =>
         HttpServerResponse.json(
           { error: "Durable admission writer is unavailable" },
