@@ -1,8 +1,8 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   LucidEvolution,
+  paymentCredentialOf,
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
@@ -10,6 +10,7 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
+import { seedPhraseAddress } from "../../services/config.node-config-dep.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
@@ -46,18 +47,14 @@ import {
   preflightDecodeBlockTxs,
   slotFromUnixTime,
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
-import {
-  finalizeConfirmedMergeProgram,
-  landedMergeOf,
-  mergeBlockCounter,
-} from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
+import { mergeBlockCounter } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
+import { finalizeSubmittedMerge } from "./merge-to-confirmed-state.finalize-submitted-merge.js";
 import {
   diagnoseMissingBlockTxs,
   finalizeMergesLandedThrough,
   mergeBlockTxDecodeFailureCounter,
   mergeDurationTimer,
   mergeFailureCounter,
-  mergeLocalFinalizationFailureCounter,
   type MergeOptions,
 } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
 import {
@@ -439,24 +436,19 @@ export const buildAndSubmitMergeTx = (
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram(
-        landedMergeOf(headerHash, blockHeader),
-      ).pipe(
-        Effect.tapError((error) =>
-          Effect.gen(function* () {
-            yield* Metric.increment(mergeLocalFinalizationFailureCounter);
-            yield* Effect.logError(
-              `🔸 Merge local finalization failed after on-chain submit (header=${headerHash.toString(
-                "hex",
-              )},tx_count=${preflightDecodedBlockTxs.length},sample_tx_ids=${JSON.stringify(
-                preflightDecodedBlockTxs
-                  .slice(0, 10)
-                  .map((decoded) => decoded.txId.toString("hex")),
-              )},error=${formatUnknownError(error)})`,
-            );
-          }),
-        ),
-      );
+      const finalizeLocalMergeLogged = finalizeSubmittedMerge({
+        headerHash,
+        header: blockHeader,
+        txIds: preflightDecodedBlockTxs.map((decoded) => decoded.txId),
+        // The key this node's own headers carry: the operator wallet's, not
+        // the merge wallet this transaction is signed with.
+        ownOperatorKeyHash: paymentCredentialOf(
+          seedPhraseAddress(
+            nodeConfig.L1_OPERATOR_SEED_PHRASE,
+            nodeConfig.NETWORK,
+          ),
+        ).hash,
+      });
       // Only signing, submission and the L1 confirmation wait stay
       // interruptible; the wait ends by `confirmationDeadlineMs` so the
       // finalization still fits in the caller's hold. Once the merge is

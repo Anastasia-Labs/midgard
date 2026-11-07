@@ -39,6 +39,7 @@ import "./confirmed-ledger-snapshot.js";
 import "./merge-readiness.js";
 import "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+import "./merge-to-confirmed-state.finalize-submitted-merge.js";
 import "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import "./merge-to-confirmed-state.capture-merge-local-ledger-gate.js";
 import "./merge-to-confirmed-state.build-and-submit-merge-tx.js";
@@ -60,6 +61,7 @@ export {
   finalizeConfirmedMergeTransaction,
   observeNativeOwnerAfterConfirmedMerge,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
+export { finalizeSubmittedMerge } from "./merge-to-confirmed-state.finalize-submitted-merge.js";
 export {
   type ConfirmedMergeFinalization,
   diagnoseMissingBlockTxs,
