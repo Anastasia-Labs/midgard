@@ -22,6 +22,35 @@ const maintenanceLayer = (database: string) =>
     connectTimeout: Duration.seconds(5),
   });
 
+/** Runs `work` on the server's maintenance database. */
+const admin = <A, E>(work: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+  Effect.runPromise(Effect.provide(work, maintenanceLayer("postgres")));
+
+/**
+ * Makes `database` refuse new connections and ends its open ones, as an
+ * outage does; the returned function lets connections in again.
+ */
+export const makeDatabaseUnreachable = async (database: string) => {
+  await admin(
+    Effect.flatMap(SqlClient.SqlClient, (sql) =>
+      sql
+        .unsafe(`ALTER DATABASE "${database}" WITH ALLOW_CONNECTIONS false`)
+        .pipe(
+          Effect.zipRight(
+            sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+              WHERE datname = ${database} AND pid <> pg_backend_pid()`,
+          ),
+        ),
+    ),
+  );
+  return () =>
+    admin(
+      Effect.flatMap(SqlClient.SqlClient, (sql) =>
+        sql.unsafe(`ALTER DATABASE "${database}" WITH ALLOW_CONNECTIONS true`),
+      ),
+    );
+};
+
 /** Runs `build` with `POSTGRES_DB` naming `database`, then restores it. */
 export const withPostgresDb = async <A>(
   database: string,
@@ -44,8 +73,6 @@ export const createPeerDatabase = async (label: string) => {
   const database = `${TEST_DATABASE_PREFIX}_${label}_${process.pid.toString()}`;
   if (!/^[a-z_][a-z0-9_]{0,62}$/u.test(database))
     throw new Error(`Invalid peer database name ${database}`);
-  const admin = <A, E>(work: Effect.Effect<A, E, SqlClient.SqlClient>) =>
-    Effect.runPromise(Effect.provide(work, maintenanceLayer("postgres")));
   await admin(
     Effect.flatMap(SqlClient.SqlClient, (sql) =>
       sql

@@ -16,6 +16,7 @@ import {
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
 } from "../../fibers/index.js";
+import { admissionBacklogLimitsFor } from "../../services/config.admission-backlog.js";
 import {
   type AdmissionAck,
   AdmissionWriter,
@@ -234,6 +235,11 @@ export const admitCheckedTransactions = <R>({
     const cache = yield* Effect.serviceOption(MempoolLedgerCache);
     const context = yield* Effect.context<Globals | R>();
     const wakeOnCommit = wakeTxQueueProcessor.pipe(Effect.provide(context));
+    const limits = admissionBacklogLimitsFor(
+      submitSource,
+      nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+      nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+    );
     // Reserving and registering run uninterruptibly, so a reserved slot is
     // always either owned by the writer or released here.
     return yield* Effect.uninterruptible(
@@ -256,9 +262,10 @@ export const admitCheckedTransactions = <R>({
             });
             continue;
           }
+          // Load shedding (D5): an anonymous tx is refused from memory once
+          // the backlog passes its share; a peer tx only once it is full.
           const reservation = yield* reserveAdmissionBacklogSlot({
-            maxRows: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-            maxBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+            ...limits,
             bytes: normalized.txCanonicalCbor.length,
           });
           if (!reservation.reserved) {

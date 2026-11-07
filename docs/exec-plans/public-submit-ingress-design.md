@@ -261,13 +261,20 @@ by inventory instead of holding its one request for 30 s).
 - **No database fallback when full (fixes F11).** A failed backlog
   reservation answers 503 from memory. Duplicates are detected in memory
   (D9), not with the quota transaction.
-- **Load shedding.** The signal is the in-memory row and byte gauges. Shed
-  with 503 and `Retry-After` at 80 % for anonymous traffic and 100 % for
-  peers. `MAX_DURABLE_ADMISSION_BACKLOG` covers at least 60 s
-  at the design rate.
+- **Load shedding (done, #883).** The signal is the in-memory row and byte
+  gauges. Shed with 503 and `Retry-After` at 80 % for anonymous traffic and
+  100 % for peers. The admission layer (`admitCheckedTransactions`) picks the
+  limit by submit source, so any HTTP handler gets it, and the refusal is
+  decided before any database work. `MAX_DURABLE_ADMISSION_BACKLOG` covers at
+  least 60 s at the design rate: 300,000 rows, with a 1 KiB-per-row byte
+  bound (307,200,000 bytes). Both are provisional until M1 (#877). Raising
+  them costs no node memory: the gauges are counters, the pending set keeps
+  its own 20,000-row and 64 MiB bounds, and the recent-id ring is fixed at
+  2^20 ids. The backlog itself sits in Postgres. The gauge refresh's
+  `SUM`/`COUNT` grows with the backlog (M1, M7).
 - **Readiness.** `READINESS_MAX_DURABLE_ADMISSION_BACKLOG` follows the backlog
-  limit (for example 95 %), so shedding starts before the node turns
-  not-ready.
+  limit at 95 % (285,000 rows by default), above the 80 % anonymous share,
+  so shedding starts before the node turns not-ready.
 - **Payload deleted at the terminal mark (owner, 2026-11-06).** Today a tx's
   bytes sit in `tx_admission_payloads` forever, beside the copy that
   mark-accepted writes into the mempool table. Nothing reads the payload after

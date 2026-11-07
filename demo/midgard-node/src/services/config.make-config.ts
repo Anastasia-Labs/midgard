@@ -15,7 +15,11 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
-import { readinessDurableAdmissionBacklogLimit } from "./config.admission-backlog.js";
+import {
+  DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG,
+  DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+  readinessDurableAdmissionBacklogLimit,
+} from "./config.admission-backlog.js";
 import { blockExUnitsBudgetConfig } from "./config.block-ex-units-budget.js";
 import { httpIngressConfig } from "./config.http-proxy-peers.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
@@ -284,11 +288,11 @@ const makeConfig = Effect.gen(function* () {
   const l2TxPeers = yield* l2TxPeersConfig;
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(10_000));
+  ).pipe(Config.withDefault(DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG));
   const maxDurableAdmissionBacklogBytes = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG_BYTES",
   ).pipe(
-    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
+    Config.withDefault(DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES),
     Config.mapAttempt((value) => {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(

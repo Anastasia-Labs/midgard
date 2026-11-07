@@ -143,11 +143,17 @@ peer body of unknown length holds only the larger of those two bounds against th
 shared ingress byte budget. Peers and users never hold each other's permits or
 rate tokens, but their admissions share the durable admission backlog: a peer
 burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
-The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`) and by payload
-bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`). Both are checked against an
-in-memory gauge before the write, so a full backlog answers 503 with no
-database work. A duplicate costs no backlog, so it still answers 200 while the
-backlog is full. `/submit` and `/peer/txs`
+The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default
+300,000: 60 s at 5,000 TPS) and by payload bytes
+(`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default 300,000 KiB: 1 KiB per row).
+Both defaults are provisional until the M1 throughput gate measures the
+node. `/submit` sheds first: it answers 503 once the backlog reaches 80 % of
+either bound, and its 503 body names that 80 % share as `maxBacklog` or
+`maxBacklogBytes`. `/peer/txs` keeps admitting until the full bound, so
+transactions other operators forward still land while users are shed. Both
+checks read an in-memory gauge before the write, so a shed or full backlog
+answers 503 with no database work. A duplicate costs no backlog, so it still
+answers 200 while the backlog is full. `/submit` and `/peer/txs`
 answer from memory: a 202 means the node accepted the transaction, not that it
 is stored. The admission writer holds each accepted transaction in a bounded
 pending set and writes it to Postgres in group commits after the answer, so a
@@ -182,8 +188,9 @@ themselves once the writes go through. A row Postgres refuses outright is
 dropped, counted in `admission_write_poison_total` and logged, so it cannot
 block the rows behind it; its transaction then reads as not found. `/readyz` reports
 `queue_depth_exceeded` once the backlog passes 95 % of
-`MAX_DURABLE_ADMISSION_BACKLOG`, so load balancers drain the node just before
-its backlog fills.
+`MAX_DURABLE_ADMISSION_BACKLOG`, so `/submit` sheds well before load
+balancers drain the node, and they drain it just before peers fill the
+backlog.
 The transaction bytes leave the admission tables at the verdict: acceptance
 copies them into the mempool and both verdicts delete the payload row in the
 same transaction. A duplicate is recognized by its full hash, so the same id

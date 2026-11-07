@@ -813,9 +813,10 @@ export const registerAdmissionsTests = () => {
           Effect.gen(function* () {
             const admissionSql = yield* AdmissionSql;
             const baseConfig = yield* NodeConfig;
+            // `/submit` sheds at 80 % of the bound: 3 rows give it 2.
             let testConfig = {
               ...baseConfig,
-              MAX_DURABLE_ADMISSION_BACKLOG: 2,
+              MAX_DURABLE_ADMISSION_BACKLOG: 3,
               SUBMIT_INGRESS_MAX_CONCURRENCY: 32,
             };
             const submit = (txCanonicalCbor: Buffer) =>
@@ -989,11 +990,13 @@ export const registerAdmissionsTests = () => {
                   attempt.txCanonicalCbor.length === transactionBytes,
               ),
             ).toBe(true);
+            // `/submit` sheds at 80 % of the byte bound: 5 txs' bytes give
+            // it 4.
             const maxBacklogBytes = transactionBytes * 4;
             const testConfig = {
               ...baseConfig,
               MAX_DURABLE_ADMISSION_BACKLOG: 100,
-              MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxBacklogBytes,
+              MAX_DURABLE_ADMISSION_BACKLOG_BYTES: transactionBytes * 5,
               SUBMIT_INGRESS_MAX_CONCURRENCY: 64,
             };
             const submit = (txCanonicalCbor: Buffer) =>
@@ -1074,9 +1077,10 @@ export const registerAdmissionsTests = () => {
             });
             const admissionSql = yield* AdmissionSql;
             const baseConfig = yield* NodeConfig;
+            // `/submit` sheds at 80 % of the bound: 7 rows give it 5.
             const testConfig = {
               ...baseConfig,
-              MAX_DURABLE_ADMISSION_BACKLOG: 5,
+              MAX_DURABLE_ADMISSION_BACKLOG: 7,
               ADMISSION_BACKLOG_REFRESH_MS: 10,
               SUBMIT_INGRESS_MAX_CONCURRENCY: 16,
             };

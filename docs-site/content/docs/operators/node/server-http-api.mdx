@@ -145,11 +145,16 @@ holds a slot of that pool's queue from the body read to the verdict:
 stalls is replaced; the requests it held, and any that arrive while no worker
 is running, get `503` with `Submit check is unavailable; retry later`.
 The durable admission backlog
-is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 10,000) and by
-payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default the largest DA
-payload). Both bounds are checked in memory before the write: a full backlog
-answers `503` without touching the database. A duplicate costs no backlog, so
-it still answers `200` while the backlog is full.
+is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 300,000, which is
+60 s at 5,000 TPS) and by payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`,
+default 300,000 KiB). Both defaults are provisional until the node's
+throughput gate has measured them. `/submit` sheds first: it answers `503`
+once the backlog reaches 80 % of either bound, and its body's `maxBacklog` or
+`maxBacklogBytes` names that 80 % share. `POST /peer/txs` admits up to the
+full bound. Both checks run in memory before the write, so a shed or full
+backlog answers `503` without touching the database. `/readyz` turns not-ready
+at 95 % of the row bound, after `/submit` has started shedding. A duplicate
+costs no backlog, so it still answers `200` while the backlog is full.
 
 A resubmission is a duplicate while the node keeps its admission row. An
 accepted or rejected row is kept for `ADMISSION_TERMINAL_RETENTION_MS` after
@@ -275,7 +280,8 @@ sends only those a peer has never seen.
   ingress pool of their own (`SUBMIT_INGRESS_MAX_CONCURRENCY` requests deep),
   so peers and users never hold each other's slots; a full pool answers `503`. Peer
   and user admissions do share the durable admission backlog, so a peer burst
-  that fills it makes `/submit` answer `503` until it drains, and the reverse. A peer body of
+  that fills 80 % of it makes `/submit` answer `503` until it drains, while
+  user traffic alone never fills the last 20 % that peers keep. A peer body of
   unknown length holds only the larger of those two bounds against the node's
   shared ingress byte budget.
 

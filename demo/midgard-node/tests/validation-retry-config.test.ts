@@ -44,13 +44,6 @@ describe("durable admission byte backlog configuration", () => {
     vi.unstubAllEnvs();
   });
 
-  it("defaults to one full V1 DA envelope", async () => {
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      MAX_DURABLE_ADMISSION_BACKLOG_BYTES:
-        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
-    });
-  });
-
   it("accepts a positive operator override", async () => {
     vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "1048576");
     await expect(loadNodeConfig()).resolves.toMatchObject({

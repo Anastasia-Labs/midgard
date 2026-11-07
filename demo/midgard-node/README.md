@@ -1040,7 +1040,8 @@ ingress; the other junk kinds are well-formed txs that validation refuses.
   network (Docker's userland port proxy hides source addresses).
 - **Limits.** The defaults cap `write` at 1/s per client and 4/s overall,
   the edge at 10 r/s per address and 100 r/s overall, and the durable backlog
-  at 10,000 rows (`MAX_DURABLE_ADMISSION_BACKLOG`). A run measures those
+  at 300,000 rows (`MAX_DURABLE_ADMISSION_BACKLOG`), of which `/submit` may
+  fill 80 %. A run measures those
   limits unless they are raised; the report's outcome mix shows which one
   refused.
 - **Reruns.** Each run sends each request once. Against the same database a
