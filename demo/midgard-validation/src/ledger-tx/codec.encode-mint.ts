@@ -319,6 +319,24 @@ const envelopeFromNativeTx = (
   };
 };
 
+const envelopeOrLedgerDecodeError = (
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+  txCbor: Uint8Array,
+  sourceKind: "normal" | "forced",
+  outputCount: number | undefined,
+): MidgardSubmittedTx => {
+  try {
+    return envelopeFromNativeTx(nativeTx, txCbor, sourceKind, outputCount);
+  } catch (e) {
+    throw new MidgardLedgerTxDecodeError(
+      "ledger",
+      e instanceof MidgardLedgerOutputDecodeError ? e.causeValue : e,
+      e instanceof MidgardLedgerOutputDecodeError,
+      e instanceof MidgardLedgerOutputDecodeError ? e.outputIndex : undefined,
+    );
+  }
+};
+
 /**
  * `outputCount`, when given, keeps only that many leading outputs in the
  * ledger transaction (see `decodeOutputs`); every commitment still binds the
@@ -339,15 +357,35 @@ export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   } catch (e) {
     throw new MidgardLedgerTxDecodeError("canonical-cbor", e);
   }
+  return envelopeOrLedgerDecodeError(nativeTx, txCbor, sourceKind, outputCount);
+};
 
+/**
+ * The normal submitted-tx decode that also hands back the core full decode it
+ * runs first, so a caller can run the consensus check
+ * (`validateMidgardConsensusTx`) on it instead of decoding the bytes again.
+ * It throws exactly what `decodeMidgardSubmittedTxFromCanonicalCbor` throws
+ * for the same bytes.
+ */
+export const decodeMidgardSubmittedNativeTxFromCanonicalCbor = (
+  txCbor: Uint8Array,
+): {
+  readonly nativeTx: MidgardNativeTxFull;
+  readonly submittedTx: MidgardSubmittedTx;
+} => {
+  let nativeTx: MidgardNativeTxFull;
   try {
-    return envelopeFromNativeTx(nativeTx, txCbor, sourceKind, outputCount);
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
   } catch (e) {
-    throw new MidgardLedgerTxDecodeError(
-      "ledger",
-      e instanceof MidgardLedgerOutputDecodeError ? e.causeValue : e,
-      e instanceof MidgardLedgerOutputDecodeError,
-      e instanceof MidgardLedgerOutputDecodeError ? e.outputIndex : undefined,
-    );
+    throw new MidgardLedgerTxDecodeError("canonical-cbor", e);
   }
+  return {
+    nativeTx,
+    submittedTx: envelopeOrLedgerDecodeError(
+      nativeTx,
+      txCbor,
+      "normal",
+      undefined,
+    ),
+  };
 };

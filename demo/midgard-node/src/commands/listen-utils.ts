@@ -1,6 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation";
+import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
+  type MidgardSubmittedTx,
+} from "@al-ft/midgard-validation";
 
 /**
  * Paths that require explicit admin-key authorization.
@@ -133,24 +137,33 @@ export type NormalizedSubmitTx =
     };
 
 /**
- * Normalizes a submitted tx payload into canonical Midgard-native bytes and
- * derives the canonical tx id from the materialized compact form.
+ * A submitted tx payload decoded once: the core full decode and the
+ * submitted-tx envelope built from it.
  */
-export const normalizeSubmitTxCanonicalCborToNative = (
+export type DecodedSubmitTx =
+  | {
+      readonly ok: true;
+      readonly nativeTx: MidgardNativeTxFull;
+      readonly submittedTx: MidgardSubmittedTx;
+    }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly detail: string;
+    };
+
+/**
+ * Decodes submitted canonical Midgard-native bytes once, keeping the native
+ * decode for the consensus check. Any decode failure, at the canonical or
+ * the ledger stage, is the same invalid-payload result.
+ */
+export const decodeSubmitTxCanonicalCbor = (
   txCanonicalCbor: Uint8Array,
-): NormalizedSubmitTx => {
-  const submittedTxCanonicalCbor = Buffer.from(txCanonicalCbor);
+): DecodedSubmitTx => {
   try {
-    const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
-      submittedTxCanonicalCbor,
-    );
-    const txId = submittedTx.ledgerTx.txId;
     return {
       ok: true,
-      txId,
-      txIdHex: txId.toString("hex"),
-      txCanonicalCbor: submittedTx.txCbor,
-      source: "native",
+      ...decodeMidgardSubmittedNativeTxFromCanonicalCbor(txCanonicalCbor),
     };
   } catch {
     return {
@@ -159,4 +172,23 @@ export const normalizeSubmitTxCanonicalCborToNative = (
       detail: "canonical native transaction decode failed",
     };
   }
+};
+
+/**
+ * Normalizes a submitted tx payload into canonical Midgard-native bytes and
+ * derives the canonical tx id from the materialized compact form.
+ */
+export const normalizeSubmitTxCanonicalCborToNative = (
+  txCanonicalCbor: Uint8Array,
+): NormalizedSubmitTx => {
+  const decoded = decodeSubmitTxCanonicalCbor(txCanonicalCbor);
+  if (!decoded.ok) return decoded;
+  const txId = decoded.submittedTx.ledgerTx.txId;
+  return {
+    ok: true,
+    txId,
+    txIdHex: txId.toString("hex"),
+    txCanonicalCbor: decoded.submittedTx.txCbor,
+    source: "native",
+  };
 };

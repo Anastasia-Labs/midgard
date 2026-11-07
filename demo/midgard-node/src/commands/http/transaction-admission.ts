@@ -4,8 +4,10 @@
  * routes run exactly these; the tx-queue processor then validates the
  * admitted bytes against this node's own ledger.
  */
+import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { validateMidgardConsensusTx } from "@al-ft/midgard-core/consensus-validation";
+import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Cause, Effect, Exit, Option } from "effect";
 
@@ -24,15 +26,34 @@ import {
 } from "../../services/index.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
-  type NormalizedSubmitTx,
-  normalizeSubmitTxCanonicalCborToNative,
+  decodeSubmitTxCanonicalCbor,
   validateSubmitTxCanonicalCbor,
 } from "../listen-utils.js";
+
+/**
+ * Everything later stages need about a checked tx, so none of them decodes it
+ * again. Plain data, so it can cross a worker boundary.
+ */
+export type CheckedSubmittedTx = {
+  readonly txId: Buffer;
+  readonly txIdHex: string;
+  /** The submitted canonical bytes; the check does not re-encode them. */
+  readonly txCanonicalCbor: Buffer;
+  /** `computeMidgardNativeTxFullHashFromCanonicalCbor` of those bytes. */
+  readonly txFullHash: Buffer;
+  /** The §5.3 outref items (hex) the tx spends, in field order. */
+  readonly spentOutRefs: readonly string[];
+  /** The §5.3 outref items (hex) of the outputs the tx produces. */
+  readonly producedOutRefs: readonly string[];
+  readonly fee: bigint;
+  readonly byteLength: number;
+  readonly source: "native";
+};
 
 export type SubmittedTxCheck =
   | {
       readonly ok: true;
-      readonly normalized: Extract<NormalizedSubmitTx, { ok: true }>;
+      readonly normalized: CheckedSubmittedTx;
     }
   | {
       readonly ok: false;
@@ -66,23 +87,21 @@ export const checkSubmittedTransaction = (
       },
       log: [`Submit rejected: ${validation.error}`],
     };
-  const normalized = normalizeSubmitTxCanonicalCborToNative(
-    validation.txCanonicalCbor,
-  );
-  if (!normalized.ok)
+  const decoded = decodeSubmitTxCanonicalCbor(validation.txCanonicalCbor);
+  if (!decoded.ok)
     return {
       ok: false,
       status: 400,
       body: {
-        error: publicSubmissionDiagnostic(
-          normalized.error,
-          "E_INVALID_NATIVE_TX",
-        ),
+        error: publicSubmissionDiagnostic(decoded.error, "E_INVALID_NATIVE_TX"),
       },
-      log: [normalized.error, normalized.detail],
+      log: [decoded.error, decoded.detail],
     };
-  const proofViolation = validateMidgardConsensusTxCbor(
-    normalized.txCanonicalCbor,
+  // The consensus check runs on the decode the envelope was built from; its
+  // `…Cbor` wrapper would decode the same bytes a second time.
+  const proofViolation = validateMidgardConsensusTx(
+    decoded.nativeTx,
+    validation.byteLength,
   );
   if (proofViolation !== null)
     return {
@@ -95,7 +114,23 @@ export const checkSubmittedTransaction = (
       },
       log: [],
     };
-  return { ok: true, normalized };
+  const { ledgerTx, txCbor } = decoded.submittedTx;
+  return {
+    ok: true,
+    normalized: {
+      txId: ledgerTx.txId,
+      txIdHex: ledgerTx.txId.toString("hex"),
+      txCanonicalCbor: txCbor,
+      txFullHash: computeMidgardNativeTxFullHashFromCanonicalCbor(txCbor),
+      spentOutRefs: ledgerTx.spendInputs.map(midgardOutRefToCborHex),
+      producedOutRefs: ledgerTx.outputs.map((_, index) =>
+        midgardOutRefToCborHex({ txId: ledgerTx.txId, index: BigInt(index) }),
+      ),
+      fee: ledgerTx.fee,
+      byteLength: validation.byteLength,
+      source: "native",
+    },
+  };
 };
 
 /**
@@ -108,7 +143,7 @@ export const admitCheckedTransaction = <R>({
   submitSource,
   wakeTxQueueProcessor,
 }: {
-  readonly normalized: Extract<NormalizedSubmitTx, { ok: true }>;
+  readonly normalized: CheckedSubmittedTx;
   readonly submitSource: "native" | "peer";
   readonly wakeTxQueueProcessor: Effect.Effect<void, never, R>;
 }) =>

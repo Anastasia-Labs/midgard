@@ -17,7 +17,10 @@ export {
   type MidgardProjectedRawScriptWitness,
   type MidgardRawEnvelopePhaseAProjection,
 } from "./codec.copy-native-tx-compact.js";
-export { decodeMidgardSubmittedTxFromCanonicalCbor } from "./codec.encode-mint.js";
+export {
+  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
+  decodeMidgardSubmittedTxFromCanonicalCbor,
+} from "./codec.encode-mint.js";
 export {
   classifyMidgardForcedTxOutputItem,
   forcedTxOutputFaultRejection,

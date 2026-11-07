@@ -1,6 +1,7 @@
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeSingleCbor,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -14,6 +15,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
+  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
+  decodeMidgardSubmittedTxFromCanonicalCbor,
   encodeMidgardLedgerTxToCanonicalCbor,
   MidgardLedgerTxDecodeError,
   projectMidgardRawEnvelopeForPhaseAV1,
@@ -156,6 +159,54 @@ describe("Midgard ledger transaction codec", () => {
     expect(admitted.ledgerTx.redeemers[0]!.dataCbor.toString("hex")).toBe(
       "d8799f01ff",
     );
+  });
+
+  it("hands back the native decode with the same submitted tx and the same decode errors", () => {
+    const fixture = makeNativeTx({
+      spendInputs: [outRefFromByte(0x41, 1n)],
+      outputs: [makeOutput(9n)],
+      fee: 3n,
+    });
+    const decoded = decodeMidgardSubmittedNativeTxFromCanonicalCbor(
+      fixture.txCbor,
+    );
+    expect(decoded.submittedTx).toEqual(
+      decodeMidgardSubmittedTxFromCanonicalCbor(fixture.txCbor),
+    );
+    expect(decoded.nativeTx).toEqual(
+      decodeMidgardNativeTxFullFromCanonicalCbor(fixture.txCbor),
+    );
+
+    // One bytes that fail the canonical decode, one that pass it and fail
+    // the ledger decode (an address witness that is not a vkey witness).
+    const ledgerStageFailure = encodeRecomputedNativeTx({
+      ...fixture.tx,
+      witnessSet: {
+        ...fixture.tx.witnessSet,
+        addrTxWitsPreimageCbor: encodeCbor([Buffer.from("00", "hex")]),
+      },
+    }).txCbor;
+    for (const [bytes, stage] of [
+      [Buffer.from("ffff", "hex"), "canonical-cbor"],
+      [ledgerStageFailure, "ledger"],
+    ] as const) {
+      const failure = (decode: () => unknown) => {
+        try {
+          decode();
+        } catch (error) {
+          return error;
+        }
+        throw new Error("decode accepted bytes it must refuse");
+      };
+      const expected = failure(() =>
+        decodeMidgardSubmittedTxFromCanonicalCbor(bytes),
+      );
+      expect(expected).toBeInstanceOf(MidgardLedgerTxDecodeError);
+      expect(expected).toMatchObject({ stage });
+      expect(
+        failure(() => decodeMidgardSubmittedNativeTxFromCanonicalCbor(bytes)),
+      ).toEqual(expected);
+    }
   });
 
   it("round-trips canonical native transaction CBOR through the semantic ledger type", () => {

@@ -55,6 +55,7 @@
     "bench:validation:stage-b": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-stage-b.bench.ts --disableConsoleIntercept",
     "bench:l1-events:b2": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/l1-events-b2.bench.ts --disableConsoleIntercept",
     "bench:phase1:query-write": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/phase1-query-write.bench.ts --disableConsoleIntercept",
+    "bench:submit-check": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/submit-check-cost.bench.ts --disableConsoleIntercept",
     "stress:valid": "node scripts/throughput-valid-stress.mjs",
     "bench:l2:valid": "STRESS_CLIENT_SELF_CHECK_REQUIRED=true node scripts/throughput-valid-stress.mjs",
     "bench:l2:find-max": "STRESS_MODE=find-max STRESS_CLIENT_SELF_CHECK_REQUIRED=true node scripts/throughput-valid-stress.mjs",
