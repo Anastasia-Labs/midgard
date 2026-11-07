@@ -1,3 +1,5 @@
+import { hash, randomBytes } from "node:crypto";
+
 import type { Status } from "../database/txAdmissions.js";
 
 /** Recently written tx ids the admission path remembers (design D9). */
@@ -34,6 +36,12 @@ export type RecentTxIds = {
  * about 81 MB in a few large buffers instead of a million small objects the
  * collector would walk. The ring starts small and doubles up to
  * `maxCapacity`; once full, each new id evicts the oldest.
+ *
+ * An id's index cell comes from SHA-256 over a secret drawn at start and the
+ * id, not from the id's own bytes: a submitter can grind tx ids that share
+ * their leading bits, and unkeyed homes would pile them into one probe chain
+ * that every duplicate check on the main thread walks. Each slot keeps its
+ * 32-bit keyed home, so growth and deletion never hash again.
  */
 export const makeRecentTxIds = (
   maxCapacity: number = ADMISSION_RECENT_TX_ID_CAPACITY,
@@ -46,14 +54,21 @@ export const makeRecentTxIds = (
   let hashes = Buffer.alloc(capacity * HASH_BYTES);
   let statuses = new Uint8Array(capacity);
   let firstSeen = new Float64Array(capacity);
+  /** Each slot's keyed home hash, before masking. */
+  let homes = new Uint32Array(capacity);
   // Slot + 1 per index cell; 0 is empty. Twice the ring keeps probes short.
   let index = new Int32Array(indexSizeFor(capacity));
   let mask = index.length - 1;
   let head = 0;
   let count = 0;
 
-  const home = (id: Buffer, offset: number): number =>
-    id.readUInt32LE(offset) & mask;
+  const secret = randomBytes(16);
+  const hashInput = Buffer.alloc(secret.length + ID_BYTES);
+  secret.copy(hashInput);
+  const keyedHome = (txId: Buffer): number => {
+    txId.copy(hashInput, secret.length, 0, ID_BYTES);
+    return hash("sha256", hashInput, "buffer").readUInt32LE(0);
+  };
 
   const sameId = (slot: number, txId: Buffer): boolean =>
     ids.compare(
@@ -64,8 +79,8 @@ export const makeRecentTxIds = (
       slot * ID_BYTES + ID_BYTES,
     ) === 0;
 
-  const findCell = (txId: Buffer): number => {
-    let cell = home(txId, 0);
+  const findCell = (txId: Buffer, key: number): number => {
+    let cell = key & mask;
     for (;;) {
       const stored = index[cell]!;
       if (stored === 0) return -1;
@@ -75,7 +90,7 @@ export const makeRecentTxIds = (
   };
 
   const insertCell = (slot: number): void => {
-    let cell = home(ids, slot * ID_BYTES);
+    let cell = homes[slot]! & mask;
     while (index[cell] !== 0) cell = (cell + 1) & mask;
     index[cell] = slot + 1;
   };
@@ -88,7 +103,7 @@ export const makeRecentTxIds = (
       cell = (cell + 1) & mask;
       const stored = index[cell]!;
       if (stored === 0) return;
-      const preferred = home(ids, (stored - 1) * ID_BYTES);
+      const preferred = homes[stored - 1]! & mask;
       // The entry may stay when its home lies cyclically in (hole, cell].
       const stays =
         hole <= cell
@@ -110,6 +125,7 @@ export const makeRecentTxIds = (
     const nextHashes = Buffer.alloc(next * HASH_BYTES);
     const nextStatuses = new Uint8Array(next);
     const nextFirstSeen = new Float64Array(next);
+    const nextHomes = new Uint32Array(next);
     for (let age = 0; age < count; age += 1) {
       const slot = slotOfAge(age);
       ids.copy(nextIds, age * ID_BYTES, slot * ID_BYTES, (slot + 1) * ID_BYTES);
@@ -121,12 +137,14 @@ export const makeRecentTxIds = (
       );
       nextStatuses[age] = statuses[slot]!;
       nextFirstSeen[age] = firstSeen[slot]!;
+      nextHomes[age] = homes[slot]!;
     }
     capacity = next;
     ids = nextIds;
     hashes = nextHashes;
     statuses = nextStatuses;
     firstSeen = nextFirstSeen;
+    homes = nextHomes;
     index = new Int32Array(indexSizeFor(capacity));
     mask = index.length - 1;
     head = count % capacity;
@@ -142,7 +160,7 @@ export const makeRecentTxIds = (
   return {
     get: (txId) => {
       if (txId.length !== ID_BYTES) return undefined;
-      const cell = findCell(txId);
+      const cell = findCell(txId, keyedHome(txId));
       if (cell < 0) return undefined;
       const slot = index[cell]! - 1;
       return {
@@ -157,7 +175,8 @@ export const makeRecentTxIds = (
       if (txId.length !== ID_BYTES || entry.txFullHash.length !== HASH_BYTES) {
         return;
       }
-      const existing = findCell(txId);
+      const key = keyedHome(txId);
+      const existing = findCell(txId, key);
       if (existing >= 0) {
         write(index[existing]! - 1, entry);
         return;
@@ -166,12 +185,16 @@ export const makeRecentTxIds = (
       if (count === capacity) {
         const oldest = slotOfAge(0);
         deleteCell(
-          findCell(ids.subarray(oldest * ID_BYTES, (oldest + 1) * ID_BYTES)),
+          findCell(
+            ids.subarray(oldest * ID_BYTES, (oldest + 1) * ID_BYTES),
+            homes[oldest]!,
+          ),
         );
         count -= 1;
       }
       const slot = head;
       txId.copy(ids, slot * ID_BYTES, 0, ID_BYTES);
+      homes[slot] = key;
       write(slot, entry);
       insertCell(slot);
       head = (head + 1) % capacity;

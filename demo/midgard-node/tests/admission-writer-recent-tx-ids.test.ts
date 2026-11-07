@@ -19,9 +19,10 @@ const sha = (label: string): Buffer =>
   createHash("sha256").update(label).digest();
 
 /**
- * A tx id whose first four bytes (the index's home hash) come from a small
- * set, so ids pile into the same probe chains and every eviction exercises
- * the backward-shift deletion over long clusters.
+ * A tx id whose first four bytes come from a set of five, as a submitter
+ * grinding ids would make them. Homes keyed on the id's own bytes would pile
+ * these into five probe chains and make every operation walk one; this test
+ * then runs for minutes instead of well under a second.
  */
 const clusteredId = (n: number): Buffer => {
   const id = sha(`clustered:${n.toString()}`);
@@ -73,9 +74,19 @@ describe("recent admitted tx ids", () => {
 
         if (step % 97 === 0 || step === operations - 1) {
           expect(recent.size()).toBe(order.length);
-          for (const kept of order) {
-            expect(recent.get(clusteredId(kept))).toEqual(latest.get(kept));
-          }
+          // Compared field by field, with one assertion per checkpoint: a
+          // deep-equality assertion per id would dominate the run.
+          const wrong = order.filter((kept) => {
+            const got = recent.get(clusteredId(kept));
+            const want = latest.get(kept)!;
+            return (
+              got === undefined ||
+              !got.txFullHash.equals(want.txFullHash) ||
+              got.status !== want.status ||
+              got.firstSeenAt.getTime() !== want.firstSeenAt.getTime()
+            );
+          });
+          expect({ step, wrong }).toEqual({ step, wrong: [] });
           // A few evicted ids must be gone.
           for (let probe = 0; probe < 20; probe += 1) {
             const candidate = random(step + 1);
@@ -87,6 +98,23 @@ describe("recent admitted tx ids", () => {
       }
     }
   });
+
+  it("stays fast when every id shares its leading bytes", () => {
+    // 40,000 ids with the same first eight bytes. Homes taken from the
+    // id's own bytes would put them in one probe chain, about 800 million
+    // id comparisons in all, far past this test's 15 s budget; keyed homes
+    // spread them and the run takes well under a second.
+    const recent = makeRecentTxIds(1 << 16);
+    const ground = (n: number): Buffer => {
+      const id = sha(`ground:${n.toString()}`);
+      id.writeUInt32LE(0x5eed, 0);
+      id.writeUInt32LE(0x5eed, 4);
+      return id;
+    };
+    for (let n = 0; n < 40_000; n += 1) recent.remember(ground(n), entry(n));
+    expect(recent.size()).toBe(40_000);
+    expect(recent.get(ground(39_999))).toEqual(entry(39_999));
+  }, 15_000);
 
   it("ignores ids and hashes that are not 32 bytes", () => {
     const recent = makeRecentTxIds(8);
