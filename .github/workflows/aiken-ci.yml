@@ -295,6 +295,10 @@ jobs:
           name: aiken-shard-report-${{ matrix.shard }}
           path: ${{ runner.temp }}/aiken-reports/shard-${{ matrix.shard }}.json
           if-no-files-found: error
+          # A rerun shard must replace its failed attempt's report: the
+          # collector downloads every aiken-shard-report-* in the run, and
+          # without this it can read the stale one instead of the rerun's.
+          overwrite: true
 
   shard-collector:
     name: Verify the complete Aiken test union
