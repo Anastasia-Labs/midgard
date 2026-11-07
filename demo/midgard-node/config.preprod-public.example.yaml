@@ -11,8 +11,8 @@
 #
 # Under the full-stack command (e2e-stack), the stack's public.nodeConfigFile
 # holds only the six secrets below; every other setting here goes in the node
-# .env, except the file paths, the manifest id and HTTP_TRUSTED_PROXY_PEERS,
-# which the stack sets. See the docs-site page operators/node/preprod-public-deploy.
+# .env, except the file paths, the manifest id and HTTP_SOCKET_PATH, which
+# the stack sets. See the docs-site page operators/node/preprod-public-deploy.
 #
 # The node reads and submits L1 only through the local Cardano node. Remote L1
 # provider settings (L1_ACCESS, L1_PROVIDER, L1_KUPO_URL, L1_OGMIOS_URL,
@@ -48,16 +48,17 @@ RUN_GENESIS_ON_STARTUP: "false"
 # POSTGRES_PASSWORD: "<database password>"
 
 # --- API listener and database (required) --------------------------------------
-# The full-stack command (e2e-stack) runs the database as `postgres` and its
-# optional TLS ingress at 10.91.7.2, and sets these in the node environment.
-PORT: "3000"
+# The full-stack command (e2e-stack) runs the database as `postgres` and sets
+# these in the node environment.
+# The node serves plain HTTP only on this Unix socket, for the TLS ingress in
+# front of it; a public profile opens no TCP listener. Its directory must
+# grant other users no access (mode 0700 or 0750), and only the node and the
+# ingress may mount it: whoever reaches the socket names its own client.
+HTTP_SOCKET_PATH: "/run/midgard-http/node.sock"
 POSTGRES_HOST: "postgres"
 POSTGRES_PORT: "5432"
 POSTGRES_USER: "midgard"
 POSTGRES_DB: "midgard"
-# Private IPv4 address of the TLS ingress allowed to set X-Midgard-Client-IP.
-# Empty keys every request by its socket address.
-HTTP_TRUSTED_PROXY_PEERS: "10.91.7.2"
 # The public runtime refuses fewer than 2 validation workers.
 VALIDATION_WORKER_POOL_SIZE: "4"
 # Other operators' node API base URLs (comma separated, at most 16). The node
@@ -67,11 +68,8 @@ L2_TX_PEERS: ""
 
 # --- Public release identity (required) -----------------------------------------
 # The API does not open until the signed release verifies against these.
-# HTTPS origin the API serves; the TLS certificate must cover its hostname.
+# HTTPS origin the TLS ingress serves.
 MIDGARD_PUBLIC_API_ORIGIN: "https://midgard.example.org"
-# TLS certificate and key for that origin (TLSv1.3). The key file is private.
-MIDGARD_PUBLIC_TLS_CERT_FILE: "/run/public/tls-cert.pem"
-MIDGARD_PUBLIC_TLS_KEY_FILE: "/run/secrets/tls-key.pem"
 # Signed release identity and the external Ed25519 trust roots that verify it.
 MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: "/run/public/deployment-authority.json"
 MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: "/run/public/release-trust-roots.json"

@@ -17,7 +17,8 @@ node dist/index.js listen --with-monitoring
 ```
 
 The server binds the port from `PORT` in your environment (the examples use
-`http://127.0.0.1:3000`). With `--with-monitoring`, Prometheus metrics are also
+`http://127.0.0.1:3000`), or, with `HTTP_SOCKET_PATH` set, listens on that
+Unix socket instead and opens no TCP port. With `--with-monitoring`, Prometheus metrics are also
 served on `PROM_METRICS_PORT` at `/metrics`.
 
 ## Access control
@@ -27,10 +28,15 @@ gated by `ADMIN_API_KEY` and require the key in the `x-midgard-admin-key` reques
 header; a missing or wrong key is denied before the handler runs. Admin
 mutations also need a signed session; see [Admin routes](#admin-routes).
 
-"Public" here means unauthenticated. The `preprod-public`, `preprod-rehearsal`
-and `mainnet` profiles serve only TLS 1.3 and refuse to start without a certificate for
-`MIDGARD_PUBLIC_API_ORIGIN`; development and testing profiles serve plain HTTP
-for local use. Remaining public-deployment work is listed under
+"Public" here means unauthenticated. On the `preprod-public`,
+`preprod-rehearsal` and `mainnet` profiles the node has no TCP listener: it
+serves plain HTTP only on its Unix socket (`HTTP_SOCKET_PATH`, in a directory
+no other user can enter) and refuses to start without one. A TLS ingress in
+front of it serves TLS 1.3 with the certificate for
+`MIDGARD_PUBLIC_API_ORIGIN`; see the [public deployment
+guide](/docs/operators/node/preprod-public-deploy#tls-ingress). Development
+and testing profiles serve plain HTTP over TCP for local use. Remaining
+public-deployment work is listed under
 [readiness blockers](/docs/getting-started/status). Every route is rate limited;
 see [Request rate limits](#request-rate-limits).
 
@@ -137,10 +143,12 @@ total, not a fixed rate.
 
 A client is an IPv4 address or an IPv6 /56, and its prefix the IPv4 /24 or the
 IPv6 /48 around it. The prefix bucket keeps the holder of a whole /48 from
-multiplying its quota by spreading over its /56s. The node reads
-`X-Midgard-Client-IP` only when the TCP peer is listed in
-`HTTP_TRUSTED_PROXY_PEERS`, the private IPv4 addresses of a reverse proxy that
-overwrites that header. It never reads `X-Forwarded-For`.
+multiplying its quota by spreading over its /56s. On its Unix socket the node
+takes each client from `X-Midgard-Client-IP`, which the ingress sets to the
+connecting address; whoever can reach the socket names its own client, which
+is why its directory admits no other user. Over TCP it reads that header only
+when the peer lies in `HTTP_TRUSTED_PROXY_PEERS`, the addresses or ranges of a
+reverse proxy that overwrites it. It never reads `X-Forwarded-For`.
 
 The `read`, `batch`, `write` and `evaluate` buckets live in fixed arrays of 2 ×
 2^18 cells per tier. A client maps to one cell per row through a hash keyed
@@ -162,20 +170,22 @@ Public requests are capped at 64 in flight plus a bound on in-flight body
 bytes; health and admin requests at 8 in flight; each client at 4 in flight.
 Overflow answers `503` with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
 
-| Variable                                                                    | Default         | Meaning                                                                                         |
-| --------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| `HTTP_RATE_LIMIT_ENABLED`                                                   | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
-| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`   | the table above | `clientBurst,clientPerSecond`                                                                   |
-| `HTTP_RATE_LIMIT_WRITE`                                                     | the table above | `clientBurst,clientPerSecond,prefixBurst,prefixPerSecond`                                       |
-| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `clientBurst,clientPerSecond,globalBurst,globalPerSecond`                                       |
-| `HTTP_TRUSTED_PROXY_PEERS`                                                  | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
+| Variable                                                                    | Default         | Meaning                                                                                                                                                           |
+| --------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                   | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start                                                                   |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`   | the table above | `clientBurst,clientPerSecond`                                                                                                                                     |
+| `HTTP_RATE_LIMIT_WRITE`                                                     | the table above | `clientBurst,clientPerSecond,prefixBurst,prefixPerSecond`                                                                                                         |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `clientBurst,clientPerSecond,globalBurst,globalPerSecond`                                                                                                         |
+| `HTTP_SOCKET_PATH`                                                          | unset           | absolute Unix socket path to serve on instead of `PORT`; required on the public profiles above                                                                    |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                  | empty           | over TCP only: up to 64 IPv4 (at least /8) or IPv6 (at least /24) proxy addresses or ranges allowed to set `X-Midgard-Client-IP`; refused with `HTTP_SOCKET_PATH` |
 
 Bursts are positive integers and refills positive numbers per second. The public
-ingress proxy applies its own per-IP and global limits in front of these; its
-health, readiness and admin routes use a per-IP zone of their own and no global
-zone. A CDN or load balancer in front of that proxy makes every client behind it
-look like the CDN's addresses, so they share those buckets; rate limit at the
-CDN as well, or keep the proxy as the first hop.
+TLS ingress applies no request rate to submit and read routes: these limits
+decide them. It caps each address at 4 requests in flight, and its health,
+readiness and admin routes keep a per-address rate zone of their own. A CDN or
+load balancer in front of the ingress makes every client behind it look like
+the CDN's addresses, so they share those buckets; rate limit at the CDN as
+well, or keep the ingress as the first hop.
 
 ## Peer routes
 

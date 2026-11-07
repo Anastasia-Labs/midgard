@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { connect, createServer } from "node:tls";
-import { promisify } from "node:util";
 
 import {
   SELECTED_DEPLOYMENT_PROFILE,
@@ -31,8 +29,7 @@ import { readOperatorProvenance, stackRegistryPath } from "./release.js";
 /** Settings the stack derives for the public node; the .env must not set them. */
 const STACK_DERIVED_SETTINGS = [
   "MIDGARD_CONFIG_FILE",
-  "MIDGARD_PUBLIC_TLS_CERT_FILE",
-  "MIDGARD_PUBLIC_TLS_KEY_FILE",
+  "HTTP_SOCKET_PATH",
   "MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE",
   "MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE",
   "MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE",
@@ -40,7 +37,6 @@ const STACK_DERIVED_SETTINGS = [
   "MIDGARD_PUBLIC_MANIFEST_ID",
   "MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE",
   "MIDGARD_BLUEPRINT_CLASSIFICATION_FILE",
-  "HTTP_TRUSTED_PROXY_PEERS",
 ];
 
 /** Prefixes the input a node refusal concerns, so the operator knows what to fix. */
@@ -194,75 +190,6 @@ async function assertNodeDatabaseOwner(nodeRoot: string) {
     );
 }
 
-/** The ingress network: the node trusts the ingress address to name clients. */
-export const INGRESS_SUBNET = "10.91.7.0/28";
-
-const ipv4Range = (cidr: string) => {
-  const [address, bits] = cidr.split("/");
-  const octets = (address ?? "").split(".").map(Number);
-  const size = Number(bits);
-  if (
-    octets.length !== 4 ||
-    octets.some((octet) => !(octet >= 0 && octet <= 255)) ||
-    !(size >= 0 && size <= 32)
-  )
-    return undefined;
-  const start = octets.reduce((value, octet) => value * 256 + octet, 0);
-  const span = 2 ** (32 - size);
-  const first = start - (start % span);
-  return { first, last: first + span - 1 };
-};
-
-/**
- * The ingress subnet is fixed, so another Docker network on it would make
- * Compose refuse to create the ingress network after the deployment spent.
- * Only this stack's own ingress network may already hold it. When Docker
- * cannot be asked, the check passes and Compose reports the collision itself.
- */
-async function assertIngressSubnetFree(env: Record<string, string>) {
-  const docker = (args: string[]) =>
-    promisify(execFile)("docker", args, { timeout: 10_000 }).then(
-      ({ stdout }) => stdout,
-    );
-  let networks: {
-    Name?: string;
-    Labels?: Record<string, string> | null;
-    IPAM?: { Config?: { Subnet?: string }[] | null };
-  }[];
-  try {
-    const ids = (await docker(["network", "ls", "--quiet"]))
-      .split("\n")
-      .filter(Boolean);
-    networks =
-      ids.length === 0
-        ? []
-        : JSON.parse(await docker(["network", "inspect", ...ids]));
-  } catch {
-    return;
-  }
-  const project = env.COMPOSE_PROJECT_NAME || "midgard-node";
-  const ingress = ipv4Range(INGRESS_SUBNET)!;
-  for (const network of networks) {
-    const labels = network.Labels ?? {};
-    if (
-      labels["com.docker.compose.project"] === project &&
-      labels["com.docker.compose.network"] === "public_ingress"
-    )
-      continue;
-    for (const { Subnet } of network.IPAM?.Config ?? []) {
-      const range = Subnet === undefined ? undefined : ipv4Range(Subnet);
-      if (
-        range !== undefined &&
-        range.first <= ingress.last &&
-        ingress.first <= range.last
-      )
-        throw new Error(
-          `Docker network ${network.Name} already uses ${Subnet}, which overlaps the public ingress subnet ${INGRESS_SUBNET}; remove that network (docker network rm ${network.Name}) or run without the ingress (public.ingressHostPort null)`,
-        );
-    }
-  }
-}
-
 /** A real loopback TLS handshake proves the CA verifies the certificate for the origin. */
 async function assertCaVerifiesCertificate(
   tls: { cert: Buffer; key: Buffer },
@@ -397,7 +324,6 @@ export async function checkPublicInputs(
       throw new Error(
         "public.ingressHostPort must differ from the node and DA ports",
       );
-    await assertIngressSubnetFree(env);
   }
   // Last: the operator and merge wallets must be on the compiled allow-list.
   assertAllowListedOperatorWallets("public.nodeConfigFile", env);
@@ -417,6 +343,11 @@ export function assertPublicNodeEnvFile(
       throw new Error(
         `The stack sets ${name} for a ${SELECTED_DEPLOYMENT_PROFILE.name} node; remove it from ${envFile}`,
       );
+  // The node serves only on its socket, where the ingress names each client.
+  if ("HTTP_TRUSTED_PROXY_PEERS" in env)
+    throw new Error(
+      `A ${SELECTED_DEPLOYMENT_PROFILE.name} node serves only behind its TLS ingress, which names each client; remove HTTP_TRUSTED_PROXY_PEERS from ${envFile}`,
+    );
   if ("L1_USER_SEED_PHRASE" in env)
     throw new Error(
       `A ${SELECTED_DEPLOYMENT_PROFILE.name} operator cannot hold L1_USER_SEED_PHRASE; remove it`,

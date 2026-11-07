@@ -1,8 +1,10 @@
 # Public HTTP operator configuration
 
 The compiled `preprod-public`, `preprod-rehearsal` and `mainnet` profiles require
-authenticated release inputs and TLS before opening the API socket. Explicit development/testing
-profiles retain their local HTTP behavior. Public mode cannot disable configuration
+authenticated release inputs before opening the API socket, and serve plain HTTP
+only on a Unix socket behind a TLS ingress; the node itself does no TLS and has
+no TCP listener. Explicit development/testing profiles retain their local HTTP
+behavior. Public mode cannot disable configuration
 loading or read secrets from a dotenv file.
 
 `MIDGARD_CONFIG_FILE` must name an absolute, private regular YAML or JSON file. The operator,
@@ -12,10 +14,12 @@ are mounted values in that configuration. Public wallet commands use
 literal seed argument. The node refuses a missing, symlinked, oversized or
 nonprivate secret file. Do not put keys, seeds or passwords on the command line.
 
-The public listener also requires these mounted inputs:
+The public listener also requires these inputs:
 
-- `MIDGARD_PUBLIC_TLS_CERT_FILE`, `MIDGARD_PUBLIC_TLS_KEY_FILE` and
-  `MIDGARD_PUBLIC_API_ORIGIN` (HTTPS, matching certificate hostname).
+- `HTTP_SOCKET_PATH`, an absolute socket path of at most 100 bytes whose
+  directory grants no access to other users (mode 0700 or 0750). The node
+  replaces a socket a killed node left there, refuses any other file, and
+  makes its socket mode 0660.
 - `MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE` containing the established signed
   release identity; `MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE` is a separately
   configured external Ed25519 trust-root list.
@@ -43,10 +47,18 @@ These measurements calibrate framing; fixture publication outpoints and unused
 reasons establish no live release approval. Acceptance separately checks genuine
 signed authority/provenance, final source/images and supported adjacent refusals.
 
-`HTTP_TRUSTED_PROXY_PEERS` is empty by default. Only explicitly configured private
-IPv4 proxy socket peers may provide `X-Midgard-Client-IP`, and the deployed proxy
-must replace it with its TCP client address. Other forwarded headers have no role
-in quotas. Direct requests use their actual TCP peer.
+On its socket the node keys every request by `X-Midgard-Client-IP`, which the
+TLS ingress replaces with the connecting address; a request without it is
+refused (`E_HTTP_CLIENT_IDENTITY_UNAVAILABLE`). The socket has no network
+address, so only processes that can enter its directory reach it.
+
+Over TCP, `HTTP_TRUSTED_PROXY_PEERS` (empty by default) lists up to 64 IPv4 or
+IPv6 addresses or CIDR ranges, at least /8 for IPv4 and /24 for IPv6 and with
+no host bits set, such as a cloud load balancer's published ranges. Only a
+peer in one of them may provide `X-Midgard-Client-IP`, and it must replace the
+header with its own client address. The setting is refused together with
+`HTTP_SOCKET_PATH`. Other forwarded headers have no role in quotas. Direct
+requests use their actual TCP peer.
 
 ## Installed actions
 
@@ -171,16 +183,24 @@ a `public` section. The operator steps are in the docs-site page
   host user that owns the private files;
 - writes the node's secrets and DA identity to a private generated
   `MIDGARD_CONFIG_FILE` in its run directory, keeps them out of the container
-  environment, and mounts the TLS, trust-root and release files;
+  environment, and mounts the trust-root and release files;
 - gives the node the Cardano socket at `/ipc/node.socket`, its configuration
   at `/cardano-config/config.json` and the image's own L1 transport binary;
 - authenticates the release before it starts the node, and stops with the
   files to sign when it does not verify yet.
 
-`public.ingressHostPort` adds the optional TLS ingress, configured by
-`scripts/public-ingress.mjs`: a digest-pinned nginx on its own network that
-forwards to the node over verified TLS. The node then trusts only the ingress
-address in `HTTP_TRUSTED_PROXY_PEERS`. No Docker socket is mounted.
+The stack always runs the TLS ingress, configured by
+`scripts/public-ingress.mjs`: a digest-pinned nginx that holds the TLS
+certificate and key and forwards plain HTTP, over keepalive connections, to the
+node's socket. The socket lives in a run-directory folder of mode 0700, owned
+by the host user both containers run as, and mounted only into those two. The
+ingress has a Docker network of its own and no route to the node over TCP; the
+node publishes no API port. The ingress caps `/submit` and `/tx/evaluate`
+bodies at the node's submission limit (295,048 bytes), caps each address at 4
+requests in flight, and rate limits only the health, readiness and admin
+routes; the node's limiter decides submit and read routes. Its own refusals are
+JSON with `Retry-After`, using the node's error codes. `public.ingressHostPort`
+adds an extra host port for it. No Docker socket is mounted.
 
 A started stack does not prove load headroom, block production under load or
 live Preprod acceptance; those gates run on the final composed release.

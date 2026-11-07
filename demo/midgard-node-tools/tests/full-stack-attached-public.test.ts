@@ -78,7 +78,7 @@ async function snapshot(directory: string) {
 }
 
 describe("a public stack's second-instance workflow", () => {
-  it("runs operator-2's node from the stack's release image on loopback only, reading the release and TLS, with no ingress", async () => {
+  it("runs operator-2's node from the stack's release image behind its own TLS ingress on loopback only, reading the release read-only", async () => {
     const { fixture, processes, run, rendered } = await attachedPublicRun();
     const inputs = fixture.primary.config.public!;
     // The controller trusts the stack's CA for the stack's origin.
@@ -97,25 +97,27 @@ describe("a public stack's second-instance workflow", () => {
           .slice(call.args.indexOf("up") + 1)
           .filter((arg) => !arg.startsWith("-")),
       );
-    expect(started).toEqual(["postgres", "midgard-node"]);
+    expect(started).toEqual(["postgres", "midgard-node", "public-ingress"]);
     const model = rendered();
-    expect(Object.keys(model.services)).not.toContain("public-ingress");
     const node = model.services["midgard-node"]!;
+    const ingress = model.services["public-ingress"]!;
     expect(node.image).toBe(fixture.primary.env.MIDGARD_PUBLIC_NODE_IMAGE);
     expect(model.services.postgres!.image).toBe(
       fixture.primary.env.MIDGARD_PUBLIC_POSTGRES_IMAGE,
     );
-    // Every host port, the API's included, is on the loopback only.
-    expect(node.ports!.map((port) => port.host_ip)).toEqual([
-      "127.0.0.1",
-      "127.0.0.1",
-      "127.0.0.1",
-    ]);
+    // Every host port is on the loopback only; the API's is the ingress's,
+    // and the node itself publishes no HTTP port.
+    expect(node.ports!.map((port) => port.target)).not.toContain(3000);
+    expect(
+      [...node.ports!, ...ingress.ports!].map((port) => port.host_ip),
+    ).toEqual(["127.0.0.1", "127.0.0.1", "127.0.0.1"]);
+    expect(ingress.ports!.map((port) => port.target)).toEqual([8443]);
+    for (const source of [inputs.tlsCertFile, inputs.tlsKeyFile])
+      expect(
+        ingress.volumes!.find((volume) => volume.source === source)?.read_only,
+      ).toBe(true);
     for (const source of [
       inputs.releaseDirectory,
-      inputs.tlsCertFile,
-      inputs.tlsKeyFile,
-      inputs.tlsCaFile,
       inputs.trustRootsFile,
       // The stack's Cardano node socket: the node connects, never writes.
       join(fixture.primary.directory, "cardano/ipc"),

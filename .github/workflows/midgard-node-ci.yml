@@ -282,6 +282,11 @@ jobs:
       - name: Test the operator compose worktree derivation
         if: ${{ !cancelled() }}
         run: node --test demo/midgard-node/scripts/operator-compose.test.mjs
+      # The public ingress config, rendered and served by the runner's nginx in
+      # front of a stub node on a Unix socket: body cap, refusals, keepalive.
+      - name: Serve the public ingress through nginx to a socket node
+        if: ${{ !cancelled() }}
+        run: node --test demo/midgard-node/scripts/public-ingress.test.mjs
       - name: Render the phase4 devnet compose
         if: ${{ !cancelled() }}
         working-directory: demo/midgard-node-tools/devnet/phase4-process

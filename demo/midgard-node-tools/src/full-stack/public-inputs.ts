@@ -18,7 +18,7 @@ export type PublicStackInputs = {
   blueprintClassificationFile: string;
   /** Where the stack signs the public release; it must not exist before signing. */
   releaseDirectory: string;
-  /** Host port of the optional TLS ingress; null runs the node without one. */
+  /** An extra host port, on every interface, for the TLS ingress; null publishes only the node API host port. */
   ingressHostPort: number | null;
   /**
    * The public DNS name the stack's retained DA is announced at (/dns4), on

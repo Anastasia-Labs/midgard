@@ -1,6 +1,6 @@
 import { Cause, HashMap, List, Logger } from "effect";
 
-import { PublicHttpConfigError } from "./listen-public-http.js";
+import { PublicHttpConfigError } from "./listen-http-transport.js";
 
 const REDACTED = "[redacted]";
 const sensitiveNames =

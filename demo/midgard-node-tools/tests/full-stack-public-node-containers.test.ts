@@ -68,6 +68,7 @@ async function renderedCompose(config: StackConfig, servicesFile?: string) {
         ports?: { host_ip?: string; target: number; published: string }[];
         environment?: Record<string, string>;
         volumes?: { source: string; target: string; read_only?: boolean }[];
+        networks?: Record<string, unknown>;
       }
     >;
   };
@@ -104,35 +105,83 @@ async function renderedHash(
 
 describe("public node containers", () => {
   it.each([
-    ["without the ingress, the node API on every interface", null, undefined],
     [
-      "behind the ingress, the node API on the loopback only",
+      "without public.ingressHostPort, the API port on every interface",
+      null,
+      undefined,
+    ],
+    [
+      "with public.ingressHostPort, the API port on the loopback",
       18443,
       "127.0.0.1",
     ],
   ])(
-    "binds host ports to the loopback, %s",
+    "publishes the node API only through the TLS ingress, %s",
     async (_, ingressHostPort, apiHost) => {
       const stack = await publicStack(
         `ports-${ingressHostPort}`,
         ingressHostPort,
       );
+      const { config } = stack.processes;
       await preparePublicImages(stack.processes);
-      const model = await renderedCompose(stack.processes.config);
-      const hosts = (service: string) =>
-        Object.fromEntries(
-          model.services[service]!.ports!.map((port) => [
-            port.target,
-            port.host_ip,
-          ]),
-        );
-      expect(hosts("midgard-node")).toEqual({
-        3000: apiHost,
-        9464: "127.0.0.1",
-        39002: "127.0.0.1",
+      const services = join(config.runDirectory, "services");
+      await mkdir(services, { recursive: true });
+      await writeFile(join(services, "producer.json"), "{}");
+      const node = await publicNodeServices(stack.processes, {
+        servicesDirectory: services,
+        envFile: [{ path: join(services, "node.env"), required: false }],
+        producer: join(services, "producer.json"),
       });
-      expect(hosts("postgres")).toEqual({ 5432: "127.0.0.1" });
+      const compose = join(services, "compose.json");
+      await writeFile(
+        compose,
+        JSON.stringify({ services: node.services, networks: node.networks }),
+      );
+      const model = await renderedCompose(config, compose);
+      const ports = (service: string) =>
+        model.services[service]!.ports!.map((port) => ({
+          host: port.host_ip,
+          published: Number(port.published),
+          target: port.target,
+        }));
+      // The node publishes no HTTP port: it has no TCP listener. Metrics and
+      // DA stay on the loopback.
+      expect(
+        ports("midgard-node").map(({ host, target }) => ({ host, target })),
+      ).toEqual([
+        { host: "127.0.0.1", target: 9464 },
+        { host: "127.0.0.1", target: 39002 },
+      ]);
+      expect(ports("public-ingress")).toEqual([
+        {
+          host: apiHost,
+          published: Number(new URL(config.endpoint).port),
+          target: 8443,
+        },
+        ...(ingressHostPort === null
+          ? []
+          : [{ host: undefined, published: ingressHostPort, target: 8443 }]),
+      ]);
+      expect(ports("postgres").map(({ host }) => host)).toEqual(["127.0.0.1"]);
+      // The two share only the socket directory, private to the host user;
+      // the ingress has a network of its own, with no route to the node.
+      const socketDirectory = join(services, "http-socket");
+      expect((await stat(socketDirectory)).mode & 0o777).toBe(0o700);
+      for (const service of ["midgard-node", "public-ingress"])
+        expect(model.services[service]!.volumes).toContainEqual(
+          expect.objectContaining({
+            source: socketDirectory,
+            target: "/run/midgard-http",
+          }),
+        );
+      expect(Object.keys(model.services["public-ingress"]!.networks!)).toEqual([
+        "public_ingress",
+      ]);
+      expect(
+        Object.keys(model.services["midgard-node"]!.networks!),
+      ).not.toContain("public_ingress");
       expect(model.services["midgard-node"]!.image).toBe(ROLE_IMAGES.node);
+      expect(model.services["public-ingress"]!.image).toBe(ROLE_IMAGES.ingress);
       expect(model.services.postgres!.image).toBe(ROLE_IMAGES.postgres);
     },
   );

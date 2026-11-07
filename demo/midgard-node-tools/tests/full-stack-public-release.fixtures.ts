@@ -1,6 +1,7 @@
 import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 import {
   access,
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -91,6 +92,12 @@ export async function publicStack(
   await mkdir(join(checkout, "private"), { recursive: true });
   await mkdir(join(checkout, "onchain/aiken"), { recursive: true });
   await mkdir(join(config.nodeRoot, "deploymentInfo"), { recursive: true });
+  // The stack renders its TLS ingress with the node directory's generator.
+  await mkdir(join(config.nodeRoot, "scripts"), { recursive: true });
+  await copyFile(
+    join(nodeRoot, "scripts/public-ingress.mjs"),
+    join(config.nodeRoot, "scripts/public-ingress.mjs"),
+  );
   await writeFile(
     join(checkout, "onchain/aiken/plutus.json"),
     fixture.blueprintJson,

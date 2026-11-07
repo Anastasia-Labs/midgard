@@ -1,7 +1,5 @@
 import { X509Certificate } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import { createServer as createHttpServer, type Server } from "node:http";
-import { createServer as createHttpsServer } from "node:https";
 import { isAbsolute } from "node:path";
 import { createSecureContext } from "node:tls";
 
@@ -22,6 +20,13 @@ import {
   type NodeConfigDep,
   seedPhraseAddress,
 } from "../services/config.node-config-dep.js";
+import {
+  failHttpConfig as fail,
+  type HttpListenerTransport,
+  PublicHttpConfigError,
+  tcpTransport,
+  unixSocketTransport,
+} from "./listen-http-transport.js";
 
 // The current genuine public120 constructor has525 contracts: serialized manifest
 //10,057,128B, parameter registry20,226,934B and classification72,078B. Each
@@ -40,14 +45,6 @@ export const PUBLIC_RELEASE_JSON_MAX_BYTES =
 
 export const isPublicDeploymentProfile = (name: string): boolean =>
   isProductionDeploymentProfileName(name);
-export class PublicHttpConfigError extends Error {
-  constructor(readonly reason: string) {
-    super(`E_PUBLIC_HTTP_CONFIG: ${reason}`);
-  }
-}
-const fail = (reason: string): never => {
-  throw new PublicHttpConfigError(reason);
-};
 
 /** Read fixed-size regular mounted files; file contents never enter diagnostics. */
 export const readMountedHttpFile = (
@@ -273,11 +270,6 @@ export type PublicHttpProfile = Omit<DeploymentProfile, "allow_lists"> & {
   readonly allow_lists: { readonly operators: readonly string[] | null };
 };
 
-export type HttpListenerTransport = {
-  readonly createServer: () => Server;
-  readonly hostname: string;
-};
-
 /** The secrets a public node reads only from its private mounted configuration. */
 export const PUBLIC_NODE_SECRET_NAMES = [
   "ADMIN_API_KEY",
@@ -358,7 +350,11 @@ export const assertPublicReleaseIdentity = (env: NodeJS.ProcessEnv): void => {
   }
 };
 
-/** The HTTPS origin and a current TLSv1.3 certificate and key that cover it. */
+/**
+ * The HTTPS origin and a current TLSv1.3 certificate and key that cover it.
+ * The node itself serves plain HTTP on its socket; the public stack checks
+ * these inputs before its TLS ingress serves them.
+ */
 export const loadPublicTls = (
   env: NodeJS.ProcessEnv,
 ): { readonly cert: Buffer; readonly key: Buffer } => {
@@ -401,7 +397,11 @@ export const loadPublicTls = (
   return { cert, key };
 };
 
-/** Resolve and authenticate local public settings before acquiring any listener or provider. */
+/**
+ * Resolve and authenticate local public settings before acquiring any
+ * listener or provider. A public node listens only on its Unix socket, never
+ * on TCP; TLS ends at the ingress in front of it.
+ */
 export const publicHttpTransport = (
   config: NodeConfigDep,
   {
@@ -423,9 +423,15 @@ export const publicHttpTransport = (
       "test release dependencies are unavailable in the compiled public runtime",
     );
   if (!isPublicDeploymentProfile(profile.name))
-    return { createServer: createHttpServer, hostname: "0.0.0.0" };
+    return config.HTTP_SOCKET_PATH === undefined
+      ? tcpTransport
+      : unixSocketTransport(config.HTTP_SOCKET_PATH);
   if (config.HTTP_RATE_LIMITS?.enabled === false)
     return fail("public deployments cannot disable HTTP rate limits");
+  if (config.HTTP_SOCKET_PATH === undefined)
+    return fail(
+      "public deployments serve HTTP only on HTTP_SOCKET_PATH, behind their TLS ingress",
+    );
   if (env.MIDGARD_DOTENV_MODE !== "disabled")
     return fail("public deployments require disabled checkout dotenv loading");
   if (
@@ -470,22 +476,5 @@ export const publicHttpTransport = (
     PUBLIC_RELEASE_INPUT_LIMITS.contractDeploymentInfo,
   );
   (testOnlyReleaseVerifier ?? authenticatePublicHttpRelease)(env);
-  const { cert, key } = loadPublicTls(env);
-  return {
-    hostname: "0.0.0.0",
-    createServer: () => {
-      const server = createHttpsServer({
-        cert,
-        key,
-        minVersion: "TLSv1.3",
-        requestTimeout: 30_000,
-        headersTimeout: 10_000,
-        maxHeaderSize: 8_192,
-      });
-      server.maxConnections = 256;
-      server.keepAliveTimeout = 5_000;
-      server.maxRequestsPerSocket = 100;
-      return server;
-    },
-  };
+  return unixSocketTransport(config.HTTP_SOCKET_PATH);
 };

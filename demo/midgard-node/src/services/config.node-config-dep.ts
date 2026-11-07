@@ -151,6 +151,8 @@ export type NodeConfigDep = {
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
   HTTP_TRUSTED_PROXY_PEERS: readonly string[];
+  /** The Unix socket the HTTP API listens on instead of TCP; required by the public profile. */
+  HTTP_SOCKET_PATH: string | undefined;
   HTTP_RATE_LIMITS: HttpRateLimitPolicy;
   /** The other operators' node URLs this node shares accepted L2
    * transactions with (`config.l2-tx-peers.ts`); empty turns sharing off. */

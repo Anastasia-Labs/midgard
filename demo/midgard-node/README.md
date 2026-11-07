@@ -474,6 +474,12 @@ transaction itself. A down peer costs a warning and the
 `l2_peer_forward_failures_total` metric, never a commit or readiness. Empty
 (the default) turns sharing off.
 
+The listener serves plain HTTP on `PORT`, or only on the Unix socket
+`HTTP_SOCKET_PATH` when that is set. The public profiles require the socket
+and open no TCP port: TLS, the `/submit` body cap and per-address connection
+limits sit in the nginx ingress in front of the node, and the node's own
+limiter decides request rates. See [PUBLIC_HTTP.md](./PUBLIC_HTTP.md).
+
 The listener also exposes admin/operator routes for initialization, state
 inspection, and operational control. See
 [`src/commands/listen-router.ts`](./src/commands/listen-router.ts) for the

@@ -11,10 +11,10 @@ import { join } from "node:path";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
+import { PublicHttpConfigError } from "../src/commands/listen-http-transport.js";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_RELEASE_JSON_MAX_BYTES,
-  PublicHttpConfigError,
   readMountedHttpFile,
   verifyMountedPublicRegistry,
 } from "../src/commands/listen-public-http.js";

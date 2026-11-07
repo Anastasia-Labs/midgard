@@ -1,5 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -9,7 +7,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadStackConfig } from "../src/full-stack/config.js";
 import { runStackController } from "../src/full-stack/controller.js";
 import { stackPaths } from "../src/full-stack/deployment.js";
-import { INGRESS_SUBNET } from "../src/full-stack/public-node.js";
 import { SIGNED_RELEASE_FILES } from "../src/sign-deployment-release.js";
 import { removeConfigFixtures } from "./full-stack-config.fixtures.js";
 import {
@@ -59,6 +56,20 @@ describe("preprod-public inputs refused before any build or spend", () => {
         env.MIDGARD_CONFIG_FILE = "/run/secrets/node-config.json";
       },
       "The stack sets MIDGARD_CONFIG_FILE",
+    ],
+    [
+      "an HTTP socket path of the operator's own",
+      ({ env }) => {
+        env.HTTP_SOCKET_PATH = "/run/midgard-http/node.sock";
+      },
+      "The stack sets HTTP_SOCKET_PATH",
+    ],
+    [
+      "trusted proxy peers, which the node behind its ingress cannot use",
+      ({ env }) => {
+        env.HTTP_TRUSTED_PROXY_PEERS = "10.0.0.0/8";
+      },
+      "remove HTTP_TRUSTED_PROXY_PEERS",
     ],
     [
       "a user wallet seed",
@@ -345,28 +356,6 @@ describe("preprod-public inputs refused before any build or spend", () => {
       await writeFile(join(value.config.public!.releaseDirectory, name), "{}");
     value.config.public!.ingressHostPort = 18443;
     await value.writeConfig();
-    await expect(loadStackConfig(value.path)).resolves.toBeDefined();
-  });
-  it("refuses an ingress whose subnet another Docker network holds", async () => {
-    const value = await publicFixture();
-    value.config.public!.ingressHostPort = 18443;
-    await writeFile(value.config.envFile, value.envText());
-    await value.writeConfig();
-    const network = `midgard-subnet-test-${randomBytes(4).toString("hex")}`;
-    execFileSync("docker", [
-      "network",
-      "create",
-      "--subnet",
-      INGRESS_SUBNET,
-      network,
-    ]);
-    try {
-      await expect(loadStackConfig(value.path)).rejects.toThrow(
-        `Docker network ${network} already uses ${INGRESS_SUBNET}, which overlaps the public ingress subnet`,
-      );
-    } finally {
-      execFileSync("docker", ["network", "rm", network]);
-    }
     await expect(loadStackConfig(value.path)).resolves.toBeDefined();
   });
   it("refuses the same input with --check", async () => {

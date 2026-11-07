@@ -12,6 +12,7 @@ import { Effect, Option } from "effect";
 import { PEER_MAX_BODY_BYTES } from "../l2-peer/protocol.js";
 import { NodeConfig } from "../services/config.js";
 import type { NodeConfigDep } from "../services/config.node-config-dep.js";
+import { isTrustedHttpProxy } from "../services/http-address.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateClass,
@@ -50,19 +51,31 @@ export const httpPeerIdentity = (
   return isIP(address) === 0 ? undefined : address.toLowerCase();
 };
 
-/** Only a configured actual proxy socket may supply an overwritten single client identity. */
+/**
+ * The client a request is charged to. On HTTP_SOCKET_PATH only the local TLS
+ * ingress can connect (the socket's directory admits only its users), so its
+ * x-midgard-client-ip names the client and a request without one has no
+ * identity. Over TCP the socket peer is the client, unless it lies in a
+ * configured trusted proxy range, which then names the client instead.
+ */
 export const httpClientIdentity = (
   request: Pick<
     HttpServerRequest.HttpServerRequest,
     "remoteAddress" | "headers"
   >,
-  trustedPeers: readonly string[],
+  config: Pick<NodeConfigDep, "HTTP_TRUSTED_PROXY_PEERS" | "HTTP_SOCKET_PATH">,
 ): string | undefined => {
+  const named = () =>
+    httpPeerIdentity(
+      Option.fromNullable(request.headers["x-midgard-client-ip"]),
+    );
+  if (config.HTTP_SOCKET_PATH !== undefined)
+    return Option.isNone(request.remoteAddress) ? named() : undefined;
   const socket = httpPeerIdentity(request.remoteAddress);
-  if (socket === undefined || !trustedPeers.includes(socket)) return socket;
-  return httpPeerIdentity(
-    Option.fromNullable(request.headers["x-midgard-client-ip"]),
-  );
+  return socket !== undefined &&
+    isTrustedHttpProxy(socket, config.HTTP_TRUSTED_PROXY_PEERS ?? [])
+    ? named()
+    : socket;
 };
 
 export type IngressReservation =
@@ -184,10 +197,7 @@ export const withHttpIngress = <E, R>(
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const config = yield* NodeConfig;
-    const identity = httpClientIdentity(
-      request,
-      config.HTTP_TRUSTED_PROXY_PEERS ?? [],
-    );
+    const identity = httpClientIdentity(request, config);
     if (identity === undefined)
       return yield* HttpServerResponse.json(
         {

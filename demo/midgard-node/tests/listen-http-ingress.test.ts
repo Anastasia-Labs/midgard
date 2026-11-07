@@ -63,38 +63,56 @@ describe("HTTP admission quotas and admin replay", () => {
     expect(httpPeerIdentity(Option.none())).toBeUndefined();
     expect(httpPeerIdentity(Option.some("forged.example"))).toBeUndefined();
   });
-  it("accepts a client header only from the explicitly trusted socket peer", () => {
+  it("accepts a client header only from a socket peer in a trusted proxy range", () => {
     const headers = Headers.fromInput({
       "x-midgard-client-ip": "198.51.100.1",
       "x-forwarded-for": "203.0.113.9",
     });
-    expect(
-      httpClientIdentity({ remoteAddress: Option.some("192.0.2.1"), headers }, [
-        "10.0.0.2",
-      ]),
-    ).toBe("192.0.2.1");
-    expect(
-      httpClientIdentity({ remoteAddress: Option.some("10.0.0.2"), headers }, [
-        "10.0.0.2",
-      ]),
-    ).toBe("198.51.100.1");
-    expect(
+    const identity = (
+      remote: string,
+      peers: readonly string[],
+      requestHeaders = headers,
+    ) =>
       httpClientIdentity(
-        { remoteAddress: Option.some("10.0.0.2"), headers: Headers.empty },
+        { remoteAddress: Option.some(remote), headers: requestHeaders },
+        { HTTP_TRUSTED_PROXY_PEERS: peers, HTTP_SOCKET_PATH: undefined },
+      );
+    expect(identity("192.0.2.1", ["10.0.0.2"])).toBe("192.0.2.1");
+    expect(identity("10.0.0.2", ["10.0.0.2"])).toBe("198.51.100.1");
+    // A load balancer's published IPv4 and IPv6 ranges.
+    expect(identity("35.191.7.9", ["35.191.0.0/16"])).toBe("198.51.100.1");
+    expect(identity("35.192.0.1", ["35.191.0.0/16"])).toBe("35.192.0.1");
+    expect(identity("2a06:98c7::9", ["2a06:98c0::/29"])).toBe("198.51.100.1");
+    expect(identity("2a06:98c8::9", ["2a06:98c0::/29"])).toBe("2a06:98c8::9");
+    expect(identity("::ffff:10.1.2.3", ["10.0.0.0/8"])).toBe("198.51.100.1");
+    expect(identity("10.0.0.2", ["10.0.0.2"], Headers.empty)).toBeUndefined();
+    expect(
+      identity(
+        "10.0.0.2",
         ["10.0.0.2"],
+        Headers.fromInput({
+          "x-midgard-client-ip": "198.51.100.1, 203.0.113.1",
+        }),
       ),
     ).toBeUndefined();
-    expect(
+  });
+  it("names the client from the ingress header on the Unix socket, and only there", () => {
+    const socket = (
+      remoteAddress: Option.Option<string>,
+      headers: Headers.Headers,
+    ) =>
       httpClientIdentity(
+        { remoteAddress, headers },
         {
-          remoteAddress: Option.some("10.0.0.2"),
-          headers: Headers.fromInput({
-            "x-midgard-client-ip": "198.51.100.1, 203.0.113.1",
-          }),
+          HTTP_TRUSTED_PROXY_PEERS: ["10.0.0.2"],
+          HTTP_SOCKET_PATH: "/run/midgard-http/node.sock",
         },
-        ["10.0.0.2"],
-      ),
-    ).toBeUndefined();
+      );
+    const named = Headers.fromInput({ "x-midgard-client-ip": "2001:db8::7" });
+    expect(socket(Option.none(), named)).toBe("2001:db8::7");
+    expect(socket(Option.none(), Headers.empty)).toBeUndefined();
+    // No TCP peer can reach a node serving on its socket.
+    expect(socket(Option.some("10.0.0.2"), named)).toBeUndefined();
   });
   it("bounds active work and bytes without queuing; releases are idempotent", () => {
     const ingress = createHttpIngress({ now: () => 0 });

@@ -26,7 +26,7 @@ import {
   StartupWaitingReporter,
 } from "../services/startup-waiting.js";
 import { findTransientBudgetExhausted } from "../services/transient-exhaustion.js";
-import type { HttpListenerTransport } from "./listen-public-http.js";
+import type { HttpListenerTransport } from "./listen-http-transport.js";
 
 /** Local startup state: no provider, contract, database or user payload reads. */
 export type NodeStartupStage =
@@ -103,7 +103,10 @@ const failure = (current: StartupState) => ({
 export const withStartupHttpServer = <A, E, R>(
   port: number,
   run: (startup: StartupHttp) => Effect.Effect<A, E, R>,
-  transport: HttpListenerTransport = { createServer, hostname: "0.0.0.0" },
+  transport: HttpListenerTransport = {
+    createServer,
+    listenOptions: (port) => ({ port, host: "0.0.0.0" }),
+  },
 ) =>
   Effect.gen(function* () {
     const state = yield* Ref.make<StartupState>({ stage: "runtime_services" });
@@ -266,10 +269,10 @@ export const withStartupHttpServer = <A, E, R>(
     );
   }).pipe(
     Effect.provide(
-      NodeHttpServer.layer(transport.createServer, {
-        port,
-        host: transport.hostname,
-      }),
+      NodeHttpServer.layer(
+        transport.createServer,
+        transport.listenOptions(port),
+      ),
     ),
     Effect.scoped,
   );

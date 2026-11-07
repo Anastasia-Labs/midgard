@@ -54,12 +54,14 @@ set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
     `L1_USER_SEED_PHRASE`, or any setting the stack derives
     (`MIDGARD_CONFIG_FILE`, the `MIDGARD_PUBLIC_*_FILE` paths,
     `MIDGARD_PUBLIC_MANIFEST_ID`, `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE`,
-    `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`, `HTTP_TRUSTED_PROXY_PEERS`).
+    `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`, `HTTP_SOCKET_PATH`), or
+    `HTTP_TRUSTED_PROXY_PEERS`: the node sits behind its TLS ingress, which
+    names each client.
   </Step>
   <Step>
     **Stack configuration**: copy
     `demo/midgard-node-tools/config/preprod-public-stack.example.json`. Its
-    `endpoint` is the node's `https://` loopback address. Its `public` section
+    `endpoint` is the TLS ingress's `https://` loopback address. Its `public` section
     names the public inputs, described below. Its `watcher.releaseInput` names
     the release input, described in [Signing the release](#signing-the-release).
   </Step>
@@ -79,11 +81,11 @@ set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
 | `nodeConfigFile`              | Private file (mode 0600, owned by you, YAML or JSON) holding exactly the six node secrets: `L1_OPERATOR_SEED_PHRASE`, `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`, `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `L1_SETTLEMENT_SEED_PHRASE`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD`. Any other key is refused; put it in the `.env`. |
 | `tlsCertFile`                 | Certificate for the host of `MIDGARD_PUBLIC_API_ORIGIN`.                                                                                                                                                                                                                                                            |
 | `tlsKeyFile`                  | Its private key, mode 0600, owned by you.                                                                                                                                                                                                                                                                           |
-| `tlsCaFile`                   | The CA that issued the certificate. The stack and its health checks reach the node on loopback with this CA, checking the origin's host name.                                                                                                                                                                       |
+| `tlsCaFile`                   | The CA that issued the certificate. The stack and its health checks reach the node through the TLS ingress on loopback with this CA, checking the origin's host name.                                                                                                                                               |
 | `trustRootsFile`              | JSON list of one to sixteen external Ed25519 release trust roots. It must list the public key of the release input's signing key.                                                                                                                                                                                   |
 | `blueprintClassificationFile` | `blueprint-classification.json`: the classification of the blueprint's unused validators, which the reference-script deployment uses. The signed release must classify them the same way.                                                                                                                           |
 | `releaseDirectory`            | Where the stack writes the signed public release. Its parent must exist; the directory itself must not, or must hold a complete release signed before.                                                                                                                                                              |
-| `ingressHostPort`             | Host port of the optional TLS ingress, or `null` to run without it.                                                                                                                                                                                                                                                 |
+| `ingressHostPort`             | An extra host port, on every interface, for the TLS ingress, or `null` for none. The ingress always runs; see [TLS ingress](#tls-ingress).                                                                                                                                                                          |
 | `retainedDaHost`              | Required. The public DNS name of the stack's retained DA, announced as `/dns4/<name>/tcp/<da.ports.retainedTransport>`; it must resolve to this host. The retained DA listens on every interface on that port. A local, private or IP address is refused.                                                           |
 
 Keep `nodeConfigFile`, `tlsKeyFile` and `releaseDirectory` outside the
@@ -145,8 +147,7 @@ refuses, naming the input, when one of these is wrong:
 - `demo/midgard-node/db` belongs to another user (the refusal prints the
   `chown` command);
 - `VALIDATION_WORKER_POOL_SIZE` is below 2, or HTTP rate limits are disabled;
-- the ingress port collides with a node or DA port, or a Docker network
-  already uses the ingress subnet `10.91.7.0/28`;
+- the ingress port collides with a node or DA port;
 - `retainedDaHost` does not resolve to an IPv4 address (the one check that
   needs the network); or
 - the operator or merge wallet is not on the compiled operator allow-list.
@@ -231,19 +232,28 @@ signing machine:
    it verifies its own, and refuses it unless its `release-provenance.json`
    equals the provenance the stack completed.
 
-### Optional ingress
+### TLS ingress
 
-With `ingressHostPort` set, the stack adds the TLS ingress from the release
-ingress image, rendered by `demo/midgard-node/scripts/public-ingress.mjs`. It
-publishes the node at that host port and the node trusts its forwarded client
-addresses. The ingress network uses the fixed subnet `10.91.7.0/28`.
+The node serves the public API only through the TLS ingress, an nginx
+container from the release ingress image with its configuration rendered by
+`demo/midgard-node/scripts/public-ingress.mjs`. TLS ends there. The node has
+no TCP listener: it serves plain HTTP on a Unix socket in a directory of the
+run directory (mode 0700, owned by you) that only the node and ingress
+containers mount, and the ingress tells it each connection's address. The
+ingress sits on a Docker network of its own, with no route to the node.
+
+The ingress caps `/submit` and `/tx/evaluate` bodies at the node's
+submission limit, and refuses a client with more than four requests in flight
+or a liveness or admin route flood. It applies no request rate to submit or
+read routes; the node's limiter decides those.
 
 ### Host ports and the Postgres password
 
-The node API listens on every host interface only without the ingress; with
-it, the API binds to `127.0.0.1` and the ingress is the public port. The
-metrics port, the DA port (the stack's own committee dials the node there)
-and Postgres always bind to `127.0.0.1`. The Postgres container reads its
+The ingress publishes the node API host port (`MIDGARD_NODE_API_HOST_PORT`,
+else `PORT`) on every host interface when `ingressHostPort` is `null`, and on
+`127.0.0.1` when `ingressHostPort` names the public port. The metrics port,
+the DA port (the stack's own committee dials the node there) and Postgres
+always bind to `127.0.0.1`. The Postgres container reads its
 password from a mode 0600 file in the run directory
 (`POSTGRES_PASSWORD_FILE`), never from its environment.
 

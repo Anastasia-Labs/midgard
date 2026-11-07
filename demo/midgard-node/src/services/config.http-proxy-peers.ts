@@ -1,7 +1,8 @@
-import { isIP } from "node:net";
+import { isAbsolute } from "node:path";
 
 import { Config } from "effect";
 
+import { parseHttpTrustedProxyPeers } from "./http-address.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   HTTP_RATE_CLASSES,
@@ -11,31 +12,36 @@ import {
   type HttpRateLimitPolicy,
 } from "./http-rate-limits.js";
 
-/** A small explicit private proxy set; unset means socket identity, never header trust. */
+/**
+ * The proxies whose connections may name the client in x-midgard-client-ip
+ * (`http-address.ts`); unset means socket identity, never header trust. It
+ * applies to a TCP listener only: on HTTP_SOCKET_PATH the local ingress names
+ * every client, so setting both is refused.
+ */
 export const httpTrustedProxyPeersConfig = Config.string(
   "HTTP_TRUSTED_PROXY_PEERS",
-).pipe(
+).pipe(Config.withDefault(""), Config.mapAttempt(parseHttpTrustedProxyPeers));
+
+/**
+ * The Unix socket the node serves its HTTP API on, in place of TCP on PORT.
+ * The public profile requires it: its TLS ingress connects there
+ * (`listen-public-http.ts`). Unset serves TCP.
+ */
+export const httpSocketPathConfig = Config.string("HTTP_SOCKET_PATH").pipe(
   Config.withDefault(""),
-  Config.mapAttempt((input) => {
-    if (input.trim().length === 0) return [] as readonly string[];
-    const peers = input.split(",").map((peer) => peer.trim());
+  Config.mapAttempt((input): string | undefined => {
+    const path = input.trim();
+    if (path === "") return undefined;
+    // sun_path holds 108 bytes on Linux and 104 on macOS, terminator included.
     if (
-      peers.length > 8 ||
-      new Set(peers).size !== peers.length ||
-      peers.some((peer) => {
-        if (isIP(peer) !== 4) return true;
-        const [first, second] = peer.split(".").map(Number);
-        return !(
-          first === 10 ||
-          (first === 192 && second === 168) ||
-          (first === 172 && second! >= 16 && second! <= 31)
-        );
-      })
+      !isAbsolute(path) ||
+      path.endsWith("/") ||
+      Buffer.byteLength(path) > 100
     )
       throw new Error(
-        "HTTP_TRUSTED_PROXY_PEERS requires 1 to 8 distinct private IPv4 addresses",
+        "HTTP_SOCKET_PATH must be an absolute file path of at most 100 bytes",
       );
-    return peers;
+    return path;
   }),
 );
 
@@ -114,5 +120,17 @@ export const httpRateLimitConfig = Config.all({
 export const httpIngressConfig = Config.all({
   ADMIN_API_KEY: Config.string("ADMIN_API_KEY").pipe(Config.withDefault("")),
   HTTP_TRUSTED_PROXY_PEERS: httpTrustedProxyPeersConfig,
+  HTTP_SOCKET_PATH: httpSocketPathConfig,
   HTTP_RATE_LIMITS: httpRateLimitConfig,
-});
+}).pipe(
+  Config.mapAttempt((config) => {
+    if (
+      config.HTTP_SOCKET_PATH !== undefined &&
+      config.HTTP_TRUSTED_PROXY_PEERS.length > 0
+    )
+      throw new Error(
+        "HTTP_TRUSTED_PROXY_PEERS applies only to a TCP listener; unset it with HTTP_SOCKET_PATH, where the ingress names each client",
+      );
+    return config;
+  }),
+);

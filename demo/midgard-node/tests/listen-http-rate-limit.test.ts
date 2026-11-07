@@ -267,6 +267,62 @@ describe("HTTP rate-limit configuration", () => {
     expect(() => load({ [name]: value })).toThrow();
   });
 
+  it("reads trusted proxy addresses and IPv4 or IPv6 ranges, and the HTTP socket path", () => {
+    expect(load({})).toMatchObject({
+      HTTP_TRUSTED_PROXY_PEERS: [],
+      HTTP_SOCKET_PATH: undefined,
+    });
+    expect(
+      load({
+        HTTP_TRUSTED_PROXY_PEERS:
+          "10.91.7.2, 35.191.0.0/16,2600:2D00:1:B029::/64 ,2a06:98c0::/29",
+      }).HTTP_TRUSTED_PROXY_PEERS,
+    ).toEqual([
+      "10.91.7.2",
+      "35.191.0.0/16",
+      "2600:2d00:1:b029::/64",
+      "2a06:98c0::/29",
+    ]);
+    expect(
+      load({ HTTP_SOCKET_PATH: "/run/midgard-http/node.sock" }),
+    ).toMatchObject({
+      HTTP_TRUSTED_PROXY_PEERS: [],
+      HTTP_SOCKET_PATH: "/run/midgard-http/node.sock",
+    });
+  });
+
+  it("refuses trusted proxies on a socket, where the ingress names each client", () => {
+    expect(() =>
+      load({
+        HTTP_TRUSTED_PROXY_PEERS: "10.91.7.2",
+        HTTP_SOCKET_PATH: "/run/midgard-http/node.sock",
+      }),
+    ).toThrow("HTTP_TRUSTED_PROXY_PEERS applies only to a TCP listener");
+  });
+
+  it.each([
+    ["HTTP_TRUSTED_PROXY_PEERS", "0.0.0.0/0"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "10.0.0.0/7"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "::/0"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "2001:db8::/23"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "10.0.0.1/8"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "10.0.0.0/33"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "10.0.0.0/+8"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "::ffff:10.0.0.1"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "fe80::1%eth0"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "proxy.example"],
+    ["HTTP_TRUSTED_PROXY_PEERS", "10.0.0.2,10.0.0.2"],
+    [
+      "HTTP_TRUSTED_PROXY_PEERS",
+      Array.from({ length: 65 }, (_, index) => `10.0.${index}.0/24`).join(","),
+    ],
+    ["HTTP_SOCKET_PATH", "node.sock"],
+    ["HTTP_SOCKET_PATH", "/run/midgard-http/"],
+    ["HTTP_SOCKET_PATH", `/run/${"a".repeat(100)}.sock`],
+  ])("refuses %s=%s", (name, value) => {
+    expect(() => load({ [name]: value })).toThrow();
+  });
+
   it("accepts global rates of any size, since no client table can fill", () => {
     expect(
       load({ HTTP_RATE_LIMIT_READ: "30,10,20000,10000" }).HTTP_RATE_LIMITS

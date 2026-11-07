@@ -122,10 +122,11 @@ With `MIDGARD_DEPLOYMENT_PROFILE=preprod-public`, first build the checkout for
 that profile (`node demo/scripts/deployment-profiles.mjs generate preprod-public && pnpm --dir demo/midgard-node-tools run build`;
 the stack refuses a `.env` naming another profile than the compiled one), then
 copy `config/preprod-public-stack.example.json` instead. Its `endpoint` is
-`https://` and its `public` section names the private node configuration file
+the `https://` loopback address of the TLS ingress, the node's only public
+listener (the node itself serves only a Unix socket), and its `public` section names the private node configuration file
 (the six node secrets, mode 0600), the TLS certificate, key and CA for
 `MIDGARD_PUBLIC_API_ORIGIN`, the release trust roots, the blueprint
-classification, the release directory, the optional ingress port and
+classification, the release directory, an optional extra ingress port and
 `retainedDaHost`, the public DNS name the stack announces its retained DA at
 (`/dns4`, on `da.ports.retainedTransport`, listening on every interface);
 `--check` refuses it missing, local, private or an IP address. A
@@ -265,10 +266,10 @@ also holds none of the settings the stack derives), and an `https://` loopback
 `endpoint`. It shares the stack's release, never builds one: the release
 revision, the public origin and the node, Postgres and ingress images come from
 the stack's `.env`, and its own `.env` may only repeat them; its node runs from
-the stack's node image, serves the stack's TLS certificate and mounts the
-stack's signed release, TLS files and trust roots read-only. Every host port,
-the node API's included, listens on loopback only, and it never starts
-ingress. `--check` refuses an operator or merge wallet not on the compiled
+the stack's node image behind a TLS ingress of its own that serves the stack's
+TLS certificate, and mounts the stack's signed release and trust roots
+read-only. Every host port, the ingress's API port included, listens on
+loopback only. `--check` refuses an operator or merge wallet not on the compiled
 profile's allow-list, a validation worker pool below 2 or disabled HTTP rate
 limits, and a node directory, run directory or node configuration that would
 lie in the stack's release directory (or hold it). A run refuses to start its

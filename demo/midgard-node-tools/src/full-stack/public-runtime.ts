@@ -1,11 +1,19 @@
 import { constants } from "node:fs";
-import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SUBMIT_HTTP_BODY_MAX_BYTES } from "midgard-node/commands/http/submission-capacity";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_NODE_SECRET_NAMES,
@@ -22,7 +30,6 @@ import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
-import { INGRESS_SUBNET, publicOriginHost } from "./public-node.js";
 import {
   completedProvenancePath,
   completePublicReleaseInput,
@@ -32,16 +39,13 @@ import {
 } from "./release.js";
 import type { StackStep } from "./workflow.js";
 
-/** Addresses on the ingress network (INGRESS_SUBNET). */
-const INGRESS_ADDRESS = "10.91.7.2";
-const NODE_INGRESS_ADDRESS = "10.91.7.3";
-
 /** Where the public node and Postgres containers read their private and release files. */
 const CONTAINER = {
   config: "/run/secrets/node-config.json",
   tlsCert: "/run/public/tls-cert.pem",
   tlsKey: "/run/secrets/tls-key.pem",
-  tlsCa: "/run/public/tls-ca.pem",
+  httpSocketDirectory: "/run/midgard-http",
+  httpSocket: "/run/midgard-http/node.sock",
   trustRoots: "/run/public/release-trust-roots.json",
   release: "/run/public/release",
   transport: "/usr/local/bin/midgard-l1-node-transport",
@@ -62,19 +66,13 @@ export const publicPostgresPasswordPath = (config: StackConfig) =>
  * private file rather than its environment. The node and its migration drop
  * the base files' env_file: Compose appends env_file lists across files, and
  * the stack's .env holds other roles' secrets, so they read only the node.env
- * the services file adds (publicNodeServices). The node API stays on every
- * interface only without the TLS ingress, which otherwise is its public port,
- * and never for a second instance; the DA port serves the stack's own
- * committee, which dials the loopback.
+ * the services file adds (publicNodeServices). The node publishes no API
+ * port: it serves HTTP only on its socket, behind the TLS ingress. The DA
+ * port serves the stack's own committee, which dials the loopback.
  */
 export async function writePublicRoles(processes: StackProcesses) {
   const { env, config } = processes;
   const loopback = "127.0.0.1:";
-  // A second instance (attached-config.ts) has no public port of its own.
-  const api =
-    config.public!.ingressHostPort === null && config.attachedTo === undefined
-      ? ""
-      : loopback;
   const node = {
     image: env.MIDGARD_PUBLIC_NODE_IMAGE!,
     pull_policy: "missing",
@@ -92,7 +90,6 @@ export async function writePublicRoles(processes: StackProcesses) {
         "midgard-node": {
           ...node,
           ports: override([
-            `${api}\${MIDGARD_NODE_API_HOST_PORT:-\${PORT:-3000}}:\${PORT:-3000}`,
             `${loopback}\${MIDGARD_NODE_METRICS_HOST_PORT:-9464}:9464`,
             `${loopback}\${MIDGARD_NODE_DA_HOST_PORT:-39002}:39002`,
           ]),
@@ -127,9 +124,7 @@ export async function preparePublicImages(processes: StackProcesses) {
   const images = [
     env.MIDGARD_PUBLIC_NODE_IMAGE!,
     env.MIDGARD_PUBLIC_POSTGRES_IMAGE!,
-    ...(config.public!.ingressHostPort === null
-      ? []
-      : [env.MIDGARD_PUBLIC_INGRESS_IMAGE!]),
+    env.MIDGARD_PUBLIC_INGRESS_IMAGE!,
   ];
   for (const [index, image] of images.entries())
     await processes.command(
@@ -334,8 +329,7 @@ export async function publicNodeEnvironment(
     ...env,
     MIDGARD_DOTENV_MODE: "disabled",
     MIDGARD_CONFIG_FILE: CONTAINER.config,
-    MIDGARD_PUBLIC_TLS_CERT_FILE: CONTAINER.tlsCert,
-    MIDGARD_PUBLIC_TLS_KEY_FILE: CONTAINER.tlsKey,
+    HTTP_SOCKET_PATH: CONTAINER.httpSocket,
     MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: CONTAINER.trustRoots,
     MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.authority}`,
     MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.provenance}`,
@@ -345,20 +339,31 @@ export async function publicNodeEnvironment(
     MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
     // The release image carries its own pinned L1 transport.
     L1_NODE_TRANSPORT_BINARY_PATH: CONTAINER.transport,
-    ...(processes.config.public!.ingressHostPort === null
-      ? {}
-      : { HTTP_TRUSTED_PROXY_PEERS: INGRESS_ADDRESS }),
   };
 }
 
 type PublicIngressModule = {
-  renderPublicIngress: (env: Record<string, string | undefined>) => string;
+  renderPublicIngress: (
+    env: Record<string, string | undefined>,
+    options: { socketPath: string; submitBodyBytes: number },
+  ) => string;
 };
 
 /**
+ * The host directory holding the node's HTTP socket, mounted into the node
+ * and the ingress, which both run as the host user. Mode 0700: no other
+ * user on the host can reach the socket.
+ */
+export const publicHttpSocketDirectory = (servicesDirectory: string) =>
+  join(servicesDirectory, "http-socket");
+
+/**
  * The public node's Compose services: the release image (from
- * public-roles.yaml), its private and release mounts, an HTTPS health check
- * and, when configured, the TLS ingress in front of it.
+ * public-roles.yaml), its private and release mounts and its HTTP socket,
+ * and the TLS ingress in front of it. The ingress publishes the node API
+ * host port (on every interface for a first instance without
+ * public.ingressHostPort, on the loopback otherwise) and
+ * public.ingressHostPort when set; the node has no TCP listener.
  */
 export async function publicNodeServices(
   processes: StackProcesses,
@@ -367,18 +372,17 @@ export async function publicNodeServices(
   const { config, env } = processes;
   const inputs = config.public!;
   const ledger = nativeLedgerPaths(processes);
-  const port = env.PORT ?? "3000";
+  const socketDirectory = publicHttpSocketDirectory(input.servicesDirectory);
+  await mkdir(socketDirectory, { recursive: true, mode: 0o700 });
+  await chmod(socketDirectory, 0o700);
+  const socketMount = `${socketDirectory}:${CONTAINER.httpSocketDirectory}`;
   const volumes = [
     `${publicNodeConfigPath(input.servicesDirectory)}:${CONTAINER.config}:ro`,
-    `${inputs.tlsCertFile}:${CONTAINER.tlsCert}:ro`,
-    `${inputs.tlsKeyFile}:${CONTAINER.tlsKey}:ro`,
-    `${inputs.tlsCaFile}:${CONTAINER.tlsCa}:ro`,
     `${inputs.trustRootsFile}:${CONTAINER.trustRoots}:ro`,
     `${inputs.releaseDirectory}:${CONTAINER.release}:ro`,
     `${ledger.socketDirectory}:/ipc:ro`,
     `${ledger.directory}:/cardano-config:ro`,
   ];
-  const ingress = inputs.ingressHostPort !== null;
   // Written here so its digest labels the node: a changed secret or DA
   // identity recreates the container.
   await writePublicNodeConfig(processes, input.servicesDirectory);
@@ -389,34 +393,39 @@ export async function publicNodeServices(
         input.producer,
         publicNodeConfigPath(input.servicesDirectory),
       ]),
-      volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
+      volumes: [
+        `${input.producer}:/app/stack/producer.json:ro`,
+        ...volumes,
+        socketMount,
+      ],
       healthcheck: {
         test: [
           "CMD",
           "node",
           "-e",
-          `require('node:https').get({host:'127.0.0.1',port:${port},path:'/readyz',ca:require('node:fs').readFileSync('${CONTAINER.tlsCa}'),servername:'${publicOriginHost(env)}',minVersion:'TLSv1.3'},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))`,
+          `require('node:http').get({socketPath:'${CONTAINER.httpSocket}',path:'/readyz',headers:{'x-midgard-client-ip':'127.0.0.1'}},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))`,
         ],
       },
-      ...(ingress
-        ? {
-            networks: {
-              midgard_net: {},
-              public_ingress: { ipv4_address: NODE_INGRESS_ADDRESS },
-            },
-          }
-        : {}),
     },
     "midgard-node-migrate": { env_file: input.envFile, volumes },
   };
-  if (!ingress) return { services, networks: {}, startServices: [] };
   const { renderPublicIngress } = (await import(
     pathToFileURL(join(config.nodeRoot, "scripts/public-ingress.mjs")).href
   )) as PublicIngressModule;
   const ingressConfig = join(input.servicesDirectory, "public-ingress.conf");
-  await writeFile(ingressConfig, renderPublicIngress({ ...env, PORT: port }), {
-    mode: 0o644,
-  });
+  await writeFile(
+    ingressConfig,
+    renderPublicIngress(env, {
+      socketPath: CONTAINER.httpSocket,
+      submitBodyBytes: SUBMIT_HTTP_BODY_MAX_BYTES,
+    }),
+    { mode: 0o644 },
+  );
+  // A second instance (attached-config.ts) has no public port of its own.
+  const api =
+    inputs.ingressHostPort === null && config.attachedTo === undefined
+      ? ""
+      : "127.0.0.1:";
   services["public-ingress"] = {
     image: env.MIDGARD_PUBLIC_INGRESS_IMAGE!,
     pull_policy: "missing",
@@ -426,23 +435,29 @@ export async function publicNodeServices(
     security_opt: ["no-new-privileges:true"],
     entrypoint: [],
     command: ["nginx", "-g", "daemon off;"],
-    ports: [`${inputs.ingressHostPort}:8443`],
+    ports: [
+      `${api}\${MIDGARD_NODE_API_HOST_PORT:-\${PORT:-3000}}:8443`,
+      ...(inputs.ingressHostPort === null
+        ? []
+        : [`${inputs.ingressHostPort}:8443`]),
+    ],
     volumes: [
       `${ingressConfig}:/etc/nginx/nginx.conf:ro`,
       `${inputs.tlsCertFile}:${CONTAINER.tlsCert}:ro`,
       `${inputs.tlsKeyFile}:${CONTAINER.tlsKey}:ro`,
-      `${inputs.tlsCaFile}:${CONTAINER.tlsCa}:ro`,
+      socketMount,
     ],
     tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"],
-    networks: { public_ingress: { ipv4_address: INGRESS_ADDRESS } },
-    depends_on: { "midgard-node": { condition: "service_healthy" } },
+    // A network of its own: the ingress reaches the node only through the socket.
+    networks: { public_ingress: {} },
+    // Up before the node is ready, answering 503 with Retry-After until the
+    // node's socket serves, so readiness polls through it see the node start.
+    depends_on: { "midgard-node": { condition: "service_started" } },
     restart: "unless-stopped",
   };
   return {
     services,
-    networks: {
-      public_ingress: { ipam: { config: [{ subnet: INGRESS_SUBNET }] } },
-    },
+    networks: { public_ingress: {} },
     startServices: ["public-ingress"],
   };
 }

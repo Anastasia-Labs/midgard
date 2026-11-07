@@ -1,6 +1,6 @@
 import { hash, randomBytes } from "node:crypto";
-import { isIP } from "node:net";
 
+import { httpAddressBytes } from "../services/http-address.js";
 import {
   HTTP_PUBLIC_RATE_CLASSES,
   type HttpPublicRateClass,
@@ -72,43 +72,6 @@ const refusal = (retryAfterSeconds: number): HttpRateRefusal => ({
   errorCode: "E_HTTP_RATE_LIMITED",
   retryAfterSeconds,
 });
-
-const ipv6Words = (part: string): number[] =>
-  part === ""
-    ? []
-    : part.split(":").flatMap((group) => {
-        if (!group.includes(".")) return [Number.parseInt(group, 16)];
-        const [a = 0, b = 0, c = 0, d = 0] = group.split(".").map(Number);
-        return [a * 256 + b, c * 256 + d];
-      });
-
-/**
- * The 4 bytes of an IPv4 address or the 16 of an IPv6 address. An
- * IPv4-mapped IPv6 address is the IPv4 address it maps.
- */
-export const httpAddressBytes = (address: string): Uint8Array => {
-  const family = isIP(address);
-  if (family === 4) return Uint8Array.from(address.split(".").map(Number));
-  if (family !== 6) throw new Error(`Not an IP address: ${address}`);
-  const [head = "", tail] = address.split("%", 1)[0]!.split("::");
-  const left = ipv6Words(head);
-  const right = tail === undefined ? [] : ipv6Words(tail);
-  const words = [
-    ...left,
-    ...Array<number>(8 - left.length - right.length).fill(0),
-    ...right,
-  ];
-  const bytes = new Uint8Array(16);
-  words.forEach((word, index) => {
-    bytes[2 * index] = word >> 8;
-    bytes[2 * index + 1] = word & 255;
-  });
-  const mapped =
-    bytes.subarray(0, 10).every((byte) => byte === 0) &&
-    bytes[10] === 255 &&
-    bytes[11] === 255;
-  return mapped ? bytes.slice(12) : bytes;
-};
 
 /**
  * The client of an address is the IPv4 address or the IPv6 /56, and its

@@ -2,23 +2,32 @@ import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import {
   chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { request as httpsRequest } from "node:https";
+import { createServer, request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+import { HttpServerResponse } from "@effect/platform";
+import { NodeHttpServer } from "@effect/platform-node";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { generateMnemonic } from "bip39";
 import { Cause, Effect, Exit, Logger } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { cliExitCode } from "../src/commands/cli-runtime.js";
+import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
+import {
+  createHttpIngress,
+  withHttpIngress,
+} from "../src/commands/listen-http-ingress.js";
 import {
   authenticatePublicHttpRelease,
   type PublicHttpProfile,
@@ -28,6 +37,7 @@ import {
   createPublicLogRedactor,
   redactPublicLogger,
 } from "../src/commands/listen-public-logging.js";
+import { NodeConfig } from "../src/services/config.js";
 import {
   type NodeConfigDep,
   seedPhraseAddress,
@@ -35,11 +45,12 @@ import {
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import { ValidationWorkerError } from "../src/services/validation-pool.js";
 
-const directory = mkdtempSync(join(tmpdir(), "midgard-r7-tls-"));
+const directory = mkdtempSync(join(tmpdir(), "midgard-r7-http-"));
 const configPath = join(directory, "config.yaml");
-const certificate = join(directory, "certificate.pem");
-const privateKey = join(directory, "private-key.pem");
 const identity = join(directory, "deployment.json");
+// The directory the node shares with its ingress: no access for other users.
+const socketDirectory = join(directory, "http");
+const socketPath = join(socketDirectory, "node.sock");
 const operator = generateMnemonic();
 const merge = generateMnemonic();
 const reference = generateMnemonic();
@@ -55,7 +66,9 @@ const config = {
   DEPLOYMENT_ECONOMICS_PROFILE: "public-preprod-launch-v1",
   RUN_GENESIS_ON_STARTUP: false,
   VALIDATION_WORKER_POOL_SIZE: 2,
-} as NodeConfigDep;
+  HTTP_SOCKET_PATH: socketPath,
+  HTTP_TRUSTED_PROXY_PEERS: [],
+} as unknown as NodeConfigDep;
 // Fixture identities replace the public allow-list only inside this injected profile test.
 const profile: PublicHttpProfile = {
   ...DEPLOYMENT_PROFILES["preprod-public"],
@@ -78,9 +91,6 @@ const env: NodeJS.ProcessEnv = {
     "example.invalid/ingress@sha256:" + "c".repeat(64),
   MIDGARD_PUBLIC_POSTGRES_IMAGE:
     "example.invalid/postgres@sha256:" + "b".repeat(64),
-  MIDGARD_PUBLIC_API_ORIGIN: "https://node.test",
-  MIDGARD_PUBLIC_TLS_CERT_FILE: certificate,
-  MIDGARD_PUBLIC_TLS_KEY_FILE: privateKey,
   MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: identity,
 };
 const testOnlyReleaseVerifier = () => undefined; // Isolates transport; compiled public release authentication is a separate required gate.
@@ -89,46 +99,54 @@ const mount = (value = config) =>
     configPath,
     JSON.stringify(
       Object.fromEntries(
-        Object.entries(value).map(([key, entry]) => [key, String(entry)]),
+        Object.entries(value)
+          // The HTTP listener settings come from the environment, not the mount.
+          .filter(([key]) => !key.startsWith("HTTP_"))
+          .map(([key, entry]) => [key, String(entry)]),
       ),
     ),
     { mode: 0o600 },
   );
 
+const unusedPort = async (): Promise<number> => {
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+};
+/** A GET over the node's Unix socket, as its ingress sends one. */
+const socketGet = (path: string, headers: Record<string, string> = {}) =>
+  new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const request = httpRequest(
+      { socketPath, path, headers, agent: false },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.once("end", () =>
+          resolve({
+            status: response.statusCode!,
+            body: Buffer.concat(chunks).toString(),
+          }),
+        );
+      },
+    );
+    request.once("error", reject);
+    request.end();
+  });
+
 beforeAll(() => {
-  execFileSync(
-    "openssl",
-    [
-      "req",
-      "-x509",
-      "-newkey",
-      "rsa:2048",
-      "-nodes",
-      "-keyout",
-      privateKey,
-      "-out",
-      certificate,
-      "-days",
-      "2",
-      "-subj",
-      "/CN=node.test",
-      "-addext",
-      "subjectAltName=DNS:node.test",
-    ],
-    { stdio: "ignore" },
-  );
-  chmodSync(privateKey, 0o600);
+  mkdirSync(socketDirectory, { mode: 0o700 });
   writeFileSync(identity, "{}", { mode: 0o600 });
   mount();
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-describe("public HTTP local preflight and TLS", () => {
+describe("public HTTP local preflight and its socket listener", () => {
   it.each([
     ["MIDGARD_CONFIG_FILE", undefined],
     ["MIDGARD_DOTENV_MODE", "enabled"],
-    ["MIDGARD_PUBLIC_TLS_KEY_FILE", undefined],
-    ["MIDGARD_PUBLIC_API_ORIGIN", "http://node.test"],
     ["MIDGARD_PUBLIC_NODE_IMAGE", "operator:latest"],
     ["MIDGARD_PUBLIC_RELEASE_REVISION", "main"],
     ["MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH", undefined],
@@ -202,25 +220,85 @@ describe("public HTTP local preflight and TLS", () => {
       }),
     ).toThrow("allow-list");
   });
-  it("refuses mismatched hostname and publicly readable key files", () => {
-    mount();
-    expect(() =>
-      publicHttpTransport(config, {
-        env: { ...env, MIDGARD_PUBLIC_API_ORIGIN: "https://other.test" },
-        profile,
-        testOnlyReleaseVerifier,
-      }),
-    ).toThrow("TLS");
-    chmodSync(privateKey, 0o644);
+  it("refuses a publicly readable mounted configuration", () => {
+    chmodSync(configPath, 0o644);
     try {
       expect(() =>
         publicHttpTransport(config, { env, profile, testOnlyReleaseVerifier }),
       ).toThrow("mounted");
     } finally {
-      chmodSync(privateKey, 0o600);
+      chmodSync(configPath, 0o600);
     }
   });
-  it("serves real TLS1.3 with the mounted identity and rejects plain HTTP", async () => {
+  it("refuses to serve without a socket, on a socket other users can reach, or over a file", () => {
+    mount();
+    const transport = (value: NodeConfigDep) => () =>
+      publicHttpTransport(value, { env, profile, testOnlyReleaseVerifier });
+    expect(transport({ ...config, HTTP_SOCKET_PATH: undefined })).toThrow(
+      "HTTP_SOCKET_PATH",
+    );
+    chmodSync(socketDirectory, 0o755);
+    try {
+      expect(transport(config)).toThrow("grants other users access");
+    } finally {
+      chmodSync(socketDirectory, 0o700);
+    }
+    expect(
+      transport({ ...config, HTTP_SOCKET_PATH: join(directory, "x", "s") }),
+    ).toThrow("directory is missing");
+    const file = join(socketDirectory, "file.sock");
+    writeFileSync(file, "operator data");
+    try {
+      expect(transport({ ...config, HTTP_SOCKET_PATH: file })).toThrow(
+        "not a socket",
+      );
+      expect(existsSync(file)).toBe(true);
+    } finally {
+      rmSync(file);
+    }
+  });
+  it("serves plain HTTP only on its socket, never over TCP, and replaces a socket a killed node left", async () => {
+    mount();
+    // A node killed while listening leaves its socket file behind.
+    try {
+      execFileSync(process.execPath, [
+        "-e",
+        `require("node:net").createServer().listen(${JSON.stringify(socketPath)}, () => process.kill(process.pid, "SIGKILL"))`,
+      ]);
+    } catch {
+      // Killed, as intended.
+    }
+    expect(statSync(socketPath).isSocket()).toBe(true);
+    const port = await unusedPort();
+    const transport = publicHttpTransport(config, {
+      env,
+      profile,
+      testOnlyReleaseVerifier,
+    });
+    // Observed while serving, asserted after: a failed run would hold the
+    // startup server open instead of failing.
+    const served = await Effect.runPromise(
+      withStartupHttpServer(
+        port,
+        () =>
+          Effect.promise(async () => ({
+            health: (await socketGet("/healthz")).status,
+            mode: statSync(socketPath).mode & 0o777,
+            tcp: await fetch(
+              `http://127.0.0.1:${port.toString()}/healthz`,
+            ).then(
+              (response) => response.status,
+              () => "refused",
+            ),
+          })),
+        transport,
+      ),
+    );
+    expect(served).toEqual({ health: 200, mode: 0o660, tcp: "refused" });
+    // Closing removes the socket, so the next start finds nothing stale.
+    expect(existsSync(socketPath)).toBe(false);
+  });
+  it("charges each request to the client its ingress names on the socket", async () => {
     mount();
     const transport = publicHttpTransport(config, {
       env,
@@ -228,40 +306,34 @@ describe("public HTTP local preflight and TLS", () => {
       testOnlyReleaseVerifier,
     });
     const server = transport.createServer();
-    server.on("request", (_request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end('{"status":"ok"}');
-    });
-    server.listen(0, "127.0.0.1");
+    server.on(
+      "request",
+      Effect.runSync(
+        NodeHttpServer.makeHandler(
+          withHttpIngress(
+            HttpServerResponse.json({ ok: true }),
+            createHttpIngress({ now: () => 0 }),
+          ).pipe(Effect.provideService(NodeConfig, config)),
+        ),
+      ),
+    );
+    server.listen(transport.listenOptions(config.PORT));
     await once(server, "listening");
-    const port = (server.address() as AddressInfo).port;
     try {
-      const reply = await new Promise<{ status: number; protocol: string }>(
-        (resolve, reject) => {
-          const request = httpsRequest(
-            {
-              hostname: "127.0.0.1",
-              port,
-              servername: "node.test",
-              ca: readFileSync(certificate),
-              minVersion: "TLSv1.3",
-            },
-            (response) => {
-              const protocol = (
-                response.socket as import("node:tls").TLSSocket
-              ).getProtocol()!;
-              response.resume();
-              response.once("end", () =>
-                resolve({ status: response.statusCode!, protocol }),
-              );
-            },
-          );
-          request.once("error", reject);
-          request.end();
-        },
-      );
-      expect(reply).toEqual({ status: 200, protocol: "TLSv1.3" });
-      await expect(fetch(`http://127.0.0.1:${port}/healthz`)).rejects.toThrow();
+      const read = (client?: string) =>
+        socketGet(
+          "/utxos",
+          client === undefined ? {} : { "x-midgard-client-ip": client },
+        );
+      expect(await read()).toEqual({
+        status: 503,
+        body: expect.stringContaining("E_HTTP_CLIENT_IDENTITY_UNAVAILABLE"),
+      });
+      // 30 reads is one client's burst; the next client has its own.
+      for (let index = 0; index < 30; index += 1)
+        expect((await read("198.51.100.7")).status).toBe(200);
+      expect((await read("198.51.100.7")).status).toBe(429);
+      expect((await read("2001:db8:9::1")).status).toBe(200);
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

@@ -281,6 +281,12 @@ export async function attachedFixture(
       POSTGRES_PASSWORD: randomBytes(18).toString("base64url"),
     });
     await mkdir(dirname(nodeConfigFile), { recursive: true });
+    // The instance renders its TLS ingress with its node directory's generator.
+    await mkdir(join(operator2.directory, "scripts"), { recursive: true });
+    await copyFile(
+      join(checkoutNodeRoot, "scripts/public-ingress.mjs"),
+      join(operator2.directory, "scripts/public-ingress.mjs"),
+    );
   }
   const secretNames: readonly string[] = PUBLIC_NODE_SECRET_NAMES;
   const isSecret = (key: string) => isPublic && secretNames.includes(key);

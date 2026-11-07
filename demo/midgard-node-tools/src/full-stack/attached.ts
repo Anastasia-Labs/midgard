@@ -292,25 +292,30 @@ function attachedConfigurationStep(processes: StackProcesses): StackStep {
       }
       // Only the node, its migration and its Postgres: never the stack's
       // Cardano node, which this node reads through its socket. On a public
-      // stack, the stack's release image with its release and TLS read-only,
-      // and no ingress.
+      // stack, the stack's release image with its release read-only, and its
+      // own TLS ingress on the loopback, its only HTTP entry.
       const input = {
         envFile: [{ path: join(directory, "node.env"), required: false }],
         producer: join(directory, "producer.json"),
       };
-      const node: Record<string, object> =
+      const publicNode =
         config.public === undefined
+          ? undefined
+          : await publicNodeServices(processes, {
+              ...input,
+              servicesDirectory: directory,
+            });
+      const node: Record<string, object> =
+        publicNode === undefined
           ? await stackNodeServices(processes, input)
-          : ((
-              await publicNodeServices(processes, {
-                ...input,
-                servicesDirectory: directory,
-              })
-            ).services as Record<string, object>);
+          : (publicNode.services as Record<string, object>);
       const compose = join(directory, "compose.yaml");
       await writeTextFileAtomic(
         compose,
         `${composeYaml({
+          ...(publicNode === undefined
+            ? {}
+            : { networks: publicNode.networks }),
           services: {
             ...node,
             "midgard-node": {
@@ -416,7 +421,7 @@ function attachedServicesStep(processes: StackProcesses): StackStep {
       await preflightProducerTransport(processes, directory, runtime.compose);
       await processes.compose(
         "runtime-start",
-        ["up", "-d", "midgard-node"],
+        ["up", "-d", "midgard-node", ...(isPublic ? ["public-ingress"] : [])],
         runtime.compose,
       );
       return {
