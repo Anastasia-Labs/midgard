@@ -81,11 +81,44 @@ export const httpClientIdentity = (
     );
   if (config.HTTP_SOCKET_PATH !== undefined)
     return Option.isNone(request.remoteAddress) ? named() : undefined;
-  const socket = httpPeerIdentity(request.remoteAddress);
-  return socket !== undefined &&
-    isTrustedHttpProxy(socket, config.HTTP_TRUSTED_PROXY_PEERS ?? [])
-    ? named()
-    : socket;
+  if (Option.isNone(request.remoteAddress)) return undefined;
+  const peer = socketPeer(
+    request.remoteAddress.value,
+    config.HTTP_TRUSTED_PROXY_PEERS ?? NO_PEERS,
+  );
+  return peer.trusted ? named() : peer.socket;
+};
+
+const NO_PEERS: readonly string[] = [];
+
+type SocketPeer = {
+  readonly raw: string;
+  readonly socket: string | undefined;
+  readonly trusted: boolean;
+};
+
+/** The last socket peer each trusted proxy list judged. */
+const lastSocketPeer = new WeakMap<readonly string[], SocketPeer>();
+
+/**
+ * The identity and trust of a socket peer address. Behind a proxy nearly
+ * every request comes from the same peer, so the verdict on the previous
+ * address is kept, one slot per list: a repeat costs one string compare
+ * instead of a parse and a range walk. The verdict is a pure function of the
+ * address and the list, so the slot changes no answer, and a stream of
+ * different peers only replaces it.
+ */
+const socketPeer = (raw: string, peers: readonly string[]): SocketPeer => {
+  const last = lastSocketPeer.get(peers);
+  if (last?.raw === raw) return last;
+  const socket = httpPeerIdentity(Option.some(raw));
+  const peer = {
+    raw,
+    socket,
+    trusted: socket !== undefined && isTrustedHttpProxy(socket, peers),
+  };
+  lastSocketPeer.set(peers, peer);
+  return peer;
 };
 
 export type IngressReservation =
