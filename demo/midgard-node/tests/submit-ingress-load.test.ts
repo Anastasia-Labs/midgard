@@ -34,6 +34,7 @@ import {
   readCorpusGenesis,
 } from "../scripts/submit-ingress-load.corpus.mjs";
 import {
+  clockTicks,
   cpuShares,
   parseProcStatTicks,
   sampleProcessCpu,
@@ -348,6 +349,11 @@ describe("submit-ingress load cpu readings", () => {
     const shares = cpuShares(before, sampleProcessCpu(process.pid));
     expect(spin).toBeGreaterThan(0);
     expect(shares.mainThreadCores).toBeGreaterThan(0.5);
-    expect(shares.processCores).toBeGreaterThanOrEqual(shares.mainThreadCores);
+    // The kernel rounds the thread and process totals to ticks separately,
+    // so the process total can trail the main thread's by one tick.
+    const oneTick = 1 / clockTicks() / shares.seconds;
+    expect(shares.processCores).toBeGreaterThanOrEqual(
+      shares.mainThreadCores - oneTick,
+    );
   });
 });
