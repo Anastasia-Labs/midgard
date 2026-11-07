@@ -62,6 +62,8 @@ import {
   MidgardContracts,
   NodeConfig,
   type NodeConfigDep,
+  publishMempoolLedgerDelta,
+  rebuildAdmissionInputClaimsOnStartup,
   ValidationPool,
   type ValidationPoolService,
 } from "../../src/services/index.js";
@@ -288,6 +290,8 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
       driver.run("peer node start"),
     ),
   );
+  // The backlog's input claims, as the node rebuilds them before serving.
+  await run(rebuildAdmissionInputClaimsOnStartup());
 
   // Every request this node's server receives, by path.
   const received = new Map<string, number>();
@@ -391,7 +395,8 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
     mempool,
     /** How many requests this node's server received at `path`. */
     received: (path: string) => received.get(path) ?? 0,
-    /** Seeds this node's ledger with spendable L2 outputs. */
+    /** Seeds this node's ledger with spendable L2 outputs, and publishes
+     * them to its validation cache as a deposit projection does. */
     seedLedger: (outputs: readonly L2Output[]) =>
       run(
         testWrite(
@@ -403,6 +408,21 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
               address: output.address,
               source_event_id: null,
             })),
+          ),
+        ).pipe(
+          Effect.zipRight(
+            publishMempoolLedgerDelta(
+              globals,
+              {
+                full: false,
+                upserts: outputs.map((output) => [
+                  output.outrefCbor.toString("hex"),
+                  output.outputCbor,
+                ]),
+                deletes: [],
+              },
+              config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+            ),
           ),
         ),
       ),

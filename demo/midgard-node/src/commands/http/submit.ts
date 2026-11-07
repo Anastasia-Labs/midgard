@@ -90,6 +90,26 @@ const admissionRefusal = (
           },
         },
       };
+    // First seen wins (design D6): the tx is never queued behind the
+    // claim. The client's own tx may be the one that holds it, so the
+    // answer sends it to `/tx-status` before it treats the tx as failed.
+    case "AdmissionInputSpentError":
+      return {
+        reason: "input_spent",
+        answer: {
+          status: 409,
+          body: {
+            error: "E_INPUT_SPENT",
+            reason: refusal.reason,
+            message: refusal.message,
+            txId: refusal.txIdHex,
+            outRef: refusal.outRefHex,
+            ...(refusal.spentByTxIdHex === undefined
+              ? {}
+              : { spentBy: refusal.spentByTxIdHex }),
+          },
+        },
+      };
     case "TxAdmissionBacklogFullError":
       return {
         reason: "admission_backlog_full",

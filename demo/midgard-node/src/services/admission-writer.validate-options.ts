@@ -2,6 +2,7 @@ import { Cause, Context, Data, Effect, Metric, MetricBoundaries } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
+import type { AdmissionInputSpentError } from "./admission-input-claims.js";
 
 export const ADMISSION_WRITE_SHARD_COUNT = 2;
 
@@ -63,7 +64,8 @@ export type AdmissionWriteRefusal =
   | TxAdmissionsDB.TxAdmissionConflictError
   | AdmissionWriterFullError
   | AdmissionWriterStalledError
-  | AdmissionWriterShutdownError;
+  | AdmissionWriterShutdownError
+  | AdmissionInputSpentError;
 
 /** A checked tx handed to the writer. */
 export type AdmissionWriteRequest = {
@@ -76,6 +78,11 @@ export type AdmissionWriteRequest = {
   readonly settle: (written: boolean) => Effect.Effect<void>;
   /** Run after a batch holding this tx commits (the tx-queue wake-up). */
   readonly wakeOnCommit: Effect.Effect<void>;
+  /** Takes the tx's input claims (design D6). The writer calls it in its
+   * synchronous admit section, after the duplicate, stall and bound checks
+   * and in one step with the registration, so no second spender can slip
+   * in between; a refusal leaves nothing registered. */
+  readonly claimInputs?: () => AdmissionInputSpentError | undefined;
 };
 
 /** What the writer answers for a tx it took or already knows. */

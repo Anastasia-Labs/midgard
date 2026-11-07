@@ -8,7 +8,7 @@ import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTx } from "@al-ft/midgard-core/consensus-validation";
 import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
-import { Effect, Either, Metric } from "effect";
+import { Effect, Either, Metric, Option } from "effect";
 
 import { TxAdmissionsDB } from "../../database/index.js";
 import {
@@ -21,7 +21,9 @@ import {
   AdmissionWriter,
   type AdmissionWriteRefusal,
   Globals,
+  MempoolLedgerCache,
   NodeConfig,
+  UNKNOWN_SPENDABLE_VIEW,
 } from "../../services/index.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
@@ -142,6 +144,9 @@ export type AdmissionCandidate = {
   readonly txIdHex: string;
   readonly txCanonicalCbor: Buffer;
   readonly txFullHash?: Buffer;
+  /** The outref items (hex) the tx spends and produces: its input claims. */
+  readonly spentOutRefs: readonly string[];
+  readonly producedOutRefs: readonly string[];
 };
 
 /** Why admission refused a checked tx; nothing is held for it. */
@@ -158,7 +163,12 @@ export type AdmissionRefusal =
  *   with no backlog reservation and no database read;
  * - otherwise it reserves a backlog slot (a full backlog refuses with
  *   `TxAdmissionBacklogFullError`) and hands the tx to the writer, which
- *   acknowledges it as `new` once it is in the pending set.
+ *   acknowledges it as `new` once it is in the pending set;
+ * - in the same step the tx takes its input claims (design D6): a `native`
+ *   tx spending an input another pending tx claimed, or one that is neither
+ *   in the mempool ledger state nor produced by a pending tx, is refused
+ *   with `AdmissionInputSpentError`. A `peer` tx is never refused for its
+ *   inputs. The ledger view is read without the Phase B lock.
  *
  * A `new` ack means accepted, not stored: the row is written by the
  * writer's next group commit, which then wakes the tx-queue processor. A
@@ -189,6 +199,8 @@ export const admitCheckedTransaction = <R>({
     if (known._tag === "Conflict") return yield* Effect.fail(known.error);
 
     const nodeConfig = yield* NodeConfig;
+    const claims = (yield* Globals).ADMISSION_INPUT_CLAIMS;
+    const cache = yield* Effect.serviceOption(MempoolLedgerCache);
     const context = yield* Effect.context<Globals | R>();
     // Reserving and registering run uninterruptibly, so a reserved slot is
     // always either owned by the writer or released here.
@@ -213,7 +225,22 @@ export const admitCheckedTransaction = <R>({
             }),
           );
         }
-        const release = releaseAdmissionBacklogSlot(reservation);
+        // Set when this call took the claims, so a write that stores no new
+        // row gives them back; claims a pending copy holds stay with it.
+        let claimed = false;
+        const releaseSlot = releaseAdmissionBacklogSlot(reservation);
+        const release = Effect.zipRight(
+          Effect.sync(() => {
+            if (claimed) claims.release(normalized.txIdHex);
+            claimed = false;
+          }),
+          releaseSlot,
+        );
+        // Read right before the writer's synchronous section, so the view
+        // is as fresh as it can be when the claims are checked.
+        const spendable = Option.isSome(cache)
+          ? yield* cache.value.spendableView
+          : UNKNOWN_SPENDABLE_VIEW;
         const ack = yield* admissionWriter
           .admit({
             txId: normalized.txId,
@@ -226,6 +253,18 @@ export const admitCheckedTransaction = <R>({
                 : release
               ).pipe(Effect.provide(context)),
             wakeOnCommit: wakeTxQueueProcessor.pipe(Effect.provide(context)),
+            claimInputs: () => {
+              const outcome = claims.take({
+                txIdHex: normalized.txIdHex,
+                spentOutRefs: normalized.spentOutRefs,
+                producedOutRefs: normalized.producedOutRefs,
+                check: submitSource === "native",
+                spendable,
+              });
+              if (outcome._tag === "Refused") return outcome.error;
+              claimed = outcome._tag === "Claimed";
+              return undefined;
+            },
           })
           .pipe(Effect.tapError(() => release));
         if (ack.kind === "duplicate") yield* release;

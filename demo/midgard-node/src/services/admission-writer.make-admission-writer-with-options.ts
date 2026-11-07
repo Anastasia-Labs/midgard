@@ -357,6 +357,8 @@ export const makeAdmissionWriterWithOptions = <R>(
                   }),
                 };
               }
+              const spent = request.claimInputs?.();
+              if (spent !== undefined) return { refusal: spent };
               const item: AdmissionWriteItem = {
                 request,
                 txIdHex: request.txId.toString("hex"),

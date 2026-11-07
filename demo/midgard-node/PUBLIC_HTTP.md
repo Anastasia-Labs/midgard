@@ -152,7 +152,23 @@ node crash loses the transactions it acknowledged since its last commit
 graceful stop gives the writer ten seconds to write what it holds and logs the
 id of every transaction it could not write. A duplicate of a pending or
 recently written transaction answers 200 without a database read; its `status`
-is the one the node last wrote, so read `/tx-status` for the current one. The
+is the one the node last wrote, so read `/tx-status` for the current one.
+First seen wins on inputs: each pending transaction claims the inputs it
+spends, from the moment it is acknowledged until its verdict, and a `/submit`
+transaction spending an input that another pending transaction claimed answers
+409 with `{"error": "E_INPUT_SPENT", "reason": "claimed", "spentBy": <txId>,
+"outRef", "txId", "message"}`. One whose input is neither in the node's ledger
+nor produced by a pending transaction answers the same 409 with `"reason":
+"not_in_ledger"` (the input is spent, or this node has not seen it yet). The
+duplicate check comes first, so resubmitting a pending transaction still
+answers 200. Before treating a 409 `E_INPUT_SPENT` as a failure, read
+`/tx-status` for the transaction: it may itself be the one that spent the
+input. The node never evicts or replaces an acknowledged transaction for a
+later spender. A claim stays across a validation retry and goes at the
+verdict; a restart rebuilds the claims from the backlog. Transactions from
+`/peer/txs` are never refused for their inputs. The check reads the node's
+ledger without waiting for validation, and refuses on the ledger only once the
+node has loaded it. The
 pending set has a row and a 64 MiB byte bound and refuses with 503 at once
 when either is full, instead of holding the request. When its oldest
 transaction has waited longer than 30 seconds for Postgres, `/submit` and

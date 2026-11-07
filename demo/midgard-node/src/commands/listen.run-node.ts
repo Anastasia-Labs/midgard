@@ -35,6 +35,7 @@ import {
   mempoolLedgerCacheLayer,
   MidgardContracts,
   NodeConfig,
+  rebuildAdmissionInputClaimsOnStartup,
   validationPoolLayer,
   WriteBehind,
 } from "../services/index.js";
@@ -282,6 +283,9 @@ export const runNode = (
     }
 
     yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
+    // Before the node serves or validates: a backlog tx's inputs stay
+    // claimed across the restart (design D6).
+    yield* rebuildAdmissionInputClaimsOnStartup();
 
     const sql = yield* SqlClient.SqlClient;
     const retrieveRetainedDaPayload = (headerHash: Buffer) =>

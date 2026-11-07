@@ -516,7 +516,7 @@ export const registerAdmissionsTests = () => {
             const admissionSql = yield* AdmissionSql;
             const nodeConfig = yield* NodeConfig;
             const attempts = Array.from({ length: 8 }, (_, index) =>
-              makeScriptProofSubmitTx(index + 100),
+              makeScriptProofSubmitTx(index + 100, BigInt(index + 100)),
             );
             const submit = (proofEnvelope: Buffer) =>
               submitThroughRouter(proofEnvelope, Effect.void).pipe(
@@ -827,7 +827,9 @@ export const registerAdmissionsTests = () => {
                 Effect.provideService(NodeConfig, testConfig),
               );
 
-            const firstTx = makeNativeSubmitTx();
+            // Each tx spends its own input: this test is about identity,
+            // not input claims.
+            const firstTx = makeNativeSubmitTx(101n);
             const first = yield* submit(firstTx.txCanonicalCbor);
             expectSubmitBody(first, {
               status: 202,
@@ -848,7 +850,7 @@ export const registerAdmissionsTests = () => {
 
             // A stored id this node's memory does not hold is resolved after
             // the ack: the 202 stands and the stored version stays.
-            const storedVariantTx = makeNativeSubmitTx();
+            const storedVariantTx = makeNativeSubmitTx(102n);
             const storedVariantCbor = Buffer.concat([
               storedVariantTx.txCanonicalCbor,
               Buffer.from([0]),
@@ -913,7 +915,7 @@ export const registerAdmissionsTests = () => {
               txIdHex: firstTx.txIdHex,
               duplicate: true,
             });
-            const newWhileFullTx = makeNativeSubmitTx();
+            const newWhileFullTx = makeNativeSubmitTx(103n);
             const newWhileFull = yield* submitWhileFull(
               newWhileFullTx.txCanonicalCbor,
             );
@@ -927,7 +929,7 @@ export const registerAdmissionsTests = () => {
               retryAfter: "5",
             });
 
-            const identicalTx = makeNativeSubmitTx();
+            const identicalTx = makeNativeSubmitTx(104n);
             testConfig = {
               ...testConfig,
               MAX_DURABLE_ADMISSION_BACKLOG: 100,
@@ -974,8 +976,9 @@ export const registerAdmissionsTests = () => {
           Effect.gen(function* () {
             const admissionSql = yield* AdmissionSql;
             const baseConfig = yield* NodeConfig;
-            const attempts = Array.from({ length: 32 }, () =>
-              makeNativeSubmitTx(),
+            // Distinct inputs, all encoded in the same number of bytes.
+            const attempts = Array.from({ length: 32 }, (_, index) =>
+              makeNativeSubmitTx(BigInt(index + 100)),
             );
             const transactionBytes = attempts[0]!.txCanonicalCbor.length;
             expect(
@@ -1114,8 +1117,8 @@ export const registerAdmissionsTests = () => {
               ),
             );
             yield* Effect.gen(function* () {
-              const attempts = Array.from({ length: 10 }, () =>
-                makeNativeSubmitTx(),
+              const attempts = Array.from({ length: 10 }, (_, index) =>
+                makeNativeSubmitTx(BigInt(index + 100)),
               );
               const results = yield* Effect.all(
                 attempts.map((tx) => submit(tx.txCanonicalCbor)),
@@ -1170,7 +1173,9 @@ export const registerAdmissionsTests = () => {
                   Effect.provideService(Globals, globals),
                 ),
               ).toBe(0n);
-              const recoveryTx = makeNativeSubmitTx();
+              // Its own input: the two admitted txs were accepted behind the
+              // processor's back, so they still hold their input claims.
+              const recoveryTx = makeNativeSubmitTx(110n);
               expect((yield* submit(recoveryTx.txCanonicalCbor)).status).toBe(
                 202,
               );
@@ -1267,6 +1272,8 @@ export const registerAdmissionsTests = () => {
                 Effect.provideService(MempoolLedgerCache, cache),
                 Effect.provideService(Lucid, lucid),
               );
+            // Each submitted tx spends its own input.
+            let nextSpentInput = 100n;
             const percentile99 = (samples: readonly number[]): number =>
               [...samples].sort((left, right) => left - right)[
                 Math.max(0, Math.ceil(samples.length * 0.99) - 1)
@@ -1278,7 +1285,7 @@ export const registerAdmissionsTests = () => {
               Effect.all(
                 Array.from({ length: count }, () =>
                   Effect.gen(function* () {
-                    const tx = makeNativeSubmitTx();
+                    const tx = makeNativeSubmitTx(nextSpentInput++);
                     const startedAt = performance.now();
                     const response = yield* submit(tx.txCanonicalCbor, wake);
                     expect(response.status).toBe(202);

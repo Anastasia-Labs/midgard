@@ -292,7 +292,9 @@ describe("durable admission microbatch writer", () => {
             queueCapacity: 2,
             stallMs: 200,
           });
-          const txs = Array.from({ length: 4 }, () => makeNativeSubmitTx());
+          const txs = Array.from({ length: 4 }, (_, index) =>
+            makeNativeSubmitTx(BigInt(index + 1)),
+          );
 
           const unlock = yield* lockAdmissionsTable;
           for (const tx of txs.slice(0, 2)) {

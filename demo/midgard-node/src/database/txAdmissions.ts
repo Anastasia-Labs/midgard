@@ -28,10 +28,12 @@ export {
   requeueExpiredLeases,
 } from "./txAdmissions.admit-reserved-batch.js";
 export {
+  type BacklogPayloadEntry,
   claimBatchLease,
   forgetLeasedPeerRows,
   loadClaimedPayloads,
   releaseForRetry,
+  retrieveBacklogPayloads,
 } from "./txAdmissions.claim-batch-lease.js";
 export { markAccepted } from "./txAdmissions.mark-accepted.js";
 export {

@@ -184,13 +184,18 @@ export const submitThroughRouter = <R>(
     return result;
   });
 
-export const makeNativeSubmitTx = (): {
+/** A native tx spending `11…11#spentInputIndex`: txs that must all be
+ * admitted need distinct indices, since a node admits only the first spender
+ * of an input. */
+export const makeNativeSubmitTx = (
+  spentInputIndex = 0n,
+): {
   readonly txId: Buffer;
   readonly txIdHex: string;
   readonly txCanonicalCbor: Buffer;
 } => {
   const txCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
-    makeCardanoSignedMapOutputTxBytes(),
+    makeCardanoSignedMapOutputTxBytes(undefined, spentInputIndex),
   );
   const txId = computeMidgardNativeTxId(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
@@ -235,10 +240,13 @@ export const makeProofSubmitTx = (): {
   return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
 };
 
-export const makeScriptProofSubmitTx = (nonce: number) => {
+export const makeScriptProofSubmitTx = (
+  nonce: number,
+  spentInputIndex = 0n,
+) => {
   const scriptBytes = encodeCbor(Buffer.from("0101002499", "hex"));
   const base = decodeMidgardNativeTxFullFromCanonicalCbor(
-    makeNativeSubmitTx().txCanonicalCbor,
+    makeNativeSubmitTx(spentInputIndex).txCanonicalCbor,
   );
   const canonical: MidgardNativeTxCanonical = {
     version: base.version,

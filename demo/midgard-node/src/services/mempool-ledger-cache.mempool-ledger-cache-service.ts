@@ -2,6 +2,7 @@ import { type UTxOStatePatch } from "@al-ft/midgard-validation";
 import { Context, Data, Effect, Metric } from "effect";
 
 import type { DatabaseError } from "../database/utils/common.js";
+import type { SpendableView } from "./admission-input-claims.js";
 
 export type MempoolLedgerState = Map<string, Buffer>;
 
@@ -54,6 +55,15 @@ export type MempoolLedgerCacheService = {
   /** Immediately fence every old sequence, without awaiting the cache locks.
    * Commit durable authority suspension before running the returned recovery. */
   readonly retireCanonicalEpoch: Effect.Effect<CanonicalCacheRecovery>;
+  /**
+   * Which outrefs are in the mempool ledger state, for the admission input
+   * check (design D6). Lock-free: it never waits for the Phase B lock, and
+   * a caller must use the view synchronously. It cannot tell (answers
+   * `undefined`) before the cache is first loaded, while canonical recovery
+   * rebuilds it, or when the delta journal has a gap or a full-reload marker
+   * the cache has not applied yet.
+   */
+  readonly spendableView: Effect.Effect<SpendableView>;
 };
 
 export type CanonicalCacheRecovery = {

@@ -283,6 +283,15 @@ export const txQueueProcessorAction = (
                     leaseOwner,
                   })).map((txId) => txId.toString("hex")),
                 );
+                // A tx's input claims (design D6) go once its row can no
+                // longer be pending; the Phase B patch already moved its
+                // inputs and outputs into or out of the ledger view.
+                const releaseClaims = (txIdHexes: Iterable<string>) =>
+                  Effect.sync(() => {
+                    for (const txIdHex of txIdHexes)
+                      globals.ADMISSION_INPUT_CLAIMS.release(txIdHex);
+                  });
+                yield* releaseClaims(forgotten);
                 if (forgotten.size > 0)
                   yield* Effect.logInfo(
                     `Forgot ${forgotten.size.toString()} peer-forwarded L2 txs this node cannot validate yet; the peer-admission log names who sent them`,
@@ -297,6 +306,9 @@ export const txQueueProcessorAction = (
                     leaseOwner,
                     rejectedTxs: rejected,
                   });
+                  yield* releaseClaims(
+                    rejected.map(({ txId }) => txId.toString("hex")),
+                  );
                   yield* validationRejectionInsertDurationTimer(
                     Effect.succeed(
                       Duration.millis(Date.now() - rejectionInsertStart),
@@ -317,6 +329,11 @@ export const txQueueProcessorAction = (
                       processedTxFromValidatedTx,
                     ),
                   });
+                  yield* releaseClaims(
+                    phaseB.accepted.map(({ ledgerTx }) =>
+                      Buffer.from(ledgerTx.txId).toString("hex"),
+                    ),
+                  );
                   yield* SubscriptionRef.update(
                     globals.L2_PEER_FORWARD_GENERATION,
                     (generation) => generation + 1,

@@ -159,9 +159,12 @@ export const postPeerTxsHandler = <R>(
         wakeTxQueueProcessor,
       }).pipe(
         Effect.map((result) => result.kind),
-        Effect.catchTag("TxAdmissionConflictError", () =>
-          Effect.succeed("conflict" as const),
-        ),
+        // A peer tx is never refused for its inputs; the input arm is here
+        // only because admission's refusal type carries it.
+        Effect.catchTags({
+          TxAdmissionConflictError: () => Effect.succeed("conflict" as const),
+          AdmissionInputSpentError: () => Effect.succeed("conflict" as const),
+        }),
       );
       if (outcome === "new") {
         admitted++;

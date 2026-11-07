@@ -21,6 +21,7 @@ import {
   validationPhaseBLockWaitTimer,
   ValidationPipelineEpochError,
 } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { makeSpendableView } from "./mempool-ledger-cache.spendable-view.js";
 
 export const makeMempoolLedgerCacheService = (
   globals: Globals,
@@ -52,6 +53,8 @@ export const makeMempoolLedgerCacheService = (
     const state: MempoolLedgerState = new Map();
     const speculativePatches = new Map<bigint, UTxOStatePatch>();
     let cachedVersion = -1;
+    // The delta-log version `state` reflects; -1 until it is first built.
+    let stateVersion = -1;
 
     const rebuildCombinedState = (): void => {
       state.clear();
@@ -63,17 +66,19 @@ export const makeMempoolLedgerCacheService = (
       )) {
         applyUTxOStatePatch(state, patch);
       }
+      stateVersion = cachedVersion;
     };
 
     const contiguousIncrementalEntries = (
       journal: MempoolLedgerDeltaLog,
+      fromVersion: number = cachedVersion,
     ): readonly MempoolLedgerDelta[] | undefined => {
       const needed = journal.entries.filter(
-        (entry) => entry.version > cachedVersion,
+        (entry) => entry.version > fromVersion,
       );
-      return needed.length === journal.version - cachedVersion &&
+      return needed.length === journal.version - fromVersion &&
         needed.every(
-          (entry, index) => entry.version === cachedVersion + index + 1,
+          (entry, index) => entry.version === fromVersion + index + 1,
         ) &&
         needed.every((entry) => !entry.full)
         ? needed
@@ -337,6 +342,13 @@ export const makeMempoolLedgerCacheService = (
       } satisfies CanonicalCacheRecovery;
     });
 
+    const spendableView = makeSpendableView({
+      pipeline: Ref.get(pipeline),
+      journal: Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG),
+      synced: () => ({ state, version: stateVersion }),
+      entriesAfter: contiguousIncrementalEntries,
+    });
+
     const service: MempoolLedgerCacheService = {
       withClaimLock: (effect) =>
         claimLock.withPermits(1)(
@@ -481,6 +493,7 @@ export const makeMempoolLedgerCacheService = (
         ),
       recoverPoisonedEpoch,
       retireCanonicalEpoch,
+      spendableView,
     };
     return service;
   });

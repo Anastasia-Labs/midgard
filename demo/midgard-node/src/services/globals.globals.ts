@@ -11,6 +11,10 @@ import type { CommitPlanningSnapshot } from "../workers/commit-planning-notice.j
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
+  type AdmissionInputClaims,
+  makeAdmissionInputClaims,
+} from "./admission-input-claims.js";
+import {
   type FollowerWriteGateLocal,
   initialFollowerWriteGateLocal,
 } from "./follower-write-gate.local.js";
@@ -202,6 +206,13 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       },
     );
 
+    // First-seen input claims of the txs pending admission or validation
+    // (design D6). Read and written only in synchronous sections, by
+    // admission, the tx-queue processor's verdict hooks and the startup
+    // rebuild.
+    const ADMISSION_INPUT_CLAIMS: AdmissionInputClaims =
+      makeAdmissionInputClaims();
+
     // Indicates that on-chain block submission succeeded but local persistence
     // failed and must be retried against the confirmed block.
     const LOCAL_FINALIZATION_PENDING = yield* Ref.make<boolean>(false);
@@ -301,6 +312,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       L1_HEAD_SEQUENCE,
       L2_PEER_FORWARD_GENERATION,
       ADMISSION_BACKLOG_GAUGE,
+      ADMISSION_INPUT_CLAIMS,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,
       HEARTBEAT_BLOCK_CONFIRMATION,

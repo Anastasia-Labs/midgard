@@ -262,3 +262,48 @@ export const forgetLeasedPeerRows = ({
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to forget peer admissions"),
   );
+
+/** A queued or validating admission row with its payload bytes. */
+export type BacklogPayloadEntry = {
+  readonly tx_id: Buffer;
+  readonly arrival_seq: bigint;
+  readonly tx_canonical_cbor: Buffer;
+};
+
+/**
+ * One page of the queued and validating rows with their payloads, in
+ * arrival order after `afterArrivalSeq`: the startup rebuild of the
+ * first-seen input claims reads the backlog through it.
+ */
+export const retrieveBacklogPayloads = ({
+  afterArrivalSeq,
+  limit,
+}: {
+  readonly afterArrivalSeq: bigint;
+  readonly limit: number;
+}): Effect.Effect<readonly BacklogPayloadEntry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{
+      readonly tx_id: Buffer;
+      readonly arrival_seq: bigint | number | string;
+      readonly tx_canonical_cbor: Buffer;
+    }>`SELECT
+        admission.${sql(Columns.TX_ID)},
+        admission.${sql(Columns.ARRIVAL_SEQ)},
+        payload.${sql(Columns.TX_CANONICAL_CBOR)}
+      FROM ${sql(tableName)} AS admission
+      JOIN ${sql(payloadTableName)} AS payload
+        ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
+      WHERE admission.${sql(Columns.STATUS)} IN ('queued', 'validating')
+        AND admission.${sql(Columns.ARRIVAL_SEQ)} > ${afterArrivalSeq.toString()}
+      ORDER BY admission.${sql(Columns.ARRIVAL_SEQ)} ASC
+      LIMIT ${Math.max(1, limit)}`;
+    return rows.map((row) => ({
+      tx_id: row.tx_id,
+      arrival_seq: BigInt(row.arrival_seq),
+      tx_canonical_cbor: row.tx_canonical_cbor,
+    }));
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to read the admission backlog"),
+  );

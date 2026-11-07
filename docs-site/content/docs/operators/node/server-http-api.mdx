@@ -88,7 +88,7 @@ array, under `finalityVocabulary.txStatusCommittedMeaning`.
 `200` for a duplicate, `415` for the wrong media type, `411` for a request
 without `Content-Length`, `413` for a body that exceeds or fails its bounded
 read, `400` for malformed content, and `409` for a transaction-identity
-conflict. A `/submit` or `/tx/evaluate` body holds one envelope around at most
+conflict or a spent input. A `/submit` or `/tx/evaluate` body holds one envelope around at most
 one largest transaction, 295,048 bytes; a larger declared length is refused
 before the body is read. Capacity or admission-writer unavailability
 returns `503`; other operational failures can return `500`. HTTP admission
@@ -116,6 +116,21 @@ for Postgres, `/submit` answers `503` and `/readyz` reports
 through again. A row Postgres refuses outright is dropped with a counter
 (`admission_write_poison_total`) and an error log, so it cannot block the rows
 behind it; its transaction then reads as not found.
+
+First seen wins on inputs. Each pending transaction claims the inputs it
+spends from the moment it is acknowledged until its verdict. A `/submit`
+transaction spending an input another pending transaction claimed answers
+`409` with `error: "E_INPUT_SPENT"`, `reason: "claimed"` and the claiming
+transaction in `spentBy`; one whose input is neither in the node's ledger nor
+produced by a pending transaction answers the same `409` with
+`reason: "not_in_ledger"`. The body also carries `txId`, `outRef` and a
+`message`. The duplicate check comes first, so resubmitting a pending
+transaction still answers `200`. Read `/tx-status` before treating
+`E_INPUT_SPENT` as a failure: the transaction may itself be the one that spent
+the input. The node never evicts or replaces an acknowledged transaction. A
+claim stays across a validation retry, goes at the verdict, and is rebuilt
+from the backlog on restart. Transactions from `/peer/txs` are never refused
+for their inputs.
 
 A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
 keeps the connection open for the retry; other refusals of a `POST` close it.
