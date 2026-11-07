@@ -94,13 +94,34 @@ before the body is read. Capacity or admission-writer unavailability
 returns `503`; other operational failures can return `500`. HTTP admission
 is distinct from successful ledger validation or settlement.
 
+The node answers `/submit` from memory: a `202` means accepted, not stored.
+Each accepted transaction waits in a bounded pending set until the admission
+writer's next group commit to Postgres, so a node crash can lose transactions
+it already acknowledged; a client that needs certainty resubmits until
+`/tx-status` reports the transaction. A graceful stop gives the writer ten
+seconds to write what it holds and logs the id of every transaction left
+unwritten. A pending transaction reads as `queued` on `/tx-status`.
+
+A duplicate of a pending or recently written transaction answers `200`
+without a database read; its `status` is the one the node last wrote, so read
+`/tx-status` for the current one. The same id with different witnesses
+answers `409` while the first version is pending or recently written; a
+variant only the database still holds answers `202`, and the stored version
+stays. When the oldest pending transaction has waited more than 30 seconds
+for Postgres, `/submit` answers `503` and `/readyz` reports
+`admission_writer_stalled:<oldestPendingAgeMs>:<stallMs>` until the writes go
+through again. A row Postgres refuses outright is dropped with a counter
+(`admission_write_poison_total`) and an error log, so it cannot block the rows
+behind it; its transaction then reads as not found.
+
 A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
 keeps the connection open for the retry; other refusals of a `POST` close it.
-The durable admission backlog is bounded by rows
-(`MAX_DURABLE_ADMISSION_BACKLOG`, default 10,000) and by payload bytes
-(`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default the largest DA payload). Both
-bounds are checked in memory before the write: a full backlog answers `503`
-without touching the database, even for a duplicate.
+The durable admission backlog
+is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 10,000) and by
+payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default the largest DA
+payload). Both bounds are checked in memory before the write: a full backlog
+answers `503` without touching the database. A duplicate costs no backlog, so
+it still answers `200` while the backlog is full.
 
 A resubmission is a duplicate while the node keeps its admission row. An
 accepted or rejected row is kept for `ADMISSION_TERMINAL_RETENTION_MS` after
@@ -211,9 +232,13 @@ sends only those a peer has never seen.
 - `POST /peer/txs` takes a batch of transactions and admits each with source
   `peer` after the same checks as `POST /submit`. It answers
   `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
-  when the admission backlog is full.
-- `POST /peer/inventory` takes transaction ids and answers the ids the node has
-  no admission row for, as the same CBOR list.
+  when the admission backlog is full or its writes are stalled. Like
+  `/submit`, it counts a transaction as admitted before it is stored. Only a
+  peer transaction still pending counts as a duplicate: the node keeps no
+  recent peer ids, so one offered again after its row was written counts as
+  admitted, and its write then leaves the stored row as it is.
+- `POST /peer/inventory` takes transaction ids and answers the ids the node
+  neither holds pending nor has an admission row for, as the same CBOR list.
 - A `/peer/txs` body holds at most one largest transaction (about 288 KiB) and
   a `/peer/inventory` body at most 20,000 ids. Peer bodies are read under an
   ingress pool of their own, as many requests deep as `/submit`'s, so peers

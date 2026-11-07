@@ -35,6 +35,7 @@ const AdmissionWriterTestLive = Layer.scoped(
   AdmissionWriter,
   Effect.gen(function* () {
     const admissionSql = yield* AdmissionSql;
+    const nodeConfig = yield* NodeConfig;
     return yield* makeAdmissionWriterWithOptions(
       (requests) =>
         TxAdmissionsDB.admitReservedBatch(requests).pipe(
@@ -45,6 +46,7 @@ const AdmissionWriterTestLive = Layer.scoped(
         batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
         queueCapacity: ADMISSION_WRITE_QUEUE_CAPACITY,
         queueBytes: ADMISSION_WRITE_QUEUE_BYTES,
+        recentTxIdMaxAgeMs: nodeConfig.ADMISSION_TERMINAL_RETENTION_MS,
       },
     );
   }),

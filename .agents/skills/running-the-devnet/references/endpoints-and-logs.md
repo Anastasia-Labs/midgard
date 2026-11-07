@@ -236,6 +236,11 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `durable_admission_oldest_age_exceeded:<age_ms>:<limit_ms>`: the oldest
   admitted transaction has waited longer than
   `READINESS_MAX_DURABLE_ADMISSION_AGE_MS`. As for `queue_depth_exceeded`.
+- `admission_writer_stalled:<age_ms>:<stall_ms>`: a transaction `/submit`
+  acknowledged has waited longer than `<stall_ms>` (30 s) for Postgres to
+  take its write, so `/submit` and `/peer/txs` answer 503. It clears by
+  itself once the writes go through; check Postgres and the
+  `admission_write_retry_total` log warnings if it persists.
 - `local_finalization_pending`: a submitted block's local finalization has
   not run yet. Wait.
 - `validation_worker_pool_degraded:<live>:<configured>:<restarting>`: fewer

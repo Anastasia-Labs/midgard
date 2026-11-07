@@ -12,6 +12,7 @@ type ReservedAdmissionVariant = {
   readonly txFullHashV1: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly requestIndices: readonly number[];
+  readonly requestCount: number;
   readonly variantOrdinal: number;
   readonly firstVariantForTxId: boolean;
 };
@@ -36,17 +37,24 @@ export const groupReservedAdmissionVariants = (
     );
     if (matching === undefined) {
       variants.push({
-        ...request,
-        txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCbor(
-          request.txCanonicalCbor,
-        ),
+        txId: request.txId,
+        txCanonicalCbor: request.txCanonicalCbor,
+        submitSource: request.submitSource,
+        txFullHashV1:
+          request.txFullHashV1 ??
+          computeMidgardNativeTxFullHashFromCanonicalCbor(
+            request.txCanonicalCbor,
+          ),
         requestIndices: [index],
+        requestCount: request.requestCount ?? 1,
         variantOrdinal: -1,
         firstVariantForTxId: variants.length === 0,
       });
       byTxId.set(txIdHex, variants);
     } else {
       (matching.requestIndices as number[]).push(index);
+      (matching as { requestCount: number }).requestCount +=
+        request.requestCount ?? 1;
     }
   }
   return [...byTxId.values()]

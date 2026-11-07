@@ -327,6 +327,22 @@ it("shows the landed-block holds that stop the follower as their typed reasons",
   );
 });
 
+it("shows a stalled admission writer as its bounded reason and typed facts", () => {
+  const source = {
+    ready: false,
+    reasons: ["admission_writer_stalled:31250:30000"],
+    admissionWriter: {
+      pending: 412,
+      oldestPendingAgeMs: 31_250,
+      stallMs: 30_000,
+      stalled: true,
+    },
+  };
+  expect(publicReadinessPresentation(source, "preprod-public", {})).toEqual(
+    source,
+  );
+});
+
 it.each(["mainnet", "preprod-public", "preprod-rehearsal"])(
   "shows a census reason code by name in %s while its details stay redacted",
   (profile) => {

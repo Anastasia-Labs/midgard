@@ -157,9 +157,12 @@ describe("peer admission forget rule", () => {
       reject_code: "E_INVALID_SIGNATURE",
     });
 
+    // The writer keeps no recent peer ids (a forgotten peer row must be
+    // admitted again), so the re-offer is acknowledged and its write then
+    // resolves against the stored rejection, which stays as it was.
     expect(await offer(node, [forged.txCbor])).toEqual({
-      admitted: 0,
-      duplicates: 1,
+      admitted: 1,
+      duplicates: 0,
       refused: 0,
     });
     expect(await node.admissions()).toEqual([verdict]);

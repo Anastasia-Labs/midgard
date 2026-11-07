@@ -82,7 +82,7 @@ export const persistReservedAdmissionBatch = (
           ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
           ${pg.array(variants.map((value) => value.txCanonicalCbor.length))}::integer[],
           ${pg.array(variants.map((value) => value.submitSource))}::text[],
-          ${pg.array(variants.map((value) => value.requestIndices.length))}::integer[],
+          ${pg.array(variants.map((value) => value.requestCount))}::integer[],
           ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
           ${pg.array(variants.map((value) => value.firstVariantForTxId))}::boolean[],
           ${pg.array(variants.map((value) => value.requestIndices[0]!))}::integer[]
@@ -206,7 +206,7 @@ export const persistReservedAdmissionBatch = (
       const duplicate = yield* touchDuplicateCount({
         txId: variant.txId,
         txFullHashV1: variant.txFullHashV1,
-        requestCount: variant.requestIndices.length,
+        requestCount: variant.requestCount,
       });
       if (duplicate !== null) {
         resolvedByVariant.set(variant.variantOrdinal, {

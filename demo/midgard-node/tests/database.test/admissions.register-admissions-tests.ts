@@ -578,13 +578,17 @@ export const registerAdmissionsTests = () => {
             // Without the payload, a resubmission is still a duplicate, and
             // the same id with other witnesses is still a conflict.
             const [first] = attempts;
+            // The duplicate is answered from the writer's recent ids, with
+            // the status the node wrote; /tx-status reads the verdict.
             const resubmitted = yield* submit(first!.proofEnvelope);
             expect(resubmitted.status).toBe(200);
             expect(resubmitted.body).toMatchObject({
               txId: first!.txIdHex,
-              status: TxAdmissionsDB.Status.Rejected,
               duplicate: true,
             });
+            expect((yield* TxAdmissionsDB.getByTxId(first!.txId))?.status).toBe(
+              TxAdmissionsDB.Status.Rejected,
+            );
             const otherWitnesses = yield* submit(
               encodeMidgardProofSubmission({
                 transactionCbor: withoutScriptWitnesses(first!.txCanonicalCbor),
@@ -662,16 +666,17 @@ export const registerAdmissionsTests = () => {
               [],
             );
 
+            // Answered from the writer's recent ids: no database read, so
+            // the row's status and request count stay as they were.
             const duplicate = yield* submit();
             expect(duplicate.status).toBe(200);
             expect(duplicate.body).toMatchObject({
               txId: attempt.txIdHex,
-              status: TxAdmissionsDB.Status.Accepted,
               duplicate: true,
             });
-            expect(
-              (yield* TxAdmissionsDB.getByTxId(attempt.txId))?.request_count,
-            ).toBe(2n);
+            expect(yield* TxAdmissionsDB.getByTxId(attempt.txId)).toMatchObject(
+              { status: TxAdmissionsDB.Status.Accepted, request_count: 1n },
+            );
             const otherWitnesses = yield* submitThroughRouter(
               encodeMidgardProofSubmission({
                 transactionCbor: withoutScriptWitnesses(
@@ -837,25 +842,35 @@ export const registerAdmissionsTests = () => {
               duplicate: true,
             });
             expect(duplicate.body.firstSeenAt).toBe(first.body.firstSeenAt);
+            // The duplicate was answered from memory and never reached the
+            // database, so the stored row counts one request.
             const stored = yield* TxAdmissionsDB.getByTxId(firstTx.txId);
-            expect(stored?.request_count).toBe(2n);
+            expect(stored?.request_count).toBe(1n);
 
-            const conflictTx = makeNativeSubmitTx();
+            // A stored id this node's memory does not hold is resolved after
+            // the ack: the 202 stands and the stored version stays.
+            const storedVariantTx = makeNativeSubmitTx();
+            const storedVariantCbor = Buffer.concat([
+              storedVariantTx.txCanonicalCbor,
+              Buffer.from([0]),
+            ]);
             yield* TxAdmissionsDB.admit({
-              txId: conflictTx.txId,
-              txCanonicalCbor: Buffer.concat([
-                conflictTx.txCanonicalCbor,
-                Buffer.from([0]),
-              ]),
+              txId: storedVariantTx.txId,
+              txCanonicalCbor: storedVariantCbor,
               submitSource: "native",
             });
-            const conflict = yield* submit(conflictTx.txCanonicalCbor);
-            expect(conflict.status).toBe(409);
-            expect(conflict.body).toEqual({
-              error: "E_TX_ID_BYTES_CONFLICT",
-              message: expect.stringContaining(conflictTx.txIdHex),
-              txId: conflictTx.txIdHex,
+            const storedVariant = yield* submit(
+              storedVariantTx.txCanonicalCbor,
+            );
+            expectSubmitBody(storedVariant, {
+              status: 202,
+              txIdHex: storedVariantTx.txIdHex,
+              duplicate: false,
             });
+            expect(
+              (yield* TxAdmissionsDB.getByTxId(storedVariantTx.txId))
+                ?.payload_bytes,
+            ).toBe(storedVariantCbor.length);
 
             const globals = yield* Globals;
             yield* Ref.set(globals.ADMISSION_BACKLOG_GAUGE, {
@@ -867,12 +882,14 @@ export const registerAdmissionsTests = () => {
               ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
               ADMISSION_BACKLOG_REFRESHED_AT: Date.now(),
             });
-            // A full backlog refuses from memory: neither the writer nor the
-            // database is reached, whether or not the tx is a duplicate.
+            // A full backlog refuses a new tx from memory, and a duplicate
+            // the writer remembers still answers 200: neither reaches the
+            // writer's pending set or the database.
+            const writer = yield* AdmissionWriter;
             const unreachableWriter = AdmissionWriter.of({
-              admitReserved: () =>
+              ...writer,
+              admit: () =>
                 Effect.dieMessage("a full backlog must not reach the writer"),
-              stats: Effect.dieMessage("unused"),
             });
             const unreachableSql = new Proxy({} as SqlClient.SqlClient, {
               get: (_target, property) => {
@@ -892,7 +909,11 @@ export const registerAdmissionsTests = () => {
             const duplicateWhileFull = yield* submitWhileFull(
               firstTx.txCanonicalCbor,
             );
-            expect(duplicateWhileFull.status).toBe(503);
+            expectSubmitBody(duplicateWhileFull, {
+              status: 200,
+              txIdHex: firstTx.txIdHex,
+              duplicate: true,
+            });
             const newWhileFullTx = makeNativeSubmitTx();
             const newWhileFull = yield* submitWhileFull(
               newWhileFullTx.txCanonicalCbor,
@@ -941,9 +962,8 @@ export const registerAdmissionsTests = () => {
               ),
             ).toBe(true);
             expect(
-              (yield* TxAdmissionsDB.getByTxId(identicalTx.txId))
-                ?.request_count,
-            ).toBe(12n);
+              yield* TxAdmissionsDB.getByTxId(identicalTx.txId),
+            ).not.toBeNull();
           }).pipe(Effect.provide(Globals.Default)),
         ),
     );
@@ -1024,12 +1044,13 @@ export const registerAdmissionsTests = () => {
             yield* refreshAdmissionBacklogGauge;
             expect(yield* readAdmissionBacklogSize).toEqual(live);
 
-            // A full byte backlog refuses from memory, before any duplicate
-            // lookup in the database.
+            // A duplicate costs no backlog: the writer answers it from
+            // memory even while the byte backlog is full.
             const duplicate = yield* submit(
               attempts[accepted[0]!.index]!.txCanonicalCbor,
             );
-            expect(duplicate.status).toBe(503);
+            expect(duplicate.status).toBe(200);
+            expect(duplicate.body).toMatchObject({ duplicate: true });
           }).pipe(Effect.provide(Globals.Default)),
         ),
     );

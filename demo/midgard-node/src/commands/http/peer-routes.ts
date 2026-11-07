@@ -26,7 +26,12 @@ import {
   PEER_TXS_PATH,
   verifyPeerRequest,
 } from "../../l2-peer/protocol.js";
-import { Globals, MidgardContracts, NodeConfig } from "../../services/index.js";
+import {
+  AdmissionWriter,
+  Globals,
+  MidgardContracts,
+  NodeConfig,
+} from "../../services/index.js";
 import { failWith500 } from "../listen-response.js";
 import {
   requestMediaType,
@@ -186,13 +191,16 @@ export const postPeerTxsHandler = <R>(
           { error: "Durable admission writer is full" },
           UNAVAILABLE,
         ),
+      AdmissionWriterStalledError: () =>
+        HttpServerResponse.json(
+          { error: "Durable admission writes are stalled" },
+          UNAVAILABLE,
+        ),
       AdmissionWriterShutdownError: () =>
         HttpServerResponse.json(
           { error: "Durable admission writer is unavailable" },
           UNAVAILABLE,
         ),
-      DatabaseError: (e) =>
-        failWith500("POST", "peer/txs", e.cause, "peer admission failed"),
     }),
   );
 
@@ -205,7 +213,14 @@ export const postPeerInventoryHandler = Effect.gen(function* () {
   const ids = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
   if (ids.some((id) => id.length !== 32))
     return refuse(400, "Every id must be 32 bytes");
-  const missing = yield* L2PeerShareDB.missingAdmissionIds(ids);
+  // A tx still pending in the admission writer has no row yet but is not
+  // missing: leave it out so the peer does not push it again.
+  const writer = yield* Effect.serviceOption(AdmissionWriter);
+  const missing = yield* L2PeerShareDB.missingAdmissionIds(
+    Option.isSome(writer)
+      ? ids.filter((id) => writer.value.pendingSince(id) === undefined)
+      : ids,
+  );
   return HttpServerResponse.uint8Array(encodePeerList(missing), {
     contentType: PEER_MEDIA_TYPE,
   });

@@ -105,7 +105,9 @@ describe("POST /peer/txs and /peer/inventory", () => {
     expect(await statusOf(node, parent.txId)).toBe("accepted");
     expect(await statusOf(node, child.txId)).toBe("accepted");
 
-    // Offered again, both are duplicates.
+    // Offered again, both are acknowledged (the writer keeps no recent peer
+    // ids, since a forgotten peer row must be admitted again) and their
+    // writes resolve against the accepted rows, which stay as they were.
     const again = await signedPeerPost(
       node.url,
       PEER_TXS_PATH,
@@ -113,10 +115,16 @@ describe("POST /peer/txs and /peer/inventory", () => {
       sender.signer,
     );
     expect(JSON.parse(again.body.toString())).toEqual({
-      admitted: 0,
-      duplicates: 2,
+      admitted: 2,
+      duplicates: 0,
       refused: 0,
     });
+    expect(
+      (await node.admissions()).map((row) => [row.tx_id, row.status]),
+    ).toEqual([
+      [parent.txId, "accepted"],
+      [child.txId, "accepted"],
+    ]);
   });
 
   it("answers an inventory with exactly the ids it has never seen", async () => {

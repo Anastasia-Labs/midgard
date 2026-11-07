@@ -1,20 +1,27 @@
 import { createHash } from "node:crypto";
 
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Ref } from "effect";
+import { Deferred, Effect, Ref } from "effect";
 import { describe, expect } from "vitest";
 
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
+  type AdmissionWriteRequest,
   makeAdmissionWriterWithOptions,
 } from "../src/services/admission-writer.js";
 
-const request = (label: string): TxAdmissionsDB.ReservedAdmissionRequest => ({
-  txId: createHash("sha256").update(`collector:${label}`).digest(),
-  txCanonicalCbor: Buffer.from(label),
-  submitSource: "native",
-});
+const request = (label: string): AdmissionWriteRequest => {
+  const txCanonicalCbor = Buffer.from(label);
+  return {
+    txId: createHash("sha256").update(`collector:${label}`).digest(),
+    txCanonicalCbor,
+    txFullHash: createHash("sha256").update(txCanonicalCbor).digest(),
+    submitSource: "native",
+    settle: () => Effect.void,
+    wakeOnCommit: Effect.void,
+  };
+};
 
 const conflicts = (
   requests: readonly TxAdmissionsDB.ReservedAdmissionRequest[],
@@ -57,22 +64,11 @@ describe("group-commit admission writer collector", () => {
         { length: ADMISSION_WRITE_BATCH_MAX_ROWS + 2 },
         (_, index) => `fifo-${index.toString().padStart(3, "0")}`,
       );
-      const fibers = [
-        yield* Effect.fork(
-          Effect.either(writer.admitReserved(request(labels[0]!))),
-        ),
-      ];
+      yield* writer.admit(request(labels[0]!));
       yield* Deferred.await(firstStarted);
-      for (const label of labels.slice(1)) {
-        fibers.push(
-          yield* Effect.fork(
-            Effect.either(writer.admitReserved(request(label))),
-          ),
-        );
-        yield* Effect.yieldNow();
-      }
+      for (const label of labels.slice(1)) yield* writer.admit(request(label));
       yield* Deferred.succeed(release, undefined);
-      yield* Effect.forEach(fibers, Fiber.join);
+      yield* writer.flush;
       expect(yield* Ref.get(batches)).toEqual([
         labels.slice(0, 1),
         labels.slice(1, ADMISSION_WRITE_BATCH_MAX_ROWS + 1),
@@ -96,9 +92,8 @@ describe("group-commit admission writer collector", () => {
           queueBytes: 1_048_576,
         },
       );
-      const caller = yield* Effect.fork(
-        Effect.either(writer.admitReserved(request("lone"))),
-      );
+      const ack = yield* writer.admit(request("lone"));
+      expect(ack.kind).toBe("new");
       // The TestClock never moves here, so a batch deadline would hold the
       // request forever; the write must happen within plain fiber yields.
       for (
@@ -109,7 +104,8 @@ describe("group-commit admission writer collector", () => {
         yield* Effect.yieldNow();
       }
       expect(yield* Ref.get(calls)).toBe(1);
-      expect((yield* Fiber.join(caller))._tag).toBe("Left");
+      yield* writer.flush;
+      expect((yield* writer.stats).pending).toBe(0);
     }).pipe(Effect.scoped),
   );
 });

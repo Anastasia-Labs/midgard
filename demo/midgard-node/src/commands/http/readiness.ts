@@ -46,6 +46,7 @@ import {
   resolveL1ProviderReadinessSnapshot,
   runExactGatedDirectL1ProviderProbe,
 } from "./l1-provider-probe.js";
+import { admissionWriterReadiness } from "./readiness-admission-writer.js";
 import {
   L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
@@ -381,6 +382,8 @@ export const getReadinessHandler = Effect.gen(function* () {
       `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
     );
   }
+  const admissionWriter = yield* admissionWriterReadiness;
+  if (admissionWriter.reason !== null) reasons.push(admissionWriter.reason);
   if (unfinishedMutationJobs > 0n) {
     reasons.push(
       `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
@@ -413,6 +416,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     signedIntentUnresolvedAgeMs: journalAges.signedIntentUnresolvedAgeMs,
     durableAdmissionBacklog: durableAdmissionBacklog.toString(),
     durableAdmissionOldestAgeMs,
+    admissionWriter: admissionWriter.facts,
     mempoolTxCount: mempoolTxCount.toString(),
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,

@@ -8,16 +8,21 @@ import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTx } from "@al-ft/midgard-core/consensus-validation";
 import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
-import { Cause, Effect, Exit, Metric, Option } from "effect";
+import { Effect, Either, Metric } from "effect";
 
 import { TxAdmissionsDB } from "../../database/index.js";
 import {
-  admissionFailureDefinitelyDidNotInsert,
   commitAdmissionBacklogSlot,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
 } from "../../fibers/index.js";
-import { AdmissionWriter, NodeConfig } from "../../services/index.js";
+import {
+  type AdmissionAck,
+  AdmissionWriter,
+  type AdmissionWriteRefusal,
+  Globals,
+  NodeConfig,
+} from "../../services/index.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
   decodeSubmitTxCanonicalCbor,
@@ -128,66 +133,131 @@ export const checkSubmittedTransaction = (
 };
 
 /**
- * Durably admits a checked transaction under `submitSource`, within the
- * node's admission backlog bounds, and wakes the tx-queue processor when the
- * row is new. The row and byte bounds are checked in memory: a full backlog
- * refuses with `TxAdmissionBacklogFullError` and no database work.
+ * The part of a checked transaction admission needs. Both the checked value
+ * `checkSubmittedTransaction` returns and a peer-forwarded tx that passed
+ * the same checks fit it; `txFullHash` is recomputed only when absent.
+ */
+export type AdmissionCandidate = {
+  readonly txId: Buffer;
+  readonly txIdHex: string;
+  readonly txCanonicalCbor: Buffer;
+  readonly txFullHash?: Buffer;
+};
+
+/** Why admission refused a checked tx; nothing is held for it. */
+export type AdmissionRefusal =
+  | TxAdmissionsDB.TxAdmissionBacklogFullError
+  | AdmissionWriteRefusal;
+
+/**
+ * Admits a checked transaction under `submitSource` (design D9). It answers
+ * from memory and never waits for Postgres:
+ *
+ * - a tx id the writer holds pending, or wrote recently, answers its
+ *   duplicate ack (or a `TxAdmissionConflictError` when the bytes differ)
+ *   with no backlog reservation and no database read;
+ * - otherwise it reserves a backlog slot (a full backlog refuses with
+ *   `TxAdmissionBacklogFullError`) and hands the tx to the writer, which
+ *   acknowledges it as `new` once it is in the pending set.
+ *
+ * A `new` ack means accepted, not stored: the row is written by the
+ * writer's next group commit, which then wakes the tx-queue processor. A
+ * crash before that commit loses the tx.
  */
 export const admitCheckedTransaction = <R>({
   normalized,
   submitSource,
   wakeTxQueueProcessor,
 }: {
-  readonly normalized: CheckedSubmittedTx;
+  readonly normalized: AdmissionCandidate;
   readonly submitSource: "native" | "peer";
   readonly wakeTxQueueProcessor: Effect.Effect<void, never, R>;
-}) =>
+}): Effect.Effect<
+  AdmissionAck,
+  AdmissionRefusal,
+  AdmissionWriter | NodeConfig | Globals | R
+> =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
-    const reservation = yield* reserveAdmissionBacklogSlot({
-      maxRows: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-      maxBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-      bytes: normalized.txCanonicalCbor.length,
-    });
-    if (!reservation.reserved) {
-      yield* Metric.increment(TxAdmissionsDB.admissionBacklogRejectCounter);
-      return yield* Effect.fail(
-        new TxAdmissionsDB.TxAdmissionBacklogFullError({
-          backlog: reservation.backlog,
-          maxBacklog: reservation.maxBacklog,
-          unit: reservation.unit,
-          message:
-            reservation.unit === "bytes"
-              ? "Durable submission admission byte backlog is full; retry later"
-              : "Durable submission admission backlog is full; retry later",
-        }),
-      );
-    }
     const admissionWriter = yield* AdmissionWriter;
-    const admitted = yield* admissionWriter
-      .admitReserved({
-        txId: normalized.txId,
-        txCanonicalCbor: normalized.txCanonicalCbor,
-        submitSource,
-      })
-      .pipe(
-        Effect.onExit((exit) => {
-          if (Exit.isSuccess(exit)) {
-            return exit.value.kind === "new"
-              ? commitAdmissionBacklogSlot(reservation)
-              : releaseAdmissionBacklogSlot(reservation);
-          }
-          const failure = Option.getOrUndefined(
-            Cause.failureOption(exit.cause),
-          );
-          // A conflict or a full writer proves no row was inserted. A SqlError, interruption,
-          // or defect can be observed after PostgreSQL committed, so retain
-          // the slot conservatively until the next live-count refresh.
-          return admissionFailureDefinitelyDidNotInsert(failure)
-            ? releaseAdmissionBacklogSlot(reservation)
-            : commitAdmissionBacklogSlot(reservation);
-        }),
+    const txFullHash =
+      normalized.txFullHash ??
+      computeMidgardNativeTxFullHashFromCanonicalCbor(
+        normalized.txCanonicalCbor,
       );
-    if (admitted.kind === "new") yield* wakeTxQueueProcessor;
-    return admitted;
+    const known = admissionWriter.lookup(normalized.txId, txFullHash);
+    if (known._tag === "Duplicate") return known.ack;
+    if (known._tag === "Conflict") return yield* Effect.fail(known.error);
+
+    const nodeConfig = yield* NodeConfig;
+    const context = yield* Effect.context<Globals | R>();
+    // Reserving and registering run uninterruptibly, so a reserved slot is
+    // always either owned by the writer or released here.
+    return yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const reservation = yield* reserveAdmissionBacklogSlot({
+          maxRows: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+          maxBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+          bytes: normalized.txCanonicalCbor.length,
+        });
+        if (!reservation.reserved) {
+          yield* Metric.increment(TxAdmissionsDB.admissionBacklogRejectCounter);
+          return yield* Effect.fail(
+            new TxAdmissionsDB.TxAdmissionBacklogFullError({
+              backlog: reservation.backlog,
+              maxBacklog: reservation.maxBacklog,
+              unit: reservation.unit,
+              message:
+                reservation.unit === "bytes"
+                  ? "Durable submission admission byte backlog is full; retry later"
+                  : "Durable submission admission backlog is full; retry later",
+            }),
+          );
+        }
+        const release = releaseAdmissionBacklogSlot(reservation);
+        const ack = yield* admissionWriter
+          .admit({
+            txId: normalized.txId,
+            txCanonicalCbor: normalized.txCanonicalCbor,
+            txFullHash,
+            submitSource,
+            settle: (written) =>
+              (written
+                ? commitAdmissionBacklogSlot(reservation)
+                : release
+              ).pipe(Effect.provide(context)),
+            wakeOnCommit: wakeTxQueueProcessor.pipe(Effect.provide(context)),
+          })
+          .pipe(Effect.tapError(() => release));
+        if (ack.kind === "duplicate") yield* release;
+        return ack;
+      }),
+    );
   });
+
+/**
+ * Admits each checked tx of a batch in order (the peer batch route). One
+ * tx's refusal does not stop the others: each answers its own ack or
+ * refusal.
+ */
+export const admitCheckedTransactions = <R>({
+  candidates,
+  submitSource,
+  wakeTxQueueProcessor,
+}: {
+  readonly candidates: readonly AdmissionCandidate[];
+  readonly submitSource: "native" | "peer";
+  readonly wakeTxQueueProcessor: Effect.Effect<void, never, R>;
+}): Effect.Effect<
+  readonly Either.Either<AdmissionAck, AdmissionRefusal>[],
+  never,
+  AdmissionWriter | NodeConfig | Globals | R
+> =>
+  Effect.forEach(candidates, (normalized) =>
+    Effect.either(
+      admitCheckedTransaction({
+        normalized,
+        submitSource,
+        wakeTxQueueProcessor,
+      }),
+    ),
+  );

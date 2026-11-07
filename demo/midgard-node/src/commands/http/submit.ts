@@ -174,9 +174,9 @@ export const postSubmitHandler = <R>(
           }
           const normalized = checked.normalized;
 
-          // Return the durable work as a suspended effect so both ingress
-          // permits are released immediately after verification. PostgreSQL's
-          // direct/microbatch admission quotas remain the durable queue bound.
+          // Return the admission as a suspended effect so both ingress
+          // permits are released immediately after verification. Admission
+          // answers from memory: a 202 means accepted, not yet stored.
           return Effect.gen(function* () {
             const durableAdmissionStartedAt = Date.now();
             const admitted = yield* admitCheckedTransaction({
@@ -196,9 +196,9 @@ export const postSubmitHandler = <R>(
             const response = yield* HttpServerResponse.json(
               {
                 txId: normalized.txIdHex,
-                status: admitted.entry.status,
-                firstSeenAt: admitted.entry.first_seen_at.toISOString(),
-                lastSeenAt: admitted.entry.last_seen_at.toISOString(),
+                status: admitted.status,
+                firstSeenAt: admitted.firstSeenAt.toISOString(),
+                lastSeenAt: admitted.lastSeenAt.toISOString(),
                 duplicate: admitted.kind === "duplicate",
               },
               { status: admitted.kind === "new" ? 202 : 200 },
@@ -275,6 +275,20 @@ export const postSubmitHandler = <R>(
           );
         }),
       ),
+      Effect.catchTag("AdmissionWriterStalledError", (e) =>
+        Effect.gen(function* () {
+          yield* Metric.increment(submitQueueOfferFailureCounter);
+          yield* recordLatency();
+          return yield* HttpServerResponse.json(
+            {
+              error: "Durable submission admission writes are stalled",
+              oldestPendingAgeMs: e.oldestPendingAgeMs,
+              stallMs: e.stallMs,
+            },
+            SUBMIT_UNAVAILABLE,
+          );
+        }),
+      ),
       Effect.catchTag("AdmissionWriterShutdownError", (e) =>
         Effect.gen(function* () {
           yield* Metric.increment(submitQueueOfferFailureCounter);
@@ -288,17 +302,6 @@ export const postSubmitHandler = <R>(
               ),
             },
             SUBMIT_UNAVAILABLE,
-          );
-        }),
-      ),
-      Effect.catchTag("DatabaseError", (e) =>
-        Effect.gen(function* () {
-          yield* recordLatency();
-          return yield* failWith500(
-            "POST",
-            "submit",
-            e.cause,
-            "durable transaction admission failed",
           );
         }),
       ),

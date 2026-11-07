@@ -78,7 +78,7 @@ SHA-256 of `"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id ||
 body`. A missing or invalid signature returns 401 and a key outside the
 node's on-chain active operator set returns 403. Transactions pass the
 `/submit` checks and are admitted with source `peer`; `/peer/inventory`
-answers the ids the node has no admission row for.
+answers the ids the node neither holds pending nor has an admission row for.
 
 `/tx-status` answers `committed` once a block includes the transaction, with
 that block's `headerHash`, and `committedMeaning` says how the node knows:
@@ -130,16 +130,34 @@ burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
 The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`) and by payload
 bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`). Both are checked against an
 in-memory gauge before the write, so a full backlog answers 503 with no
-database work, a resubmitted duplicate included. The writer in front of
-Postgres also has a row and a 64 MiB byte bound and refuses with 503 at once
-when either is full, instead of holding the request. `/readyz` reports
+database work, a resubmitted duplicate included. `/submit` and `/peer/txs`
+answer from memory: a 202 means the node accepted the transaction, not that it
+is stored. The admission writer holds each accepted transaction in a bounded
+pending set and writes it to Postgres in group commits after the answer, so a
+node crash loses the transactions it acknowledged since its last commit
+(clients that need certainty resubmit until `/tx-status` shows the tx). A
+graceful stop gives the writer ten seconds to write what it holds and logs the
+id of every transaction it could not write. A duplicate of a pending or
+recently written transaction answers 200 without a database read; its `status`
+is the one the node last wrote, so read `/tx-status` for the current one. The
+pending set has a row and a 64 MiB byte bound and refuses with 503 at once
+when either is full, instead of holding the request. When its oldest
+transaction has waited longer than 30 seconds for Postgres, `/submit` and
+`/peer/txs` answer 503 and `/readyz` reports
+`admission_writer_stalled:<oldestPendingAgeMs>:<stallMs>`; both clear by
+themselves once the writes go through. A row Postgres refuses outright is
+dropped, counted in `admission_write_poison_total` and logged, so it cannot
+block the rows behind it; its transaction then reads as not found. `/readyz` reports
 `queue_depth_exceeded` once the backlog passes 95 % of
 `MAX_DURABLE_ADMISSION_BACKLOG`, so load balancers drain the node just before
 its backlog fills.
 The transaction bytes leave the admission tables at the verdict: acceptance
 copies them into the mempool and both verdicts delete the payload row in the
-same transaction. A duplicate is recognized by its full hash on the admission
-row, so the same id with different witnesses still answers 409. Verdict rows
+same transaction. A duplicate is recognized by its full hash, so the same id
+with different witnesses answers 409 while the first version is pending or
+recently written. A variant that only the database still holds is answered 202
+and resolved after the answer: the stored version stays, and
+`admission_write_stored_variant_total` counts it. Verdict rows
 are deleted `ADMISSION_TERMINAL_RETENTION_MS` after the verdict (default one
 hour; `0` keeps them) unless the transaction is still pending or its rejection
 is retained; a resubmission after that is admitted and validated again.

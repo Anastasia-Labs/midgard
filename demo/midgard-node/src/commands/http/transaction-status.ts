@@ -2,12 +2,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Effect, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import { publicTxCborByHash } from "../../database/http-read-lookups.js";
 import { readHttpTxStatusFacts } from "../../database/http-tx-status-facts.js";
 import { TxAdmissionsDB } from "../../database/index.js";
-import { Globals } from "../../services/index.js";
+import { AdmissionWriter, Globals } from "../../services/index.js";
 import { publicReadDataLimitResponse } from "../listen-http-read.js";
 import {
   includePrivateHttpDiagnosticDetails,
@@ -71,6 +71,30 @@ export const getTxStatusHandler = Effect.gen(function* () {
   }
 
   const globals = yield* Globals;
+  // A tx the admission writer still holds has no row yet: it is queued.
+  // Checked before the database read, so an acknowledged tx never reads as
+  // not_found while its write is pending.
+  const writer = yield* Effect.serviceOption(AdmissionWriter);
+  if (
+    Option.isSome(writer) &&
+    writer.value.pendingSince(txHashBytes) !== undefined
+  ) {
+    return yield* HttpServerResponse.json(
+      publicTxStatusPresentation(
+        resolveTxStatus({
+          txIdHex: txHashParam as string,
+          rejection: null,
+          admissionStatus: "queued",
+          inImmutable: false,
+          inMempool: false,
+          inProcessedMempool: false,
+          localFinalizationPending: yield* Ref.get(
+            globals.LOCAL_FINALIZATION_PENDING,
+          ),
+        }),
+      ),
+    );
+  }
   const facts = yield* readHttpTxStatusFacts(
     txHashBytes,
     includePrivateHttpDiagnosticDetails(),
@@ -173,6 +197,14 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
   const txIds = txIdBytes as Buffer[];
   const sql = yield* SqlClient;
   const globals = yield* Globals;
+  const writer = yield* Effect.serviceOption(AdmissionWriter);
+  const pendingTxIds = new Set(
+    Option.isSome(writer)
+      ? normalized.filter(
+          (_, index) => writer.value.pendingSince(txIds[index]!) !== undefined,
+        )
+      : [],
+  );
   const [
     rejectionRows,
     admissionRows,
@@ -221,9 +253,14 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
       },
     ]),
   );
-  const admissionStatusByTxId = new Map(
+  const admissionStatusByTxId = new Map<string, TxAdmissionsDB.Status>(
     admissionRows.map((row) => [row.tx_hash, row.status]),
   );
+  for (const txHash of pendingTxIds) {
+    if (!admissionStatusByTxId.has(txHash)) {
+      admissionStatusByTxId.set(txHash, "queued");
+    }
+  }
   const immutableTxIds = new Set(immutableRows.map((row) => row.tx_hash));
   const mempoolTxIds = new Set(mempoolRows.map((row) => row.tx_hash));
   const processedMempoolTxIds = new Set(

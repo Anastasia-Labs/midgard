@@ -181,6 +181,11 @@ export type ReservedAdmissionRequest = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
+  /** The full hash of `txCanonicalCbor`, when the caller already has it. */
+  readonly txFullHashV1?: Buffer;
+  /** Submissions this request stands for (default 1): the admission writer
+   * folds duplicates that arrive while the tx waits for its write. */
+  readonly requestCount?: number;
 };
 
 export type ReservedAdmissionOutcome =

@@ -1,12 +1,4 @@
-import {
-  Context,
-  Data,
-  Deferred,
-  Effect,
-  Exit,
-  Metric,
-  MetricBoundaries,
-} from "effect";
+import { Cause, Context, Data, Effect, Metric, MetricBoundaries } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -19,6 +11,20 @@ export const ADMISSION_WRITE_QUEUE_CAPACITY = 20_000;
 
 /** Payload bytes the writer may hold across all its stages (64 MiB). */
 export const ADMISSION_WRITE_QUEUE_BYTES = 64 * 1024 * 1024;
+
+/** A pending tx older than this means the writer cannot flush: the node
+ * turns not-ready and admission answers 503 until writes succeed again. */
+export const ADMISSION_WRITE_STALL_MS = 30_000;
+
+/** How long a graceful stop waits for the pending set to flush. */
+export const ADMISSION_WRITE_SHUTDOWN_FLUSH_MS = 10_000;
+
+/** Backoff between attempts of a batch that failed transiently. */
+export const ADMISSION_WRITE_RETRY_BASE_MS = 50;
+export const ADMISSION_WRITE_RETRY_MAX_MS = 5_000;
+
+/** One batch attempt longer than this is cancelled and retried. */
+export const ADMISSION_WRITE_ATTEMPT_TIMEOUT_MS = 30_000;
 
 export class AdmissionWriterShutdownError extends Data.TaggedError(
   "AdmissionWriterShutdownError",
@@ -40,34 +46,101 @@ export class AdmissionWriterFullError extends Data.TaggedError(
   readonly capacity: number;
 }> {}
 
-export type AdmissionWriteError =
-  | DatabaseError
+/**
+ * The oldest pending tx has waited longer than the stall limit: Postgres is
+ * not taking the writes. Admission refuses until the pending set flushes.
+ */
+export class AdmissionWriterStalledError extends Data.TaggedError(
+  "AdmissionWriterStalledError",
+)<{
+  readonly message: string;
+  readonly oldestPendingAgeMs: number;
+  readonly stallMs: number;
+}> {}
+
+/** Why the writer refused to take a tx; it holds nothing for it. */
+export type AdmissionWriteRefusal =
   | TxAdmissionsDB.TxAdmissionConflictError
-  | AdmissionWriterShutdownError
-  | AdmissionWriterFullError;
+  | AdmissionWriterFullError
+  | AdmissionWriterStalledError
+  | AdmissionWriterShutdownError;
+
+/** A checked tx handed to the writer. */
+export type AdmissionWriteRequest = {
+  readonly txId: Buffer;
+  readonly txCanonicalCbor: Buffer;
+  readonly txFullHash: Buffer;
+  readonly submitSource: "native" | "peer";
+  /** Settles the caller's backlog reservation once the writer knows whether
+   * it wrote a new row. The writer owns it only after answering `new`. */
+  readonly settle: (written: boolean) => Effect.Effect<void>;
+  /** Run after a batch holding this tx commits (the tx-queue wake-up). */
+  readonly wakeOnCommit: Effect.Effect<void>;
+};
+
+/** What the writer answers for a tx it took or already knows. */
+export type AdmissionAck = {
+  /** `new`: the tx entered the pending set (202). `duplicate`: the same
+   * bytes are pending or were recently written (200). */
+  readonly kind: "new" | "duplicate";
+  readonly txIdHex: string;
+  /** `queued` while pending; for a recent write, the admission status when
+   * the node wrote it (read `/tx-status` for the current one). */
+  readonly status: TxAdmissionsDB.Status;
+  readonly firstSeenAt: Date;
+  readonly lastSeenAt: Date;
+};
+
+/** A known tx id: the duplicate answer, or a conflict when the bytes differ. */
+export type AdmissionLookup =
+  | { readonly _tag: "Unknown" }
+  | { readonly _tag: "Duplicate"; readonly ack: AdmissionAck }
+  | {
+      readonly _tag: "Conflict";
+      readonly error: TxAdmissionsDB.TxAdmissionConflictError;
+    };
+
+export type AdmissionWriterHealth = {
+  readonly accepting: boolean;
+  readonly pending: number;
+  readonly oldestPendingAgeMs: number;
+  readonly stallMs: number;
+  /** The oldest pending tx is older than `stallMs`. */
+  readonly stalled: boolean;
+};
 
 export type AdmissionWriteItem = {
-  readonly request: TxAdmissionsDB.ReservedAdmissionRequest;
+  readonly request: AdmissionWriteRequest;
+  readonly txIdHex: string;
+  /** Registration order, for `flush`. */
+  readonly seq: number;
   readonly lane: number;
-  readonly deferred: Deferred.Deferred<
-    TxAdmissionsDB.AdmitResult,
-    AdmissionWriteError
-  >;
+  readonly registeredAtMs: number;
+  lastSeenAtMs: number;
+  requestCount: number;
   phase: "registered" | "collected" | "inflight" | "completing";
   completed: boolean;
 };
 
+/** What became of one pending tx's write. */
+export type AdmissionItemResult =
+  | {
+      readonly _tag: "Written";
+      readonly outcome: TxAdmissionsDB.ReservedAdmissionOutcome;
+    }
+  | { readonly _tag: "Poisoned"; readonly cause: Cause.Cause<unknown> };
+
 export type AdmissionCompletion = {
   readonly items: readonly AdmissionWriteItem[];
-  readonly exit: Exit.Exit<
-    readonly TxAdmissionsDB.ReservedAdmissionOutcome[],
-    DatabaseError
-  >;
+  readonly results: readonly AdmissionItemResult[];
 };
 
 export type AdmissionWriterStats = {
   readonly accepting: boolean;
   readonly pending: number;
+  /** Txs dropped after a non-transient write failure of their own row. */
+  readonly poisoned: number;
+  readonly recentTxIds: number;
   readonly capacity: number;
   readonly capacityUsed: number;
   readonly capacityBytes: number;
@@ -105,10 +178,26 @@ export type AdmissionWriterShardStats = {
   };
 };
 
+/**
+ * The in-memory pending set in front of Postgres (design D9). `admit` answers
+ * from memory and never waits for the database: the tx is written by a
+ * background group commit. See `commands/http/transaction-admission.ts` for
+ * the admission path built on it.
+ */
 export type AdmissionWriterService = {
-  readonly admitReserved: (
-    request: TxAdmissionsDB.ReservedAdmissionRequest,
-  ) => Effect.Effect<TxAdmissionsDB.AdmitResult, AdmissionWriteError>;
+  /** Where the tx id stands in memory: pending, recently written, or
+   * unknown. No database read. */
+  readonly lookup: (txId: Buffer, txFullHash: Buffer) => AdmissionLookup;
+  /** Takes the tx into the pending set, or refuses it. On `new` the writer
+   * owns `request.settle`; on a duplicate or a refusal the caller does. */
+  readonly admit: (
+    request: AdmissionWriteRequest,
+  ) => Effect.Effect<AdmissionAck, AdmissionWriteRefusal>;
+  /** Whether `txId` is waiting for its write; its first-seen time if so. */
+  readonly pendingSince: (txId: Buffer) => Date | undefined;
+  readonly health: Effect.Effect<AdmissionWriterHealth>;
+  /** Waits until every tx pending when called has left the pending set. */
+  readonly flush: Effect.Effect<void>;
   readonly stats: Effect.Effect<AdmissionWriterStats>;
 };
 
@@ -120,8 +209,23 @@ export class AdmissionWriter extends Context.Tag("AdmissionWriter")<
 export type AdmissionWriterOptions = {
   readonly shardCount: number;
   readonly batchMaxRows: number;
+  /** Row bound of the pending set (the unpersisted part). */
   readonly queueCapacity: number;
+  /** Payload byte bound of the pending set. */
   readonly queueBytes: number;
+  readonly stallMs?: number;
+  readonly shutdownFlushMs?: number;
+  readonly retryBaseMs?: number;
+  readonly retryMaxMs?: number;
+  readonly attemptTimeoutMs?: number;
+  readonly recentTxIdCapacity?: number;
+  /**
+   * How long a recently written id answers duplicates from memory; 0 or
+   * absent keeps it until evicted. The node sets it to
+   * `ADMISSION_TERMINAL_RETENTION_MS`: past that age the row may have been
+   * pruned, and a resubmission must reach the database to be admitted again.
+   */
+  readonly recentTxIdMaxAgeMs?: number;
 };
 
 export type AdmissionWriterTestHooks = {
@@ -195,6 +299,41 @@ export const admissionWriteCapacityUsedGauge = Metric.gauge(
   { description: "Admission writer permits held across all pipeline stages" },
 );
 
+export const admissionWritePoisonCounter = Metric.counter(
+  "admission_write_poison_total",
+  {
+    description:
+      "Acknowledged txs dropped because their own row failed a non-transient write",
+    incremental: true,
+  },
+);
+
+export const admissionWriteRetryCounter = Metric.counter(
+  "admission_write_retry_total",
+  {
+    description: "Admission batch attempts retried after a transient failure",
+    incremental: true,
+  },
+);
+
+export const admissionWriteLostCounter = Metric.counter(
+  "admission_write_lost_total",
+  {
+    description:
+      "Acknowledged txs still unwritten when a graceful stop gave up waiting",
+    incremental: true,
+  },
+);
+
+export const admissionWriteStoredVariantCounter = Metric.counter(
+  "admission_write_stored_variant_total",
+  {
+    description:
+      "Acknowledged txs whose id was already stored with other witnesses; the stored version stays",
+    incremental: true,
+  },
+);
+
 export const admissionWriteBytesUsedGauge = Metric.gauge(
   "admission_write_bytes_used",
   { description: "Payload bytes held across all admission writer stages" },
@@ -210,6 +349,27 @@ export const validateOptions = (options: AdmissionWriterOptions): void => {
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new Error(`admission writer ${name} must be a positive integer`);
     }
+  }
+  for (const [name, value] of Object.entries({
+    stallMs: options.stallMs,
+    shutdownFlushMs: options.shutdownFlushMs,
+    retryBaseMs: options.retryBaseMs,
+    retryMaxMs: options.retryMaxMs,
+    attemptTimeoutMs: options.attemptTimeoutMs,
+    recentTxIdCapacity: options.recentTxIdCapacity,
+  })) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      throw new Error(`admission writer ${name} must be a positive integer`);
+    }
+  }
+  if (
+    options.recentTxIdMaxAgeMs !== undefined &&
+    (!Number.isSafeInteger(options.recentTxIdMaxAgeMs) ||
+      options.recentTxIdMaxAgeMs < 0)
+  ) {
+    throw new Error(
+      "admission writer recentTxIdMaxAgeMs must be a non-negative integer",
+    );
   }
   if (options.queueCapacity < options.shardCount) {
     throw new Error(

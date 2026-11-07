@@ -45,7 +45,10 @@ import {
   PEER_MEDIA_TYPE,
   peerAuthHeaders,
 } from "../../src/l2-peer/protocol.js";
-import { AdmissionWriterLive } from "../../src/services/admission-writer.js";
+import {
+  AdmissionWriter,
+  AdmissionWriterLive,
+} from "../../src/services/admission-writer.js";
 import { Database } from "../../src/services/database.js";
 import type { HttpRateLimitPolicy } from "../../src/services/http-rate-limits.js";
 import {
@@ -315,9 +318,12 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
       ? runtime.runFork(l2TxPeerForwarderFiber)
       : undefined;
 
+  // `/submit` and `/peer/txs` answer before the row is written: every read
+  // of the admission table first waits for what the writer acknowledged.
   const admissions = () =>
     run(
       Effect.gen(function* () {
+        yield* (yield* AdmissionWriter).flush;
         const sql = yield* SqlClient.SqlClient;
         return yield* sql<{
           tx_id: Buffer;
@@ -343,6 +349,7 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
   const drain = async () => {
     const deadline = performance.now() + ADMISSION_SETTLE_MS;
     for (;;) {
+      await run(Effect.flatMap(AdmissionWriter, (writer) => writer.flush));
       await run(txQueueProcessorDrainOnce());
       const open = (await admissions()).filter(
         ({ status }) => status === "queued" || status === "validating",

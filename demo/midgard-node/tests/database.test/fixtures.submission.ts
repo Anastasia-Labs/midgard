@@ -59,6 +59,9 @@ export const submitThroughRouter = <R>(
   options: {
     readonly contentType?: string;
     readonly consensusProfile?: MidgardConsensusProfile;
+    /** Wait for the admission writer to write what it acknowledged
+     * (default). `false` returns as soon as the handler answers. */
+    readonly flush?: boolean;
   } = {},
 ): Effect.Effect<
   SubmitHttpResult,
@@ -95,6 +98,9 @@ export const submitThroughRouter = <R>(
         ).modify({ remoteAddress: "127.0.0.1" }),
       ),
     );
+    // The handler answers from memory; wait for the admission writer's
+    // group commit so callers can read the rows it acknowledged.
+    if (options.flush !== false) yield* (yield* AdmissionWriter).flush;
     const webResponse = HttpServerResponse.toWeb(response);
     const body = yield* Effect.tryPromise({
       try: () => webResponse.json() as Promise<Record<string, unknown>>,

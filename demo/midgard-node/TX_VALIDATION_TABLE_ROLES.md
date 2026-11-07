@@ -882,11 +882,17 @@ timestamps, and rejection metadata consistency
 
 ### Writers
 
-`/submit` writes admissions through `TxAdmissionsDB.admit`
-([listen-router.ts](src/commands/listen-router.ts)).
-`admit` is idempotent for the same tx id and same normalized bytes, increments
-`request_count` on duplicates, and rejects same tx id with different bytes
-([txAdmissions.ts](src/database/txAdmissions.ts)).
+`/submit` and `/peer/txs` hand each checked transaction to the admission
+writer ([admission-writer.ts](src/services/admission-writer.ts)) and answer
+before the row exists: the writer keeps it in a bounded in-memory pending set
+and writes it with `TxAdmissionsDB.admitReservedBatch` in per-lane group
+commits. A crash loses the acknowledged rows not yet committed. The batch
+insert is idempotent for the same tx id and full hash (it adds the request
+count the writer gathered), keeps the stored row for the same tx id with
+different bytes, retries transient failures, and drops a row that fails on
+its own (`admission_write_poison_total`)
+([txAdmissions.ts](src/database/txAdmissions.ts)). Duplicates answered from
+the pending set or the writer's recent-id cache never reach this table.
 
 The tx queue processor:
 
