@@ -97,6 +97,28 @@ Each of `submit`, `status`, and `awaitStatus` has `Safe` and `Program` variants.
 `Program` form returns a lazy `Effect` that performs no work until run. See
 [Public API](/docs/sdk/lucid-midgard/public-api).
 
+## Lost and refused submissions
+
+The node answers `/submit` from memory: a `202` means it accepted the
+transaction, not that it stored it, and a node crash can lose it.
+`MidgardNodeProvider` keeps the bytes of each transaction the node
+acknowledged until its status settles (`accepted`, `pending_commit`,
+`awaiting_local_recovery`, `committed` or `rejected`), for at most 1,024
+transactions, oldest dropped first. When `/tx-status` reports `not_found` for
+one of them, `getTxStatus`, and so `status()` and `awaitStatus()`, resubmits it
+once and reads the status again. A resubmission refused with a retryable error
+(a `503` or a transport failure) is tried again on the next read; any other
+refusal is thrown. The provider only resubmits what it submitted itself, in
+the same process.
+
+A `409` with `E_INPUT_SPENT` means an input of the transaction is spent, or
+claimed by another pending transaction. The transaction may itself be the one
+that spent it, so `submitTx` reads `/tx-status` first. If the node holds the
+transaction, the submit resolves as a duplicate (`httpStatus: 200`,
+`duplicate: true`) with its admission status: `queued`, `validating`, or
+`accepted` for anything from acceptance on. Otherwise it throws the `409` as a
+non-retryable `ProviderHttpError`. A `503` stays retryable.
+
 ## Rejections
 
 When the node rejects a transaction, `lucid-midgard` preserves the node's stable reject
