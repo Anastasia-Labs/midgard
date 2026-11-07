@@ -33,8 +33,6 @@ import { promisify } from "node:util";
 
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { HttpRouter } from "@effect/platform";
-import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Logger, LogLevel, ManagedRuntime } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -47,12 +45,9 @@ import {
   cpuShares,
   sampleProcessCpu,
 } from "../../scripts/submit-ingress-load.report.mjs";
-import { postSubmitHandler } from "../../src/commands/http/submit.js";
+import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
 import { checkSubmittedTransaction } from "../../src/commands/http/transaction-admission.js";
-import {
-  createHttpIngress,
-  withHttpIngress,
-} from "../../src/commands/listen-http-ingress.js";
+import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
 import { Globals, NodeConfig } from "../../src/services/index.js";
@@ -128,18 +123,13 @@ describe("submit main-thread cost (M2)", () => {
           Logger.minimumLogLevel(LogLevel.Info),
         ),
       );
-      const app = HttpRouter.empty.pipe(
-        HttpRouter.post("/submit", postSubmitHandler(false, Effect.void)),
-      );
       const handler = await runtime.runPromise(
-        NodeHttpServer.makeHandler(
-          withHttpIngress(
-            app,
-            createHttpIngress({
-              policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
-            }),
-          ),
-        ),
+        makeSubmitRequestHandler({
+          wakeTxQueueProcessor: Effect.void,
+          ingress: createHttpIngress({
+            policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
+          }),
+        }),
       );
       const server = createServer((request, response) =>
         handler(request, response),

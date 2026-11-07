@@ -15,7 +15,7 @@ export {
   PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "./http/pipeline-status.js";
-export { buildListenRouter, buildSubmitRouter } from "./http/router.js";
+export { buildListenRouter } from "./http/router.js";
 export {
   readSubmitBodyWithProtocolLimit,
   resolveSubmitIngressReservation,
@@ -24,9 +24,10 @@ export {
   withSubmitIngressPermit,
 } from "./http/submission-capacity.js";
 export {
-  submitBodyReadDurationTimer,
-  submitDurableAdmissionDurationTimer,
   submitHandlerLatencyTimer,
-  submitNormalizeDurationTimer,
-  submitResponseDurationTimer,
+  submitRefusalCounter,
 } from "./http/submission-metrics.js";
+export {
+  makeSubmitRequestHandler,
+  type SubmitRequestHandler,
+} from "./http/submit.js";

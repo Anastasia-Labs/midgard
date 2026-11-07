@@ -84,6 +84,7 @@ import {
   remainingTxCount,
   sleep,
   snapshotCursorPositions,
+  sumMetricSeries,
   summarizeScheduleSlip,
   takeNextTx,
   updateFramedHash,
@@ -891,10 +892,6 @@ const metricSpecs = {
   validationPhaseBDurationSum: ["validation_phase_b_duration_sum"],
   submitHandlerLatencyCount: ["submit_handler_latency_count"],
   submitHandlerLatencySum: ["submit_handler_latency_sum"],
-  submitQueueOfferFailure: [
-    "submit_queue_offer_failure_count_total",
-    "submit_queue_offer_failure_count",
-  ],
   commitBlock: ["commit_block_count_total", "commit_block_count"],
   commitBlockTx: ["commit_block_tx_count_total", "commit_block_tx_count"],
   commitBlockNumTx: ["commit_block_num_tx_count"],
@@ -937,6 +934,10 @@ const readCounters = async () => {
       counters.missingMetrics.push({ key, names });
     }
   }
+  counters.submitRefusal = sumMetricSeries(text, [
+    "submit_refusal_count_total",
+    "submit_refusal_count",
+  ]);
   counters.histograms.submitHandlerLatency = extractHistogram(
     text,
     "submit_handler_latency",

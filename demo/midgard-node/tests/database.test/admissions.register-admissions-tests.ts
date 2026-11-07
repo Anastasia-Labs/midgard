@@ -127,7 +127,6 @@ export const registerAdmissionsTests = () => {
             const submitProof = (body: Buffer, contentType: string) =>
               submitThroughRouter(body, Effect.void, {
                 contentType,
-                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
               }).pipe(
                 Effect.provideService(SqlClient.SqlClient, admissionSql),
                 Effect.provideService(NodeConfig, nodeConfig),

@@ -1,3 +1,6 @@
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
@@ -14,24 +17,20 @@ import {
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import {
-  MIDGARD_CONSENSUS_PROFILE,
-  type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile";
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { postSubmitHandler } from "../../src/commands/http/submit.js";
+import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
+import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { MempoolDB, TxAdmissionsDB } from "../../src/database/index.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { BatchSql } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
+import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.js";
-import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.js";
 import { ValidationPool } from "../../src/services/validation-pool.js";
 import { WriteBehind } from "../../src/services/write-behind.js";
 import { makeCardanoSignedMapOutputTxBytes } from "../helpers/cardano-native-fixtures.js";
@@ -53,12 +52,65 @@ export type TxQueueWakeRequirements =
   | ValidationPool
   | MempoolLedgerCache;
 
+/** The fixture isolates the admission contract, so it sets no rate limits. */
+const fixtureIngress = createHttpIngress({
+  policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
+});
+
+/** One POST of `body` to `port`, on a connection of its own. */
+const postSubmit = (
+  port: number,
+  body: Buffer,
+  contentType: string,
+): Promise<{
+  readonly status: number;
+  readonly body: Record<string, unknown>;
+  readonly retryAfter?: string;
+}> =>
+  new Promise((resolve, reject) => {
+    const outgoing = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/submit",
+        method: "POST",
+        agent: false,
+        headers: {
+          "content-type": contentType,
+          "content-length": body.length.toString(),
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.once("error", reject);
+        response.once("end", () => {
+          const retryAfter = response.headers["retry-after"];
+          const parsed = JSON.parse(
+            Buffer.concat(chunks).toString("utf8"),
+          ) as Record<string, unknown>;
+          const status = response.statusCode ?? 0;
+          resolve(
+            retryAfter === undefined
+              ? { status, body: parsed }
+              : { status, body: parsed, retryAfter },
+          );
+        });
+      },
+    );
+    outgoing.once("error", reject);
+    outgoing.end(body);
+  });
+
+/**
+ * Submits `requestBody` to the raw `/submit` handler, built from the
+ * services in context, over a real HTTP connection.
+ */
 export const submitThroughRouter = <R>(
   requestBody: Buffer,
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
   options: {
     readonly contentType?: string;
-    readonly consensusProfile?: MidgardConsensusProfile;
     /** Wait for the admission writer to write what it acknowledged
      * (default). `false` returns as soon as the handler answers. */
     readonly flush?: boolean;
@@ -69,47 +121,35 @@ export const submitThroughRouter = <R>(
   R | SqlClient.SqlClient | NodeConfig | Globals | AdmissionWriter
 > =>
   Effect.gen(function* () {
-    // This fixture isolates the real durable-admission handler contract. It
-    // does not claim the transport quota layer, which real socket suites cover.
-    const response = yield* postSubmitHandler(
-      undefined,
+    const handler = yield* makeSubmitRequestHandler({
       wakeTxQueueProcessor,
-    ).pipe(
-      Effect.provideService(
-        ContractDeploymentIdentity,
-        ContractDeploymentIdentity.make({
-          kind: "derived",
-          consensusProfile:
-            options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
+      ingress: fixtureIngress,
+    });
+    const result = yield* Effect.acquireUseRelease(
+      Effect.async<ReturnType<typeof createServer>>((resume) => {
+        const server = createServer(handler);
+        server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)));
+      }),
+      (server) =>
+        Effect.tryPromise({
+          try: () =>
+            postSubmit(
+              (server.address() as AddressInfo).port,
+              requestBody,
+              options.contentType ?? "application/vnd.midgard.v1+cbor",
+            ),
+          catch: (cause) => cause,
         }),
-      ),
-      Effect.provideService(
-        HttpServerRequest.HttpServerRequest,
-        HttpServerRequest.fromWeb(
-          new Request("http://midgard.test/submit", {
-            method: "POST",
-            headers: {
-              "content-type":
-                options.contentType ?? "application/vnd.midgard.v1+cbor",
-              "content-length": requestBody.length.toString(),
-            },
-            body: new Uint8Array(requestBody),
-          }),
-        ).modify({ remoteAddress: "127.0.0.1" }),
-      ),
+      (server) =>
+        Effect.async<void>((resume) => {
+          server.closeAllConnections();
+          server.close(() => resume(Effect.void));
+        }),
     );
     // The handler answers from memory; wait for the admission writer's
     // group commit so callers can read the rows it acknowledged.
     if (options.flush !== false) yield* (yield* AdmissionWriter).flush;
-    const webResponse = HttpServerResponse.toWeb(response);
-    const body = yield* Effect.tryPromise({
-      try: () => webResponse.json() as Promise<Record<string, unknown>>,
-      catch: (cause) => cause,
-    });
-    const retryAfter = webResponse.headers.get("retry-after");
-    return retryAfter === null
-      ? { status: webResponse.status, body }
-      : { status: webResponse.status, body, retryAfter };
+    return result;
   });
 
 export const makeNativeSubmitTx = (): {

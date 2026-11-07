@@ -120,7 +120,10 @@ create a fresh signed request if the operation is still required.
 JSON bodies are at most 64 KiB. A proof submission or evaluation body is one V1
 envelope around at most one largest transaction: 295,048 B (the transaction bound
 plus seven envelope bytes); a larger declared length gets 413 before the body is
-read, and a `/submit` without `Content-Length` gets 411. A `/peer/txs` body holds at most one largest transaction
+read, and a `/submit` without `Content-Length` gets 411. Every `/submit` refusal
+is counted in `submit_refusal_count{reason}` on `/metrics`; its log line is
+sampled to the first refusal of each reason per second, which also says how many
+went unlogged since the previous line. A `/peer/txs` body holds at most one largest transaction
 (about 288 KiB) and a `/peer/inventory` body at most 20,000 ids (about 664 KiB); peer
 bodies are read under an ingress pool of their own, apart from `/submit`'s, and a
 peer body of unknown length holds only the larger of those two bounds against the

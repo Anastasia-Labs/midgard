@@ -19,6 +19,7 @@ import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-ac
 import {
   refreshAdmissionBacklogGauge,
   refreshAdmissionBacklogGaugeOnStartup,
+  requestTxQueueProcessorWakeup,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
 import {
@@ -54,7 +55,10 @@ import {
   runStartupProviderStepWithRetry,
 } from "./listen.retained-payload-server-thread.js";
 import type { StartupHttp } from "./listen.startup-http.js";
-import { buildListenRouter } from "./listen-router.js";
+import {
+  buildListenRouter,
+  makeSubmitRequestHandler,
+} from "./listen-router.js";
 import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
 import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
 import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-ledger-signature-verifier.js";
@@ -290,7 +294,12 @@ export const runNode = (
       );
 
     const publishHttp = startup
-      .publish(buildListenRouter(withMonitoring))
+      .publish(
+        buildListenRouter(),
+        makeSubmitRequestHandler({
+          wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
+        }),
+      )
       .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
     // Membership comes from the follower's operator-set hook; no duty waits

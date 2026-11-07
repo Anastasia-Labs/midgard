@@ -1,30 +1,45 @@
-import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
-import { Duration, Effect, Metric, Option } from "effect";
+/**
+ * `POST /submit` as a raw Node request handler, outside the Effect router
+ * (design D3). It runs the ingress checks every route runs
+ * (`admitHttpRequest`), reads the body under the submit ingress permits,
+ * checks it and hands the checked tx to `admitCheckedTransaction`. Every
+ * other route stays on the Effect stack.
+ *
+ * A refusal costs a counter increment by reason; its log line is sampled to
+ * the first per reason per second. The handler records one latency
+ * histogram and runs no Effect before admission.
+ */
+import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { NodeConfig } from "../../services/index.js";
+import { Cause, Effect, Exit, Option, Runtime } from "effect";
+
+import { AdmissionWriter, Globals, NodeConfig } from "../../services/index.js";
+import {
+  admitHttpRequest,
+  type createHttpIngress,
+  httpIngressFor,
+  type HttpRequestHeaders,
+  keepsConnection,
+} from "../listen-http-ingress.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
-import { failWith500 } from "../listen-response.js";
 import {
-  readSubmitBodyWithProtocolLimit,
+  isValidSubmitIngressPermit,
   requestMediaType,
-  resolveSubmitIngressReservation,
   SUBMIT_HTTP_BODY_MAX_BYTES,
+  tryTakeSubmitIngressPermit,
   V1_SUBMISSION_MEDIA_TYPE,
-  withSubmitIngressPermit,
 } from "./submission-capacity.js";
+import { checkSubmissionBody } from "./submission-check.js";
 import {
-  submitBodyReadDurationTimer,
-  submitDurableAdmissionDurationTimer,
-  submitHandlerLatencyTimer,
-  submitNormalizeDurationTimer,
-  submitQueueOfferFailureCounter,
-  submitResponseDurationTimer,
-  txCounter,
+  createRefusalLogSampler,
+  recordSubmitAdmitted,
+  recordSubmitLatency,
+  recordSubmitRefusal,
 } from "./submission-metrics.js";
 import {
+  type AdmissionRefusal,
   admitCheckedTransaction,
-  checkSubmittedTransaction,
+  type CheckedSubmittedTx,
 } from "./transaction-admission.js";
 
 /**
@@ -33,280 +48,343 @@ import {
  */
 export const SUBMIT_RETRY_AFTER_SECONDS = 5;
 
-const SUBMIT_UNAVAILABLE = {
-  status: 503,
-  headers: { "retry-after": SUBMIT_RETRY_AFTER_SECONDS.toString() },
+const RETRY_LATER: Readonly<Record<string, string>> = {
+  "retry-after": SUBMIT_RETRY_AFTER_SECONDS.toString(),
+};
+
+export type SubmitRequestHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => void;
+
+/** Whether the raw handler answers `request`. */
+export const isSubmitRequest = (request: IncomingMessage): boolean =>
+  request.method === "POST" &&
+  (request.url === "/submit" || request.url?.startsWith("/submit?") === true);
+
+type Answer = {
+  readonly status: number;
+  readonly body: Readonly<Record<string, unknown>>;
+  readonly headers?: Readonly<Record<string, string>>;
+};
+
+/** An admission refusal's counter reason and HTTP answer. */
+const admissionRefusal = (
+  refusal: AdmissionRefusal,
+): { readonly reason: string; readonly answer: Answer } => {
+  switch (refusal._tag) {
+    case "TxAdmissionConflictError":
+      return {
+        reason: "tx_id_bytes_conflict",
+        answer: {
+          status: 409,
+          body: {
+            error: "E_TX_ID_BYTES_CONFLICT",
+            message: publicSubmissionDiagnostic(
+              refusal.message,
+              "E_TX_ID_BYTES_CONFLICT",
+            ),
+            txId: refusal.txIdHex,
+          },
+        },
+      };
+    case "TxAdmissionBacklogFullError":
+      return {
+        reason: "admission_backlog_full",
+        answer: {
+          status: 503,
+          headers: RETRY_LATER,
+          body:
+            refusal.unit === "bytes"
+              ? {
+                  error: "Durable submission admission byte backlog is full",
+                  backlogBytes: refusal.backlog.toString(),
+                  maxBacklogBytes: refusal.maxBacklog.toString(),
+                }
+              : {
+                  error: "Durable submission admission backlog is full",
+                  backlog: refusal.backlog.toString(),
+                  maxBacklog: refusal.maxBacklog.toString(),
+                },
+        },
+      };
+    case "AdmissionWriterFullError":
+      return {
+        reason: "admission_writer_full",
+        answer: {
+          status: 503,
+          headers: RETRY_LATER,
+          body: {
+            error: "Durable submission admission writer is full",
+            unit: refusal.unit,
+          },
+        },
+      };
+    case "AdmissionWriterStalledError":
+      return {
+        reason: "admission_writer_stalled",
+        answer: {
+          status: 503,
+          headers: RETRY_LATER,
+          body: {
+            error: "Durable submission admission writes are stalled",
+            oldestPendingAgeMs: refusal.oldestPendingAgeMs,
+            stallMs: refusal.stallMs,
+          },
+        },
+      };
+    case "AdmissionWriterShutdownError":
+      return {
+        reason: "admission_writer_unavailable",
+        answer: {
+          status: 503,
+          headers: RETRY_LATER,
+          body: {
+            error: "Durable submission admission writer is unavailable",
+            message: publicSubmissionDiagnostic(
+              refusal.message,
+              "E_ADMISSION_WRITER_UNAVAILABLE",
+            ),
+          },
+        },
+      };
+  }
+};
+
+const INTERNAL_ERROR: Answer = {
+  status: 500,
+  body: {
+    error: "Request could not be completed",
+    error_code: "E_HTTP_INTERNAL",
+  },
 };
 
 /**
- * `POST /submit`: validates, normalizes, and enqueues a submitted L2
- * transaction.
+ * Builds the raw `/submit` handler from the services in context. Admission
+ * runs on the captured runtime. `ingress` is the ingress controller the
+ * handler charges; by default the one the node configuration shares with
+ * every other route.
  */
-export const postSubmitHandler = <R>(
-  withMonitoring: boolean | undefined,
-  wakeTxQueueProcessor: Effect.Effect<void, never, R>,
-) =>
+export const makeSubmitRequestHandler = <R>({
+  wakeTxQueueProcessor,
+  ingress,
+}: {
+  readonly wakeTxQueueProcessor: Effect.Effect<void, never, R>;
+  readonly ingress?: ReturnType<typeof createHttpIngress>;
+}): Effect.Effect<
+  SubmitRequestHandler,
+  never,
+  AdmissionWriter | NodeConfig | Globals | R
+> =>
   Effect.gen(function* () {
-    const startedAt = withMonitoring === true ? Date.now() : 0;
-    const recordLatency = () =>
-      withMonitoring === true
-        ? submitHandlerLatencyTimer(
-            Effect.succeed(Duration.millis(Date.now() - startedAt)),
-          )
-        : Effect.void;
-    return yield* Effect.gen(function* () {
-      const nodeConfig = yield* NodeConfig;
-      const request = yield* HttpServerRequest.HttpServerRequest;
+    const runtime = yield* Effect.runtime<
+      AdmissionWriter | NodeConfig | Globals | R
+    >();
+    const config = yield* NodeConfig;
+    const controller = ingress ?? httpIngressFor(config);
+    const runSync = Runtime.runSync(runtime);
+    const runCallback = Runtime.runCallback(runtime);
+    const logRefusal = createRefusalLogSampler((line) =>
+      runSync(Effect.logInfo(line)),
+    );
+    const logFailure = createRefusalLogSampler((line) =>
+      runSync(Effect.logError(line)),
+    );
+
+    return (request, response) => {
+      const startedAt = performance.now();
+      const releases: (() => void)[] = [];
+      const releaseAll = () => {
+        for (const release of releases.splice(0)) release();
+      };
+      // A client that goes away frees whatever its request still holds.
+      response.once("close", releaseAll);
+      let declared = 0;
+
+      const answer = ({ status, body, headers }: Answer) => {
+        releaseAll();
+        if (response.headersSent || response.destroyed) return;
+        const payload = JSON.stringify(body);
+        response.writeHead(status, {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(payload).toString(),
+          ...(keepsConnection(status, declared) ? {} : { connection: "close" }),
+          ...headers,
+        });
+        response.end(payload);
+        recordSubmitLatency(performance.now() - startedAt);
+      };
+      const refuse = (
+        reason: string,
+        refusal: Answer,
+        detail: () => string,
+      ) => {
+        recordSubmitRefusal(reason);
+        logRefusal(reason, detail);
+        answer(refusal);
+      };
+      const fail = (detail: () => string) => {
+        recordSubmitRefusal("internal_error");
+        logFailure("internal_error", detail);
+        answer(INTERNAL_ERROR);
+      };
+
+      const decision = admitHttpRequest(
+        {
+          method: "POST",
+          url: request.url ?? "",
+          remoteAddress: Option.fromNullable(request.socket.remoteAddress),
+          // Node hands the headers the ingress reads over as single strings.
+          headers: request.headers as HttpRequestHeaders,
+        },
+        config,
+        controller,
+      );
+      if (!decision.admitted) {
+        // The gate already decided whether the connection stays open.
+        refuse(decision.reason, decision, () => String(decision.body.error));
+        return;
+      }
+      releases.push(decision.release);
+      declared = decision.declared;
 
       if (
         requestMediaType(request.headers["content-type"]) !==
         V1_SUBMISSION_MEDIA_TYPE
       ) {
-        yield* Effect.logInfo(
-          `▫️ Invalid submit payload: expected ${V1_SUBMISSION_MEDIA_TYPE}`,
-        );
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
+        refuse(
+          "unsupported_media_type",
           {
-            error: `V1 requests must be a canonical proof submission envelope with Content-Type ${V1_SUBMISSION_MEDIA_TYPE}`,
+            status: 415,
+            body: {
+              error: `V1 requests must be a canonical proof submission envelope with Content-Type ${V1_SUBMISSION_MEDIA_TYPE}`,
+            },
           },
-          { status: 415 },
+          () => `expected ${V1_SUBMISSION_MEDIA_TYPE}`,
         );
+        return;
       }
-
-      const ingressReservation = resolveSubmitIngressReservation(
-        request.headers["content-length"],
-      );
-      if (ingressReservation.kind === "invalid_content_length") {
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
-          { error: "Invalid Content-Length for V1 submission" },
-          { status: 400 },
-        );
+      const permit = {
+        maxConcurrency: config.SUBMIT_INGRESS_MAX_CONCURRENCY,
+        maxInFlightBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+        permitBytes: Math.max(1, declared),
+      };
+      if (!isValidSubmitIngressPermit(permit)) {
+        fail(() => "invalid submit ingress permit configuration");
+        return;
       }
-      if (ingressReservation.kind === "too_large") {
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
+      const releasePermit = tryTakeSubmitIngressPermit(permit);
+      if (releasePermit === undefined) {
+        refuse(
+          "submit_capacity",
           {
-            error: `V1 submission exceeds the DA proof envelope (${ingressReservation.declaredBytes.toString()} > ${SUBMIT_HTTP_BODY_MAX_BYTES.toString()})`,
+            status: 503,
+            headers: RETRY_LATER,
+            body: { error: "Submit ingress capacity is full; retry later" },
           },
-          { status: 413 },
+          () => "submit ingress permits are exhausted",
         );
+        return;
       }
+      releases.push(releasePermit);
 
-      const permittedResponse = yield* withSubmitIngressPermit({
-        maxConcurrency: nodeConfig.SUBMIT_INGRESS_MAX_CONCURRENCY,
-        maxInFlightBytes: nodeConfig.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-        permitBytes: ingressReservation.permitBytes,
-        effect: Effect.gen(function* () {
-          const bodyReadStartedAt = Date.now();
-          const bodyBytes = yield* Effect.either(
-            readSubmitBodyWithProtocolLimit(request),
-          );
-          yield* submitBodyReadDurationTimer(
-            Effect.succeed(Duration.millis(Date.now() - bodyReadStartedAt)),
-          );
-          if (bodyBytes._tag === "Left") {
-            yield* Effect.logInfo(
-              `▫️ Submit rejected: request body exceeded or failed the bounded HTTP read`,
-            );
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: `V1 submission exceeds or could not be read within the DA proof envelope (${SUBMIT_HTTP_BODY_MAX_BYTES.toString()} bytes)`,
-              },
-              { status: 413 },
-            );
-          }
+      const admit = (normalized: CheckedSubmittedTx) =>
+        runCallback(
+          admitCheckedTransaction({
+            normalized,
+            submitSource: normalized.source,
+            wakeTxQueueProcessor,
+          }),
+          {
+            onExit: (exit) => {
+              if (Exit.isSuccess(exit)) {
+                const ack = exit.value;
+                recordSubmitAdmitted();
+                answer({
+                  status: ack.kind === "new" ? 202 : 200,
+                  body: {
+                    txId: normalized.txIdHex,
+                    status: ack.status,
+                    firstSeenAt: ack.firstSeenAt.toISOString(),
+                    lastSeenAt: ack.lastSeenAt.toISOString(),
+                    duplicate: ack.kind === "duplicate",
+                  },
+                });
+                return;
+              }
+              const failure = Cause.failureOption(exit.cause);
+              if (Option.isNone(failure)) {
+                fail(() => `admission failed: ${Cause.pretty(exit.cause)}`);
+                return;
+              }
+              const refused = admissionRefusal(failure.value);
+              refuse(
+                refused.reason,
+                refused.answer,
+                () => failure.value.message,
+              );
+            },
+          },
+        );
 
-          const requestBody = Buffer.from(bodyBytes.right);
-          if (
-            ingressReservation.declaredBytes !== null &&
-            requestBody.length !== ingressReservation.declaredBytes
-          ) {
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              { error: "V1 submission Content-Length mismatch" },
-              { status: 400 },
-            );
-          }
-          if (requestBody.length > SUBMIT_HTTP_BODY_MAX_BYTES) {
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: `V1 submission exceeds the DA proof envelope (${requestBody.length.toString()} > ${SUBMIT_HTTP_BODY_MAX_BYTES.toString()})`,
-              },
-              { status: 413 },
-            );
-          }
-          const decodedSubmission = yield* Effect.either(
-            Effect.try({
-              try: () => decodeMidgardProofSubmission(requestBody),
-              catch: (cause) => cause,
-            }),
-          );
-          if (decodedSubmission._tag === "Left") {
-            yield* Effect.logInfo(
-              `▫️ Submit rejected: malformed V1 submission envelope`,
-            );
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              { error: "Invalid canonical V1 submission envelope" },
-              { status: 400 },
-            );
-          }
-          const transactionBytes = decodedSubmission.right.transactionCbor;
-
-          const normalizeStartedAt = Date.now();
-          const checked = checkSubmittedTransaction(
-            transactionBytes,
-            nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-          );
-          yield* submitNormalizeDurationTimer(
-            Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-          );
-          if (!checked.ok) {
-            for (const line of checked.log) yield* Effect.logInfo(`▫️ ${line}`);
-            yield* recordLatency();
-            return HttpServerResponse.json(checked.body, {
-              status: checked.status,
-            });
-          }
-          const normalized = checked.normalized;
-
-          // Return the admission as a suspended effect so both ingress
-          // permits are released immediately after verification. Admission
-          // answers from memory: a 202 means accepted, not yet stored.
-          return Effect.gen(function* () {
-            const durableAdmissionStartedAt = Date.now();
-            const admitted = yield* admitCheckedTransaction({
-              normalized,
-              submitSource: normalized.source,
-              wakeTxQueueProcessor,
-            });
-            yield* submitDurableAdmissionDurationTimer(
-              Effect.succeed(
-                Duration.millis(Date.now() - durableAdmissionStartedAt),
-              ),
-            );
-
-            Effect.runSync(Metric.increment(txCounter));
-            yield* recordLatency();
-            const responseStartedAt = Date.now();
-            const response = yield* HttpServerResponse.json(
-              {
-                txId: normalized.txIdHex,
-                status: admitted.status,
-                firstSeenAt: admitted.firstSeenAt.toISOString(),
-                lastSeenAt: admitted.lastSeenAt.toISOString(),
-                duplicate: admitted.kind === "duplicate",
-              },
-              { status: admitted.kind === "new" ? 202 : 200 },
-            );
-            yield* submitResponseDurationTimer(
-              Effect.succeed(Duration.millis(Date.now() - responseStartedAt)),
-            );
-            return response;
-          });
-        }),
+      // The ingress admitted at most `declared` bytes; Node's parser
+      // delivers exactly the declared length unless the client goes away.
+      const body = Buffer.allocUnsafeSlow(declared);
+      let received = 0;
+      let unreadable = false;
+      const bodyUnreadable = () => {
+        if (unreadable) return;
+        unreadable = true;
+        refuse(
+          "body_unreadable",
+          {
+            status: 413,
+            body: {
+              error: `V1 submission exceeds or could not be read within the DA proof envelope (${SUBMIT_HTTP_BODY_MAX_BYTES.toString()} bytes)`,
+            },
+          },
+          () => "request body exceeded or failed the bounded HTTP read",
+        );
+      };
+      request.on("data", (chunk: Buffer) => {
+        if (unreadable) return;
+        if (received + chunk.length > declared) {
+          bodyUnreadable();
+          return;
+        }
+        chunk.copy(body, received);
+        received += chunk.length;
       });
-      if (Option.isNone(permittedResponse)) {
-        yield* Metric.increment(submitQueueOfferFailureCounter);
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
-          {
-            error: "Submit ingress capacity is full; retry later",
-          },
-          SUBMIT_UNAVAILABLE,
+      request.once("error", bodyUnreadable);
+      request.once("end", () => {
+        if (unreadable) return;
+        if (received !== declared) {
+          refuse(
+            "content_length_mismatch",
+            {
+              status: 400,
+              body: { error: "V1 submission Content-Length mismatch" },
+            },
+            () => "body length differs from Content-Length",
+          );
+          return;
+        }
+        const checked = checkSubmissionBody(
+          body,
+          config.MAX_SUBMIT_TX_CBOR_BYTES,
         );
-      }
-      return yield* permittedResponse.value;
-    }).pipe(
-      Effect.catchTag("TxAdmissionConflictError", (e) =>
-        Effect.gen(function* () {
-          yield* recordLatency();
-          return yield* HttpServerResponse.json(
-            {
-              error: "E_TX_ID_BYTES_CONFLICT",
-              message: publicSubmissionDiagnostic(
-                e.message,
-                "E_TX_ID_BYTES_CONFLICT",
-              ),
-              txId: e.txIdHex,
-            },
-            { status: 409 },
+        // Both submit ingress permits go before admission; only the HTTP
+        // ingress slot is held to the response.
+        releasePermit();
+        if (!checked.ok) {
+          refuse(
+            checked.reason,
+            { status: checked.status, body: checked.body },
+            () => checked.log.join("; "),
           );
-        }),
-      ),
-      Effect.catchTag("TxAdmissionBacklogFullError", (e) =>
-        Effect.gen(function* () {
-          yield* Metric.increment(submitQueueOfferFailureCounter);
-          yield* recordLatency();
-          if (e.unit === "bytes") {
-            return yield* HttpServerResponse.json(
-              {
-                error: "Durable submission admission byte backlog is full",
-                backlogBytes: e.backlog.toString(),
-                maxBacklogBytes: e.maxBacklog.toString(),
-              },
-              SUBMIT_UNAVAILABLE,
-            );
-          }
-          return yield* HttpServerResponse.json(
-            {
-              error: "Durable submission admission backlog is full",
-              backlog: e.backlog.toString(),
-              maxBacklog: e.maxBacklog.toString(),
-            },
-            SUBMIT_UNAVAILABLE,
-          );
-        }),
-      ),
-      Effect.catchTag("AdmissionWriterFullError", (e) =>
-        Effect.gen(function* () {
-          yield* Metric.increment(submitQueueOfferFailureCounter);
-          yield* recordLatency();
-          return yield* HttpServerResponse.json(
-            {
-              error: "Durable submission admission writer is full",
-              unit: e.unit,
-            },
-            SUBMIT_UNAVAILABLE,
-          );
-        }),
-      ),
-      Effect.catchTag("AdmissionWriterStalledError", (e) =>
-        Effect.gen(function* () {
-          yield* Metric.increment(submitQueueOfferFailureCounter);
-          yield* recordLatency();
-          return yield* HttpServerResponse.json(
-            {
-              error: "Durable submission admission writes are stalled",
-              oldestPendingAgeMs: e.oldestPendingAgeMs,
-              stallMs: e.stallMs,
-            },
-            SUBMIT_UNAVAILABLE,
-          );
-        }),
-      ),
-      Effect.catchTag("AdmissionWriterShutdownError", (e) =>
-        Effect.gen(function* () {
-          yield* Metric.increment(submitQueueOfferFailureCounter);
-          yield* recordLatency();
-          return yield* HttpServerResponse.json(
-            {
-              error: "Durable submission admission writer is unavailable",
-              message: publicSubmissionDiagnostic(
-                e.message,
-                "E_ADMISSION_WRITER_UNAVAILABLE",
-              ),
-            },
-            SUBMIT_UNAVAILABLE,
-          );
-        }),
-      ),
-      Effect.catchTag("HttpBodyError", (e) =>
-        failWith500("POST", "submit", e, "▫️ L2 transaction failed"),
-      ),
-    );
+          return;
+        }
+        admit(checked.normalized);
+      });
+    };
   });

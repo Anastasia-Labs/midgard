@@ -31,7 +31,10 @@ import {
   postPeerTxsHandler,
 } from "../../src/commands/http/peer-routes.js";
 import { V1_SUBMISSION_MEDIA_TYPE } from "../../src/commands/http/submission-capacity.js";
-import { postSubmitHandler } from "../../src/commands/http/submit.js";
+import {
+  isSubmitRequest,
+  makeSubmitRequestHandler,
+} from "../../src/commands/http/submit.js";
 import {
   createHttpIngress,
   withHttpIngress,
@@ -287,26 +290,26 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
   // Every request this node's server receives, by path.
   const received = new Map<string, number>();
   const app = HttpRouter.empty.pipe(
-    HttpRouter.post("/submit", postSubmitHandler(false, Effect.void)),
     HttpRouter.post("/peer/txs", postPeerTxsHandler(Effect.void)),
     HttpRouter.post("/peer/inventory", postPeerInventoryHandler),
   );
+  // `/submit` is the raw handler, as in the node; both charge one ingress.
+  const ingress = createHttpIngress(
+    options.ingressPolicy === undefined
+      ? {}
+      : { policy: options.ingressPolicy },
+  );
   const handler = await run(
-    NodeHttpServer.makeHandler(
-      withHttpIngress(
-        app,
-        createHttpIngress(
-          options.ingressPolicy === undefined
-            ? {}
-            : { policy: options.ingressPolicy },
-        ),
-      ),
-    ),
+    NodeHttpServer.makeHandler(withHttpIngress(app, ingress)),
+  );
+  const submitHandler = await run(
+    makeSubmitRequestHandler({ wakeTxQueueProcessor: Effect.void, ingress }),
   );
   const server = createServer((request, response) => {
     const path = (request.url ?? "").split("?", 1)[0]!;
     received.set(path, (received.get(path) ?? 0) + 1);
-    handler(request, response);
+    if (isSubmitRequest(request)) submitHandler(request, response);
+    else handler(request, response);
   });
   server.listen(options.port ?? 0, "127.0.0.1");
   await once(server, "listening");

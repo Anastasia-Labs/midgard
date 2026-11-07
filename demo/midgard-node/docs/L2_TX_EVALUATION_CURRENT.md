@@ -34,7 +34,7 @@ status rather than treating every failure as an invalid transaction.
 
 | Responsibility                                         | Implementation                                                                                                                             |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| HTTP media type, bounded body read, capacity, response | [`postSubmitHandler`](../src/commands/http/submit.ts)                                                                                      |
+| HTTP media type, bounded body read, capacity, response | [`makeSubmitRequestHandler`](../src/commands/http/submit.ts)                                                                               |
 | Canonical submission normalization                     | [`normalizeSubmitTxCanonicalCborToNative`](../src/commands/listen-utils.ts)                                                                |
 | Durable admission and leases                           | [`txAdmissions.ts`](../src/database/txAdmissions.ts)                                                                                       |
 | Batch sequencing and validation orchestration          | [`tx-queue-processor.ts`](../src/fibers/tx-queue-processor.ts)                                                                             |

@@ -1,8 +1,4 @@
 import {
-  MIDGARD_CONSENSUS_PROFILE,
-  type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile";
-import {
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
@@ -69,14 +65,12 @@ import {
   PIPELINE_STATUS_ENDPOINT,
   PROTOCOL_INFO_ENDPOINT,
   STATE_QUEUE_ENDPOINT,
-  SUBMIT_ENDPOINT,
   TX_ENDPOINT,
   TX_EVALUATE_ENDPOINT,
   TX_STATUS_ENDPOINT,
   UTXO_ENDPOINT,
   UTXOS_ENDPOINT,
 } from "./routes.js";
-import { postSubmitHandler } from "./submit.js";
 import {
   getTxHandler,
   getTxStatusHandler,
@@ -90,38 +84,10 @@ import {
 } from "./utxo-reads.js";
 
 /**
- * Focused router used by the admission integration harness. Keeping this as a
- * real HttpRouter (rather than calling the handler as a function) makes route,
- * request-body, status-code, and response-body contract executable while
- * allowing the harness to hold validation wakeups at a deterministic boundary.
+ * Builds the HTTP router for the node command server: every route except
+ * `POST /submit`, which the raw handler in `submit.ts` answers.
  */
-export const buildSubmitRouter = <R>(
-  wakeTxQueueProcessor: Effect.Effect<void, never, R>,
-  withMonitoring?: boolean,
-  consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
-) =>
-  HttpRouter.empty.pipe(
-    HttpRouter.post(
-      `/${SUBMIT_ENDPOINT}`,
-      postSubmitHandler(withMonitoring, wakeTxQueueProcessor).pipe(
-        Effect.provideService(
-          ContractDeploymentIdentity,
-          ContractDeploymentIdentity.make({
-            kind: "derived",
-            consensusProfile,
-          }),
-        ),
-      ),
-    ),
-    withHttpIngress,
-  );
-
-/**
- * Builds the full HTTP router for the node command server.
- */
-export const buildListenRouter = (
-  withMonitoring?: boolean,
-): Effect.Effect<
+export const buildListenRouter = (): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
@@ -218,10 +184,6 @@ export const buildListenRouter = (
       HttpRouter.post(
         `/${UTXOS_ENDPOINT}`,
         withHttpReadSql(postUtxosByTxOutRefsHandler),
-      ),
-      HttpRouter.post(
-        `/${SUBMIT_ENDPOINT}`,
-        postSubmitHandler(withMonitoring, requestTxQueueProcessorWakeup),
       ),
       HttpRouter.post(`/${TX_EVALUATE_ENDPOINT}`, postTxEvaluateHandler),
       HttpRouter.post(

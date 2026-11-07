@@ -92,7 +92,10 @@ conflict. A `/submit` or `/tx/evaluate` body holds one envelope around at most
 one largest transaction, 295,048 bytes; a larger declared length is refused
 before the body is read. Capacity or admission-writer unavailability
 returns `503`; other operational failures can return `500`. HTTP admission
-is distinct from successful ledger validation or settlement.
+is distinct from successful ledger validation or settlement. With
+`--with-monitoring`, each refusal is counted in
+`submit_refusal_count{reason}`; the node logs only the first refusal of each
+reason per second, with the number left unlogged since the previous line.
 
 The node answers `/submit` from memory: a `202` means accepted, not stored.
 Each accepted transaction waits in a bounded pending set until the admission

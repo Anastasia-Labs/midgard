@@ -26,6 +26,7 @@ import {
   StartupWaitingReporter,
 } from "../services/startup-waiting.js";
 import { findTransientBudgetExhausted } from "../services/transient-exhaustion.js";
+import { isSubmitRequest, type SubmitRequestHandler } from "./http/submit.js";
 import type { HttpListenerTransport } from "./listen-http-transport.js";
 
 /** Local startup state: no provider, contract, database or user payload reads. */
@@ -63,12 +64,17 @@ export type StartupHttp = {
     stage: NodeStartupStage,
     waitingOn?: readonly string[],
   ) => Effect.Effect<void>;
-  readonly publish: <R>(
+  /**
+   * Serves `application`, and `POST /submit` from the raw handler `submit`
+   * builds when one is given (the application answers it otherwise).
+   */
+  readonly publish: <R, R2 = never>(
     application: HttpApp.Default<unknown, R>,
+    submit?: Effect.Effect<SubmitRequestHandler, never, R2>,
   ) => Effect.Effect<
     void,
     never,
-    Exclude<R, HttpServerRequest.HttpServerRequest | Scope.Scope>
+    Exclude<R, HttpServerRequest.HttpServerRequest | Scope.Scope> | R2
   >;
 };
 
@@ -109,6 +115,9 @@ export const withStartupHttpServer = <A, E, R>(
   },
 ) =>
   Effect.gen(function* () {
+    // Set once the node publishes; until then the startup dispatcher
+    // answers `/submit` like every other route.
+    let submitHandler: SubmitRequestHandler | undefined;
     const state = yield* Ref.make<StartupState>({ stage: "runtime_services" });
     // The outer middleware and dispatcher share one snapshot per request,
     // including the monitoring defaults used before the HTTP tracing span.
@@ -124,8 +133,19 @@ export const withStartupHttpServer = <A, E, R>(
             ? {}
             : { stepWaits: current.stepWaits }),
         })),
-      publish: (application) =>
+      publish: (application, submit) =>
         Effect.gen(function* () {
+          // The handler's runtime keeps the publisher's services, loggers
+          // and defaults, but not its startup span.
+          if (submit !== undefined)
+            submitHandler = yield* submit.pipe(
+              Effect.mapInputContext(
+                (context: Context.Context<never>) =>
+                  Context.omit(Tracer.ParentSpan)(context) as Context.Context<
+                    Effect.Effect.Context<typeof submit>
+                  >,
+              ),
+            );
           // Keep every runtime service (including admission SQL) alive in the
           // enclosing scope. Each request supplies its own request, scope and
           // HTTP parent span; the publisher's startup span is not request context.
@@ -214,7 +234,21 @@ export const withStartupHttpServer = <A, E, R>(
           );
         return yield* bound;
       });
-    yield* HttpServer.serveEffect(dispatch, withRuntimeDefaults);
+    const effectHandler = yield* NodeHttpServer.makeHandler(
+      dispatch,
+      withRuntimeDefaults,
+    );
+    // One listener: `POST /submit` goes to the raw handler once published,
+    // every other request to the Effect application.
+    const server = yield* NodeHttpServer.make(() => {
+      const node = transport.createServer();
+      node.on("request", (request, response) => {
+        if (submitHandler !== undefined && isSubmitRequest(request))
+          submitHandler(request, response);
+        else effectHandler(request, response);
+      });
+      return node;
+    }, transport.listenOptions(port));
     const reportStepWaiting: StartupWaitingReport = (key, reasons) =>
       Ref.update(state, (current) => {
         const stepWaits = new Map(current.stepWaits);
@@ -223,6 +257,7 @@ export const withStartupHttpServer = <A, E, R>(
         return { ...current, stepWaits };
       });
     return yield* run(startup).pipe(
+      Effect.provideService(HttpServer.HttpServer, server),
       Effect.locally(StartupWaitingReporter, reportStepWaiting),
       Effect.catchAllCause((cause) =>
         Cause.isInterruptedOnly(cause)
@@ -267,12 +302,4 @@ export const withStartupHttpServer = <A, E, R>(
             }),
       ),
     );
-  }).pipe(
-    Effect.provide(
-      NodeHttpServer.layer(
-        transport.createServer,
-        transport.listenOptions(port),
-      ),
-    ),
-    Effect.scoped,
-  );
+  }).pipe(Effect.provide(NodeHttpServer.layerContext), Effect.scoped);

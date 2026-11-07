@@ -35,10 +35,20 @@ const RETRY_AFTER = { "retry-after": "5", connection: "close" };
  * server would read such a body to its end before the next request. Every
  * other error closes the connection.
  */
-const keepsConnection = (status: number, declaredBytes: number): boolean =>
+export const keepsConnection = (
+  status: number,
+  declaredBytes: number,
+): boolean =>
   status < 400 ||
   ((status === 409 || status === 429 || status === 503) &&
     declaredBytes <= SUBMIT_HTTP_BODY_MAX_BYTES);
+
+/**
+ * The request headers the ingress reads (`content-length`, `content-type`,
+ * `x-midgard-client-ip`), each a single string. Node joins a repeated one
+ * with ", ", which no check accepts.
+ */
+export type HttpRequestHeaders = Readonly<Record<string, string | undefined>>;
 
 /** Socket identity only. Forwarded headers cannot mint additional quotas. */
 export const httpPeerIdentity = (
@@ -59,10 +69,10 @@ export const httpPeerIdentity = (
  * configured trusted proxy range, which then names the client instead.
  */
 export const httpClientIdentity = (
-  request: Pick<
-    HttpServerRequest.HttpServerRequest,
-    "remoteAddress" | "headers"
-  >,
+  request: {
+    readonly remoteAddress: Option.Option<string>;
+    readonly headers: HttpRequestHeaders;
+  },
   config: Pick<NodeConfigDep, "HTTP_TRUSTED_PROXY_PEERS" | "HTTP_SOCKET_PATH">,
 ): string | undefined => {
   const named = () =>
@@ -178,7 +188,10 @@ export const createHttpIngress = ({
 };
 
 const controllers = new WeakMap<object, ReturnType<typeof createHttpIngress>>();
-const ingressFor = (config: Pick<NodeConfigDep, "HTTP_RATE_LIMITS">) => {
+/** The one ingress controller of a node configuration, shared by every route. */
+export const httpIngressFor = (
+  config: Pick<NodeConfigDep, "HTTP_RATE_LIMITS">,
+) => {
   let controller = controllers.get(config);
   if (controller === undefined) {
     controller = createHttpIngress({
@@ -189,6 +202,175 @@ const ingressFor = (config: Pick<NodeConfigDep, "HTTP_RATE_LIMITS">) => {
   return controller;
 };
 
+/** What the ingress reads of a request, before any body byte. */
+export type HttpIngressRequest = {
+  readonly method: string;
+  readonly url: string;
+  readonly remoteAddress: Option.Option<string>;
+  readonly headers: HttpRequestHeaders;
+};
+
+/** Why the ingress refused a request; refusal counters are keyed on it. */
+export type HttpIngressRefusalReason =
+  | "client_identity_unavailable"
+  | "target_too_long"
+  | "not_found"
+  | "method_not_allowed"
+  | "invalid_content_length"
+  | "length_required"
+  | "body_too_large"
+  | "unsupported_media_type"
+  | "rate_limited"
+  | "ingress_capacity";
+
+export type HttpIngressDecision =
+  | {
+      readonly admitted: true;
+      readonly path: string;
+      /** The bytes the request may send: its declared length, or the
+       * route's bound when it declares none. */
+      readonly declared: number;
+      /** Frees the request's slot; idempotent. */
+      readonly release: () => void;
+    }
+  | {
+      readonly admitted: false;
+      readonly reason: HttpIngressRefusalReason;
+      readonly status: number;
+      readonly body: Readonly<Record<string, unknown>>;
+      readonly headers: Readonly<Record<string, string>>;
+    };
+
+const refuse = (
+  reason: HttpIngressRefusalReason,
+  status: number,
+  body: Readonly<Record<string, unknown>>,
+  headers: Readonly<Record<string, string>> = { connection: "close" },
+): HttpIngressDecision => ({ admitted: false, reason, status, body, headers });
+
+/**
+ * The checks every installed route passes before its body is read, database
+ * work or evaluation: client identity, target, route, declared length, media
+ * type, then the rate and in-flight reservation. A plain function, so the
+ * raw `/submit` handler and the Effect router run the same code.
+ */
+export const admitHttpRequest = (
+  request: HttpIngressRequest,
+  config: Pick<
+    NodeConfigDep,
+    "HTTP_TRUSTED_PROXY_PEERS" | "HTTP_SOCKET_PATH" | "HTTP_RATE_LIMITS"
+  >,
+  controller: ReturnType<typeof createHttpIngress> = httpIngressFor(config),
+): HttpIngressDecision => {
+  const identity = httpClientIdentity(request, config);
+  if (identity === undefined)
+    return refuse(
+      "client_identity_unavailable",
+      503,
+      {
+        error: "Socket peer identity is unavailable",
+        error_code: "E_HTTP_CLIENT_IDENTITY_UNAVAILABLE",
+      },
+      RETRY_AFTER,
+    );
+  if (Buffer.byteLength(request.url) > HTTP_QUERY_MAX_BYTES)
+    return refuse("target_too_long", 414, {
+      error: "Request target is too long",
+    });
+  const path = request.url.split("?", 1)[0]!;
+  const actions = HTTP_ROUTE_ACTIONS.filter((action) => action[1] === path);
+  if (actions.length === 0)
+    return refuse("not_found", 404, { error: "Endpoint not found" });
+  if (!actions.some((action) => action[0] === request.method))
+    return refuse(
+      "method_not_allowed",
+      405,
+      { error: "Method not allowed" },
+      {
+        connection: "close",
+        allow: actions.map((action) => action[0]).join(", "),
+      },
+    );
+  const kind: HttpRateClass =
+    path === "/healthz" || path === "/readyz"
+      ? "health"
+      : actions[0]![2] === "admin"
+        ? "admin"
+        : actions[0]![2] === "peer"
+          ? "peer"
+          : path === "/tx/evaluate"
+            ? "evaluate"
+            : request.method === "POST" && path === "/tx-status"
+              ? "batch"
+              : request.method === "POST" && path !== "/utxos"
+                ? "write"
+                : "read";
+  // Binary bodies: one submission envelope for a submission or an
+  // evaluation, up to the peer bound for a peer's CBOR list.
+  const proofBody = path === "/submit" || path === "/tx/evaluate";
+  const maxBody =
+    request.method === "GET"
+      ? 0
+      : kind === "peer"
+        ? PEER_MAX_BODY_BYTES
+        : proofBody
+          ? SUBMIT_HTTP_BODY_MAX_BYTES
+          : HTTP_JSON_BODY_MAX_BYTES;
+  const rawLength = request.headers["content-length"];
+  if (rawLength !== undefined && !/^(0|[1-9][0-9]*)$/u.test(rawLength))
+    return refuse("invalid_content_length", 400, {
+      error: "Invalid Content-Length",
+    });
+  // A submission declares its length, so it holds only the bytes it sends.
+  if (
+    request.method === "POST" &&
+    path === "/submit" &&
+    rawLength === undefined
+  )
+    return refuse("length_required", 411, {
+      error: "Content-Length is required",
+    });
+  const declared = rawLength === undefined ? maxBody : Number(rawLength);
+  if (!Number.isSafeInteger(declared) || declared > maxBody)
+    return refuse("body_too_large", 413, {
+      error: "Request body exceeds endpoint limit",
+    });
+  if (
+    request.method === "POST" &&
+    !proofBody &&
+    kind !== "peer" &&
+    !["/init", "/commit", "/merge", "/logBlocksDB", "/logGlobals"].includes(
+      path,
+    ) &&
+    request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() !==
+      "application/json"
+  )
+    return refuse("unsupported_media_type", 415, {
+      error: "Content-Type must be application/json",
+    });
+  // Unknown lengths reserve the full allowance. Declared lengths are enforced by the bounded reader.
+  // A submission carries one transaction, so every request costs one token.
+  const reservation = controller.reserve(identity, kind, declared);
+  if (!reservation.accepted)
+    return refuse(
+      reservation.status === 429 ? "rate_limited" : "ingress_capacity",
+      reservation.status,
+      { error: reservation.error, error_code: reservation.errorCode },
+      {
+        "retry-after": reservation.retryAfterSeconds.toString(),
+        ...(keepsConnection(reservation.status, declared)
+          ? {}
+          : { connection: "close" }),
+      },
+    );
+  return {
+    admitted: true,
+    path,
+    declared,
+    release: reservation.release,
+  };
+};
+
 /** All installed routes pass here before body reads, database work or evaluation. */
 export const withHttpIngress = <E, R>(
   handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
@@ -197,121 +379,13 @@ export const withHttpIngress = <E, R>(
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const config = yield* NodeConfig;
-    const identity = httpClientIdentity(request, config);
-    if (identity === undefined)
-      return yield* HttpServerResponse.json(
-        {
-          error: "Socket peer identity is unavailable",
-          error_code: "E_HTTP_CLIENT_IDENTITY_UNAVAILABLE",
-        },
-        { status: 503, headers: RETRY_AFTER },
-      );
-    if (Buffer.byteLength(request.url) > HTTP_QUERY_MAX_BYTES)
-      return yield* HttpServerResponse.json(
-        { error: "Request target is too long" },
-        { status: 414, headers: { connection: "close" } },
-      );
-    const path = request.url.split("?", 1)[0];
-    const actions = HTTP_ROUTE_ACTIONS.filter((action) => action[1] === path);
-    if (actions.length === 0)
-      return yield* HttpServerResponse.json(
-        { error: "Endpoint not found" },
-        { status: 404, headers: { connection: "close" } },
-      );
-    if (!actions.some((action) => action[0] === request.method))
-      return yield* HttpServerResponse.json(
-        { error: "Method not allowed" },
-        {
-          status: 405,
-          headers: {
-            connection: "close",
-            allow: actions.map((action) => action[0]).join(", "),
-          },
-        },
-      );
-    const kind: HttpRateClass =
-      path === "/healthz" || path === "/readyz"
-        ? "health"
-        : actions[0]![2] === "admin"
-          ? "admin"
-          : actions[0]![2] === "peer"
-            ? "peer"
-            : path === "/tx/evaluate"
-              ? "evaluate"
-              : request.method === "POST" && path === "/tx-status"
-                ? "batch"
-                : request.method === "POST" && path !== "/utxos"
-                  ? "write"
-                  : "read";
-    // Binary bodies: one submission envelope for a submission or an
-    // evaluation, up to the peer bound for a peer's CBOR list.
-    const proofBody = path === "/submit" || path === "/tx/evaluate";
-    const maxBody =
-      request.method === "GET"
-        ? 0
-        : kind === "peer"
-          ? PEER_MAX_BODY_BYTES
-          : proofBody
-            ? SUBMIT_HTTP_BODY_MAX_BYTES
-            : HTTP_JSON_BODY_MAX_BYTES;
-    const rawLength = request.headers["content-length"];
-    if (rawLength !== undefined && !/^(0|[1-9][0-9]*)$/u.test(rawLength))
-      return yield* HttpServerResponse.json(
-        { error: "Invalid Content-Length" },
-        { status: 400, headers: { connection: "close" } },
-      );
-    // A submission declares its length, so it holds only the bytes it sends.
-    if (
-      request.method === "POST" &&
-      path === "/submit" &&
-      rawLength === undefined
-    )
-      return yield* HttpServerResponse.json(
-        { error: "Content-Length is required" },
-        { status: 411, headers: { connection: "close" } },
-      );
-    const declared = rawLength === undefined ? maxBody : Number(rawLength);
-    if (!Number.isSafeInteger(declared) || declared > maxBody)
-      return yield* HttpServerResponse.json(
-        { error: "Request body exceeds endpoint limit" },
-        { status: 413, headers: { connection: "close" } },
-      );
-    if (
-      request.method === "POST" &&
-      !proofBody &&
-      kind !== "peer" &&
-      !["/init", "/commit", "/merge", "/logBlocksDB", "/logGlobals"].includes(
-        path,
-      ) &&
-      request.headers["content-type"]
-        ?.split(";", 1)[0]
-        ?.trim()
-        .toLowerCase() !== "application/json"
-    )
-      return yield* HttpServerResponse.json(
-        { error: "Content-Type must be application/json" },
-        { status: 415, headers: { connection: "close" } },
-      );
-    // Unknown lengths reserve the full allowance. Declared lengths are enforced by the bounded reader.
-    // A submission carries one transaction, so every request costs one token.
-    const reservation = (controller ?? ingressFor(config)).reserve(
-      identity,
-      kind,
-      declared,
-    );
-    if (!reservation.accepted)
-      return yield* HttpServerResponse.json(
-        { error: reservation.error, error_code: reservation.errorCode },
-        {
-          status: reservation.status,
-          headers: {
-            "retry-after": reservation.retryAfterSeconds.toString(),
-            ...(keepsConnection(reservation.status, declared)
-              ? {}
-              : { connection: "close" }),
-          },
-        },
-      );
+    const decision = admitHttpRequest(request, config, controller);
+    if (!decision.admitted)
+      return yield* HttpServerResponse.json(decision.body, {
+        status: decision.status,
+        headers: decision.headers,
+      });
+    const { declared } = decision;
     return yield* HttpIncomingMessage.withMaxBodySize(
       handler,
       Option.some(declared),
@@ -334,7 +408,7 @@ export const withHttpIngress = <E, R>(
           ? HttpServerResponse.setHeader(response, "connection", "close")
           : response,
       ),
-      Effect.ensuring(Effect.sync(reservation.release)),
+      Effect.ensuring(Effect.sync(decision.release)),
     );
   }) satisfies Effect.Effect<
     HttpServerResponse.HttpServerResponse,

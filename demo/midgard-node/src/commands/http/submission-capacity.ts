@@ -1,4 +1,4 @@
-/** Submission body bounds and process-wide capacity reservations. All routers share the same semaphore pools. */
+/** Submission body bounds and process-wide capacity reservations. All routers share the same pools. */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { HttpIncomingMessage, HttpServerRequest } from "@effect/platform";
 import { Effect, Option } from "effect";
@@ -14,32 +14,69 @@ export const V1_SUBMISSION_MEDIA_TYPE = "application/vnd.midgard.v1+cbor";
 export const SUBMIT_HTTP_BODY_MAX_BYTES =
   1 + 1 + 5 + MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes;
 
-type SubmitIngressPool = {
-  readonly concurrency: Effect.Semaphore;
-  readonly bytes: Effect.Semaphore;
-};
+/** Requests and body bytes a pool holds; plain counts, so a raw handler and an Effect take them alike. */
+type SubmitIngressPool = { requests: number; bytes: number };
 
 const submitIngressPools = new Map<string, SubmitIngressPool>();
 
-const submitIngressPool = ({
-  pool,
+/**
+ * Takes one request and `permitBytes` of the named pool when both fit, and
+ * returns their release (idempotent); `undefined` when either is exhausted.
+ * Never waits: a full pool refuses at once, so waiting sockets cannot become
+ * an unbounded queue. Each named `pool` has its own permits, so traffic of
+ * one pool never takes another's.
+ */
+export const tryTakeSubmitIngressPermit = ({
+  pool = "submit",
   maxConcurrency,
   maxInFlightBytes,
+  permitBytes,
 }: {
-  readonly pool: string;
+  readonly pool?: string;
   readonly maxConcurrency: number;
   readonly maxInFlightBytes: number;
-}): SubmitIngressPool => {
+  readonly permitBytes: number;
+}): (() => void) | undefined => {
   const key = `${pool}:${maxConcurrency.toString()}:${maxInFlightBytes.toString()}`;
-  const existing = submitIngressPools.get(key);
-  if (existing !== undefined) return existing;
-  const created = {
-    concurrency: Effect.unsafeMakeSemaphore(maxConcurrency),
-    bytes: Effect.unsafeMakeSemaphore(maxInFlightBytes),
+  let held = submitIngressPools.get(key);
+  if (held === undefined) {
+    held = { requests: 0, bytes: 0 };
+    submitIngressPools.set(key, held);
+  }
+  if (
+    held.requests >= maxConcurrency ||
+    held.bytes + permitBytes > maxInFlightBytes
+  )
+    return undefined;
+  const taken = held;
+  taken.requests += 1;
+  taken.bytes += permitBytes;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    taken.requests -= 1;
+    taken.bytes -= permitBytes;
   };
-  submitIngressPools.set(key, created);
-  return created;
 };
+
+/** Whether a pool configuration is one `tryTakeSubmitIngressPermit` accepts. */
+export const isValidSubmitIngressPermit = ({
+  maxConcurrency,
+  maxInFlightBytes,
+  permitBytes,
+}: {
+  readonly maxConcurrency: number;
+  readonly maxInFlightBytes: number;
+  readonly permitBytes: number;
+}): boolean =>
+  Number.isSafeInteger(maxConcurrency) &&
+  maxConcurrency > 0 &&
+  Number.isSafeInteger(maxInFlightBytes) &&
+  maxInFlightBytes > 0 &&
+  Number.isSafeInteger(permitBytes) &&
+  permitBytes > 0 &&
+  permitBytes <= maxInFlightBytes;
 
 export type SubmitIngressReservation =
   | { readonly kind: "invalid_content_length" }
@@ -99,10 +136,9 @@ export const readSubmitBodyWithProtocolLimit = (
 
 /**
  * Runs the body-read/decode/verification path only while both global
- * request-count and byte-weighted permits are held. Ingress is fail-fast when
- * either bound is exhausted so waiting sockets cannot become an unbounded
- * queue. Both permits are released by Effect on every exit. Each named
- * `pool` has its own permits, so traffic of one pool never takes another's.
+ * request-count and byte-weighted permits are held (`tryTakeSubmitIngressPermit`).
+ * Ingress is fail-fast when either bound is exhausted. Both permits are
+ * released on every exit, interruption included.
  */
 export const withSubmitIngressPermit = <A, E, R>({
   pool = "submit",
@@ -118,22 +154,28 @@ export const withSubmitIngressPermit = <A, E, R>({
   readonly effect: Effect.Effect<A, E, R>;
 }): Effect.Effect<Option.Option<A>, E, R> => {
   if (
-    !Number.isSafeInteger(maxConcurrency) ||
-    maxConcurrency <= 0 ||
-    !Number.isSafeInteger(maxInFlightBytes) ||
-    maxInFlightBytes <= 0 ||
-    !Number.isSafeInteger(permitBytes) ||
-    permitBytes <= 0 ||
-    permitBytes > maxInFlightBytes
-  ) {
+    !isValidSubmitIngressPermit({
+      maxConcurrency,
+      maxInFlightBytes,
+      permitBytes,
+    })
+  )
     return Effect.dieMessage("Invalid submit ingress permit configuration");
-  }
-  const permits = submitIngressPool({ pool, maxConcurrency, maxInFlightBytes });
-  return permits.concurrency
-    .withPermitsIfAvailable(
-      1,
-    )(permits.bytes.withPermitsIfAvailable(permitBytes)(effect))
-    .pipe(Effect.map(Option.flatten));
+  return Effect.uninterruptibleMask((restore) =>
+    Effect.suspend(() => {
+      const release = tryTakeSubmitIngressPermit({
+        pool,
+        maxConcurrency,
+        maxInFlightBytes,
+        permitBytes,
+      });
+      if (release === undefined) return Effect.succeed(Option.none<A>());
+      return restore(effect).pipe(
+        Effect.map(Option.some),
+        Effect.ensuring(Effect.sync(release)),
+      );
+    }),
+  );
 };
 
 export const requestMediaType = (contentType: string | undefined): string =>

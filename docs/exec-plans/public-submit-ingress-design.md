@@ -157,11 +157,11 @@ per single-tx request is cut instead:
   handler that keeps the same ingress checks (identity, size, rate) and
   hands off to the worker pool, without the generic router and per-request
   metric timers. The other routes keep the Effect stack.
-- **Cheap refusals.** Today every refusal writes info-level log lines
-  (`commands/http/submit.ts:159`), and every request runs four or five Effect
-  metric timers, even with monitoring off. The lean handler counts refusals
-  by reason in plain counters and logs only a sample (for example the first
-  refusal per reason per second). It records one latency histogram, not one
+- **Cheap refusals.** Before #881 every refusal wrote info-level log lines
+  and every request ran four or five Effect metric timers, even with
+  monitoring off. The lean handler counts refusals by reason in plain
+  counters (`submit_refusal_count{reason}`) and logs only the first refusal
+  per reason per second. It records one latency histogram, not one
   timer per stage. At 5,000 TPS with 20 % junk, this avoids at least 1,000 log
   lines per second.
 
@@ -410,15 +410,18 @@ them for a cloud vCPU.
 | Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16); +52 µs per vkey witness with D6 | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
-| Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs | not measured on the lean handler (M2) |
-| Today's whole `/submit` handler, main thread (M2 baseline, #871) | ~475–600 µs/request | ~1.7–2.1k req/s |
+| Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |
+| Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
+| Effect-router `/submit` handler before #881, main thread (M2 baseline, #871) | ~475–600 µs/request; 688 µs in the same-day rerun beside the row above | ~1.5–2.1k req/s |
 | Peer ingest, today (F12) | one commit wait per tx | ~10 TPS per lane at low load |
 
 **Binding stage.** Every request carries one tx. With TLS at the edge, a lean
 `/submit` handler and grouped worker hand-off, the main thread spends about
 24 + 5 + 20–50 µs per tx: roughly 50–80 µs, so 12–20k TPS on this machine
-and 6–10k on a cloud core (estimate until M2 runs on the lean handler;
-today's handler measures 475–600 µs). With TLS in the node and one
+and 6–10k on a cloud core (an estimate M2 does not bear out yet: the lean
+handler measures 506 µs per request with the check still on the main thread,
+and 467 µs when every connection is kept alive, so connection setup does not
+explain the gap; where the rest goes needs a profile). With TLS in the node and one
 connection per wallet request, the handshake alone is 390–570 µs, which
 caps the node near 1,000 TPS on a cloud core. The workers need about 1.3
 cores at 5,000 TPS. Once F10 is fixed, the database has about 7× headroom.
@@ -426,7 +429,8 @@ cores at 5,000 TPS. Once F10 is fixed, the database has about 7× headroom.
 That estimate counts no TLS in the node, which needs the Unix socket of D7.
 Kept on a reused TLS connection, it would add 20–25 µs per request.
 
-Not measured: the main thread's residual cost, and the other Postgres writers
+Not measured: where the lean handler's main-thread residual goes (M2
+measures its total), and the other Postgres writers
 that share the database and its WAL at 1,000 TPS (validation, mempool and
 block persistence). With asynchronous commit (D5), admission batches no
 longer wait for a WAL flush.
@@ -467,7 +471,7 @@ edge, submit cannot reach 1,000 TPS whatever else lands.
 | # | What | Decides |
 | --- | --- | --- |
 | M1 | Admission batch latency at 10k/100k/300k backlog and 1M+ terminal rows, after the F10 fix, with asynchronous commit and the validation and block writers running against the same WAL (`fsync=on`) | Backlog size, shard count, shed threshold |
-| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on today's handler done: 475–600 µs) | Whether D8 is needed for 5,000 TPS |
+| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on the Effect handler done: 475–600 µs, 688 µs on 2026-11-07; lean handler with the check on the main thread, #881: 506 µs, 467 µs all keep-alive; to rerun once #885 moves the check to workers) | Whether D8 is needed for 5,000 TPS |
 | M3 | Peer ingest TPS per lane, before and after batch admit | Peer body size and forward timeout |
 | M7 | Gauge drift at 5,000 TPS with the 500 ms refresh | Whether the shedding signal is exact enough |
 

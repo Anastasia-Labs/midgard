@@ -51,6 +51,27 @@ export const extractMetricValue = (text, names) => {
 };
 
 /**
+ * Sums every series of the first of `names` the metrics text holds, whatever
+ * their labels; 0 when it holds none.
+ */
+export const sumMetricSeries = (text, names) => {
+  for (const name of names) {
+    const re = new RegExp(
+      `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`,
+      "gm",
+    );
+    let total = 0;
+    let found = false;
+    for (const match of text.matchAll(re)) {
+      total += Number(match[1]);
+      found = true;
+    }
+    if (found) return total;
+  }
+  return 0;
+};
+
+/**
  * Extracts Prometheus histogram series for machine-readable report artifacts.
  */
 export const extractHistogram = (text, baseName) => {
