@@ -35,7 +35,6 @@ import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { HttpRouter } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
-import { SqlClient } from "@effect/sql";
 import { Effect, Layer, Logger, LogLevel, ManagedRuntime } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -67,15 +66,23 @@ const packageRoot = path.resolve(
   "../..",
 );
 
-// The writer answers every admission at once, as a new row.
+// The writer knows no tx and acknowledges every admission at once as new.
+// It never settles, so the gauge only grows; the backlog bounds are unbounded.
 const stubWriter = Layer.succeed(AdmissionWriter, {
-  admitReserved: () => {
+  lookup: () => ({ _tag: "Unknown" }) as const,
+  admit: (request) => {
     const now = new Date();
     return Effect.succeed({
       kind: "new" as const,
-      entry: { status: "queued", first_seen_at: now, last_seen_at: now },
-    } as never);
+      txIdHex: request.txId.toString("hex"),
+      status: "queued",
+      firstSeenAt: now,
+      lastSeenAt: now,
+    });
   },
+  pendingSince: () => undefined,
+  health: Effect.succeed({} as never),
+  flush: Effect.void,
   stats: Effect.succeed({} as never),
 });
 
@@ -90,10 +97,6 @@ const benchConfig = Layer.succeed(NodeConfig, {
     MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
 } as never);
-
-// The direct-admission fallback is typed against SqlClient but runs only
-// when no backlog slot is free, which an unbounded backlog never reaches.
-const noSql = Layer.succeed(SqlClient.SqlClient, {} as never);
 
 describe("submit main-thread cost (M2)", () => {
   it("measures main-thread CPU per /submit request", async () => {
@@ -122,7 +125,6 @@ describe("submit main-thread cost (M2)", () => {
           benchConfig,
           Globals.Default,
           stubWriter,
-          noSql,
           Logger.minimumLogLevel(LogLevel.Info),
         ),
       );

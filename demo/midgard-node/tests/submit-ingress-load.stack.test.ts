@@ -91,6 +91,9 @@ describe("submit-ingress load harness against an in-process node", () => {
           "400 Invalid canonical transaction CBOR payload": counts["bad-cbor"],
         },
       });
+      // A 202 is answered from memory and the row follows by group commit,
+      // so wait for the writer before counting rows.
+      await node.admissions();
       const admitted = await pg.runPromise(samplePostgres);
       expect(admitted.admissions).toEqual({ queued });
 
