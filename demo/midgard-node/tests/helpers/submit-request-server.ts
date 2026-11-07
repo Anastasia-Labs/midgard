@@ -62,9 +62,7 @@ export const stubWriter = Layer.succeed(AdmissionWriter, {
   lookup: () => ({ _tag: "Unknown" }) as const,
   admit: (request) => Effect.succeed(acknowledge(request)),
   admitBatch: (requests) =>
-    Effect.succeed(
-      requests.map((request) => Either.right(acknowledge(request))),
-    ),
+    requests.map((request) => Either.right(acknowledge(request))),
   pendingSince: () => undefined,
   health: Effect.succeed({} as never),
   flush: Effect.void,

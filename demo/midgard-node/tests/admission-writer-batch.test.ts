@@ -37,14 +37,16 @@ describe("admission writer batch admit", () => {
 
           const unlock = yield* lockAdmissionsTable;
           const answers = yield* withinLock(
-            writer.admitBatch([
-              first,
-              first,
-              conflict,
-              second,
-              third,
-              overflow,
-            ]),
+            Effect.sync(() =>
+              writer.admitBatch([
+                first,
+                first,
+                conflict,
+                second,
+                third,
+                overflow,
+              ]),
+            ),
           );
           expect(
             answers.map((answer) =>

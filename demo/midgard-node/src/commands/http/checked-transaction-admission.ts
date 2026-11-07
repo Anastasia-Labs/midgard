@@ -5,7 +5,7 @@
  * it once `transaction-admission.ts`'s checks passed.
  */
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { Effect, Either, Metric, Option } from "effect";
+import { Effect, Either, Metric, Option, Runtime } from "effect";
 
 import { TxAdmissionsDB } from "../../database/index.js";
 import {
@@ -80,13 +80,22 @@ type BatchEntry =
       readonly release: Effect.Effect<void>;
     };
 
-type AdmissionResult = Either.Either<AdmissionAck, AdmissionRefusal>;
+/** One tx's admission answer. */
+export type AdmissionResult = Either.Either<AdmissionAck, AdmissionRefusal>;
+
+/** Admits checked transactions under one submit source, in order; see below. */
+export type CheckedTransactionsAdmitter = (
+  candidates: readonly AdmissionCandidate[],
+  submitSource: "native" | "peer",
+) => readonly AdmissionResult[];
 
 /**
- * Admits checked transactions under `submitSource`, in order, in one writer
- * submission (design D9, D5 batch admit). It answers from memory and never
- * waits for Postgres; each tx gets its own answer, and one tx's refusal
- * stops no other:
+ * Captures the services admission reads and returns it as a plain
+ * synchronous function, so a caller outside Effect (the raw `/submit`
+ * handler) admits without a fiber. It admits checked transactions under
+ * `submitSource`, in order, in one writer registration (design D9, D5 batch
+ * admit). It answers from memory and never waits for Postgres; each tx gets
+ * its own answer, and one tx's refusal stops no other:
  *
  * - a tx id the writer holds pending, or wrote recently, answers its
  *   duplicate ack (or a `TxAdmissionConflictError` when the bytes differ)
@@ -102,7 +111,151 @@ type AdmissionResult = Either.Either<AdmissionAck, AdmissionRefusal>;
  *
  * A `new` ack means accepted, not stored: the row is written by the
  * writer's next group commit, which then wakes the tx-queue processor. A
- * crash before that commit loses the tx.
+ * crash before that commit loses the tx. The call is one synchronous step,
+ * so nothing interrupts it between a reservation and its hand-off.
+ */
+export const makeCheckedTransactionsAdmitter = <R>(
+  wakeTxQueueProcessor: Effect.Effect<void, never, R>,
+): Effect.Effect<
+  CheckedTransactionsAdmitter,
+  never,
+  AdmissionWriter | NodeConfig | Globals | R
+> =>
+  Effect.gen(function* () {
+    const admissionWriter = yield* AdmissionWriter;
+    const nodeConfig = yield* NodeConfig;
+    const claims = (yield* Globals).ADMISSION_INPUT_CLAIMS;
+    const cache = yield* Effect.serviceOption(MempoolLedgerCache);
+    const runtime = yield* Effect.runtime<Globals | R>();
+    const runSync = Runtime.runSync(runtime);
+    const wakeOnCommit = wakeTxQueueProcessor.pipe(
+      Effect.provide(runtime.context),
+    );
+    const limits = {
+      native: admissionBacklogLimitsFor(
+        "native",
+        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+      ),
+      peer: admissionBacklogLimitsFor(
+        "peer",
+        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+      ),
+    };
+    return (candidates, submitSource) => {
+      const entries: BatchEntry[] = [];
+      for (const normalized of candidates) {
+        const txFullHash =
+          normalized.txFullHash ??
+          computeMidgardNativeTxFullHashFromCanonicalCbor(
+            normalized.txCanonicalCbor,
+          );
+        const known = admissionWriter.lookup(normalized.txId, txFullHash);
+        if (known._tag !== "Unknown") {
+          entries.push({
+            _tag: "Answered",
+            result:
+              known._tag === "Duplicate"
+                ? Either.right(known.ack)
+                : Either.left(known.error),
+          });
+          continue;
+        }
+        // Load shedding (D5): an anonymous tx is refused from memory once
+        // the backlog passes its share; a peer tx only once it is full.
+        const reservation = runSync(
+          reserveAdmissionBacklogSlot({
+            ...limits[submitSource],
+            bytes: normalized.txCanonicalCbor.length,
+          }),
+        );
+        if (!reservation.reserved) {
+          runSync(
+            Metric.increment(TxAdmissionsDB.admissionBacklogRejectCounter),
+          );
+          entries.push({
+            _tag: "Answered",
+            result: Either.left(
+              new TxAdmissionsDB.TxAdmissionBacklogFullError({
+                backlog: reservation.backlog,
+                maxBacklog: reservation.maxBacklog,
+                unit: reservation.unit,
+                message:
+                  reservation.unit === "bytes"
+                    ? "Durable submission admission byte backlog is full; retry later"
+                    : "Durable submission admission backlog is full; retry later",
+              }),
+            ),
+          });
+          continue;
+        }
+        // Set when this call took the claims, so a write that stores no
+        // new row gives them back; claims a pending copy holds stay with it.
+        let claimed = false;
+        const release = Effect.zipRight(
+          Effect.sync(() => {
+            if (claimed) claims.release(normalized.txIdHex);
+            claimed = false;
+          }),
+          releaseAdmissionBacklogSlot(reservation),
+        ).pipe(Effect.provide(runtime.context));
+        entries.push({
+          _tag: "Reserved",
+          release,
+          request: {
+            txId: normalized.txId,
+            txCanonicalCbor: normalized.txCanonicalCbor,
+            txFullHash,
+            submitSource,
+            settle: (written) =>
+              written
+                ? commitAdmissionBacklogSlot(reservation).pipe(
+                    Effect.provide(runtime.context),
+                  )
+                : release,
+            wakeOnCommit,
+            claimInputs: () => {
+              const outcome = claims.take({
+                txIdHex: normalized.txIdHex,
+                spentOutRefs: normalized.spentOutRefs,
+                producedOutRefs: normalized.producedOutRefs,
+                check: submitSource === "native",
+                spendable,
+              });
+              if (outcome._tag === "Refused") return outcome.error;
+              claimed = outcome._tag === "Claimed";
+              return undefined;
+            },
+          },
+        });
+      }
+      const reserved = entries.filter((entry) => entry._tag === "Reserved");
+      // Read right before the writer's registration, so the view is as
+      // fresh as it can be when the claims are checked.
+      const spendable =
+        reserved.length > 0 && Option.isSome(cache)
+          ? runSync(cache.value.spendableView)
+          : UNKNOWN_SPENDABLE_VIEW;
+      const written =
+        reserved.length === 0
+          ? []
+          : admissionWriter.admitBatch(reserved.map((entry) => entry.request));
+      let next = 0;
+      return entries.map((entry) => {
+        if (entry._tag === "Answered") return entry.result;
+        const result: AdmissionResult = written[next++]!;
+        // The writer owns the reservation only after answering `new`.
+        if (!(Either.isRight(result) && result.right.kind === "new"))
+          runSync(entry.release);
+        return result;
+      });
+    };
+  });
+
+/**
+ * Admits checked transactions under `submitSource`, in order: the admitter
+ * above, for Effect callers. It runs in one synchronous step.
  */
 export const admitCheckedTransactions = <R>({
   candidates,
@@ -117,128 +270,7 @@ export const admitCheckedTransactions = <R>({
   never,
   AdmissionWriter | NodeConfig | Globals | R
 > =>
-  Effect.gen(function* () {
-    const admissionWriter = yield* AdmissionWriter;
-    const nodeConfig = yield* NodeConfig;
-    const claims = (yield* Globals).ADMISSION_INPUT_CLAIMS;
-    const cache = yield* Effect.serviceOption(MempoolLedgerCache);
-    const context = yield* Effect.context<Globals | R>();
-    const wakeOnCommit = wakeTxQueueProcessor.pipe(Effect.provide(context));
-    const limits = admissionBacklogLimitsFor(
-      submitSource,
-      nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-      nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-    );
-    // Reserving and registering run uninterruptibly, so a reserved slot is
-    // always either owned by the writer or released here.
-    return yield* Effect.uninterruptible(
-      Effect.gen(function* () {
-        const entries: BatchEntry[] = [];
-        for (const normalized of candidates) {
-          const txFullHash =
-            normalized.txFullHash ??
-            computeMidgardNativeTxFullHashFromCanonicalCbor(
-              normalized.txCanonicalCbor,
-            );
-          const known = admissionWriter.lookup(normalized.txId, txFullHash);
-          if (known._tag !== "Unknown") {
-            entries.push({
-              _tag: "Answered",
-              result:
-                known._tag === "Duplicate"
-                  ? Either.right(known.ack)
-                  : Either.left(known.error),
-            });
-            continue;
-          }
-          // Load shedding (D5): an anonymous tx is refused from memory once
-          // the backlog passes its share; a peer tx only once it is full.
-          const reservation = yield* reserveAdmissionBacklogSlot({
-            ...limits,
-            bytes: normalized.txCanonicalCbor.length,
-          });
-          if (!reservation.reserved) {
-            yield* Metric.increment(
-              TxAdmissionsDB.admissionBacklogRejectCounter,
-            );
-            entries.push({
-              _tag: "Answered",
-              result: Either.left(
-                new TxAdmissionsDB.TxAdmissionBacklogFullError({
-                  backlog: reservation.backlog,
-                  maxBacklog: reservation.maxBacklog,
-                  unit: reservation.unit,
-                  message:
-                    reservation.unit === "bytes"
-                      ? "Durable submission admission byte backlog is full; retry later"
-                      : "Durable submission admission backlog is full; retry later",
-                }),
-              ),
-            });
-            continue;
-          }
-          // Set when this call took the claims, so a write that stores no
-          // new row gives them back; claims a pending copy holds stay with it.
-          let claimed = false;
-          const release = Effect.zipRight(
-            Effect.sync(() => {
-              if (claimed) claims.release(normalized.txIdHex);
-              claimed = false;
-            }),
-            releaseAdmissionBacklogSlot(reservation),
-          ).pipe(Effect.provide(context));
-          entries.push({
-            _tag: "Reserved",
-            release,
-            request: {
-              txId: normalized.txId,
-              txCanonicalCbor: normalized.txCanonicalCbor,
-              txFullHash,
-              submitSource,
-              settle: (written) =>
-                written
-                  ? commitAdmissionBacklogSlot(reservation).pipe(
-                      Effect.provide(context),
-                    )
-                  : release,
-              wakeOnCommit,
-              claimInputs: () => {
-                const outcome = claims.take({
-                  txIdHex: normalized.txIdHex,
-                  spentOutRefs: normalized.spentOutRefs,
-                  producedOutRefs: normalized.producedOutRefs,
-                  check: submitSource === "native",
-                  spendable,
-                });
-                if (outcome._tag === "Refused") return outcome.error;
-                claimed = outcome._tag === "Claimed";
-                return undefined;
-              },
-            },
-          });
-        }
-        const reserved = entries.filter((entry) => entry._tag === "Reserved");
-        // Read right before the writer's synchronous section, so the view
-        // is as fresh as it can be when the claims are checked.
-        const spendable =
-          reserved.length > 0 && Option.isSome(cache)
-            ? yield* cache.value.spendableView
-            : UNKNOWN_SPENDABLE_VIEW;
-        const written =
-          reserved.length === 0
-            ? []
-            : yield* admissionWriter.admitBatch(
-                reserved.map((entry) => entry.request),
-              );
-        let next = 0;
-        return yield* Effect.forEach(entries, (entry) => {
-          if (entry._tag === "Answered") return Effect.succeed(entry.result);
-          const result = written[next++]!;
-          // The writer owns the reservation only after answering `new`.
-          return Either.isRight(result) && result.right.kind === "new"
-            ? Effect.succeed<AdmissionResult>(result)
-            : Effect.as(entry.release, result as AdmissionResult);
-        });
-      }),
-    );
-  });
+  Effect.flatMap(
+    makeCheckedTransactionsAdmitter(wakeTxQueueProcessor),
+    (admit) => Effect.sync(() => admit(candidates, submitSource)),
+  );

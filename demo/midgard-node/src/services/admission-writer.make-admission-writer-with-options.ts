@@ -366,30 +366,26 @@ export const makeAdmissionWriterWithOptions = <R>(
 
     const admitBatch = (
       requests: readonly AdmissionWriteRequest[],
-    ): Effect.Effect<
-      readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[]
-    > =>
-      Effect.gen(function* () {
-        const items: AdmissionWriteItem[] = [];
-        const results = yield* Effect.sync(() => {
-          const nowMs = Date.now();
-          return requests.map((request) => {
-            const decision = register(request, nowMs);
-            if ("refusal" in decision) return Either.left(decision.refusal);
-            if (decision.item !== undefined) items.push(decision.item);
-            return Either.right(decision.ack);
-          });
-        });
-        // In request order, so each lane's queue keeps the body's order.
-        for (const item of items)
-          yield* Queue.offer(inputQueues[item.lane]!, item);
-        return results;
+    ): readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[] => {
+      const nowMs = Date.now();
+      const items: AdmissionWriteItem[] = [];
+      const results = requests.map((request) => {
+        const decision = register(request, nowMs);
+        if ("refusal" in decision) return Either.left(decision.refusal);
+        if (decision.item !== undefined) items.push(decision.item);
+        return Either.right(decision.ack);
       });
+      // In request order, so each lane's queue keeps the body's order. The
+      // lane queues are unbounded and shut down only after `accepting`
+      // turned false, so every registered item is taken.
+      for (const item of items)
+        Queue.unsafeOffer(inputQueues[item.lane]!, item);
+      return results;
+    };
 
     const service: AdmissionWriterService = {
       lookup: (txId, txFullHash) => lookupAt(txId, txFullHash, Date.now()),
-      admit: (request) =>
-        Effect.flatMap(admitBatch([request]), ([result]) => result!),
+      admit: (request) => Effect.suspend(() => admitBatch([request])[0]!),
       admitBatch,
       pendingSince: (txId) => {
         const item = pending.get(txId.toString("hex"));

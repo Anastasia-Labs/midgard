@@ -892,8 +892,9 @@ export const registerAdmissionsTests = () => {
               ...writer,
               admit: () =>
                 Effect.dieMessage("a full backlog must not reach the writer"),
-              admitBatch: () =>
-                Effect.dieMessage("a full backlog must not reach the writer"),
+              admitBatch: () => {
+                throw new Error("a full backlog must not reach the writer");
+              },
             });
             const unreachableSql = new Proxy({} as SqlClient.SqlClient, {
               get: (_target, property) => {

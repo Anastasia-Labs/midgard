@@ -208,14 +208,13 @@ export type AdmissionWriterService = {
   readonly admit: (
     request: AdmissionWriteRequest,
   ) => Effect.Effect<AdmissionAck, AdmissionWriteRefusal>;
-  /** `admit` for each request, in order, in one registration: a request
-   * repeating an earlier one's tx id answers as its duplicate (or
-   * conflict). Each answer is its own; one refusal stops no other. */
+  /** `admit` for each request, in order, in one synchronous registration:
+   * a request repeating an earlier one's tx id answers as its duplicate (or
+   * conflict). Each answer is its own; one refusal stops no other. A plain
+   * call, so a caller outside Effect admits without a fiber. */
   readonly admitBatch: (
     requests: readonly AdmissionWriteRequest[],
-  ) => Effect.Effect<
-    readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[]
-  >;
+  ) => readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[];
   /** Whether `txId` is waiting for its write; its first-seen time if so. */
   readonly pendingSince: (txId: Buffer) => Date | undefined;
   readonly health: Effect.Effect<AdmissionWriterHealth>;

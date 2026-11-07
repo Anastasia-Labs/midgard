@@ -3,16 +3,17 @@
  * (design D3). It runs the ingress checks every route runs
  * (`admitHttpRequest`), reserves a slot in the submit check pool, reads the
  * body, has a pool worker check it (design D4) and hands the checked tx to
- * `admitCheckedTransaction`. The main thread neither decodes nor hashes the
+ * the admitter (`makeCheckedTransactionsAdmitter`), a plain call that
+ * answers from memory. The main thread neither decodes nor hashes the
  * body. Every other route stays on the Effect stack.
  *
  * A refusal costs a counter increment by reason; its log line is sampled to
  * the first per reason per second. The handler records one latency
- * histogram and runs no Effect before admission.
+ * histogram and runs no Effect fiber on the way to its answer.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Cause, Effect, Exit, Option, Runtime } from "effect";
+import { Effect, Either, Option, Runtime } from "effect";
 
 import { AdmissionWriter, Globals, NodeConfig } from "../../services/index.js";
 import type {
@@ -29,7 +30,8 @@ import {
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
   type AdmissionRefusal,
-  admitCheckedTransaction,
+  type AdmissionResult,
+  makeCheckedTransactionsAdmitter,
 } from "./checked-transaction-admission.js";
 import {
   requestMediaType,
@@ -183,9 +185,9 @@ const INTERNAL_ERROR: Answer = {
 
 /**
  * Builds the raw `/submit` handler from the services in context. Bodies are
- * checked on `checkPool`; admission runs on the captured runtime. `ingress`
- * is the ingress controller the handler charges; by default the one the
- * node configuration shares with every other route.
+ * checked on `checkPool`; admission is a synchronous call on the services
+ * captured here. `ingress` is the ingress controller the handler charges; by
+ * default the one the node configuration shares with every other route.
  */
 export const makeSubmitRequestHandler = <R>({
   wakeTxQueueProcessor,
@@ -207,7 +209,8 @@ export const makeSubmitRequestHandler = <R>({
     const config = yield* NodeConfig;
     const controller = ingress ?? httpIngressFor(config);
     const runSync = Runtime.runSync(runtime);
-    const runCallback = Runtime.runCallback(runtime);
+    const admitChecked =
+      yield* makeCheckedTransactionsAdmitter(wakeTxQueueProcessor);
     const logRefusal = createRefusalLogSampler((line) =>
       runSync(Effect.logInfo(line)),
     );
@@ -304,44 +307,33 @@ export const makeSubmitRequestHandler = <R>({
       }
       releases.push(ticket.release);
 
-      const admit = (normalized: CheckedSubmittedTx) =>
-        runCallback(
-          admitCheckedTransaction({
-            normalized,
-            submitSource: normalized.source,
-            wakeTxQueueProcessor,
-          }),
-          {
-            onExit: (exit) => {
-              if (Exit.isSuccess(exit)) {
-                const ack = exit.value;
-                recordSubmitAdmitted();
-                answer({
-                  status: ack.kind === "new" ? 202 : 200,
-                  body: {
-                    txId: normalized.txIdHex,
-                    status: ack.status,
-                    firstSeenAt: ack.firstSeenAt.toISOString(),
-                    lastSeenAt: ack.lastSeenAt.toISOString(),
-                    duplicate: ack.kind === "duplicate",
-                  },
-                });
-                return;
-              }
-              const failure = Cause.failureOption(exit.cause);
-              if (Option.isNone(failure)) {
-                fail(() => `admission failed: ${Cause.pretty(exit.cause)}`);
-                return;
-              }
-              const refused = admissionRefusal(failure.value);
-              refuse(
-                refused.reason,
-                refused.answer,
-                () => failure.value.message,
-              );
+      const admit = (normalized: CheckedSubmittedTx) => {
+        let result: AdmissionResult;
+        try {
+          result = admitChecked([normalized], normalized.source)[0]!;
+        } catch (error) {
+          fail(() => `admission failed: ${String(error)}`);
+          return;
+        }
+        if (Either.isRight(result)) {
+          const ack = result.right;
+          recordSubmitAdmitted();
+          answer({
+            status: ack.kind === "new" ? 202 : 200,
+            body: {
+              txId: normalized.txIdHex,
+              status: ack.status,
+              firstSeenAt: ack.firstSeenAt.toISOString(),
+              lastSeenAt: ack.lastSeenAt.toISOString(),
+              duplicate: ack.kind === "duplicate",
             },
-          },
-        );
+          });
+          return;
+        }
+        const refusal = result.left;
+        const refused = admissionRefusal(refusal);
+        refuse(refused.reason, refused.answer, () => refusal.message);
+      };
 
       const checked = (outcome: SubmitCheckOutcome) => {
         switch (outcome.kind) {
