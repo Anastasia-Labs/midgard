@@ -745,11 +745,6 @@
     "reason": "MidgardMpf is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
-    "file": "midgard-node/src/services/admission-writer.make-admission-writer-with-options.ts",
-    "max": 565,
-    "reason": "makeAdmissionWriterWithOptions is the dominant indivisible declaration (528 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
     "max": 550,
     "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
