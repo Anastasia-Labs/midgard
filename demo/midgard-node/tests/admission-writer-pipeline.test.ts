@@ -368,40 +368,47 @@ describe("two-lane admission writer pipeline", () => {
     "retries a transiently failed batch until it is written, keeping the txs pending",
     () =>
       Effect.gen(function* () {
-        let attempts = 0;
-        const retriesBefore = yield* counterValue(admissionWriteRetryCounter);
-        const writer = yield* makeAdmissionWriterWithOptions(
-          (requests) =>
-            Effect.suspend(() => {
-              attempts += 1;
-              // Two serialization failures, then the write goes through.
-              return attempts <= 2
-                ? Effect.fail(
-                    new DatabaseError({
-                      message: "could not serialize access",
-                      cause: { code: "40001" },
-                      table: "tx_admissions",
-                    }),
-                  )
-                : Effect.succeed(conflicts(requests));
-            }),
-          {
-            shardCount: 1,
-            batchMaxRows: 4,
-            queueBytes: 1_048_576,
-            queueCapacity: 4,
-            retryBaseMs: 1,
-            retryMaxMs: 2,
-          },
-        );
-        yield* writer.admit(request("retry"));
-        yield* writer.flush;
-        expect(attempts).toBe(3);
-        expect(
-          (yield* counterValue(admissionWriteRetryCounter)) - retriesBefore,
-        ).toBe(2);
-        // The tx was not dropped: it reached a resolved outcome.
-        expect(yield* writer.stats).toMatchObject({ pending: 0, poisoned: 0 });
+        // A serialization failure, and the database outages that fail every
+        // row alike: disk full, out of memory, I/O error, read-only failover.
+        for (const code of ["40001", "53100", "53200", "58030", "25006"]) {
+          let attempts = 0;
+          const retriesBefore = yield* counterValue(admissionWriteRetryCounter);
+          const writer = yield* makeAdmissionWriterWithOptions(
+            (requests) =>
+              Effect.suspend(() => {
+                attempts += 1;
+                // Two failures, then the write goes through.
+                return attempts <= 2
+                  ? Effect.fail(
+                      new DatabaseError({
+                        message: `database refused the write (${code})`,
+                        cause: { code },
+                        table: "tx_admissions",
+                      }),
+                    )
+                  : Effect.succeed(conflicts(requests));
+              }),
+            {
+              shardCount: 1,
+              batchMaxRows: 4,
+              queueBytes: 1_048_576,
+              queueCapacity: 4,
+              retryBaseMs: 1,
+              retryMaxMs: 2,
+            },
+          );
+          yield* writer.admit(request(`retry-${code}`));
+          yield* writer.flush;
+          expect({ code, attempts }).toEqual({ code, attempts: 3 });
+          expect(
+            (yield* counterValue(admissionWriteRetryCounter)) - retriesBefore,
+          ).toBe(2);
+          // The tx was not dropped: it reached a resolved outcome.
+          expect(yield* writer.stats).toMatchObject({
+            pending: 0,
+            poisoned: 0,
+          });
+        }
       }).pipe(Effect.scoped),
   );
 

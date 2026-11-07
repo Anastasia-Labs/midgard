@@ -10,13 +10,23 @@ import {
   admissionWriteRetryCounter,
 } from "./admission-writer.validate-options.js";
 
-/** SQLSTATEs a later attempt can clear: serialization failure, deadlock,
- * lock not available, and a statement cancelled (our own attempt timeout). */
+/**
+ * SQLSTATEs a later attempt can clear: serialization failure, deadlock, lock
+ * not available, a statement cancelled (our own attempt timeout), and the
+ * outages that fail every row alike (disk full, out of memory, an I/O error,
+ * a server that went read-only in a failover). Treating an outage as a row
+ * fault would drop every acknowledged tx one by one; retried, it shows as a
+ * stall that clears when the database recovers.
+ */
 const TRANSIENT_SQLSTATES: ReadonlySet<string> = new Set([
   "40001",
   "40P01",
   "55P03",
   "57014",
+  "53100",
+  "53200",
+  "58030",
+  "25006",
 ]);
 
 const hasTransientSqlState = (error: unknown): boolean => {
