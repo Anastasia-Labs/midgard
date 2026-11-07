@@ -2,9 +2,10 @@
  * yield beside the step: over the failing transaction, and the failing
  * transaction that also mints under a native script's policy, it plans
  * every non-output step and every redeemer descriptor step at stage ten
- * and twelve; and it waits at a stage-four begin or stage-six begin-policy
- * step whose field is delivered by reference, and at a descriptor step
- * whose descriptor does not advance. */
+ * and twelve; it plans a stage-four begin or stage-six begin-policy step
+ * whose field is delivered by reference beside its role's yield, which
+ * reads the field from the reference input its evidence names; and it
+ * waits at a descriptor step whose descriptor does not advance. */
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -100,31 +101,39 @@ describe("validation-trace one-step plan: the script-sources steps a yield verif
     ]);
   });
 
-  it("waits at a stage-four begin step whose field is delivered by reference", () => {
-    expect(
-      planAt(failing, 58, (auxiliaryCbor) =>
-        replacePlutusConstrFieldCbor(
-          auxiliaryCbor,
-          [0],
-          Data.to(new Constr(1, [0n])),
-        ),
-      ),
-    ).toStrictEqual({
-      reason: "a scriptSources item of a field delivered by reference",
+  it("plans a stage-four begin step whose field is delivered by reference beside the stage-four begin yield, carrying that evidence whole beside its role", () => {
+    const byReference = replacePlutusConstrFieldCbor(
+      buildValidationOneStepArgument({
+        trace: failing,
+        stateIndex: 58,
+      }).auxiliaryCbor.toString("hex"),
+      [0],
+      Data.to(new Constr(1, [0n])),
+    );
+    expect(planAt(failing, 58, () => byReference)).toStrictEqual({
+      phase: "scriptSources",
+      prepare: "scriptSourcesPrepare",
+      semantic: "scriptSourcesNonOutputSemantic",
+      evidenceCbors: [byReference, Data.to(3n)],
+      itemYield: { name: "scriptSourcesStageFourBegin" },
     });
   });
 
-  it("waits at a stage-six begin-policy step whose field is delivered by reference", () => {
-    expect(
-      planAt(minting, 97, (auxiliaryCbor) =>
-        replacePlutusConstrFieldCbor(
-          auxiliaryCbor,
-          [2],
-          Data.to(new Constr(1, [0n])),
-        ),
-      ),
-    ).toStrictEqual({
-      reason: "a scriptSources item of a field delivered by reference",
+  it("plans a stage-six begin-policy step whose field is delivered by reference beside the stage-six begin-policy yield, carrying that evidence whole beside its role", () => {
+    const byReference = replacePlutusConstrFieldCbor(
+      buildValidationOneStepArgument({
+        trace: minting,
+        stateIndex: 97,
+      }).auxiliaryCbor.toString("hex"),
+      [2],
+      Data.to(new Constr(1, [0n])),
+    );
+    expect(planAt(minting, 97, () => byReference)).toStrictEqual({
+      phase: "scriptSources",
+      prepare: "scriptSourcesPrepare",
+      semantic: "scriptSourcesNonOutputSemantic",
+      evidenceCbors: [byReference, Data.to(5n)],
+      itemYield: { name: "scriptSourcesStageSixBeginPolicy" },
     });
   });
 

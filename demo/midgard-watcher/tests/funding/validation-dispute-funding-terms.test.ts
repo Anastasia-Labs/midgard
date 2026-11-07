@@ -3,7 +3,7 @@
  * resolver a thread visits between the game and the award by the address
  * of the script the manifest applies under that holder's name, and a
  * policy for any other category carries no dispute terms. */
-import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "@al-ft/midgard-fault-proofs";
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   credentialToAddress,
   scriptHashToCredential,
@@ -26,6 +26,55 @@ const manifestAddress = (name: string) => {
   );
 };
 
+/** The dispute's spending contracts a thread is never paid to past the
+ * boundary: the case's own and the game's, and the award. */
+const OUTSIDE_RESOLUTION = new Set([
+  "validationTraceDispute",
+  "validationTraceDisputeSource",
+  "validationTraceDisputeGame",
+  "validationTraceDisputeBoundary",
+  "validationTraceDisputeTimeout",
+  "validationTraceDisputeAward",
+  "validationTraceDisputeCase",
+  "validationTraceDisputeBond",
+  "validationTraceDisputeProofItem",
+]);
+
+/** The one-step resolvers no thread of ours is paid to: those whose step
+ * the runner never plays because no honest dispute reaches it (a CEK
+ * finish step, which a Plutus trace never emits; and the resolvers of an
+ * input that does not exist, a missing script source and a missing
+ * redeemer, each convicted by its own family), the value-and-mint
+ * resolution, which a dispute opened on a Plutus execution failure never
+ * reaches (decisions/2026-11-05-vtd-missing-phases.md), and the CEK context
+ * finalize stages of a script that is not a Cardano spend, which the runner
+ * does not drive. */
+const NOT_PLAYED = new Set([
+  "validationTraceDisputeCekFinishSemantic",
+  "validationTraceDisputeResolveInputsNonMembershipSemantic",
+  "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+  "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+  "validationTraceDisputeCekContextFinalizeMint",
+  "validationTraceDisputeCekContextFinalizeWithdraw",
+  "validationTraceDisputeCekContextFinalizeObserve",
+  "validationTraceDisputeCekContextFinalizeMidgard",
+]);
+
+/** The deployment members the thread moves pay a thread to past the
+ * boundary: every spending contract of the dispute's family but those
+ * above and the value-and-mint resolution's. Its withdrawal contracts are
+ * yields, invoked beside a move, never paid. */
+const ONE_STEP_RESOLVERS = Object.entries(DEPLOYMENT_MEMBERS)
+  .filter(
+    ([name, { family, purpose }]) =>
+      family === "validationTraceDispute" &&
+      purpose === "spend" &&
+      !OUTSIDE_RESOLUTION.has(name) &&
+      !NOT_PLAYED.has(name) &&
+      !name.startsWith("validationTraceDisputeValueAndMint"),
+  )
+  .map(([name]) => name);
+
 describe("validation-trace dispute funding terms from the signed deployment", () => {
   it("names the boundary and each one-step resolver by the manifest's applied script", () => {
     const { validationDispute } = watcherValidationDisputeFundingTerms(
@@ -36,172 +85,14 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
     expect(oneStep?.boundaryAddress).toBe(
       manifestAddress("validationTraceDisputeBoundary"),
     );
-    expect(oneStep?.resolverAddresses).toStrictEqual(
-      [
-        "validationTraceDisputeCekPrepare",
-        "validationTraceDisputeCekCoreStepSemantic",
-        "validationTraceDisputeCekCoreCompute",
-        "validationTraceDisputeCekCoreMachine",
-        "validationTraceDisputeCekCoreMapConversion",
-        "validationTraceDisputeCekCoreDirectScalarRoots",
-        "validationTraceDisputeCekCoreDirectScalarBudget",
-        "validationTraceDisputeCekCoreDirectScalar",
-        "validationTraceDisputeCekCoreDirectStructuredRoots",
-        "validationTraceDisputeCekCoreDirectStructuredBudget",
-        "validationTraceDisputeCekCoreDirectStructured",
-        "validationTraceDisputeCekCoreSemanticRoots",
-        "validationTraceDisputeCekCoreSemanticResult",
-        "validationTraceDisputeCekCoreSemanticBudget",
-        "validationTraceDisputeCekCoreMapStartRoots",
-        "validationTraceDisputeCekCoreMapStartBudget",
-        "validationTraceDisputeCekCoreMapStartNodes",
-        "validationTraceDisputeCekCoreSemanticFailureRoots",
-        "validationTraceDisputeCekCoreSemanticFailureMaterial",
-        "validationTraceDisputeCekCoreBlsBudget",
-        "validationTraceDisputeCekCoreBlsRoots",
-        "validationTraceDisputeCekCoreBlsFinal",
-        "validationTraceDisputeCekCoreFailureKnown",
-        "validationTraceDisputeCekCoreFailureBudget",
-        "validationTraceDisputeCekCoreTypeFailureRoots",
-        "validationTraceDisputeCekCoreTypeFailureKinds",
-        "validationTraceDisputeCekCoreCaseConstant",
-        "validationTraceDisputeCekCoreFailureBlsUncompress",
-        "validationTraceDisputeCekCorePv11Roots",
-        "validationTraceDisputeCekCorePv11Budget",
-        "validationTraceDisputeCekCorePv11Semantics",
-        "validationTraceDisputeCekCoreSemanticPair",
-        "validationTraceDisputeCekCoreSemanticListConstruct",
-        "validationTraceDisputeCekCoreSemanticListSelect",
-        "validationTraceDisputeCekCoreSemanticChoose",
-        "validationTraceDisputeCekCoreSemanticDataConstruct",
-        "validationTraceDisputeCekCoreSemanticDataScalar",
-        "validationTraceDisputeCekCoreSemanticDataMisc",
-        "validationTraceDisputeCekCoreStagedBytes",
-        "validationTraceDisputeCekCoreStagedInteger",
-        "validationTraceDisputeCekCoreStagedProduct",
-        "validationTraceDisputeCekCoreSemanticSerialiseLoop",
-        "validationTraceDisputeCekCoreStagedConversion",
-        "validationTraceDisputeCekCoreStagedWriteBitsLoop",
-        "validationTraceDisputeCekCoreStagedFailure",
-        "validationTraceDisputeCekCoreSettle",
-        "validationTraceDisputeCekExecutionSelectionSemantic",
-        "validationTraceDisputeCekContextStepSemantic",
-        "validationTraceDisputeCekContextControl",
-        "validationTraceDisputeCekContextRedeemerBegin",
-        "validationTraceDisputeCekContextItemBind",
-        "validationTraceDisputeCekContextReference",
-        "validationTraceDisputeCekContextSpend",
-        "validationTraceDisputeCekContextOutput",
-        "validationTraceDisputeCekContextSigner",
-        "validationTraceDisputeCekContextObserverAuthenticate",
-        "validationTraceDisputeCekContextMintInit",
-        "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
-        "validationTraceDisputeCekContextFinalizeAuthenticate",
-        "validationTraceDisputeCekContextAssemble",
-        "validationTraceDisputeCekContextTxInfo",
-        "validationTraceDisputeCekContextSeed",
-        "validationTraceDisputeCekContextItemEntry",
-        "validationTraceDisputeRedeemerItemTraversalNormalizer",
-        "validationTraceDisputeRedeemerItemOuterNormalizer",
-        "validationTraceDisputeRedeemerItemSourceAuthenticator",
-        "validationTraceDisputeRedeemerItemFoldMapExecutor",
-        "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
-        "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
-        "validationTraceDisputeRedeemerItemOpenTailExecutor",
-        "validationTraceDisputeRedeemerItemHeadScalarExecutor",
-        "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
-        "validationTraceDisputeRedeemerItemHeadMapExecutor",
-        "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
-        "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
-        "validationTraceDisputeRedeemerItemAttachBytesExecutor",
-        "validationTraceDisputeRedeemerItemFoldListExecutor",
-        "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
-        "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
-        "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
-        "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
-        "validationTraceDisputeRedeemerItemCloseExecutor",
-        "validationTraceDisputeRedeemerItemFinishDataExecutor",
-        "validationTraceDisputeCekContextItemSettlement",
-        "validationTraceDisputeCekContextItemReturn",
-        "validationTraceDisputeCekContextItemSelectionHash",
-        "validationTraceDisputeCekContextItemSelectionFinish",
-        "validationTraceDisputeCekContextItemDataHash",
-        "validationTraceDisputeCekContextItemDataFinishDescriptor",
-        "validationTraceDisputeCekContextItemFinalize",
-        "validationTraceDisputeCekContextItemSelectionContinue",
-        "validationTraceDisputeCekContextItemDataContinue",
-        "validationTraceDisputeCekContextItemDataFinishValue",
-        "validationTraceDisputeCekContextObserverFold",
-        "validationTraceDisputeCekContextRedeemerSelectInitialize",
-        "validationTraceDisputeCekContextRedeemerSelectHash",
-        "validationTraceDisputeCekContextRedeemerSelectFinish",
-        "validationTraceDisputeCekContextFinalizeSpend",
-        "validationTraceDisputeCekContextSettle",
-        "validationTraceDisputeCanonicalDecodePrepare",
-        "validationTraceDisputeCanonicalDecodeEmptySemantic",
-        "validationTraceDisputeCanonicalDecodeItemSemantic",
-        "validationTraceDisputeCanonicalDecodeItemSource",
-        "validationTraceDisputeCanonicalDecodeItemObserve",
-        "validationTraceDisputeCanonicalDecodeItemProof",
-        "validationTraceDisputeCanonicalDecodeItemSettlement",
-        "validationTraceDisputeCompactBindingPrepare",
-        "validationTraceDisputeCompactBindingSemantic",
-        "validationTraceDisputeStaticLedgerRulesPrepare",
-        "validationTraceDisputeStaticLedgerRulesSemantic",
-        "validationTraceDisputeInputSetsPrepare",
-        "validationTraceDisputeInputSetsEmptySemantic",
-        "validationTraceDisputeInputSetsItemSemantic",
-        "validationTraceDisputeSignaturesPrepare",
-        "validationTraceDisputeSignaturesAdvanceSemantic",
-        "validationTraceDisputeSignaturesAddressItemSemantic",
-        "validationTraceDisputeSignaturesRequiredItemSemantic",
-        "validationTraceDisputeSignaturesHandoffSemantic",
-        "validationTraceDisputePhaseANativeScriptsPrepare",
-        "validationTraceDisputePhaseANativeScriptsItemSemantic",
-        "validationTraceDisputePhaseAScriptPreconditionsPrepare",
-        "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
-        "validationTraceDisputeResolveInputsPrepare",
-        "validationTraceDisputeResolveInputsInitialSemantic",
-        "validationTraceDisputeResolveInputsFinishSemantic",
-        "validationTraceDisputeResolveInputsMembershipBeginSemantic",
-        "validationTraceDisputeResolveInputsMembershipStepSemantic",
-        "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
-        "validationTraceDisputeScriptSourcesPrepare",
-        "validationTraceDisputeScriptSourcesNonOutputSemantic",
-        "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
-        "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
-        "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
-        "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
-        "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
-        "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
-        "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
-        "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
-        "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
-        "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
-        "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
-        "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
-        "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
-        "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
-        "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
-        "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
-        "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
-        "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
-        "validationTraceDisputeRedeemerItemInvalidTailExecutor",
-        "validationTraceDisputeRedeemerItemInvalidDataExecutor",
-        "validationTraceDisputeRedeemerItemInvalidScalarDataExecutor",
-        "validationTraceDisputeRedeemerItemSettlement",
-      ].map(manifestAddress),
+    const resolvers = oneStep?.resolverAddresses ?? [];
+    // Each named once, and none the boundary's.
+    expect(new Set([oneStep?.boundaryAddress, ...resolvers]).size).toBe(
+      resolvers.length + 1,
     );
-    // Every holder the runner visits past the game is named exactly once.
-    expect(
-      new Set([oneStep?.boundaryAddress, ...(oneStep?.resolverAddresses ?? [])])
-        .size,
-    ).toBe(Object.keys(VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES).length);
+    expect([...resolvers].sort()).toStrictEqual(
+      ONE_STEP_RESOLVERS.map(manifestAddress).sort(),
+    );
   });
 
   it("carries no dispute terms for another category", () => {
