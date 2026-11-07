@@ -119,9 +119,10 @@ MPF_NATIVE_OWNER_SIDECAR_PATH: "db/midgard-ledger-mpf-architecture-g.sidecar"
 
 # --- L2 fees (required) --------------------------------------------------------
 # Linear L2 fee: MIN_FEE_A per byte plus MIN_FEE_B. Every operator of the
-# deployment must use the same values.
-MIN_FEE_A: "<lovelace per byte>"
-MIN_FEE_B: "<lovelace>"
+# deployment must use the same values (owner, 2026-11-06: 1 lovelace per
+# byte plus 2,000 lovelace, about 0.0025 ADA for a 500-byte transfer).
+MIN_FEE_A: "1"
+MIN_FEE_B: "2000"
 
 # --- Fresh deployment only (required before reference-script publication) ------
 # Read when deriving and publishing the scripts and at init; afterwards the
