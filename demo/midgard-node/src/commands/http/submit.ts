@@ -28,6 +28,10 @@ import {
 } from "../listen-http-ingress.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
+  type AdmissionRefusal,
+  admitCheckedTransaction,
+} from "./checked-transaction-admission.js";
+import {
   requestMediaType,
   SUBMIT_HTTP_BODY_MAX_BYTES,
   V1_SUBMISSION_MEDIA_TYPE,
@@ -38,11 +42,7 @@ import {
   recordSubmitLatency,
   recordSubmitRefusal,
 } from "./submission-metrics.js";
-import {
-  type AdmissionRefusal,
-  admitCheckedTransaction,
-  type CheckedSubmittedTx,
-} from "./transaction-admission.js";
+import type { CheckedSubmittedTx } from "./transaction-admission.js";
 
 /**
  * A full submission queue answers 503 with this Retry-After, about one

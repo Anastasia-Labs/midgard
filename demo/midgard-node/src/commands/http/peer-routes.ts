@@ -33,6 +33,7 @@ import {
   NodeConfig,
 } from "../../services/index.js";
 import { failWith500 } from "../listen-response.js";
+import { admitCheckedTransactions } from "./checked-transaction-admission.js";
 import {
   requestMediaType,
   resolveSubmitIngressReservation,
@@ -40,7 +41,6 @@ import {
 } from "./submission-capacity.js";
 import { SUBMIT_RETRY_AFTER_SECONDS } from "./submit.js";
 import {
-  admitCheckedTransactions,
   type CheckedSubmittedTx,
   checkSubmittedTransaction,
   submittedTxRules,

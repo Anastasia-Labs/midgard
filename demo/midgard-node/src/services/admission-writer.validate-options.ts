@@ -196,8 +196,8 @@ export type AdmissionWriterShardStats = {
 /**
  * The in-memory pending set in front of Postgres (design D9). `admit` answers
  * from memory and never waits for the database: the tx is written by a
- * background group commit. See `commands/http/transaction-admission.ts` for
- * the admission path built on it.
+ * background group commit. See `commands/http/checked-transaction-admission.ts`
+ * for the admission path built on it.
  */
 export type AdmissionWriterService = {
   /** Where the tx id stands in memory: pending, recently written, or
