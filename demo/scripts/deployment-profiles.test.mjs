@@ -1,0 +1,1047 @@
+import "./deployment-profile-operator-economics.test-cases.mjs";
+import "./deployment-profiles.rehearsal.test-cases.mjs";
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { encodeNativeScript } from "./deployment-profile-aiken.mjs";
+import {
+  publicProfiles,
+  testingProfiles,
+  withDelayAtFloor,
+} from "./deployment-profiles.test-helpers.mjs";
+import {
+  ALLOW_LIST_PLACEHOLDER_KEY_PREFIX,
+  canonicalJson,
+  daBondWithdrawDelayFloorMs,
+  emulatorOnlyProfileNames,
+  COMMIT_TTL_FUTURE_BUFFER_MS,
+  exactDecimal,
+  generateProfiles,
+  isAllowListPlaceholderKey,
+  largestFeasibleCommitEventDepth,
+  largestNoStrikeCommitEventDepth,
+  largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
+  minimumDaResponseBudgetMs,
+  minimumPublicEventWaitMs,
+  minimumPublicOpenAfterApplyMarginMs,
+  profileDigest,
+  profileNames,
+  readProfiles,
+  specDaBondWithdrawDelayFloorMs,
+  validateProfile,
+} from "./deployment-profiles.mjs";
+import { renderAiken } from "./deployment-profile-aiken.mjs";
+
+const TTL_FLOOR =
+  /event_wait_ms - 30000 ms \(the commit TTL floor\) - slot_length_ms >= 3 \(d \+ 1\) slot_length_ms \/ active_slot_coeff; the largest such d is /u;
+
+test("confirmation policy is explicit, validated, and bound into profile identity", () => {
+  const profiles = readProfiles();
+  const depth = (name) => profiles[name].l1_finality.confirmation_depth;
+  assert.equal(depth("local-devnet-testing"), 10);
+  assert.equal(depth("preprod-testing"), 10);
+  assert.equal(depth("preprod-emulator-testing"), 3);
+  for (const name of ["mainnet", "preprod-public"]) {
+    assert.equal(depth(name), 30);
+  }
+  const profile = structuredClone(profiles.mainnet);
+  const originalDigest = profileDigest(profile);
+  profile.l1_finality.confirmation_depth += 1;
+  assert.notEqual(profileDigest(profile), originalDigest);
+  validateProfile(profile, profile.name);
+  for (const invalid of [0, -1, 1.5, "3", Number.MAX_SAFE_INTEGER + 1]) {
+    profile.l1_finality.confirmation_depth = invalid;
+    assert.throws(
+      () => validateProfile(profile, profile.name),
+      /confirmation_depth/u,
+    );
+  }
+  delete profile.l1_finality;
+  assert.throws(() => validateProfile(profile, profile.name), /l1_finality/u);
+});
+
+test("every profile binds the commit-event depth and the Cardano consensus it assumes", () => {
+  const profiles = readProfiles();
+  // d, then the largest d each bound admits, by hand at 60,000 ms per block
+  // (3 × 1,000 ms / 0.05): no strike (W + N − L) / 60,000 − 1, the commit TTL
+  // floor (W − 30,000 − 1,000) / 60,000 − 1 and production (W − L) / 60,000,
+  // rounded down. d is the least of them (and of k).
+  const expected = {
+    mainnet: [2160, 2179, 2166, 2160],
+    "preprod-public": [22, 41, 28, 22],
+    "preprod-testing": [3, 16, 3, -3],
+    "local-devnet-testing": [3, 16, 3, -3],
+    "preprod-emulator-testing": [8, 21, 8, 2],
+    "preprod-emulator-curated": [8, 21, 8, 2],
+  };
+  assert.equal(COMMIT_TTL_FUTURE_BUFFER_MS, 30_000);
+  for (const [name, [depth, noStrike, feasible, production]] of Object.entries(
+    expected,
+  )) {
+    const profile = profiles[name];
+    assert.deepEqual(profile.l1_finality, {
+      confirmation_depth: profile.l1_finality.confirmation_depth,
+      commit_event_depth: depth,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
+    });
+    assert.equal(largestNoStrikeCommitEventDepth(profile), BigInt(noStrike));
+    assert.equal(largestFeasibleCommitEventDepth(profile), BigInt(feasible));
+    assert.equal(
+      largestProductionCommitEventDepth(profile),
+      BigInt(production),
+    );
+    const changed = structuredClone(profile);
+    changed.l1_finality.commit_event_depth = 0;
+    assert.notEqual(profileDigest(changed), profileDigest(profile));
+    validateProfile(changed, name);
+  }
+  // 3k/f slots plus the maximum validity range.
+  assert.equal(profiles.mainnet.timing.event_wait_ms, 129_600_000 + 480_000);
+  assert.deepEqual(exactDecimal("0.05"), { numerator: 5n, denominator: 100n });
+  assert.deepEqual(exactDecimal("1"), { numerator: 1n, denominator: 1n });
+  assert.deepEqual(exactDecimal("0.0000001"), {
+    numerator: 1n,
+    denominator: 10n ** 7n,
+  });
+  for (const invalid of [
+    0.05,
+    "0.050",
+    "00.05",
+    ".05",
+    "5e-2",
+    "+0.05",
+    "-0.05",
+    "1.",
+    " 0.05",
+    undefined,
+  ]) {
+    assert.equal(exactDecimal(invalid), undefined);
+  }
+});
+
+test("a commit-event depth above the no-strike bound is refused on every profile, and the bound is exact", () => {
+  const noStrike =
+    /event_wait_ms \+ user_events_negligence_timeout_ms >= 3 \(d \+ 1\) slot_length_ms \/ active_slot_coeff \+ max_validity_range_ms; the largest such d is /u;
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ]) {
+    // The commit TTL floor binds first on these profiles; the no-strike
+    // check runs before it, so d just past the no-strike bound names it.
+    const profile = structuredClone(readProfiles()[name]);
+    const largest = Number(largestNoStrikeCommitEventDepth(profile));
+    profile.l1_finality.commit_event_depth = largest;
+    assert.throws(() => validateProfile(profile, name), TTL_FLOOR);
+    profile.l1_finality.commit_event_depth = largest + 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      new RegExp(`${noStrike.source}${largest}$`, "u"),
+    );
+  }
+  // Mainnet's no-strike bound sits above k; lifting k exposes it.
+  const mainnet = structuredClone(readProfiles().mainnet);
+  mainnet.l1_finality.security_parameter = 4320;
+  mainnet.l1_finality.commit_event_depth = 2180;
+  assert.throws(() => validateProfile(mainnet, "mainnet"), noStrike);
+});
+
+test("a commit-event depth whose anchor cap cannot reach the commit TTL floor is refused, though the no-strike bound admits it", () => {
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ]) {
+    const profile = structuredClone(readProfiles()[name]);
+    const largest = Number(largestFeasibleCommitEventDepth(profile));
+    assert.equal(profile.l1_finality.commit_event_depth, largest);
+    validateProfile(profile, name);
+    profile.l1_finality.commit_event_depth = largest + 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      new RegExp(`${TTL_FLOOR.source}${largest}$`, "u"),
+    );
+    // The depth the no-strike bound alone admits holds every commit.
+    profile.l1_finality.commit_event_depth = Number(
+      largestNoStrikeCommitEventDepth(profile),
+    );
+    assert.throws(() => validateProfile(profile, name), TTL_FLOOR);
+  }
+  // k, f and the slot length come from the profile: (300,000 − 30,000 −
+  // slot) / (3 slot / f) − 1, rounded down.
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  profile.l1_finality.active_slot_coeff = "0.1";
+  profile.l1_finality.commit_event_depth = 7;
+  validateProfile(profile, profile.name);
+  profile.l1_finality.commit_event_depth = 8;
+  assert.throws(() => validateProfile(profile, profile.name), TTL_FLOOR);
+  profile.l1_finality.active_slot_coeff = "0.05";
+  profile.l1_finality.slot_length_ms = 2000;
+  profile.l1_finality.commit_event_depth = 1;
+  validateProfile(profile, profile.name);
+  profile.l1_finality.commit_event_depth = 2;
+  assert.throws(() => validateProfile(profile, profile.name), TTL_FLOOR);
+  // Mainnet keeps d = k: its TTL floor admits 2166.
+  const mainnet = structuredClone(readProfiles().mainnet);
+  assert.equal(largestFeasibleCommitEventDepth(mainnet), 2166n);
+  mainnet.l1_finality.security_parameter = 4320;
+  mainnet.timing.event_wait_ms = 2_000_000;
+  mainnet.l1_finality.commit_event_depth = 32;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    new RegExp(`${TTL_FLOOR.source}31$`, "u"),
+  );
+});
+
+test("production profiles keep a due event d blocks deep when its commit lands; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  const production =
+    /event_wait_ms - max_validity_range_ms >= 3 d slot_length_ms \/ active_slot_coeff on a production profile; the largest such d is /u;
+  // Mainnet is tight: 130,080,000 − 480,000 = 129,600,000 = 60,000 × 2160.
+  // Lifting k leaves only the production bound in play.
+  const mainnet = structuredClone(profiles.mainnet);
+  mainnet.l1_finality.security_parameter = 4320;
+  validateProfile(mainnet, "mainnet");
+  mainnet.l1_finality.commit_event_depth = 2161;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    new RegExp(`${production.source}2160$`, "u"),
+  );
+  mainnet.l1_finality.commit_event_depth = 2160;
+  mainnet.timing.event_wait_ms -= 1;
+  assert.throws(() => validateProfile(mainnet, "mainnet"), production);
+  const publicProfile = structuredClone(profiles["preprod-public"]);
+  publicProfile.l1_finality.commit_event_depth = 23;
+  assert.throws(
+    () => validateProfile(publicProfile, "preprod-public"),
+    new RegExp(`${production.source}22$`, "u"),
+  );
+  // The same timing and depth pass under a testing name, where only the
+  // no-strike bound (41 here) applies.
+  const testing = structuredClone(profiles["preprod-emulator-testing"]);
+  testing.timing = structuredClone(publicProfile.timing);
+  testing.l1_finality = structuredClone(publicProfile.l1_finality);
+  validateProfile(testing, testing.name);
+});
+
+test("the commit-event depth is a non-negative integer at most k, and k, f and the slot length are well formed", () => {
+  const mainnet = structuredClone(readProfiles().mainnet);
+  mainnet.l1_finality.security_parameter = 2159;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    /commit_event_depth must be at most l1_finality\.security_parameter \(2159\)/u,
+  );
+  const original = readProfiles()["preprod-testing"];
+  const refuses = (mutate, message) => {
+    const profile = structuredClone(original);
+    mutate(profile.l1_finality);
+    assert.throws(() => validateProfile(profile, profile.name), message);
+  };
+  for (const invalid of [-1, 1.5, "16", Number.NaN, 2 ** 53]) {
+    refuses((l1) => {
+      l1.commit_event_depth = invalid;
+    }, /commit_event_depth must be a non-negative safe integer/u);
+  }
+  // A number, even 0.05, is refused: the canonical JSON of the deployment
+  // identity admits only safe integers. So is any second spelling of a value.
+  for (const invalid of [0.05, "0", "1.5", "0.050", "5e-2", "-0.05", 1]) {
+    refuses((l1) => {
+      l1.active_slot_coeff = invalid;
+    }, /active_slot_coeff must be a canonical decimal string in \(0, 1\]/u);
+  }
+  for (const key of ["security_parameter", "slot_length_ms"]) {
+    refuses(
+      (l1) => {
+        l1[key] = 0;
+      },
+      new RegExp(`l1_finality\\.${key} must be a positive safe integer`, "u"),
+    );
+    refuses((l1) => {
+      delete l1[key];
+    }, /l1_finality must contain exactly/u);
+  }
+  const zero = structuredClone(original);
+  zero.l1_finality.commit_event_depth = 0;
+  zero.l1_finality.active_slot_coeff = "1";
+  validateProfile(zero, zero.name);
+});
+
+test("all profiles have explicit networks and independent deployment identities", () => {
+  const profiles = readProfiles();
+  assert.equal(
+    profiles["preprod-public"].network,
+    profiles["preprod-testing"].network,
+  );
+  assert.notEqual(
+    profiles["preprod-public"].economics.requiredBondLovelace,
+    profiles["preprod-testing"].economics.requiredBondLovelace,
+  );
+  assert.equal(
+    new Set(Object.values(profiles).map(profileDigest)).size,
+    Object.keys(profiles).length,
+  );
+  for (const profile of Object.values(profiles)) {
+    const rendered = renderAiken(profile, "");
+    assert.ok(
+      rendered.includes(
+        `pub const block_maturity_duration_v1: Int = ${profile.timing.block_maturity_ms.toLocaleString("en-US").replaceAll(",", "_")}`,
+      ),
+    );
+    assert.ok(
+      rendered.includes(
+        `pub const required_bond: Int = ${profile.economics.requiredBondLovelace.toLocaleString("en-US").replaceAll(",", "_")}`,
+      ),
+    );
+  }
+});
+
+test("emulator-only profiles cannot be selected for generation, checks or builds", async () => {
+  assert.deepEqual(emulatorOnlyProfileNames, [
+    "preprod-emulator-testing",
+    "preprod-emulator-curated",
+  ]);
+  for (const name of emulatorOnlyProfileNames) {
+    assert.ok(profileNames.includes(name));
+    // Check mode writes nothing, so a missing guard fails on the message
+    // instead of rewriting the checkout's selected profile.
+    await assert.rejects(generateProfiles(name, true), /emulator-only/u);
+  }
+});
+
+test("the 900 s testing profiles load with the execution dispute excluded, which their maturity cannot hold", () => {
+  const profiles = readProfiles();
+  assert.deepEqual(
+    profiles["local-devnet-testing"].timing,
+    profiles["preprod-testing"].timing,
+  );
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const testing = structuredClone(profiles[name]);
+    assert.equal(testing.timing.block_maturity_ms, 900_000);
+    assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
+    assert.equal(testing.timing.operator_shift_ms, 1_800_000);
+    assert.equal(testing.timing.registration_ms, 30_000);
+    assert.equal(testing.timing.da_small_response_window_ms, 880_000);
+    assert.equal(testing.timing.da_full_response_window_ms, 880_000);
+    assert.equal(testing.timing.da_challenge_window_ms, 720_000);
+    assert.equal(testing.timing.da_slash_grace_ms, 300_000);
+    assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_380_000);
+    assert.equal(testing.limits.max_bisection_rounds, 32);
+    assert.deepEqual(testing.excluded_fraud_proof_categories, [
+      "validationTraceDispute",
+    ]);
+    validateProfile(testing, name);
+    testing.excluded_fraud_proof_categories = [];
+    assert.throws(() => validateProfile(testing, name), /execution-dispute/u);
+  }
+});
+test("every DA response window covers the minimum response budget, and the bound is exact", () => {
+  const profiles = readProfiles();
+  // (confirmation depth + 5 chained 64 KiB publications + 1 poll block)
+  // × 20 s × 2, derived by hand.
+  const expected = {
+    mainnet: 1_440_000,
+    "preprod-public": 1_440_000,
+    "preprod-rehearsal": 1_440_000,
+    "preprod-testing": 640_000,
+    "local-devnet-testing": 640_000,
+    "preprod-emulator-testing": 360_000,
+    "preprod-emulator-curated": 360_000,
+  };
+  for (const [name, profile] of Object.entries(profiles)) {
+    const budget = minimumDaResponseBudgetMs(profile);
+    assert.equal(budget, expected[name]);
+    assert.ok(profile.timing.da_small_response_window_ms >= budget);
+    assert.ok(profile.timing.da_full_response_window_ms >= budget);
+    const atBound = structuredClone(profile);
+    atBound.timing.da_small_response_window_ms = budget;
+    validateProfile(atBound, name);
+    atBound.timing.da_small_response_window_ms = budget - 1;
+    assert.throws(
+      () => validateProfile(atBound, name),
+      new RegExp(`minimum response budget of ${budget} ms`, "u"),
+    );
+  }
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const previous = structuredClone(profiles[name]);
+    previous.timing.da_small_response_window_ms = 60_000;
+    previous.timing.da_full_response_window_ms = 120_000;
+    assert.throws(
+      () => validateProfile(previous, name),
+      /minimum response budget/u,
+    );
+  }
+});
+
+test("the latest DA answer lands before maturity, and before half maturity where the execution dispute is installed; both bounds are exact", () => {
+  const profiles = readProfiles();
+  // Challenge window + maximum validity range + full window, from block end.
+  const latestFullWindow = (timing, deadline) =>
+    deadline - timing.da_challenge_window_ms - timing.max_validity_range_ms;
+  const boundary = (profile, name, deadline, refusal) => {
+    const { timing } = profile;
+    const latest = latestFullWindow(timing, deadline);
+    assert.ok(timing.da_full_response_window_ms < latest);
+    timing.da_full_response_window_ms = latest - 1;
+    validateProfile(profile, name);
+    timing.da_full_response_window_ms = latest;
+    assert.throws(() => validateProfile(profile, name), refusal);
+  };
+  // mainnet excludes the dispute, so only maturity bounds the answer.
+  const mainnet = structuredClone(profiles.mainnet);
+  assert.ok(
+    mainnet.excluded_fraud_proof_categories.includes("validationTraceDispute"),
+  );
+  boundary(mainnet, "mainnet", 604_800_000, /must end before block maturity/u);
+  // preprod-public installs it: the case opens by block end + M / 2.
+  const caseOpen = /execution-dispute case open deadline/u;
+  const preprodPublic = structuredClone(profiles["preprod-public"]);
+  assert.equal(
+    latestFullWindow(preprodPublic.timing, 302_400_000),
+    215_520_000,
+  );
+  boundary(preprodPublic, "preprod-public", 302_400_000, caseOpen);
+  // The rule follows the exclusion list, not the profile name.
+  const installed = structuredClone(profiles.mainnet);
+  installed.excluded_fraud_proof_categories =
+    profiles["preprod-public"].excluded_fraud_proof_categories.slice();
+  boundary(installed, "mainnet", 302_400_000, caseOpen);
+  // The 900 s testing profiles are exempt from the maturity rule.
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const { timing } = profiles[name];
+    assert.ok(latestFullWindow(timing, timing.block_maturity_ms) <= 0);
+    validateProfile(structuredClone(profiles[name]), name);
+  }
+});
+test("digest is independent of YAML key order and changes with timing or economics", () => {
+  const profile = readProfiles()["preprod-testing"];
+  assert.equal(
+    profileDigest(profile),
+    profileDigest(Object.fromEntries(Object.entries(profile).reverse())),
+  );
+  const changed = structuredClone(profile);
+  changed.timing.operator_shift_ms += 1;
+  assert.notEqual(profileDigest(profile), profileDigest(changed));
+  changed.economics.proverCollateralFloorLovelace += 1;
+  assert.notEqual(profileDigest(profile), profileDigest(changed));
+  const daBondChanged = structuredClone(profile);
+  daBondChanged.da_bond.da_bond_lovelace += 1;
+  assert.notEqual(profileDigest(profile), profileDigest(daBondChanged));
+});
+
+test("profile validation rejects unsafe timing, networks, and unknown fields", () => {
+  const mutations = [
+    (profile) => {
+      profile.timing.dispute_side_clock_ms = 0;
+    },
+    (profile) => {
+      profile.timing.block_maturity_ms = 0;
+    },
+    (profile) => {
+      profile.timing.registration_ms = Number.MAX_SAFE_INTEGER + 1;
+    },
+    (profile) => {
+      profile.timing.operator_shift_ms = 30;
+    },
+    (profile) => {
+      profile.timing.da_small_response_window_ms =
+        profile.timing.da_full_response_window_ms + 1;
+    },
+    (profile) => {
+      profile.network = "Mainnet";
+    },
+    (profile) => {
+      profile.timing.block_maturity = 123;
+    },
+  ];
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    for (const mutate of mutations) {
+      const profile = structuredClone(readProfiles()[name]);
+      mutate(profile);
+      assert.throws(() => validateProfile(profile, name));
+    }
+  }
+});
+
+test("every profile keeps the negligence timeout shorter than the operator shift, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.user_events_negligence_timeout_ms =
+      profile.timing.operator_shift_ms - 1;
+    validateProfile(profile, name);
+    profile.timing.user_events_negligence_timeout_ms += 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /negligence timeout must be shorter than the operator shift/u,
+    );
+  }
+});
+
+test("every profile gives a covering commit one maximum validity range inside the negligence timeout, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.user_events_negligence_timeout_ms =
+      profile.timing.max_validity_range_ms;
+    validateProfile(profile, name);
+    profile.timing.user_events_negligence_timeout_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /negligence timeout must cover the maximum validity range/u,
+    );
+  }
+});
+
+test("every profile gives a successor's covering commit one maximum validity range inside the new-shift grace, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.new_shift_inactivity_grace_period_ms =
+      profile.timing.max_validity_range_ms;
+    validateProfile(profile, name);
+    profile.timing.new_shift_inactivity_grace_period_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /inactivity grace period must cover the maximum validity range/u,
+    );
+  }
+});
+
+test("public profiles wait out the validity range plus confirmation depth before requiring an event; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  // 480 s maximum validity range + 30 blocks × 20 s × 2, derived by hand.
+  for (const name of publicProfiles) {
+    const profile = structuredClone(profiles[name]);
+    // A shallow commit-event depth keeps its own bounds out of the way.
+    profile.l1_finality.commit_event_depth = 0;
+    assert.equal(minimumPublicEventWaitMs(profile), 1_680_000);
+    assert.ok(profile.timing.event_wait_ms >= 1_680_000);
+    profile.timing.event_wait_ms = 1_680_000;
+    validateProfile(profile, name);
+    profile.timing.event_wait_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /Event wait must cover the maximum validity range plus confirmation depth, at least 1680000 ms/u,
+    );
+    // A deeper finality assumption raises the floor.
+    profile.timing.event_wait_ms = 1_680_000;
+    profile.l1_finality.confirmation_depth += 1;
+    assert.throws(() => validateProfile(profile, name), /Event wait/u);
+  }
+  for (const name of ["preprod-testing", "local-devnet-testing"]) {
+    const profile = structuredClone(profiles[name]);
+    assert.ok(profile.timing.event_wait_ms < minimumPublicEventWaitMs(profile));
+    validateProfile(profile, name);
+  }
+});
+
+test("an installed execution dispute needs block maturity of at least 2 D_case + 1, exactly; an excluded one needs none", () => {
+  const profiles = readProfiles();
+  // D_case = 2 C + 2 (2 rounds + 3) L_d + R (validation-dispute-v1.ak).
+  // Public: 2 * 86,400,000 + 2 * 67 * 120,000 + 21,600,000 = 210,480,000, so
+  // maturity must be at least 420,960,001; it is 604,800,000. R at
+  // 113,519,999 puts D_case at 302,399,999, the last value M admits.
+  const profile = structuredClone(profiles["preprod-public"]);
+  profile.timing.dispute_resolution_allowance_ms = 113_519_999;
+  validateProfile(profile, "preprod-public");
+  profile.timing.dispute_resolution_allowance_ms = 113_520_000;
+  assert.throws(
+    () => validateProfile(profile, "preprod-public"),
+    /at least 604800001 ms \(2 D_case \+ 1\)/u,
+  );
+  // Maturity equal to 2 D_case + 1 (604,799,999 at R = 113,519,999) admits.
+  profile.timing.dispute_resolution_allowance_ms = 113_519_999;
+  profile.timing.block_maturity_ms = 604_799_999;
+  validateProfile(profile, "preprod-public");
+  profile.timing.block_maturity_ms = 604_799_998;
+  assert.throws(
+    () => validateProfile(profile, "preprod-public"),
+    /at least 604799999 ms \(2 D_case \+ 1\)/u,
+  );
+  profile.excluded_fraud_proof_categories.push("validationTraceDispute");
+  validateProfile(profile, "preprod-public");
+  // The emulator profiles keep 72 h maturity, above their 21,560,001 floor.
+  for (const name of emulatorOnlyProfileNames) {
+    const emulator = structuredClone(profiles[name]);
+    assert.equal(emulator.timing.block_maturity_ms, 259_200_000);
+    assert.ok(
+      !emulator.excluded_fraud_proof_categories.includes(
+        "validationTraceDispute",
+      ),
+    );
+    emulator.timing.block_maturity_ms = 21_560_000;
+    assert.throws(() => validateProfile(emulator, name), /21560001 ms/u);
+  }
+});
+test("every profile carries the pooled DA bond amounts and timing, rendered into env", () => {
+  const profiles = readProfiles();
+  const expected = {
+    public: {
+      da_bond: {
+        da_bond_lovelace: 100_000_000_000,
+        da_slash_penalty_lovelace: 25_000_000_000,
+        da_bond_min_top_up_lovelace: 1_000_000_000,
+        da_bond_pool_floor_lovelace: 5_000_000,
+        challenge_record_lovelace: 27_000_000,
+      },
+      timing: {
+        da_challenge_window_ms: 86_400_000,
+        da_slash_grace_ms: 172_800_000,
+        da_bond_withdraw_delay_ms: 778_080_000,
+      },
+    },
+    testing: {
+      da_bond: {
+        da_bond_lovelace: 500_000_000,
+        da_slash_penalty_lovelace: 100_000_000,
+        da_bond_min_top_up_lovelace: 5_000_000,
+        da_bond_pool_floor_lovelace: 5_000_000,
+        challenge_record_lovelace: 27_000_000,
+      },
+      timing: {
+        da_challenge_window_ms: 720_000,
+        da_slash_grace_ms: 300_000,
+        da_bond_withdraw_delay_ms: 2_380_000,
+      },
+    },
+  };
+  const envNames = {
+    da_bond_lovelace: "da_bond_lovelace_v1",
+    da_slash_penalty_lovelace: "da_slash_penalty_lovelace_v1",
+    da_bond_min_top_up_lovelace: "da_bond_min_top_up_lovelace_v1",
+    da_bond_pool_floor_lovelace: "da_bond_pool_floor_lovelace_v1",
+    challenge_record_lovelace: "challenge_record_lovelace_v1",
+    da_challenge_window_ms: "da_challenge_window_ms_v1",
+    da_slash_grace_ms: "da_slash_grace_ms_v1",
+    da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
+  };
+  for (const [name, profile] of Object.entries(profiles)) {
+    const bounded = profile.economics.profile === "bounded-acceptance-v1";
+    const want = {
+      da_bond: expected[bounded ? "testing" : "public"].da_bond,
+      timing: emulatorOnlyProfileNames.includes(name)
+        ? {
+            da_challenge_window_ms: 1_800_000,
+            da_slash_grace_ms: 300_000,
+            da_bond_withdraw_delay_ms: 259_980_000,
+          }
+        : expected[publicProfiles.includes(name) ? "public" : "testing"].timing,
+    };
+    assert.deepEqual(profile.da_bond, want.da_bond);
+    const rendered = renderAiken(profile, "");
+    for (const [key, value] of Object.entries({
+      ...want.da_bond,
+      ...want.timing,
+    })) {
+      if (key in want.timing) assert.equal(profile.timing[key], value);
+      assert.ok(
+        rendered.includes(
+          `pub const ${envNames[key]}: Int = ${value.toLocaleString("en-US").replaceAll(",", "_")}`,
+        ),
+        `${name} renders ${envNames[key]}`,
+      );
+    }
+  }
+});
+
+test("every interactive profile lets the longest transition-trace thread finish before block maturity, exactly", () => {
+  assert.equal(maximumTransitionTraceThreadSteps(), 6_308);
+  const budget = maximumTransitionTraceThreadBudgetMs();
+  assert.equal(budget, 6_308 * 2 * 20_000);
+  const profiles = readProfiles();
+  for (const name of [...publicProfiles, ...emulatorOnlyProfileNames])
+    assert.ok(profiles[name].timing.block_maturity_ms >= budget, name);
+  assert.equal(
+    profiles["preprod-emulator-testing"].timing.block_maturity_ms,
+    259_200_000,
+  );
+  const thread = /transition-trace thread, 6308 steps \(252320000 ms\)/u;
+  for (const name of emulatorOnlyProfileNames) {
+    const profile = structuredClone(profiles[name]);
+    for (const [maturity, fits] of [
+      [172_800_000, false],
+      [budget - 1, false],
+      [budget, true],
+    ]) {
+      profile.timing.block_maturity_ms = maturity;
+      withDelayAtFloor(profile);
+      if (fits) validateProfile(profile, name);
+      else assert.throws(() => validateProfile(profile, name), thread);
+    }
+  }
+});
+
+test("every profile orders attestation timeout < challenge window <= block maturity, and both bounds are exact", () => {
+  const profiles = readProfiles();
+  for (const [name, original] of Object.entries(profiles)) {
+    const profile = structuredClone(original);
+    profile.timing.da_challenge_window_ms =
+      profile.timing.da_attestation_timeout_ms;
+    assert.throws(
+      () => validateProfile(withDelayAtFloor(profile), name),
+      /DA challenge window must be longer than the attestation timeout and at most block maturity/u,
+    );
+    profile.timing.da_challenge_window_ms =
+      profile.timing.block_maturity_ms + 1;
+    assert.throws(
+      () => validateProfile(withDelayAtFloor(profile), name),
+      /DA challenge window must be longer than the attestation timeout and at most block maturity/u,
+    );
+  }
+  // The public profiles also carry the dispute-schedule and late-Apply rules,
+  // which forbid either extreme, so the exact bounds are shown on the testing
+  // profiles.
+  for (const name of testingProfiles) {
+    const profile = structuredClone(profiles[name]);
+    profile.timing.da_challenge_window_ms =
+      profile.timing.da_attestation_timeout_ms + 1;
+    validateProfile(withDelayAtFloor(profile), name);
+    profile.timing.da_challenge_window_ms = profile.timing.block_maturity_ms;
+    validateProfile(withDelayAtFloor(profile), name);
+  }
+});
+
+test("every profile's withdrawal delay meets the spec relation and the head-removal relation, and both bounds are exact", () => {
+  const profiles = readProfiles();
+  const floors = {
+    // 480,000 + 86,400,000 + 172,800,000 + 172,800,000 (spec) and
+    // 480,000 + max(259,200,000, 604,800,000) + 172,800,000 (enforced).
+    public: { spec: 432_480_000, enforced: 778_080_000 },
+    // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
+    // the 900,000 maturity, so the two forms coincide.
+    testing: { spec: 2_380_000, enforced: 2_380_000 },
+    // 480,000 + 1,800,000 + 840,000 + 300,000 (spec) and
+    // 480,000 + max(2,640,000, 259,200,000) + 300,000 (enforced).
+    emulator: { spec: 3_420_000, enforced: 259_980_000 },
+  };
+  for (const [name, original] of Object.entries(profiles)) {
+    const want = emulatorOnlyProfileNames.includes(name)
+      ? floors.emulator
+      : floors[publicProfiles.includes(name) ? "public" : "testing"];
+    const profile = structuredClone(original);
+    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);
+    assert.equal(daBondWithdrawDelayFloorMs(profile.timing), want.enforced);
+    assert.equal(profile.timing.da_bond_withdraw_delay_ms, want.enforced);
+    validateProfile(profile, name);
+    profile.timing.da_bond_withdraw_delay_ms = want.spec - 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      new RegExp(
+        `challenge window, full response window and slash grace, at least ${want.spec} ms`,
+        "u",
+      ),
+    );
+    profile.timing.da_bond_withdraw_delay_ms = want.enforced - 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      want.enforced === want.spec
+        ? /slash grace, at least 2380000 ms/u
+        : new RegExp(
+            `the later of the challenge response deadline and block maturity, and the slash grace, at least ${want.enforced} ms`,
+            "u",
+          ),
+    );
+  }
+  // The spec's own public figure is exactly the spec floor, and it is refused:
+  // it would let a committee withdraw the instant the challenged block
+  // becomes removable at the queue head.
+  for (const name of publicProfiles) {
+    const profile = structuredClone(profiles[name]);
+    profile.timing.da_bond_withdraw_delay_ms = 432_480_000;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /the later of the challenge response deadline and block maturity/u,
+    );
+  }
+  // On a testing profile whose maturity outlasts the response deadline, the
+  // enforced form binds there too.
+  for (const name of testingProfiles) {
+    const profile = structuredClone(profiles[name]);
+    profile.timing.block_maturity_ms = 2_000_000;
+    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_380_000);
+    assert.equal(daBondWithdrawDelayFloorMs(profile.timing), 2_780_000);
+    assert.throws(
+      () => validateProfile(profile, name),
+      /the later of the challenge response deadline and block maturity, and the slash grace, at least 2780000 ms/u,
+    );
+    profile.timing.da_bond_withdraw_delay_ms = 2_780_000;
+    validateProfile(profile, name);
+  }
+});
+
+test("every profile keeps 0 < DA slash penalty < DA bond and positive top-up, floor and record amounts", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const atBound = structuredClone(original);
+    atBound.da_bond.da_slash_penalty_lovelace =
+      atBound.da_bond.da_bond_lovelace - 1;
+    validateProfile(atBound, name);
+    atBound.da_bond.da_slash_penalty_lovelace =
+      atBound.da_bond.da_bond_lovelace;
+    assert.throws(
+      () => validateProfile(atBound, name),
+      /DA slash penalty must be smaller than the DA bond/u,
+    );
+    for (const key of [
+      "da_bond_lovelace",
+      "da_slash_penalty_lovelace",
+      "da_bond_min_top_up_lovelace",
+      "da_bond_pool_floor_lovelace",
+      "challenge_record_lovelace",
+    ]) {
+      for (const invalid of [0, -1, 1.5, "5000000"]) {
+        const profile = structuredClone(original);
+        profile.da_bond[key] = invalid;
+        assert.throws(
+          () => validateProfile(profile, name),
+          new RegExp(`da_bond\\.${key} must be a positive safe integer`, "u"),
+        );
+      }
+      const missing = structuredClone(original);
+      delete missing.da_bond[key];
+      assert.throws(
+        () => validateProfile(missing, name),
+        /da_bond must contain exactly/u,
+      );
+    }
+    const extra = structuredClone(original);
+    extra.da_bond.challenger_bond_lovelace = 10_000_000_000;
+    assert.throws(
+      () => validateProfile(extra, name),
+      /da_bond must contain exactly/u,
+    );
+    const absent = structuredClone(original);
+    delete absent.da_bond;
+    assert.throws(() => validateProfile(absent, name), /profile must contain/u);
+    for (const key of [
+      "da_challenge_window_ms",
+      "da_slash_grace_ms",
+      "da_bond_withdraw_delay_ms",
+    ]) {
+      const profile = structuredClone(original);
+      profile.timing[key] = 0;
+      assert.throws(
+        () => validateProfile(profile, name),
+        new RegExp(`timing\\.${key} must be a positive safe integer`, "u"),
+      );
+    }
+  }
+});
+
+test("public profiles leave confirmation depth plus two validity ranges between the latest Apply and the challenge deadline; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  for (const name of publicProfiles) {
+    const profile = structuredClone(profiles[name]);
+    const { timing } = profile;
+    // 2 x 480 s maximum validity range + 30 blocks x 20 s x 2, derived by hand.
+    const floor = minimumPublicOpenAfterApplyMarginMs(profile);
+    assert.equal(floor, 2_160_000);
+    assert.ok(
+      timing.da_challenge_window_ms - timing.da_attestation_timeout_ms >= floor,
+    );
+    timing.da_challenge_window_ms = timing.da_attestation_timeout_ms + floor;
+    validateProfile(profile, name);
+    timing.da_challenge_window_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /DA challenge window must exceed the attestation timeout by two maximum validity ranges plus confirmation depth, at least 2160000 ms/u,
+    );
+    // Regression: the old two-validity-range stand-in (960 s) accepted a
+    // 4,560,000 ms window after a 3,600,000 ms attestation timeout, which
+    // leaves a challenger less than the confirmation-depth budget.
+    assert.equal(timing.da_attestation_timeout_ms, 3_600_000);
+    timing.da_challenge_window_ms = 4_560_000;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /DA challenge window must exceed the attestation timeout by two maximum validity ranges plus confirmation depth/u,
+    );
+  }
+  for (const name of testingProfiles) {
+    const profile = structuredClone(profiles[name]);
+    const { timing } = profile;
+    // 120 s of slack, under the public floor of two maximum validity ranges
+    // plus confirmation depth: accepted on testing.
+    assert.equal(
+      timing.da_challenge_window_ms - timing.da_attestation_timeout_ms,
+      120_000,
+    );
+    assert.ok(120_000 < minimumPublicOpenAfterApplyMarginMs(profile));
+    validateProfile(profile, name);
+  }
+});
+
+test("production profiles list their operators; testing profiles admit every key", () => {
+  const profiles = readProfiles();
+  for (const profile of Object.values(profiles))
+    assert.deepEqual(Object.keys(profile.allow_lists), ["operators"]);
+  for (const name of publicProfiles) {
+    const keys = profiles[name].allow_lists.operators;
+    assert.ok(keys.length > 0);
+    // Mainnet remains undeployed; P1 public keys must be real release inputs.
+    const placeholder = name === "mainnet";
+    assert.ok(
+      keys.every((key) => isAllowListPlaceholderKey(key) === placeholder),
+    );
+    const profile = structuredClone(profiles[name]);
+    profile.allow_lists.operators = null;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /allow_lists.operators must list the admitted keys on a production profile/u,
+    );
+  }
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ])
+    assert.equal(profiles[name].allow_lists.operators, null);
+  assert.equal(
+    Buffer.from(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX, "hex").toString("ascii"),
+    "placeholder:",
+  );
+});
+
+test("allow-list keys are distinct 28-byte lowercase hex, never empty", () => {
+  const key = (byte) => byte.repeat(28);
+  for (const [keys, message] of [
+    [[], /non-empty list of 28-byte lowercase hex key hashes/u],
+    [[key("ab").slice(2)], /28-byte lowercase hex/u],
+    [[key("AB")], /28-byte lowercase hex/u],
+    [[key("ab"), key("ab")], /must not repeat a key/u],
+    ["ab", /28-byte lowercase hex/u],
+  ]) {
+    const profile = structuredClone(readProfiles()["preprod-testing"]);
+    profile.allow_lists.operators = keys;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  profile.allow_lists.operators = [key("ab"), key("cd")];
+  validateProfile(profile, "preprod-testing");
+  for (const role of ["fraud_provers", "da_challengers"]) {
+    const listed = structuredClone(profile);
+    listed.allow_lists[role] = [key("ef")];
+    assert.throws(
+      () => validateProfile(listed, "preprod-testing"),
+      /allow_lists must contain exactly/u,
+    );
+  }
+  delete profile.allow_lists.operators;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /allow_lists must contain exactly/u,
+  );
+});
+
+test("the operator allow-list renders as an Option<List<ByteArray>> env constant in the layout aiken fmt gives", () => {
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  const one = "ab".repeat(28);
+  const two = "cd".repeat(28);
+  profile.allow_lists.operators = [one];
+  assert.match(
+    renderAiken(profile, ""),
+    new RegExp(
+      `pub const operator_allow_list: Option<List<ByteArray>> =\\n  Some\\(\\[#"${one}"\\]\\)\\n`,
+      "u",
+    ),
+  );
+  profile.allow_lists.operators = [one, two];
+  const rendered = renderAiken(profile, "");
+  assert.ok(
+    rendered.includes(
+      `pub const operator_allow_list: Option<List<ByteArray>> =\n  Some(\n    [\n      #"${one}",\n      #"${two}",\n    ],\n  )\n`,
+    ),
+  );
+  assert.equal(rendered.match(/_allow_list:/gu)?.length, 1);
+});
+
+test("the profile digest keeps list order and shape", () => {
+  assert.equal(
+    canonicalJson({ b: ["y", "x"], a: [], c: { e: [1], d: null } }),
+    '{"a":[],"b":["y","x"],"c":{"d":null,"e":[1]}}',
+  );
+});
+
+test("excluded fraud-proof categories are distinct catalogue names", () => {
+  const profiles = readProfiles();
+  assert.ok(
+    !profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.ok(
+    profiles["mainnet"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.deepEqual(
+    profiles["preprod-testing"].excluded_fraud_proof_categories,
+    ["validationTraceDispute"],
+  );
+  for (const [categories, message] of [
+    [null, /must be a list of catalogue category names/u],
+    [["unused-redeemer"], /must be a list of catalogue category names/u],
+    [[""], /must be a list of catalogue category names/u],
+    [["minFee", "minFee"], /must not repeat a category/u],
+  ]) {
+    const profile = structuredClone(profiles["preprod-testing"]);
+    profile.excluded_fraud_proof_categories = categories;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(profiles["preprod-testing"]);
+  delete profile.excluded_fraud_proof_categories;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /profile must contain exactly/u,
+  );
+});
+
+test("the curated emulator profile is the emulator profile with an operator list and the P1 catalogue", () => {
+  const profiles = readProfiles();
+  const strip = ({
+    name: _name,
+    allow_lists: _lists,
+    excluded_fraud_proof_categories: _excluded,
+    ...rest
+  }) => rest;
+  const curated = profiles["preprod-emulator-curated"];
+  assert.deepEqual(strip(curated), strip(profiles["preprod-emulator-testing"]));
+  assert.deepEqual(
+    curated.excluded_fraud_proof_categories,
+    profiles["preprod-public"].excluded_fraud_proof_categories,
+  );
+  for (const keys of Object.values(curated.allow_lists)) {
+    assert.equal(keys.length, 1);
+    assert.ok(!isAllowListPlaceholderKey(keys[0]));
+  }
+});
+
+test("the treasury native script renders as its ledger CBOR", () => {
+  // The vector `midgard/dispute_bond_v1.test` and the SDK pin too, checked
+  // there against the ledger's own encoder and hash.
+  const key = (n) => `706c616365686f6c6465723a74726573${"00".repeat(11)}0${n}`;
+  const sig = (n) => ({ type: "sig", keyHash: key(n) });
+  const sigCbor = (n) => `8200581c${key(n)}`;
+  assert.equal(
+    encodeNativeScript({
+      type: "atLeast",
+      required: 2,
+      scripts: [1, 2, 3].map(sig),
+    }),
+    `83030283${sigCbor(1)}${sigCbor(2)}${sigCbor(3)}`,
+  );
+  assert.equal(
+    encodeNativeScript({ type: "all", scripts: [sig(1)] }),
+    `820181${sigCbor(1)}`,
+  );
+  assert.equal(encodeNativeScript({ type: "any", scripts: [] }), "820280");
+  assert.equal(encodeNativeScript({ type: "after", slot: 1000 }), "82041903e8");
+  assert.equal(encodeNativeScript({ type: "before", slot: 23 }), "820517");
+  assert.throws(
+    () => encodeNativeScript({ type: "sig", keyHash: "00" }),
+    /28-byte/u,
+  );
+  assert.throws(
+    () => encodeNativeScript({ type: "multisig" }),
+    /Unknown native/u,
+  );
+});

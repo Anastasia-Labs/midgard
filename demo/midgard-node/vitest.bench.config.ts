@@ -1,6 +1,5 @@
 import fs from "node:fs";
 
-import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -18,16 +17,19 @@ export default defineConfig({
   test: {
     pool: "forks",
     maxWorkers: 1,
-    minWorkers: 1,
     reporters: [["default", { summary: false }]],
     include: ["./tests/**/*.bench.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     testTimeout: 900_000,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
     bail: 1,
     environment: "node",
   },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+  ssr: {
+    resolve: {
+      // Same source-first workspace resolution as vitest.config.ts.
+      conditions: ["midgard-source", "node", "development|production"],
     },
   },
   esbuild: {

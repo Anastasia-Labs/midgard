@@ -2,12 +2,22 @@ use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Output, OutputReference}
-use midgard/ledger_state.{
-  ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot, Header,
-  HeaderHash, MidgardTxsRoot, TransitionTraceRoot, WithdrawalsRoot,
+use cardano/assets.{AssetName, Lovelace, PolicyId}
+use cardano/transaction.{
+  Input, Output, OutputReference, Transaction, ValidityRange,
 }
+use env
+use midgard/availability_challenge as availability
+use midgard/common/utils
+use midgard/fraud_proof
+use midgard/fraud_proof_catalogue as catalogue
+use midgard/ledger_state.{
+  ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
+  HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
+  ValidationTracesRoot, WithdrawalsRoot, block_maturity_duration_v1,
+  protocol_version_v1,
+}
+use midgard/script_context_v1.{L1SlotConfigV1, slot_to_posix_time_v1}
 
 /// TODO: It might be better to be space-conscious and use an empty name.
 pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
@@ -23,15 +33,105 @@ pub const block_asset_name_prefix: AssetName = "MBLC"
 pub const block_asset_name_prefix_length: Int =
   bytearray.length(block_asset_name_prefix)
 
-pub const no_da_attestation: ByteArray = ""
+pub const no_da_attestation: availability.StateQueueStatusV1 =
+  availability.Unattested
+
+/// F04's canonical V1 deadline for applying a DA attestation to a committed
+/// block, measured from the node's `block_time`. That time is commit-bound
+/// (`commit_bound_header_time_is_valid`), so this duration has one
+/// authenticated on-chain origin rather than a submitter-selected clock.
+pub const da_attestation_timeout_v1: Int = env.da_attestation_timeout_v1
 
 pub type StateQueueNode {
-  header: Header,
-  da_attestation: ByteArray,
+  header: HeaderV1,
+  /// POSIX milliseconds at which the block was committed: the commit
+  /// transaction's inclusive validity upper bound. `header.end_time` is what
+  /// the block covers; `block_time` is when it was committed, and every
+  /// maturity and attestation clock runs from it. The commit arm binds it to
+  /// the header's hashed `block_slot` (`commit_bound_header_time_is_valid`),
+  /// and no transition may change it.
+  block_time: Int,
+  da_attestation: availability.StateQueueStatusV1,
+  /// Completed fraud, never proof initiation. The marked header cannot merge.
+  proven_fraud: Option<AssetName>,
+}
+
+pub type StateQueueNodeV1 =
+  StateQueueNode
+
+pub type HeaderView =
+  HeaderV1
+
+pub fn decode_header_view(header: HeaderV1) -> HeaderView {
+  expect header.protocol_version == protocol_version_v1
+  header
+}
+
+/// Bind a new block's commit time and covered interval to the L1
+/// transaction that commits it.
+///
+/// - R1: `block_time` is the commit's inclusive validity upper bound, and the
+///   covered interval is non-empty and ends no later than it.
+/// - R2: a block carrying L2 transactions covers up to its commit time, so
+///   only an event-only (catch-up) block may end before `block_time`.
+/// - R3: the hashed header field `block_slot` is the L1 slot whose last
+///   millisecond is `block_time`, so the header itself commits to its commit
+///   time and cannot be re-committed later with another one.
+///
+/// R3 also bounds `block_slot` to the ledger's slot domain: `block_time` is a
+/// ledger-validated upper bound, so its slot is a non-negative 64-bit word.
+pub fn commit_bound_header_time_is_valid(
+  header: HeaderV1,
+  block_time: Int,
+  slot_config: L1SlotConfigV1,
+  commit_validity_range: ValidityRange,
+) -> Bool {
+  let (_, inclusive_commit_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    commit_validity_range,
+  )
+  and {
+    block_time == inclusive_commit_upper_bound,
+    header.start_time < header.end_time,
+    header.end_time <= block_time,
+    header.l2_transaction_count == 0 || header.end_time == block_time,
+    slot_to_posix_time_v1(slot_config, header.block_slot) + slot_config.slot_length - 1 == block_time,
+  }
 }
 
 pub type Datum =
   linked_list.Element<ConfirmedState, StateQueueNode>
+
+/// Inductive invariant: no state-queue element output (a block node or the
+/// confirmed-state root) carries a reference script. Every arm that creates
+/// an element and every arm that continues one requires this of its output,
+/// so an element input never carries one either. The linked-list library does
+/// not look at reference scripts, so each arm pins it here.
+/// `validate_completed_fraud_record` requires `None` on both sides of the
+/// fraud node; without this invariant a node carrying a reference script
+/// could never be marked, and fraud in it would be unprovable.
+pub fn element_output_has_no_reference_script(output: Output) -> Bool {
+  output.reference_script == None
+}
+
+/// Inductive invariant: every state-queue block node holds at least this much
+/// lovelace from its commit until it leaves the queue. The commit arm requires
+/// it of the new node and keeps the continued anchor's lovelace unchanged;
+/// every other arm that continues a node keeps its lovelace unchanged or lets
+/// it only grow, and the DA status transitions carry the node value exactly.
+///
+/// The Attested -> Challenged Open cannot add lovelace to the node (its value
+/// is carried exactly and the challenger's input is fixed), so the node must
+/// already cover the ledger minimum of its largest admissible shape: a header
+/// at every width bound the commit arm enforces
+/// (`commit_block_header_width_is_bounded_v1`), `Challenged` with two 32-byte
+/// fields, a 32-byte `proven_fraud`, a link, the node NFT and a base address.
+/// Without it, an attested block whose node cannot hold `Challenged` could
+/// never be challenged, and it would merge unslashed. The value is
+/// ledger-derived and network-independent; a `coins_per_utxo_byte` rise past
+/// it needs a redeploy. The off-chain twin is the SDK's
+/// `STATE_QUEUE_NODE_MIN_LOVELACE`, and an SDK codec test measures the
+/// headroom against the ledger minimum.
+pub const state_queue_node_min_lovelace_v1: Lovelace = 5_000_000
 
 pub type SpendRedeemer {
   LinkedListMutation
@@ -39,8 +139,43 @@ pub type SpendRedeemer {
     state_queue_input_index: Int,
     da_attestation_mint_redeemer_index: Int,
   }
+  /// Authorizes only the retained-DA status transitions whose availability
+  /// policy redeemer names this exact queue input and its exact continuation.
+  /// Timeout correction deliberately uses `LinkedListMutation`: it removes a
+  /// node and must never be laundered through this status-only arm.
+  AvailabilityStatusUpdate {
+    state_queue_input_index: Int,
+    state_queue_output_index: Int,
+    availability_mint_redeemer_index: Int,
+  }
+  /// `m_fraud_proof_ref_input_index` is `None` when the completed proof token
+  /// is minted by this transaction, or `Some(i)` when `reference_inputs[i]`
+  /// holds an already-minted token of the fraud-proof policy.
+  RecordCompletedFraud {
+    state_queue_input_index: Int,
+    state_queue_output_index: Int,
+    fraud_proof_asset_name: AssetName,
+    m_fraud_proof_ref_input_index: Option<Int>,
+  }
 }
 
+/// Terminal history proofs either write the marker atomically or reference a
+/// header already protected by another completed proof. The latter cannot be
+/// rewritten repeatedly to obstruct correction or concurrent terminal proofs.
+pub type CompletedFraudWitness {
+  RecordedOutput { output_index: Int }
+  PreviouslyRecorded { reference_input_index: Int }
+}
+
+/// How the fraudulent operator's bond is reached by a
+/// `RemoveFraudulentBlockHeader` transaction.
+///
+/// The two bond-consuming constructors, and only they, pay the fraud prover's
+/// reward; the handler locates it as the single output at the prover's bounty
+/// address (`operator_directory.bounty_routing_is_exact_v1`).
+/// `OperatorAlreadySlashed` consumes no operator-directory node, so it has no
+/// bond to route, and the handler refuses any reward-shaped output on that arm
+/// (D4, 2026-08-11 owner ruling 7).
 pub type SlashingApproach {
   SlashActiveOperator { active_operators_redeemer_index: Int }
   SlashRetiredOperator { retired_operators_redeemer_index: Int }
@@ -48,6 +183,11 @@ pub type SlashingApproach {
     active_operators_element_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,
   }
+  /// The removed block is a descendant (`RemoveFraudulentBlocksLink`) of a
+  /// block convicted under the validation-trace category. Its operator is not
+  /// slashed and no reward is paid. This is the only arm such a removal
+  /// accepts; the convicted block itself is always removed with a slash arm.
+  DescendantOfValidationTraceConviction
 }
 
 pub type BlockRemovalApproach {
@@ -61,18 +201,112 @@ pub type BlockRemovalApproach {
   }
 }
 
+/// Whether a fraud removal may use `slashing_approach`, given how it removes
+/// the block and the authenticated fraud-proof asset name it cites.
+///
+/// A link removal (`RemoveFraudulentBlocksLink`) under a validation-trace
+/// conviction removes a descendant whose operator is exempt: it must use
+/// `DescendantOfValidationTraceConviction` or `OperatorAlreadySlashed`, never a
+/// slash arm. The exemption is mandatory because the submitter chooses the
+/// arm. Every other removal, including the convicted block's own
+/// (`RemoveLastFraudulentBlock`) under any category, accepts the three slash
+/// arms and never the exemption.
+pub fn slashing_approach_admits_removal_v1(
+  slashing_approach: SlashingApproach,
+  block_removal_approach: BlockRemovalApproach,
+  fraud_proof_asset_name: AssetName,
+) -> Bool {
+  let exempt_descendant = when block_removal_approach is {
+    RemoveFraudulentBlocksLink { .. } ->
+      catalogue.is_validation_trace_dispute(fraud_proof_asset_name)
+    RemoveLastFraudulentBlock { .. } -> False
+  }
+  when slashing_approach is {
+    SlashActiveOperator { .. } -> !exempt_descendant
+    SlashRetiredOperator { .. } -> !exempt_descendant
+    OperatorAlreadySlashed { .. } -> True
+    DescendantOfValidationTraceConviction -> exempt_descendant
+  }
+}
+
+/// Permissionless suffix correction for an expired unattested block anywhere
+/// in the queue. Preserve its predecessor and remove descendants before the
+/// target, so no retained transition is re-linked across discarded state.
+pub type UnattestedTimeoutRemovalApproach {
+  PruneUnattestedBlockDescendant {
+    predecessor_ref_input_index: Int,
+    timed_out_node_input_outref: OutputReference,
+    timed_out_node_output_index: Int,
+  }
+  RemoveLastUnattestedBlock {
+    predecessor_input_outref: OutputReference,
+    predecessor_output_index: Int,
+  }
+}
+
+/// Head-only removal for an unavailable block after an availability challenge.
+/// This wire type remains separate from unattested timeout suffix correction.
+pub type AttestationTimeoutRemovalApproach {
+  PruneTimedOutBlockDescendant {
+    confirmed_state_ref_input_index: Int,
+    timed_out_node_input_outref: OutputReference,
+    timed_out_node_output_index: Int,
+  }
+  RemoveTimedOutHead {
+    confirmed_state_input_outref: OutputReference,
+    confirmed_state_output_index: Int,
+  }
+}
+
 pub type MintRedeemer {
-  Init { output_index: Int }
+  InitV1 { output_index: Int }
   Deinit
   CommitBlockHeader {
+    yield_to_ref_input_index: Int,
     new_block_output_index: Int,
     continued_latest_block_output_index: Int,
     operator: VerificationKeyHash,
     scheduler_ref_input_index: Int,
     active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
+    /// Required exactly when the queue is non-empty. The singleton root binds
+    /// the append to the current head for Q61's timeout fence.
+    m_confirmed_state_ref_input_index: Option<Int>,
+    /// Required when the current head differs from the consumed append anchor
+    /// (the tail). Omitted for a one-node queue, where the authenticated anchor
+    /// datum is already the head datum.
+    m_head_state_queue_node_ref_input_index: Option<Int>,
   }
-  MergeToConfirmedState {
+  RemoveFraudulentBlockHeader {
+    yield_to_ref_input_index: Int,
+    fraudulent_operator: VerificationKeyHash,
+    fraudulent_blocks_header_hash: HeaderHash,
+    slashing_approach: SlashingApproach,
+    fraud_proof_ref_input_index: Int,
+    block_removal_approach: BlockRemovalApproach,
+  }
+  /// Permissionless liveness correction. It never consumes an operator bond:
+  /// missing DA attestation may be committee failure, so it is not evidence of
+  /// operator fraud. The current state-queue node is the authoritative
+  /// applied-attestation state and the shared input that serializes this path
+  /// against `AttachDaAttestation`.
+  RemoveUnattestedBlockAfterTimeout {
+    yield_to_ref_input_index: Int,
+    timed_out_header_hash: HeaderHash,
+    removal_approach: UnattestedTimeoutRemovalApproach,
+  }
+  /// Deterministic DA-availability correction. The dedicated availability
+  /// validator authenticates the expired challenge record and burns its
+  /// challenge on the first transaction; the CorrectionLock singleton then
+  /// carries the same DACH identity across permissionless descendant pruning.
+  RemoveUnavailableBlockAfterTimeout {
+    yield_to_ref_input_index: Int,
+    unavailable_header_hash: HeaderHash,
+    challenge_asset_name: AssetName,
+    removal_approach: AttestationTimeoutRemovalApproach,
+  }
+  MergeToConfirmedStateV1 {
+    yield_to_ref_input_index: Int,
     header_node_key: ByteArray,
     confirmed_state_input_outref: OutputReference,
     confirmed_state_output_index: Int,
@@ -83,20 +317,23 @@ pub type MintRedeemer {
     merged_block_deposits_root: DepositsRoot,
     merged_block_transition_trace_root: TransitionTraceRoot,
     merged_block_event_to_step_root: EventToStepRoot,
+    merged_block_validation_traces_root: ValidationTracesRoot,
     merged_block_withdrawal_count: Int,
     merged_block_forced_transaction_count: Int,
     merged_block_l2_transaction_count: Int,
     merged_block_deposit_count: Int,
     merged_block_total_event_count: Int,
     merged_block_transition_step_count: Int,
+    merged_block_validation_trace_count: Int,
   }
-  RemoveFraudulentBlockHeader {
-    fraudulent_operator: VerificationKeyHash,
-    fraudulent_blocks_header_hash: HeaderHash,
-    slashing_approach: SlashingApproach,
-    fraud_proof_ref_input_index: Int,
-    block_removal_approach: BlockRemovalApproach,
-  }
+}
+
+/// Canonical fieldless redeemer used by every state-queue rewarding validator.
+/// The rewarding validator binds its work to the exact state-queue mint
+/// redeemer in the same transaction, so the withdrawal does not duplicate the
+/// operational payload.
+pub type YieldRedeemerV1 {
+  YieldStateQueueV1
 }
 
 pub fn get_confirmed_state(
@@ -104,16 +341,16 @@ pub fn get_confirmed_state(
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
 ) -> ConfirmedState {
-  expect Some(Input { output, .. }) =
-    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect None = m_state_queue_element_key
     expect coerced_confirmed_state: ConfirmedState = state_queue_element_data
     coerced_confirmed_state
@@ -127,18 +364,19 @@ pub fn get_confirmed_state(
       )
 }
 
-pub fn get_block_datum(
+pub fn get_block_datum_v1(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
-  return: fn(Header, HeaderHash) -> result,
+  return: fn(HeaderV1, HeaderHash) -> result,
 ) -> result {
   get_state_queue_node(
     reference_inputs,
     state_queue_policy,
     state_queue_node_ref_input_index,
     fn(state_queue_node, header_hash) {
-      return(state_queue_node.header, header_hash)
+      let header = decode_header_view(state_queue_node.header)
+      return(header, header_hash)
     },
   )
 }
@@ -149,19 +387,51 @@ pub fn get_state_queue_node(
   state_queue_node_ref_input_index: Int,
   return: fn(StateQueueNode, HeaderHash) -> result,
 ) -> result {
-  expect Some(Input { output, .. }) =
-    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect Some(header_hash) = m_state_queue_element_key
     expect state_queue_node: StateQueueNode = state_queue_element_data
     return(state_queue_node, header_hash)
+  }
+  linked_list_eval
+    |> linked_list.run_element_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
+}
+
+/// Authenticate the singleton confirmed-state root and expose its current
+/// head link. Referencing this UTxO lets append and correction paths agree on
+/// one queue head without consuming the root on ordinary appends.
+pub fn get_confirmed_state_root(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  confirmed_state_ref_input_index: Int,
+  return: fn(ConfirmedState, Option<HeaderHash>) -> result,
+) -> result {
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(confirmed_state_ref_input_index)
+  let linked_list_eval = {
+    let
+        _confirmed_state_address,
+        _confirmed_state_lovelace,
+        m_confirmed_state_key,
+        confirmed_state_data,
+        head_link
+      <- linked_list.get_element_info(output)
+    expect m_confirmed_state_key == None
+    expect confirmed_state: ConfirmedState = confirmed_state_data
+    return(confirmed_state, head_link)
   }
   linked_list_eval
     |> linked_list.run_element_with(
@@ -178,13 +448,9 @@ fn get_node_info(
   return: fn(Int, HeaderHash, StateQueueNode, linked_list.Link) -> result,
 ) -> result {
   let linked_list_eval = {
-    let
-      _address,
-      lovelace,
-      m_header_hash,
-      data,
-      link,
-    <- linked_list.get_element_info(output)
+    let _address, lovelace, m_header_hash, data, link <- linked_list.get_element_info(
+      output,
+    )
     expect Some(header_hash) = m_header_hash
     expect state_queue_node: StateQueueNode = data
     return(lovelace, header_hash, state_queue_node, link)
@@ -198,6 +464,9 @@ fn get_node_info(
       )
 }
 
+/// Unattested→Attested: the DA policy attaches the hash of the burned,
+/// authenticated commitment before the attestation deadline measured from the
+/// node's commit time.
 pub fn validate_da_attestation_attachment(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -205,53 +474,240 @@ pub fn validate_da_attestation_attachment(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
   expected_header_hash: HeaderHash,
-  da_attestation_policy_id: PolicyId,
+  commitment_hash: ByteArray,
+  validity_range: ValidityRange,
 ) -> Bool {
-  expect Some(Input { output: input_output, .. }) =
-    inputs |> list.at(state_queue_input_index)
-  expect Some(output) = outputs |> list.at(state_queue_output_index)
-  let Output { address: input_address, .. } = input_output
-  let Output { address: output_address, .. } = output
-  expect input_address == output_address
+  let block_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    no_da_attestation,
+    availability.Attested { commitment_hash },
+  )
+  let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
+  inclusive_tx_upper_bound <= block_time + da_attestation_timeout_v1
+}
 
-  let
-    input_lovelace,
-    input_header_hash,
-    input_block,
-    input_link,
-  <- get_node_info(input_output, state_queue_policy)
-  let
-    output_lovelace,
-    output_header_hash,
-    output_block,
-    output_link,
-  <- get_node_info(output, state_queue_policy)
+/// Attested→Challenged for the availability open: the node keeps its
+/// commitment hash and gains the challenge name. Returns the node's
+/// commit-bound `block_time`, from which the open measures its challenge
+/// window.
+pub fn validate_da_challenge_open_transition_v1(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  commitment_hash: ByteArray,
+  challenge_asset_name: AssetName,
+) -> Int {
+  let block_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    availability.Attested { commitment_hash },
+    availability.Challenged { commitment_hash, challenge_asset_name },
+  )
+  block_time
+}
 
-  expect input_header_hash == expected_header_hash
-  expect output_header_hash == expected_header_hash
-  expect output_lovelace >= input_lovelace
-  expect output_link == input_link
-  expect input_block.da_attestation == no_da_attestation
-  expect output_block.header == input_block.header
-  expect output_block.da_attestation == da_attestation_policy_id
+/// Exact in-place availability status transition for one authenticated linked-
+/// list node. The availability policy uses this for Challenged→Published; the
+/// helpers above cover the deadline-bound Unattested→Attested and
+/// Attested→Challenged transitions.
+pub fn validate_da_availability_status_transition(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  expected_input_status: availability.StateQueueStatusV1,
+  expected_output_status: availability.StateQueueStatusV1,
+) -> Bool {
+  let _block_time <- da_availability_status_transition(
+    inputs,
+    outputs,
+    state_queue_policy,
+    state_queue_input_index,
+    state_queue_output_index,
+    expected_header_hash,
+    expected_input_status,
+    expected_output_status,
+  )
   True
 }
 
-pub fn get_prev_header_hash_of_node(
+/// The one decode of both node sides. Only the status may change: the node's
+/// full value, address, link, header, commit time and fraud marker are carried
+/// exactly (HAZ-13), and the output carries no reference script (the
+/// state-queue element invariant, `element_output_has_no_reference_script`).
+/// The continuation receives the node's commit time, `block_time`.
+fn da_availability_status_transition(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  expected_input_status: availability.StateQueueStatusV1,
+  expected_output_status: availability.StateQueueStatusV1,
+  return: fn(Int) -> result,
+) -> result {
+  expect Some(Input { output: input_output, .. }) = inputs
+    |> list.at(state_queue_input_index)
+  expect Some(output) = outputs |> list.at(state_queue_output_index)
+  let Output { address: input_address, value: input_value, .. } = input_output
+  let Output { address: output_address, value: output_value, .. } = output
+  expect input_address == output_address
+  expect output_value == input_value
+  expect element_output_has_no_reference_script(output)
+
+  let _input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
+    input_output,
+    state_queue_policy,
+  )
+  let _output_lovelace, output_header_hash, output_block, output_link <- get_node_info(
+    output,
+    state_queue_policy,
+  )
+
+  expect input_header_hash == expected_header_hash
+  expect output_header_hash == expected_header_hash
+  let input_header_data: Data = input_block.header
+  expect input_header_hash == utils.serialise_and_hash_28(input_header_data)
+  expect output_link == input_link
+  expect input_block.da_attestation == expected_input_status
+  expect output_block.header == input_block.header
+  expect output_block.block_time == input_block.block_time
+  expect output_block.da_attestation == expected_output_status
+  expect output_block.proven_fraud == input_block.proven_fraud
+  return(input_block.block_time)
+}
+
+/// Consume the challenged node, either in the terminal proof transaction or
+/// in a later standalone record. A prepared merge loses its input; a
+/// refreshed merge rejects the permanent marker.
+/// Different headers need not contend on the global correction singleton.
+/// The proof token is either minted by this transaction or held by an
+/// authenticated reference input, so a proof finalized on its own can still
+/// be recorded before the node matures.
+pub fn validate_completed_fraud_record(
+  tx: Transaction,
+  state_queue_policy: PolicyId,
+  fraud_proof_policy: PolicyId,
+  input_index: Int,
+  output_index: Int,
+  proof_asset: AssetName,
+  m_fraud_proof_ref_input_index: Option<Int>,
+) -> Bool {
+  expect Some(input) = list.at(tx.inputs, input_index)
+  expect Some(output) = list.at(tx.outputs, output_index)
+  let before_ada, header_hash, before, before_link <- get_node_info(
+    input.output,
+    state_queue_policy,
+  )
+  let after_ada, after_hash, after, after_link <- get_node_info(
+    output,
+    state_queue_policy,
+  )
+  let header_data: Data = before.header
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  and {
+    bytearray.length(proof_asset) == 32,
+    (fraud_proof.asset_name_to_header_hash(proof_asset) == header_hash)?,
+    header_hash == utils.serialise_and_hash_28(header_data),
+    (before.proven_fraud == None)?,
+    before.block_time < lower,
+    (upper < before.block_time + block_maturity_duration_v1)?,
+    when m_fraud_proof_ref_input_index is {
+      None ->
+        (assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1)?
+      Some(fraud_proof_ref_input_index) ->
+        fraud_proof.get_proven_fraud_record_with_identity(
+          tx.reference_inputs,
+          fraud_proof_policy,
+          fraud_proof_ref_input_index,
+          fn(_header_hash, _fraud_prover, asset_name) {
+            (asset_name == proof_asset)?
+          },
+        )
+    },
+    assets.tokens(tx.mint, state_queue_policy) == assets.tokens(
+      assets.zero,
+      state_queue_policy,
+    ),
+    input.output.address == output.address,
+    input.output.reference_script == None,
+    output.reference_script == None,
+    after_ada >= before_ada,
+    after_hash == header_hash,
+    after_link == before_link,
+    after == StateQueueNode { ..before, proven_fraud: Some(proof_asset) },
+  }
+}
+
+/// Called by event-history-dependent terminal steps, with the queue policy
+/// authenticated during their header opening. Starting a thread is not enough:
+/// the challenged header must be unmergeable in the same ledger transition
+/// that produces the completed proof. Existing unrelated proof semantics are
+/// not changed by this helper.
+pub fn require_completed_fraud_witness(
+  tx: Transaction,
+  state_queue_policy: PolicyId,
+  terminal_proof_asset: AssetName,
+  witness: CompletedFraudWitness,
+) -> Bool {
+  let (output, newly_recorded) = when witness is {
+    RecordedOutput { output_index } -> {
+      expect Some(output) = list.at(tx.outputs, output_index)
+      (output, True)
+    }
+    PreviouslyRecorded { reference_input_index } -> {
+      expect Some(input) = list.at(tx.reference_inputs, reference_input_index)
+      (input.output, False)
+    }
+  }
+  let _, header_hash, node, _ <- get_node_info(output, state_queue_policy)
+  expect Some(recorded_proof) = node.proven_fraud
+  let header_data: Data = node.header
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  and {
+    bytearray.length(terminal_proof_asset) == 32,
+    bytearray.length(recorded_proof) == 32,
+    fraud_proof.asset_name_to_header_hash(terminal_proof_asset) == header_hash,
+    fraud_proof.asset_name_to_header_hash(recorded_proof) == header_hash,
+    header_hash == utils.serialise_and_hash_28(header_data),
+    !newly_recorded || recorded_proof == terminal_proof_asset,
+    node.block_time < lower,
+    upper < node.block_time + block_maturity_duration_v1,
+  }
+}
+
+pub fn get_prev_header_hash_of_node_v1(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
   expected_state_queue_node_header_hash: HeaderHash,
 ) -> HeaderHash {
-  let
-    header,
-    retrieved_state_queue_node_header_hash,
-  <-
-    get_block_datum(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
+  let header, retrieved_state_queue_node_header_hash <- get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
   expect
     retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
   header.prev_header_hash

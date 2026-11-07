@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Model The Domain"
+  short_description: "Apply when writing stateful logic, or when code branches a lot o"
+  default_prompt: "Use $principle-model-the-domain for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

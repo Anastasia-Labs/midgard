@@ -1,0 +1,255 @@
+/**
+ * Recording an intent (§8.2): its exact signed bytes, refused unless every
+ * input, reference input and collateral is a fact or a recorded intent's
+ * output, and its first event.
+ */
+import { encodeOutRef } from "../codec.js";
+import {
+  type DecodedTransaction,
+  decodeTransaction,
+  TxDecodeError,
+} from "../decode/tx.js";
+import {
+  asBuffer,
+  asNumber,
+  type Dialect,
+  type SqlTx,
+  type SqlValue,
+} from "../sql/backend.js";
+import { insertRows, readCursor } from "../store/rows.js";
+import { viewValidIn } from "../store/view.js";
+import type { OutRef } from "../types.js";
+import {
+  appendIntentEventIn,
+  chunks,
+  distinctHashes,
+  type Intent,
+  INTENT_COLUMNS,
+  type OwnOutput,
+  ownOutputsToJson,
+  placeholders,
+  readIntentsIn,
+  type RecordIntentInput,
+  type RecordIntentResult,
+} from "./journal.js";
+
+/** Which of `outRefs` have a fact row (spent or live). */
+const factRowsIn = async (
+  tx: SqlTx,
+  outRefs: readonly OutRef[],
+): Promise<Set<string>> => {
+  const known = new Set<string>();
+  const parents = distinctHashes(outRefs.map((outRef) => outRef.txHash));
+  for (const chunk of chunks(parents))
+    for (const row of await tx.query(
+      `SELECT tx_hash, output_index FROM l1_outputs WHERE tx_hash IN (${placeholders(chunk.length)})`,
+      chunk,
+    ))
+      known.add(
+        encodeOutRef({
+          txHash: asBuffer(row.tx_hash),
+          index: asNumber(row.output_index),
+        }).toString("hex"),
+      );
+  return known;
+};
+
+/** The output indexes a recorded transaction can create (its outputs, or a failed run's collateral return). */
+const createdIndexes = (txCbor: Buffer): number => {
+  const decoded = decodeTransaction(txCbor);
+  return decoded.outputs.length + (decoded.collateralReturn === null ? 0 : 1);
+};
+
+/**
+ * A decoded validity bound as a journal slot: null when absent, undefined
+ * when past `Number.MAX_SAFE_INTEGER`, which the journal's slot columns and
+ * status arithmetic do not carry.
+ */
+const slotBound = (bound: bigint | null): number | null | undefined =>
+  bound === null
+    ? null
+    : bound <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(bound)
+      : undefined;
+
+/**
+ * S5: journals a newly signed transaction before its first submission
+ * (§8.2), in the caller's write transaction. Idempotent per tx hash.
+ * `viewValid(builtAt)` runs here, under the cursor share lock: a stale view
+ * still records the row, with a `stale_at_write` event (§8.1), and the
+ * result says so; the caller must not send it on this write.
+ */
+export const recordIntentIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  input: RecordIntentInput,
+): Promise<RecordIntentResult> => {
+  let decoded: DecodedTransaction;
+  try {
+    decoded = decodeTransaction(input.txCbor);
+  } catch (error) {
+    if (error instanceof TxDecodeError)
+      return { kind: "undecodable", detail: error.message };
+    throw error;
+  }
+  if (decoded.bodyCbor.length === input.txCbor.length)
+    return {
+      kind: "undecodable",
+      detail:
+        "a bare transaction body carries no witnesses; journal the signed transaction",
+    };
+  const validFromSlot = slotBound(decoded.invalidBefore);
+  const validToSlot = slotBound(decoded.invalidAfter);
+  if (validFromSlot === undefined || validToSlot === undefined)
+    return {
+      kind: "undecodable",
+      detail:
+        "a validity bound is past the journal's slot range (Number.MAX_SAFE_INTEGER)",
+    };
+  const txHash = decoded.hash;
+  const existing = await readIntentsIn(tx, dialect, [txHash]);
+  const first = existing[0];
+  if (first !== undefined)
+    return {
+      kind: "already_recorded",
+      intent: first,
+      identical: first.txCbor.equals(input.txCbor),
+    };
+  // The share lock holds a rewind off until this transaction ends, so the
+  // view check below and the rows written agree.
+  const cursor = await readCursor(tx, dialect, "share");
+  if (cursor === null) return { kind: "no_view", txHash };
+  const view = input.builtAt;
+  const spends = [
+    ...decoded.inputs,
+    ...decoded.referenceInputs,
+    ...decoded.collaterals,
+  ];
+  const facts = await factRowsIn(tx, spends);
+  const missing = spends.filter(
+    (outRef) => !facts.has(encodeOutRef(outRef).toString("hex")),
+  );
+  const parents = new Map(
+    (
+      await readIntentsIn(
+        tx,
+        dialect,
+        spends.map((outRef) => outRef.txHash),
+      )
+    ).map((intent) => [intent.txHash.toString("hex"), intent]),
+  );
+  const untracked = missing.filter((outRef) => {
+    const parent = parents.get(outRef.txHash.toString("hex"));
+    return (
+      parent === undefined || outRef.index >= createdIndexes(parent.txCbor)
+    );
+  });
+  if (untracked.length > 0)
+    return { kind: "input_untracked", txHash, untracked };
+  const dependsOn = distinctHashes(
+    spends
+      .map((outRef) => outRef.txHash)
+      .filter((hash) => parents.has(hash.toString("hex"))),
+  ).sort(Buffer.compare);
+  const ownOutputs: OwnOutput[] = decoded.outputs.flatMap((output, index) =>
+    input.isOwnOutput(output)
+      ? [
+          {
+            index,
+            address: output.address,
+            lovelace: output.lovelace,
+            assets: output.assets,
+          },
+        ]
+      : [],
+  );
+  const intent: Intent = {
+    txHash,
+    family: input.family,
+    workflowKey: input.workflowKey,
+    txCbor: input.txCbor,
+    inputs: decoded.inputs,
+    referenceInputs: decoded.referenceInputs,
+    collaterals: decoded.collaterals,
+    ownOutputs,
+    validFromSlot,
+    validToSlot,
+    dependsOn,
+    built: view,
+    contentRef: input.contentRef ?? null,
+  };
+  const stale =
+    input.staleBecause !== undefined || !(await viewValidIn(tx, dialect, view));
+  await insertIntentIn(tx, dialect, intent);
+  await appendIntentEventIn(tx, dialect, txHash, "signed", {
+    tipSlot: cursor.point.slot,
+  });
+  if (stale)
+    await appendIntentEventIn(tx, dialect, txHash, "stale_at_write", {
+      detail: {
+        reason: input.staleBecause ?? "view_invalid",
+        builtGeneration: view.generation,
+        builtSlot: view.point.slot,
+        cursorGeneration: cursor.generation,
+      },
+      tipSlot: cursor.point.slot,
+    });
+  return { kind: "recorded", intent, stale };
+};
+
+/**
+ * Writes one intent row as given, without the §8.2 checks. Only
+ * `recordIntentIn` and test tooling that copies a journal call it.
+ */
+export const insertIntentIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  intent: Intent,
+): Promise<void> => {
+  const values: SqlValue[] = [
+    intent.txHash,
+    intent.family,
+    intent.workflowKey,
+    intent.txCbor,
+    dialect.outRefList(intent.inputs.map(encodeOutRef)),
+    dialect.outRefList(intent.referenceInputs.map(encodeOutRef)),
+    dialect.outRefList(intent.collaterals.map(encodeOutRef)),
+    dialect.json(ownOutputsToJson(intent.ownOutputs)),
+    intent.validFromSlot,
+    intent.validToSlot,
+    dialect.outRefList(intent.dependsOn),
+    intent.built.generation,
+    intent.built.point.slot,
+    intent.built.point.hash,
+    intent.contentRef,
+  ];
+  // Postgres stamps `recorded_seq` with the transaction id by default;
+  // SQLite takes the next counter value (writers are serial).
+  if (dialect.name === "sqlite") {
+    const next = await tx.query(
+      "UPDATE l1_intent_record_seq SET next = next + 1 RETURNING next - 1 AS seq",
+    );
+    values.push(asNumber(next[0]?.seq));
+  }
+  await tx.query(
+    `INSERT INTO l1_intents (${INTENT_COLUMNS}${dialect.name === "sqlite" ? ", recorded_seq" : ""}) VALUES (${placeholders(values.length)})`,
+    values,
+  );
+  const spends = new Map<string, OutRef>();
+  for (const outRef of [
+    ...intent.inputs,
+    ...intent.referenceInputs,
+    ...intent.collaterals,
+  ])
+    spends.set(encodeOutRef(outRef).toString("hex"), outRef);
+  await insertRows(
+    tx,
+    "l1_intent_spends",
+    ["out_tx", "out_index", "tx_hash"],
+    [...spends.values()].map((outRef) => [
+      outRef.txHash,
+      outRef.index,
+      intent.txHash,
+    ]),
+  );
+};

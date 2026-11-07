@@ -1,0 +1,322 @@
+{
+  "decision": {
+    "authenticatedObservationDigest": "b336e0d61047b9705accf4861d849acb9314f58819f4b9ae19c1a1fe3130b75e",
+    "category": "mintItemNonCanonical",
+    "classificationDigest": "b8b7b211d9dce5dd4a532641b4ef69bbf704a5360164c44ff68976fd46f45657",
+    "classifierVersion": "midgard-production-header-classifier-v1",
+    "decision": "fault_detected",
+    "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b",
+    "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+    "detectionId": "mint-item-non-canonical:0:0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0",
+    "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874",
+    "launchScope": [
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "zeroInput",
+      "validationTraceDispute",
+      "daHashPreimage",
+      "noReferenceInput",
+      "referenceInputNoIdx",
+      "invalidSignature",
+      "fabricatedDeposit",
+      "fabricatedWithdrawal",
+      "nativeScriptDecoding",
+      "missingSignature",
+      "missingNativeScriptTx",
+      "withdrawnReferenceInput",
+      "canonicalDecodability",
+      "committedFieldShape",
+      "minFee",
+      "withdrawalMistag",
+      "doubleWithdraw",
+      "crossBlockDuplicateEvent",
+      "l2TxMistag",
+      "withdrawnInput",
+      "valueNotPreserved",
+      "inputSetUniqueness",
+      "mintAuthorization",
+      "networkId",
+      "missingNativeScriptUtxo",
+      "nativeScriptInvalid",
+      "minAda",
+      "fieldPreimageLengthMismatch",
+      "fieldItemWidthIllegal",
+      "witnessScriptDecoding",
+      "scriptIntegrityHashMissing",
+      "transactionOutputNonCanonical",
+      "resolvedOutputNonCanonical",
+      "mintDeclaredAssetLimit",
+      "spendInputSignerMissing",
+      "protectedOutputSignerMissing",
+      "observersForbiddenOnUntaggedNetwork",
+      "observerOrderInvalid",
+      "redeemerCanonicity",
+      "outputReferenceScriptDecoding",
+      "executionSourceScriptDecoding",
+      "receivePurposeLanguage",
+      "unusedScriptWitness",
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "executionNativeScriptInvalid",
+      "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
+      "mintItemNonCanonical"
+    ],
+    "launchScopeDigest": "02c9b2862890ea470c3c537b1ee5074e4d6ec349fe31539b06173b19cd309f18",
+    "payloadEnvelopeSha256": "2260790b830b1762ad54d183495b28070711532403982ef802b2c2d426acf761",
+    "payloadSha256": "c28141e25394c6dc9613dff00a9d217bb6d6f4b4802c817ca89ed24ea8307a02",
+    "position": "0",
+    "replayDigest": "c1952fd20f1bb2cb0df177369f9b23331bd7f9ef42d041af5b99a15e7fc24404",
+    "replayVersion": "midgard-complete-canonical-replay-v1",
+    "schemaVersion": "midgard-production-header-decision-v1",
+    "violationId": "mint-item-non-canonical"
+  },
+  "entries": [
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 0,
+      "recordedAt": "2026-09-16T13:15:42.241Z",
+      "event": {
+        "kind": "started"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 1,
+      "recordedAt": "2026-09-16T13:15:42.256Z",
+      "event": {
+        "kind": "prepared",
+        "artifact": {
+          "category": "mintItemNonCanonical",
+          "familyIdentity": "0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0:0:243dbde1513c88ee22eb602635be6094a66666db21fd4855afe52463f32aa143:f7dd1dfa7c3aa8081b9a70cd50f669dfe527cab778306a78eafae96c706b28fd"
+        },
+        "artifactDigest": "df50a3c3565397e647de036dc4b215865ec3d5670aa27b3f2261807ada8f9274"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 2,
+      "recordedAt": "2026-09-16T13:15:42.929Z",
+      "event": {
+        "kind": "preflight_passed",
+        "actionId": "mintItemNonCanonical:submitInit",
+        "txHash": "9f9ab75c343e1999c8118ccb48565735e73fa17ca78a212cdcd708777a0299bc",
+        "localEvaluator": "lucid-evolution.complete(localUPLCEval=true)",
+        "referenceScripts": [
+          {
+            "role": "V1 fraud-proof computation-thread minting",
+            "outRef": "70950234828d107fb698403793391833ea26eeccbcb2ff68653938d88d009e95#1",
+            "scriptHash": "1a13fdb8a8d131cd4ce58459a24ecb6dd9b2dd1f9e2b6e9599a2c01d"
+          },
+          {
+            "role": "membership proof withdrawal",
+            "outRef": "7a0afe8a585428b0c36ebb58a7fe6dd5bb2471504a793a5660d93ea9c671763c#2",
+            "scriptHash": "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 3,
+      "recordedAt": "2026-09-16T13:15:42.969Z",
+      "event": {
+        "kind": "submission_intent",
+        "actionId": "mintItemNonCanonical:submitInit",
+        "actionInput": {
+          "actionKind": "mintItemNonCanonical:submitInit",
+          "familyIdentity": "0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0:0:243dbde1513c88ee22eb602635be6094a66666db21fd4855afe52463f32aa143:f7dd1dfa7c3aa8081b9a70cd50f669dfe527cab778306a78eafae96c706b28fd",
+          "sourceStage": "none",
+          "targetStage": "step01"
+        },
+        "durableRecovery": {
+          "familyIdentity": "0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0:0:243dbde1513c88ee22eb602635be6094a66666db21fd4855afe52463f32aa143:f7dd1dfa7c3aa8081b9a70cd50f669dfe527cab778306a78eafae96c706b28fd",
+          "sourceStage": "none",
+          "targetStage": "step01"
+        },
+        "attempt": 1,
+        "txHash": "9f9ab75c343e1999c8118ccb48565735e73fa17ca78a212cdcd708777a0299bc"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 4,
+      "recordedAt": "2026-09-16T13:18:12.573Z",
+      "event": {
+        "kind": "submitted",
+        "actionId": "mintItemNonCanonical:submitInit",
+        "attempt": 1,
+        "txHash": "9f9ab75c343e1999c8118ccb48565735e73fa17ca78a212cdcd708777a0299bc"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 5,
+      "recordedAt": "2026-09-16T13:18:13.950Z",
+      "event": {
+        "kind": "reconciled",
+        "actionId": "mintItemNonCanonical:submitInit",
+        "outcome": "confirmed",
+        "txHash": "9f9ab75c343e1999c8118ccb48565735e73fa17ca78a212cdcd708777a0299bc"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 6,
+      "recordedAt": "2026-09-16T13:18:13.982Z",
+      "event": {
+        "kind": "confirmed",
+        "actionId": "mintItemNonCanonical:submitInit",
+        "txHash": "9f9ab75c343e1999c8118ccb48565735e73fa17ca78a212cdcd708777a0299bc"
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 7,
+      "recordedAt": "2026-09-16T13:18:15.130Z",
+      "event": {
+        "kind": "preflight_passed",
+        "actionId": "mintItemNonCanonical:submitStep01",
+        "txHash": "3a747dc88f1e6fd0a1964b9e38b94bff87af88191ff31173ecbbc74869b8ade9",
+        "localEvaluator": "lucid-evolution.complete(localUPLCEval=true)",
+        "referenceScripts": [
+          {
+            "role": "missing-native-script-tx step 01-spend",
+            "outRef": "c068ac285d24653c58ae575aa5e15cf0c110b2c08f807576611f7b154f6e2081#1",
+            "scriptHash": "58fdc6e67ca95e1394dc197cb2dd2a97cc49ca9ffe686181575b62a3"
+          },
+          {
+            "role": "membership proof withdrawal",
+            "outRef": "7a0afe8a585428b0c36ebb58a7fe6dd5bb2471504a793a5660d93ea9c671763c#2",
+            "scriptHash": "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": "midgard-fraud-proof-workflow-journal-entry-v1",
+      "workflowId": "9e10cb07e7089d5e7243df75e0abc1d56cd9abeedbb74fe51e489314456dbff5",
+      "identity": {
+        "schemaVersion": "midgard-fraud-proof-workflow-identity-v1",
+        "deploymentFingerprint": "48bc32f03410ea0b2bc411db9300316c69ba42244a221825391359b6723484ce",
+        "category": "mintItemNonCanonical",
+        "target": {
+          "kind": "state_queue_header",
+          "headerHash": "06e6825247224df764e26af17fd83c999073ca05464d910cb74a6874"
+        },
+        "decisionDigest": "80df45847f49c5c9fc7896f4195071526c2a5320125063f4be8243837869291b"
+      },
+      "sequence": 8,
+      "recordedAt": "2026-09-16T13:18:15.307Z",
+      "event": {
+        "kind": "submission_intent",
+        "actionId": "mintItemNonCanonical:submitStep01",
+        "actionInput": {
+          "actionKind": "mintItemNonCanonical:submitStep01",
+          "familyIdentity": "0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0:0:243dbde1513c88ee22eb602635be6094a66666db21fd4855afe52463f32aa143:f7dd1dfa7c3aa8081b9a70cd50f669dfe527cab778306a78eafae96c706b28fd",
+          "sourceStage": "step01",
+          "targetStage": "step02"
+        },
+        "durableRecovery": {
+          "familyIdentity": "0daa243313cd8cc8e50cc6931352fb5de82a9d45e222b2b0f0d84905e7fc1f56:0:0:243dbde1513c88ee22eb602635be6094a66666db21fd4855afe52463f32aa143:f7dd1dfa7c3aa8081b9a70cd50f669dfe527cab778306a78eafae96c706b28fd",
+          "sourceStage": "step01",
+          "targetStage": "step02"
+        },
+        "attempt": 1,
+        "txHash": "3a747dc88f1e6fd0a1964b9e38b94bff87af88191ff31173ecbbc74869b8ade9"
+      }
+    }
+  ]
+}

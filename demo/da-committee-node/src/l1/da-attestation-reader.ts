@@ -1,16 +1,9 @@
+import type { FactStore, StoredOutput } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Blockfrost,
-  Data,
-  Kupmios,
-  Lucid,
-  type LucidEvolution,
-  toUnit,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 
-import type { WatcherConfig } from "../config.js";
-import type { DaAttestationCandidateRecord } from "../domain.js";
+import type { CommitteeConfig } from "../config.js";
+import type { ChainPoint, DaAttestationCandidateRecord } from "../domain.js";
 
 export type OnChainDaParams = {
   readonly outRef: string;
@@ -20,6 +13,7 @@ export type OnChainDaParams = {
   readonly ownerCount: number;
   readonly updateThreshold: number;
   readonly rawDatum: SDK.DaParamsDatum;
+  readonly observedChainPoint?: ChainPoint;
 };
 
 export interface DaAttestationChainReader {
@@ -29,234 +23,8 @@ export interface DaAttestationChainReader {
   ): Promise<readonly DaAttestationCandidateRecord[]>;
 }
 
-export class LucidDaAttestationChainReader implements DaAttestationChainReader {
-  private readonly lucid: LucidEvolution;
-  private readonly config: WatcherConfig;
-  private readonly providerSource: string;
-
-  constructor({
-    lucid,
-    config,
-    providerSource,
-  }: {
-    readonly lucid: LucidEvolution;
-    readonly config: WatcherConfig;
-    readonly providerSource: string;
-  }) {
-    this.lucid = lucid;
-    this.config = config;
-    this.providerSource = providerSource;
-  }
-
-  async fetchDaParams(): Promise<OnChainDaParams> {
-    const unit = toUnit(
-      this.config.daParamsGovernorPolicyId,
-      SDK.DA_PARAMS_ASSET_NAME,
-    );
-    const utxos = await this.lucid.utxosAtWithUnit(
-      this.config.daParamsGovernorAddress,
-      unit,
-    );
-    if (utxos.length !== 1) {
-      throw new Error(
-        `expected exactly one DA params UTxO, found ${utxos.length.toString()}`,
-      );
-    }
-    const utxo = utxos[0]!;
-    const datum = decodeInlineDatum<SDK.DaParamsDatum>(
-      utxo,
-      SDK.DaParamsDatum as never,
-      "DA params",
-    );
-    return {
-      outRef: outRefLabel(utxo),
-      committeeHex: datum.committee,
-      committeeSignersHash: datum.committee_signers_hash,
-      threshold: safeNumber(datum.da_threshold, "DA threshold"),
-      ownerCount: datum.owners.length,
-      updateThreshold: safeNumber(
-        datum.update_threshold,
-        "DA update threshold",
-      ),
-      rawDatum: datum,
-    };
-  }
-
-  async fetchDaAttestationCandidates(
-    headerHash: string,
-  ): Promise<readonly DaAttestationCandidateRecord[]> {
-    const unit = toUnit(
-      this.config.daAttestationPolicyId,
-      SDK.daAttestationAssetName(headerHash),
-    );
-    const utxos = await this.lucid.utxosAtWithUnit(
-      this.config.daAttestationAddress,
-      unit,
-    );
-    const records: DaAttestationCandidateRecord[] = [];
-    for (const utxo of utxos) {
-      let datum: SDK.DaAttestationDatum;
-      try {
-        datum = decodeInlineDatum<SDK.DaAttestationDatum>(
-          utxo,
-          SDK.DaAttestationDatum as never,
-          "DA attestation",
-        );
-      } catch {
-        continue;
-      }
-      if (datum.header_hash !== headerHash) {
-        continue;
-      }
-      const attestationCount = safeNumber(
-        datum.attestation_count,
-        "DA attestation count",
-      );
-      const threshold = safeNumber(
-        datum.da_threshold,
-        "DA attestation threshold",
-      );
-      records.push({
-        deploymentFingerprint: this.config.deploymentFingerprint,
-        headerHash,
-        outRef: outRefLabel(utxo),
-        datumCbor: utxo.datum!,
-        attestationCount,
-        threshold,
-        committeeSignersHash: datum.committee_signers_hash,
-        bitmap: datum.attested_signers,
-        observedChainPoint: {
-          providerSource: this.providerSource,
-          observedAt: new Date().toISOString(),
-        },
-        status:
-          attestationCount >= threshold
-            ? "threshold"
-            : attestationCount > 0
-              ? "signed"
-              : "initialized",
-      });
-    }
-    return records.sort((left, right) =>
-      left.outRef.localeCompare(right.outRef),
-    );
-  }
-}
-
-export class MultiDaAttestationChainReader implements DaAttestationChainReader {
-  private readonly readers: readonly DaAttestationChainReader[];
-
-  constructor(readers: readonly DaAttestationChainReader[]) {
-    if (readers.length === 0) {
-      throw new Error("at least one DA attestation chain reader is required");
-    }
-    this.readers = readers;
-  }
-
-  async fetchDaParams(): Promise<OnChainDaParams> {
-    const results = await Promise.all(
-      this.readers.map((reader) => reader.fetchDaParams()),
-    );
-    const baseline = canonicalJson(results[0]!);
-    for (const [index, result] of results.entries()) {
-      if (canonicalJson(result) !== baseline) {
-        throw new Error(
-          `DA params provider disagreement between provider 0 and provider ${index.toString()}`,
-        );
-      }
-    }
-    return results[0]!;
-  }
-
-  async fetchDaAttestationCandidates(
-    headerHash: string,
-  ): Promise<readonly DaAttestationCandidateRecord[]> {
-    const results = await Promise.all(
-      this.readers.map((reader) =>
-        reader.fetchDaAttestationCandidates(headerHash),
-      ),
-    );
-    const sortedResults = results.map(sortCandidates);
-    const baseline = canonicalCandidates(sortedResults[0]!);
-    for (const [index, candidates] of sortedResults.entries()) {
-      const current = canonicalCandidates(candidates);
-      if (!canonicalArraysEqual(current, baseline)) {
-        throw new Error(
-          `DA attestation candidate provider disagreement between provider 0 and provider ${index.toString()}`,
-        );
-      }
-    }
-    return mergeAgreedCandidates(sortedResults);
-  }
-}
-
-export const daAttestationReaderFromConfig = async (
-  config: WatcherConfig,
-): Promise<DaAttestationChainReader | undefined> => {
-  if (
-    config.cardanoProviderUrls[0]?.startsWith("fixture:") === true ||
-    config.cardanoProviderUrls[0]?.startsWith("file:") === true
-  ) {
-    return undefined;
-  }
-  const readers = await Promise.all(
-    config.cardanoProviderUrls.map(async (url) => {
-      const { lucid, providerSource } = await lucidFromProviderUrl(
-        url,
-        config.network,
-      );
-      return new LucidDaAttestationChainReader({
-        lucid,
-        config,
-        providerSource,
-      });
-    }),
-  );
-  return readers.length === 1
-    ? readers[0]!
-    : new MultiDaAttestationChainReader(readers);
-};
-
-const lucidFromProviderUrl = async (
-  url: string,
-  network: string,
-): Promise<{
-  readonly lucid: LucidEvolution;
-  readonly providerSource: string;
-}> => {
-  if (url.startsWith("blockfrost:")) {
-    const { apiUrl, projectId } = parseBlockfrostUrl(url);
-    return {
-      lucid: await Lucid(
-        new Blockfrost(apiUrl, projectId),
-        normalizeNetwork(network),
-      ),
-      providerSource: `blockfrost:${apiUrl}`,
-    };
-  }
-  if (url.startsWith("kupmios:")) {
-    const { kupoUrl, ogmiosUrl } = parseKupmiosUrl(url);
-    return {
-      lucid: await Lucid(
-        new Kupmios(kupoUrl, ogmiosUrl),
-        normalizeNetwork(network),
-      ),
-      providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
-    };
-  }
-  throw new Error(`unsupported Cardano provider for DA reader: ${url}`);
-};
-
-const decodeInlineDatum = <T>(
-  utxo: UTxO,
-  schema: Parameters<typeof Data.from>[1],
-  label: string,
-): T => {
-  if (utxo.datum == null) {
-    throw new Error(`${label} UTxO ${outRefLabel(utxo)} has no inline datum`);
-  }
-  return Data.from(utxo.datum, schema) as T;
-};
+/** Where the committee's follower recorded an output. */
+const FOLLOWER_SOURCE = "l1_follower";
 
 const safeNumber = (value: bigint, label: string): number => {
   if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -265,113 +33,152 @@ const safeNumber = (value: bigint, label: string): number => {
   return Number(value);
 };
 
-const parseBlockfrostUrl = (
-  value: string,
-): { readonly apiUrl: string; readonly projectId: string } => {
-  const raw = value.slice("blockfrost:".length);
-  const hashIndex = raw.lastIndexOf("#");
-  if (hashIndex <= 0 || hashIndex === raw.length - 1) {
-    throw new Error(
-      "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
-    );
+const outRefLabel = (row: StoredOutput): string =>
+  `${row.outRef.txHash.toString("hex")}#${row.outRef.index.toString()}`;
+
+const inlineDatum = <T>(
+  row: StoredOutput,
+  schema: Parameters<typeof Data.from>[1],
+  label: string,
+): T => {
+  if (row.output.datum === null) {
+    throw new Error(`${label} UTxO ${outRefLabel(row)} has no inline datum`);
   }
-  return {
-    apiUrl: raw.slice(0, hashIndex),
-    projectId: raw.slice(hashIndex + 1),
+  return Data.from(row.output.datum.toString("hex"), schema) as T;
+};
+
+/**
+ * The DA params and attestation outputs, read from the committee follower's
+ * facts at its cursor: the live outputs holding the asset, at the configured
+ * address. Both addresses and policies are in the committee's tracked set,
+ * so the facts hold every such output; nothing is read from Kupo or Ogmios.
+ */
+export const followerDaAttestationReader = (
+  store: Pick<FactStore, "liveUtxos" | "blockAtOrBeforeSlot">,
+  config: Pick<
+    CommitteeConfig,
+    | "deploymentFingerprint"
+    | "daParamsGovernorPolicyId"
+    | "daParamsGovernorAddress"
+    | "daAttestationPolicyId"
+    | "daAttestationAddress"
+  >,
+): DaAttestationChainReader => {
+  const liveWithUnit = async (
+    policyId: string,
+    assetName: string,
+    address: string,
+    label: string,
+  ): Promise<StoredOutput[]> => {
+    const read = await store.liveUtxos({
+      by: "unit",
+      policyId: Buffer.from(policyId, "hex"),
+      assetName: Buffer.from(assetName, "hex"),
+    });
+    if (read.kind !== "ok") {
+      throw new Error(`${label} read refused: ${read.kind}: ${read.detail}`);
+    }
+    const at = getAddressDetails(address).address.hex;
+    return read.utxos.filter(
+      (row) => row.output.address.toString("hex") === at,
+    );
   };
-};
-
-const parseKupmiosUrl = (
-  value: string,
-): { readonly kupoUrl: string; readonly ogmiosUrl: string } => {
-  const raw = value.slice("kupmios:".length);
-  const [kupoUrl, ogmiosUrl] = raw.split("|");
-  if (kupoUrl === undefined || ogmiosUrl === undefined) {
-    throw new Error(
-      "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
-    );
-  }
-  return { kupoUrl, ogmiosUrl };
-};
-
-const normalizeNetwork = (network: string) => {
-  if (
-    network === "Mainnet" ||
-    network === "Preprod" ||
-    network === "Preview" ||
-    network === "Custom"
-  ) {
-    return network;
-  }
-  throw new Error(`unsupported Lucid network ${network}`);
-};
-
-const outRefLabel = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-const sortCandidates = (
-  candidates: readonly DaAttestationCandidateRecord[],
-): readonly DaAttestationCandidateRecord[] =>
-  [...candidates].sort((left, right) =>
-    left.outRef.localeCompare(right.outRef),
-  );
-
-const canonicalCandidates = (
-  candidates: readonly DaAttestationCandidateRecord[],
-): readonly string[] => candidates.map(canonicalCandidate);
-
-const canonicalCandidate = (candidate: DaAttestationCandidateRecord): string =>
-  canonicalJson({
-    deploymentFingerprint: candidate.deploymentFingerprint,
-    headerHash: candidate.headerHash,
-    outRef: candidate.outRef,
-    datumCbor: candidate.datumCbor,
-    attestationCount: candidate.attestationCount,
-    threshold: candidate.threshold,
-    committeeSignersHash: candidate.committeeSignersHash,
-    bitmap: candidate.bitmap,
-    status: candidate.status,
-  });
-
-const canonicalArraysEqual = (
-  left: readonly string[],
-  right: readonly string[],
-): boolean =>
-  left.length === right.length &&
-  left.every((value, index) => value === right[index]);
-
-const mergeAgreedCandidates = (
-  sortedResults: readonly (readonly DaAttestationCandidateRecord[])[],
-): readonly DaAttestationCandidateRecord[] =>
-  sortedResults[0]!.map((candidate, index) => ({
-    ...candidate,
-    observedChainPoint: {
-      providerSource: sortedResults
-        .map(
-          (candidates) => candidates[index]!.observedChainPoint.providerSource,
-        )
-        .filter((source): source is string => source !== undefined)
-        .join(","),
+  const chainPoint = async (row: StoredOutput): Promise<ChainPoint> => {
+    const slot = row.created?.slot ?? row.seedSlot ?? undefined;
+    const block =
+      row.created === null
+        ? null
+        : await store.blockAtOrBeforeSlot(row.created.slot);
+    return {
+      ...(slot === undefined ? {} : { slot }),
+      ...(block === null || block.slot !== slot
+        ? {}
+        : { blockHash: block.hash.toString("hex"), blockHeight: block.height }),
+      providerSource: FOLLOWER_SOURCE,
       observedAt: new Date().toISOString(),
+    };
+  };
+  return {
+    fetchDaParams: async () => {
+      const rows = await liveWithUnit(
+        config.daParamsGovernorPolicyId,
+        SDK.DA_PARAMS_ASSET_NAME,
+        config.daParamsGovernorAddress,
+        "DA params",
+      );
+      if (rows.length !== 1) {
+        throw new Error(
+          `expected exactly one DA params UTxO, found ${rows.length.toString()}`,
+        );
+      }
+      const row = rows[0]!;
+      const datum = inlineDatum<SDK.DaParamsDatum>(
+        row,
+        SDK.DaParamsDatum as never,
+        "DA params",
+      );
+      return {
+        outRef: outRefLabel(row),
+        committeeHex: datum.committee,
+        committeeSignersHash: datum.committee_signers_hash,
+        threshold: safeNumber(datum.da_threshold, "DA threshold"),
+        ownerCount: datum.owners.length,
+        updateThreshold: safeNumber(
+          datum.update_threshold,
+          "DA update threshold",
+        ),
+        rawDatum: datum,
+        observedChainPoint: await chainPoint(row),
+      };
     },
-  }));
-
-const canonicalJson = (value: unknown): string =>
-  JSON.stringify(canonicalValue(value));
-
-const canonicalValue = (value: unknown): unknown => {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(canonicalValue);
-  }
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalValue(entry)]),
-    );
-  }
-  return value;
+    fetchDaAttestationCandidates: async (headerHash) => {
+      const rows = await liveWithUnit(
+        config.daAttestationPolicyId,
+        SDK.daAttestationAssetName(headerHash),
+        config.daAttestationAddress,
+        "DA attestation",
+      );
+      const records: DaAttestationCandidateRecord[] = [];
+      for (const row of rows) {
+        const datum = inlineDatum<SDK.DaAttestationDatum>(
+          row,
+          SDK.DaAttestationDatum as never,
+          "DA attestation",
+        );
+        if (datum.header_hash !== headerHash) {
+          throw new Error(
+            `DA attestation UTxO ${outRefLabel(row)} has header hash ${datum.header_hash}, expected ${headerHash}`,
+          );
+        }
+        const attestationCount = safeNumber(
+          datum.attestation_count,
+          "DA attestation count",
+        );
+        const threshold = safeNumber(
+          datum.da_threshold,
+          "DA attestation threshold",
+        );
+        records.push({
+          deploymentFingerprint: config.deploymentFingerprint,
+          headerHash,
+          outRef: outRefLabel(row),
+          datumCbor: row.output.datum!.toString("hex"),
+          attestationCount,
+          threshold,
+          committeeSignersHash: datum.committee_signers_hash,
+          bitmap: datum.attested_signers,
+          observedChainPoint: await chainPoint(row),
+          status:
+            attestationCount >= threshold
+              ? "threshold"
+              : attestationCount > 0
+                ? "signed"
+                : "initialized",
+        });
+      }
+      return records.sort((left, right) =>
+        left.outRef.localeCompare(right.outRef),
+      );
+    },
+  };
 };

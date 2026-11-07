@@ -1,12 +1,12 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../../services/database.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./common.js";
 
 /**
  * Table adapter for transaction-by-id storage.
@@ -31,32 +31,6 @@ export type EntryWithTimeStamp = EntryNoTimeStamp & {
 };
 
 export type Entry = EntryNoTimeStamp | EntryWithTimeStamp;
-
-/**
- * Creates the transaction table and a timestamp index used by retention jobs.
- */
-export const createTable = (
-  tableName: string,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.TX)} BYTEA NOT NULL,
-          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-          PRIMARY KEY (${sql(Columns.TX_ID)})
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.TIMESTAMPTZ}`,
-        )} ON ${sql(tableName)} (${sql(Columns.TIMESTAMPTZ)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
 
 /**
  * Deletes multiple transactions by id and logs how many rows were actually
@@ -219,26 +193,4 @@ export const retrieveAllEntries = (
       logDatabaseError(tableName, "retrieve", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
-  );
-
-/**
- * Removes transactions older than the given cutoff and returns the number of
- * deleted rows.
- */
-export const pruneOlderThan = (
-  tableName: string,
-  cutoff: Date,
-): Effect.Effect<number, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
-      WHERE ${sql(Columns.TIMESTAMPTZ)} < ${cutoff}
-      RETURNING ${sql(Columns.TX_ID)}`;
-    return deleted.length;
-  }).pipe(
-    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      logDatabaseError(tableName, "pruneOlderThan", e),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to prune old transactions"),
   );

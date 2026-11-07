@@ -1,12 +1,13 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { type Database } from "@/services/database.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
+import {
+  DaPayloadsDB,
+  PendingBlockFinalizationsDB,
+} from "../../database/index.js";
+import { DatabaseError } from "../../database/utils/common.js";
+import { type Database } from "../../services/database.js";
+import { buildDaPayloadInsert } from "./da-payload.js";
 
 export type DaPayloadBackfillSkipped = {
   readonly headerHash: string;
@@ -38,13 +39,6 @@ type BackfillDeps<R> = {
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
   ) => Effect.Effect<void, DatabaseError, R>;
-  readonly materializeUtxos?: (
-    record: PendingBlockFinalizationsDB.Record,
-  ) => Effect.Effect<
-    readonly { readonly outref: Buffer; readonly output: Buffer }[],
-    DatabaseError,
-    R
-  >;
 };
 
 const defaultDeps: BackfillDeps<Database> = {
@@ -52,15 +46,6 @@ const defaultDeps: BackfillDeps<Database> = {
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
   upsertAvailable: DaPayloadsDB.upsertAvailable,
-  materializeUtxos: (record) =>
-    materializeConfirmedLedgerSnapshot(record).pipe(
-      Effect.map((snapshot) =>
-        snapshot.entries.map((entry) => ({
-          outref: entry.outref,
-          output: entry.output,
-        })),
-      ),
-    ),
 };
 
 const headerHashHex = (record: PendingBlockFinalizationsDB.Record): string =>
@@ -81,9 +66,6 @@ const journalHasIncompletePayloads = (
   record: PendingBlockFinalizationsDB.Record,
 ): boolean =>
   record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].length <= 0 ||
-  (record.utxoMembers.length === 0 &&
-    record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] !==
-      EMPTY_MERKLE_TREE_ROOT) ||
   [
     record.txMembers,
     record.depositMembers,
@@ -91,6 +73,7 @@ const journalHasIncompletePayloads = (
     record.withdrawalMembers,
     record.transitionTraceMembers,
     record.eventToStepMembers,
+    record.validationTraceMembers,
   ].some(hasIncompletePayload) ||
   BigInt(record.withdrawalMembers.length) !==
     record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT] ||
@@ -107,7 +90,11 @@ const journalHasIncompletePayloads = (
       PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT
     ] ||
   BigInt(record.eventToStepMembers.length) !==
-    record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT];
+    record[
+      PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT
+    ] ||
+  BigInt(record.validationTraceMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT];
 
 export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
   headerHash,
@@ -134,7 +121,7 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
           skipped.push({
             headerHash: headerHash.toString("hex"),
             reason:
-              status === PendingBlockFinalizationsDB.Status.Finalized
+              status === PendingBlockFinalizationsDB.Status.LocallyApplied
                 ? "finalized journal already has a DA payload or is not missing DA payload backfill"
                 : `journal excluded by status: ${status}; revive and complete local finalization before DA payload backfill`,
           });
@@ -155,14 +142,7 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const utxos =
-            record.ledgerDelta === undefined
-              ? undefined
-              : yield* deps.materializeUtxos!(record);
-          const insert = yield* buildDaPayloadInsert({
-            record,
-            utxos,
-          });
+          const insert = yield* buildDaPayloadInsert({ record });
           yield* deps.upsertAvailable(insert);
         }),
       );

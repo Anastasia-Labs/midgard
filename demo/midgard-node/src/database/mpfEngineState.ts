@@ -1,18 +1,13 @@
+import { randomUUID } from "node:crypto";
+
+import { nodeProcessCommitLeaseOwner as coreNodeProcessCommitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
-
-export type UtxoPayloadSizeAggregate = {
-  readonly entryCount: number;
-  readonly encodedTupleBytes: number;
-};
 
 export const assertLedgerAuditHealthy: Effect.Effect<
   void,
@@ -39,39 +34,48 @@ export const assertLedgerAuditHealthy: Effect.Effect<
 export const recordLedgerAudit = ({
   rootHex,
   diverged,
-  utxoPayloadAggregate,
 }: {
   readonly rootHex: string;
   readonly diverged: boolean;
-  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)}
       (store_name, migration_version, root_hex, audit_diverged,
-       last_audit_diverged, last_audit_at, utxo_payload_entry_count,
-       utxo_payload_encoded_tuple_bytes)
-      VALUES ('ledger', 1, ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP,
-        ${utxoPayloadAggregate?.entryCount ?? null},
-        ${utxoPayloadAggregate?.encodedTupleBytes ?? null})
+       last_audit_diverged, last_audit_at)
+      VALUES ('ledger', 1, ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP)
       ON CONFLICT (store_name) DO UPDATE SET
         migration_version = 1,
         root_hex = EXCLUDED.root_hex,
         audit_diverged = ${sql(tableName)}.audit_diverged OR EXCLUDED.audit_diverged,
         last_audit_diverged = EXCLUDED.last_audit_diverged,
-        utxo_payload_entry_count = COALESCE(
-          EXCLUDED.utxo_payload_entry_count,
-          ${sql(tableName)}.utxo_payload_entry_count
-        ),
-        utxo_payload_encoded_tuple_bytes = COALESCE(
-          EXCLUDED.utxo_payload_encoded_tuple_bytes,
-          ${sql(tableName)}.utxo_payload_encoded_tuple_bytes
-        ),
         last_audit_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to record ledger MPF audit"),
   );
+
+/**
+ * Record an audit that could neither confirm nor refute the persisted root: it
+ * only advances the audit cadence, leaving the recorded root, its aggregate and
+ * both divergence flags untouched.
+ */
+export const recordLedgerAuditAttempt: Effect.Effect<
+  void,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`UPDATE ${sql(tableName)} SET
+    last_audit_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+    WHERE store_name = 'ledger'`;
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed to record ledger MPF audit attempt",
+  ),
+);
 
 export const acquireLedgerStoreLease = ({
   owner,
@@ -109,6 +113,64 @@ export const releaseLedgerStoreLease = (
       WHERE store_name = 'ledger' AND lease_owner = ${owner}`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to release ledger MPF lease"),
+  );
+
+/** Owner prefixes of the ledger MPF leases only a node process takes: block
+ * commitment (`node-commit:`), and the node's own
+ * payload audit (`node-audit:`). The offline `reconcile` and `mpf-audit`
+ * commands take theirs as `commit:` and `audit:`, so a live one may exist
+ * beside the node and never carries these prefixes. */
+export const NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX = "node-commit:";
+export const NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX = "node-audit:";
+export const NODE_PROCESS_LEDGER_LEASE_OWNER_PREFIXES: readonly string[] = [
+  NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX,
+  NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX,
+];
+
+export const nodeProcessCommitLeaseOwner = (): string =>
+  coreNodeProcessCommitLeaseOwner(randomUUID());
+
+export const nodeProcessAuditLeaseOwner = (): string =>
+  `${NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX}${randomUUID()}`;
+
+/** Clears the ledger MPF lease when its owner carries one of `prefixes`,
+ * whoever took it, and returns the owner it cleared. Only a caller that proved
+ * no live process holds such a lease may run it: see
+ * releaseLedgerStoreLeaseOfPreviousNodeProcess. */
+export const retireLedgerStoreLeaseOfOwnerPrefixes = (
+  prefixes: readonly string[],
+): Effect.Effect<
+  { readonly owner: string; readonly expiresAt: Date | null } | undefined,
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (prefixes.length === 0) return undefined;
+    const sql = yield* SqlClient.SqlClient;
+    const ownedByPrefix = sql.or(
+      prefixes.map((prefix) => sql`starts_with(lease_owner, ${prefix})`),
+    );
+    const rows = yield* sql<{
+      readonly lease_owner: string;
+      readonly lease_expires_at: Date | null;
+    }>`WITH previous AS (
+        SELECT lease_owner, lease_expires_at FROM ${sql(tableName)}
+        WHERE store_name = 'ledger' AND ${ownedByPrefix}
+        FOR UPDATE
+      )
+      UPDATE ${sql(tableName)} AS state SET
+        lease_owner = NULL, lease_expires_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      FROM previous
+      WHERE state.store_name = 'ledger'
+        AND state.lease_owner = previous.lease_owner
+      RETURNING previous.lease_owner, previous.lease_expires_at`;
+    const row = rows[0];
+    return row === undefined
+      ? undefined
+      : { owner: row.lease_owner, expiresAt: row.lease_expires_at };
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to retire ledger MPF lease"),
   );
 
 export const renewLedgerStoreLease = ({
@@ -179,7 +241,11 @@ export const tryWithLedgerStoreLease = <A, E, R>(
     readonly ttlMs?: number;
     readonly renewIntervalMs?: number;
   } = {},
-): Effect.Effect<LedgerStoreLeaseRunResult<A>, E | DatabaseError, R | Database> =>
+): Effect.Effect<
+  LedgerStoreLeaseRunResult<A>,
+  E | DatabaseError,
+  R | Database
+> =>
   Effect.gen(function* () {
     const normalizedTtlMs = Math.max(1, Math.floor(ttlMs));
     const acquired = yield* acquireLedgerStoreLease({
@@ -254,90 +320,10 @@ export const stampLedgerMigration = (
       VALUES ('ledger', 1, ${rootHex})
       ON CONFLICT (store_name) DO UPDATE SET
         migration_version = GREATEST(${sql(tableName)}.migration_version, 1),
-        utxo_payload_entry_count = CASE
-          WHEN ${sql(tableName)}.root_hex = EXCLUDED.root_hex
-            THEN ${sql(tableName)}.utxo_payload_entry_count
-          ELSE NULL
-        END,
-        utxo_payload_encoded_tuple_bytes = CASE
-          WHEN ${sql(tableName)}.root_hex = EXCLUDED.root_hex
-            THEN ${sql(tableName)}.utxo_payload_encoded_tuple_bytes
-          ELSE NULL
-        END,
         root_hex = EXCLUDED.root_hex,
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to stamp ledger MPF migration"),
-  );
-
-export const stampLedgerPayloadAggregate = ({
-  rootHex,
-  aggregate,
-}: {
-  readonly rootHex: string;
-  readonly aggregate: UtxoPayloadSizeAggregate;
-}): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO ${sql(tableName)}
-      (store_name, migration_version, root_hex, utxo_payload_entry_count,
-       utxo_payload_encoded_tuple_bytes)
-      VALUES ('ledger', 1, ${rootHex}, ${aggregate.entryCount},
-        ${aggregate.encodedTupleBytes})
-      ON CONFLICT (store_name) DO UPDATE SET
-        migration_version = GREATEST(${sql(tableName)}.migration_version, 1),
-        root_hex = EXCLUDED.root_hex,
-        utxo_payload_entry_count = EXCLUDED.utxo_payload_entry_count,
-        utxo_payload_encoded_tuple_bytes =
-          EXCLUDED.utxo_payload_encoded_tuple_bytes,
-        updated_at = CURRENT_TIMESTAMP`;
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to persist ledger DA UTxO size aggregate",
-    ),
-  );
-
-export const retrieveLedgerPayloadAggregate = (
-  rootHex: string,
-): Effect.Effect<UtxoPayloadSizeAggregate | undefined, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      readonly entry_count: bigint | number | string;
-      readonly encoded_tuple_bytes: bigint | number | string;
-    }>`SELECT
-      utxo_payload_entry_count AS entry_count,
-      utxo_payload_encoded_tuple_bytes AS encoded_tuple_bytes
-      FROM ${sql(tableName)}
-      WHERE store_name = 'ledger'
-        AND root_hex = ${rootHex}
-        AND utxo_payload_entry_count IS NOT NULL
-        AND utxo_payload_encoded_tuple_bytes IS NOT NULL`;
-    const row = rows[0];
-    if (row === undefined) return undefined;
-    const entryCount = Number(row.entry_count);
-    const encodedTupleBytes = Number(row.encoded_tuple_bytes);
-    if (
-      !Number.isSafeInteger(entryCount) ||
-      entryCount < 0 ||
-      !Number.isSafeInteger(encodedTupleBytes) ||
-      encodedTupleBytes < 0
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message: "Stored ledger DA UTxO size aggregate is invalid",
-          cause: `entry_count=${String(row.entry_count)},encoded_tuple_bytes=${String(row.encoded_tuple_bytes)}`,
-        }),
-      );
-    }
-    return { entryCount, encodedTupleBytes };
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve ledger DA UTxO size aggregate",
-    ),
   );
 
 export const ledgerAuditIsDue = ({
@@ -364,7 +350,7 @@ export const ledgerAuditIsDue = ({
       readonly finalized_count: bigint | string;
     }>`SELECT COUNT(*) AS finalized_count
        FROM pending_block_finalizations
-       WHERE status = 'finalized' AND updated_at > ${lastAuditAt}`;
+       WHERE status = 'locally_applied' AND updated_at > ${lastAuditAt}`;
     return BigInt(row?.finalized_count ?? 0) >= BigInt(intervalBlocks);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to determine MPF audit cadence"),

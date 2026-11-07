@@ -1,17 +1,47 @@
 import { Effect, Schedule } from "effect";
 
-import { runMpfAudit } from "@/commands/mpf-audit.js";
-import { MpfEngineStateDB } from "@/database/index.js";
+import { type MpfAuditResult, runMpfAudit } from "../commands/mpf-audit.js";
+import { NODE_PROCESS_MPF_AUDIT_LEASES } from "../commands/mpf-audit-leases.js";
+import { MpfEngineStateDB } from "../database/index.js";
 import {
   Database,
   Globals,
   NodeConfig,
   type NodeConfigDep,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 export const shouldRunMpfPayloadAudit = (
   payloadRootCheck: NodeConfigDep["MPF_PAYLOAD_ROOT_CHECK"],
 ): boolean => payloadRootCheck !== "off";
+
+/**
+ * The running node's ledger audit: under Architecture G the persisted root is
+ * the native owner's durable root, read lazily so the audit reads it under its
+ * leases, after the no-active-submission check, at the same ledger point it
+ * recomputes. It runs under the node-process lease names, so a restart after a
+ * kill mid-audit retires its leases at startup.
+ */
+export const runLedgerPayloadAudit: Effect.Effect<
+  MpfAuditResult,
+  unknown,
+  Database | Globals | NodeConfig
+> = Effect.gen(function* () {
+  const globals = yield* Globals;
+  return yield* runMpfAudit({
+    leases: NODE_PROCESS_MPF_AUDIT_LEASES,
+    readNativeDurableRoot: Effect.gen(function* () {
+      const owner = yield* globals.NATIVE_MPF_OWNER;
+      if (owner === undefined) {
+        return yield* Effect.fail(
+          new Error(
+            "Architecture G native MPF owner is not open; the ledger audit cannot read its durable root",
+          ),
+        );
+      }
+      return (yield* Effect.tryPromise(() => owner.diagnostics())).durableRoot;
+    }),
+  });
+});
 
 export const mpfPayloadAuditFiber: Effect.Effect<
   number,
@@ -20,24 +50,11 @@ export const mpfPayloadAuditFiber: Effect.Effect<
 > = Effect.gen(function* () {
   const config = yield* NodeConfig;
   if (!shouldRunMpfPayloadAudit(config.MPF_PAYLOAD_ROOT_CHECK)) return 0;
-  const globals = yield* Globals;
   const runWhenDue = MpfEngineStateDB.ledgerAuditIsDue({
     intervalBlocks: config.MPF_PAYLOAD_AUDIT_INTERVAL_BLOCKS,
     intervalMs: config.MPF_PAYLOAD_AUDIT_INTERVAL_MS,
   }).pipe(
-    Effect.flatMap((due) =>
-      due
-        ? Effect.gen(function* () {
-            const owner = yield* globals.NATIVE_MPF_OWNER;
-            const persistedRootOverride =
-              owner === undefined
-                ? undefined
-                : (yield* Effect.promise(() => owner.diagnostics()))
-                    .durableRoot;
-            return yield* runMpfAudit({ persistedRootOverride });
-          })
-        : Effect.void,
-    ),
+    Effect.flatMap((due) => (due ? runLedgerPayloadAudit : Effect.void)),
     Effect.catchAllCause((cause) =>
       Effect.logError(`MPF payload audit failed: ${String(cause)}`),
     ),

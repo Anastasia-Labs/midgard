@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#
+# Points git at the repository's versioned hooks.
+#
+# Sets `core.hooksPath` to the RELATIVE path `.githooks`. Git runs hooks from
+# the root of the working tree that is committing, so every worktree runs its
+# own branch's copy of each hook rather than the main checkout's. The setting
+# lives in the shared repository config, so one run covers every worktree.
+#
+# Idempotent. A pre-existing hook in the common hooks directory that is a real
+# file rather than a symlink is preserved as <hook>.local. The Nix git-hooks
+# framework installs such a shim for the Haskell tree (cabal-fmt, fourmolu);
+# `.githooks/pre-commit` still runs `pre-commit.local`, in any checkout that
+# has the `.pre-commit-config.yaml` it needs.
+#
+# Every hook file is made executable here. With `core.fileMode=false` git does
+# not report a lost executable bit, and git silently skips a hook that is not
+# executable.
+#
+# Entering the offchain Nix dev shell after its hook configuration changes
+# re-runs the git-hooks installer, which points `core.hooksPath` back at the
+# common hooks directory. Run this script again afterwards.
+#
+# Usage:  bash .githooks/install
+#         pnpm --dir demo run hooks:install
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+hooks_src="$repo_root/.githooks"
+common_hooks="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
+
+for src in "$hooks_src"/*; do
+  [[ -f "$src" ]] || continue
+  chmod +x "$src"
+  name="$(basename "$src")"
+  [[ "$name" == "install" ]] && continue
+
+  dst="$common_hooks/$name"
+  if [[ -e "$dst" && ! -L "$dst" ]]; then
+    if [[ ! -e "$dst.local" ]]; then
+      mv "$dst" "$dst.local"
+      chmod +x "$dst.local"
+      echo "preserved existing $name as $dst.local (it will still run)"
+    else
+      echo "warning: $dst and $dst.local both exist; leaving both untouched" >&2
+    fi
+  fi
+done
+
+git config core.hooksPath .githooks
+
+echo "core.hooksPath=.githooks: each checkout now runs its own .githooks copy"
+echo "Skip them for one commit with: MIDGARD_SKIP_HOOKS=1 git commit ..."

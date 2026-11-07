@@ -1,10 +1,11 @@
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
+import * as MempoolLedgerDB from "./database/mempoolLedger.js";
+import { DatabaseError } from "./database/utils/common.js";
+import { Columns as LedgerColumns } from "./database/utils/ledger.js";
 import {
   Database,
   Globals,
@@ -12,16 +13,25 @@ import {
   MidgardContracts,
   NodeConfig,
   publishMempoolLedgerDelta,
-} from "@/services/index.js";
+} from "./services/index.js";
 import {
-  buildUnsignedDepositTxProgram,
-  type SubmitDepositError,
-} from "@/transactions/submit-deposit.js";
+  type IntentJournal,
+  journaledIntent,
+  openPlan,
+} from "./services/intent-journal.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
-} from "@/transactions/utils.js";
+} from "./transactions/utils.js";
+import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
+
+export class GenesisDepositError extends Data.TaggedError(
+  "GenesisDepositError",
+)<{
+  message: string;
+  cause: unknown;
+}> {}
 
 /**
  * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
@@ -44,7 +54,9 @@ const insertGenesisUtxos: Effect.Effect<
     const core = utxoToCore(utxo);
     return {
       [LedgerColumns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
-      [LedgerColumns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
+      // §5.3 field-0/1 item encoding — the ledger key on-chain
+      // `ledger_outref_key` derives, not CML's minimal-index form.
+      [LedgerColumns.OUTREF]: outRefToCbor(utxo),
       [LedgerColumns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
       [LedgerColumns.ADDRESS]: utxo.address,
     };
@@ -74,19 +86,23 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 /**
  * Submits an initial deposit transaction for the configured genesis wallet
- * funds when genesis UTxOs are present.
+ * funds when genesis UTxOs are present. It inserts into the deposit list, so
+ * it is journaled as a list insert keyed by its event key
+ * (`list_insert:deposit:<event key>`): S6 resends it while that key is not
+ * in the follower's key set. Where no follower runs, it goes out
+ * unjournaled (`no_follower`).
  */
-const submitGenesisDeposits: Effect.Effect<
+export const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
   | SDK.HashingError
   | SDK.HubOracleError
   | SDK.Bech32DeserializationError
-  | SubmitDepositError
+  | GenesisDepositError
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
-  MidgardContracts | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig | IntentJournal
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
@@ -98,16 +114,62 @@ const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
+  // S5: the plan opens before the build's first L1 read.
+  const plan = yield* openPlan;
   yield* lucid.switchToOperatorsMainWallet;
 
+  // The deposit's nonce and funding come from the operator wallet's view
+  // (§8.5), never from the provider.
+  const walletInputs = yield* readSelectedWalletViewInputs(
+    lucid.api,
+    "the genesis deposit",
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GenesisDepositError({
+          message: `Failed to read the wallet view to fund the genesis deposit: ${cause.message}`,
+          cause,
+        }),
+    ),
+  );
   // Hard-coded 10 ADA deposit.
-  const signedTx = yield* buildUnsignedDepositTxProgram(lucid.api, contracts, {
-    l2Address: config.GENESIS_UTXOS[0].address,
-    l2Datum: null,
-    lovelace: 10_000_000n,
-    additionalAssets: {},
-  });
-  yield* handleSignSubmit(lucid.api, signedTx);
+  const { tx, metadata } = yield* SDK.buildUnsignedDepositTxWithMetadataProgram(
+    lucid.api,
+    contracts,
+    {
+      l2Address: config.GENESIS_UTXOS[0].address,
+      l2Datum: null,
+      lovelace: 10_000_000n,
+      additionalAssets: {},
+      walletInputs,
+    },
+  ).pipe(
+    Effect.catchTags({
+      UserEventBuildError: (error) =>
+        Effect.fail(
+          new GenesisDepositError({
+            message: error.message,
+            cause: error.cause,
+          }),
+        ),
+      InvalidUtxoError: (error) =>
+        Effect.fail(
+          new GenesisDepositError({
+            message: error.message,
+            cause: error,
+          }),
+        ),
+    }),
+  );
+  yield* handleSignSubmit(
+    lucid.api,
+    tx,
+    journaledIntent(
+      "list_insert",
+      `list_insert:deposit:${metadata.depositAssetName}`,
+      plan,
+    ),
+  );
 }).pipe(Effect.tapError(Effect.logInfo));
 
 /**
@@ -117,7 +179,7 @@ const submitGenesisDeposits: Effect.Effect<
 export const program: Effect.Effect<
   void,
   never,
-  MidgardContracts | Database | Lucid | NodeConfig | Globals
+  MidgardContracts | Database | Lucid | NodeConfig | Globals | IntentJournal
 > = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
   concurrency: "unbounded",
 }).pipe(Effect.catchAllCause(Effect.logInfo));

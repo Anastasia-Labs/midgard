@@ -1,3 +1,4 @@
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets as LucidAssets,
@@ -14,7 +15,7 @@ import {
   DataCoercionError,
   LucidError,
   UnauthenticUtxoError,
-} from "@/errors.js";
+} from "./errors.js";
 
 const getSingleAssetApartFromAda = (
   assets: LucidAssets,
@@ -77,11 +78,11 @@ export type AuthenticUTxO<TDatum, TExtra = undefined> = {
   utxo: UTxO;
   datum: TDatum;
   assetName: string;
-} & ([TExtra] extends [undefined] ? {} : TExtra);
+} & ([TExtra] extends [undefined] ? Record<never, never> : TExtra);
 
 export const getDatumFromUTxO = <TDatum>(
   nodeUTxO: UTxO,
-  schema: any,
+  schema: LucidDataSchema,
 ): Effect.Effect<TDatum, DataCoercionError> =>
   Effect.gen(function* () {
     const datumCBOR = nodeUTxO.datum;
@@ -95,7 +96,7 @@ export const getDatumFromUTxO = <TDatum>(
     }
 
     return yield* Effect.try({
-      try: () => Data.from(datumCBOR, schema),
+      try: () => Data.from(datumCBOR, schema) as TDatum,
       catch: (e) =>
         new DataCoercionError({
           message: `Could not coerce UTxO's datum to the expected datum type`,
@@ -113,7 +114,7 @@ type AuthenticUTxOBase<TDatum> = {
 const utxoToAuthenticUTxOBase = <TDatum>(
   utxo: UTxO,
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
 ): Effect.Effect<
   AuthenticUTxOBase<TDatum>,
   DataCoercionError | UnauthenticUtxoError
@@ -137,7 +138,7 @@ export const authenticateUTxO: {
   <TDatum>(
     utxo: UTxO,
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
   ): Effect.Effect<
     AuthenticUTxO<TDatum>,
     DataCoercionError | UnauthenticUtxoError
@@ -145,7 +146,7 @@ export const authenticateUTxO: {
   <TDatum, TExtra>(
     utxo: UTxO,
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
     extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<
     AuthenticUTxO<TDatum, TExtra>,
@@ -154,7 +155,7 @@ export const authenticateUTxO: {
 } = <TDatum, TExtra>(
   utxo: UTxO,
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
   extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) =>
   Effect.gen(function* () {
@@ -187,18 +188,18 @@ export const authenticateUTxOs: {
   <TDatum>(
     utxos: UTxO[],
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
   ): Effect.Effect<AuthenticUTxO<TDatum>[]>;
   <TDatum, TExtra>(
     utxos: UTxO[],
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
     extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
 } = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
   extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) => {
   const effects = utxos.map((utxo) =>
@@ -208,6 +209,43 @@ export const authenticateUTxOs: {
   );
   return Effect.allSuccesses(effects);
 };
+
+/** Why a single-UTxO read did not find exactly one authentic UTxO, with the
+ * counts behind it. `none-found` is what a provider still re-applying blocks
+ * after a rollback also reports, so another read can clear it;
+ * `several-found` means the singleton's token is duplicated, which no read
+ * clears. `policyHolderCount` counts the UTxOs at the address holding any
+ * token under the policy, authentic or not. */
+export type UnexpectedAuthenticUTxOCount = {
+  readonly reason: "none-found" | "several-found";
+  readonly authenticCount: number;
+  readonly rawCount: number;
+  readonly policyHolderCount: number;
+};
+
+/** Optional fields a singleton's error carries when the count was wrong;
+ * `retryable` is what a provider retry policy reads. */
+export type UnexpectedAuthenticUTxOCountFields = {
+  readonly unexpectedCount?: UnexpectedAuthenticUTxOCount;
+  readonly retryable?: boolean;
+};
+
+/** The `cause`, count and retryability for a singleton's count error. */
+export const unexpectedAuthenticUTxOCountFields = (
+  utxoLabel: string,
+  count: UnexpectedAuthenticUTxOCount,
+): {
+  readonly cause: string;
+  readonly unexpectedCount: UnexpectedAuthenticUTxOCount;
+  readonly retryable: boolean;
+} => ({
+  cause:
+    count.reason === "none-found"
+      ? `Exactly one ${utxoLabel} UTxO was expected, but no authentic ${utxoLabel} UTxO was found (${count.rawCount.toString()} UTxOs at the address, ${count.policyHolderCount.toString()} hold a token under the policy)`
+      : `Exactly one ${utxoLabel} UTxO was expected, but ${count.authenticCount.toString()} authentic ${utxoLabel} UTxOs were found`,
+  unexpectedCount: count,
+  retryable: count.reason === "none-found",
+});
 
 export type FetchSingleAuthenticUTxOConfig<
   TAuthenticUTxO,
@@ -221,7 +259,9 @@ export type FetchSingleAuthenticUTxOConfig<
     utxos: UTxO[],
     nftPolicy: PolicyId,
   ) => Effect.Effect<TAuthenticUTxO[], TConversionError>;
-  onUnexpectedAuthenticUTxOCount: () => TError;
+  onUnexpectedAuthenticUTxOCount: (
+    count: UnexpectedAuthenticUTxOCount,
+  ) => TError;
 };
 
 export const fetchSingleAuthenticUTxOProgram = <
@@ -255,5 +295,16 @@ export const fetchSingleAuthenticUTxOProgram = <
       return authenticUTxOs[0];
     }
 
-    return yield* Effect.fail(config.onUnexpectedAuthenticUTxOCount());
+    return yield* Effect.fail(
+      config.onUnexpectedAuthenticUTxOCount({
+        reason: authenticUTxOs.length === 0 ? "none-found" : "several-found",
+        authenticCount: authenticUTxOs.length,
+        rawCount: allUTxOs.length,
+        policyHolderCount: allUTxOs.filter((utxo) =>
+          Object.keys(utxo.assets).some((unit) =>
+            unit.startsWith(config.policyId),
+          ),
+        ).length,
+      }),
+    );
   });

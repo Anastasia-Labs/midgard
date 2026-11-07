@@ -32,10 +32,8 @@ the one matching the request rather than copying an old local command:
 
 - `docs/benchmark-scenarios/mixed-workload-multi-io.md`;
 - `docs/benchmark-scenarios/phase-2-validation-gates.md`;
-- `docs/benchmark-scenarios/phase-3-architecture-g-closure.md`;
-- `docs/benchmark-scenarios/phase-3-architecture-g-soak.md`;
-- `docs/benchmark-scenarios/phase-4-pipelined-one-hour.md`; or
-- `docs/benchmark-scenarios/phase-5-da-50k-distribution.md`.
+- `docs/benchmark-scenarios/phase-3-architecture-g-closure.md`; or
+- `docs/benchmark-scenarios/phase-3-architecture-g-soak.md`.
 
 Run the named gate and verifier from `demo/midgard-node/package.json`. Do not
 substitute an ad hoc smoke for a named scenario. Never cite ignored or missing
@@ -68,9 +66,13 @@ least three runs for median/deviation claims.
 
 ## Bounded E2E stress
 
-When the user asks for bounded stress as part of a live E2E run, insert it after
-the two baseline L2 submissions and before waiting for the final automatic
-drain.
+When the user asks for bounded stress on a live run, bring the stack up with
+`e2e-stack --setup-only` (see [live-acceptance.md](live-acceptance.md#run)),
+then run the bounded harness against the configured node `endpoint`. Its L2
+wallets must be independent and pre-funded on L2: never the stack's user or
+recipient wallets, whose exact balance checks the journey depends on. Wait for
+the node to drain before running the wallet journey with the same command
+without `--setup-only`.
 
 Use `e2e-stress-l2-throughput` for the bounded harness. Keep defaults explicit:
 
@@ -97,16 +99,10 @@ Preserve the canonical artifacts:
 - DB stage metrics; and
 - stress `summary.json` and `summary.md`.
 
-Append only a successfully parsed stress summary to the functional dashboard:
-
-```bash
-STRESS_SUMMARY_ARGS=()
-if [ -f "logs/$RUN_ID/stress/summary.json" ]; then
-  STRESS_SUMMARY_ARGS+=(
-    --stress-summary "logs/$RUN_ID/stress/summary.json"
-  )
-fi
-```
+Keep the stress `--out-dir` beside the stack's `runDirectory` and report it
+separately from the journey summary. The finalizer's `--stress-summary` input
+adds it to the release-readiness dashboard the finalizer re-derives from the
+stack run (see [release-readiness.md](release-readiness.md)).
 
 The stress admission gate is `metrics.l2Admission`. Immutable observation and
 full automatic-drain finality are distinct evidence. A passed admission metric

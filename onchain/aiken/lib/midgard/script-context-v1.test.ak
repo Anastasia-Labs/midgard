@@ -1,0 +1,1202 @@
+use aiken/builtin
+use aiken/cbor
+use aiken/primitive/bytearray
+use midgard/bounded_item_v1
+use midgard/canonical_plutus_data_v1.{is_canonical_plutus_data_v1}
+use midgard/cek_data_v1
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardAddress, MidgardTxOutput, MidgardV1Script, MidgardValue,
+  MidgardVersionedScript, PubKeyCredential,
+}
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_v1
+use midgard/script_context_v1
+use midgard/script_proof_v1
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
+use midgard/validation_merkle_v1
+
+const output_cbor =
+  #"a400581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a0012d687a1581c11111111111111111111111111111111111111111111111111111111a1422233070246d87b9f182aff03820343010203"
+
+const simple_output_cbor =
+  #"a200581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a0012d687a1581c11111111111111111111111111111111111111111111111111111111a142223307"
+
+const datum_output_cbor =
+  #"a300581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a0012d687a1581c11111111111111111111111111111111111111111111111111111111a1422233070246d87b9f182aff"
+
+const reference_output_cbor =
+  #"a300581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a0012d687a1581c11111111111111111111111111111111111111111111111111111111a14222330703820343010203"
+
+const input_cbor =
+  #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb190002"
+
+fn exact_descriptor(output_index: Int, raw_output_cbor: ByteArray) -> ByteArray {
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    True,
+  )
+  expect Some(cardano_spend_datum) = script_context_v1.spend_datum_summary_v1(
+    raw_output_cbor,
+  )
+  ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index,
+      total_length: bytearray.length(raw_output_cbor),
+      item_commitment: bounded_item_v1.from_bytes(
+        2,
+        output_index,
+        raw_output_cbor,
+      ),
+      address: #"68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      lovelace: 1234567,
+      asset_count: 0,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+      cardano_value_size: 0,
+      reference_script_language: -1,
+      reference_script_hash: #"",
+      reference_script_total_length: 0,
+      reference_script_item_commitment: #"",
+      cardano_tx_out,
+      midgard_tx_out,
+      cardano_spend_datum,
+    },
+  )
+}
+
+fn indexed_hashes(cursor: Int, count: Int) -> List<ByteArray> {
+  if cursor == count {
+    []
+  } else {
+    [
+      bytearray.from_int_big_endian(cursor, 28),
+      ..indexed_hashes(cursor + 1, count)
+    ]
+  }
+}
+
+fn repeated_siblings(count: Int) -> List<ByteArray> {
+  if count == 0 {
+    []
+  } else {
+    [
+      #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ..repeated_siblings(count - 1)
+    ]
+  }
+}
+
+fn rightmost_peak_root(current: ByteArray, height: Int) -> ByteArray {
+  if height == 0 {
+    current
+  } else {
+    rightmost_peak_root(
+      validation_merkle_v1.hash_branch(
+        #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        current,
+      ),
+      height - 1,
+    )
+  }
+}
+
+test offchain_simple_output_vector_is_canonical() {
+  ledger_output_v1.decode_canonical_output(simple_output_cbor) != None
+}
+
+test offchain_datum_output_vector_is_canonical() {
+  ledger_output_v1.decode_canonical_output(datum_output_cbor) != None
+}
+
+test offchain_reference_output_vector_is_canonical() {
+  ledger_output_v1.decode_canonical_output(reference_output_cbor) != None
+}
+
+test offchain_output_vector_is_canonical() {
+  ledger_output_v1.decode_canonical_output(output_cbor) != None
+}
+
+test offchain_tx_out_semantic_roots_match() {
+  expect Some(cardano) = script_context_v1.tx_out_summary_v1(output_cbor, False)
+  expect Some(midgard) = script_context_v1.tx_out_summary_v1(output_cbor, True)
+  and {
+    cardano.root == #"9a798cedaf0cebe75f5254e541a33d035eb24d281a387c878b60bdbc41c53c98",
+    cardano.cbor_length == 133,
+    cardano.memory == 94,
+    midgard.root == #"83ec6cf75d0b365e4ffb51c25ee65faf7da53b7d6d21381c97aa651bba903085",
+    midgard.cbor_length == 133,
+    midgard.memory == 94,
+  }
+}
+
+test malformed_tx_out_fails_closed() {
+  script_context_v1.tx_out_summary_v1(#"a0", False) == None
+}
+
+test offchain_tx_in_info_semantic_roots_match() {
+  expect Some(cardano) = script_context_v1.tx_in_info_summary_v1(
+    input_cbor,
+    output_cbor,
+    False,
+  )
+  expect Some(midgard) = script_context_v1.tx_in_info_summary_v1(
+    input_cbor,
+    output_cbor,
+    True,
+  )
+  and {
+    cardano.root == #"a2be4f66f683151c175713c30809198758c71485bbd424f4acf903e692b733fa",
+    cardano.cbor_length == 176,
+    cardano.memory == 115,
+    midgard.root == #"23ef033204c588b0f8c3903697e3790624a900fa373260b71497a61dbda7c970",
+    midgard.cbor_length == 176,
+    midgard.memory == 115,
+  }
+}
+
+test authenticated_item_is_prepended_in_reverse_index_order() {
+  let item = cek_data_v1.DataSummaryV1 {
+    root: #"a2be4f66f683151c175713c30809198758c71485bbd424f4acf903e692b733fa",
+    cbor_length: 176,
+    memory: 115,
+  }
+  let item_leaf = script_proof_v1.context_item_leaf_hash(
+    0,
+    0,
+    item.root,
+    item.cbor_length,
+    item.memory,
+  )
+  expect Some(sequence) = script_context_v1.prepend_authenticated_list_item_v1(
+    0,
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: item_leaf }],
+    0,
+    item,
+    [],
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  let list_summary = cek_data_v1.list_data_summary_v1(sequence)
+  and {
+    item_leaf == #"b6395a6f474de951d2adc3e426a469bf29cc68ac453d5a2cd04d0c02fe0b87f3",
+    sequence.root == #"2596fe839ffcf001f41e440fac793bda76c208bdae73571e979bc234a59e0572",
+    sequence.length == 1,
+    sequence.payload_cbor_length == 176,
+    sequence.memory == 115,
+    list_summary.root == #"0fdf2dab6e580ecbeb984f90ce815506b825c57e6af1b250c2c471134a8d7b6f",
+    list_summary.cbor_length == 178,
+    list_summary.memory == 119,
+  }
+}
+
+test raw_resolved_input_is_converted_and_prepended_in_one_bounded_step() {
+  let leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+  )
+  expect Some(sequence) = script_context_v1.prepend_resolved_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    1,
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  let list_summary = cek_data_v1.list_data_summary_v1(sequence)
+  and {
+    sequence.root == #"2596fe839ffcf001f41e440fac793bda76c208bdae73571e979bc234a59e0572",
+    list_summary.root == #"0fdf2dab6e580ecbeb984f90ce815506b825c57e6af1b250c2c471134a8d7b6f",
+    script_context_v1.prepend_resolved_tx_in_info_v1(
+      1,
+      [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+      1,
+      1,
+      0,
+      input_cbor,
+      output_cbor,
+      [],
+      False,
+      cek_data_v1.empty_data_list_summary_v1(),
+    ) == None,
+  }
+}
+
+test authenticated_output_is_converted_and_prepended_in_one_bounded_step() {
+  let leaf = script_proof_v1.output_leaf_hash(0, output_cbor)
+  expect Some(sequence) = script_context_v1.prepend_output_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    0,
+    output_cbor,
+    [],
+    True,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  let item = cek_data_v1.list_data_summary_v1(sequence)
+  and {
+    sequence.length == 1,
+    sequence.payload_cbor_length == 133,
+    sequence.memory == 94,
+    item.cbor_length == 135,
+    item.memory == 98,
+  }
+}
+
+test authenticated_descriptor_drives_spend_and_reference_context_items() {
+  let descriptor_cbor = exact_descriptor(2, output_cbor)
+  let spend_leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    0,
+    0,
+    input_cbor,
+    descriptor_cbor,
+  )
+  let reference_leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    1,
+    0,
+    input_cbor,
+    descriptor_cbor,
+  )
+  expect Some(spend) = script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: spend_leaf }],
+    1,
+    0,
+    0,
+    input_cbor,
+    descriptor_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  expect Some(reference) = script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: reference_leaf }],
+    0,
+    1,
+    0,
+    input_cbor,
+    descriptor_cbor,
+    [],
+    True,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  and {
+    spend.length == 1,
+    reference.length == 1,
+    spend.root != reference.root,
+    script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+      1,
+      [validation_merkle_v1.FrontierPeak { height: 0, hash: spend_leaf }],
+      1,
+      0,
+      0,
+      input_cbor,
+      exact_descriptor(2, simple_output_cbor),
+      [],
+      False,
+      cek_data_v1.empty_data_list_summary_v1(),
+    ) == None,
+  }
+}
+
+test complete_output_cbor_cannot_substitute_for_a_resolved_descriptor() fail {
+  let leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+  )
+  script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    1,
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  ) != None
+}
+
+test output_descriptor_membership_selects_exact_maximum_semantic_summary() {
+  let maximum = 16_384
+  let uint64_max = 18_446_744_073_709_551_615
+  let summary = cek_data_v1.DataSummaryV1 {
+    root: #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    cbor_length: maximum,
+    memory: maximum,
+  }
+  let descriptor_cbor = ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index: 0,
+      total_length: 16_384,
+      item_commitment: #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      address: #"68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      lovelace: uint64_max,
+      asset_count: 0,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+      cardano_value_size: 5000,
+      reference_script_language: -1,
+      reference_script_hash: #"",
+      reference_script_total_length: 0,
+      reference_script_item_commitment: #"",
+      cardano_tx_out: summary,
+      midgard_tx_out: cek_data_v1.DataSummaryV1 {
+        ..summary,
+        root: #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+      cardano_spend_datum: cek_data_v1.DataSummaryV1 {
+        ..summary,
+        root: #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      },
+    },
+  )
+  let leaf = script_proof_v1.output_descriptor_leaf_hash(0, descriptor_cbor)
+  expect Some(output) = script_context_v1.prepend_output_descriptor_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    0,
+    descriptor_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  expect Some(spend) = script_context_v1.cardano_spend_script_info_from_descriptor_v1(
+    #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb190000",
+    descriptor_cbor,
+  )
+  and {
+    output.length == 1,
+    output.payload_cbor_length == maximum,
+    output.memory == maximum,
+    bytearray.length(spend.root) == 32,
+    spend.root != summary.root,
+  }
+}
+
+test maximum_signer_frontier_item_fits_one_step() {
+  let signer = #"11111111111111111111111111111111111111111111111111111111"
+  let leaf = script_proof_v1.signer_leaf_hash(signer)
+  let peaks = [
+    validation_merkle_v1.FrontierPeak {
+      height: 6,
+      hash: rightmost_peak_root(leaf, 6),
+    },
+  ]
+  expect Some(sequence) = script_context_v1.prepend_signer_v1(
+    64,
+    validation_merkle_v1.frontier_commitment(64, peaks),
+    peaks,
+    63,
+    signer,
+    repeated_siblings(6),
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  sequence.length == 1
+}
+
+test observer_context_collections_are_not_capped_at_16() {
+  let observers = indexed_hashes(0, 17)
+  expect Some(cardano_observers) = script_context_v1.observer_collection_summary_v1(
+    observers,
+    False,
+  )
+  expect Some(midgard_observers) = script_context_v1.observer_collection_summary_v1(
+    observers,
+    True,
+  )
+  and {
+    cardano_observers.cbor_length > midgard_observers.cbor_length,
+    midgard_observers.cbor_length > 400,
+  }
+}
+
+test composed_transaction_info_and_context_match_direct_plutus_data() {
+  let empty_list = builtin.list_data([])
+  let empty_map = builtin.map_data([])
+  let none = builtin.constr_data(1, [])
+  let validity = builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(
+        0,
+        [builtin.constr_data(0, []), builtin.constr_data(1, [])],
+      ),
+      builtin.constr_data(
+        0,
+        [builtin.constr_data(2, []), builtin.constr_data(1, [])],
+      ),
+    ],
+  )
+  let tx_id = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let empty_items = cek_data_v1.empty_data_list_summary_v1()
+  let empty_pairs = cek_data_v1.empty_data_pair_summary_v1()
+  let cardano_tx_info = script_context_v1.tx_info_summary_v1(
+    test_l1_slot_config,
+    False,
+    empty_items,
+    empty_items,
+    empty_items,
+    0,
+    -1,
+    -1,
+    cek_data_v1.map_data_summary_v1(empty_pairs),
+    empty_items,
+    cek_data_v1.map_data_summary_v1(empty_pairs),
+    empty_pairs,
+    tx_id,
+  )
+  let midgard_tx_info = script_context_v1.tx_info_summary_v1(
+    test_l1_slot_config,
+    True,
+    empty_items,
+    empty_items,
+    empty_items,
+    0,
+    -1,
+    -1,
+    cek_data_v1.list_data_summary_v1(empty_items),
+    empty_items,
+    cek_data_v1.map_data_summary_v1(empty_pairs),
+    empty_pairs,
+    tx_id,
+  )
+  let direct_cardano = builtin.constr_data(
+    0,
+    [
+      empty_list,
+      empty_list,
+      empty_list,
+      builtin.i_data(0),
+      empty_map,
+      empty_list,
+      empty_map,
+      validity,
+      empty_list,
+      empty_map,
+      empty_map,
+      builtin.b_data(tx_id),
+      empty_map,
+      empty_list,
+      none,
+      none,
+    ],
+  )
+  let direct_midgard = builtin.constr_data(
+    0,
+    [
+      empty_list,
+      empty_list,
+      empty_list,
+      builtin.i_data(0),
+      validity,
+      empty_list,
+      empty_list,
+      empty_map,
+      empty_map,
+      builtin.b_data(tx_id),
+    ],
+  )
+  let redeemer = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  expect Some(script_info) = script_context_v1.script_purpose_summary_v1(
+    1,
+    #"11111111111111111111111111111111111111111111111111111111",
+    #"",
+    False,
+  )
+  let context = script_context_v1.script_context_summary_v1(
+    cardano_tx_info,
+    redeemer,
+    script_info,
+  )
+  and {
+    cardano_tx_info == cek_data_v1.semantic_data_summary_v1(direct_cardano),
+    midgard_tx_info == cek_data_v1.semantic_data_summary_v1(direct_midgard),
+    context == cek_data_v1.semantic_data_summary_v1(
+      builtin.constr_data(
+        0,
+        [
+          direct_cardano,
+          builtin.i_data(0),
+          builtin.constr_data(
+            0,
+            [
+              builtin.b_data(
+                #"11111111111111111111111111111111111111111111111111111111",
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The spend-datum gate: the §6.2 predicate against the pin it retired
+// ---------------------------------------------------------------------------
+//
+// `spend_datum_summary_v1` used to gate an output's inline datum on a round
+// trip through Aiken stdlib's CBOR decoder — `deserialise`, then `serialise`
+// and compare bytes. AC4 replaced that with the §6.2 predicate
+// `is_canonical_plutus_data_v1`, which decides membership in `serialiseData`'s
+// image by walking the bytes. The `round_trips` family in
+// `canonical_plutus_data_v1.test` proves the new predicate accepts everything
+// the builtin emits; what it cannot show is how the *gate* moved, and the
+// predicate is now solely load-bearing here. So the retired pin is restated
+// below and the two run side by side on the same vectors — including every
+// structural rejection the retired pin used to be trusted for.
+//
+// One thing the differential turns up immediately: the retired pin was never
+// a total function. `cbor.deserialise` does not decline a canonical tag-2/3
+// bignum or an unknown tag — it drives the stdlib decoder into
+// `constr_data` with a negative alternative, which is a machine failure, not
+// a `None`. Those vectors are therefore held to the predicate and the gate
+// only, and the reason is recorded at each site rather than left as a gap in
+// the vector list.
+
+/// The retired gate, restated verbatim so the difference is measured rather
+/// than asserted. Only safe on inputs the stdlib decoder can reach a verdict
+/// on: see the module note above.
+fn retired_round_trip_pin(datum_cbor: ByteArray) -> Bool {
+  when cbor.deserialise(datum_cbor) is {
+    None -> False
+    Some(datum) -> cbor.serialise(datum) == datum_cbor
+  }
+}
+
+fn output_with_datum(datum_cbor: ByteArray) -> ByteArray {
+  encode_midgard_tx_output(
+    MidgardTxOutput {
+      address: MidgardAddress {
+        protected: False,
+        network_id: 0,
+        payment_credential: PubKeyCredential(
+          #"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+        ),
+        stake_credential: None,
+      },
+      value: MidgardValue { lovelace: 2000000, assets: [] },
+      datum_cbor: Some(datum_cbor),
+      script_ref: None,
+    },
+  )
+}
+
+/// True when the gate admits the datum — `spend_datum_summary_v1` answers with
+/// a summary rather than declining.
+fn datum_gate_admits(datum_cbor: ByteArray) -> Bool {
+  when
+    script_context_v1.spend_datum_summary_v1(output_with_datum(datum_cbor))
+  is {
+    Some(_summary) -> True
+    None -> False
+  }
+}
+
+/// Both predicates accept and the gate admits: the ordinary path is untouched
+/// by the swap.
+test datum_predicates_agree_on_ordinary_datums() {
+  let agrees = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      is_canonical_plutus_data_v1(datum_cbor),
+      retired_round_trip_pin(datum_cbor),
+      datum_gate_admits(datum_cbor),
+    }
+  }
+  and {
+    agrees(#"00"),
+    agrees(#"1818"),
+    agrees(#"20"),
+    agrees(#"4401020304"),
+    agrees(#"80"),
+    agrees(#"9f0001ff"),
+    agrees(#"a0"),
+    agrees(#"a10102"),
+    agrees(#"d87980"),
+    agrees(#"d87f9f00ff"),
+    agrees(cbor.serialise(builtin.constr_data(127, [builtin.b_data(#"ff")]))),
+  }
+}
+
+/// `40` is the canonical `serialiseData` image of an empty byte string. The
+/// retired round trip refused it; the gate reads it like any other canonical
+/// datum, as it does its non-empty neighbours.
+test empty_byte_string_datum_is_materialised() {
+  and {
+    is_canonical_plutus_data_v1(#"40"),
+    !retired_round_trip_pin(#"40"),
+    datum_gate_admits(#"40"),
+    datum_gate_admits(#"41ab"),
+    script_context_v1.ledger_output_summaries_v1(output_with_datum(#"40")) != None,
+  }
+}
+
+/// The direction that matters for soundness: the new predicate is not weaker.
+/// Every structural form the retired pin refused is still refused — by the
+/// predicate, and by the gate.
+///
+/// Note what the middle column costs the retired pin. `1817`, `8100`,
+/// `bf0000ff`, `9fff`, `5fff` and `d8798100` all *decode* under the stdlib
+/// decoder; the round trip caught them only because re-serialising produced
+/// different bytes. The new predicate refuses them structurally, without
+/// materialising anything.
+test datum_predicates_agree_on_every_non_canonical_form() {
+  let refuses = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      !is_canonical_plutus_data_v1(datum_cbor),
+      !retired_round_trip_pin(datum_cbor),
+      !datum_gate_admits(datum_cbor),
+    }
+  }
+  and {
+    // Non-minimal integer head.
+    refuses(#"1817"),
+    // Definite non-empty list; the indefinite form is the only spelling.
+    refuses(#"8100"),
+    // Indefinite empty list; `80` is the only spelling.
+    refuses(#"9fff"),
+    // Empty indefinite byte string.
+    refuses(#"5fff"),
+    // Constructor with a definite argument list.
+    refuses(#"d8798100"),
+    // Indefinite map.
+    refuses(#"bf0000ff"),
+    // Text and simple values are outside Plutus Data.
+    refuses(#"6161"),
+    refuses(#"f5"),
+    // Trailing bytes after a complete item.
+    refuses(#"0000"),
+    // Truncated head, and no input at all.
+    refuses(#"18"),
+    refuses(#""),
+  }
+}
+
+/// An unknown tag is the vector the retired pin cannot be asked about: tag 1
+/// drives the stdlib decoder into a constructor with alternative `1 - 121`,
+/// which fails the machine rather than returning `None`. The predicate and
+/// the gate both refuse it without materialising anything, which is the whole
+/// point of deciding canonicity on bytes.
+test unknown_tags_are_refused_without_materialising_them() {
+  and {
+    !is_canonical_plutus_data_v1(#"c11a514b67b0"),
+    !datum_gate_admits(#"c11a514b67b0"),
+  }
+}
+
+/// The divergence the re-pin exists for, on the class where both columns can
+/// be evaluated: tag-102 constructors with alternatives at or above 128. The
+/// predicate accepts them; the retired round trip refused them, because the
+/// stdlib decoder declines the form outright.
+test datum_predicates_diverge_on_high_constructor_alternatives() {
+  let diverges = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      is_canonical_plutus_data_v1(datum_cbor),
+      !retired_round_trip_pin(datum_cbor),
+    }
+  }
+  and {
+    diverges(#"d86682188080"),
+    diverges(#"d8668218809f00ff"),
+    diverges(#"d8668219ffff80"),
+  }
+}
+
+/// The `TxOut` datum field (`OutputDatum`) the gate reconstructs for an
+/// output carrying the given inline datum, in both context encodings, and
+/// the spend datum summary it commits to. `None` when either declines.
+fn reconstructed_datum(datum_cbor: ByteArray) -> Option<Data> {
+  let output = output_with_datum(datum_cbor)
+  when
+    (
+      script_context_v1.tx_out_data_v1(output, False),
+      script_context_v1.tx_out_data_v1(output, True),
+      script_context_v1.spend_datum_summary_v1(output),
+    )
+  is {
+    (Some(cardano_tx_out), Some(midgard_tx_out), Some(spend_datum)) -> {
+      expect [_, _, cardano_datum, _] = builtin.unconstr_fields(cardano_tx_out)
+      expect [_, _, midgard_datum, _] = builtin.unconstr_fields(midgard_tx_out)
+      expect [datum] = builtin.unconstr_fields(cardano_datum)
+      if and {
+        cardano_datum == midgard_datum,
+        spend_datum == cek_data_v1.semantic_data_summary_v1(
+          builtin.constr_data(0, [datum]),
+        ),
+      } {
+        Some(cardano_datum)
+      } else {
+        None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Canonicity and the gate now agree on this class too: a tag-102 constructor
+/// datum is admitted, and the datum the gate reconstructs is the constructor
+/// the Cardano ledger reads from those bytes.
+test high_alternative_datums_are_admitted_by_this_gate() {
+  and {
+    datum_gate_admits(#"d86682188080"),
+    reconstructed_datum(#"d86682188080") == Some(
+      builtin.constr_data(2, [builtin.constr_data(128, [])]),
+    ),
+    datum_gate_admits(#"d8668219ffff80"),
+    reconstructed_datum(#"d8668219ffff80") == Some(
+      builtin.constr_data(2, [builtin.constr_data(65535, [])]),
+    ),
+    reconstructed_datum(#"d8668218809f00ff") == Some(
+      builtin.constr_data(2, [builtin.constr_data(128, [builtin.i_data(0)])]),
+    ),
+  }
+}
+
+/// The bignum class, first column: a canonical tag-2/3 bignum datum is
+/// §6.2-canonical and the output decoder admits the output that carries it, so
+/// it is a legal L2 output.
+///
+/// What the middle column still cannot say, and why. The stdlib decoder does
+/// not decline a bignum the way it declines tag 102: it reads `c2` as a
+/// constructor tag, computes alternative `2 - 121`, and applies `constr_data`
+/// to it. Whether that is a failure is *protocol-version-dependent*. Under
+/// PlutusV3 builtin semantics variant E — mainnet protocol major version 11,
+/// enacted 2026-07-18 — the alternative is a `Word64`, so a negative one fails
+/// the machine on real L1. So `retired_round_trip_pin` cannot be called on a
+/// bignum at all: not "returns False", but aborts. That is why this test holds
+/// the class to the first column only, and why the retired pin is absent from
+/// the assertions below.
+///
+/// The runner reports that abort as RC=101 from a Rust `panic!` at
+/// `crates/uplc/src/machine/runtime.rs:945` (`TryFromBigIntError`). That panic
+/// is aiken-lang/aiken#1359 — a runner defect where a clean evaluation error
+/// belongs. It is not a Midgard failure, and the *verdict* it delivers (script
+/// fails) is the one mainnet delivers at PV11.
+///
+/// The third column is `bignum_datums_are_materialised` below.
+test bignum_datums_are_canonical_and_reach_the_output_decoder() {
+  and {
+    is_canonical_plutus_data_v1(#"c249010000000000000000"),
+    is_canonical_plutus_data_v1(#"c349010000000000000000"),
+    ledger_output_v1.decode_canonical_output(
+      output_with_datum(#"c249010000000000000000"),
+    ) != None,
+    ledger_output_v1.decode_canonical_output(
+      output_with_datum(#"c349010000000000000000"),
+    ) != None,
+  }
+}
+
+/// A canonical bignum datum is admitted, and the datum the gate reconstructs
+/// is the integer the Cardano ledger reads from those bytes: `2^64` for the
+/// tag-2 spelling and `-2^64 - 1` for the tag-3 one.
+test bignum_datums_are_materialised() {
+  and {
+    datum_gate_admits(#"c249010000000000000000"),
+    reconstructed_datum(#"c249010000000000000000") == Some(
+      builtin.constr_data(2, [builtin.i_data(18446744073709551616)]),
+    ),
+    datum_gate_admits(#"c349010000000000000000"),
+    reconstructed_datum(#"c349010000000000000000") == Some(
+      builtin.constr_data(2, [builtin.i_data(-18446744073709551617)]),
+    ),
+  }
+}
+
+/// `n` bytes of `0xab`.
+fn payload_bytes(n: Int) -> ByteArray {
+  if n <= 0 {
+    #""
+  } else {
+    bytearray.push(payload_bytes(n - 1), 171)
+  }
+}
+
+/// Outputs whose datum or reference script bytes exceed 64 bytes are ordinary
+/// L2 outputs: the output wire is Midgard's own encoding, and only the datum
+/// inside it is Plutus Data.
+test outputs_with_datum_or_script_over_64_bytes_have_summaries() {
+  let datum = builtin.b_data(payload_bytes(100))
+  let datum_output = output_with_datum(cbor.serialise(datum))
+  let script_output = encode_midgard_tx_output(
+    MidgardTxOutput {
+      address: MidgardAddress {
+        protected: False,
+        network_id: 0,
+        payment_credential: PubKeyCredential(
+          #"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+        ),
+        stake_credential: None,
+      },
+      value: MidgardValue { lovelace: 2000000, assets: [] },
+      datum_cbor: None,
+      script_ref: Some(
+        MidgardVersionedScript {
+          language: MidgardV1Script,
+          script_bytes: payload_bytes(100),
+        },
+      ),
+    },
+  )
+  and {
+    reconstructed_datum(cbor.serialise(datum)) == Some(
+      builtin.constr_data(2, [datum]),
+    ),
+    script_context_v1.ledger_output_summaries_v1(datum_output) != None,
+    script_context_v1.tx_out_data_v1(script_output, False) != None,
+    script_context_v1.tx_out_data_v1(script_output, True) != None,
+    script_context_v1.ledger_output_summaries_v1(script_output) != None,
+  }
+}
+
+/// The 64-byte bound still holds inside the datum: an unchunked byte string
+/// over 64 bytes, at the top level or nested, leaves the output without a
+/// summary.
+test an_unchunked_datum_byte_string_over_64_bytes_has_no_summary() {
+  let declines = fn(datum_cbor: ByteArray) -> Bool {
+    let output = output_with_datum(datum_cbor)
+    and {
+      script_context_v1.tx_out_data_v1(output, False) == None,
+      script_context_v1.tx_out_data_v1(output, True) == None,
+      script_context_v1.spend_datum_summary_v1(output) == None,
+      script_context_v1.ledger_output_summaries_v1(output) == None,
+    }
+  }
+  and {
+    declines(bytearray.concat(#"5841", payload_bytes(65))),
+    declines(
+      #"d8799f5841"
+        |> bytearray.concat(payload_bytes(65))
+        |> bytearray.concat(#"ff"),
+    ),
+  }
+}
+
+/// The consolidated entry point is not a second statement of the three
+/// summaries, it is the same three. Proved over every output shape the module
+/// pins -- no datum and no script, datum only, script only, both -- plus a
+/// bignum datum and a declining shape, so a future divergence in either direction is a red
+/// test rather than a silently different ledger value.
+test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
+  let agrees = fn(candidate_output_cbor: ByteArray) -> Bool {
+    script_context_v1.ledger_output_summaries_v1(candidate_output_cbor) == when
+      script_context_v1.tx_out_summary_v1(candidate_output_cbor, False)
+    is {
+      None -> None
+      Some(cardano_tx_out) ->
+        when
+          script_context_v1.tx_out_summary_v1(candidate_output_cbor, True)
+        is {
+          None -> None
+          Some(midgard_tx_out) ->
+            when
+              script_context_v1.spend_datum_summary_v1(candidate_output_cbor)
+            is {
+              None -> None
+              Some(cardano_spend_datum) ->
+                Some((cardano_tx_out, midgard_tx_out, cardano_spend_datum))
+            }
+        }
+    }
+  }
+  and {
+    agrees(simple_output_cbor),
+    agrees(datum_output_cbor),
+    agrees(reference_output_cbor),
+    agrees(output_cbor),
+    // A canonical bignum datum.
+    agrees(output_with_datum(#"c249010000000000000000")),
+    // Not a canonical output at all.
+    agrees(#"00"),
+  }
+}
+
+fn output_at(protected: Bool) -> ByteArray {
+  encode_midgard_tx_output(
+    MidgardTxOutput {
+      address: MidgardAddress {
+        protected,
+        network_id: 0,
+        payment_credential: PubKeyCredential(builtin.replicate_byte(28, 170)),
+        stake_credential: None,
+      },
+      value: MidgardValue { lovelace: 2000000, assets: [] },
+      datum_cbor: None,
+      script_ref: None,
+    },
+  )
+}
+
+/// The `TxOut` summaries of `ledger_output_summaries_v1` against the
+/// separate per-encoding entry points, and whether the two encodings agree.
+fn summaries_agree(raw_output_cbor: ByteArray, encodings_agree: Bool) -> Bool {
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    True,
+  )
+  expect Some(spend_datum) = script_context_v1.spend_datum_summary_v1(
+    raw_output_cbor,
+  )
+  and {
+    cardano_tx_out == midgard_tx_out == encodings_agree,
+    script_context_v1.ledger_output_summaries_v1(raw_output_cbor) == Some(
+      (cardano_tx_out, midgard_tx_out, spend_datum),
+    ),
+  }
+}
+
+/// A protected address is a different `Address` constructor in the Midgard
+/// encoding, so its two `TxOut` summaries differ and each must be its own.
+test protected_output_has_a_distinct_midgard_tx_out() {
+  summaries_agree(output_at(True), False)
+}
+
+/// An unprotected address encodes the same in both, so one `TxOut` serves both.
+test unprotected_output_has_one_tx_out_for_both_encodings() {
+  summaries_agree(output_at(False), True)
+}
+
+// The PlutusV3 `validRange` of a committed slot interval, against
+// `transValidityInterval` in cardano-ledger-conway: POSIX milliseconds, an
+// inclusive finite lower bound, a strict finite upper bound, and absent bounds
+// as `PV1.from`/`PV1.always` encode them.
+
+const preprod_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1655769600000,
+    zero_slot: 86400,
+    slot_length: 1000,
+  }
+
+const devnet_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1760000000000,
+    zero_slot: 0,
+    slot_length: 1000,
+  }
+
+fn finite_bound(time: Int, closure: Bool) -> Data {
+  builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(1, [builtin.i_data(time)]),
+      builtin.constr_data(
+        if closure {
+          1
+        } else {
+          0
+        },
+        [],
+      ),
+    ],
+  )
+}
+
+fn neg_inf_bound() -> Data {
+  builtin.constr_data(
+    0,
+    [builtin.constr_data(0, []), builtin.constr_data(1, [])],
+  )
+}
+
+fn pos_inf_bound() -> Data {
+  builtin.constr_data(
+    0,
+    [builtin.constr_data(2, []), builtin.constr_data(1, [])],
+  )
+}
+
+fn interval(lower: Data, upper: Data) -> cek_data_v1.DataSummaryV1 {
+  builtin.constr_data(0, [lower, upper]) |> cek_data_v1.semantic_data_summary_v1
+}
+
+test slot_to_posix_time_is_the_affine_shelley_anchor() {
+  and {
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 86400) == 1655769600000,
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 86401) == 1655769601000,
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 112000000) == 1767683200000,
+    script_context_v1.slot_to_posix_time_v1(devnet_slot_config, 0) == 1760000000000,
+    script_context_v1.slot_to_posix_time_v1(
+      script_context_v1.L1SlotConfigV1 {
+        ..devnet_slot_config,
+        slot_length: 200,
+      },
+      5,
+    ) == 1760000001000,
+  }
+}
+
+test slot_to_posix_time_carries_no_byron_segment() {
+  // Mainnet's Shelley anchor. Byron slots were 20 s long, so the ledger puts
+  // slot 0 at 1506203091000; the affine anchor puts it 4492800 one-second
+  // slots before the anchor instead.
+  let mainnet = script_context_v1.L1SlotConfigV1 {
+    zero_time: 1596059091000,
+    zero_slot: 4492800,
+    slot_length: 1000,
+  }
+  and {
+    script_context_v1.slot_to_posix_time_v1(mainnet, 4492800) == 1596059091000,
+    script_context_v1.slot_to_posix_time_v1(mainnet, 0) == 1591566291000,
+  }
+}
+
+test absent_bounds_are_always() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, -1, -1) == interval(
+    neg_inf_bound(),
+    pos_inf_bound(),
+  )
+}
+
+test absent_upper_bound_is_from() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, 86400, -1) == interval(
+    finite_bound(1655769600000, True),
+    pos_inf_bound(),
+  )
+}
+
+test absent_lower_bound_is_negative_infinity_to_strict_upper() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, -1, 86460) == interval(
+    neg_inf_bound(),
+    finite_bound(1655769660000, False),
+  )
+}
+
+test finite_bounds_are_posix_milliseconds_inclusive_then_strict() {
+  script_context_v1.validity_interval_summary_v1(
+    devnet_slot_config,
+    0,
+    9223372036854775807,
+  ) == interval(
+    finite_bound(1760000000000, True),
+    finite_bound(9223372036854775807000 + 1760000000000, False),
+  )
+}
+
+test slot_domain_interval_is_not_the_valid_range() {
+  // The committed slot numbers themselves are not the context's bounds.
+  script_context_v1.validity_interval_summary_v1(
+    preprod_slot_config,
+    100000,
+    200000,
+  ) != interval(finite_bound(100000, True), finite_bound(200000, False))
+}
+
+// Cross-language goldens: demo/midgard-validation's
+// tests/script-context.valid-range.test.ts asserts that the TypeScript
+// `validRange` encoder produces these same bytes under the same mapping.
+const golden_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1700000000000,
+    zero_slot: 4492800,
+    slot_length: 200,
+  }
+
+fn valid_range_matches_golden(start: Int, end: Int, golden: ByteArray) -> Bool {
+  expect Some(data) = cbor.deserialise(golden)
+  and {
+    builtin.serialise_data(data) == golden,
+    script_context_v1.validity_interval_summary_v1(
+      golden_slot_config,
+      start,
+      end,
+    ) == cek_data_v1.semantic_data_summary_v1(data),
+  }
+}
+
+test valid_range_golden_finite_finite() {
+  valid_range_matches_golden(
+    4500000,
+    4500600,
+    #"d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  )
+}
+
+test valid_range_golden_absent_finite() {
+  valid_range_matches_golden(
+    -1,
+    4500600,
+    #"d8799fd8799fd87980d87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  )
+}
+
+test valid_range_golden_finite_absent() {
+  valid_range_matches_golden(
+    4500000,
+    -1,
+    #"d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87b80d87a80ffff",
+  )
+}
+
+test valid_range_golden_absent_absent() {
+  valid_range_matches_golden(
+    -1,
+    -1,
+    #"d8799fd8799fd87980d87a80ffd8799fd87b80d87a80ffff",
+  )
+}
+
+/// An inline datum that is, or ends in, an empty byte string: the Cardano
+/// ledger reads each one to the value given. The `TxOut` and spend datum entry
+/// points reconstruct it, and the consolidated entry point gives the same
+/// three summaries.
+test datums_ending_in_an_empty_byte_string_are_materialised() {
+  let reads = fn(datum_cbor: ByteArray, datum: Data) -> Bool {
+    let output = output_with_datum(datum_cbor)
+    and {
+      reconstructed_datum(datum_cbor) == Some(builtin.constr_data(2, [datum])),
+      script_context_v1.ledger_output_summaries_v1(output) == when
+        (
+          script_context_v1.tx_out_summary_v1(output, False),
+          script_context_v1.tx_out_summary_v1(output, True),
+          script_context_v1.spend_datum_summary_v1(output),
+        )
+      is {
+        (Some(cardano), Some(midgard), Some(spend)) ->
+          Some((cardano, midgard, spend))
+        _ -> None
+      },
+      script_context_v1.ledger_output_summaries_v1(output) != None,
+    }
+  }
+  and {
+    reads(#"40", builtin.b_data(#"")),
+    reads(#"9f40ff", builtin.list_data([builtin.b_data(#"")])),
+    reads(#"d87a9f40ff", builtin.constr_data(1, [builtin.b_data(#"")])),
+    reads(
+      #"a10040",
+      builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+    ),
+  }
+}
+
+/// The ledger refuses a datum whose byte string head claims one byte more
+/// than the datum holds, and no entry point summarises an output carrying it.
+test a_datum_claiming_one_byte_past_its_end_has_no_summary() {
+  let output = output_with_datum(#"41")
+  and {
+    script_context_v1.tx_out_data_v1(output, False) == None,
+    script_context_v1.tx_out_data_v1(output, True) == None,
+    script_context_v1.spend_datum_summary_v1(output) == None,
+    script_context_v1.ledger_output_summaries_v1(output) == None,
+  }
+}

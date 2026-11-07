@@ -1,0 +1,197 @@
+{
+  "note": "Written by tests/fuzz/cek-step-fuzz.test.ts with MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1. Per builtin tag, the builtin-executing arms on which the TypeScript builder and the Aiken machine agreed over the fixed seed set; and every machine arm they agreed on.",
+  "seedSet": "0xf022_0000 + tag * 16 + k, k < 6",
+  "coverage": {
+    "builtins": {
+      "0": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "1": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "2": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "3": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "4": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "5": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "6": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "7": ["executeBuiltinDirect"],
+      "8": ["executeBuiltinDirect"],
+      "9": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "10": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "11": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "12": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "13": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "14": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "15": ["executeBuiltinDirect"],
+      "16": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "17": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "18": ["executeBuiltinDirect"],
+      "19": ["executeBuiltinDirect"],
+      "20": ["executeBuiltinDirect"],
+      "21": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "22": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "23": ["executeBuiltinDirect"],
+      "24": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "25": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "26": ["executeBuiltinDirect"],
+      "27": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "28": ["executeBuiltinDirect"],
+      "29": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "30": ["executeBuiltinSemantic"],
+      "31": ["executeBuiltinSemantic"],
+      "32": [
+        "executeBuiltinDirect",
+        "executeBuiltinSemantic",
+        "executeBuiltinTypeFailure"
+      ],
+      "33": [
+        "executeBuiltinSemantic",
+        "executeBuiltinSemanticFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "34": ["executeBuiltinSemantic", "executeBuiltinSemanticFailure"],
+      "35": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "36": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "37": ["executeBuiltinSemantic"],
+      "38": ["startBuiltinMapConversion"],
+      "39": ["executeBuiltinSemantic"],
+      "40": ["executeBuiltinSemantic"],
+      "41": ["executeBuiltinSemantic"],
+      "42": [
+        "executeBuiltinSemantic",
+        "executeBuiltinSemanticFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "43": ["executeBuiltinSemanticFailure", "startBuiltinMapConversion"],
+      "44": [
+        "executeBuiltinSemantic",
+        "executeBuiltinSemanticFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "45": [
+        "executeBuiltinSemantic",
+        "executeBuiltinSemanticFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "46": ["executeBuiltinSemantic", "executeBuiltinSemanticFailure"],
+      "47": ["executeBuiltinSemantic"],
+      "48": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "49": ["executeBuiltinSemantic"],
+      "50": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "51": ["executeBuiltinDirect"],
+      "52": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "53": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "54": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "55": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "56": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "57": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "58": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "59": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "60": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "61": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "62": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "63": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "64": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "65": ["executeBuiltinDirect"],
+      "66": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "67": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "68": ["executeBuiltinDirect"],
+      "69": ["executeBuiltinDirect"],
+      "70": ["executeBuiltinBlsFinal", "executeBuiltinTypeFailure"],
+      "71": ["executeBuiltinDirect"],
+      "72": ["executeBuiltinDirect"],
+      "73": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "74": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "75": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "76": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "77": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "78": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "79": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "80": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "81": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
+      "82": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "83": ["executeBuiltinDirect"],
+      "84": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "85": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "86": ["executeBuiltinDirect", "executeBuiltinTypeFailure"]
+    },
+    "arms": [
+      "applyCaseValue",
+      "computeApplication",
+      "computeBuiltin",
+      "computeCase",
+      "computeConstant",
+      "computeConstrEmpty",
+      "computeConstrNonempty",
+      "computeContextConstant",
+      "computeDelay",
+      "computeError",
+      "computeForce",
+      "computeLambda",
+      "computeVariable",
+      "executeBuiltinBlsFinal",
+      "executeBuiltinDirect",
+      "executeBuiltinFailure",
+      "executeBuiltinSemantic",
+      "executeBuiltinSemanticFailure",
+      "executeBuiltinTypeFailure",
+      "finishBuiltinMapConversion",
+      "lookupEnvironment",
+      "returnApplyArgument",
+      "returnApplyBuiltin",
+      "returnApplyInvalid",
+      "returnApplyLambda",
+      "returnApplyValueBuiltin",
+      "returnApplyValueInvalid",
+      "returnApplyValueLambda",
+      "returnCaseConstant",
+      "returnCaseConstr",
+      "returnConstrDone",
+      "returnConstrNext",
+      "returnEmptyContinuation",
+      "returnForceBuiltin",
+      "returnForceDelay",
+      "returnForceInvalid",
+      "selectCaseBranch",
+      "startBuiltinMapConversion",
+      "stepBuiltinListToMap",
+      "stepBuiltinMapToList"
+    ]
+  }
+}

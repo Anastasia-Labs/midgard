@@ -7,10 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   EXPECTED_SCHEMA_VERSION,
   MIGRATION_MANIFEST_HASH,
-} from "@/database/migrations/index.js";
-import * as MigrationRunner from "@/database/migrations/runner.js";
-import { AdmissionSql, BatchSql } from "@/services/database.js";
-
+} from "../src/database/migrations/index.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { AdmissionSql, BatchSql } from "../src/services/database.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 describe("schema migration transaction lock", () => {

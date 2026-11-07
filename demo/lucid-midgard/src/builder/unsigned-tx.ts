@@ -1,7 +1,8 @@
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeCbor,
+  encodeMidgardFieldPreimage,
+  encodeMidgardHash28Item,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonical,
@@ -18,7 +19,7 @@ import {
 import type { MidgardUtxo } from "../core/types.js";
 import { type BuilderState, stateNetworkId } from "./context.js";
 
-export type ScriptMaterialization = {
+export type ScriptWitnesses = {
   readonly requiredObserversPreimageCbor: Buffer;
   readonly mintPreimageCbor: Buffer;
   readonly scriptTxWitsPreimageCbor: Buffer;
@@ -27,15 +28,36 @@ export type ScriptMaterialization = {
   readonly mintDelta: Assets;
 };
 
+/**
+ * The §5.1 preimage of a field whose `enc_i` bytes the caller already has:
+ * `definite_array_header(N)` followed by one definite byte-string-wrapped item
+ * each. Fields 0/1/2/3/4/7 reach §5.1 through here; fields 5/6/8 have per-item
+ * interiors and go through their own §5.3 encoders.
+ *
+ * Routed through `midgard-core`'s one §5.1 encoder rather than a local
+ * `encodeCbor` of a Buffer array: both spell the same bytes for well-formed
+ * input, but only the §5.1 encoder shares its width rules with the decoder and
+ * the field-access door, so the producer and the reader cannot drift.
+ */
 export const encodeByteListPreimage = (items: readonly Uint8Array[]): Buffer =>
-  encodeCbor(items.map((item) => Buffer.from(item)));
+  encodeMidgardFieldPreimage(items);
 
 const sortedInputCbors = (inputs: readonly MidgardUtxo[]): Buffer[] =>
   [...inputs].sort(compareOutRefs).map((input) => utxoOutRefCbor(input));
 
+/**
+ * §5.3 field 4 items: the raw 28-byte signer hash, no interior CBOR.
+ * `encodeMidgardHash28Item` is the §5.3 encoder that says so and asserts the
+ * width — the stride-30 arithmetic on the on-chain side depends on it, and
+ * `hexToBytes` alone accepts any length.
+ */
 const sortedRequiredSignerCbors = (signers: readonly string[]): Buffer[] =>
   signers
-    .map((signer) => hexToBytes(signer, { fieldName: "requiredSigner" }))
+    .map((signer) =>
+      encodeMidgardHash28Item(
+        hexToBytes(signer, { fieldName: "requiredSigner" }),
+      ),
+    )
     .sort(Buffer.compare);
 
 const outputCbors = (outputs: readonly AuthoredOutput[]): Buffer[] =>
@@ -50,9 +72,10 @@ const outputCbors = (outputs: readonly AuthoredOutput[]): Buffer[] =>
 export const buildCanonicalUnsignedTx = (
   state: BuilderState,
   fee: bigint,
-  scriptMaterialization: ScriptMaterialization,
+  scriptWitnesses: ScriptWitnesses,
+  nativeTxVersion: bigint = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxCanonical => ({
-  version: MIDGARD_NATIVE_TX_VERSION,
+  version: nativeTxVersion,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: encodeByteListPreimage(
@@ -67,19 +90,18 @@ export const buildCanonicalUnsignedTx = (
       state.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: state.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
     requiredObserversPreimageCbor:
-      scriptMaterialization.requiredObserversPreimageCbor,
+      scriptWitnesses.requiredObserversPreimageCbor,
     requiredSignersPreimageCbor: encodeByteListPreimage(
       sortedRequiredSignerCbors(state.requiredSigners),
     ),
-    mintPreimageCbor: scriptMaterialization.mintPreimageCbor,
-    scriptIntegrityHash: scriptMaterialization.scriptIntegrityHash,
+    mintPreimageCbor: scriptWitnesses.mintPreimageCbor,
+    scriptIntegrityHash: scriptWitnesses.scriptIntegrityHash,
     auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: stateNetworkId(state),
   },
   witnessSet: {
     addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: scriptMaterialization.scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor:
-      scriptMaterialization.redeemerTxWitsPreimageCbor,
+    scriptTxWitsPreimageCbor: scriptWitnesses.scriptTxWitsPreimageCbor,
+    redeemerTxWitsPreimageCbor: scriptWitnesses.redeemerTxWitsPreimageCbor,
   },
 });

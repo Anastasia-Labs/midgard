@@ -63,6 +63,7 @@ pub type MintRedeemer {
     anchor_element_output_index: Int,
     duplicate_node_ref_input_index: Int,
     duplicate_operator_status: DuplicateOperatorStatus,
+    bounty_claimant: VerificationKeyHash,
   }
 }
 

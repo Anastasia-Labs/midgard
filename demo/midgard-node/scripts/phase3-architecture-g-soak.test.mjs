@@ -1,6 +1,21 @@
+import "node:assert/strict";
+import "node:child_process";
+import "node:crypto";
+import "node:fs";
+import "node:path";
+import "node:test";
+import "node:url";
+import "@al-ft/midgard-core/codec";
+import "./phase3-architecture-g-closure-lib.mjs";
+import "./phase3-architecture-g-soak.mjs";
+import "./phase3-architecture-g-soak-preflight.mjs";
+import "./throughput-valid-stress-corpus.mjs";
+import "./phase3-architecture-g-load-generator-isolation.mjs";
+import "./verify-phase3-architecture-g-soak-report.mjs";
+import "./phase3-architecture-g-soak.make-corpus-preflight-fixture.mjs";
+import "./phase3-architecture-g-soak.report.mjs";
+
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdtempSync,
@@ -12,7 +27,6 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
   capturePhase1CorpusIdentity,
@@ -21,554 +35,39 @@ import {
   sha256File,
 } from "./phase3-architecture-g-closure-lib.mjs";
 import {
-  resolvePhase3SoakTiming,
-  writePhase3SoakSetupFailureReport,
-} from "./phase3-architecture-g-soak.mjs";
-import {
-  consumePhase3SoakCorpusPreflight,
-  createPhase3SoakCorpusPreflight,
-  establishPhase3SoakPreflight,
-  phase3SoakSourceIdentitySha256,
-} from "./phase3-architecture-g-soak-preflight.mjs";
-import {
-  CORPUS_PREFIX_EVIDENCE_SCHEMA,
-  loadCorpusIndex,
-  loadCorpusManifest,
-  openStreamingCorpusReader,
-  scanCorpusPrefixEvidence,
-  selectCorpusIndexEntries,
-} from "./throughput-valid-stress-corpus.mjs";
-import {
-  PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA,
-  PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA,
   capturePhase3ProcessIdentity,
   captureTrustedPhase3DockerRuntime,
   createPhase3LoadGeneratorIsolation,
   createPhase3NodePreLifecycleRevalidation,
+  PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA,
   validatePhase3LoadGeneratorIsolationDocument,
   validatePhase3NodePreLifecycleRevalidationDocument,
 } from "./phase3-architecture-g-load-generator-isolation.mjs";
 import {
+  corpusRow,
+  dockerRuntime,
+  hash,
+  makeCorpusPreflightFixture,
+  runCliSetupFailure,
+} from "./phase3-architecture-g-soak.make-corpus-preflight-fixture.mjs";
+import {
+  resolvePhase3SoakTiming,
+  writePhase3SoakSetupFailureReport,
+} from "./phase3-architecture-g-soak.mjs";
+import { report } from "./phase3-architecture-g-soak.report.mjs";
+import {
+  consumePhase3SoakCorpusPreflight,
+  establishPhase3SoakPreflight,
+} from "./phase3-architecture-g-soak-preflight.mjs";
+import {
+  openStreamingCorpusReader,
+  scanCorpusPrefixEvidence,
+} from "./throughput-valid-stress-corpus.mjs";
+import {
   evaluatePhase3ArchitectureGSoakReport,
   PHASE3_ARCHITECTURE_G_SAMPLE_INTERVAL_MS,
   PHASE3_ARCHITECTURE_G_SOAK_DURATION_SEC,
-  PHASE3_ARCHITECTURE_G_SOAK_SCENARIO,
-  PHASE3_ARCHITECTURE_G_SOAK_SCHEMA,
 } from "./verify-phase3-architecture-g-soak-report.mjs";
-
-const hash = (character) => character.repeat(64);
-const dockerRuntime = () => ({
-  schemaVersion: "midgard-phase3-trusted-docker-runtime-v1",
-  client: {
-    path: "/usr/bin/docker",
-    realPath: "/trusted/docker",
-    sha256: hash("d"),
-    bytes: 1_024,
-    mode: 0o755,
-    uid: 0,
-    gid: 0,
-    dev: "1",
-    ino: "2",
-  },
-  socket: {
-    path: "/var/run/docker.sock",
-    realPath: "/run/docker.sock",
-    endpoint: "unix:///var/run/docker.sock",
-    mode: 0o660,
-    uid: 0,
-    gid: 999,
-    dev: "3",
-    ino: "4",
-  },
-  daemon: {
-    id: "daemon-id",
-    name: "docker-desktop",
-    serverVersion: "29.2.0",
-    operatingSystem: "Docker Desktop",
-    osType: "linux",
-    architecture: "x86_64",
-  },
-  environment: {
-    inheritedDockerVariables: [],
-    pathResolutionRealPath: "/trusted/docker",
-    daemonEndpoint: "unix:///var/run/docker.sock",
-    home: "/nonexistent",
-  },
-});
-const soakCliPath = fileURLToPath(
-  new URL("./phase3-architecture-g-soak.mjs", import.meta.url),
-);
-
-const runCliSetupFailure = ({ args, env, evidenceDirectory, phase }) => {
-  const result = spawnSync(process.execPath, [soakCliPath, ...args], {
-    cwd: path.dirname(path.dirname(soakCliPath)),
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  assert.equal(
-    result.status,
-    1,
-    JSON.stringify({ error: result.error?.message, signal: result.signal }),
-  );
-  const retainedReport = JSON.parse(
-    readFileSync(path.join(evidenceDirectory, "report.json"), "utf8"),
-  );
-  const retainedVerification = JSON.parse(
-    readFileSync(path.join(evidenceDirectory, "verification.json"), "utf8"),
-  );
-  assert.equal(retainedReport.termination.phase, phase);
-  assert.equal(retainedReport.startedAtMs, null);
-  assert.equal(retainedVerification.phase, phase);
-  assert.equal(retainedVerification.passed, false);
-};
-
-const corpusRow = ({ chain, index, input }) => {
-  const bytes = Buffer.from([chain, index]);
-  const txHash = (chain * 16 + index).toString(16).padStart(2, "0").repeat(32);
-  return {
-    txHash,
-    canonicalCborHex: bytes.toString("hex"),
-    canonicalCborSha256: createHash("sha256").update(bytes).digest("hex"),
-    canonicalCborByteLength: bytes.length,
-    senderWalletId: `wallet-${chain.toString()}`,
-    selectedInputOutref: input,
-    outputOutrefs: [`${txHash}#0`, `${txHash}#1`],
-    planShape: "chain",
-    parentTxHash: null,
-    corpusSliceId: "default",
-  };
-};
-
-const makeCorpusPreflightFixture = async (directory) => {
-  const corpusPath = path.join(directory, "corpus.ndjson");
-  const indexPath = path.join(directory, "corpus.index.ndjson");
-  const manifestPath = path.join(directory, "corpus.manifest.json");
-  const phase1Path = path.join(directory, "phase1.json");
-  const outPath = path.join(directory, "preflight.json");
-  const rows = [
-    corpusRow({ chain: 1, index: 1, input: `${"a".repeat(64)}#0` }),
-    corpusRow({ chain: 2, index: 1, input: `${"b".repeat(64)}#0` }),
-  ];
-  const lines = rows.map((row) => `${JSON.stringify(row)}\n`);
-  writeFileSync(corpusPath, lines.join(""));
-  const stableCorpusTime = new Date(1_700_000_000_000);
-  utimesSync(corpusPath, stableCorpusTime, stableCorpusTime);
-  const firstBytes = Buffer.byteLength(lines[0]);
-  const index = [
-    {
-      corpusSliceId: "default",
-      planShape: "chain",
-      chainId: "wallet-1",
-      startByteOffset: 0,
-      endByteOffset: firstBytes,
-      rowCount: 1,
-    },
-    {
-      corpusSliceId: "default",
-      planShape: "chain",
-      chainId: "wallet-2",
-      startByteOffset: firstBytes,
-      endByteOffset: Buffer.byteLength(lines.join("")),
-      rowCount: 1,
-    },
-  ];
-  writeFileSync(indexPath, `${index.map(JSON.stringify).join("\n")}\n`);
-  const manifest = {
-    schemaVersion: "midgard-stress-corpus-manifest-v1",
-    chainCount: 2,
-    chainDepth: 1,
-    sliceSummary: [{ corpusSliceId: "default", walletCount: 2, rowCount: 2 }],
-    files: {
-      corpus: {
-        sha256: sha256File(corpusPath),
-        rowCount: 2,
-      },
-      index: {
-        sha256: sha256File(indexPath),
-        rowCount: 2,
-      },
-    },
-  };
-  writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
-  const corpusIdentity = {
-    path: corpusPath,
-    indexPath,
-    manifestPath,
-    sliceId: "default",
-    corpusSha256: sha256File(corpusPath),
-    indexSha256: sha256File(indexPath),
-    manifestSha256: sha256File(manifestPath),
-  };
-  const phase1Binding = {
-    corpus: corpusIdentity,
-    stressCorpusEnv: {
-      STRESS_CORPUS_PATH: corpusPath,
-      STRESS_CORPUS_INDEX_PATH: indexPath,
-      STRESS_CORPUS_MANIFEST_PATH: manifestPath,
-      STRESS_CORPUS_SLICE_ID: "default",
-      STRESS_CORPUS_SHAPE: "chain",
-    },
-  };
-  writeFileSync(phase1Path, `${JSON.stringify(phase1Binding)}\n`);
-  const phase1BindingSha256 = sha256File(phase1Path);
-  const sourceIdentity = { sourceTreeSha256: hash("c") };
-  const artifact = await createPhase3SoakCorpusPreflight({
-    outPath,
-    phase1Binding,
-    phase1BindingPath: phase1Path,
-    phase1BindingSha256,
-    sourceIdentity,
-    corpusIdentity,
-    corpusSliceId: "default",
-    corpusShape: "chain",
-  });
-  const loadedManifest = await loadCorpusManifest(manifestPath);
-  const fullIndex = await loadCorpusIndex(indexPath);
-  const selectedEntries = selectCorpusIndexEntries({
-    index: fullIndex,
-    corpusSliceId: "default",
-    corpusShape: "chain",
-    maxChains: null,
-  });
-  return {
-    artifact,
-    corpusIdentity,
-    phase1BindingSha256,
-    sourceIdentity,
-    loadedManifest,
-    fullIndex,
-    selectedEntries,
-  };
-};
-
-const sample = (elapsedMs, overrides = {}) => ({
-  observedAtMs: 1_750_000_000_000 + elapsedMs,
-  elapsedMs,
-  readiness: { httpStatus: 200, ready: true, reasons: [] },
-  metrics: {
-    auditDivergence: 0,
-    auditAgeMs: 1_000,
-    auditCompletedAtMs: 1_749_999_999_000,
-    confirmedLedgerFullScanTotal: 9,
-    validationWorkerTimeoutTotal: 3,
-    l1ControlPlaneTimeoutTotal: 1,
-    timeoutInsteadOfBackpressureTotal: 4,
-    daPublicationBacklog: 0,
-    mergeQueueDepth: 0,
-  },
-  owner: {
-    durableRoot: hash("a"),
-    residentNodes: 1_000_000,
-    residentBytes: 700 * 1024 ** 2,
-    activeGenerations: 0,
-    generatedNodes: 500_000,
-    generatedBytes: 500 * 1024 ** 2,
-    rssBytes: 800 * 1024 ** 2,
-    peakRssBytes: 900 * 1024 ** 2,
-    childRestarts: 0,
-  },
-  process: {
-    pid: 42,
-    startTicks: "123456",
-    rssBytes: Math.round(1024 ** 3 * (1 + 0.05 * (elapsedMs / 86_400_000))),
-  },
-  ...overrides,
-});
-
-const report = ({
-  durationSec = 86_400,
-  intervalMs = 60_000,
-  testOnly = false,
-} = {}) => {
-  const durationMs = durationSec * 1_000;
-  const logicalSubmitAttempts = durationSec * 5_000;
-  const samples = [];
-  const auditPeriodMs = 5 * 60 * 60_000;
-  const makeSample = (elapsedMs) => {
-    const value = sample(elapsedMs);
-    const completedAuditCount = Math.floor(elapsedMs / auditPeriodMs);
-    value.metrics.auditCompletedAtMs =
-      1_750_000_000_000 - 1_000 + completedAuditCount * auditPeriodMs;
-    value.metrics.auditAgeMs =
-      value.observedAtMs - value.metrics.auditCompletedAtMs;
-    value.metrics.confirmedLedgerFullScanTotal += completedAuditCount;
-    return value;
-  };
-  for (let elapsedMs = 0; elapsedMs <= durationMs; elapsedMs += intervalMs) {
-    samples.push(makeSample(elapsedMs));
-  }
-  if (samples.at(-1).elapsedMs < durationMs)
-    samples.push(makeSample(durationMs));
-  const value = {
-    schemaVersion: PHASE3_ARCHITECTURE_G_SOAK_SCHEMA,
-    scenario: PHASE3_ARCHITECTURE_G_SOAK_SCENARIO,
-    testOnly,
-    configuredDurationSec: durationSec,
-    sampleIntervalMs: intervalMs,
-    startedAtMs: 1_750_000_000_000,
-    completedAtMs: 1_750_000_000_000 + durationMs,
-    preflight: {
-      startedAtMs: 1_749_999_999_800,
-      completedAtMs: 1_749_999_999_975,
-      durationMs: 175,
-      lifecycleStartedAtMs: 1_750_000_000_000,
-    },
-    identity: {
-      source: {
-        gitCommit: "1".repeat(40),
-        gitStatusSha256: hash("2"),
-        trackedDiffSha256: hash("3"),
-        sourceTreeSha256: hash("4"),
-        sourceTreeFileCount: 100,
-        nodeVersion: "v22.22.2",
-        nodeExecutablePath: "/runtime/node-v22.22.2",
-        nodeExecutableSha256: hash("0"),
-      },
-      runtime: {
-        path: "/artifacts/runtime.json",
-        sha256: hash("7"),
-        schemaVersion: "midgard-phase4-environment-artifact-v1",
-        deploymentManifestSha256: hash("8"),
-        nodeImageId: `sha256:${hash("9")}`,
-      },
-      deployment: {
-        path: "/artifacts/deployment.json",
-        sha256: hash("8"),
-        schemaVersion: "midgard-contract-deployment-v2",
-        manifestId: hash("a"),
-      },
-      ownerBinary: {
-        path: "/artifacts/architecture-g-owner",
-        sha256: hash("b"),
-        expectedSha256: hash("b"),
-        sha256ManifestPath: "/artifacts/architecture-g-owner.sha256",
-        sha256ManifestSha256: hash("c"),
-      },
-      phase1: {
-        path: "/artifacts/phase1-binding.json",
-        sha256: hash("d"),
-        schemaVersion: "midgard-phase1-live-corpus-binding-v2",
-        deploymentManifestId: hash("a"),
-        nodeImageId: `sha256:${hash("9")}`,
-        nodeContainerId: hash("5"),
-        corpus: {
-          path: "/artifacts/corpus.ndjson",
-          indexPath: "/artifacts/corpus.index.ndjson",
-          manifestPath: "/artifacts/corpus.manifest.json",
-          sliceId: "default",
-          corpusSha256: hash("1"),
-          indexSha256: hash("2"),
-          manifestSha256: hash("3"),
-        },
-      },
-      corpusPreflight: {
-        path: "/artifacts/corpus-preflight.json",
-        sha256: hash("a"),
-        bytes: 1_024,
-        schemaVersion: "midgard-phase3-soak-corpus-preflight-v1",
-        sourceTreeSha256: hash("4"),
-        sourceIdentitySha256: hash("9"),
-        phase1BindingSha256: hash("d"),
-        files: {},
-        selection: { indexEntryCount: 1 },
-        validation: {},
-      },
-      loadGeneratorIsolation: {
-        path: "/artifacts/load-generator-isolation.json",
-        sha256: hash("8"),
-        bytes: 2_048,
-        schemaVersion: PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA,
-        placement: "measured-bounded-cgroup-v2",
-        cohosted: true,
-        clockOffsetMs: 0,
-        loadGeneratorCpusAllowedList: "0-3",
-        loadGeneratorEffectiveUid: 1000,
-        nodeCpusAllowedList: "28-31",
-        nodeContainerId: hash("5"),
-        nodeImageId: `sha256:${hash("9")}`,
-        nodeHostPid: 42,
-        nodeStartTicks: "123456",
-        readyUrl: "http://127.0.0.1:3000/readyz",
-        metricsUrl: "http://127.0.0.1:9464/metrics",
-        dockerClientRealPath: "/trusted/docker",
-        dockerClientSha256: hash("d"),
-        dockerSocketRealPath: "/run/docker.sock",
-        dockerSocketDev: "3",
-        dockerSocketIno: "4",
-        dockerDaemonId: "daemon-id",
-      },
-      nodePreLifecycleRevalidation: {
-        path: "/artifacts/node-pre-lifecycle-revalidation.json",
-        sha256: hash("6"),
-        bytes: 2_048,
-        schemaVersion: PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA,
-        observedAtMs: 1_749_999_999_950,
-        isolationPath: "/artifacts/load-generator-isolation.json",
-        isolationSha256: hash("8"),
-        nodeContainerId: hash("5"),
-        nodeImageId: `sha256:${hash("9")}`,
-        nodeHostPid: 42,
-        nodeStartTicks: "123456",
-        nodeRestartCount: 0,
-        nodeHealthStatus: "healthy",
-        readyUrl: "http://127.0.0.1:3000/readyz",
-        metricsUrl: "http://127.0.0.1:9464/metrics",
-        dockerClientSha256: hash("d"),
-        dockerSocketDev: "3",
-        dockerSocketIno: "4",
-        dockerDaemonId: "daemon-id",
-      },
-      tooling: {
-        runnerPath: "/workspace/phase3-architecture-g-soak.mjs",
-        runnerSha256: hash("5"),
-        verifierPath: "/workspace/verify-phase3-architecture-g-soak-report.mjs",
-        verifierSha256: hash("6"),
-      },
-    },
-    sourceAtCompletion: null,
-    workload: {
-      scriptPath: "/workspace/throughput-valid-stress.mjs",
-      scriptSha256: hash("e"),
-      reportPath: "/artifacts/workload-report.json",
-      reportSha256: hash("f"),
-      reportBytes: 42,
-      reportSummary: {
-        scenario: PHASE3_ARCHITECTURE_G_SOAK_SCENARIO,
-        scenarioClass: "B",
-        benchmarkMode: "open",
-        formalBenchmark: true,
-        targetAcceptedTps: 5_000,
-        openLoopRateTps: 5_000,
-        measuredDurationSec: durationSec,
-        warmupTxs: 0,
-        warmupSec: 0,
-        cooldownSec: 0,
-        drainTimeoutSec: 600,
-        offeredRateMinRatio: 0.98,
-        acceptedRateMinRatio: 0.99,
-        nodeSaturationMinRatio: 1,
-        loadGenerator: {
-          placement: "measured-cgroup",
-          cohosted: true,
-          clockOffsetMs: 0,
-          isolation: null,
-        },
-        calibration: null,
-        corpus: {
-          path: "/artifacts/corpus.ndjson",
-          indexPath: "/artifacts/corpus.index.ndjson",
-          manifestPath: "/artifacts/corpus.manifest.json",
-          sliceId: "default",
-          artifactIdentity: {
-            corpusSha256: hash("1"),
-            indexSha256: hash("2"),
-            manifestSha256: hash("3"),
-          },
-          preflight: {
-            path: "/artifacts/corpus-preflight.json",
-            sha256: hash("a"),
-            bytes: 1_024,
-            schemaVersion: "midgard-phase3-soak-corpus-preflight-v1",
-            sourceTreeSha256: hash("4"),
-            sourceIdentitySha256: hash("9"),
-            phase1BindingSha256: hash("d"),
-          },
-          consumption: {
-            schemaVersion: CORPUS_PREFIX_EVIDENCE_SCHEMA,
-            rowCount: logicalSubmitAttempts,
-            chains: [
-              {
-                chainIndex: 0,
-                chainId: "wallet-1",
-                rowCount: logicalSubmitAttempts,
-                prefixSha256: hash("7"),
-              },
-            ],
-          },
-        },
-        measuredElapsedSec: durationSec,
-        offeredRatePerSec: 5_000,
-        acceptedRatePerSec: 4_950,
-        submitted: logicalSubmitAttempts,
-        logicalSubmitAttempts,
-        physicalSubmitAttempts: logicalSubmitAttempts,
-        submitErrors: 0,
-        rejectedDelta: 0,
-        missingRequiredMetrics: [],
-        allPrimaryStagesPassed: true,
-        allPrimaryDrainsCompleted: true,
-        primaryStageMeasurements: [
-          {
-            name: "measured-open",
-            targetRateTps: 5_000,
-            startedAtMs: 1_750_000_000_000,
-            endedAtMs: 1_750_000_000_000 + durationMs,
-            measuredElapsedSec: durationSec,
-            logicalSubmitAttempts,
-            physicalSubmitAttempts: logicalSubmitAttempts,
-            submitted: logicalSubmitAttempts,
-            submitErrors: 0,
-            offeredRatePerSec: 5_000,
-            acceptedRatePerSec: 4_950,
-            nodeSaturationRatio: 5_000 / 4_950,
-            nodeSaturationMinRatio: 1,
-            nodeSaturationPassed: true,
-            drainCompleted: true,
-            drainElapsedMs: 0,
-          },
-        ],
-      },
-      submitRecords: {
-        path: "/artifacts/submit-records.ndjson",
-        sha256: hash("e"),
-        bytes: 42,
-        recordCount: logicalSubmitAttempts,
-        successCount: logicalSubmitAttempts,
-        errorCount: 0,
-        timeoutCount: 0,
-        attemptSequenceSha256: hash("f"),
-      },
-    },
-    observation: {
-      workloadSpawnedAtMs: 1_750_000_000_000,
-      workloadExitedAtMs: 1_750_000_000_000 + durationMs,
-      firstSampleAtMs: 1_750_000_000_000,
-      lastSampleAtMs: 1_750_000_000_000 + durationMs,
-    },
-    termination: {
-      completed: true,
-      reason: "duration_completed",
-      workloadExitCode: 0,
-      workloadSignal: null,
-      earlyExit: false,
-      error: null,
-    },
-    samples,
-  };
-  const sourceIdentitySha256 = phase3SoakSourceIdentitySha256(
-    value.identity.source,
-  );
-  value.identity.corpusPreflight.sourceIdentitySha256 = sourceIdentitySha256;
-  value.workload.reportSummary.corpus.preflight.sourceIdentitySha256 =
-    sourceIdentitySha256;
-  value.preflight.initialReadiness = {
-    ...structuredClone(samples[0]),
-    observedAtMs: 1_749_999_999_900,
-    elapsedMs: null,
-  };
-  value.preflight.nodePreLifecycleRevalidation =
-    value.identity.nodePreLifecycleRevalidation;
-  value.samples[0] = {
-    ...structuredClone(value.preflight.initialReadiness),
-    elapsedMs: 0,
-  };
-  value.observation.firstSampleAtMs = value.samples[0].observedAtMs;
-  value.workload.reportSummary.loadGenerator.isolation =
-    value.identity.loadGeneratorIsolation;
-  value.sourceAtCompletion = { ...value.identity.source };
-  return value;
-};
 
 describe("Phase 3 Architecture G 24-hour soak verifier", () => {
   it("accepts a complete 24-hour report with bounded samples and identities", () => {
@@ -580,6 +79,43 @@ describe("Phase 3 Architecture G 24-hour soak verifier", () => {
     assert.equal(result.metrics.unplannedConfirmedLedgerFullScanDelta, 0);
     assert.equal(result.metrics.timeoutInsteadOfBackpressureDelta, 0);
     assert.ok(result.metrics.processMemoryGrowthRatio < 0.1);
+  });
+
+  it("rejects non-V1, missing, unknown, nested-unknown, and noncanonical shapes", () => {
+    const options = { allowTestOnlyDuration: true };
+    const cases = [
+      ["wrong schema", (value) => (value.schemaVersion = "legacy-v4")],
+      ["missing root key", (value) => delete value.configuredDurationSec],
+      ["unknown root key", (value) => (value.compatibilityMode = true)],
+      [
+        "unknown nested key",
+        (value) => (value.samples[1].metrics.legacyTimeoutCount = 0),
+      ],
+      [
+        "unknown deep key",
+        (value) =>
+          (value.workload.reportSummary.corpus.consumption.chains[0].offset = 0),
+      ],
+      ["fractional timestamp", (value) => (value.completedAtMs += 0.5)],
+      [
+        "noncanonical hash",
+        (value) => (value.workload.scriptSha256 = hash("A")),
+      ],
+      ["incompatible collection shape", (value) => (value.samples = {})],
+    ];
+    for (const [label, mutate] of cases) {
+      const value = report({
+        durationSec: 2,
+        intervalMs: 500,
+        testOnly: true,
+      });
+      mutate(value);
+      assert.equal(
+        evaluatePhase3ArchitectureGSoakReport(value, options).passed,
+        false,
+        `${label} unexpectedly passed`,
+      );
+    }
   });
 
   it("fails closed on every safety, liveness, cadence, and cap regression", () => {
@@ -879,6 +415,50 @@ describe("Phase 3 submit-record streaming scanner", () => {
 });
 
 describe("Phase 3 retained driver-log secret scanner", () => {
+  it("emits the exact clean V1 result and fails closed on oversized lines", async () => {
+    const directory = mkdtempSync("/tmp/midgard-phase3-log-");
+    try {
+      const cleanPath = path.join(directory, "clean.log");
+      const cleanLog = createSecretScanningLog(cleanPath);
+      cleanLog.stream.end("diagnostic line\n");
+      const cleanArtifact = await cleanLog.complete();
+      assert.deepEqual(Object.keys(cleanArtifact), [
+        "path",
+        "sha256",
+        "bytes",
+        "secretScan",
+      ]);
+      assert.deepEqual(cleanArtifact.secretScan, {
+        schemaVersion: "midgard-secret-scanned-log-v1",
+        passed: true,
+        sensitiveLineCount: 0,
+        oversizedLineCount: 0,
+        retainedLineCount: 1,
+      });
+      assert.equal(cleanArtifact.path, cleanPath);
+      assert.equal(cleanArtifact.bytes, Buffer.byteLength("diagnostic line\n"));
+      assert.equal(cleanArtifact.sha256, sha256File(cleanPath));
+
+      const oversizedPath = path.join(directory, "oversized.log");
+      const oversizedLog = createSecretScanningLog(oversizedPath);
+      oversizedLog.stream.end(`${"x".repeat(64 * 1024 + 1)}\n`);
+      const oversizedArtifact = await oversizedLog.complete();
+      assert.deepEqual(oversizedArtifact.secretScan, {
+        schemaVersion: "midgard-secret-scanned-log-v1",
+        passed: false,
+        sensitiveLineCount: 1,
+        oversizedLineCount: 1,
+        retainedLineCount: 0,
+      });
+      assert.equal(
+        readFileSync(oversizedPath, "utf8"),
+        "[REDACTED secret-bearing driver output]\n",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("redacts before retention and marks secret-bearing evidence failed", async () => {
     const directory = mkdtempSync("/tmp/midgard-phase3-log-");
     try {
@@ -999,7 +579,7 @@ describe("Phase 3 soak full-corpus preflight", () => {
 
   it("rejects stale source, path/mtime drift, tampering, and reduced selection", async () => {
     for (const mutate of [
-      (fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
+      (_fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
       (fixture) => {
         writeFileSync(fixture.corpusIdentity.path, "tampered\n");
         return {};
@@ -1439,9 +1019,8 @@ describe("Phase 3 pre-lifecycle evidence and load-generator isolation", () => {
         running: true,
         status: "running",
         healthStatus: "healthy",
-        startedAt: "2026-07-14T12:00:00.000000000Z",
+        startedAt: "2026-07-14T12:00:00.000Z",
         restartCount: 0,
-        engine: "architecture_g",
         healthcheckCommand: [
           "CMD",
           "node",
@@ -1490,6 +1069,25 @@ describe("Phase 3 pre-lifecycle evidence and load-generator isolation", () => {
       validatePhase3LoadGeneratorIsolationDocument(document),
       document,
     );
+    const exactSchemaCases = [
+      (value) => (value.schemaVersion = "legacy-v3"),
+      (value) => delete value.capturedAtMs,
+      (value) => (value.compatibilityMode = true),
+      (value) => (value.docker.client.legacyPath = "/usr/local/bin/docker"),
+      (value) => (value.loadGenerator.uid.login = 1000),
+      (value) =>
+        (value.nodeContainer.startedAt = "2026-07-14T12:00:00.000000000Z"),
+      (value) => (value.loadGenerator.cpusAllowedList = "00-3"),
+      (value) => (value.node = []),
+    ];
+    for (const mutate of exactSchemaCases) {
+      const value = structuredClone(document);
+      mutate(value);
+      assert.throws(
+        () => validatePhase3LoadGeneratorIsolationDocument(value),
+        /V1|invalid|noncanonical|binding/u,
+      );
+    }
     const directory = mkdtempSync("/tmp/midgard-phase3-isolation-");
     try {
       const outPath = path.join(directory, "isolation.json");

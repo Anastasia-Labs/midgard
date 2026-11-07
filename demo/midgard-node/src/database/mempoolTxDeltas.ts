@@ -8,14 +8,14 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
 
 export const tableName = "mempool_tx_deltas";
 
@@ -94,20 +94,6 @@ const fromEntry = (entry: Entry): TxDelta => ({
   spent: decodeSpentCbor(entry[Columns.SPENT_CBOR]),
   produced: decodeProducedCbor(entry[Columns.PRODUCED_CBOR]),
 });
-
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE UNLOGGED TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Columns.SPENT_CBOR)} BYTEA NOT NULL,
-      ${sql(Columns.PRODUCED_CBOR)} BYTEA NOT NULL,
-      PRIMARY KEY (${sql(Columns.TX_ID)})
-    );`;
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
 
 export const upsertMany = (
   deltas: readonly TxDelta[],

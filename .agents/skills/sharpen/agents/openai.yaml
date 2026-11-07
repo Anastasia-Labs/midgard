@@ -1,0 +1,6 @@
+interface:
+  display_name: "Sharpen"
+  short_description: "Aim a task at the outcome with an outside check"
+  default_prompt: "Use $sharpen to improve the approach to this Midgard task before starting."
+policy:
+  allow_implicit_invocation: false

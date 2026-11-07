@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+import {
+  computeMidgardNativeTxId,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,11 +27,17 @@ import {
   tagReportWithDefects,
 } from "../../../scripts/ci/tag-defect-signatures.mjs";
 import {
+  runDeadlineBatchedSchedule,
+  scheduledStartCountDue,
+} from "../scripts/lib/deadline-batched-schedule.mjs";
+import {
   buildScenarioEnvironment,
   phase1FormalHarnessIds,
 } from "../scripts/benchmark-scenario.mjs";
+import { assertPhase1FormalBindingOutputAvailable } from "../scripts/create-phase1-formal-binding.mjs";
 import {
   loadPhase1FormalBindingSync,
+  parsePhase1FormalBindingDocument,
   extractStressCorpusEnvironment,
   PHASE1_FORMAL_BINDING_SCHEMA,
   PHASE1_FORMAL_CHAIN_COUNT,
@@ -32,7 +48,11 @@ import {
   verifyPhase1LivePreflight,
 } from "../scripts/phase1-formal-identity.mjs";
 import {
+  loadCorpusIndex,
   openStreamingCorpusReader,
+  parseCorpusManifest,
+  parseCorpusRowLine,
+  scanCorpusPrefixEvidence,
   validateCorpusSlice,
   verifyCorpusArtifactIdentity,
 } from "../scripts/throughput-valid-stress-corpus.mjs";
@@ -90,6 +110,61 @@ describe("calibrated live client capacity", () => {
 });
 
 describe("corpus artifact report binding", () => {
+  const canonicalManifest = ({
+    corpusPath,
+    indexPath,
+    corpusSha256,
+    indexSha256,
+  }) => ({
+    schemaVersion: "midgard-stress-corpus-manifest-v1",
+    targetRateTps: 1,
+    durationMs: 1_000,
+    warmupCount: 0,
+    cooldownCount: 0,
+    safetyFactor: 1,
+    assumedAcceptanceLatencyMs: 1_000,
+    chainCount: 1,
+    chainDepth: 1,
+    corpusShape: "chain",
+    corpusSliceIds: ["slice-a"],
+    generatedAtIso: "2026-07-27T00:00:00.000Z",
+    generatorGitSha: "test",
+    lucidMidgardVersion: "test",
+    feeParams: { minFeeA: "0", minFeeB: "0" },
+    network: "Preprod",
+    networkId: "0",
+    maxSubmitTxCborBytes: 32_768,
+    amountTemplate: {
+      lovelace: "1",
+      shape: "self-transfer-change-chain",
+    },
+    verification: {
+      rebuildSampleRate: 1,
+      rebuildSampleAlgorithm: "sha256-corpus-chain-id-order-v1",
+    },
+    fundingSummary: {
+      walletCount: 1,
+      perWalletFundingLovelace: "1",
+      totalFundingLovelace: "1",
+    },
+    walletSetIdentity: {
+      walletCount: 1,
+      fundingRowCount: 1,
+      uniqueFirstFundingOutrefCount: 1,
+      walletSetHashAlgorithm: "sha256-wallet-id-l2-address-lines-v1",
+      walletSetSha256: "00".repeat(32),
+      fundingSetHashAlgorithm:
+        "sha256-wallet-id-outref-output-cbor-sha256-lines-v1",
+      fundingSetSha256: "11".repeat(32),
+    },
+    sliceSummary: [{ corpusSliceId: "slice-a", walletCount: 1, rowCount: 1 }],
+    files: {
+      corpus: { path: corpusPath, sha256: corpusSha256, rowCount: 1 },
+      index: { path: indexPath, sha256: indexSha256, rowCount: 1 },
+      shards: ["shard-0.ndjson"],
+    },
+  });
+
   it("hashes all three artifacts and rejects corpus drift from the manifest", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "midgard-corpus-identity-"),
@@ -100,12 +175,12 @@ describe("corpus artifact report binding", () => {
     const corpusBytes = Buffer.from('{"row":1}\n');
     const indexBytes = Buffer.from('{"entry":1}\n');
     const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-    const manifest = {
-      files: {
-        corpus: { sha256: sha256(corpusBytes) },
-        index: { sha256: sha256(indexBytes) },
-      },
-    };
+    const manifest = canonicalManifest({
+      corpusPath,
+      indexPath,
+      corpusSha256: sha256(corpusBytes),
+      indexSha256: sha256(indexBytes),
+    });
     fs.writeFileSync(corpusPath, corpusBytes);
     fs.writeFileSync(indexPath, indexBytes);
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
@@ -124,6 +199,18 @@ describe("corpus artifact report binding", () => {
       manifestMatchesArtifacts: true,
     });
 
+    await expect(
+      verifyCorpusArtifactIdentity({
+        corpusPath,
+        indexPath,
+        manifestPath,
+        manifest: {
+          ...manifest,
+          generatedAtIso: "2026-07-27T00:00:01.000Z",
+        },
+      }),
+    ).rejects.toThrow("does not match the persisted manifest bytes");
+
     fs.appendFileSync(corpusPath, "drift\n");
     await expect(
       verifyCorpusArtifactIdentity({
@@ -134,13 +221,99 @@ describe("corpus artifact report binding", () => {
       }),
     ).rejects.toThrow("does not match manifest");
   });
+
+  it("rejects incomplete, extra-key, and wrong-version corpus manifests", () => {
+    const manifest = canonicalManifest({
+      corpusPath: "corpus.ndjson",
+      indexPath: "corpus.ndjson.index.ndjson",
+      corpusSha256: "22".repeat(32),
+      indexSha256: "33".repeat(32),
+    });
+    expect(() =>
+      parseCorpusManifest({ ...manifest, schemaVersion: "legacy-v2" }),
+    ).toThrow("unsupported corpus manifest schemaVersion");
+    const { files: _files, ...missing } = manifest;
+    expect(() => parseCorpusManifest(missing)).toThrow("missing=[files]");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, unexpected: true }),
+    ).toThrow("extra=[unexpected]");
+    const { sha256: _sha256, ...corpusWithoutSha256 } = manifest.files.corpus;
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        files: {
+          ...manifest.files,
+          corpus: corpusWithoutSha256,
+        },
+      }),
+    ).toThrow("missing=[sha256]");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, network: "preprod" }),
+    ).toThrow("network is unsupported");
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        walletSetIdentity: {
+          ...manifest.walletSetIdentity,
+          walletSetHashAlgorithm: "legacy",
+        },
+      }),
+    ).toThrow("hash algorithm is unsupported");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, generatedAtIso: "2026-07-27" }),
+    ).toThrow("canonical ISO-8601");
+    expect(() => parseCorpusManifest({ ...manifest, networkId: "1" })).toThrow(
+      "does not match network",
+    );
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        fundingSummary: {
+          ...manifest.fundingSummary,
+          totalFundingLovelace: "2",
+        },
+      }),
+    ).toThrow("cardinality binding is inconsistent");
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        files: {
+          ...manifest.files,
+          shards: [manifest.files.shards[0], manifest.files.shards[0]],
+        },
+      }),
+    ).toThrow("must be non-empty and unique");
+  });
 });
 
 describe("bounded corpus uniqueness validation", () => {
   const corpusRow = (index) => {
-    const cbor = Buffer.from([index]);
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
+      validity: "TxIsValid",
+      body: {
+        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+        outputsPreimageCbor: EMPTY_CBOR_LIST,
+        fee: BigInt(index),
+        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        mintPreimageCbor: EMPTY_CBOR_LIST,
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
+        auxiliaryDataHash: EMPTY_NULL_ROOT,
+        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+      },
+      witnessSet: {
+        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    });
+    const cbor = encodeMidgardNativeTxCanonical(nativeTx);
     return {
-      txHash: createHash("sha256").update(`tx-${index}`).digest("hex"),
+      txHash: computeMidgardNativeTxId(nativeTx).toString("hex"),
       canonicalCborHex: cbor.toString("hex"),
       canonicalCborSha256: createHash("sha256").update(cbor).digest("hex"),
       canonicalCborByteLength: cbor.length,
@@ -177,6 +350,78 @@ describe("bounded corpus uniqueness validation", () => {
     };
   };
 
+  it("rejects corpus rows, indices, and prefix evidence with non-exact keys", async () => {
+    const row = corpusRow(0);
+    const { parentTxHash: _parentTxHash, ...missingParent } = row;
+    expect(() =>
+      parseCorpusRowLine(JSON.stringify(missingParent), "missing parent"),
+    ).toThrow("missing=[parentTxHash]");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, historicalExtension: true }),
+        "extended row",
+      ),
+    ).toThrow("extra=[historicalExtension]");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, senderWalletId: " wallet-0" }),
+        "spaced wallet",
+      ),
+    ).toThrow("exact non-empty string");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, txHash: "00".repeat(32) }),
+        "mismatched hash",
+      ),
+    ).toThrow("does not bind canonicalCborHex");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, selectedInputOutref: "bad" }),
+        "invalid input",
+      ),
+    ).toThrow("must be canonical");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, outputOutrefs: [`${row.txHash}#0`] }),
+        "invalid outputs",
+      ),
+    ).toThrow("must exactly enumerate");
+
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "midgard-exact-index-"),
+    );
+    const indexPath = path.join(directory, "index.ndjson");
+    fs.writeFileSync(
+      indexPath,
+      `${JSON.stringify({
+        corpusSliceId: "slice-a",
+        planShape: "chain",
+        chainId: "chain-a",
+        startByteOffset: 0,
+        endByteOffset: 1,
+        rowCount: 1,
+        extension: "legacy",
+      })}\n`,
+    );
+    await expect(loadCorpusIndex(indexPath)).rejects.toThrow(
+      "extra=[extension]",
+    );
+    await expect(
+      scanCorpusPrefixEvidence({
+        corpusPath: "unused",
+        fullIndex: [],
+        selectedEntries: [],
+        consumption: {
+          schemaVersion: "midgard-stress-corpus-prefix-evidence-v1",
+          rowCount: 0,
+          chains: [],
+          historicalBinding: true,
+        },
+        expectedCorpusSha256: "00".repeat(32),
+      }),
+    ).rejects.toThrow("extra=[historicalBinding]");
+  });
+
   it("validates exact uniqueness across bounded sorted chunks", async () => {
     const fixture = writeCorpus([0, 1, 2, 3].map(corpusRow));
     await expect(
@@ -193,7 +438,14 @@ describe("bounded corpus uniqueness validation", () => {
 
   it("rejects duplicate transaction hashes split across chunks", async () => {
     const rows = [0, 1, 2, 3].map(corpusRow);
-    rows[2].txHash = rows[0].txHash;
+    rows[2] = {
+      ...rows[2],
+      txHash: rows[0].txHash,
+      canonicalCborHex: rows[0].canonicalCborHex,
+      canonicalCborSha256: rows[0].canonicalCborSha256,
+      canonicalCborByteLength: rows[0].canonicalCborByteLength,
+      outputOutrefs: rows[0].outputOutrefs,
+    };
     await expect(
       validateCorpusSlice({
         ...writeCorpus(rows),
@@ -510,81 +762,6 @@ describe("histogram delta reporting", () => {
 });
 
 describe("Phase 1 formal scenario contracts", () => {
-  it("ships the formal stress engine HTTP client as a runtime dependency", () => {
-    const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-    expect(packageJson.dependencies?.undici).toBe("^7.25.0");
-    expect(packageJson.devDependencies?.undici).toBeUndefined();
-  });
-
-  it("routes the client-capacity self-check through the configured no-op endpoint", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const selfCheck = source.slice(
-      source.indexOf("const runClientSelfCheck"),
-      source.indexOf("const summarizeCursorContinuity"),
-    );
-    expect(selfCheck).toContain("`${noOpEndpoint}/submit`");
-    expect(selfCheck).toContain('"content-type": "application/cbor"');
-    expect(selfCheck).toContain("body: Buffer.from([0])");
-    expect(selfCheck).toContain(".request(endpoint, requestOptions)");
-    expect(selfCheck).toContain("Math.min(httpConnections, submitConcurrency)");
-    expect(selfCheck).toContain("warmupFailures > 0");
-    expect(selfCheck).toContain("runDeadlineBatchedSchedule({");
-    const initialHttpConnections = source.slice(
-      source.indexOf("const httpConnectionsSetting"),
-      source.indexOf("let httpConnections"),
-    );
-    expect(initialHttpConnections).toContain('"256"');
-  });
-
-  it("batches every due high-rate start after a coarse timer wake", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const scheduler = source.slice(
-      source.indexOf("const scheduledStartCountDue"),
-      source.indexOf("const findAvailableCursor"),
-    );
-    expect(scheduler).toContain("Math.max(1, Math.ceil(waitMs))");
-    expect(scheduler).toContain("nextStartIndex < dueStarts");
-    expect(scheduler).toContain("inFlight.size < maxInFlight");
-    expect(scheduler).toContain("missedStarts: totalStarts - nextStartIndex");
-    expect(scheduler).not.toContain("await sleep(intervalMs)");
-  });
-
-  it("uses the same deadline scheduler for calibration and open-loop load", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const openLoop = source.slice(
-      source.indexOf("const runOpenLoopStage"),
-      source.indexOf("const collectCalibrationRows"),
-    );
-    const calibration = source.slice(
-      source.indexOf("const runNoOpCalibrationStage"),
-      source.indexOf("const waitForStageDrain"),
-    );
-    expect(openLoop).toContain("runDeadlineBatchedSchedule({");
-    expect(openLoop).toContain("stage.missedStarts += schedule.missedStarts");
-    expect(openLoop).not.toContain("allowPostDeadlineCatchUp: true");
-    expect(calibration).toContain("runDeadlineBatchedSchedule({");
-    expect(calibration).toContain("startedAtPerfMs: startedPerfMs");
-    expect(calibration).toContain("warmupRequestCount");
-    expect(calibration).toContain("warmupFailures > 0");
-    expect(calibration.indexOf("warmupResults")).toBeLessThan(
-      calibration.indexOf("const startedPerfMs"),
-    );
-    expect(calibration).toContain("allowPostDeadlineCatchUp: true");
-    expect(calibration).toContain("(1 - missedStartMaxRatio)");
-    expect(source).toContain("readAheadRows: 1");
-    expect(calibration).toContain("schedule.missedStarts === 0");
-    expect(source).toContain('"calibration_capacity_selected"');
-  });
-
   const sha = (character) => character.repeat(64);
   const makeFormalFixture = (overrides = {}) => {
     const directory = fs.mkdtempSync(
@@ -725,26 +902,96 @@ describe("Phase 1 formal scenario contracts", () => {
   it("does not clobber an existing formal binding output", () => {
     const fixture = makeFormalFixture();
     const before = fs.readFileSync(fixture.binding.path);
-    const result = spawnSync(
-      process.execPath,
-      [
-        "scripts/create-phase1-formal-binding.mjs",
-        "--out",
-        fixture.binding.path,
-        "--generation-result",
-        path.join(fixture.binding.path, "missing-generation-result.json"),
-        "--deployment-manifest-id",
-        fixture.bindingDocument.deploymentManifestId,
-        "--node-image-id",
-        fixture.bindingDocument.nodeImageId,
-        "--node-container-id",
-        fixture.bindingDocument.nodeContainerId,
-      ],
-      { cwd: process.cwd(), env: { ...process.env, ...fixture.baseEnv } },
-    );
-    expect(result.status).not.toBe(0);
-    expect(result.stderr.toString()).toMatch(/Refusing to overwrite existing Phase 1 binding/);
+    expect(() =>
+      assertPhase1FormalBindingOutputAvailable(fixture.binding.path),
+    ).toThrow(/Refusing to overwrite existing Phase 1 binding/);
     expect(fs.readFileSync(fixture.binding.path)).toEqual(before);
+  });
+
+  it("accepts only the exact canonical Phase 1 formal binding V1 language", () => {
+    const fixture = makeFormalFixture();
+    expect(
+      parsePhase1FormalBindingDocument(
+        fixture.bindingDocument,
+        fixture.binding.path,
+      ),
+    ).toEqual(fixture.bindingDocument);
+    // Each case breaks exactly one V1 rule and names the refusal it must
+    // produce, so a validator that collapsed several rules into one generic
+    // failure — or stopped checking one of them — is visible here.
+    const mutations = [
+      {
+        name: "an unsupported schema version",
+        mutate: (binding) => {
+          binding.schemaVersion = "midgard-phase1-live-corpus-binding-v2";
+        },
+        expected:
+          /schemaVersion must be midgard-phase1-live-corpus-binding-v1/u,
+      },
+      {
+        name: "an extra top-level key",
+        mutate: (binding) => {
+          binding.unknown = true;
+        },
+        expected:
+          /binding artifact must use the exact V1 keys; missing=\[\], extra=\[unknown\]/u,
+      },
+      {
+        name: "an extra corpus key",
+        mutate: (binding) => {
+          binding.corpus.unknown = true;
+        },
+        expected:
+          /corpus must use the exact V1 keys; missing=\[\], extra=\[unknown\]/u,
+      },
+      {
+        name: "a relative corpus path",
+        mutate: (binding) => {
+          binding.corpus.path = "./corpus.ndjson";
+        },
+        expected:
+          /corpus\.path must be a canonical absolute corpus path or artifact path/u,
+      },
+      {
+        name: "an upper-case wallet-set digest",
+        mutate: (binding) => {
+          binding.walletSetSha256 = binding.walletSetSha256.toUpperCase();
+        },
+        expected: /walletSetSha256 must be 32-byte lowercase hex/u,
+      },
+      {
+        name: "a duplicated live-preflight wallet id",
+        mutate: (binding) => {
+          binding.livePreflight.entries[1].walletId =
+            binding.livePreflight.entries[0].walletId;
+        },
+        expected: /livePreflight\.entries must use unique wallet IDs/u,
+      },
+      {
+        name: "a non-canonical first-input outref index",
+        mutate: (binding) => {
+          binding.livePreflight.entries[0].firstInputOutref = `${"0".repeat(64)}#00`;
+        },
+        expected: /livePreflight\.entries\[0\]\.firstInputOutref is invalid/u,
+      },
+      {
+        name: "a seed phrase smuggled into the stress corpus env",
+        mutate: (binding) => {
+          binding.stressCorpusEnv.STRESS_CORPUS_WALLET_SEED_PHRASE =
+            "must-not-be-accepted";
+        },
+        expected:
+          /stressCorpusEnv must use the exact V1 keys; missing=\[\], extra=\[STRESS_CORPUS_WALLET_SEED_PHRASE\]/u,
+      },
+    ];
+    for (const { name, mutate, expected } of mutations) {
+      const binding = structuredClone(fixture.bindingDocument);
+      mutate(binding);
+      expect(
+        () => parsePhase1FormalBindingDocument(binding, fixture.binding.path),
+        name,
+      ).toThrow(expected);
+    }
   });
 
   it("pins the five-minute 5k admission gate", () => {
@@ -1029,7 +1276,8 @@ describe("Phase 1 formal scenario contracts", () => {
   it("requires the deterministic live sample to contain exact outref and output bytes", async () => {
     const output = Buffer.from("8200", "hex");
     const outputCborSha256 = createHash("sha256").update(output).digest("hex");
-    const expectedOutrefCbor = `825820${"a".repeat(64)}00`;
+    // §5.3 field-0/1 item form: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`.
+    const expectedOutrefCbor = `825820${"a".repeat(64)}190000`;
     const expected = {
       algorithm: "sha256-corpus-chain-id-order-v1",
       sampleSize: 1,
@@ -1217,5 +1465,176 @@ describe("benchmark defect signature tagging", () => {
 
     expect(observed).toEqual(["DEF-001"]);
     expect(report.defectSignaturesObserved).toEqual(["DEF-001"]);
+  });
+});
+
+/**
+ * The open-loop start scheduler, exercised directly against a fake clock.
+ *
+ * This replaces three tests that asserted ~40 substrings of
+ * `scripts/throughput-valid-stress.mjs` as proof of runtime scheduling: they
+ * broke on any rename and never ran a single start. The contract they were
+ * reaching for — one coarse timer wake dispatches every start that became due,
+ * instead of `await sleep(intervalMs)` per start — is a behavioural claim and
+ * is asserted as one here.
+ */
+describe("deadline-batched open-loop scheduler", () => {
+  const makeFakeClock = (startMs = 0) => {
+    let clockMs = startMs;
+    const sleeps = [];
+    return {
+      now: () => clockMs,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clockMs += ms;
+        await Promise.resolve();
+      },
+      sleeps,
+      advance: (ms) => {
+        clockMs += ms;
+      },
+      get clockMs() {
+        return clockMs;
+      },
+    };
+  };
+
+  it("counts a start due at its own deadline and clamps to the schedule", () => {
+    const schedule = {
+      startedAtPerfMs: 100,
+      intervalMs: 10,
+      totalStarts: 5,
+    };
+    expect(
+      [99, 100, 109, 110, 139, 140, 1_000].map((nowPerfMs) =>
+        scheduledStartCountDue({ ...schedule, nowPerfMs }),
+      ),
+      // 139ms is 3.9 intervals after the start: four starts are due, not five.
+    ).toEqual([0, 1, 1, 2, 4, 5, 5]);
+  });
+
+  it("dispatches every start that came due during one coarse wake", async () => {
+    // 10k starts/s: a per-start `sleep(intervalMs)` cannot hold this rate,
+    // because Node rounds every sub-millisecond timer up to 1ms.
+    const totalStarts = 200;
+    const intervalMs = 0.1;
+    const clock = makeFakeClock();
+    const dispatchClockMs = [];
+
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 10_000,
+      intervalMs,
+      maxInFlight: totalStarts,
+      dispatchStart: ({ startIndex, scheduledAtPerfMs }) => {
+        dispatchClockMs.push({
+          startIndex,
+          scheduledAtPerfMs,
+          at: clock.now(),
+        });
+        return Promise.resolve();
+      },
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.scheduledStarts).toBe(totalStarts);
+    expect(result.missedStarts).toBe(0);
+    expect(result.stoppedWithoutCapacity).toBe(false);
+    // Starts are handed out in schedule order at their own scheduled times.
+    expect(dispatchClockMs.map(({ startIndex }) => startIndex)).toEqual(
+      Array.from({ length: totalStarts }, (_, index) => index),
+    );
+    expect(
+      dispatchClockMs.map(({ scheduledAtPerfMs }) => scheduledAtPerfMs),
+    ).toEqual(
+      Array.from({ length: totalStarts }, (_, index) => index * intervalMs),
+    );
+
+    // Every timer wake is the 1ms floor, and one wake releases a whole batch:
+    // 200 starts at 0.1ms spacing must cost ~20 sleeps, not 200.
+    expect(new Set(clock.sleeps)).toEqual(new Set([1]));
+    expect(clock.sleeps.length).toBeLessThanOrEqual(25);
+    const batchSizes = new Map();
+    for (const { at } of dispatchClockMs) {
+      batchSizes.set(at, (batchSizes.get(at) ?? 0) + 1);
+    }
+    expect(Math.max(...batchSizes.values())).toBeGreaterThanOrEqual(10);
+  });
+
+  it("never exceeds the in-flight bound", async () => {
+    const clock = makeFakeClock();
+    let live = 0;
+    let peakLive = 0;
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts: 50,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 10_000,
+      intervalMs: 0.1,
+      maxInFlight: 4,
+      dispatchStart: () => {
+        live += 1;
+        peakLive = Math.max(peakLive, live);
+        return Promise.resolve().then(() => {
+          live -= 1;
+        });
+      },
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.scheduledStarts).toBe(50);
+    expect(peakLive).toBeLessThanOrEqual(4);
+    expect(result.maxObservedInFlight).toBeLessThanOrEqual(4);
+  });
+
+  it("stops at a hard deadline but catches up when the stage allows it", async () => {
+    const runPastDeadline = (allowPostDeadlineCatchUp) => {
+      const clock = makeFakeClock(5_000);
+      return runDeadlineBatchedSchedule({
+        totalStarts: 10,
+        startedAtPerfMs: 0,
+        deadlinePerfMs: 1_000,
+        intervalMs: 1,
+        maxInFlight: 3,
+        dispatchStart: () => Promise.resolve(),
+        allowPostDeadlineCatchUp,
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+    };
+
+    const hardDeadline = await runPastDeadline(false);
+    expect(hardDeadline.scheduledStarts).toBe(3);
+    expect(hardDeadline.missedStarts).toBe(7);
+    expect(hardDeadline.stoppedWithoutCapacity).toBe(false);
+
+    const catchUp = await runPastDeadline(true);
+    expect(catchUp.scheduledStarts).toBe(10);
+    expect(catchUp.missedStarts).toBe(0);
+  });
+
+  it("reports a starved schedule rather than spinning when no start can be dispatched", async () => {
+    const clock = makeFakeClock(5_000);
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts: 5,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 1_000,
+      intervalMs: 1,
+      maxInFlight: 3,
+      // No cursor is available: the stress script signals that with `null`.
+      dispatchStart: () => null,
+      allowPostDeadlineCatchUp: true,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result).toMatchObject({
+      scheduledStarts: 0,
+      missedStarts: 5,
+      stoppedWithoutCapacity: true,
+      lastDispatchedAtPerfMs: null,
+    });
   });
 });

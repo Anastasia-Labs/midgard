@@ -1,43 +1,33 @@
+/**
+ * Canonical spend-input witness decoding, plus the min-Ada and UTxO helpers the
+ * publication builders share.
+ *
+ * **#604 removed this module's own publication path.** The banner it used to
+ * carry pointed at `ensureSpendInputsReferenceWitness`, whose replacement is
+ * §8's carriage ladder — see the note where that function stood.
+ */
+
+import {
+  decodeMidgardSpendInputItem,
+  encodeMidgardSpendInputItem,
+  type MidgardTxInput as MidgardTxInputV1,
+} from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import { type MidgardTxInput, MidgardTxInputList } from "@al-ft/midgard-sdk";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk";
 import {
   CML,
-  coreToTxOutput,
-  Data,
   type LucidEvolution,
   type ProtocolParameters,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  compareUtxoOutRefs,
-  DEFAULT_CONFIRMATION_POLL_MS,
-  outRefLabel,
-  outRefsEqual,
-} from "./runtime.js";
-import { selectFeeInput } from "./submit-step-01.js";
+import { outRefsEqual } from "./runtime.js";
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
 
 export type SpendInputsWitness = {
   readonly inputs: readonly MidgardTxInput[];
-  readonly datum: string;
 };
-
-export type EnsuredSpendInputsReferenceWitness = {
-  readonly utxo: UTxO;
-  readonly outRef: string;
-  readonly created: boolean;
-  readonly lovelace: bigint;
-  readonly txHash?: string;
-  readonly spentFeeInput?: UTxO;
-};
-
-const onlyLovelace = (utxo: UTxO): boolean =>
-  Object.entries(utxo.assets).every(
-    ([unit, amount]) => unit === "lovelace" || amount <= 0n,
-  );
 
 export const resolveProtocolParameters = async (
   lucid: LucidEvolution,
@@ -93,22 +83,29 @@ export const minimumLovelaceForInlineDatumOutput = ({
   );
 };
 
+/**
+ * The one canonical byte form is the §5.3 field-0/1 item —
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes — the bytes on-chain
+ * `ledger_outref_key` / `encode_midgard_tx_input` derive and
+ * `decode_midgard_tx_input_cbor` accepts. CML's minimal-index
+ * `TransactionInput` CBOR is deliberately rejected.
+ */
 const requireCanonicalInputCbor = (
   inputCborHex: string,
   label: string,
-): CML.TransactionInput => {
-  let input: CML.TransactionInput;
+): MidgardTxInputV1 => {
+  let input: MidgardTxInputV1;
   const inputCbor = Buffer.from(inputCborHex, "hex");
   try {
-    input = CML.TransactionInput.from_cbor_bytes(inputCbor);
+    input = decodeMidgardSpendInputItem(inputCbor);
   } catch (cause) {
     throw new Error(
-      `${label} is not valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
+      `${label} is not valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
-  const canonical = Buffer.from(input.to_cbor_bytes());
+  const canonical = encodeMidgardSpendInputItem(input);
   if (!canonical.equals(inputCbor)) {
-    throw new Error(`${label} must be canonical Cardano TxOutRef CBOR.`);
+    throw new Error(`${label} must be canonical Midgard §5.3 TxOutRef CBOR.`);
   }
   return input;
 };
@@ -118,177 +115,39 @@ export const spendInputsWitnessFromCbors = (
   label: string,
 ): SpendInputsWitness => {
   const inputs = inputCbors.map((inputCbor, index) => {
+    // The §5.3 fixed uint16 output index bounds `output_index` to 0..65,535 by
+    // construction, so the on-chain 16-bit range needs no separate check here.
     const input = requireCanonicalInputCbor(
       inputCbor,
       `${label}[${index.toString()}]`,
     );
-    const outputIndex = input.index();
-    if (outputIndex > 65_535n) {
-      throw new Error(
-        `${label}[${index.toString()}].output_index exceeds the on-chain 16-bit range.`,
-      );
-    }
     return {
-      tx_id: input.transaction_id().to_hex(),
-      output_index: outputIndex,
+      tx_id: Buffer.from(input.txId).toString("hex"),
+      output_index: BigInt(input.outputIndex),
     };
   });
 
-  return {
-    inputs,
-    datum: Data.to(inputs, MidgardTxInputList),
-  };
+  return { inputs };
 };
 
-const findSpendInputsWitnessOutputIndex = ({
-  tx,
-  address,
-  datum,
-}: {
-  readonly tx: CML.Transaction;
-  readonly address: string;
-  readonly datum: string;
-}): bigint => {
-  const expectedDatum = canonicalPlutusDataCbor(datum);
-  const outputs = tx.body().outputs();
-  const matches: number[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    if (
-      output.address === address &&
-      output.datum != null &&
-      canonicalPlutusDataCbor(output.datum) === expectedDatum
-    ) {
-      matches.push(index);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `Witness publication transaction must contain exactly one spend-input witness output; found ${matches.length.toString()}.`,
-    );
-  }
-  return BigInt(matches[0]!);
-};
-
-const makeCreatedWitnessUtxo = ({
-  txHash,
-  outputIndex,
-  address,
-  datum,
-  lovelace,
-}: {
-  readonly txHash: string;
-  readonly outputIndex: bigint;
-  readonly address: string;
-  readonly datum: string;
-  readonly lovelace: bigint;
-}): UTxO => ({
-  txHash,
-  outputIndex: Number(outputIndex),
-  address,
-  assets: { lovelace },
-  datum,
-});
-
-export const ensureSpendInputsReferenceWitness = async ({
-  lucid,
-  address,
-  paymentKeyHash,
-  witness,
-  awaitConfirmation,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly address: string;
-  readonly paymentKeyHash: string;
-  readonly witness: SpendInputsWitness;
-  readonly awaitConfirmation: boolean;
-}): Promise<EnsuredSpendInputsReferenceWitness> => {
-  const protocolParameters = await resolveProtocolParameters(lucid);
-  const witnessOutputLovelace = minimumLovelaceForInlineDatumOutput({
-    address,
-    datum: witness.datum,
-    coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
-  });
-  const witnessDatum = canonicalPlutusDataCbor(witness.datum);
-  const existing = (await lucid.utxosAt(address))
-    .filter(
-      (utxo) =>
-        utxo.datum != null &&
-        canonicalPlutusDataCbor(utxo.datum) === witnessDatum &&
-        onlyLovelace(utxo) &&
-        (utxo.assets.lovelace ?? 0n) >= witnessOutputLovelace &&
-        utxo.scriptRef === undefined,
-    )
-    .sort(compareUtxoOutRefs)[0];
-  if (existing !== undefined) {
-    return {
-      utxo: existing,
-      outRef: outRefLabel(existing),
-      created: false,
-      lovelace: existing.assets.lovelace ?? 0n,
-    };
-  }
-
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const feeInput = selectFeeInput(walletUtxos);
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .pay.ToAddressWithData(
-      address,
-      { kind: "inline", value: witness.datum },
-      { lovelace: witnessOutputLovelace },
-    )
-    .addSignerKey(paymentKeyHash)
-    .complete({ localUPLCEval: true });
-  const outputIndex = findSpendInputsWitnessOutputIndex({
-    tx: unsigned.toTransaction(),
-    address,
-    datum: witness.datum,
-  });
-  const signed = await unsigned.sign.withWallet().complete();
-  const txHash = await signed.submit();
-  const provisional = makeCreatedWitnessUtxo({
-    txHash,
-    outputIndex,
-    address,
-    datum: witness.datum,
-    lovelace: witnessOutputLovelace,
-  });
-  if (!awaitConfirmation) {
-    return {
-      utxo: provisional,
-      outRef: outRefLabel(provisional),
-      created: true,
-      lovelace: witnessOutputLovelace,
-      txHash,
-      spentFeeInput: feeInput,
-    };
-  }
-
-  await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  const confirmed = (
-    await lucid.utxosByOutRef([
-      {
-        txHash,
-        outputIndex: Number(outputIndex),
-      },
-    ])
-  )[0];
-  if (confirmed === undefined) {
-    throw new Error(
-      `Spend-input witness UTxO ${txHash}#${outputIndex.toString()} was not found after confirmation.`,
-    );
-  }
-  return {
-    utxo: confirmed,
-    outRef: outRefLabel(confirmed),
-    created: true,
-    lovelace: confirmed.assets.lovelace ?? 0n,
-    txHash,
-    spentFeeInput: feeInput,
-  };
-};
+/*
+ * `ensureSpendInputsReferenceWitness` stood here and is **deleted by #604**, not
+ * re-pointed.
+ *
+ * It published a bespoke typed spend-input list at the prover's own address so
+ * that `double-spend` steps 03 and 04 could name it by reference-input index.
+ * §8's carriage ladder replaced the whole mechanism: tier 2 publishes the §5.1
+ * preimage as a nothing-but-bytes inline datum (§8.5) that the door reads
+ * directly, located by *content* rather than by out-ref (§8.7), and the
+ * `tx1_spend_inputs_ref_input_index`/`tx2_spend_inputs_ref_input_index` redeemer
+ * fields it fed no longer exist on-chain. Publishing is now
+ * `publishFaultProofFieldCarriageV1` in `field-opening.ts`, which is one
+ * mechanism for all nine families instead of one per family.
+ *
+ * What survives here is what was never about that publication: the canonical
+ * spend-input witness decoding used by `prepare-non-existent-input`, and the
+ * min-Ada and UTxO helpers `publish-proof-chunks.ts` still uses.
+ */
 
 export const excludeUtxo = (
   utxos: readonly UTxO[],

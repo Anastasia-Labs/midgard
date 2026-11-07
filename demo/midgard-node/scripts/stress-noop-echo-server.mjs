@@ -10,12 +10,12 @@ const maxBytes = Number.parseInt(
   10,
 );
 
-const isApplicationCbor = (value) =>
+const isV1SubmissionCbor = (value) =>
   typeof value === "string" &&
   value
     .split(";")[0]
     .trim()
-    .toLowerCase() === "application/cbor";
+    .toLowerCase() === "application/vnd.midgard.v1+cbor";
 
 const readBody = async (request) => {
   const chunks = [];
@@ -36,9 +36,9 @@ const server = http.createServer(async (request, response) => {
     response.end(JSON.stringify({ error: "not_found" }));
     return;
   }
-  if (!isApplicationCbor(request.headers["content-type"])) {
+  if (!isV1SubmissionCbor(request.headers["content-type"])) {
     response.writeHead(415, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "expected_application_cbor" }));
+    response.end(JSON.stringify({ error: "expected_v1_submission_cbor" }));
     return;
   }
   try {

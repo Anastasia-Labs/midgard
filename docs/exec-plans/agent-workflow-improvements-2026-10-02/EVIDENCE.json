@@ -1,0 +1,493 @@
+{
+  "schema": "midgard-agent-workflow-review/v1",
+  "reportDate": "2026-10-02",
+  "reportTimezone": "America/Chicago",
+  "capturedAtUtc": "2026-10-03T04:18:16.892535+00:00",
+  "repositoryHead": "48b41e52aea75a2d4248419dea755816da277df7",
+  "sources": [
+    {
+      "id": "R",
+      "title": "Resume devnet reliability program",
+      "threadId": "01a0fab1-bbf8-7ee0-af61-216cd8454bbb",
+      "path": "/home/gumbo/.codex/sessions/2026/10/01/rollout-2026-10-01T22-39-07-01a0fab1-bbf8-7ee0-af61-216cd8454bbb.jsonl",
+      "capturedCompleteBytes": 54663626,
+      "capturedCompleteLines": 20650,
+      "capturedPrefixSha256": "f592d12afb68ce094e3826603265951b68d2cd35f27fa5ff398c76f32e0e7b06",
+      "firstTimestamp": "2026-10-02T03:39:13.173Z",
+      "lastTimestamp": "2026-10-03T04:18:17.308Z",
+      "humanVisibleMessageRecords": 235,
+      "completedCommandRecords": 1820,
+      "scope": "Complete local root transcript prefix; plaintext user and assistant messages, command records and available outputs examined. Encrypted private reasoning and encrypted worker messages were not decoded."
+    },
+    {
+      "id": "O",
+      "title": "Offchain fixes",
+      "threadId": "01a0fb24-cd4c-7a12-88a8-ee933024922f",
+      "path": "/home/gumbo/.codex/sessions/2026/10/02/rollout-2026-10-02T00-44-48-01a0fb24-cd4c-7a12-88a8-ee933024922f.jsonl",
+      "capturedCompleteBytes": 47276618,
+      "capturedCompleteLines": 11078,
+      "capturedPrefixSha256": "a6682aceb082d9c9f688ecd78f25430dce2999572ebe290f1615c98d4df5af77",
+      "firstTimestamp": "2026-10-02T05:44:52.685Z",
+      "lastTimestamp": "2026-10-03T04:14:44.494Z",
+      "humanVisibleMessageRecords": 121,
+      "completedCommandRecords": 1550,
+      "scope": "Complete local root transcript prefix; plaintext user and assistant messages, command records and available outputs examined. Encrypted private reasoning and encrypted worker messages were not decoded."
+    },
+    {
+      "path": "/tmp/midgard-reliability-20261002/evidence/original-696-provenance-independent/AUDIT.md",
+      "sha256": "fe41003ddecb741fc40f0c81f8557ff81eb988b27b25845535fac8ff2c113904",
+      "scope": "Read retained evidence; not a new behavioral run"
+    },
+    {
+      "path": "/tmp/midgard-reliability-20261002/evidence/original-696-provenance-independent/provenance.json",
+      "sha256": "b733d145c37396bb2b70a1ceb680604763163d31e58ddf7e4e59f046b4d6bc66",
+      "scope": "Read retained evidence; not a new behavioral run"
+    },
+    {
+      "path": "/tmp/midgard-reliability-20261002/evidence/final-root-verification-19d2fbb9/ROOT-RESULT-LEDGER.json",
+      "sha256": "1a83c774bbb837e20ab2c26c0940abb48d58463110764d28fe0c8a9b8b9bb62c",
+      "scope": "Read retained evidence; not a new behavioral run"
+    }
+  ],
+  "observations": [
+    {
+      "id": "R143",
+      "source": "R",
+      "line": 143,
+      "timestamp": "2026-10-02T03:42:54.800Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The latest `lc2` run failed while waiting 45 minutes for its first deposit to be credited. Its readiness log still reported `ready=true` afterward. I\u2019ll make that live failure the first diagnostic task, alongside the signed-intent recovery work.\n\nI also verified six local commits that haven\u2019t reached GitHub. Those need verification and publication; an existing local commit alone doesn\u2019t close a task."
+    },
+    {
+      "id": "R270",
+      "source": "R",
+      "line": 270,
+      "timestamp": "2026-10-02T03:52:00.641Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The live failure has a concrete cause: the parent generates `node-commit:` lease owners, but the worker accepts only the older `commit:` form and rejects every block attempt. That explains why the first deposit never advanced. The live lane is fixing the producer/consumer contract and adding a regression test; it has made no service changes."
+    },
+    {
+      "id": "R447",
+      "source": "R",
+      "line": 447,
+      "timestamp": "2026-10-02T03:57:30.145Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The pruning audit found another concrete risk: displacement recovery reads finalized sibling journals, but the pending pruning change doesn\u2019t preserve them. The recovery and retention lanes are coordinating those dependencies.\n\nThe budget lane also corrected the earlier estimate: some waits belong to different execution paths and shouldn\u2019t simply be added together. It\u2019s tracing the actual paths and identifying the missing bounds before changing any timing parameters."
+    },
+    {
+      "id": "R712",
+      "source": "R",
+      "line": 712,
+      "timestamp": "2026-10-02T04:15:27.415Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Astra recommends budgets for each protocol deadline and its causal dependencies, while keeping depth 10 and the existing windows. I\u2019ll use that model and record the original combined B1 calculation as failed rather than claim it passes.\n\nThe separate review of the lease-owner and readiness patch found no introduced defects. I\u2019m integrating it now. The freed agents will take on genesis funding and fault-proof rollback recovery while the existing lanes finish verification."
+    },
+    {
+      "id": "R1033",
+      "source": "R",
+      "line": 1033,
+      "timestamp": "2026-10-02T04:31:53.204Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The lease fix is committed as `493ea2ce0`. Independent retention review found a startup bug: a short retention window can be accepted without a deployment manifest, then cause every sweep to return zero. That fix and the displaced-journal retention check are underway.\n\nThe watcher lane has passing focused regressions for quiet gaps, repeated-tip growth and deeper rollback. Coordinator reload and reconciliation still need work, so #709 remains open."
+    },
+    {
+      "id": "R1600",
+      "source": "R",
+      "line": 1600,
+      "timestamp": "2026-10-02T04:54:31.833Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The journal review found no actionable defect, and I reproduced all 32 journal regressions in the integration checkout. The budget analyzer\u2019s 15 tests also pass, including rejection of unknown duration bounds.\n\nA second recovery ordering bug is confirmed: an independently observed correction can make the prepared displacement plan and correction rewind wait on each other. The fix must preserve both sets of evidence and restore native and SQL consistency before releasing the gate."
+    },
+    {
+      "id": "R1945",
+      "source": "R",
+      "line": 1945,
+      "timestamp": "2026-10-02T05:25:08.780Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The startup lane found that the requested `confirmationTick` regression already exists in the recovered baseline. It will verify that test against the integrated revision.\n\nWe\u2019re also making retirement checks explicit about depth: records stay retained through 2,160 blocks after inclusion. This prevents the operator, committee and financial workflows from mixing that distance with counters that include the inclusion block."
+    },
+    {
+      "id": "R2143",
+      "source": "R",
+      "line": 2143,
+      "timestamp": "2026-10-02T05:39:32.648Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The full SDK transaction-preparation gate passed: 175 Lucid tests and 930 SDK tests. The startup change also passed its focused tests, including a real CLI case where the provider stalls; an independent reviewer is now checking the handoff and cleanup behavior.\n\nThe stale-provider defect is confirmed: an old Kupo observation can be assigned depth from a newer Ogmios branch. Retirement checks need proof that the observed block belongs to that chain."
+    },
+    {
+      "id": "R2984",
+      "source": "R",
+      "line": 2984,
+      "timestamp": "2026-10-02T06:25:04.011Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The recovery tests exposed another retention gap: pruning could delete journals named inside a recovery compensation record. I\u2019m fixing that with database regressions for both pending recovery and completed receipts. The full emulator check is still progressing, and independent reviews are continuing in parallel.\n"
+    },
+    {
+      "id": "R3090",
+      "source": "R",
+      "line": 3090,
+      "timestamp": "2026-10-02T06:28:58.040Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The compensation retention fix passes all nine database tests. I also reproduced a separate committee-store race: a paused former owner can overwrite the new owner\u2019s file after takeover. That now has a dedicated fix lane and will require independent review.\n\nThe Astra assessment supports budgeting by the protocol\u2019s actual dependencies. The original combined test still fails at 1,000 seconds against the 720-second window; we\u2019re keeping that result explicit while implementing bounded work along each deadline path.\n"
+    },
+    {
+      "id": "R5326",
+      "source": "R",
+      "line": 5326,
+      "timestamp": "2026-10-02T08:52:50.150Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The fresh Astra assessment supports separate role budgets, with committee admission based on its own deadline and outstanding obligations. Its software calibration passed 27 lifecycles and 99 operations; source timing and rollback-safe capacity still need verification before activation.\n\nIntegration also caught stale source overlays and a readiness bug: successful DA sizing clears diagnostics that should remain visible. I\u2019m correcting those before the final devnet run."
+    },
+    {
+      "id": "R5927",
+      "source": "R",
+      "line": 5927,
+      "timestamp": "2026-10-02T09:24:21.736Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Independent review found a watcher retry bug: it rebuilt with refreshed protocol parameters, then checked the signed transaction using old limits. A separate correction is underway.\n\nThe DA stream cancellation test passed over a real local connection. Removing the scope signal made it fail as expected, confirming that this transport cancels active work when the attempt closes."
+    },
+    {
+      "id": "R11122",
+      "source": "R",
+      "line": 11122,
+      "timestamp": "2026-10-02T17:30:45.818Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The documentation build and typecheck passed. The integrated acceptance and payout code is now running its combined tests. The history-policy fixes are also closed; production history-role wiring and the committee\u2019s complete transport and retirement rules remain in progress before live acceptance."
+    },
+    {
+      "id": "R11213",
+      "source": "R",
+      "line": 11213,
+      "timestamp": "2026-10-02T17:35:41.867Z",
+      "kind": "historical root-agent report",
+      "excerpt": "**Preventing avoidable failures should come first.** That is also the program\u2019s stated goal: prevention before recovery.\n\nWe have concrete live evidence. In lc2, the node\u2019s parent generated lease-owner IDs that the commit worker rejected. That caused **885 failures and prevented block production**, while `/readyz` still reported healthy. Five confirmed deposits remained uncommitted. Those are observed operational bugs, and their fixes belong at the front.\n\nOther findings have different evidence:\n\n- **Reproduced through production code:** cancellation starting new work, child processes surviving cleanup, and stale configuration being admitted after an asynchronous read. These have executable reproductions, but were not all observed in a running devnet.\n- **Found by inspection:** concerns that still need a reachable reproduction or evidence of a protocol invariant violation. They should not automatically become implementation work.\n\nWe have spent substantial effort on recovery and evidence machinery beyond ordinary crash prevention. I\u2019ll make those distinctions explicit and keep the remaining work focused on observed failures, reproducible blockers, and the live end-to-end run. Correct safety refusals also need to be distinguished from crashes."
+    },
+    {
+      "id": "R11497",
+      "source": "R",
+      "line": 11497,
+      "timestamp": "2026-10-02T17:58:02.590Z",
+      "kind": "historical root-agent report",
+      "excerpt": "A concrete blocker just reproduced through the compiled history roles: a complete readiness check exceeds its five-second deadline because it repeatedly validates the same signed configuration. We\u2019ll remove that repeated work while continuing to check configuration changes and fresh chain evidence. The deadline and safety checks will stay in place."
+    },
+    {
+      "id": "R11691",
+      "source": "R",
+      "line": 11691,
+      "timestamp": "2026-10-02T18:11:17.322Z",
+      "kind": "historical root-agent report",
+      "excerpt": "There is another distinction I should make explicit: several current review findings are bugs in the **new recovery code we are adding**, rather than failures observed in the original node. Fixing them is necessary before shipping that code, but they should not be presented as evidence of existing node instability.\n\nFor example, the bounded-store stop has been reproduced with a capacity fixture; we have not observed it after a long live run. I\u2019m requiring that provenance in the reports so we can judge the program\u2019s value honestly."
+    },
+    {
+      "id": "R12176",
+      "source": "R",
+      "line": 12176,
+      "timestamp": "2026-10-02T18:42:29.649Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The architecture check found a concrete regression in the proposed changes: the ordinary devnet uses PostgreSQL and a faster commit cadence, while the new numerical profile requires JSON and limits fresh signing to roughly once every 12 minutes. The draft also refused fresh signing when that profile was absent.\n\nI\u2019m correcting that before integration. Ordinary node operation will retain its existing validation and signing path; the conservative profile will require explicit selection. This is a defect in our proposed implementation, not a failure observed in the original node."
+    },
+    {
+      "id": "R12714",
+      "source": "R",
+      "line": 12714,
+      "timestamp": "2026-10-02T19:28:05.249Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The main live defect is specific: the parent generated a `node-commit:` lease owner, but the worker accepted only `commit:`. That rejected every commitment attempt; the fix was taken first and has a regression test through the actual worker boundary.\n\nI also caused a verification conflict by building a package while its tests used a temporary compiled fixture. The build removed that fixture. I\u2019ve finished the build and restarted the tests sequentially; that failed run is recorded as a test orchestration error.\n"
+    },
+    {
+      "id": "R12853",
+      "source": "R",
+      "line": 12853,
+      "timestamp": "2026-10-02T19:33:20.642Z",
+      "kind": "historical root-agent report",
+      "excerpt": "I\u2019ve now checked all 31 original tasks. Two refer to the same observed devnet stall, seven have reproductions against existing code, and twenty are preventive safeguards, policy, review or test coverage. The remaining two are live acceptance tasks whose evidence is still outstanding.\n\nSo this is a broader reliability program, not 31 demonstrated crashes. The observed stall was addressed first, but recent work has spent substantial time correcting the new recovery machinery. I\u2019m keeping that work to the corrections needed to ship safely, then prioritizing the actual node recovery run.\n"
+    },
+    {
+      "id": "R13083",
+      "source": "R",
+      "line": 13083,
+      "timestamp": "2026-10-02T19:45:49.429Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The current fixes are based on concrete failures: an independent review caught a dependency merge that would have dropped required tooling packages, and service tests reproduced the recorder\u2019s incorrect refusal handling.\n\nBoth are defects in the proposed changes. They\u2019re being corrected before deployment; they don\u2019t add to the count of observed failures in the original node. The full live acceptance run remains outstanding.\n"
+    },
+    {
+      "id": "R13252",
+      "source": "R",
+      "line": 13252,
+      "timestamp": "2026-10-02T20:00:46.404Z",
+      "kind": "historical root-agent report",
+      "excerpt": "One useful recovery result is now demonstrated: the supervisor cleared a persisted refusal only after a fresh, complete native-history proof, within the unchanged five-second deadline.\n\nThe suspected early-startup FD3 problem was not reproduced, so we\u2019re leaving that proposed change out. That\u2019s the evidence threshold I\u2019m applying: fix demonstrated failures and required safety violations without expanding the work from inspection alone.\n"
+    },
+    {
+      "id": "R13506",
+      "source": "R",
+      "line": 13506,
+      "timestamp": "2026-10-02T20:19:38.153Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The broader tests showed that changing a shared test fixture\u2019s recovery depth broke four unrelated cases. We\u2019re replacing that approach with a smaller correction: keep the original setup and make the two walk-size expectations use its configured recovery depth.\n\nProduction behavior remains unchanged. This avoids turning a fixture mismatch into a wider change.\n"
+    },
+    {
+      "id": "R13718",
+      "source": "R",
+      "line": 13718,
+      "timestamp": "2026-10-02T20:30:39.774Z",
+      "kind": "historical root-agent report",
+      "excerpt": "A live test of the optional timing profile exceeded its ten-second limit at the proposed larger workload. The code correctly refused admission, but that means the profile cannot be claimed to meet its target. I\u2019m keeping it disabled for the ordinary devnet run and focusing on the recovery work needed for that run."
+    },
+    {
+      "id": "R14839",
+      "source": "R",
+      "line": 14839,
+      "timestamp": "2026-10-02T21:35:50.243Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The store regression is reproduced: ordinary PostgreSQL writes fail at row 513 and roll back the transaction; the equivalent JSON writes succeed. The agent is also testing the header-writing path used by the committee. If confirmed there, I\u2019ll remove the unintended ordinary-mode limit while preserving the checks for an explicitly adopted retirement profile."
+    },
+    {
+      "id": "O139",
+      "source": "O",
+      "line": 139,
+      "timestamp": "2026-10-02T06:10:24.062Z",
+      "kind": "historical root-agent report",
+      "excerpt": "One recovered DA failure is concrete: the deployed history script contains a 65-byte integer constant that the off-chain program-material builder refuses. Durable retention of live L2 `script_ref` material also never started. I\u2019m assigning those two tasks to separate GPT Sol 6.1 workers, using high reasoning for execution parity, while leaving lifecycle recovery to its active coordinator.\n"
+    },
+    {
+      "id": "O423",
+      "source": "O",
+      "line": 423,
+      "timestamp": "2026-10-02T06:19:29.699Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The watcher\u2019s native chain-sync failure has an upstream fix: its pinned decoder limits nested CBOR to 256 levels. The worker is updating to the first release containing that fix and checking the required Go build changes.\n\nFocused tests now catch the forced-redeemer intake failure, and the exact-reason worker has passing writer and watcher checks. Both changes still need independent review and verification in the combined tree.\n"
+    },
+    {
+      "id": "O803",
+      "source": "O",
+      "line": 803,
+      "timestamp": "2026-10-02T06:35:52.757Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Independent review has confirmed two gaps that must be closed before accepting the deep-data change: chunked integer traversal and builtin failure judgments. Both fixes now have dedicated workers and concrete regression cases.\n\nThe first combined validation run passed 129 tests and exposed one test assertion that missed a wrapped codec error. I\u2019ve corrected the assertion to check the underlying canonicality refusal and am rerunning that file.\n"
+    },
+    {
+      "id": "O1798",
+      "source": "O",
+      "line": 1798,
+      "timestamp": "2026-10-02T07:28:25.828Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The first 12 artifact checks finished: ten passed, and two report expected fixture drift from the merged changes. The combined node build also passed after increasing its declaration-worker heap.\n\nI found another integration blocker: the recovered F1 branch pins an Aiken fork commit that GitHub cannot resolve. I\u2019m locating its preserved source so the final build uses the intended dependency.\n"
+    },
+    {
+      "id": "O1896",
+      "source": "O",
+      "line": 1896,
+      "timestamp": "2026-10-02T07:34:10.783Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The Aiken fork source is preserved. I verified the cached archive against all 17 files in its Git commit, so testing can proceed with the intended pin. Clean external builds will still require publication of that fork.\n\nI\u2019m using the repository\u2019s artifact-regeneration and Aiken-build workflows for the combined checks. The deferred follow-ups are published as issues [#730](https://github.com/Anastasia-Labs/midgard/issues/730) and [#731](https://github.com/Anastasia-Labs/midgard/issues/731).\n"
+    },
+    {
+      "id": "O2492",
+      "source": "O",
+      "line": 2492,
+      "timestamp": "2026-10-02T16:23:09.163Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Database acceptance passed all 147 tests, including retained script ownership, quota accounting, and the reconciled migrations. The thread-value and terminal-padding emulator cases also passed.\n\nThe combined validation-run cases stopped at reference-script publication: 16,264 bytes exceeds the required 15,872-byte target. That is now the priority for the size work. Full lint also found one guard conflict with the new scalar cost-model import."
+    },
+    {
+      "id": "O2618",
+      "source": "O",
+      "line": 2618,
+      "timestamp": "2026-10-02T16:28:13.953Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The builtin lifecycle positives passed, but two budget-refusal cases failed in their fixture before reaching the validator. I corrected the fixture to change the terminal state\u2019s budget and am rerunning it with a tag-21 case.\n\nThe reviewer is also checking whether a large-message tag-21 failure exceeds the resolver\u2019s memory limit. That remains under verification."
+    },
+    {
+      "id": "O2809",
+      "source": "O",
+      "line": 2809,
+      "timestamp": "2026-10-02T16:36:10.670Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The direct-step worker now has 27 passing emulator cases across all 13 non-CEK phases, plus the signer-guard regression. That patch is integrated into the candidate and will receive a fresh review.\n\nIt implements a staged, multiple-transaction route. The recovered program\u2019s single-transaction G8 requirement remains unfinished, so I\u2019m keeping that completion claim separate."
+    },
+    {
+      "id": "O2963",
+      "source": "O",
+      "line": 2963,
+      "timestamp": "2026-10-02T16:48:03.340Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Review confirmed the signatures successor ambiguity. The new direct path will exclude that phase while a separate worker addresses deterministic ordering. The existing interactive path is also being checked for the same assumption.\n\nThe publication-size matcher passed independent review and is integrated. Its combined contract and lifecycle checks are next."
+    },
+    {
+      "id": "O3034",
+      "source": "O",
+      "line": 3034,
+      "timestamp": "2026-10-02T16:52:08.822Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The full Aiken run completed: 5,102 of 5,122 tests passed. The 20 failures split into six transition-ABI cases, twelve proof-frontier cases, and two timing-boundary cases.\n\nI\u2019m separating generated-fixture drift from code defects and checking whether the timing cases depend on the selected profile. The full-suite gate is still red."
+    },
+    {
+      "id": "O3429",
+      "source": "O",
+      "line": 3429,
+      "timestamp": "2026-10-02T17:14:07.871Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The signature measurements confirm that the first proposed fix is unsuitable for production: the largest supported case would retain over 3 GB of repeated witness data. It remains isolated, and the candidate\u2019s direct-proof path refuses that phase. A deterministic approach with substantially less retained data is still required.\n\nThis reinforces the estimate: several hours to validate the current batch, but multiple days for the full launch work."
+    },
+    {
+      "id": "O3612",
+      "source": "O",
+      "line": 3612,
+      "timestamp": "2026-10-02T17:22:12.204Z",
+      "kind": "historical root-agent report",
+      "excerpt": "All 94 regenerated ABI fixtures now pass the independent Aiken checks. The earlier six failures came from generating fixtures against an older SDK build.\n\nThe complete Aiken suite is now running against a frozen snapshot of the integrated candidate. Workspace lint and the validation typecheck have also passed."
+    },
+    {
+      "id": "O3968",
+      "source": "O",
+      "line": 3968,
+      "timestamp": "2026-10-02T17:39:30.251Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The full Aiken suite passed all 5,145 tests, and the full SDK suite passed all 876 tests.\n\nThe broader emulator run found a launch blocker: initialization cannot publish the large-constructor ledger-output validator because its transaction exceeds Cardano\u2019s size limit. That caused 21 failures before the scenarios could run. I\u2019m prioritizing this fit failure before further acceptance testing."
+    },
+    {
+      "id": "O4930",
+      "source": "O",
+      "line": 4930,
+      "timestamp": "2026-10-02T18:48:08.361Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The revised initialization fix now passes the worker\u2019s full publication and lifecycle checks: 15,731 bytes for the constructor, all 34 publications within the required margins, and 12 paired lifecycle tests passing. Fresh review is still running before final acceptance.\n\nI also found an updated owner ruling in the recovered program: one redeployment must wait for T405 and its prerequisites. That makes the full launch scope larger than this repair batch, so I can\u2019t give a firm launch ETA.\n"
+    },
+    {
+      "id": "O5319",
+      "source": "O",
+      "line": 5319,
+      "timestamp": "2026-10-02T19:23:19.601Z",
+      "kind": "historical root-agent report",
+      "excerpt": "**I will first finish the observed reliability and correctness blockers, then complete the remaining fault-proof work, then run the public-preprod launch gates. Independent work will run in parallel; shared ABI changes, integration, and deployment will be serialized.**\n\nMy earlier seven-package summary was incomplete: it omitted the original pooled DA bond tasks and the distinct **#683 slashing-attribution** and **#695 foreign-block verification** obligations.\n\nI recovered **154 numbered program tasks**, plus 17 O12 subtask names that refine those tasks. Many are already implemented or superseded; this is the full program, not 154 remaining tasks. The binding owner ruling is **one redeploy, waiting for T405 and its T263/T314 prerequisites**.\n\nThe [complete task-by-task GitHub mapping](/tmp/midgard-da-20261002/evidence/program-task-issue-mapping.md) contains a separate row for every numbered task. Below is the execution order, with related tasks grouped for readability. **\u201cRelated\u201d issues are existing umbrella issues\u2014not invented dedicated tickets for the internal `Txxx` IDs.**\n\n**1. First wave: observed failures and immediate correctness obligations \u2014 parallel**\n\n| Work | Program tasks | GitHub issues | Execution |\n|---|---|---|---|\n| Finish runtime/startup/readiness failures, rollback recovery and unattended devnet operation | Reliability program | [#696](https://github.com/Anastasia-Labs/midgard/issues/696), detailed children below | Separate reliability chat continues; I coordinate and consume its evidence |\n| Correct forced-native handoff and first-fault ordering; prove the emitted trace agrees with the machine | T123, T237, T290, T291 | Concrete divergence [#633](https://github.com/Anastasia-Labs/midgard/issues/633); verdict format [#640](https://github.com/Anastasia-Labs/midgard/issues/640); related [#635](https://github.com/Anastasia-Labs/midgard/issues/635) | First author lane |\n| Integrate raw retained evidence transport, then supply autonomous publication/reference resolution | T123, T124, T223, T290 | No dedicated issue; related [#486](https://github.com/Anastasia-Labs/midgard/issues/486), [#497](https://github.com/Anastasia-Labs/midgard/issues/497), "
+    },
+    {
+      "id": "O5502",
+      "source": "O",
+      "line": 5502,
+      "timestamp": "2026-10-02T22:23:13.420Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The constructor checks passed in my independent run: all 12 paired lifecycles and the publication test covering 34 authenticated references passed. The node emulator suite is still running.\n\nCheckpoint reproducibility also needs attention: the pinned MPF dependency commit is not available on GitHub. Its source has already passed independent review and tests. I\u2019ll publish that exact reviewed dependency commit before opening a checkpoint PR."
+    },
+    {
+      "id": "O6553",
+      "source": "O",
+      "line": 6553,
+      "timestamp": "2026-10-02T23:23:02.840Z",
+      "kind": "historical root-agent report",
+      "excerpt": "CI on the pushed checkpoint has several failures. I\u2019m using the repository\u2019s `debugging-ci-failures` skill to inspect the first failing steps and distinguish those failures from checks that never ran.\n\nIndependent review also found that identical field chunks can select the same publication twice, causing certification to refuse. I\u2019ll verify that trace and address the selection behavior if confirmed."
+    },
+    {
+      "id": "O6885",
+      "source": "O",
+      "line": 6885,
+      "timestamp": "2026-10-02T23:41:01.237Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The combined integration passed all 5,165 Aiken tests before the next patch wave. Execution-ledger checks have now exposed cost drift that needs to be verified and recorded alongside the corresponding changes.\n\nThe observed DA amplification fix reduces the observer payload from 79 MB to 3.24 MB under the existing 64 MiB limit. Its isolated tests pass, but the 20 KB reconstruction case still times out, so a worker is investigating that remaining performance failure. Lower-priority findings will be tracked as issues."
+    },
+    {
+      "id": "O7253",
+      "source": "O",
+      "line": 7253,
+      "timestamp": "2026-10-03T00:06:00.762Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Both deferred issues are published as [#738](https://github.com/Anastasia-Labs/midgard/issues/738) and [#739](https://github.com/Anastasia-Labs/midgard/issues/739).\n\nThe broad test run found another launch blocker: five history and recovery tests fail because the transition-trace final script exceeds the signed publication limit. I\u2019m assigning that failure a dedicated worker while the other reviewed fixes proceed. The transport timeout investigation has also finished: an exact byte comparison fixes the test bottleneck, and all three transport cases pass."
+    },
+    {
+      "id": "O7695",
+      "source": "O",
+      "line": 7695,
+      "timestamp": "2026-10-03T00:24:12.197Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The broad run is complete. It found 103 failing node tests; most share the same oversized-script publication failure, so one repair should unblock many of them. The remaining failures include two stale test expectations and a dependency mismatch in the reference-script sweep fixture.\n\nThe publication worker has measured a smaller script with the original datum, cancellation and ABI paths preserved. It still needs adversarial review and real signed-transaction checks. I\u2019m running the integrated first-fault, slashing and repeated-chunk tests in parallel."
+    },
+    {
+      "id": "O7900",
+      "source": "O",
+      "line": 7900,
+      "timestamp": "2026-10-03T00:38:21.908Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The largest observed blocker now has a tested fix: the failing reference-script publication fell from 16,129 to 12,043 bytes, and all five previously failing recovery cases pass. The separate Lucid dependency fix also turns five failures into five passes. I\u2019m reviewing and integrating these changes before the next checkpoint; the full canonical deployment inventory identified five additional oversized scripts to address in parallel."
+    },
+    {
+      "id": "O8526",
+      "source": "O",
+      "line": 8526,
+      "timestamp": "2026-10-03T01:00:47.318Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The reviews caught a new ordering problem in the large-output trace change: a later malformed witness may stop replay before it proves the earlier oversized-output fault. I\u2019ve held that patch and sent the finding back for a causal regression test and correction. The remaining size repairs are progressing, and the slashing change has passed both source reviews."
+    },
+    {
+      "id": "O8722",
+      "source": "O",
+      "line": 8722,
+      "timestamp": "2026-10-03T01:12:39.005Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The integrated slashing change passed all 83 focused tests, including actual transactions signed only by a third-party caller and rewards paid to the authenticated prover. I filed the separate legacy journal-helper problem as [#740](https://github.com/Anastasia-Labs/midgard/issues/740). The full canonical deployment check also caught two scripts made larger by the proposed shared decoder, so that change is being narrowed before integration."
+    },
+    {
+      "id": "O8856",
+      "source": "O",
+      "line": 8856,
+      "timestamp": "2026-10-03T02:06:16.616Z",
+      "kind": "historical root-agent report",
+      "excerpt": "All six originally oversized roles now have fixes that fit in isolated signed-publication checks. Two output-role fixes were checked across all 529 constructed role publications and introduced no new size failures. I\u2019m finishing review of the revised patches and collecting the corrected trace-producer evidence before integrating them and regenerating artifacts."
+    },
+    {
+      "id": "O9613",
+      "source": "O",
+      "line": 9613,
+      "timestamp": "2026-10-03T02:44:46.313Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The cold-observation boundary failure is confirmed: a supported field produces a 16,554-byte transaction against the 16,384-byte limit. Review also confirmed that production manifests omit the canonical route\u2019s scripts. Two workers are fixing the delivery fallback and deployment bindings in parallel. I\u2019ve committed the reviewed slashing changes as a checkpoint; the canonical route remains pending those fixes and re-testing.\n"
+    },
+    {
+      "id": "O9637",
+      "source": "O",
+      "line": 9637,
+      "timestamp": "2026-10-03T02:45:42.278Z",
+      "kind": "historical user instruction",
+      "excerpt": "Treat #740 as removal of obsolete orchestration, not a request to maintain or repair a legacy adapter. Verify that the shared recovery path covers `fieldPreimageLengthMismatch` in both directions, descendant removals, already-slashed cleanup and restart recovery. Then delete the redundant family-specific runner, central-journal adapter, obsolete exports and tests. Retain the evidence checks, transaction builders and on-chain validators used by shared recovery. Follow AGENTS.md: replace obsolete undeployed APIs in place, with no legacy compatibility path. Commit, push and close #740 once the cleanup and verification are complete.  \n"
+    },
+    {
+      "id": "O10214",
+      "source": "O",
+      "line": 10214,
+      "timestamp": "2026-10-03T03:25:20.725Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The candidate checkout passes all 113 selected #740 tests and the fault-proof typecheck. Review has identified a gap in that coverage: the new reconciliation rule may reject a legal removal when two or more descendants remain. I\u2019m testing that case in both directions and will resolve it before committing or closing the issue.\n"
+    },
+    {
+      "id": "O10321",
+      "source": "O",
+      "line": 10321,
+      "timestamp": "2026-10-03T03:29:39.313Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The two reviews confirm that the shared path still needs the multi-descendant fix. They also found that terminal observation can miscount legitimate rewards when removed descendants have different operators; that case is being added to the verification. In parallel, the three execution validators pass all 80 selected Aiken tests and are ready for a local source checkpoint.\n"
+    },
+    {
+      "id": "O10758",
+      "source": "O",
+      "line": 10758,
+      "timestamp": "2026-10-03T03:52:23.688Z",
+      "kind": "historical root-agent report",
+      "excerpt": "Both independent reviews cleared the fee correction, and I committed it as `d786e15ff`. The execution-validator checkpoint is `7f768f126`; both are local pending the next push.\n\nFor #740, both proof directions now complete three removals with journal reopen after each. The distinct-operator reward fix passes its raw-L1 checks. A genuine operator-rotation test needs DA-attestation setup this fixture does not provide, so that dynamic check remains an explicit gap.\n"
+    },
+    {
+      "id": "O10950",
+      "source": "O",
+      "line": 10950,
+      "timestamp": "2026-10-03T04:04:55.372Z",
+      "kind": "historical root-agent report",
+      "excerpt": "The clean #740 delivery branch passes all 116 focused tests against the canonical branch, and its full selected preflight is running.\n\nI also caught an error in a build receipt: the command only asserted the compiler version. I\u2019m correcting that receipt and running the actual deployment build before testing the composed canonical changes.\n"
+    }
+  ],
+  "limitations": [
+    "Both primary threads are active. Hashes identify captured complete-line prefixes, not their eventual final contents.",
+    "Thread tool exposed only the latest 500 items in each active turn; local root JSONL files supplied earlier plaintext history.",
+    "Transcript test counts are historical worker/root reports, not tests rerun for this report.",
+    "No contribution success-rate or token/time savings measurement was performed.",
+    "Existing repository files inspected are this checkout; work described in candidate trees may differ."
+  ]
+}

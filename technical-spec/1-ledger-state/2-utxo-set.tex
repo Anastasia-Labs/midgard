@@ -34,7 +34,22 @@ An output is a tuple describing a bundle of tokens, data, and a script that have
 \end{equation*}
 
 Within the context of a Midgard block, the utxo set that we are interested in consists of the outputs created by deposits and transactions but not yet spent by transactions and withdrawals, considering all the deposits, transactions, and withdrawals of this block and all its predecessors.
-This is the utxo set that we transform into an MPT and place into the block body's \code{utxo} field.
+
+The logical set and the final UTxO members retained by the DA layer contain the
+exact full output bytes. The authenticated ledger root uses a compact
+projection:
+\begin{equation*}
+  \T{CommittedUtxoSet}
+    \coloneq \T{Map(OutputRef, LedgerOutputCommitmentV1)}.
+\end{equation*}
+The canonical \code{LedgerOutputCommitmentV1} descriptor binds the complete
+output through its length and bounded-item commitment. It also commits to the
+independently folded address, lovelace, asset frontier, Cardano Value size,
+datum and script-context summaries, and reference-script language, hash,
+length, and item commitment. These are the exact values inserted into the MPT
+whose root is \code{utxos\_root}. Full output bytes remain in DA and durable
+ledger persistence so any node, committee member, or challenger can reproduce
+the descriptor. An undecodable output or a descriptor mismatch is invalid.
 
 
 \notebox{Midgard L2 outputs may have no datum or an inline datum. Datum hashes are not supported for L2 outputs.}

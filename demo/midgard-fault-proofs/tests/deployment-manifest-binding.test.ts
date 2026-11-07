@@ -1,0 +1,440 @@
+import { createHash } from "node:crypto";
+
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentFraudProofCatalogueCategories,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Isolate propagation across the binding boundary. Manifest verification and
+// contract compilation have their own suites; the document parsers, release
+// policy derivation, and removal economics reader here are real.
+const dependencies = vi.hoisted(() => ({
+  verify: vi.fn<(value: unknown) => Record<string, unknown>>(),
+  resolve: vi.fn(),
+}));
+vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({
+  ...(await load<
+    typeof import("@al-ft/midgard-core/deployment-manifest-identity")
+  >()),
+  verifyFinalizedDeploymentManifest: dependencies.verify,
+}));
+vi.mock("../src/runtime.js", async (load) => ({
+  ...(await load<typeof import("../src/runtime.js")>()),
+  resolveFaultProofDeploymentContracts: dependencies.resolve,
+}));
+
+import {
+  parseContractDeploymentInfo,
+  parseContractDeploymentReferenceScriptAuthPolicyId,
+} from "../src/inspect-contracts.js";
+import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.js";
+import {
+  bindFraudProofTerminalDeployment,
+  bindFraudProofWorkflowDeployment,
+} from "../src/workflow/deployment-manifest-binding.js";
+import {
+  RELEASE_L1_FINALITY_POLICY,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+} from "../src/workflow/release-finality-policy.js";
+
+const blueprintJson = "{}";
+const script = {
+  type: "Native" as const,
+  script: `8200581c${"55".repeat(28)}`,
+};
+const scriptHash = validatorToScriptHash(script);
+const fixture = () => {
+  const catalogue = {
+    root: "66".repeat(32),
+    categories: Object.fromEntries(
+      deploymentFraudProofCatalogueCategories().map((category) => [
+        category,
+        {
+          categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category],
+          scriptHash,
+          membershipProofCbor: "80",
+        },
+      ]),
+    ),
+  };
+  const contracts = Object.fromEntries(
+    [
+      "stateQueueSpend",
+      "stateQueueMint",
+      "fraudProofSpend",
+      "fraudProofMint",
+      "fraudProofCatalogueSpend",
+      "fraudProofCatalogueMint",
+      "activeOperatorsSpend",
+      "activeOperatorsMint",
+      "retiredOperatorsSpend",
+      "retiredOperatorsMint",
+      "schedulerSpend",
+      "fieldPreimageCertificateMint",
+    ].map((name, index) => [
+      name,
+      {
+        scriptHash,
+        contract: { type: script.type, cborHex: script.script },
+        refScriptUTxO: { txHash: "77".repeat(32), outputIndex: index },
+        ...(name === "fraudProofCatalogueMint"
+          ? { fraudProofCatalogue: catalogue }
+          : {}),
+      },
+    ]),
+  );
+  const manifest = {
+    manifestId: "88".repeat(32),
+    network: "Preprod",
+    artifacts: {
+      blueprintHash: createHash("sha256").update(blueprintJson).digest("hex"),
+    },
+    l1Finality: { ...DEPLOYMENT_MANIFEST_L1_FINALITY },
+    economics: {
+      ...DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    },
+    cardanoProtocolParameters: { snapshot: { minFeeA: "44" } },
+    contracts,
+    referenceScriptAuthPolicy: {
+      policyId: scriptHash,
+      nativeScript: { type: "Native", cborHex: script.script },
+      tokenNames: { ...DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES },
+    },
+  };
+  const deploymentInfo = structuredClone({
+    contracts,
+    referenceScriptAuthPolicy: manifest.referenceScriptAuthPolicy,
+  });
+  const resolved = {
+    category: catalogue.categories.doubleSpend,
+    fraudProofCataloguePolicyId: scriptHash,
+    contracts: {
+      doubleSpend: { steps: [], firstStep: { spendingScriptHash: scriptHash } },
+      computationThread: { policyId: scriptHash },
+    },
+  };
+  dependencies.verify.mockReturnValue(manifest);
+  dependencies.resolve.mockResolvedValue(resolved);
+  return {
+    manifest,
+    deploymentInfo,
+    resolved,
+    bind: (document: unknown = deploymentInfo) =>
+      bindFraudProofWorkflowDeployment({
+        manifest,
+        blueprintJson,
+        deploymentInfo: document,
+        category: "doubleSpend",
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+        stepDatumSchemas: [],
+      }),
+  };
+};
+
+beforeEach(() => vi.resetAllMocks());
+
+describe("manifest-bound builder document", () => {
+  it("supplies the removal reader with verified economics when contract metadata omits it", async () => {
+    const current = fixture();
+    expect(() =>
+      fraudSlashEconomicsFromDeploymentManifest(current.deploymentInfo),
+    ).toThrow("economics must be an object");
+    const binding = await current.bind();
+    expect(dependencies.verify).toHaveBeenCalledExactlyOnceWith(
+      current.manifest,
+    );
+    expect(binding.deploymentInfo).toEqual(current.manifest);
+    expect(binding.deploymentInfo).not.toBe(current.manifest);
+    expect(dependencies.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ deploymentInfo: binding.deploymentInfo }),
+    );
+    expect(parseContractDeploymentInfo(binding.deploymentInfo)).toEqual(
+      binding.contractEntries,
+    );
+    expect(
+      parseContractDeploymentReferenceScriptAuthPolicyId(
+        binding.deploymentInfo,
+        "reference-script-auth minting",
+      ),
+    ).toBe(scriptHash);
+    expect(
+      fraudSlashEconomicsFromDeploymentManifest(binding.deploymentInfo),
+    ).toEqual({
+      profile: "bounded-acceptance-v1",
+      requiredBondLovelace: 900_000_000n,
+      slashingPenaltyLovelace: 500_000_000n,
+      inactivitySlashingPenaltyLovelace: 100_000_000n,
+      fraudProverRewardLovelace: 400_000_000n,
+      proverCollateralFloorLovelace: 5_000_000n,
+    });
+    await expect(
+      current.bind({
+        ...current.deploymentInfo,
+        economics: current.manifest.economics,
+      }),
+    ).resolves.toMatchObject({
+      deploymentFingerprint: current.manifest.manifestId,
+    });
+  });
+
+  it("rejects conflicting or malformed caller economics and cannot fill absent verified economics from it", async () => {
+    const current = fixture();
+    await expect(
+      current.bind({
+        ...current.deploymentInfo,
+        economics:
+          DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["public-preprod-launch-v1"],
+      }),
+    ).rejects.toThrow("changed the finalized manifest economics");
+    await expect(
+      current.bind({ ...current.deploymentInfo, economics: undefined }),
+    ).rejects.toThrow("economics must be an object");
+    const { economics: _economics, ...missingEconomics } = current.manifest;
+    dependencies.verify.mockReturnValue(missingEconomics);
+    await expect(
+      current.bind({
+        ...current.deploymentInfo,
+        economics: current.manifest.economics,
+      }),
+    ).rejects.toThrow("economics must be an object");
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+  });
+
+  it("preserves contract, reference-output, and reference-authority mismatch refusal", async () => {
+    const current = fixture();
+    const substituted = structuredClone(current.deploymentInfo);
+    substituted.contracts.stateQueueSpend!.refScriptUTxO.outputIndex += 1;
+    await expect(current.bind(substituted)).rejects.toThrow(
+      "changed finalized manifest contract stateQueueSpend",
+    );
+    const foreignScript = {
+      type: "Native" as const,
+      script: `8200581c${"11".repeat(28)}`,
+    };
+    await expect(
+      current.bind({
+        ...current.deploymentInfo,
+        referenceScriptAuthPolicy: {
+          ...current.deploymentInfo.referenceScriptAuthPolicy,
+          policyId: validatorToScriptHash(foreignScript),
+          nativeScript: {
+            type: foreignScript.type,
+            cborHex: foreignScript.script,
+          },
+        },
+      }),
+    ).rejects.toThrow("changed the finalized reference-script authority");
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+  });
+
+  it("detaches and freezes the verified builder document before asynchronous compilation", async () => {
+    const current = fixture();
+    let finish!: (value: unknown) => void;
+    dependencies.resolve.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const running = current.bind();
+    current.manifest.economics.requiredBondLovelace = 1 as 900000000;
+    current.manifest.contracts.stateQueueSpend!.refScriptUTxO.outputIndex = 999;
+    current.deploymentInfo.referenceScriptAuthPolicy.policyId = "ff".repeat(28);
+    finish(current.resolved);
+    const binding = await running;
+    const document = binding.deploymentInfo as typeof current.manifest;
+    expect(Object.isFrozen(document)).toBe(true);
+    expect(Object.isFrozen(document.economics)).toBe(true);
+    expect(
+      Object.isFrozen(document.contracts.stateQueueSpend!.refScriptUTxO),
+    ).toBe(true);
+    expect(() =>
+      Object.assign(document.economics, { requiredBondLovelace: 1 }),
+    ).toThrow();
+    expect(
+      fraudSlashEconomicsFromDeploymentManifest(document).requiredBondLovelace,
+    ).toBe(900_000_000n);
+    expect(document.contracts.stateQueueSpend!.refScriptUTxO.outputIndex).toBe(
+      0,
+    );
+    expect(binding.releaseEconomics.policy.requiredBondLovelace).toBe(
+      "900000000",
+    );
+  });
+
+  it("binding rejects a supplied blueprint that differs from the verified manifest", async () => {
+    const current = fixture();
+    await expect(
+      bindFraudProofWorkflowDeployment({
+        manifest: current.manifest,
+        blueprintJson: '{ "different": true }',
+        deploymentInfo: current.deploymentInfo,
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+        category: "doubleSpend",
+        stepDatumSchemas: [],
+      }),
+    ).rejects.toThrow("blueprint SHA-256 does not match");
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+  });
+
+  it("refuses an execution-dispute deployment or workflow cleanly under the 900 s profile, which excludes it", async () => {
+    expect(SELECTED_DEPLOYMENT_PROFILE.excluded_fraud_proof_categories).toEqual(
+      ["validationTraceDispute"],
+    );
+    const current = fixture();
+    // Startup: a deployment document that installs 00000006 is not this
+    // profile's deployment.
+    const withDispute = structuredClone(current.deploymentInfo);
+    const catalogue = withDispute.contracts.fraudProofCatalogueMint!
+      .fraudProofCatalogue as { categories: Record<string, unknown> };
+    catalogue.categories.validationTraceDispute = {
+      categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute,
+      scriptHash,
+      membershipProofCbor: "80",
+    };
+    await expect(current.bind(withDispute)).rejects.toThrow(
+      "fraudProofCatalogue.categories contains unsupported category validationTraceDispute",
+    );
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+
+    // Workflow: the profile's deployment has no 00000006 identity, so a
+    // workflow for it binds nothing it could fund or submit.
+    dependencies.resolve.mockResolvedValue({
+      ...current.resolved,
+      contracts: {
+        ...current.resolved.contracts,
+        validationTraceDispute: {
+          steps: [],
+          firstStep: { spendingScriptHash: scriptHash },
+        },
+      },
+    });
+    await expect(
+      bindFraudProofWorkflowDeployment({
+        manifest: current.manifest,
+        blueprintJson,
+        deploymentInfo: current.deploymentInfo,
+        category: "validationTraceDispute",
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+        stepDatumSchemas: [],
+      }),
+    ).rejects.toThrow(
+      "validationTraceDispute deployment catalogue identity changed",
+    );
+
+    // The profile's own families still bind.
+    dependencies.resolve.mockResolvedValue(current.resolved);
+    await expect(current.bind()).resolves.toBeDefined();
+  });
+
+  it("stops before parsing builder metadata when manifest verification fails", async () => {
+    const current = fixture();
+    dependencies.verify.mockImplementation(() => {
+      throw new Error("manifest identity mismatch");
+    });
+    await expect(current.bind()).rejects.toThrow("manifest identity mismatch");
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+  });
+});
+
+it("binds completed observation metadata without admitting an executable thread decoder", async () => {
+  const current = fixture();
+  dependencies.resolve.mockResolvedValue({
+    ...current.resolved,
+    contracts: {
+      ...current.resolved.contracts,
+      doubleSpend: {
+        ...current.resolved.contracts.doubleSpend,
+        steps: [{ spendingScriptAddress: "published-step-address" }],
+      },
+    },
+  });
+  await expect(current.bind()).rejects.toThrow("expected 0 computation steps");
+  const terminal = await bindFraudProofTerminalDeployment({
+    manifest: current.manifest,
+    blueprintJson,
+    deploymentInfo: current.deploymentInfo,
+    category: "doubleSpend",
+    headerHash: "99".repeat(28),
+    proverCredential: "aa".repeat(28),
+  });
+  expect(terminal.definition.computationThread.steps).toEqual([
+    { role: "computation_thread_step_01", address: "published-step-address" },
+  ]);
+  expect(Object.keys(terminal).sort()).toEqual([
+    "definition",
+    "deploymentFingerprint",
+    "releaseEconomics",
+    "releaseFinality",
+  ]);
+});
+
+// Workflow journals record the release identity and recovery compares it
+// whole against the watcher's verified deployment authority, so a manifest
+// field outside the release policy must never reach it.
+describe("release finality identity", () => {
+  it("binds every workflow to the rollback fields alone, never the manifest's commit-event depth", async () => {
+    const current = fixture();
+    expect(current.manifest.l1Finality).toHaveProperty("commitEventDepth");
+    const bindings = [
+      await current.bind(),
+      await bindFraudProofTerminalDeployment({
+        manifest: current.manifest,
+        blueprintJson,
+        deploymentInfo: current.deploymentInfo,
+        category: "doubleSpend",
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+      }),
+    ];
+    for (const { releaseFinality } of bindings) {
+      expect(releaseFinality.policy).toStrictEqual(RELEASE_L1_FINALITY_POLICY);
+      expect(
+        validateVerifiedFraudProofReleaseFinalityPolicy(releaseFinality),
+      ).toStrictEqual(releaseFinality);
+    }
+  });
+
+  it("canonicalizes a release identity to the digest-bound fields, dropping a carried commit-event depth", () => {
+    const current = fixture();
+    const releaseFinality = {
+      schemaVersion: "midgard-fraud-proof-release-finality-policy-v1" as const,
+      deploymentIdentityDigest: current.manifest.manifestId,
+      blueprintHash: current.manifest.artifacts.blueprintHash,
+      policyDigest: createHash("sha256")
+        .update(
+          JSON.stringify({
+            automaticRecoveryMaxDepth:
+              RELEASE_L1_FINALITY_POLICY.automaticRecoveryMaxDepth,
+            confirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
+            deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY.deepRollbackPolicy,
+          }),
+        )
+        .digest("hex"),
+      policy: RELEASE_L1_FINALITY_POLICY,
+    };
+    expect(
+      validateVerifiedFraudProofReleaseFinalityPolicy({
+        ...releaseFinality,
+        policy: { ...current.manifest.l1Finality },
+      }),
+    ).toStrictEqual(releaseFinality);
+    expect(() =>
+      validateVerifiedFraudProofReleaseFinalityPolicy({
+        ...releaseFinality,
+        policyDigest: "00".repeat(32),
+      }),
+    ).toThrow("release finality policy digest mismatch");
+  });
+});

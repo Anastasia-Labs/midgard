@@ -1,0 +1,4 @@
+interface:
+  display_name: "Splitting Oversized Modules"
+  short_description: "Split big modules as proven pure moves."
+  default_prompt: "Use the Midgard splitting-oversized-modules workflow."

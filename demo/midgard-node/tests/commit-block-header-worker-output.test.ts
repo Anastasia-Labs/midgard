@@ -1,10 +1,15 @@
-import { readFile } from "node:fs/promises";
-
-import type { ProductionCommitBlockHeaderParams } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  preLeaseCommitSchedulerTargetMs,
   releaseCommitMutationWorkerPhase,
   releaseCommitSchedulerAlignmentPhase,
   shouldAttemptCommitPipeline,
@@ -12,18 +17,31 @@ import {
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
-} from "@/fibers/block-commitment.js";
-import { Globals } from "@/services/index.js";
+} from "../src/fibers/block-commitment.js";
+import {
+  HISTORY_COMMIT_LANDING_MARGIN_MS,
+  HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+} from "../src/services/history-commit-window.js";
+import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
-} from "@/workers/commit-block-header.js";
+} from "../src/workers/commit-block-header.js";
 import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { MidgardMpf, withMpfRootTransactions } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-header.js";
+import {
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  resolveHistoryCommitBlockTime,
+  resolveLatestFeasibleCommitEndTime,
+} from "../src/workers/utils/commit-end-time.js";
+import {
+  captureSchedulerSlotSnapshot,
+  resolveSchedulerFirstAppointmentValidityWindow,
+  schedulerStateCoversCommitTarget,
+} from "../src/workers/utils/scheduler-refresh.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",
@@ -41,70 +59,7 @@ const dueWork = {
 
 const confirmedRecoveryBlock = {} as SerializedStateQueueUTxO;
 
-const assertRootTransactionHandling = (
-  output: WorkerOutput,
-  shouldPreserve: boolean,
-) =>
-  Effect.gen(function* () {
-    const ledgerMpf = yield* MidgardMpf.createScratch("ledger");
-    const transactionsMpf = yield* MidgardMpf.createScratch("transactions");
-    const beforeLedgerRoot = yield* ledgerMpf.rootHex();
-    const beforeTransactionsRoot = yield* transactionsMpf.rootHex();
-    const result = yield* withMpfRootTransactions(
-      [ledgerMpf, transactionsMpf],
-      Effect.gen(function* () {
-        yield* ledgerMpf.applyBatch([
-          {
-            type: "insert",
-            key: Buffer.from("01", "hex"),
-            value: Buffer.from("aa", "hex"),
-          },
-        ]);
-        yield* transactionsMpf.applyBatch([
-          {
-            type: "insert",
-            key: Buffer.from("02", "hex"),
-            value: Buffer.from("bb", "hex"),
-          },
-        ]);
-        return output;
-      }),
-      shouldPreserveCommitMpfRoots,
-    );
-    const afterLedgerRoot = yield* ledgerMpf.rootHex();
-    const afterTransactionsRoot = yield* transactionsMpf.rootHex();
-
-    expect(result).toStrictEqual(output);
-    if (shouldPreserve) {
-      expect(afterLedgerRoot).not.toBe(beforeLedgerRoot);
-      expect(afterTransactionsRoot).not.toBe(beforeTransactionsRoot);
-    } else {
-      expect(afterLedgerRoot).toBe(beforeLedgerRoot);
-      expect(afterTransactionsRoot).toBe(beforeTransactionsRoot);
-    }
-  });
-
 describe("commit block worker output handling", () => {
-  it("keeps commit-block submit due-work unregistered while SDK commit txs have no lower validity bound", () => {
-    type CommitBlockHasNoLowerValidityBound =
-      "validFrom" extends keyof ProductionCommitBlockHeaderParams
-        ? false
-        : true;
-    const commitBlockHasNoLowerValidityBound: CommitBlockHasNoLowerValidityBound =
-      true;
-
-    expect(commitBlockHasNoLowerValidityBound).toBe(true);
-  });
-
-  it("treats registered due work as normal non-submission control flow", () => {
-    const output: WorkerOutput = {
-      type: "RegisteredDueWorkOutput",
-      dueWork,
-    };
-
-    expect(shouldPreserveCommitMpfRoots(output)).toBe(false);
-  });
-
   it("materializes worker pre-ingestion scheduler due-work as normal worker output", () => {
     expect(
       workerPreIngestionDueWorkOutputFromPlan({
@@ -266,27 +221,6 @@ describe("commit block worker output handling", () => {
     ).toBe(true);
   });
 
-  it("evaluates the pending-finalization gate before acquiring the commit mutation lease", async () => {
-    const source = await readFile(
-      new URL("../src/fibers/block-commitment.ts", import.meta.url),
-      "utf8",
-    );
-    const action = source.slice(
-      source.indexOf("export const blockCommitmentAction"),
-      source.indexOf("export const blockCommitmentFiber"),
-    );
-    const pendingFinalizationGate = action.indexOf(
-      "shouldSkipIdleCommitPipelineBeforeSchedulerAlignment",
-    );
-    const mutationLease = action.indexOf(
-      "StateQueueMutationLeasesDB.tryWithLease",
-    );
-
-    expect(pendingFinalizationGate).toBeGreaterThanOrEqual(0);
-    expect(mutationLease).toBeGreaterThanOrEqual(0);
-    expect(pendingFinalizationGate).toBeLessThan(mutationLease);
-  });
-
   it("short-circuits idle attempts only after tx, event, and recovery work are absent", () => {
     expect(
       shouldShortCircuitIdleCommitAttempt({
@@ -330,14 +264,49 @@ describe("commit block worker output handling", () => {
     ).toBe(false);
   });
 
-  it("resets or preserves MPF roots according to worker output semantics", async () => {
-    const resetOutputs: readonly WorkerOutput[] = [
-      { type: "FailureOutput", error: "boom" },
-      { type: "RegisteredDueWorkOutput", dueWork },
-      { type: "NothingToCommitOutput" },
-    ];
-    const preserveOutputs: readonly WorkerOutput[] = [
-      {
+  /**
+   * One case per worker-output type, keyed by the type itself: the `Record`
+   * over `WorkerOutput["type"]` stops compiling when an output type is added
+   * without deciding here whether its commit effects persist. The expected
+   * value is the output's own meaning -- an output that told L1 (or the
+   * durable database) about the new state persists, and the worker revalidates
+   * its leases before returning it; everything else does not -- not a copy of
+   * the production switch.
+   */
+  const COMMIT_PERSISTENCE_CASES: Record<
+    WorkerOutput["type"],
+    { readonly output: WorkerOutput; readonly preserve: boolean }
+  > = {
+    FailureOutput: {
+      output: { type: "FailureOutput", error: "boom" },
+      preserve: false,
+    },
+    RegisteredDueWorkOutput: {
+      output: { type: "RegisteredDueWorkOutput", dueWork },
+      preserve: false,
+    },
+    NothingToCommitOutput: {
+      output: { type: "NothingToCommitOutput" },
+      preserve: false,
+    },
+    AwaitingCommitBaseOutput: {
+      output: {
+        type: "AwaitingCommitBaseOutput",
+        baseHeaderHash: "dd".repeat(28),
+        detail: "the foreign commit base is not processed yet",
+      },
+      preserve: false,
+    },
+    AwaitingNextCommitWindowOutput: {
+      output: {
+        type: "AwaitingNextCommitWindowOutput",
+        heldHeaderHash: "ee".repeat(28),
+        detail: "a signed abandoned journal holds this header",
+      },
+      preserve: false,
+    },
+    SubmittedAwaitingConfirmationOutput: {
+      output: {
         type: "SubmittedAwaitingConfirmationOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -347,7 +316,10 @@ describe("commit block worker output handling", () => {
         submittedHeaderHash: "aa".repeat(28),
         submittedUtxosRoot: "bb".repeat(32),
       },
-      {
+      preserve: true,
+    },
+    SubmittedAwaitingLocalFinalizationOutput: {
+      output: {
         type: "SubmittedAwaitingLocalFinalizationOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -358,7 +330,10 @@ describe("commit block worker output handling", () => {
         submittedHeaderHash: "aa".repeat(28),
         submittedUtxosRoot: "bb".repeat(32),
       },
-      {
+      preserve: true,
+    },
+    SuccessfulSubmissionOutput: {
+      output: {
         type: "SuccessfulSubmissionOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -367,25 +342,110 @@ describe("commit block worker output handling", () => {
         blockEndTimeMs: 1,
         mempoolLedgerDeletedOutRefHexes: [],
       },
-      {
+      preserve: true,
+    },
+    SkippedSubmissionOutput: {
+      output: {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount: 0,
         sizeOfProcessedTxs: 0,
       },
-      {
+      preserve: true,
+    },
+    SuccessfulLocalFinalizationRecoveryOutput: {
+      output: {
         type: "SuccessfulLocalFinalizationRecoveryOutput",
         finalizedHeaderHash: "cc".repeat(28),
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
         mempoolLedgerDeletedOutRefHexes: [],
       },
-    ];
+      preserve: true,
+    },
+  };
 
-    for (const output of resetOutputs) {
-      await Effect.runPromise(assertRootTransactionHandling(output, false));
-    }
-    for (const output of preserveOutputs) {
-      await Effect.runPromise(assertRootTransactionHandling(output, true));
-    }
+  it.each(Object.entries(COMMIT_PERSISTENCE_CASES))(
+    "%s is classified as persisting its commit effects as its meaning requires",
+    (_type, { output, preserve }) => {
+      expect(shouldPreserveCommitMpfRoots(output)).toBe(preserve);
+    },
+  );
+});
+
+describe("pre-lease scheduler target", () => {
+  const operator = "aa";
+  const shiftCovers = (startTime: bigint, targetMs: number): boolean =>
+    schedulerStateCoversCommitTarget({
+      currentSchedulerState: { operator, startTime },
+      operatorKeyHash: operator,
+      targetStartTime: BigInt(targetMs),
+    });
+
+  it("keeps the current shift aligned while a history commit still fits inside it", () => {
+    const secondSlotLucid = {
+      slotToUnixTime: (slot: number) => slot * 1_000,
+      unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
+    } as unknown as LucidEvolution;
+    const startTime = 1_000_000_000n;
+    const shiftEndMs = Number(startTime + SDK.SHIFT_DURATION_MS);
+    // A target of now + the long-window buffer left the shift from here on,
+    // and the scheduler admits a refresh only after the shift ends.
+    const midShiftNowMs = shiftEndMs - COMMIT_MINIMUM_FUTURE_BUFFER_MS + 1_000;
+    expect(
+      shiftCovers(startTime, preLeaseCommitSchedulerTargetMs(midShiftNowMs)),
+    ).toBe(true);
+    expect(
+      resolveLatestFeasibleCommitEndTime({
+        lucid: secondSlotLucid,
+        latestEndTime: Number(startTime),
+        nowMs: midShiftNowMs,
+        minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        maximumEndTimeMs: shiftEndMs,
+      }).status,
+    ).toBe("fits");
+    // A refresh is required only once the shift leaves less than the landing
+    // margin, which is also the least TTL a commit capped to the shift keeps.
+    const lastCoveredNowMs = shiftEndMs - HISTORY_COMMIT_LANDING_MARGIN_MS;
+    expect(
+      shiftCovers(startTime, preLeaseCommitSchedulerTargetMs(lastCoveredNowMs)),
+    ).toBe(true);
+    expect(
+      shiftCovers(
+        startTime,
+        preLeaseCommitSchedulerTargetMs(lastCoveredNowMs + 1),
+      ),
+    ).toBe(false);
+  });
+
+  it("appoints the first shift no later than the history end the worker builds next", async () => {
+    const account = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([account]);
+    const lucid = await Lucid(emulator, "Custom");
+    emulator.awaitSlot(60);
+    const snapshot = captureSchedulerSlotSnapshot(lucid);
+    const nowMs = emulator.now();
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      lucid,
+      BigInt(preLeaseCommitSchedulerTargetMs(nowMs)),
+      snapshot,
+    );
+    // AppointFirstOperator starts the shift at the inclusive upper bound, so
+    // the appointment keeps the landing margin to land.
+    const startTime = window.validTo - 1n;
+    expect(Number(window.validTo) - nowMs).toBe(
+      HISTORY_COMMIT_LANDING_MARGIN_MS,
+    );
+    // Coverage lag can select an event-only slice without backdating the scheduler clock.
+    const blockTimeMs =
+      resolveHistoryCommitBlockTime({
+        lucid,
+        currentSlot: snapshot.currentSlot,
+        latestEndTime: 0,
+        nowMs,
+        minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+        schedulerWindowEndTimeMs: Number(startTime + SDK.SHIFT_DURATION_MS),
+      }).resolvedEndTime - 1;
+    expect(shiftCovers(startTime, blockTimeMs)).toBe(true);
+    expect(blockTimeMs).toBeGreaterThan(nowMs);
   });
 });

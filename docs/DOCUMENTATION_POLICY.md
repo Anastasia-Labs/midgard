@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-09-07 (maintenance and lifecycle scope)
 
 Midgard documentation is part of the protocol safety surface. A stale claim
 about finality, proof coverage, data availability, recovery, or transaction
@@ -18,8 +18,10 @@ Use the document form that matches the reader's need:
 - Explanation: design rationale, trust assumptions, and tradeoffs.
 - Plan: proposed or active work with acceptance evidence.
 - Status: a dated, evidence-backed implementation/readiness snapshot.
-- Historical: retained decision context that must not be executed as current
-  guidance.
+- ADR: a concise architectural decision, its context, alternatives, and
+  consequences.
+- Verification artifact: an input or result needed by a named current check
+  or release requirement, with its producing identity and reproduction command.
 
 Do not combine a future design, current implementation reference, and operating
 runbook without visibly separating them.
@@ -30,12 +32,19 @@ There is no single artifact that is authoritative for every kind of claim:
 
 1. The technical specification is the normative **design target** for protocol
    semantics.
-2. Checked-in code, configuration, generated blueprints, and tests describe the
+2. A `docs/spec/` component specification is **implementation-normative** for
+   the concrete detail it covers — exact types, byte-level encodings,
+   constants, and the security properties stated with them. On that detail it
+   wins over the technical specification, which remains the protocol-level
+   design target; a divergence is a technical-specification erratum, not
+   grounds to reopen the component specification. See `docs/spec/README.md`
+   for the authority rule, its scope, and the amendment process.
+3. Checked-in code, configuration, generated blueprints, and tests describe the
    **implemented behavior** at a particular revision.
-3. Passing acceptance tests and retained, reproducible artifacts describe the
+4. Passing acceptance tests and retained, reproducible artifacts describe the
    **verified behavior**.
-4. `public_testnet_readiness.md` owns launch/readiness claims.
-5. `docs/fault-proofs/` owns the current proof-coverage and proof-binding audit.
+5. `docs/public_testnet_readiness.md` owns launch/readiness claims.
+6. `docs/fault-proofs/` owns the current proof-coverage and proof-binding audit.
 
 When these disagree, document the divergence. Do not make the implementation
 sound conformant by silently rewriting an unapproved protocol rule, and do not
@@ -63,9 +72,43 @@ Every plan must have, near its title:
 - Dependencies and decisions that can change the approach.
 - Acceptance criteria tied to checked-in tests, commands, or durable artifacts.
 
-An implemented or superseded plan is not a runbook. Add a banner pointing to the
-current implementation/reference documentation and keep old paths only when they
-are necessary to explain a historical decision.
+The header requirement applies to plans, not every Markdown file. A formatting
+change is not a semantic review: date only the scope actually checked.
+
+When work is delivered or superseded, move lasting rationale into an ADR in
+`docs/midgard/decisions/` or `docs/fault-proofs/decisions/`, and current procedures
+into the maintained reference or runbook. Remove the completed plan and update
+inbound references. Git preserves the execution history. A source comment,
+inbound link, unique provenance, or obsolete plan instruction is not a reason
+to retain the old document.
+
+For a partially delivered plan, remove completed task detail and keep the
+outstanding scope, dependencies, and acceptance criteria. Implementation alone
+does not close a release or verification gate.
+
+## Evidence retention
+
+Retain an evidence artifact only when its owner can name the current verifier,
+release requirement, or unresolved decision that needs the artifact itself.
+State that consumer and what it reads or establishes beside the artifact.
+A file merely mentioned in a comment or written by an optional reporting mode
+has no automatic retention requirement.
+
+For each old document or embedded historical section:
+
+1. Identify the current consumer and whether it uses the artifact as input,
+   verifies its contents, or needs its observations for an open requirement.
+2. Extract lasting rationale into the existing ADR for the concern. Keep current
+   procedures and unresolved acceptance criteria in their maintained references.
+3. Delete the historical narrative, duplicate measurement table, or unused
+   snapshot; update links and source comments. Use Git for previous revisions.
+4. Preserve inputs required by live checks, including stale baselines that a
+   check intentionally rejects. Keep the mismatch visible until remeasurement;
+   never delete a failing input or weaken its check to make hygiene pass.
+
+An active proposal does not need an executable consumer: its current purpose is
+the decision being considered. This is distinct from retaining the history of
+a decision already implemented or superseded.
 
 ## Evidence requirements
 
@@ -75,6 +118,28 @@ are necessary to explain a historical decision.
 - Evidence must be checked in or have a durable URI, content hash, revision, and
   reproduction command. Ignored local logs alone do not substantiate a claim.
 - A dated review is stale after a relevant semantic change until revalidated.
+
+## Keeping documentation current
+
+- Keep exact inventories in one maintained reference and link to it elsewhere.
+  The catalogue inventory is `docs/fault-proofs/catalogue-status.md`. Prose
+  counts and inventories are not machine-checked against source; verify them
+  by reading the source when you edit them.
+- Run `pnpm --dir docs-site run check:links` after changes; link validity alone
+  does not establish semantic correctness.
+- Record deployment hashes and measurements together with their source revision,
+  compiler, build flags, parameters, and producing command in acceptance artifacts.
+  Avoid copying generated blueprint hashes into multiple current-state pages.
+- When a bound identity changes, mark the old evidence invalid for current
+  acceptance until the measurements are reproduced. Keep an old receipt only
+  while a named current check or release requirement needs it; Git preserves
+  earlier revisions. Replacing a digest does not revalidate measured behavior.
+- Preserve required evidence and extract unique rationale before retiring a
+  plan. Before deletion, check non-Markdown consumers, package manifests,
+  generated metadata, and CI in addition to inbound links.
+- Prefer named modules and symbols to unmaintained line-number copies of code.
+  A document should explain the boundary, rationale, or workflow that makes the
+  source easier to use, rather than duplicate easily inspected implementation.
 
 ## Protocol review checklist
 

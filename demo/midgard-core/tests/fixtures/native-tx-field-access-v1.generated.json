@@ -1,0 +1,491 @@
+{
+  "schema": "midgard-native-tx-field-access-v1-golden",
+  "version": 1,
+  "specDocument": "docs/spec/midgard-tx.md",
+  "generator": "demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.mjs",
+  "constants": {
+    "fieldCount": 9,
+    "maxFieldItemCount": 65535,
+    "maxTransactionAggregateFieldBytes": 32768,
+    "maxSpendInputsPreimageBytes": 32768,
+    "maximumCardanoSpendRedeemerCount": 296,
+    "chunkBytesK": 15148,
+    "maxTier1RedeemerPreimageBytes": 14336,
+    "maxTier3ChunkCount": 3,
+    "spendInputItemBytes": 38,
+    "hash28ItemBytes": 28,
+    "addressWitnessItemBytes": 101,
+    "carriageConstructors": [
+      "Inline",
+      "RawUtxo",
+      "Certified"
+    ],
+    "viewConstructors": [
+      "Whole",
+      "Chunked",
+      "ProvisionalWhole"
+    ]
+  },
+  "emptyFieldCommitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+  "strides": [
+    40,
+    40,
+    0,
+    30,
+    30,
+    0,
+    0,
+    103,
+    0
+  ],
+  "arrayHeaders": [
+    {
+      "count": 0,
+      "headerHex": "80",
+      "headerLength": 1
+    },
+    {
+      "count": 1,
+      "headerHex": "81",
+      "headerLength": 1
+    },
+    {
+      "count": 23,
+      "headerHex": "97",
+      "headerLength": 1
+    },
+    {
+      "count": 24,
+      "headerHex": "9818",
+      "headerLength": 2
+    },
+    {
+      "count": 255,
+      "headerHex": "98ff",
+      "headerLength": 2
+    },
+    {
+      "count": 256,
+      "headerHex": "990100",
+      "headerLength": 3
+    },
+    {
+      "count": 65535,
+      "headerHex": "99ffff",
+      "headerLength": 3
+    }
+  ],
+  "itemWrappers": [
+    {
+      "payloadLength": 0,
+      "wrapperHex": "40"
+    },
+    {
+      "payloadLength": 1,
+      "wrapperHex": "41"
+    },
+    {
+      "payloadLength": 23,
+      "wrapperHex": "57"
+    },
+    {
+      "payloadLength": 24,
+      "wrapperHex": "5818"
+    },
+    {
+      "payloadLength": 255,
+      "wrapperHex": "58ff"
+    },
+    {
+      "payloadLength": 256,
+      "wrapperHex": "590100"
+    }
+  ],
+  "preimages": [
+    {
+      "label": "empty_envelope",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 0,
+      "itemsHex": [],
+      "preimageHex": "80",
+      "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+      "itemExtents": []
+    },
+    {
+      "label": "single_item_payload_0",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        ""
+      ],
+      "preimageHex": "8140",
+      "commitmentHex": "3935ed59a9a9735c3f35edc39c823278aff9d7ae54f16df5ca66d2f925d4acc0",
+      "itemExtents": [
+        {
+          "offset": 2,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "label": "single_item_payload_1",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        "22"
+      ],
+      "preimageHex": "814122",
+      "commitmentHex": "85eb8924d13a6d1488f260ea7a39ea08c55ccb5c57e37a946133f0f772989649",
+      "itemExtents": [
+        {
+          "offset": 2,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "label": "single_item_payload_23",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        "ccd3dae1e8eff6fd040b121920272e353c434a51585f66"
+      ],
+      "preimageHex": "8157ccd3dae1e8eff6fd040b121920272e353c434a51585f66",
+      "commitmentHex": "015ad516310c79401086886c46f3ea9c67cc5003ec4d3e007b672119a26fc9c3",
+      "itemExtents": [
+        {
+          "offset": 2,
+          "length": 23
+        }
+      ]
+    },
+    {
+      "label": "single_item_payload_24",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        "ebf2f900070e151c232a31383f464d545b626970777e858c"
+      ],
+      "preimageHex": "815818ebf2f900070e151c232a31383f464d545b626970777e858c",
+      "commitmentHex": "4d1d83fb6aa49ea06f2519ec990c4e993209123d0928a3f5620881a37c0bf67d",
+      "itemExtents": [
+        {
+          "offset": 3,
+          "length": 24
+        }
+      ]
+    },
+    {
+      "label": "single_item_payload_255",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        "e4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6"
+      ],
+      "preimageHex": "8158ffe4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6",
+      "commitmentHex": "25d188cdd96fd55483bef6295e9a15e2984c9def865b45596ffd5ed11cf6947f",
+      "itemExtents": [
+        {
+          "offset": 3,
+          "length": 255
+        }
+      ]
+    },
+    {
+      "label": "single_item_payload_256",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 1,
+      "itemsHex": [
+        "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc"
+      ],
+      "preimageHex": "81590100030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc",
+      "commitmentHex": "262527d7f203b93069010893aaf27d42e5d3d15c1a7efa1da4a0a36edd09aa85",
+      "itemExtents": [
+        {
+          "offset": 4,
+          "length": 256
+        }
+      ]
+    },
+    {
+      "label": "variable_width_walk",
+      "fieldIndex": 2,
+      "stride": 0,
+      "itemCount": 3,
+      "itemsHex": [
+        "22",
+        "41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2",
+        "60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d"
+      ],
+      "preimageHex": "834122581841484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe259012c60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d",
+      "commitmentHex": "8ea899780b67a87cef3d3041e2566844faf0fcf31ee334d807d9a74b08c50e19",
+      "itemExtents": [
+        {
+          "offset": 2,
+          "length": 1
+        },
+        {
+          "offset": 5,
+          "length": 24
+        },
+        {
+          "offset": 32,
+          "length": 300
+        }
+      ]
+    },
+    {
+      "label": "spend_inputs_stride_40",
+      "fieldIndex": 0,
+      "stride": 40,
+      "itemCount": 3,
+      "itemsHex": [
+        "825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000",
+        "82582041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a190017",
+        "82582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323919ffff"
+      ],
+      "preimageHex": "835826825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000582682582041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a190017582682582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323919ffff",
+      "commitmentHex": "3250a9797dd14257ad1e2d16b637cdab6b4cc50a644f1ac686db54a670901c7b",
+      "itemExtents": [
+        {
+          "offset": 3,
+          "length": 38
+        },
+        {
+          "offset": 43,
+          "length": 38
+        },
+        {
+          "offset": 83,
+          "length": 38
+        }
+      ]
+    },
+    {
+      "label": "hash28_stride_30",
+      "fieldIndex": 3,
+      "stride": 30,
+      "itemCount": 2,
+      "itemsHex": [
+        "7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c",
+        "9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b"
+      ],
+      "preimageHex": "82581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c581c9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b",
+      "commitmentHex": "7e2ebe7895dd901407cfd4766e1d9318f2e07a564cdd7dcce9caf809e549e835",
+      "itemExtents": [
+        {
+          "offset": 3,
+          "length": 28
+        },
+        {
+          "offset": 33,
+          "length": 28
+        }
+      ]
+    },
+    {
+      "label": "address_witness_stride_103",
+      "fieldIndex": 7,
+      "stride": 103,
+      "itemCount": 2,
+      "itemsHex": [
+        "825820bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f965840dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e95",
+        "825820fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd458401a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3"
+      ],
+      "preimageHex": "825865825820bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f965840dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e955865825820fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd458401a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3",
+      "commitmentHex": "1e5f9aec31f249953f6b9a1103eb53c16721d292923da454a3e0d044bc37c59a",
+      "itemExtents": [
+        {
+          "offset": 3,
+          "length": 101
+        },
+        {
+          "offset": 106,
+          "length": 101
+        }
+      ]
+    },
+    {
+      "label": "hash28_two_byte_header",
+      "fieldIndex": 3,
+      "stride": 30,
+      "itemCount": 24,
+      "itemsHex": [
+        "1a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7",
+        "3940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6",
+        "585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15",
+        "777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d34",
+        "969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c53",
+        "b5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b72",
+        "d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91",
+        "f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0",
+        "121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cf",
+        "31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7ee",
+        "50575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d",
+        "6f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c",
+        "8e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b",
+        "adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a",
+        "ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b8289",
+        "ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8",
+        "0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7",
+        "2930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6",
+        "484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe05",
+        "676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d24",
+        "868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c43",
+        "a5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b62",
+        "c4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81",
+        "e3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0"
+      ],
+      "preimageHex": "9818581c1a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7581c3940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6581c585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15581c777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d34581c969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c53581cb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b72581cd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91581cf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0581c121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cf581c31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7ee581c50575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d581c6f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c581c8e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b581cadb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a581cccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b8289581cebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8581c0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7581c2930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6581c484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe05581c676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d24581c868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c43581ca5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b62581cc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81581ce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0",
+      "commitmentHex": "1d6ce21ef9b069fe085433f972a0e8e41c245e77c3e962541cac91a9347f76c9",
+      "itemExtents": [
+        {
+          "offset": 4,
+          "length": 28
+        },
+        {
+          "offset": 34,
+          "length": 28
+        },
+        {
+          "offset": 64,
+          "length": 28
+        },
+        {
+          "offset": 94,
+          "length": 28
+        },
+        {
+          "offset": 124,
+          "length": 28
+        },
+        {
+          "offset": 154,
+          "length": 28
+        },
+        {
+          "offset": 184,
+          "length": 28
+        },
+        {
+          "offset": 214,
+          "length": 28
+        },
+        {
+          "offset": 244,
+          "length": 28
+        },
+        {
+          "offset": 274,
+          "length": 28
+        },
+        {
+          "offset": 304,
+          "length": 28
+        },
+        {
+          "offset": 334,
+          "length": 28
+        },
+        {
+          "offset": 364,
+          "length": 28
+        },
+        {
+          "offset": 394,
+          "length": 28
+        },
+        {
+          "offset": 424,
+          "length": 28
+        },
+        {
+          "offset": 454,
+          "length": 28
+        },
+        {
+          "offset": 484,
+          "length": 28
+        },
+        {
+          "offset": 514,
+          "length": 28
+        },
+        {
+          "offset": 544,
+          "length": 28
+        },
+        {
+          "offset": 574,
+          "length": 28
+        },
+        {
+          "offset": 604,
+          "length": 28
+        },
+        {
+          "offset": 634,
+          "length": 28
+        },
+        {
+          "offset": 664,
+          "length": 28
+        },
+        {
+          "offset": 694,
+          "length": 28
+        }
+      ]
+    }
+  ],
+  "chunkCounts": [
+    {
+      "totalLength": 15148,
+      "chunkCount": 1
+    },
+    {
+      "totalLength": 15149,
+      "chunkCount": 2
+    },
+    {
+      "totalLength": 30296,
+      "chunkCount": 2
+    },
+    {
+      "totalLength": 30297,
+      "chunkCount": 3
+    },
+    {
+      "totalLength": 32768,
+      "chunkCount": 3
+    }
+  ],
+  "tier3Certificate": {
+    "txIdHex": "1920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2",
+    "ownerHex": "585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15",
+    "fieldIndex": 0,
+    "totalLength": 15665,
+    "preimageBlockHex": "565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f",
+    "chunkLengths": [
+      15148,
+      517
+    ],
+    "chunkDigestsHex": [
+      "c3b785d45ea8ca1a1d8c825057ffbc73fbc845640c9606e43d7fc2c7b5ae24c4",
+      "78e30bbc64277987b3c51c26ec62345bfe64e7e4018112b24e1ecff83dd8f9ec"
+    ],
+    "fieldHashHex": "45e6ca4f8a5676fba50a9a43b6d8757b1c683a7796531ccf89331adb46003683"
+  },
+  "certificateAssetName": {
+    "assetNameHex": "4d4944474152445f4649454c445f505245494d4147455f43455254",
+    "byteLength": 27,
+    "ascii": "MIDGARD_FIELD_PREIMAGE_CERT"
+  }
+}

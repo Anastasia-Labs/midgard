@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reviewing Consensus Changes"
+  short_description: "Two-pass adversarial review of consensus-critical changes."
+  default_prompt: "Use $reviewing-consensus-changes to review this change: frame the diff, run a cold-context pass against the invariants and lenses, verify and red-check every fix, re-review, and record residual risks."

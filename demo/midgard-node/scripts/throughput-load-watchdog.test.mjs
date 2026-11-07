@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   DEFAULT_REQUIRED_LABEL,
+  WATCHDOG_SCHEMA_VERSION,
+  createEvidenceWriter,
+  parseThroughputWatchdogEvidenceLineV1,
   parseWatchdogArgs,
   runThroughputLoadWatchdog,
 } from "./throughput-load-watchdog.mjs";
@@ -93,6 +99,124 @@ test("parser requires an atomic target, evidence path, label, and probe", () => 
       "probe.mjs",
     ]),
   );
+});
+
+test("evidence writer emits only canonical contiguous V1 records", () => {
+  const directory = mkdtempSync(join(tmpdir(), "midgard-watchdog-v1-"));
+  const evidencePath = join(directory, "watchdog.ndjson");
+  try {
+    const writer = createEvidenceWriter(evidencePath);
+    writer.record({
+      at: "2026-07-11T04:00:00.000Z",
+      event: "target_verified",
+      containerId: "load-container-id",
+      containerName: "load-container",
+    });
+    assert.throws(
+      () =>
+        writer.record({
+          schemaVersion: "midgard-throughput-watchdog-v999",
+          at: "2026-07-11T04:00:00.000Z",
+          event: "target_verified",
+          containerId: "load-container-id",
+          containerName: "load-container",
+        }),
+      /must not override its V1 identity/u,
+    );
+    writer.record({
+      at: "2026-07-11T04:00:00.000Z",
+      event: "preflight_probe",
+      containerId: "load-container-id",
+      containerName: "load-container",
+      probeStatus: 0,
+      probeSignal: null,
+      probeStdout: "",
+      probeStderr: "",
+      probeError: null,
+    });
+    writer.close();
+
+    const [line, probeLine] = readFileSync(evidencePath, "utf8")
+      .trimEnd()
+      .split("\n");
+    assert.ok(line);
+    assert.ok(probeLine);
+    const parsed = parseThroughputWatchdogEvidenceLineV1(line, 1);
+    assert.equal(
+      parseThroughputWatchdogEvidenceLineV1(probeLine, 2).probeStdout,
+      "",
+    );
+    assert.equal(parsed.schemaVersion, WATCHDOG_SCHEMA_VERSION);
+    assert.equal(parsed.sequence, 1);
+    assert.throws(
+      () =>
+        parseThroughputWatchdogEvidenceLineV1(
+          line.replace(WATCHDOG_SCHEMA_VERSION, "midgard-watchdog-v2"),
+          1,
+        ),
+      /schemaVersion must be exact V1/u,
+    );
+    assert.throws(
+      () => parseThroughputWatchdogEvidenceLineV1(line, 2),
+      /sequence is not contiguous/u,
+    );
+    assert.throws(
+      () =>
+        parseThroughputWatchdogEvidenceLineV1(
+          line.replace(
+            '"containerName":"load-container"',
+            '"containerName":"load-container","unknown":true',
+          ),
+          1,
+        ),
+      /fields must be exact/u,
+    );
+    assert.throws(
+      () =>
+        parseThroughputWatchdogEvidenceLineV1(
+          line.replace("2026-07-11T04:00:00.000Z", "2026-07-11T04:00:00Z"),
+          1,
+        ),
+      /canonical ISO-8601/u,
+    );
+    assert.throws(
+      () => parseThroughputWatchdogEvidenceLineV1(` ${line}`, 1),
+      /not canonical JSON/u,
+    );
+    assert.throws(() => createEvidenceWriter(evidencePath));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("oversized cleanup diagnostics do not consume an evidence sequence", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "midgard-watchdog-v1-"));
+  const evidencePath = join(directory, "watchdog.ndjson");
+  try {
+    const writer = createEvidenceWriter(evidencePath);
+    const fixture = harness({ probes: [{ status: 0 }, { status: 23 }] });
+    fixture.runtime.stop = async () => {
+      throw new Error("x".repeat(4_097));
+    };
+    try {
+      const result = await runThroughputLoadWatchdog({
+        ...options(fixture),
+        record: writer.record,
+      });
+      assert.equal(result.status, "tripped");
+    } finally {
+      writer.close();
+    }
+
+    const lines = readFileSync(evidencePath, "utf8").trimEnd().split("\n");
+    assert.equal(lines.length, 9);
+    lines.forEach((line, index) => {
+      const parsed = parseThroughputWatchdogEvidenceLineV1(line, index + 1);
+      assert.equal(parsed.sequence, index + 1);
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("preflight failure never starts or stops the load container", async () => {

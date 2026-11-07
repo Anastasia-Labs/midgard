@@ -1,0 +1,349 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
+import { describe, expect, it } from "vitest";
+
+import type { DeterministicValidationMachineTrace } from "../src/index.js";
+import { ASSET_ENTRY_ROWS } from "./emission-order.asset-entries.rows.js";
+import { countedStepVector } from "./emission-order.counted-steps.js";
+import {
+  BAD_OUTPUT_CONTROL,
+  FORCED_OUTPUT_ROWS,
+  FORCED_ROWS,
+  UNDECODABLE_PLUTUS_REF_ROW,
+} from "./emission-order.forced.rows.js";
+import { NATIVE_ROWS } from "./emission-order.native.rows.js";
+import {
+  ABSENT_KEYS,
+  FULL,
+  PLAIN,
+} from "./emission-order.resolve-inputs.rows.js";
+import { ORDER_ROWS } from "./emission-order.rows.js";
+import {
+  expectTraceVerdict,
+  machineTrace,
+  type Row,
+  stoppingStepVector,
+} from "./emission-order.support.js";
+
+/**
+ * The on-chain verdict of every emission-order row. Each row's trace is built
+ * here, and its stopping step (the step into the terminal state) is exported to
+ * `emission-order-rows.test.ak`, where the Aiken machine checks it through the
+ * one-step dispatcher: the step verifies, it stops at the phase the trace
+ * names, and its successor is the row's rejection (or acceptance). Rows run in
+ * the order (b), (c), (d), (a), (e), the forced rows, then (f). The bundle
+ * controls, the native limit refusals and the forced wide output have no
+ * vector here; nor do the rows refused with an undecodable Plutus reference
+ * script: the machine has no successor for that refusal, so it has no trace
+ * (the script-decode family proves it).
+ *
+ * A row's counted steps (steps inside its ValueAndMint walk) are exported
+ * with their successor's work witness: on chain each step verifies, its
+ * successor is that witness, and the witness's value accumulator holds the
+ * step's asset entry count, the count the trace's successor holds.
+ *
+ * Set `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` to rewrite that file; otherwise
+ * this suite fails when the checked-in vectors are stale.
+ *
+ * Each on-chain test asserts the row's expected reason, from its table. Where
+ * the row leaves `input_index` out (case (a), pending X-N2C2), that coordinate
+ * alone is taken from the trace, which the machine currently writes as its
+ * unset sentinel; `expectTraceVerdict` ties the rest of the trace's reason to
+ * the row.
+ */
+
+/** A row with no machine trace; see the header. */
+const notProvableByTrace = (row: Row) =>
+  typeof row.expected?.reason === "object" &&
+  row.expected.reason !== null &&
+  "PlutusScriptUndecodable" in row.expected.reason;
+
+const ROWS: readonly Row[] = [
+  ...ORDER_ROWS,
+  ...FULL,
+  ...PLAIN,
+  ...ABSENT_KEYS,
+  ...NATIVE_ROWS,
+  ...FORCED_ROWS,
+  BAD_OUTPUT_CONTROL,
+  ...FORCED_OUTPUT_ROWS,
+  UNDECODABLE_PLUTUS_REF_ROW,
+  ...ASSET_ENTRY_ROWS,
+].filter((row) => !notProvableByTrace(row));
+
+const AIKEN_ROWS_PATH = fileURLToPath(
+  new URL(
+    "../../../onchain/aiken/lib/midgard/validation-machine-tests/emission-order-rows.test.ak",
+    import.meta.url,
+  ),
+);
+
+/** The machine's sentinel for a coordinate it does not carry yet. */
+const UNSET_REASON_COORDINATE = -1n;
+
+type Exported = {
+  readonly name: string;
+  readonly reason: MidgardRejectionReasonV1 | null;
+  readonly vector: ReturnType<typeof stoppingStepVector>;
+  readonly counted: readonly {
+    readonly name: string;
+    readonly entryCount: number;
+    readonly vector: ReturnType<typeof countedStepVector>;
+  }[];
+};
+
+/** The reason a row's on-chain test asserts; see the header. */
+const rowReason = (
+  row: Row,
+  trace: DeterministicValidationMachineTrace,
+): MidgardRejectionReasonV1 | null => {
+  if (row.expected === null) return null;
+  const expected = row.expected.reason;
+  if (
+    typeof expected !== "object" ||
+    expected === null ||
+    !("pendingInputIndex" in expected)
+  ) {
+    return expected;
+  }
+  const [arm, fields] = Object.entries(expected.pendingInputIndex)[0]! as [
+    string,
+    Record<string, bigint>,
+  ];
+  const traced = (
+    trace.rejectionReason as Record<string, Record<string, bigint>> | null
+  )?.[arm];
+  if (traced === undefined) {
+    throw new Error(`${row.name}: the trace's reason is not ${arm}`);
+  }
+  return {
+    [arm]: Object.fromEntries(
+      Object.entries(traced).map(([field, value]) => {
+        if (field === "input_index") return [field, value];
+        if (!(field in fields)) {
+          throw new Error(`${row.name}: the row does not assert ${field}`);
+        }
+        return [field, fields[field]];
+      }),
+    ),
+  } as MidgardRejectionReasonV1;
+};
+
+const phaseConstructor = (phase: string) =>
+  `validation_trace_v1.${phase.charAt(0).toUpperCase()}${phase.slice(1)}`;
+
+/** A reason as an Aiken constructor, laid out as `aiken fmt` lays it out. */
+const aikenReason = (reason: MidgardRejectionReasonV1): string[] => {
+  if (typeof reason === "string") {
+    return [`    rejection_reason_v1.${reason},`];
+  }
+  const [arm, fields] = Object.entries(reason)[0]! as [
+    string,
+    Record<string, bigint>,
+  ];
+  const values = Object.entries(fields).map(
+    ([field, value]) =>
+      `${field}: ${field === "input_index" && value === UNSET_REASON_COORDINATE ? "unset_reason_coordinate" : String(value)}`,
+  );
+  const line = `    rejection_reason_v1.${arm} { ${values.join(", ")} },`;
+  return line.length <= 80
+    ? [line]
+    : [
+        `    rejection_reason_v1.${arm} {`,
+        ...values.map((value) => `      ${value},`),
+        "    },",
+      ];
+};
+
+const renderAikenRows = (rows: readonly Exported[]) => {
+  const lines = [
+    "// Generated by demo/midgard-validation/tests/emission-order.aiken-rows.test.ts",
+    "// (MIDGARD_WRITE_EMISSION_ORDER_ROWS=1). Do not edit by hand.",
+    "",
+    "use aiken/cbor",
+    "use midgard/rejection_reason_v1.{RejectionReasonV1}",
+    "use midgard/validation_machine/machine_types.{",
+    "  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,",
+    "  ValidationOneStepWitnessV1,",
+    "}",
+    "use midgard/validation_machine/one_step",
+    "use midgard/validation_machine/shared.{",
+    "  rejected_successor_is_exact, unset_reason_coordinate,",
+    "}",
+    "use midgard/validation_machine/witness.{value_and_mint_control_from_witness}",
+    "use midgard/validation_machine_tests/constants.{test_l1_slot_config}",
+    "use midgard/validation_machine_tests/fixtures_phase_a.{inline_field_door}",
+    "use midgard/validation_trace_v1.{ValidationMachineStateV1, ValidationPhase}",
+    "",
+    "/// A row's stopping step: the machine state before it, and the step's",
+    "/// transition and auxiliary witnesses, each as CBOR.",
+    "type StoppingStep {",
+    "  phase: ValidationPhase,",
+    "  pre: ByteArray,",
+    "  transition: ByteArray,",
+    "  auxiliary: ByteArray,",
+    "}",
+    "",
+    "fn decode(",
+    "  step: StoppingStep,",
+    ") -> Pair<ValidationMachineStateV1, ValidationOneStepEvidenceV1> {",
+    "  expect Some(pre_data) = cbor.deserialise(step.pre)",
+    "  expect pre: ValidationMachineStateV1 = pre_data",
+    "  expect Some(transition_data) = cbor.deserialise(step.transition)",
+    "  expect transition: ValidationOneStepWitnessV1 = transition_data",
+    "  expect Some(auxiliary_data) = cbor.deserialise(step.auxiliary)",
+    "  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data",
+    "  Pair(pre, ValidationOneStepEvidenceV1 { transition, auxiliary })",
+    "}",
+    "",
+    "/// The step is at its phase and verifies through the one-step dispatcher.",
+    "fn verifies(",
+    "  step: StoppingStep,",
+    "  pre: ValidationMachineStateV1,",
+    "  evidence: ValidationOneStepEvidenceV1,",
+    ") -> Bool {",
+    "  and {",
+    "    pre.phase == step.phase,",
+    "    one_step.verify_one_step_evidence(",
+    "      pre,",
+    "      evidence,",
+    "      inline_field_door(),",
+    "      test_l1_slot_config,",
+    "    ),",
+    "  }",
+    "}",
+    "",
+    "/// The step verifies, and its successor is the exact rejection for `reason`.",
+    "fn rejects_with(step: StoppingStep, reason: RejectionReasonV1) -> Bool {",
+    "  let Pair(pre, evidence) = decode(step)",
+    "  and {",
+    "    verifies(step, pre, evidence),",
+    "    rejected_successor_is_exact(",
+    "      pre,",
+    "      evidence.transition.claimed_successor,",
+    "      reason,",
+    "    ),",
+    "  }",
+    "}",
+    "",
+    "/// The step verifies, and its successor is the accepting terminal.",
+    "fn accepts(step: StoppingStep) -> Bool {",
+    "  let Pair(pre, evidence) = decode(step)",
+    "  let post = evidence.transition.claimed_successor",
+    "  and {",
+    "    verifies(step, pre, evidence),",
+    "    post.phase == validation_trace_v1.Terminal,",
+    "    post.verdict == validation_trace_v1.Accepted,",
+    "  }",
+    "}",
+    "",
+    "/// A step inside a row's ValueAndMint walk, and its successor's work witness.",
+    "type CountedStep {",
+    "  step: StoppingStep,",
+    "  successor_work: ByteArray,",
+    "}",
+    "",
+    "/// The step verifies, its successor's work witness is `successor_work`, and",
+    "/// that witness's value accumulator holds `entry_count` asset entries.",
+    "fn counts(counted: CountedStep, entry_count: Int) -> Bool {",
+    "  let Pair(pre, evidence) = decode(counted.step)",
+    "  let post = evidence.transition.claimed_successor",
+    "  let control = value_and_mint_control_from_witness(counted.successor_work)",
+    "  and {",
+    "    verifies(counted.step, pre, evidence),",
+    "    post.phase == validation_trace_v1.ValueAndMint,",
+    "    post.work_root == validation_trace_v1.hash_work_witness(",
+    "      validation_trace_v1.ValueAndMint,",
+    "      pre.program_counter + 1,",
+    "      counted.successor_work,",
+    "    ),",
+    "    control.value_accumulator.asset_entry_count == entry_count,",
+    "  }",
+    "}",
+    "",
+  ];
+  for (const row of rows) {
+    const { phase, pre, transition, auxiliary } = row.vector;
+    lines.push(
+      `const ${row.name}: StoppingStep =`,
+      "  StoppingStep {",
+      `    phase: ${phaseConstructor(phase)},`,
+      `    pre: #"${pre}",`,
+      `    transition: #"${transition}",`,
+      `    auxiliary: #"${auxiliary}",`,
+      "  }",
+      "",
+      `test ${row.name}_stops_on_chain() {`,
+    );
+    if (row.reason === null) {
+      lines.push(`  accepts(${row.name})`);
+    } else {
+      const reason = aikenReason(row.reason);
+      const call = `  rejects_with(${row.name}, ${reason[0]!.trim().slice(0, -1)})`;
+      lines.push(
+        ...(reason.length === 1 && call.length <= 80
+          ? [call]
+          : ["  rejects_with(", `    ${row.name},`, ...reason, "  )"]),
+      );
+    }
+    lines.push("}", "");
+    for (const counted of row.counted) {
+      const name = `${row.name}_${counted.name}`;
+      const { phase, pre, transition, auxiliary, successorWork } =
+        counted.vector;
+      lines.push(
+        `const ${name}: CountedStep =`,
+        "  CountedStep {",
+        "    step: StoppingStep {",
+        `      phase: ${phaseConstructor(phase)},`,
+        `      pre: #"${pre}",`,
+        `      transition: #"${transition}",`,
+        `      auxiliary: #"${auxiliary}",`,
+        "    },",
+        `    successor_work: #"${successorWork}",`,
+        "  }",
+        "",
+        `test ${name}_counts_on_chain() {`,
+        `  counts(${name}, ${counted.entryCount.toString()})`,
+        "}",
+        "",
+      );
+    }
+  }
+  return lines.join("\n");
+};
+
+describe("emission order on chain: the one-step verdict at each row's stopping step", () => {
+  const exported: Exported[] = [];
+
+  it.each(ROWS)(
+    "$name",
+    async (row) => {
+      const trace = await machineTrace(row);
+      expectTraceVerdict(row, trace);
+      exported.push({
+        name: row.name,
+        reason: rowReason(row, trace),
+        vector: stoppingStepVector(trace),
+        counted: (row.countedSteps ?? []).map((step) => ({
+          name: step.name,
+          entryCount: step.entryCount,
+          vector: countedStepVector(trace, step),
+        })),
+      });
+    },
+    180_000,
+  );
+
+  it("the on-chain rows are the ones these tables produce", () => {
+    expect(exported.map(({ name }) => name)).toStrictEqual(
+      ROWS.map(({ name }) => name),
+    );
+    const rendered = renderAikenRows(exported);
+    if (process.env.MIDGARD_WRITE_EMISSION_ORDER_ROWS === "1")
+      writeFileSync(AIKEN_ROWS_PATH, rendered);
+    expect(readFileSync(AIKEN_ROWS_PATH, "utf8")).toBe(rendered);
+  });
+});

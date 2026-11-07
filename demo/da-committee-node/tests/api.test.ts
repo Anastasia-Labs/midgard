@@ -2,15 +2,14 @@ import { AddressInfo } from "node:net";
 
 import { describe, expect, it } from "vitest";
 
-import { createWatcherApiServer } from "../src/api/server.js";
-import { JsonFileWatcherStore } from "../src/store.js";
-import type { WatcherReadinessSnapshot } from "../src/watcher.js";
-import { tempDir } from "./helpers.js";
+import { createCommitteeApiServer } from "../src/api/server.js";
+import type { CommitteeReadinessSnapshot } from "../src/committee-service.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 const readinessSnapshot = (
   ready: boolean,
   reasons: readonly string[] = [],
-): WatcherReadinessSnapshot => ({
+): CommitteeReadinessSnapshot => ({
   ready,
   deployment: {
     configuredFingerprint: "dep",
@@ -32,7 +31,7 @@ const readinessSnapshot = (
     threshold: 1,
   },
   peer: {
-    localPeerId: "watcher-peer",
+    localPeerId: "committee-peer",
     signerIndex: 0,
     producerPeerIds: ["producer-peer"],
     configuredPeerCount: 2,
@@ -65,10 +64,10 @@ const readinessSnapshot = (
   reasons,
 });
 
-describe("watcher API", () => {
+describe("committee node API", () => {
   it("serves process health, readiness, and manifest only", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const api = createWatcherApiServer({
+    const store = await openTestCommitteeStore();
+    const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,
       store,
@@ -108,8 +107,8 @@ describe("watcher API", () => {
   });
 
   it("returns 503 readiness with reasons when the snapshot is not ready", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const api = createWatcherApiServer({
+    const store = await openTestCommitteeStore();
+    const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,
       store,
@@ -132,8 +131,8 @@ describe("watcher API", () => {
   });
 
   it("does not expose DA payload, status, or signature routes over HTTP", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const api = createWatcherApiServer({
+    const store = await openTestCommitteeStore();
+    const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,
       store,

@@ -1,3 +1,14 @@
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-sdk";
+import "@effect/vitest";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/mpf/index.js";
+import "./helpers/transition-fixtures.js";
+import "./transition-trace-builder.snapshot-trace-oracle.js";
+
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -8,257 +19,121 @@ import {
   buildEventToStepMembersFromTrace,
   buildTransitionTraceResult as buildTransitionTraceResultFromMpf,
   deleteMpfStore,
-  keyValuePhasRoot,
-  keyValuePhasRootWithCount,
+  encodeTransitionEventKeyCbor,
+  indexTransitionTraceMembersByEventKey,
   MidgardMpf,
   type MpfBatchOp,
-  type RetainedTransitionTraceMember,
   type TransitionTraceSourceEvent,
-  type UtxoPayloadEntry,
-} from "@/workers/utils/mpf.js";
-
+} from "../src/mpf/index.js";
 import {
   depositEventKey,
   forcedTransactionEventKey,
   l2TransactionEventKey,
   withdrawalEventKey,
 } from "./helpers/transition-fixtures.js";
-
-const TRACE_PERSIST_DB = `test-transition-trace-builder-${process.pid}`;
-const TRACE_LEGACY_DB = `${TRACE_PERSIST_DB}-legacy`;
-const TRACE_OVERLAY_DB = `${TRACE_PERSIST_DB}-overlay`;
-
-const outRef = (byte: number) => Buffer.from([byte]);
-const output = (byte: number) => Buffer.from([byte, byte]);
-
-const initialUtxo = (byte: number): UtxoPayloadEntry => ({
-  outref: outRef(byte),
-  output: output(byte),
-});
-
-const noOpEvent = (
-  phase: SDK.TransitionPhase,
-  eventKey: SDK.EventKey,
-): TransitionTraceSourceEvent => ({
-  phase,
-  eventKey,
-  ledgerOps: [],
-});
-
-const makeLedgerMpf = (initialUtxos: readonly UtxoPayloadEntry[]) =>
-  Effect.gen(function* () {
-    const mpf = yield* MidgardMpf.createScratch("transition-trace");
-    yield* mpf.applyBatch(
-      initialUtxos.map((entry) => ({
-        type: "insert" as const,
-        key: entry.outref,
-        value: entry.output,
-      })),
-    );
-    return mpf;
-  });
-
-const buildTransitionTraceResult = ({
-  initialUtxos,
-  sourceEvents,
-  withdrawalCount,
-  forcedTransactionCount,
-  l2TransactionCount,
-  depositCount,
-  expectedTotalEventCount,
-}: {
-  readonly initialUtxos: readonly UtxoPayloadEntry[];
-  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
-  readonly withdrawalCount: number;
-  readonly forcedTransactionCount: number;
-  readonly l2TransactionCount: number;
-  readonly depositCount: number;
-  readonly expectedTotalEventCount?: number;
-}) =>
-  Effect.gen(function* () {
-    const ledgerMpf = yield* makeLedgerMpf(initialUtxos);
-    return yield* buildTransitionTraceResultFromMpf({
-      ledgerMpf,
-      sourceEvents,
-      withdrawalCount,
-      forcedTransactionCount,
-      l2TransactionCount,
-      depositCount,
-      expectedTotalEventCount,
-    });
-  });
-
-const encodePlutusData = <A>(
-  value: A,
-  schema: Parameters<typeof LucidData.Nullable>[0],
-): Buffer => Buffer.from(LucidData.to(value as never, schema as never), "hex");
-
-const countedRootFromEncodedEntries = (
-  domain: SDK.RootDomain,
-  entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
-) =>
-  Effect.gen(function* () {
-    const phas = yield* keyValuePhasRootWithCount(
-      entries.map((entry) => entry.key),
-      entries.map((entry) => entry.value),
-    );
-    return yield* SDK.commitCountedRootProgram({
-      domain,
-      phasRoot: phas.root,
-      count: phas.count,
-    });
-  });
-
-const utxoRootFromMap = (entries: ReadonlyMap<string, UtxoPayloadEntry>) =>
-  keyValuePhasRoot(
-    [...entries.values()].map((entry) => entry.outref),
-    [...entries.values()].map((entry) => entry.output),
-  );
-
-const applySnapshotLedgerOps = (
-  workingUtxos: Map<string, UtxoPayloadEntry>,
-  ops: readonly MpfBatchOp[],
-): void => {
-  for (const op of ops) {
-    const keyHex = op.key.toString("hex");
-    if (op.type === "delete") {
-      if (!workingUtxos.has(keyHex)) {
-        throw new Error(`missing delete: ${keyHex}`);
-      }
-      workingUtxos.delete(keyHex);
-      continue;
-    }
-    if (workingUtxos.has(keyHex)) {
-      throw new Error(`duplicate insert: ${keyHex}`);
-    }
-    workingUtxos.set(keyHex, {
-      outref: Buffer.from(op.key),
-      output: Buffer.from(op.value),
-    });
-  }
-};
-
-const snapshotTraceOracle = ({
-  initialUtxos,
-  sourceEvents,
-}: {
-  readonly initialUtxos: readonly UtxoPayloadEntry[];
-  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
-}) =>
-  Effect.gen(function* () {
-    const workingUtxos = new Map<string, UtxoPayloadEntry>(
-      initialUtxos.map((entry) => [
-        entry.outref.toString("hex"),
-        {
-          outref: Buffer.from(entry.outref),
-          output: Buffer.from(entry.output),
-        },
-      ]),
-    );
-    const transitionTraceMembers: RetainedTransitionTraceMember[] = [];
-    for (const [index, sourceEvent] of sourceEvents.entries()) {
-      const preUtxosRoot = yield* utxoRootFromMap(workingUtxos);
-      applySnapshotLedgerOps(workingUtxos, sourceEvent.ledgerOps);
-      const postUtxosRoot = yield* utxoRootFromMap(workingUtxos);
-      const value: SDK.TransitionStep = {
-        schema_version: 1n,
-        step_index: BigInt(index),
-        event_key: sourceEvent.eventKey,
-        phase: sourceEvent.phase,
-        pre_utxos_root: preUtxosRoot,
-        post_utxos_root: postUtxosRoot,
-      };
-      transitionTraceMembers.push({
-        stepIndex: value.step_index,
-        keyCbor: encodePlutusData(value.step_index, LucidData.Integer()),
-        valueCbor: encodePlutusData(value, SDK.TransitionStepSchema),
-        value,
-      });
-    }
-    const eventToStepMembers = yield* buildEventToStepMembersFromTrace({
-      sourceEvents,
-      transitionTraceMembers,
-    });
-    return {
-      finalUtxosRoot: yield* utxoRootFromMap(workingUtxos),
-      transitionTraceRoot: yield* countedRootFromEncodedEntries(
-        SDK.ROOT_DOMAINS.transitionTrace,
-        transitionTraceMembers.map((member) => ({
-          key: member.keyCbor,
-          value: member.valueCbor,
-        })),
-      ),
-      eventToStepRoot: yield* countedRootFromEncodedEntries(
-        SDK.ROOT_DOMAINS.eventToStep,
-        eventToStepMembers.map((member) => ({
-          key: member.keyCbor,
-          value: member.valueCbor,
-        })),
-      ),
-      transitionTraceMembers,
-      eventToStepMembers,
-    };
-  });
-
-const expectIncrementalTraceMatchesSnapshot = ({
-  initialUtxos,
-  sourceEvents,
-  withdrawalCount,
-  forcedTransactionCount,
-  l2TransactionCount,
-  depositCount,
-}: {
-  readonly initialUtxos: readonly UtxoPayloadEntry[];
-  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
-  readonly withdrawalCount: number;
-  readonly forcedTransactionCount: number;
-  readonly l2TransactionCount: number;
-  readonly depositCount: number;
-}) =>
-  Effect.gen(function* () {
-    const expected = yield* snapshotTraceOracle({ initialUtxos, sourceEvents });
-    const actual = yield* buildTransitionTraceResult({
-      initialUtxos,
-      sourceEvents,
-      withdrawalCount,
-      forcedTransactionCount,
-      l2TransactionCount,
-      depositCount,
-    });
-
-    expect(actual.finalUtxosRoot).toBe(expected.finalUtxosRoot);
-    expect(actual.transitionTraceRoot).toBe(expected.transitionTraceRoot);
-    expect(actual.eventToStepRoot).toBe(expected.eventToStepRoot);
-    expect(actual.transitionTraceMembers).toStrictEqual(
-      expected.transitionTraceMembers,
-    );
-    expect(actual.eventToStepMembers).toStrictEqual(
-      expected.eventToStepMembers,
-    );
-    expect(actual.withdrawalCount).toBe(withdrawalCount);
-    expect(actual.forcedTransactionCount).toBe(forcedTransactionCount);
-    expect(actual.l2TransactionCount).toBe(l2TransactionCount);
-    expect(actual.depositCount).toBe(depositCount);
-    expect(actual.totalEventCount).toBe(sourceEvents.length);
-    expect(actual.transitionStepCount).toBe(sourceEvents.length);
-    return actual;
-  });
+import {
+  buildTransitionTraceResult,
+  encodePlutusData,
+  expectIncrementalTraceMatchesSnapshot,
+  initialUtxo,
+  makeLedgerMpf,
+  noOpEvent,
+  output,
+  outRef,
+  TRACE_DIRECT_DB,
+  TRACE_OVERLAY_DB,
+  TRACE_PERSIST_DB,
+} from "./transition-trace-builder.snapshot-trace-oracle.js";
 
 beforeAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
-  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_DIRECT_DB, "trace-direct"));
   await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
 afterAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
-  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_DIRECT_DB, "trace-direct"));
   await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
 describe("transition trace builder", () => {
   it.effect(
-    "replays every transition step with byte-identical legacy and overlay roots",
+    "indexes validation-trace source material by canonical event key rather than step key",
+    () =>
+      Effect.gen(function* () {
+        const eventKey = l2TransactionEventKey(91);
+        const result = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [noOpEvent("L2Transaction", eventKey)],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        });
+        const [member] = result.transitionTraceMembers;
+        const byEventKey = yield* indexTransitionTraceMembersByEventKey(
+          result.transitionTraceMembers,
+        );
+        const eventKeyHex =
+          encodeTransitionEventKeyCbor(eventKey).toString("hex");
+
+        expect(byEventKey.get(eventKeyHex)).toBe(member);
+        expect(byEventKey.has(member!.keyCbor.toString("hex"))).toBe(false);
+      }),
+  );
+
+  it.effect(
+    "rejects duplicate event keys while indexing validation-trace source material",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [noOpEvent("L2Transaction", l2TransactionEventKey(92))],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        });
+        const [member] = result.transitionTraceMembers;
+        const duplicate = yield* indexTransitionTraceMembersByEventKey([
+          member!,
+          {
+            ...member!,
+            stepIndex: 1n,
+            keyCbor: encodePlutusData(1n, LucidData.Integer()),
+            value: {
+              ...member!.value,
+              step_index: 1n,
+            },
+          },
+        ]).pipe(Effect.either);
+
+        expect(duplicate._tag).toBe("Left");
+      }),
+  );
+
+  it.effect("always emits the exact V1 transition-step schema", () =>
+    Effect.gen(function* () {
+      const ledgerMpf = yield* makeLedgerMpf([initialUtxo(10)]);
+      const result = yield* buildTransitionTraceResultFromMpf({
+        ledgerMpf,
+        sourceEvents: [
+          noOpEvent("ForcedTransaction", forcedTransactionEventKey(2)),
+        ],
+        withdrawalCount: 0,
+        forcedTransactionCount: 1,
+        l2TransactionCount: 0,
+        depositCount: 0,
+      });
+
+      expect(result.transitionTraceMembers).toHaveLength(1);
+      expect(result.transitionTraceMembers[0]!.value.schema_version).toBe(1n);
+    }),
+  );
+
+  it.effect(
+    "replays every transition step with byte-identical direct and overlay store roots",
     () =>
       Effect.gen(function* () {
         const initialUtxos = [initialUtxo(10), initialUtxo(20)];
@@ -276,9 +151,7 @@ describe("transition trace builder", () => {
           {
             phase: "Deposit",
             eventKey: depositEventKey(4),
-            ledgerOps: [
-              { type: "insert", key: outRef(12), value: output(12) },
-            ],
+            ledgerOps: [{ type: "insert", key: outRef(12), value: output(12) }],
           },
         ];
         const initialOps: MpfBatchOp[] = initialUtxos.map((entry) => ({
@@ -286,18 +159,21 @@ describe("transition trace builder", () => {
           key: entry.outref,
           value: entry.output,
         }));
-        const legacy = yield* MidgardMpf.create("trace-legacy", TRACE_LEGACY_DB);
+        const direct = yield* MidgardMpf.create(
+          "trace-direct",
+          TRACE_DIRECT_DB,
+        );
         const overlay = yield* MidgardMpf.create(
           "trace-overlay",
           TRACE_OVERLAY_DB,
-          { engine: "overlay" },
+          { mode: "overlay" },
         );
-        yield* legacy.applyBatch(initialOps);
+        yield* direct.applyBatch(initialOps);
         yield* overlay.applyBatch(initialOps);
         yield* overlay.beginBlockOverlay();
 
-        const legacyResult = yield* buildTransitionTraceResultFromMpf({
-          ledgerMpf: legacy,
+        const directResult = yield* buildTransitionTraceResultFromMpf({
+          ledgerMpf: direct,
           sourceEvents,
           withdrawalCount: 1,
           forcedTransactionCount: 1,
@@ -313,14 +189,12 @@ describe("transition trace builder", () => {
           depositCount: 1,
         });
 
-        expect(overlayResult.finalUtxosRoot).toBe(
-          legacyResult.finalUtxosRoot,
-        );
+        expect(overlayResult.finalUtxosRoot).toBe(directResult.finalUtxosRoot);
         expect(overlayResult.transitionTraceRoot).toBe(
-          legacyResult.transitionTraceRoot,
+          directResult.transitionTraceRoot,
         );
         expect(overlayResult.eventToStepRoot).toBe(
-          legacyResult.eventToStepRoot,
+          directResult.eventToStepRoot,
         );
         expect(
           overlayResult.transitionTraceMembers.map((member) => ({
@@ -328,7 +202,7 @@ describe("transition trace builder", () => {
             post: member.value.post_utxos_root,
           })),
         ).toEqual(
-          legacyResult.transitionTraceMembers.map((member) => ({
+          directResult.transitionTraceMembers.map((member) => ({
             pre: member.value.pre_utxos_root,
             post: member.value.post_utxos_root,
           })),
@@ -337,16 +211,16 @@ describe("transition trace builder", () => {
         yield* overlay.flushBlockOverlay(
           Buffer.from(overlayResult.finalUtxosRoot, "hex"),
         );
-        yield* legacy.close();
+        yield* direct.close();
         yield* overlay.close();
         const reopened = yield* MidgardMpf.create(
           "trace-overlay",
           TRACE_OVERLAY_DB,
         );
-        expect(yield* reopened.rootHex()).toBe(legacyResult.finalUtxosRoot);
+        expect(yield* reopened.rootHex()).toBe(directResult.finalUtxosRoot);
         const proof = yield* reopened.prove(outRef(12));
         expect((yield* reopened.verify(proof, true)).toString("hex")).toBe(
-          legacyResult.finalUtxosRoot,
+          directResult.finalUtxosRoot,
         );
         yield* reopened.close();
       }),
@@ -732,6 +606,43 @@ describe("transition trace builder", () => {
 
       expect(result._tag).toBe("Left");
     }),
+  );
+
+  it.effect(
+    "rejects source counts and actual ledger operations above the V1 consensus profile",
+    () =>
+      Effect.gen(function* () {
+        const excessiveSourceCount = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [],
+          withdrawalCount: MIDGARD_CONSENSUS_LIMITS.maxWithdrawalCount + 1,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 0,
+          depositCount: 0,
+        }).pipe(Effect.either);
+        expect(excessiveSourceCount._tag).toBe("Left");
+
+        const excessiveOperations = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [
+            {
+              phase: "L2Transaction",
+              eventKey: l2TransactionEventKey(99),
+              ledgerOps: Array.from(
+                {
+                  length: MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount + 1,
+                },
+                () => ({ type: "delete" as const, key: outRef(1) }),
+              ),
+            },
+          ],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        }).pipe(Effect.either);
+        expect(excessiveOperations._tag).toBe("Left");
+      }),
   );
 
   it.effect("rejects duplicate forced transaction order event keys", () =>

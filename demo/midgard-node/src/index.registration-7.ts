@@ -1,0 +1,247 @@
+import "./index.registration-6.js";
+
+import {
+  assertReferenceScriptAuthUnexpired,
+  type ReferenceScriptAuthPolicy,
+} from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
+
+import {
+  provideOperatorTxServices,
+  provideReferenceScriptDeploymentServices,
+  provideTxServices,
+  runCliEffect,
+  tapJson,
+  writeJson,
+} from "./commands/cli-runtime.js";
+import { formatJson } from "./commands/command-utils.js";
+import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
+import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
+import { program } from "./index.registration.js";
+import { canonicalSlotConfigForLucid } from "./lucid-time.js";
+import * as Services from "./services/index.js";
+import {
+  planReferenceScriptCommandProgram,
+  referenceScriptTargetsByCommand,
+  referenceScriptWalletStatusProgram,
+} from "./transactions/reference-scripts.js";
+import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
+
+program
+  .command("export-contract-deployment-info")
+  .description(
+    "Write contract deployment info JSON for the currently configured live validator bundle",
+  )
+  .requiredOption(
+    "--out <path>",
+    "Destination filepath for the contract deployment info JSON",
+  )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path the deployment's prepare-hub-oracle-one-shot-nonce wrote (default: MIDGARD_RUN_STATE_PATH or deploymentInfo/midgard-run-state.json)",
+  )
+  .action(async (_args, options) => {
+    const { out, runState } = options.opts();
+    const mainEffect = provideTxServices(
+      ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
+        out,
+        typeof runState === "string" ? { runStatePath: runState } : {},
+      ).pipe(
+        Effect.tap((outputPath) =>
+          Effect.logInfo(
+            `export-contract-deployment-info completed: ${outputPath}`,
+          ),
+        ),
+      ),
+    );
+
+    runCliEffect(mainEffect);
+  });
+
+for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES) {
+  program
+    .command(`deploy-reference-script-${commandName}`)
+    .description(`Publish reference scripts for ${commandName}`)
+    .option(
+      "--contract-deployment-info-output <path>",
+      "Optional override path for the contract deployment info JSON written after reference-script deployment completes",
+    )
+    .option(
+      "--plan-only",
+      "Print the reference-script deployment plan without publishing transactions",
+    )
+    .option(
+      "--run-state <path>",
+      "Deployment run-state path used to resume reference-script auth policy identity",
+    )
+    .option(
+      "--fresh-redeploy",
+      "Create a replacement reference-script auth policy instead of reusing run-state/manifest identity",
+    )
+    .option(
+      "--fresh-redeploy-reason <text>",
+      "Required reason when --fresh-redeploy is used",
+    )
+    .action(async (_args, options) => {
+      const commandOptions = options.opts();
+      const { contractDeploymentInfoOutput, planOnly } = commandOptions;
+      const runOptions =
+        DeploymentRunStateCommand.resolveDeploymentRunCliOptions(
+          commandOptions,
+        );
+      const mainEffect = provideReferenceScriptDeploymentServices(
+        Effect.gen(function* () {
+          const nodeConfig = yield* Services.NodeConfig;
+          const lucidService = yield* Services.Lucid;
+          yield* lucidService.switchToOperatorsMainWallet;
+          yield* lucidService.switchToReferenceScriptWallet;
+          const manifestOutputPath =
+            typeof contractDeploymentInfoOutput === "string"
+              ? contractDeploymentInfoOutput
+              : ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
+          const deployment = {
+            options: runOptions,
+            network: nodeConfig.NETWORK,
+            hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+            hubOracleOneShotOutputIndex:
+              nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+            manifestOutputPath,
+          };
+          const baseContracts = yield* Services.AlwaysSucceedsContract;
+          // The scripts take the slot mapping Lucid reads through the L1
+          // access, a named network's only when it equals its static one.
+          const l1SlotConfig = yield* Effect.try({
+            try: () =>
+              Services.derivedDeploymentL1SlotConfig(
+                nodeConfig.NETWORK,
+                canonicalSlotConfigForLucid(lucidService.api),
+              ),
+            catch: (cause) =>
+              cause instanceof Error ? cause : new Error(String(cause)),
+          });
+          const contractsFor = (authPolicy: ReferenceScriptAuthPolicy) =>
+            Services.withRealStateQueueAndOperatorContracts(
+              nodeConfig.NETWORK,
+              baseContracts,
+              {
+                txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+              },
+              {
+                referenceScriptAuth: authPolicy,
+                availabilityChallengeParameters:
+                  Services.availabilityParametersFromExplicitEnvironment(),
+                eventHistoryProtectionDurationMs:
+                  Services.eventHistoryProtectionDurationFromExplicitEnvironment(),
+                eventHistoryBounds:
+                  Services.eventHistoryBoundsFromExplicitEnvironment(),
+                l1SlotConfig,
+              },
+            );
+          const { contracts } =
+            planOnly === true
+              ? yield* DeploymentRunStateCommand.resolveReferenceScriptAuthPolicyProgram(
+                  {
+                    ...deployment,
+                    lucid: lucidService.referenceScriptsApi,
+                    timelockDurationMs:
+                      nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+                    persistRunState: false,
+                  },
+                ).pipe(
+                  Effect.flatMap(contractsFor),
+                  Effect.map((contracts) => ({ contracts })),
+                )
+              : yield* DeploymentRunStateCommand.resolvePublishableReferenceScriptAuthPolicyProgram(
+                  {
+                    deployment,
+                    lucid: lucidService.referenceScriptsApi,
+                    referenceScriptsAddress:
+                      lucidService.referenceScriptsAddress,
+                    commandName,
+                    timelockDurationMs:
+                      nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+                    contractsFor,
+                  },
+                );
+          yield* Effect.try({
+            try: () =>
+              assertReferenceScriptAuthUnexpired({
+                lucid: lucidService.referenceScriptsApi,
+                policy: contracts.referenceScriptAuth,
+                scopeName: `deploy-reference-script-${commandName}`,
+                targetNames: referenceScriptTargetsByCommand(contracts)[
+                  commandName
+                ].map(({ name }) => name),
+              }),
+            catch: (cause) =>
+              cause instanceof Error
+                ? cause
+                : new Error(
+                    `Reference-script auth guard failed: ${String(cause)}`,
+                  ),
+          });
+          if (planOnly === true) {
+            const plan = yield* planReferenceScriptCommandProgram(
+              lucidService.referenceScriptsApi,
+              contracts,
+              commandName,
+              contracts.referenceScriptAuth,
+              lucidService.referenceScriptsAddress,
+            );
+            writeJson(plan);
+            return { mode: "plan" as const, plan };
+          }
+          const published =
+            yield* RegisterActiveOperator.deployReferenceScriptCommandProgram(
+              lucidService.referenceScriptsApi,
+              contracts,
+              commandName,
+              contracts.referenceScriptAuth,
+              lucidService.api,
+              lucidService.referenceScriptsAddress,
+            );
+          return { mode: "publish" as const, published };
+        }).pipe(
+          Effect.tap((result) => {
+            if (result.mode === "plan") {
+              return Effect.logInfo(
+                `deploy-reference-script-${commandName} plan-only completed: ${formatJson(result.plan)}`,
+              );
+            }
+            return Effect.logInfo(
+              `deploy-reference-script-${commandName} completed: ${JSON.stringify(
+                result.published.map(({ name, utxo }) => ({
+                  name,
+                  outRef: `${utxo.txHash}#${utxo.outputIndex}`,
+                })),
+              )}`,
+            );
+          }),
+        ),
+      );
+
+      runCliEffect(mainEffect);
+    });
+}
+
+program
+  .command("reference-script-wallet-status")
+  .description(
+    "Print total, plain ADA-only, and scriptRef/token-bearing balances for L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+  )
+  .option("--json", "Print machine-readable JSON", true)
+  .action(async () => {
+    const mainEffect = provideOperatorTxServices(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        yield* lucidService.switchToReferenceScriptWallet;
+        return yield* referenceScriptWalletStatusProgram(
+          lucidService.referenceScriptsApi,
+          lucidService.referenceScriptsAddress,
+        );
+      }).pipe(tapJson()),
+    );
+
+    runCliEffect(mainEffect);
+  });

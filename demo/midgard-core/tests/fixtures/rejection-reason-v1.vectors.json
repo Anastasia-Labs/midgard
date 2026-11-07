@@ -1,0 +1,503 @@
+{
+  "domain": "4d69646761726456616c69646174696f6e52656a656374436f64655631",
+  "arms": [
+    {
+      "arm": 0,
+      "name": "FieldPreimageLengthMismatch",
+      "fields": {
+        "field_index": 0
+      },
+      "cbor": "d8799f00ff",
+      "hash": "bc594a430a54f68413833f9c54bb976d86523fe5d3c4ee8bcc1e170b810a926c"
+    },
+    {
+      "arm": 1,
+      "name": "FieldItemWidthIllegal",
+      "fields": {
+        "field_index": 1,
+        "item_index": 2
+      },
+      "cbor": "d87a9f0102ff",
+      "hash": "f1788a1be1dc8659c3fb3a6eb11da8e1349157cbaec1aea818e6ae477e4fcf48"
+    },
+    {
+      "arm": 2,
+      "name": "EmptyInputs",
+      "fields": {},
+      "cbor": "d87b80",
+      "hash": "9c71cc54543951c53a94a959911cab6c8c2586f22a9f87c81479eae5b6d8a5a1"
+    },
+    {
+      "arm": 3,
+      "name": "DuplicateInput",
+      "fields": {
+        "first_field_index": 3,
+        "first_item_index": 4,
+        "second_field_index": 5,
+        "second_item_index": 6
+      },
+      "cbor": "d87c9f03040506ff",
+      "hash": "44cf51a9c10b394c3f61d1ec5cc49b29582b5c9942f31bd052da25876b68b1f1"
+    },
+    {
+      "arm": 4,
+      "name": "ValidityIntervalMalformed",
+      "fields": {},
+      "cbor": "d87d80",
+      "hash": "301c0832c101922e51a6233a42ccebb09450154f40dc30d5a350d32fecc5f9b2"
+    },
+    {
+      "arm": 5,
+      "name": "NetworkIdMismatch",
+      "fields": {},
+      "cbor": "d87e80",
+      "hash": "748ffda500eba98ba9ea9cc8d84358fbb888fdb54c71bba46b2987616e8210ab"
+    },
+    {
+      "arm": 6,
+      "name": "FeeBelowMinimum",
+      "fields": {},
+      "cbor": "d87f80",
+      "hash": "1c58e368280379bf2a43565907240d90e71114cc8fc3422c0f9b1fdc58bd7bef"
+    },
+    {
+      "arm": 7,
+      "name": "AddressWitnessSignatureInvalid",
+      "fields": {
+        "witness_index": 7
+      },
+      "cbor": "d905009f07ff",
+      "hash": "8efca108e0ab132150ba9228f84436e0db12ddd2bccd7f684b36c99a3422c439"
+    },
+    {
+      "arm": 8,
+      "name": "RequiredSignerUnsigned",
+      "fields": {
+        "signer_index": 8
+      },
+      "cbor": "d905019f08ff",
+      "hash": "69083b93d2fa1bbfc8fc061ecb097301fb670bfd022cfa9e818e607091bbf6e1"
+    },
+    {
+      "arm": 9,
+      "name": "WitnessScriptHeaderMalformed",
+      "fields": {
+        "script_index": 9
+      },
+      "cbor": "d905029f09ff",
+      "hash": "820f18f0c555155ea0b92903d618228ee5d5c2897e7066426acef1d3e0b710dd"
+    },
+    {
+      "arm": 10,
+      "name": "WitnessNativeScriptMalformed",
+      "fields": {
+        "script_index": 10
+      },
+      "cbor": "d905039f0aff",
+      "hash": "55c364c32f54655213377ad500b93b55a8e718eeff3521a102d86d5de9de1757"
+    },
+    {
+      "arm": 11,
+      "name": "WitnessNativeScriptNodeLimit",
+      "fields": {
+        "script_index": 11
+      },
+      "cbor": "d905049f0bff",
+      "hash": "39d4cdbff1ddffe9382922fd369acea3ac1df521f322adfcb900d4189217b26b"
+    },
+    {
+      "arm": 12,
+      "name": "WitnessNativeScriptDepthLimit",
+      "fields": {
+        "script_index": 12
+      },
+      "cbor": "d905059f0cff",
+      "hash": "a17f7e11eb02ad3488c799d37bf62a7bafd77bed49e329835999d70fc626c744"
+    },
+    {
+      "arm": 13,
+      "name": "WitnessNativeScriptFalse",
+      "fields": {
+        "script_index": 13
+      },
+      "cbor": "d905069f0dff",
+      "hash": "d4274cca7a0e9e0b812d7c72312d817ca55029d4ef6bef35eef0840f66a874b7"
+    },
+    {
+      "arm": 14,
+      "name": "ScriptIntegrityHashMissing",
+      "fields": {},
+      "cbor": "d9050780",
+      "hash": "f344e698a16976323bd7a8b3e5623d2d576447cca002adb97621bbed58a70170"
+    },
+    {
+      "arm": 15,
+      "name": "ObserversForbiddenOnUntaggedNetwork",
+      "fields": {},
+      "cbor": "d9050880",
+      "hash": "87405a3291b4ccc221964a2aeaec8db3786df37be06d316ab6d476fda4da932f"
+    },
+    {
+      "arm": 16,
+      "name": "ObserverOrderInvalid",
+      "fields": {
+        "observer_index": 16
+      },
+      "cbor": "d905099f10ff",
+      "hash": "4d6f0c4a802256327906b09fe80765248b5be645a3bfc4830c8123240267ad9a"
+    },
+    {
+      "arm": 17,
+      "name": "ValidityIntervalExcludesBlockSlot",
+      "fields": {},
+      "cbor": "d9050a80",
+      "hash": "977035a610d3f71f60c1521bb1c75c6b64e30e96eeccc23115fd037f7f341087"
+    },
+    {
+      "arm": 18,
+      "name": "InputNotFound",
+      "fields": {
+        "source_kind": 18,
+        "input_index": 19
+      },
+      "cbor": "d9050b9f1213ff",
+      "hash": "360b7276c87e7f2c7cff4243f33a3ca9cfdfba2500bc5dde2fca43ebbf2cbb74"
+    },
+    {
+      "arm": 19,
+      "name": "InputSpentOutputNonCanonical",
+      "fields": {
+        "source_kind": 19,
+        "input_index": 20
+      },
+      "cbor": "d9050c9f1314ff",
+      "hash": "8c11e5498240aa0baaacf9515618c7525ea60f25a9692bab7a6b7bb0cfff5cd7"
+    },
+    {
+      "arm": 20,
+      "name": "ResolvedReferenceScriptMalformed",
+      "fields": {
+        "source_kind": 20,
+        "input_index": 21
+      },
+      "cbor": "d9050d9f1415ff",
+      "hash": "787ba5ea9260dc7e8c71ea92a61841cb1b2f16bdf5b8247f4a4178acbb5216f9"
+    },
+    {
+      "arm": 21,
+      "name": "ResolvedReferenceScriptNodeLimit",
+      "fields": {
+        "source_kind": 21,
+        "input_index": 22
+      },
+      "cbor": "d9050e9f1516ff",
+      "hash": "aea165f9c787f481b7f4a91ec3be48458efd15964be3671387201789bee773c7"
+    },
+    {
+      "arm": 22,
+      "name": "ResolvedReferenceScriptDepthLimit",
+      "fields": {
+        "source_kind": 22,
+        "input_index": 23
+      },
+      "cbor": "d9050f9f1617ff",
+      "hash": "7eab051742f629fd163465b00ca523b0a553ec911379fc561ff4157b64a400a1"
+    },
+    {
+      "arm": 23,
+      "name": "SpendInputSignerMissing",
+      "fields": {
+        "input_index": 23
+      },
+      "cbor": "d905109f17ff",
+      "hash": "a0ed7b09f5311cc7cf4f5d279636d39bbe54bd953b39d0610dc013ba7d7399d2"
+    },
+    {
+      "arm": 24,
+      "name": "RedeemerMalformed",
+      "fields": {
+        "redeemer_index": 24
+      },
+      "cbor": "d905119f1818ff",
+      "hash": "c6d2615d85198275e528325d3b3bdb9996f64276014747f7ef0fac8f873c584f"
+    },
+    {
+      "arm": 25,
+      "name": "OutputNonCanonical",
+      "fields": {
+        "output_index": 25
+      },
+      "cbor": "d905129f1819ff",
+      "hash": "a20f0ce92b04fde70e1cea53571dde27cf8c825aab93a85128afd55721a55bac"
+    },
+    {
+      "arm": 26,
+      "name": "OutputReferenceScriptMalformed",
+      "fields": {
+        "output_index": 26
+      },
+      "cbor": "d905139f181aff",
+      "hash": "bd75607c79c80dc28ff656f3417d7ef7b14a9dbc44a553c7286ca59fa6b28b12"
+    },
+    {
+      "arm": 27,
+      "name": "OutputReferenceScriptNodeLimit",
+      "fields": {
+        "output_index": 27
+      },
+      "cbor": "d905149f181bff",
+      "hash": "c24376f2b2ed4bda97d8f06789c315d3ba8ff569059a30de31cb9ae9bd86c30a"
+    },
+    {
+      "arm": 28,
+      "name": "OutputReferenceScriptDepthLimit",
+      "fields": {
+        "output_index": 28
+      },
+      "cbor": "d905159f181cff",
+      "hash": "5ee0d0d1a34340095582d43fc1ab8c0ca277c5d9ddf43bf53a8a8d39652515ce"
+    },
+    {
+      "arm": 29,
+      "name": "ProtectedOutputSignerMissing",
+      "fields": {
+        "output_index": 29
+      },
+      "cbor": "d905169f181dff",
+      "hash": "3beea3ec18ccab5a62424a69ffb15c70a0b8a99cc14c2597557aba1c2b1fa1f0"
+    },
+    {
+      "arm": 30,
+      "name": "MintDeclaredAssetLimit",
+      "fields": {
+        "policy_index": 30
+      },
+      "cbor": "d905179f181eff",
+      "hash": "24d971db4fba7fde03874327763beaf3d8d26b4ca667b17937a3e9dfe82a482e"
+    },
+    {
+      "arm": 31,
+      "name": "ScriptSourceMissing",
+      "fields": {
+        "purpose_kind": 31,
+        "purpose_index": 32
+      },
+      "cbor": "d905189f181f1820ff",
+      "hash": "c30e56fb0dbaf1e7428e934ff1a6301cc556d14d23e98fc99e86f4710e712933"
+    },
+    {
+      "arm": 32,
+      "name": "RedeemerMissing",
+      "fields": {
+        "purpose_kind": 32,
+        "purpose_index": 33
+      },
+      "cbor": "d905199f18201821ff",
+      "hash": "3d52ad10c0bf7af648753abce156495f263c8050738b355da60f0ffd883a9ef5"
+    },
+    {
+      "arm": 33,
+      "name": "UnusedScriptWitness",
+      "fields": {
+        "script_index": 33
+      },
+      "cbor": "d9051a9f1821ff",
+      "hash": "129728be3cc3f3df13fe503cdb434f44283a2d4bbdb567687baa5c9d0f016527"
+    },
+    {
+      "arm": 34,
+      "name": "UnusedRedeemer",
+      "fields": {
+        "redeemer_index": 34
+      },
+      "cbor": "d9051b9f1822ff",
+      "hash": "4d85c48f6e3d82dabb9d56cd1f939d3c6d64d4b310a0d78ac2d569103af819d4"
+    },
+    {
+      "arm": 35,
+      "name": "ExecutionNativeScriptMalformed",
+      "fields": {
+        "purpose_kind": 35,
+        "purpose_index": 36
+      },
+      "cbor": "d9051c9f18231824ff",
+      "hash": "f3609cd0586c95ec46a0b9a933e11b2e91b30ff8e49b443ccb8de2ea32cf8328"
+    },
+    {
+      "arm": 36,
+      "name": "ExecutionNativeScriptNodeLimit",
+      "fields": {
+        "purpose_kind": 36,
+        "purpose_index": 37
+      },
+      "cbor": "d9051d9f18241825ff",
+      "hash": "f694991059500f501a3daedc22696d1bde1f7107f3a772d265313813637f0743"
+    },
+    {
+      "arm": 37,
+      "name": "ExecutionNativeScriptDepthLimit",
+      "fields": {
+        "purpose_kind": 37,
+        "purpose_index": 38
+      },
+      "cbor": "d9051e9f18251826ff",
+      "hash": "56208a49a59345290853c7db1475a102903552fb43b81c3f71efddf04f02600b"
+    },
+    {
+      "arm": 38,
+      "name": "ExecutionNativeScriptFalse",
+      "fields": {
+        "purpose_kind": 38,
+        "purpose_index": 39
+      },
+      "cbor": "d9051f9f18261827ff",
+      "hash": "89a7ebfca4f3da3b4c7c95c3d0d5fb17b38a04484865abdb366f08f2a5e41e5a"
+    },
+    {
+      "arm": 39,
+      "name": "ScriptIntegrityHashMismatch",
+      "fields": {},
+      "cbor": "d9052080",
+      "hash": "800b4eb07dcdb39a9617f27e213bc60f0612e16138ebfadc876485ebd33720c8"
+    },
+    {
+      "arm": 40,
+      "name": "ReceivePurposePlutusV3Forbidden",
+      "fields": {
+        "purpose_kind": 40,
+        "purpose_index": 41
+      },
+      "cbor": "d905219f18281829ff",
+      "hash": "3112b34d078800cefa88946fb87a615b6a31f57ee8891b4c37b610fa861ecc7e"
+    },
+    {
+      "arm": 41,
+      "name": "PlutusExecutionFailed",
+      "fields": {
+        "purpose_kind": 41,
+        "purpose_index": 42
+      },
+      "cbor": "d905229f1829182aff",
+      "hash": "248e3bf957b996ce34e7e5ce5b0cb11012d9ab04e897fb67f15d0537dbe96369"
+    },
+    {
+      "arm": 42,
+      "name": "InputAssetAccumulationLimit",
+      "fields": {
+        "input_index": 42,
+        "asset_index": 43
+      },
+      "cbor": "d905239f182a182bff",
+      "hash": "19657af2b499b060b75b8a871b0c6ebf104e742c72ee550fce36cf94b6d27979"
+    },
+    {
+      "arm": 43,
+      "name": "OutputAssetAccumulationLimit",
+      "fields": {
+        "output_index": 43,
+        "asset_index": 44
+      },
+      "cbor": "d905249f182b182cff",
+      "hash": "ca0eb3741e01475d9012369039f63ec479f4897d91a584eff3c7cc79af906316"
+    },
+    {
+      "arm": 44,
+      "name": "MintAssetAccumulationLimit",
+      "fields": {
+        "mint_index": 44
+      },
+      "cbor": "d905259f182cff",
+      "hash": "8e6a9aa075f8b4a8bf207e737995a084133854792ff4abe22b64cd7093594ac3"
+    },
+    {
+      "arm": 45,
+      "name": "OutputBelowMinAda",
+      "fields": {
+        "output_index": 45
+      },
+      "cbor": "d905269f182dff",
+      "hash": "47efd554e1a3c3b8d0612f5580100384669633d9c23afd7d195eba9cb7218573"
+    },
+    {
+      "arm": 46,
+      "name": "ValueNotPreserved",
+      "fields": {},
+      "cbor": "d9052780",
+      "hash": "84e558e4cb39753af892fe35f097d3a3d528fe341a76662b628d891b8b5675b7"
+    },
+    {
+      "arm": 47,
+      "name": "MintItemMalformed",
+      "fields": {
+        "policy_index": 47
+      },
+      "cbor": "d905289f182fff",
+      "hash": "ea475757f825e41acf1cd6d3de55252c715db6cbcbac0a5e8286baa38bc6f191"
+    },
+    {
+      "arm": 48,
+      "name": "PlutusScriptUndecodable",
+      "fields": {
+        "item_kind": 1,
+        "item_index": 48,
+        "class": 16
+      },
+      "cbor": "d905299f01183010ff",
+      "hash": "9a1ec10d8aed3696fb21c0485a1c116c171b30d9e3ca275442eb94da12b418cb"
+    }
+  ],
+  "extra": [
+    {
+      "arm": 3,
+      "name": "DuplicateInput",
+      "fields": {
+        "first_field_index": -1,
+        "first_item_index": -1,
+        "second_field_index": -1,
+        "second_item_index": -1
+      },
+      "cbor": "d87c9f20202020ff",
+      "hash": "96e7f93cbb70c6db8dfc2a93ace1adbb2ec5dec7600b422aef738c86d50937ca"
+    },
+    {
+      "arm": 18,
+      "name": "InputNotFound",
+      "fields": {
+        "source_kind": 0,
+        "input_index": -1
+      },
+      "cbor": "d9050b9f0020ff",
+      "hash": "92540c0ddc1150a85e4f87ce8be9affe086dd2c235dc5ddf3da712ae43bda343"
+    },
+    {
+      "arm": 41,
+      "name": "PlutusExecutionFailed",
+      "fields": {
+        "purpose_kind": 3,
+        "purpose_index": 300
+      },
+      "cbor": "d905229f0319012cff",
+      "hash": "ce9e5d97c13b80dd5090bc19165e7796680e43663281cb2bd0508a088737146a"
+    },
+    {
+      "arm": 47,
+      "name": "MintItemMalformed",
+      "fields": {
+        "policy_index": 0
+      },
+      "cbor": "d905289f00ff",
+      "hash": "f280ed3127a64fb8cb31fecb28c993f21ec05b890003c993d96570e723c255ba"
+    },
+    {
+      "arm": 48,
+      "name": "PlutusScriptUndecodable",
+      "fields": {
+        "item_kind": 0,
+        "item_index": 0,
+        "class": 1
+      },
+      "cbor": "d905299f000001ff",
+      "hash": "a2bf7b702c379749f6176e0efbdbd1ffbc8bb04566b8f77b43607e2da39be89a"
+    }
+  ]
+}

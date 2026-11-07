@@ -1,9 +1,9 @@
 import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
-import { BlocksDB, ImmutableDB, TxUtils } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/index.js";
+import { BlocksDB, ImmutableDB, TxUtils } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Database } from "../services/index.js";
 
 /**
  * Types of linkage/data-integrity issues the immutable audit can report.

@@ -3,9 +3,22 @@ import { createHash } from "node:crypto";
 export const ARCHITECTURE_G_CORPUS_SELECTION_ALGORITHM =
   "named-slice-file-order-prefix-v1";
 
-const requireString = (value, field, rowNumber) => {
-  if (typeof value !== "string" || value.length === 0) {
+const requireString = (value, field, rowNumber, maxLength = 4096) => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maxLength ||
+    value !== value.trim() ||
+    value.includes("\0")
+  ) {
     throw new Error(`Corpus row ${rowNumber.toString()} has invalid ${field}`);
+  }
+  return value;
+};
+
+const requireObject = (value, label) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object`);
   }
   return value;
 };
@@ -17,14 +30,35 @@ export const validateCanonicalCorpusVerificationEvidence = ({
   rowCount,
   chainCount,
 }) => {
-  if (artifact?.schemaVersion !== "midgard-stress-corpus-generation-v1") {
+  const source = requireObject(artifact, "Formal corpus verification evidence");
+  const sourceVerification = requireObject(
+    source.verified,
+    "Formal corpus verification evidence verified projection",
+  );
+  const sourceRebuildSample = requireObject(
+    sourceVerification.rebuildSample,
+    "Formal corpus verification evidence rebuild-sample projection",
+  );
+  const verification = {
+    corpusSha256: sourceVerification.corpusSha256,
+    indexSha256: sourceVerification.indexSha256,
+    rowCount: sourceVerification.rowCount,
+    chainCount: sourceVerification.chainCount,
+    rebuildSample: {
+      algorithm: sourceRebuildSample.algorithm,
+      sampleRate: sourceRebuildSample.sampleRate,
+      checkedChainCount: sourceRebuildSample.checkedChainCount,
+      checkedRowCount: sourceRebuildSample.checkedRowCount,
+      sampledChainIds: sourceRebuildSample.sampledChainIds,
+    },
+  };
+  if (source.schemaVersion !== "midgard-stress-corpus-generation-v1") {
     throw new Error(
       "Formal corpus verification evidence must be a stress-corpus generation result",
     );
   }
-  const verification = artifact.verified;
-  const rebuildSample = verification?.rebuildSample;
-  const sampledChainIds = rebuildSample?.sampledChainIds;
+  const rebuildSample = verification.rebuildSample;
+  const sampledChainIds = rebuildSample.sampledChainIds;
   if (
     verification?.corpusSha256 !== corpusSha256 ||
     verification?.indexSha256 !== indexSha256 ||
@@ -50,6 +84,68 @@ export const validateCanonicalCorpusVerificationEvidence = ({
     );
   }
   return verification;
+};
+
+export const projectStressWalletFundingRecord = (value) => {
+  const source = requireObject(value, "Stress-wallet funding source");
+  const latestFunding = requireObject(
+    source.latestFunding,
+    "Stress-wallet latest-funding source",
+  );
+  if (!Array.isArray(latestFunding.fundingUtxos)) {
+    throw new Error(
+      "Stress-wallet latest-funding source must contain fundingUtxos",
+    );
+  }
+  const walletId = requireString(source.walletId, "walletId", 0);
+  const fundingUtxos = latestFunding.fundingUtxos.map((value, index) => {
+    const sourceFunding = requireObject(
+      value,
+      `Stress-wallet funding source entry ${index.toString()}`,
+    );
+    const outref = requireString(sourceFunding.outref, "outref", index);
+    const outputCbor = requireString(
+      sourceFunding.outputCbor,
+      "outputCbor",
+      index,
+      1024 * 1024,
+    );
+    if (!/^[0-9a-f]{64}#(?:0|[1-9]\d*)$/u.test(outref)) {
+      throw new Error(
+        `Stress-wallet funding source entry ${index.toString()} has an invalid outref`,
+      );
+    }
+    if (
+      outputCbor.length > 1024 * 1024 ||
+      outputCbor.length % 2 !== 0 ||
+      !/^[0-9a-f]+$/u.test(outputCbor)
+    ) {
+      throw new Error(
+        `Stress-wallet funding source entry ${index.toString()} has invalid canonical output CBOR`,
+      );
+    }
+    return { outref, outputCbor };
+  });
+  if (
+    source.schemaVersion !== "midgard-stress-wallet-v1" ||
+    new Set(fundingUtxos.map(({ outref }) => outref)).size !==
+      fundingUtxos.length
+  ) {
+    throw new Error("Stress-wallet funding source identity is invalid");
+  }
+  return {
+    walletId,
+    fundingUtxos,
+  };
+};
+
+export const stressWalletFileNameFromId = (walletId) => {
+  const canonical = requireString(walletId, "walletId", 0);
+  const match = /^stress-wallet-(\d{4,})$/u.exec(canonical);
+  if (match === null) {
+    throw new Error(`Invalid stress wallet identity ${canonical}`);
+  }
+  return `wallet-${match[1]}.json`;
 };
 
 const parseSelectedRow = (row, rowNumber) => {

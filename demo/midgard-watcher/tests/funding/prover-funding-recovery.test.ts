@@ -1,0 +1,13 @@
+import "node:crypto";
+import "node:fs/promises";
+import "node:path";
+import "@al-ft/midgard-fault-proofs";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/funding/prover-funding-recovery.js";
+import "../../src/runtime/deployment-identity.js";
+import "../support/fault-proof-funding-fixture.js";
+import "./funding-handoff-fixture.js";
+import "./prover-funding-recovery.registration.js";
+import "./prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.js";
+import "./prover-funding-recovery.registration-2.js";

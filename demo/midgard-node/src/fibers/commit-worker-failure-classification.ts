@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
-import type { WorkerOutput } from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
 
 export type CommitWorkerFailureJournalEvidence = {
   readonly headerHash: Buffer;
@@ -73,7 +73,9 @@ export const classifyCommitWorkerOutputForMutationLease = <E, R>({
         );
       }
 
-      return Effect.logWarning(
+      // The failure itself is `commit_worker_failed`; this benign
+      // disposition repeats on every failing tick.
+      return Effect.logDebug(
         `commit_worker_failure_lease_disposition=provably_pre_mutation state_queue_lease_token=${stateQueueLeaseToken} error=${output.error}`,
       ).pipe(Effect.as(output));
     }),

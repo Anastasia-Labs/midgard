@@ -1,6 +1,6 @@
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
-import { slotToUnixTimeForLucid } from "@/lucid-time.js";
+import { slotToUnixTimeForLucid } from "./lucid-time.js";
 
 export const TRANSACTION_CONFIRMATION_METADATA_TIMEOUT_MS = 1_500;
 

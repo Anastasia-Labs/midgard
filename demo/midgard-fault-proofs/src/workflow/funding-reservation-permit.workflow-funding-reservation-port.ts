@@ -1,0 +1,315 @@
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type TxSigned, type UTxO } from "@lucid-evolution/lucid";
+
+import { type WorkflowActuationPermit } from "./actuation-permit.js";
+import { type FraudProofWorkflowJournalEntry } from "./journal.js";
+import { type WorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
+import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
+
+export const WORKFLOW_FUNDING_RESERVATION_PERMIT =
+  "midgard-production-workflow-funding-reservation-permit-v1" as const;
+
+export const DIGEST = /^[0-9a-f]{64}$/u;
+
+export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
+
+export const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
+
+export const ACTION_KIND = /^[a-z][a-zA-Z0-9_.:-]{0,127}$/u;
+
+export type WorkflowFundingReservedInput = Readonly<{
+  outRef: string;
+  role: "funding" | "collateral";
+  lovelace: string;
+  assets: readonly Readonly<{ unit: string; quantity: string }>[];
+}>;
+
+export type WorkflowFundingReservationSnapshot = Readonly<{
+  reservationId: string;
+  deploymentFingerprint: string;
+  decisionDigest: string;
+  policyDigest: string;
+  reservationBasisDigest: string;
+  rollbackGeneration: string;
+  revision: string;
+  walletAddress: string;
+  fundingPaymentKeyHash: string;
+  state: "active" | "released" | "conflict";
+  activeInputs: readonly WorkflowFundingReservedInput[];
+}>;
+
+export type WorkflowFundingPreparedTransition = Readonly<{
+  actionKind: string;
+  signedTransactionCborHex: string;
+  transactionHash: string;
+  transactionBodySha256: string;
+  consumedOutRefs: readonly string[];
+  producedInputs: readonly WorkflowFundingReservedInput[];
+}>;
+
+/** A signed attempt as the reservation records it: its exact transaction
+ * and where its workflow journal records its intent. */
+export type WorkflowFundingRecordedAttempt = Readonly<{
+  transition: WorkflowFundingPreparedTransition;
+  workflowId: string;
+  intentSequence: number;
+  actionId: string;
+}>;
+
+/** A superseded attempt: still able to land until it is retired. */
+export type WorkflowFundingSupersededAttempt = WorkflowFundingRecordedAttempt &
+  Readonly<{ retirement?: SignedWorkflowTransactionRetirement }>;
+
+/** What the reservation records of a fresh attempt besides its bytes. The
+ * category and action input decide its exclusion from superseded attempts. */
+export type WorkflowFundingAttemptIntent = Readonly<{
+  workflowId: string;
+  intentSequence: number;
+  category: string;
+  actionId: string;
+  actionInput: unknown;
+}>;
+
+/**
+ * Durable watcher-owned authority. The production application supplies this
+ * port from its authenticated SQLite reservation store and local-node UTxO
+ * source; workflow constructors never accept reservation data from config.
+ *
+ * Each change carries the workflow journal entries it implies (`journal`).
+ * A durable port (`commitsJournal`) writes them in the same transaction as
+ * the change, and refuses a change for a workflow journal it does not keep.
+ * A port without `commitsJournal` (an in-memory port) receives none, and
+ * the permit appends them once the change returns.
+ */
+export interface WorkflowFundingReservationPort {
+  load(): Promise<unknown>;
+  /** Whether this port keeps `journal`, committing its entries with each
+   * change. */
+  commitsJournal?(journal: object): boolean;
+  readPendingTransition(): Promise<unknown>;
+  /** Every superseded attempt, retired or not. */
+  readSupersededAttempts?(): Promise<readonly unknown[]>;
+  retireSupersededAttempt?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement: SignedWorkflowTransactionRetirement;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  /** Re-select a recorded attempt for reconciliation after canonical
+   * re-observation. Null means another unresolved attempt currently owns the
+   * required inputs, and nothing changed. */
+  reobserve?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    /** Adopts a superseded attempt that landed: its intent is recorded again
+     * at this journal sequence. */
+    readonly adoption?: Readonly<{ intentSequence: number }>;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  /** Per superseded, unretired attempt that no recorded attempt outside its
+   * lineage shares an input with, its exclusion set: the inputs of the
+   * attempt and of every recorded attempt whose outputs it spends,
+   * recursively. Empty when there is none. */
+  readSupersededAttemptFundingOutRefs?(): Promise<
+    readonly (readonly string[])[]
+  >;
+  /** The superseded, unretired attempt of `actionId` that this signed
+   * transaction or a reserved input descends from, or null. Such an attempt
+   * landed, so it is the action's result and is adopted instead. */
+  readLandedSupersededAttempt(input: {
+    readonly actionId: string;
+    readonly signedTransactionCborHex: string;
+  }): Promise<string | null>;
+  /** The exact signed bytes of an attempt this reservation recorded, or null
+   * when it recorded none with this hash. */
+  readRecordedSignedTransaction(input: {
+    readonly transactionHash: string;
+  }): Promise<string | null>;
+  resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
+  /** Exact confirmed output from this reservation, or null if it has no lineage. */
+  resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
+  resolveProtocolInputAuthority(input: {
+    readonly deploymentFingerprint: string;
+    readonly outRef: string;
+    readonly semanticRole: "protocol_state";
+  }): Promise<unknown>;
+  prepare(input: {
+    readonly expectedRevision: string;
+    readonly transition: WorkflowFundingPreparedTransition;
+    readonly attempt: WorkflowFundingAttemptIntent;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  confirm(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  /** Supersedes the pending attempt (retires it, with `retirement`). */
+  abandon(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement?: SignedWorkflowTransactionRetirement;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  releaseIdle?(input: { readonly expectedRevision: string }): Promise<unknown>;
+  /** Refill an idle reservation under fresh submission authority; null means unavailable. */
+  refreshIdle?(input: {
+    readonly expectedRevision: string;
+    readonly releaseStaleInputs: boolean;
+  }): Promise<unknown>;
+  markConflict(input: {
+    readonly expectedRevision: string;
+    readonly code: "unexpected_spend" | "reservation_collision";
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  /** Releases the reservation at its workflow's final completion. */
+  release(input: {
+    readonly expectedRevision: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+}
+
+export interface WorkflowFundingReservationPermit {
+  readonly permitVersion: typeof WORKFLOW_FUNDING_RESERVATION_PERMIT;
+}
+
+export class WorkflowFundingReservationUnavailableError extends Error {
+  constructor() {
+    super("prover funding is temporarily unavailable for a fresh transaction");
+    this.name = "WorkflowFundingReservationUnavailableError";
+  }
+}
+
+/**
+ * Owner ruling (whichever lands wins): a fresh attempt descends from a
+ * superseded attempt of its own action, so that attempt landed. It is the
+ * action's result and is adopted; the fresh attempt waits for that.
+ */
+export class WorkflowFundingSupersededAttemptLandedError extends WorkflowFundingReservationUnavailableError {
+  constructor(readonly transactionHash: string) {
+    super();
+    this.name = "WorkflowFundingSupersededAttemptLandedError";
+    this.message = `superseded attempt ${transactionHash} landed and is adopted as its action's result`;
+  }
+}
+
+export type PermitState = {
+  readonly category: FraudProofCatalogueCategoryName;
+  readonly policy: WorkflowRuntimeFundingPolicy | undefined;
+  readonly actuationPermit: WorkflowActuationPermit;
+  readonly port: WorkflowFundingReservationPort;
+  readonly maximumCollateralInputs: number;
+  readonly reservationMaximumCollateralInputs: number;
+  requiresParameterRefresh: boolean;
+  snapshot: WorkflowFundingReservationSnapshot;
+  resolvedInputs: ReadonlyMap<string, UTxO>;
+  boundJournal: object | undefined;
+  currentActionKind: string | undefined;
+  currentActionDigest: string | undefined;
+  currentFundingOutRefs: readonly string[];
+  /** Funding inputs every transaction of the current action must spend, one
+   * per superseded attempt, so that it is mutually exclusive with each. */
+  currentRequiredFundingOutRefs: readonly string[];
+  currentCollateralOutRefs: readonly string[];
+  pendingTransactionHash: string | undefined;
+  idleReleaseAuthorized: boolean;
+  preparedTransaction:
+    | Readonly<{ signed: TxSigned; cborHex: string }>
+    | undefined;
+};
+
+export const admittedPermits = new WeakMap<object, PermitState>();
+
+export const journalPermits = new WeakMap<object, PermitState>();
+
+export const isPlainObject = (
+  value: unknown,
+): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.getPrototypeOf(value) === Object.prototype &&
+  Reflect.ownKeys(value).length === Object.keys(value).length;
+
+export const exact = (
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  if (!isPlainObject(value)) throw new Error(`${label} is not a plain object`);
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(`${label} has unknown or missing fields`);
+  }
+  return value;
+};
+
+export const canonicalOutRefs = (
+  values: readonly string[],
+  label: string,
+): readonly string[] => {
+  if (
+    values.some((value) => !OUT_REF.test(value)) ||
+    values.some(
+      (value, index) =>
+        index > 0 && values[index - 1]!.localeCompare(value) >= 0,
+    )
+  ) {
+    throw new Error(`${label} must be canonical, ordered, and unique`);
+  }
+  return Object.freeze([...values]);
+};
+
+export const reservedInput = (
+  value: unknown,
+  label: string,
+): WorkflowFundingReservedInput => {
+  const record = exact(value, ["outRef", "role", "lovelace", "assets"], label);
+  if (
+    typeof record.outRef !== "string" ||
+    !OUT_REF.test(record.outRef) ||
+    (record.role !== "funding" && record.role !== "collateral") ||
+    typeof record.lovelace !== "string" ||
+    !NATURAL.test(record.lovelace) ||
+    BigInt(record.lovelace) <= 0n ||
+    !Array.isArray(record.assets)
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+  const assets = record.assets.map((entry, index) => {
+    const asset = exact(
+      entry,
+      ["unit", "quantity"],
+      `${label}.assets[${index.toString()}]`,
+    );
+    if (
+      typeof asset.unit !== "string" ||
+      !/^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u.test(asset.unit) ||
+      typeof asset.quantity !== "string" ||
+      !NATURAL.test(asset.quantity) ||
+      BigInt(asset.quantity) <= 0n
+    ) {
+      throw new Error(`${label}.assets[${index.toString()}] is invalid`);
+    }
+    return Object.freeze({ unit: asset.unit, quantity: asset.quantity });
+  });
+  if (
+    assets.some(
+      (asset, index) =>
+        index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,
+    ) ||
+    (record.role === "collateral" && assets.length !== 0)
+  ) {
+    throw new Error(`${label} asset set is invalid`);
+  }
+  return Object.freeze({
+    outRef: record.outRef,
+    role: record.role,
+    lovelace: record.lovelace,
+    assets: Object.freeze(assets),
+  });
+};

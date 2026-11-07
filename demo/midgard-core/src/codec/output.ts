@@ -16,7 +16,7 @@ import {
 } from "./datum.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
-  decodeMidgardValue,
+  decodeMidgardValueAt,
   encodeMidgardValue,
   type MidgardValue,
 } from "./value.js";
@@ -45,7 +45,7 @@ const fail = (message: string, detail?: string): never => {
   );
 };
 
-const readRawValue = (
+const readRawItem = (
   bytes: Uint8Array,
   offset: number,
 ): { readonly raw: Buffer; readonly nextOffset: number } => {
@@ -101,9 +101,9 @@ export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
         break;
       }
       case 1n: {
-        const raw = readRawValue(bytes, cursor);
-        cursor = raw.nextOffset;
-        value = decodeMidgardValue(raw.raw);
+        const decodedValue = decodeMidgardValueAt(bytes, cursor);
+        cursor = decodedValue.nextOffset;
+        value = decodedValue.value;
         break;
       }
       case 2n: {
@@ -113,7 +113,7 @@ export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
         break;
       }
       case 3n: {
-        const raw = readRawValue(bytes, cursor);
+        const raw = readRawItem(bytes, cursor);
         cursor = raw.nextOffset;
         scriptRef = decodeMidgardVersionedScript(raw.raw);
         break;

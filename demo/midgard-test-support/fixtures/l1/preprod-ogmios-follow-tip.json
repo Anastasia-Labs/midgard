@@ -1,0 +1,495 @@
+{
+  "name": "preprod-ogmios-follow-tip",
+  "description": "A chain-sync session that bootstraps at the tip and then follows it the way a DA committee member does: genesis, tip, findIntersection at the tip, then the tip re-read every 2 s until the node adopts a block, and only then the handshake nextBlock and the nextBlock that delivers the new block.",
+  "provenance": {
+    "network": "preprod",
+    "networkMagic": 1,
+    "kupo": {
+      "url": "http://127.0.0.1:1442",
+      "version": "v2.11.0+de9c52"
+    },
+    "ogmios": {
+      "url": "ws://127.0.0.1:1337",
+      "version": "v7.0.0 (b3a830a1)"
+    },
+    "capturedAt": "2026-09-26T05:33:32.877Z",
+    "tool": "demo/midgard-test-support/scripts/capture-l1-recordings.mjs"
+  },
+  "exchanges": [
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/genesisConfiguration",
+        "params": {
+          "era": "shelley"
+        },
+        "id": "capture-1"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/genesisConfiguration",
+          "result": {
+            "era": "shelley",
+            "startTime": "2022-06-01T00:00:00Z",
+            "networkMagic": 1,
+            "network": "testnet",
+            "activeSlotsCoefficient": "1/20",
+            "securityParameter": 2160,
+            "epochLength": 432000,
+            "slotsPerKesPeriod": 129600,
+            "maxKesEvolutions": 62,
+            "slotLength": {
+              "milliseconds": 1000
+            },
+            "updateQuorum": 5,
+            "maxLovelaceSupply": 45000000000000000,
+            "initialParameters": {
+              "minFeeCoefficient": 44,
+              "minFeeConstant": {
+                "ada": {
+                  "lovelace": 155381
+                }
+              },
+              "maxBlockBodySize": {
+                "bytes": 65536
+              },
+              "maxBlockHeaderSize": {
+                "bytes": 1100
+              },
+              "maxTransactionSize": {
+                "bytes": 16384
+              },
+              "stakeCredentialDeposit": {
+                "ada": {
+                  "lovelace": 2000000
+                }
+              },
+              "stakePoolDeposit": {
+                "ada": {
+                  "lovelace": 500000000
+                }
+              },
+              "stakePoolRetirementEpochBound": 18,
+              "desiredNumberOfStakePools": 150,
+              "stakePoolPledgeInfluence": "3/10",
+              "minStakePoolCost": {
+                "ada": {
+                  "lovelace": 340000000
+                }
+              },
+              "monetaryExpansion": "3/1000",
+              "treasuryExpansion": "1/5",
+              "federatedBlockProductionRatio": "1/1",
+              "extraEntropy": "neutral",
+              "minUtxoDepositConstant": {
+                "ada": {
+                  "lovelace": 1000000
+                }
+              },
+              "minUtxoDepositCoefficient": 0,
+              "version": {
+                "major": 2,
+                "minor": 0
+              }
+            },
+            "initialDelegates": [
+              {
+                "issuer": {
+                  "id": "637f2e950b0fd8f8e3e811c5fbeb19e411e7a2bf37272b84b29c1a0b"
+                },
+                "delegate": {
+                  "id": "aae9293510344ddd636364c2673e34e03e79e3eefa8dbaa70e326f7d",
+                  "vrfVerificationKeyHash": "227116365af2ed943f1a8b5e6557bfaa34996f1578eec667a5e2b361c51e4ce7"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "8a4b77c4f534f8b8cc6f269e5ebb7ba77fa63a476e50e05e66d7051c"
+                },
+                "delegate": {
+                  "id": "d15422b2e8b60e500a82a8f4ceaa98b04e55a0171d1125f6c58f8758",
+                  "vrfVerificationKeyHash": "0ada6c25d62db5e1e35d3df727635afa943b9e8a123ab83785e2281605b09ce2"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "b00470cd193d67aac47c373602fccd4195aad3002c169b5570de1126"
+                },
+                "delegate": {
+                  "id": "b3b539e9e7ed1b32fbf778bf2ebf0a6b9f980eac90ac86623d11881a",
+                  "vrfVerificationKeyHash": "0ff0ce9b820376e51c03b27877cd08f8ba40318f1a9f85a3db0b60dd03f71a7a"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "b260ffdb6eba541fcf18601923457307647dce807851b9d19da133ab"
+                },
+                "delegate": {
+                  "id": "7c64eb868b4ef566391a321c85323f41d2b95480d7ce56ad2abcb022",
+                  "vrfVerificationKeyHash": "7fb22abd39d550c9a022ec8104648a26240a9ff9c88b8b89a6e20d393c03098e"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "ced1599fd821a39593e00592e5292bdc1437ae0f7af388ef5257344a"
+                },
+                "delegate": {
+                  "id": "de7ca985023cf892f4de7f5f1d0a7181668884752d9ebb9e96c95059",
+                  "vrfVerificationKeyHash": "c301b7fc4d1b57fb60841bcec5e3d2db89602e5285801e522fce3790987b1124"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "dd2a7d71a05bed11db61555ba4c658cb1ce06c8024193d064f2a66ae"
+                },
+                "delegate": {
+                  "id": "1e113c218899ee7807f4028071d0e108fc790dade9fd1a0d0b0701ee",
+                  "vrfVerificationKeyHash": "faf2702aa4893c877c622ab22dfeaf1d0c8aab98b837fe2bf667314f0d043822"
+                }
+              },
+              {
+                "issuer": {
+                  "id": "f3b9e74f7d0f24d2314ea5dfbca94b65b2059d1ff94d97436b82d5b4"
+                },
+                "delegate": {
+                  "id": "fd637b08cc379ef7b99c83b416458fcda8a01a606041779331008fb9",
+                  "vrfVerificationKeyHash": "37f2ea7c843a688159ddc2c38a2f997ab465150164a9136dca69564714b73268"
+                }
+              }
+            ],
+            "initialFunds": {},
+            "initialStakePools": {
+              "stakePools": {},
+              "delegators": {}
+            }
+          },
+          "id": "capture-1"
+        }
+      },
+      "elapsedMs": 23
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-2"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717546,
+            "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+          },
+          "id": "capture-2"
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "findIntersection",
+        "params": {
+          "points": [
+            {
+              "slot": 134717546,
+              "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+            },
+            "origin"
+          ]
+        },
+        "id": "capture-3"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "findIntersection",
+          "result": {
+            "intersection": {
+              "slot": 134717546,
+              "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+            },
+            "tip": {
+              "slot": 134717546,
+              "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76",
+              "height": 5220971
+            }
+          },
+          "id": "capture-3"
+        }
+      },
+      "elapsedMs": 2
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-4"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717546,
+            "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+          },
+          "id": "capture-4"
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-5"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717546,
+            "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+          },
+          "id": "capture-5"
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-6"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717546,
+            "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+          },
+          "id": "capture-6"
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-7"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717546,
+            "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+          },
+          "id": "capture-7"
+        }
+      },
+      "elapsedMs": 4
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "queryNetwork/tip",
+        "params": {},
+        "id": "capture-8"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "queryNetwork/tip",
+          "result": {
+            "slot": 134717621,
+            "id": "49bd4f80482e277d6bd3363a21f21c2df2cd900b8cd730ac3715e57f603d2eec"
+          },
+          "id": "capture-8"
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "nextBlock",
+        "params": {},
+        "id": "capture-9"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "nextBlock",
+          "result": {
+            "direction": "backward",
+            "point": {
+              "slot": 134717546,
+              "id": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76"
+            },
+            "tip": {
+              "slot": 134717621,
+              "id": "49bd4f80482e277d6bd3363a21f21c2df2cd900b8cd730ac3715e57f603d2eec",
+              "height": 5220972
+            }
+          },
+          "id": "capture-9"
+        }
+      },
+      "elapsedMs": 2
+    },
+    {
+      "surface": "ogmios-websocket",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "nextBlock",
+        "params": {},
+        "id": "capture-10"
+      },
+      "response": {
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "nextBlock",
+          "result": {
+            "direction": "forward",
+            "block": {
+              "type": "praos",
+              "era": "conway",
+              "id": "49bd4f80482e277d6bd3363a21f21c2df2cd900b8cd730ac3715e57f603d2eec",
+              "size": {
+                "bytes": 564
+              },
+              "height": 5220972,
+              "slot": 134717621,
+              "ancestor": "960a33c70ea077716f1685e68b314db81764ea893f5b83534e45f778d1f0cb76",
+              "issuer": {
+                "verificationKey": "6f2b3ed121fd954a30e0336f4da76b1b5db9e4fe96579e7cd6fa36f1ee2c628c",
+                "vrfVerificationKey": "d6d2a23758a80e8d2b8fbddec49b1730163ce6dbb56cd78d943f391102f74a84",
+                "operationalCertificate": {
+                  "count": 5,
+                  "sigma": "6f8a465f25368d6a5eedb6bf41faec314b0f250545a9f945f8ba44cb18cc14566d55564516951c4ab2f5dcc23e2d61350a1c78df3d1dc5bf46a50c6364985d07",
+                  "kes": {
+                    "period": 1004,
+                    "verificationKey": "7e12bf39d16e7a2d30031648e2050e56d934497cd5995a9b3a9584862fed1785"
+                  }
+                },
+                "leaderValue": {
+                  "output": "f8fc62bc18569d1effd5b1ed8a2b90d70f70121c2365ed64b61fc2b1ccdbc8f63ec2b3202039e5341a46f365b0bc7f38e9f7af3a189fa99d636ec8030177db22",
+                  "proof": "a7253467b179c000fe4d2894289eadf7490d541168e9501451c467af7785a6d1f1a527b34a9e246e62938ec218fdcc7401ec6205f24bfbed025d57a177f69225cbc21a09ff5f6162991024aa1c004900"
+                }
+              },
+              "protocol": {
+                "version": {
+                  "major": 11,
+                  "minor": 1
+                }
+              },
+              "transactions": [
+                {
+                  "id": "44c35afad976b8acfd8d2c9a50527a89aa5281b60ec3701cf6cbfd3b78961da1",
+                  "spends": "inputs",
+                  "inputs": [
+                    {
+                      "transaction": {
+                        "id": "995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b824"
+                      },
+                      "index": 2
+                    },
+                    {
+                      "transaction": {
+                        "id": "995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b824"
+                      },
+                      "index": 3
+                    },
+                    {
+                      "transaction": {
+                        "id": "995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b824"
+                      },
+                      "index": 4
+                    }
+                  ],
+                  "outputs": [
+                    {
+                      "address": "addr_test1vre6qly5vj7hmre72smsl3q5aae3cd49rennzmfplm9jl7csuup3g",
+                      "value": {
+                        "ada": {
+                          "lovelace": 2000000
+                        },
+                        "5d7ede22de207a4814bfc8a9ce3b97808e82eb8772ff3e29ac685040": {
+                          "41454749535f50524943455f464545445f555344435f5553445f5631": 1
+                        }
+                      },
+                      "datum": "d8799fd87b9fa3001a000f4196011b000001a0dc337a68021b000001a0dc7390a8ffff"
+                    },
+                    {
+                      "address": "addr_test1vre6qly5vj7hmre72smsl3q5aae3cd49rennzmfplm9jl7csuup3g",
+                      "value": {
+                        "ada": {
+                          "lovelace": 2000000
+                        },
+                        "6902b0c8e891f584992c1912d71aab6717b5441978a453c4b227dc23": {
+                          "41454749535f50524943455f464545445f555344545f5553445f5631": 1
+                        }
+                      },
+                      "datum": "d8799fd87b9fa3001a000f4182011b000001a0dc337b28021b000001a0dc739168ffff"
+                    },
+                    {
+                      "address": "addr_test1vre6qly5vj7hmre72smsl3q5aae3cd49rennzmfplm9jl7csuup3g",
+                      "value": {
+                        "ada": {
+                          "lovelace": 5961903720
+                        }
+                      }
+                    }
+                  ],
+                  "fee": {
+                    "ada": {
+                      "lovelace": 180153
+                    }
+                  },
+                  "signatories": [
+                    {
+                      "key": "a3b1d0203b02d5ae6101c445549754662f0e91ec6d0f0e7e789561639ef05337",
+                      "signature": "c1845358599d85f04c238c82705504ec3db9361758da6384ee8e195d24b087a05d960b309def781db895d6f5aac207ca7c12018df643743839f270796aad1807"
+                    }
+                  ],
+                  "cbor": "84a300d9010283825820995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b82402825820995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b82403825820995b3ae11ca4d4b2d77d5d1cbbb0ba6028e10d1fb596e32410f3e45248c3b824040183a300581d60f3a07c9464bd7d8f3e54370fc414ef731c36a51e67316d21fecb2ffb01821a001e8480a1581c5d7ede22de207a4814bfc8a9ce3b97808e82eb8772ff3e29ac685040a1581c41454749535f50524943455f464545445f555344435f5553445f563101028201d8185823d8799fd87b9fa3001a000f4196011b000001a0dc337a68021b000001a0dc7390a8ffffa300581d60f3a07c9464bd7d8f3e54370fc414ef731c36a51e67316d21fecb2ffb01821a001e8480a1581c6902b0c8e891f584992c1912d71aab6717b5441978a453c4b227dc23a1581c41454749535f50524943455f464545445f555344545f5553445f563101028201d8185823d8799fd87b9fa3001a000f4182011b000001a0dc337b28021b000001a0dc739168ffff82581d60f3a07c9464bd7d8f3e54370fc414ef731c36a51e67316d21fecb2ffb1b00000001635b6e68021a0002bfb9a100d9010281825820a3b1d0203b02d5ae6101c445549754662f0e91ec6d0f0e7e789561639ef053375840c1845358599d85f04c238c82705504ec3db9361758da6384ee8e195d24b087a05d960b309def781db895d6f5aac207ca7c12018df643743839f270796aad1807f5f6"
+                }
+              ]
+            },
+            "tip": {
+              "slot": 134717621,
+              "id": "49bd4f80482e277d6bd3363a21f21c2df2cd900b8cd730ac3715e57f603d2eec",
+              "height": 5220972
+            }
+          },
+          "id": "capture-10"
+        }
+      },
+      "elapsedMs": 2
+    }
+  ]
+}

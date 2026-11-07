@@ -38,7 +38,7 @@ Redeemers:
       This redeemer receives an initial input that selects the initial state and provides additional information that can be referenced in subsequent state transitions.
     
     The thread token's name should indicate the selected initial state and include a hash of the reference information provided in the initial input.
-    If the state machine is deterministic, its thread token name identifies its unique path from initialization to the current state.
+    The token name binds the initial information. Deterministic transition functions alone do not make it a commitment to the complete execution path: later redeemer inputs can select different transitions or provide additional arguments. Any required path or claim binding must be authenticated by the state and transition rules.
     
     \item[Finalize.] Terminate the state machine normally if it is in one of the final states.
       Burn the thread token and (if needed) perform cleanup actions that are universally needed when terminating normally from any final state.
@@ -75,7 +75,7 @@ Each spending validator can be either statically or dynamically parametrized on 
 \end{itemize}
 
 Dynamic parametrization means that the spending validator requires a reference input that indicates the addresses of the spending validators on which it dynamically depends.
-This reference input is crucial for the integrity of the state machine's state graph, so secure governance mechanisms should control its creation/modification.
+This reference input is crucial for the integrity of the state machine's state graph, so the validator must authenticate the reference input against the governed capability, and governance must control its creation and modification.
 
 \subsection{Example}
 \label{h:single-threaded-state-machine-example}
@@ -151,7 +151,7 @@ Consider a simplified model of the git pull-request (PR) workflow, with the foll
       Transitions:
         \begin{description}
             \item[Approve.] The reviewer approves the branch to be merged into the repository's main branch.
-              Next state: Merged.
+              Next state: Approved.
             \item[Changes.] The reviewer requests some changes to the branch.
               Next state: Changes requested.
         \end{description}
@@ -163,7 +163,7 @@ Consider a simplified model of the git pull-request (PR) workflow, with the foll
             \item[Accept.] The drafter accepts the reviewer's change requests.
               Next state: Draft.
         \end{description}
-    \item[Approved (final state).] The branch is merged into the main branch.
+    \item[Approved (final state).] The branch has been approved for merging into the main branch.
       Transitions:
         \begin{description}
             \item[Merge.] The state machine terminates normally from the final state.
@@ -177,7 +177,7 @@ The minting policy:
 \begin{itemize}
     \item Defines Draft as the initial state.
     \item Assigns the state machine a token name corresponding to the commit hash of the base branch of the PR.\footnote{In this simplified model, the base branch cannot be changed for a PR.}
-    \item Defines Merged as the final state.
+    \item Defines Approved as the final state.
     \item Updates the state of the main branch when the PR branch is merged.
 \end{itemize}
 

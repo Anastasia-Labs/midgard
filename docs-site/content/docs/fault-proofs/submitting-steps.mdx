@@ -1,81 +1,64 @@
 ---
-title: "Submitting Proof Steps"
-description: "The multi-step fraud-proof submission flow driven by the fault-proof tooling."
+title: "Submitting Proof Workflows"
+description: "Durable fraud-proof execution, retired manual routes, and the computation-thread lifecycle."
 ---
 
-A fraud proof is verified on-chain across several transactions by the
-[computation-thread state machine](/docs/onchain/fraud-proof-machines). The
-fault-proof tooling drives this step by step.
+A supported fraud-proof workflow authenticates evidence, opens a computation
+thread, advances its category-specific state machine, and reconciles each L1
+submission. A successful thread can produce the permanent fraud-proof record
+used for [structural correction](/docs/fault-proofs/removing-blocks).
 
-## Before you start
+## Runtime entry points
 
-Each submit command needs a prepared proof artifact, a live challenge target, and an
-L1 connection:
+`workflow-readiness` reports the selected adapter's readiness. An adapter still
+requires an admitted concrete runner; category presence does not prove a
+particular deployment is ready.
 
-- The JSON artifacts written by a [prepare command](/docs/fault-proofs/preparing-proofs).
-  For commands that expose `compatibility.canUseSubmitStepCommands`, it must be
-  `true`; strict preparers instead abort before writing artifacts when their
-  supplied block commitment does not match.
-- `--blueprint <path>` and `--deployment-info <path>`. Run `inspect-contracts` first
-  to confirm the two agree.
-- A funded prover wallet and a provider (`--provider Blockfrost` or `Kupmios`).
-- A block still inside its challenge window. A merged block cannot be challenged.
+`run-workflow` and `resume-workflow` require the same identity and infrastructure
+inputs:
 
-## Flow
+```text
+midgard-fault-proofs run-workflow \
+  --fraud-category <catalogue-category> \
+  --deployment-fingerprint <32-byte-hex> \
+  --header-hash <28-byte-hex> \
+  --workflow-journal-dir <directory> \
+  --workflow-runtime-config <infrastructure-config.json>
+```
 
-<Steps>
-  <Step>
-    **Init**, `submit-init` mints the **computation-thread** token, which opens
-    the challenge and tracks it.
-  </Step>
-  <Step>
-    **Step through**, `submit-step-01` … `submit-step-04` advance the
-    computation thread one step at a time, each verifying one part of the proof
-    on-chain.
-  </Step>
-  <Step>
-    **Conclude**, the final step mints the permanent `fraud_proof` token and
-    burns the computation thread. The token is the record of a concluded proof,
-    not a claim in progress.
-  </Step>
-  <Step>
-    **Category variants**, some categories have their own step sequence:
-    `submit-invalid-range-step-01` and `-02` for the `invalid-range` category,
-    and `submit-non-existent-input-step-01` through `-04` for the
-    `non-existent-input` category. The non-existent-input steps consume the
-    `ne-*.json` artifacts in order: tx inclusion, inputs preimage, ledger
-    non-membership, then txs non-membership on the concluding step.
-  </Step>
-</Steps>
+Use `resume-workflow` with the same persisted identity and journal after an
+interruption. The runtime configuration must supply the accepted deployment,
+public retained-DA/L1 authority, funding and signer infrastructure. Follow the
+[challenger runbook](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/challenger-runbook.md)
+for the full versioned configuration and readiness checks.
 
-<Callout type="warn" title="The two tokens are not the same">
-  `submit-init` mints the computation-thread token. The `fraud_proof` token is
-  minted only on the final step, once the proof has concluded. A computation
-  thread in flight proves nothing.
-</Callout>
+## Retired manual routes
 
-The `transition-trace/` module supports the transition-trace proof used to
-demonstrate how state evolved between blocks.
+The generic `submit-step-01` through `submit-step-04`, invalid-range,
+zero-input, and non-existent-input file submitters are rejected by
+`legacy-submission-boundary.ts`. `submit-init` is also rejected without a
+category and for the categories listed in that boundary. The stable error is
+`RF-043_LEGACY_SUBMISSION_RETIRED`, raised before provider or wallet access.
 
-## What success and failure look like
+A name in CLI help or a historical JSON artifact is not evidence that the route
+can submit. Other low-level routes, including transition-trace and validation
+dispute operations, have their own authenticated inputs and category-specific
+steps. Use their current help/schema together with the installed runner.
 
-Each command writes its result to stdout as JSON. A successful step returns the
-submitted transaction hash and the advanced thread state. A step fails when the
-deployment does not match the blueprint, the referenced thread has already advanced
-past that step, or the on-chain validator rejects the supplied witness. A rejected
-step leaves the computation thread where it was; re-run the same step with corrected
-material rather than skipping ahead.
+## Thread and proof lifecycle
 
-Once a `fraud_proof` token exists, continue to
-[removing the block](/docs/fault-proofs/removing-blocks).
+The computation-thread token identifies a proof in progress. Successful
+completion burns it and mints the permanent fraud-proof token; exceptional
+cancellation burns the thread without creating successful proof evidence.
+Validation disputes can require alternating signed moves, source verification,
+one-step resolution, or timeout transitions rather than a fixed four-step
+sequence.
 
-<Callout type="info" title="Manual tooling">
-  This is manual operator tooling (`bin: midgard-fault-proofs`) intended for
-  producing and driving proofs.
-</Callout>
+A submitted hash is not confirmation. After an error or interruption, reconcile
+the persisted intent, transaction status, and current thread UTxO before
+retrying. A transport failure can occur after submission; blindly rebuilding
+the same step is not a recovery procedure.
 
-## Related
-
-- [Preparing Proofs](/docs/fault-proofs/preparing-proofs)
-- [Removing Fraudulent Blocks](/docs/fault-proofs/removing-blocks)
-- On-chain: [Fraud-Proof Machines](/docs/onchain/fraud-proof-machines)
+Once a successful fraud-proof record exists, correction must still complete
+before the target leaves the removable queue state. Current deployment
+acceptance is tracked by [Project Status](/docs/getting-started/status).

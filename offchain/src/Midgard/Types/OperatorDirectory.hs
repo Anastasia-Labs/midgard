@@ -18,6 +18,7 @@ data SlashingReason
   | SlashOperatorForBadSettlement
       { settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
+      , bountyClaimant :: PubKeyHash
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)

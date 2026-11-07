@@ -30,47 +30,48 @@ to go from canonical fields to their hashed compact counterparts, along with
 `MIDGARD_POSIX_TIME_NONE`, `EMPTY_NULL_ROOT`).
 
 <Callout type="info">
-The compact form is why L1 only ever stores fixed-size hashes of a transaction's
-inputs, outputs, and mint while still being able to verify the full transaction
-against its preimages.
+  Compact commitments keep state-queue commitments small. Proof transactions and
+  transaction orders may still carry authenticated field material on L1; compact
+  hashes do not remove that evidence requirement.
 </Callout>
 
 ## Codec modules
 
-| Module | Import subpath | Role |
-|---|---|---|
-| `cbor.ts` | `codec/cbor` | Low-level canonical CBOR: strict reader/writer (no indefinite lengths, no duplicate map keys), byte comparison, and `assertCanonicalCborRoundTrip` |
-| `errors.ts` | `codec/errors` | `MidgardTxCodecError` and the stable `MidgardTxCodecErrorCodes` |
-| `hash.ts` | `codec/hash` | Canonical Blake2b-256 32-byte hashing (`Hash32`, `computeHash32`, `ensureHash32`) |
-| `address.ts` | `codec/address` | Midgard address encode/decode and credential model |
-| `value.ts` | `codec/value` | Multi-asset value (`MidgardValue`: lovelace + policy/asset maps) |
-| `datum.ts` | `codec/datum` | Inline datums and Plutus data CBOR |
-| `output.ts` | `codec/output` | Transaction outputs (`MidgardTxOutput`) |
-| `native-script.ts` | `codec/native-script` | Native (timelock/multisig) scripts |
-| `versioned-script.ts` | `codec/versioned-script` | Versioned script references by language |
-| `script-language-views.ts` | `codec/script-language-views` | Canonical cost-model / language views |
-| `native.ts` | `codec/native` | Assembles the full native tx codec surface |
+| Module                     | Import subpath                | Role                                                                                                                                               |
+| -------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cbor.ts`                  | `codec/cbor`                  | Low-level canonical CBOR: strict reader/writer (no indefinite lengths, no duplicate map keys), byte comparison, and `assertCanonicalCborRoundTrip` |
+| `errors.ts`                | `codec/errors`                | `MidgardTxCodecError` and the stable `MidgardTxCodecErrorCodes`                                                                                    |
+| `hash.ts`                  | `codec/hash`                  | Canonical Blake2b-256 32-byte hashing (`Hash32`, `computeHash32`, `ensureHash32`)                                                                  |
+| `address.ts`               | `codec/address`               | Midgard address encode/decode and credential model                                                                                                 |
+| `value.ts`                 | `codec/value`                 | Multi-asset value (`MidgardValue`: lovelace + policy/asset maps)                                                                                   |
+| `datum.ts`                 | `codec/datum`                 | Inline datums and Plutus data CBOR                                                                                                                 |
+| `output.ts`                | `codec/output`                | Transaction outputs (`MidgardTxOutput`)                                                                                                            |
+| `native-script.ts`         | `codec/native-script`         | Native (timelock/multisig) scripts                                                                                                                 |
+| `versioned-script.ts`      | `codec/versioned-script`      | Versioned script references by language                                                                                                            |
+| `script-language-views.ts` | `codec/script-language-views` | Canonical cost-model / language views                                                                                                              |
+| `native.ts`                | `codec/native`                | Assembles the full native tx codec surface                                                                                                         |
 
-Several internal helpers back `native.ts` but are not separate subpath exports:
-`native-body.ts`, `native-witness.ts`, `native-validation.ts`,
-`native-constants.ts`, `native-consistency.ts`, and
-`native-cardano-conversion.ts` (Cardano ↔ Midgard native conversion).
+Internal helpers include `native-body.ts`, `native-witness.ts`,
+`native-validation.ts`, `native-consistency.ts`, and
+`native-cardano-conversion.ts`. `native-constants.ts` also has its own package
+subpath. Conversion utilities are explicit bridges with unsupported-feature
+errors; they are not a native-ingress fallback.
 
 ## CBOR strictness
 
 `codec/cbor.ts` decodes with strict options, `allowIndefinite: false`,
 `allowUndefined: false`, `rejectDuplicateMapKeys: true`, and map decoding into
-`Map`, and provides `compareBytes` / `compareCborKeyBytes` for canonical map-key
-ordering. This strictness is what makes the codec canonical: any non-canonical
-input is rejected rather than silently normalized.
+`Map`, and first checks the byte stream with `assertCanonicalCbor`: minimal headers,
+canonical map-key ordering, permitted value forms, and complete consumption.
+Schema-specific decoders add their own field and canonicality checks.
 
 ## Errors
 
-Every decode/encode failure carries a stable, machine-readable code so the
-validation pipeline can record a precise rejection reason instead of collapsing
-everything into a generic parse error.
+Codec rejection paths use `MidgardTxCodecError` with machine-readable codes so
+callers can distinguish encoding, schema, and commitment failures. These are
+codec errors, separate from the validation engine's ledger rejection codes.
 
-```ts
+```ts twoslash
 import {
   MidgardTxCodecError,
   MidgardTxCodecErrorCodes,

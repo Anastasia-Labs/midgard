@@ -47,15 +47,17 @@ during final completion.
 `complete()` runs these phases in order:
 
 <Steps>
-<Step>Normalize and validate builder inputs.</Step>
-<Step>Resolve provider-dependent defaults such as protocol fee parameters.</Step>
-<Step>Select additional inputs if balancing is enabled.</Step>
-<Step>Create an explicit change output if required.</Step>
-<Step>Derive script purpose indexes.</Step>
-<Step>Build native preimage CBOR buckets.</Step>
-<Step>Compute roots and compact commitments.</Step>
-<Step>Construct the unsigned native transaction.</Step>
-<Step>Optionally run local validation.</Step>
+  <Step>Normalize and validate builder inputs.</Step>
+  <Step>
+    Resolve provider-dependent defaults such as protocol fee parameters.
+  </Step>
+  <Step>Select additional inputs if balancing is enabled.</Step>
+  <Step>Create an explicit change output if required.</Step>
+  <Step>Derive script purpose indexes.</Step>
+  <Step>Build native preimage CBOR buckets.</Step>
+  <Step>Compute roots and compact commitments.</Step>
+  <Step>Construct the unsigned native transaction.</Step>
+  <Step>Optionally run local validation.</Step>
 </Steps>
 
 Signing happens **after** unsigned completion because signatures cover the final
@@ -81,7 +83,7 @@ the protocol allows, but any derived index uses validator ordering.
 
 The builder fails before encoding when a spend input appears twice, a reference
 input appears twice, the same outref is both spend and reference input, a
-redeemer pointer is duplicated, a datum witness hash is duplicated, a required
+redeemer pointer is duplicated, a datum witness is attached, a required
 signer is malformed, or a required observer is not a script credential or script
 hash. These checks mirror Phase A and Phase B, but node validation remains
 authoritative.
@@ -101,17 +103,25 @@ protected-output markers and script references cannot be lost through
 decode/re-encode. Local chaining uses body output indexes, not authored-output
 indexes, as the UTxO index namespace.
 
-```ts
+The first produced output must cover the child payment and its fee; the child
+builder returns any surplus as change. The selected wallet must own that input.
+
+```ts twoslash
+import type { TxBuilder, LucidMidgard } from "@al-ft/lucid-midgard";
+declare const first: TxBuilder;
+declare const midgard: LucidMidgard;
+declare const nextAddress: string;
+// ---cut---
 const [, produced, firstTx] = await first.chain();
 const secondTx = await midgard
   .newTx()
   .collectFrom([produced[0]])
-  .pay.ToAddress(nextAddress, produced[0].assets ?? {})
+  .pay.ToAddress(nextAddress, { lovelace: 1_000_000n })
   .complete();
 ```
 
 <Callout type="warn" title="Chained outputs are optimistic">
-Local chained outputs are optimistic until node status reports acceptance or a
-later durable state. Phase B can still reject a chained spend for missing inputs
-or double spends.
+  Local chained outputs are optimistic until node status reports acceptance or a
+  later durable state. Phase B can still reject a chained spend for missing
+  inputs or double spends.
 </Callout>

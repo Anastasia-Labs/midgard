@@ -2,8 +2,9 @@
 
 Status: Legacy supporting package. Aiken under `onchain/aiken` is the primary
 on-chain implementation; this package supplies Plutarch Merkle Patricia
-Forestry helpers and generated membership/non-membership scripts used by proof
-work.
+Forestry experiments and generated membership/non-membership scripts retained
+for reference. The current Aiken membership route is `../aiken/validators/phas.ak`;
+the presence of these generated scripts does not establish deployment use.
 
 Last reviewed: 2026-07-22
 

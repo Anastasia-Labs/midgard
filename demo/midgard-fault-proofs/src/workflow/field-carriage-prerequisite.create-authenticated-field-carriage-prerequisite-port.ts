@@ -1,0 +1,574 @@
+import {
+  buildUnsignedFieldPreimagePublicationProgram,
+  type FraudProofCatalogueCategoryName,
+} from "@al-ft/midgard-sdk";
+import {
+  type LucidEvolution,
+  type Network,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  certifyFaultProofFieldCarriage,
+  fieldPreimageCertificateAddress,
+} from "../field-opening.js";
+import {
+  fieldCertificateClaimKey,
+  fieldPublicationClaimKey,
+} from "../field-opening.own-field-carriage.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  boundPublicationAddress,
+  requireBoundPublicationContext,
+  requireBoundPublicationRecoveryHeader,
+} from "./bound-data-publication.js";
+import {
+  BOUND_DATA_PUBLICATION_PREREQUISITE,
+  exact,
+  FIELD_CARRIAGE_PREREQUISITE,
+  type FieldCarriagePrerequisitePort,
+  type PreimageCarriageRequirement,
+  RAW_DATUM_PREIMAGE_PREREQUISITE,
+  type Recovery,
+  type Requirement,
+  sameJson,
+  TX_HASH,
+} from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
+import {
+  assertCarriageReplacement,
+  missingCertificateReplacement,
+  missingPublicationReplacement,
+  observeOwnCarriage,
+  reconcileCarriageWithoutOutput,
+} from "./field-carriage-prerequisite.publication-observation.js";
+import {
+  recordedCarriageRecovery,
+  recovery,
+} from "./field-carriage-prerequisite.recorded-carriage-recovery.js";
+import {
+  carriageActionInputKeys,
+  carriageReplacementOutRef,
+  certificateAction,
+  certifiedRequirement,
+  parseBaseAction,
+  publicationAction,
+  requirementIdentity,
+} from "./field-carriage-prerequisite.requirement-identity.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
+} from "./journal.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
+import {
+  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+  type FraudProofAuthenticatedPublicationObserver,
+} from "./raw-l1-publication-observation.js";
+import {
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
+} from "./transaction-boundary.js";
+
+/** Journaled carriage actions require distinct raw-L1-authenticated chunk out-refs. */
+export const createAuthenticatedFieldCarriagePrerequisitePort = <
+  Category extends FraudProofCatalogueCategoryName,
+>({
+  category,
+  lucid,
+  network,
+  signer,
+  publications,
+  requirementForAction,
+}: {
+  readonly category: Category;
+  readonly lucid: LucidEvolution;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+  readonly requirementForAction: (input: {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }) =>
+    | PreimageCarriageRequirement
+    | null
+    | Promise<PreimageCarriageRequirement | null>;
+}): FieldCarriagePrerequisitePort<Category> => {
+  if (
+    publications.observerVersion !==
+    FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER
+  ) {
+    throw new Error(`${category} field carriage requires a raw-L1 observer`);
+  }
+  const requirement = async (input: {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<Requirement | null> => {
+    const resolved = await requirementForAction(input);
+    return resolved === null ? null : requirementIdentity(resolved);
+  };
+  const publicationAddress = (required: Requirement) =>
+    boundPublicationAddress(required, signer.address);
+  const certificateAddress = (required: Requirement) =>
+    fieldPreimageCertificateAddress({
+      network,
+      certificatePolicyId: certifiedRequirement(required).certificate.policyId,
+    });
+  const claimsOf = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
+    workflowFieldCarriageOwnOutputs({ category, entries });
+  const observePublication = async (
+    headerHash: string,
+    required: Requirement,
+    index: number,
+    ownOutputs: OwnOutputJournal,
+  ) =>
+    await observeOwnCarriage({
+      publications,
+      lucid,
+      headerHash,
+      kind: "field_publication",
+      address: publicationAddress(required),
+      datumCbor: required.publicationDatums[index]!,
+      unit: null,
+      claims: ownOutputs.claims(
+        fieldPublicationClaimKey(index, required.publicationDatums[index]!),
+      ),
+    });
+  const observeCertificate = async (
+    headerHash: string,
+    required: Requirement,
+    ownOutputs: OwnOutputJournal,
+  ) =>
+    await observeOwnCarriage({
+      publications,
+      lucid,
+      headerHash,
+      kind: "field_certificate",
+      address: certificateAddress(required),
+      datumCbor: required.certificateDatumCbor!,
+      unit: required.certificateUnit!,
+      claims: ownOutputs.claims(
+        fieldCertificateClaimKey(required.certificateDatumCbor!),
+      ),
+    });
+  const resolvePublications = async (
+    headerHash: string,
+    required: Requirement,
+    ownOutputs: OwnOutputJournal,
+    failure: string,
+  ): Promise<UTxO[]> => {
+    const resolved: UTxO[] = [];
+    for (const index of required.publicationDatums.keys()) {
+      const observed = await observePublication(
+        headerHash,
+        required,
+        index,
+        ownOutputs,
+      );
+      if (observed.kind !== "confirmed") throw new Error(failure);
+      resolved.push(observed.utxo);
+    }
+    return resolved;
+  };
+  const inspect = async ({
+    headerHash,
+    baseAction,
+    artifact,
+    entries,
+  }: {
+    readonly headerHash: string;
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  }) => {
+    const required = await requirement({ action: baseAction, artifact });
+    if (required === null || required.planned.plan.tier === "Inline") {
+      return { kind: "not_required" as const };
+    }
+    requireBoundPublicationContext(required, headerHash, baseAction);
+    const ownOutputs = claimsOf(entries);
+    for (const index of required.publicationDatums.keys()) {
+      const observed = await observePublication(
+        headerHash,
+        required,
+        index,
+        ownOutputs,
+      );
+      if (observed.kind === "absent") {
+        const replacement = await missingPublicationReplacement({
+          category,
+          headerHash,
+          baseAction,
+          required,
+          publicationIndex: index,
+          entries,
+          address: publicationAddress(required),
+          publications,
+          network,
+          ownOutputs,
+        });
+        if (replacement.kind === "pending")
+          return {
+            kind: "pending" as const,
+            reason: `${category} field publication is awaiting current provider visibility`,
+          };
+        return {
+          kind: "required" as const,
+          action: publicationAction({
+            category,
+            baseAction,
+            requirement: required,
+            publicationIndex: index,
+            replacementOutRef: replacement.replacementOutRef,
+          }),
+        };
+      }
+      if (observed.kind === "pending") {
+        return {
+          kind: "pending" as const,
+          reason: `${category} field publication ${index.toString()} is not authenticated on the current chain`,
+        };
+      }
+    }
+    if (required.planned.plan.tier !== "Certified") {
+      return { kind: "satisfied" as const };
+    }
+    const certificate = await observeCertificate(
+      headerHash,
+      required,
+      ownOutputs,
+    );
+    const replacement =
+      certificate.kind === "absent"
+        ? await missingCertificateReplacement({
+            category,
+            headerHash,
+            baseAction,
+            required,
+            entries,
+            address: certificateAddress(required),
+            publications,
+          })
+        : certificate;
+    if (replacement.kind === "required")
+      return {
+        kind: "required" as const,
+        action: certificateAction({
+          category,
+          baseAction,
+          requirement: required,
+          replacementOutRef: replacement.replacementOutRef,
+        }),
+      };
+    return replacement.kind === "confirmed"
+      ? { kind: "satisfied" as const }
+      : {
+          kind: "pending" as const,
+          reason: `${category} field certificate is not authenticated on the current chain`,
+        };
+  };
+  const exactAction = async ({
+    headerHash,
+    action,
+    artifact,
+    entries,
+    ownOutputs,
+  }: {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+    readonly headerHash: string;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    readonly ownOutputs: OwnOutputJournal;
+  }): Promise<
+    Readonly<{
+      kind: Recovery["kind"];
+      baseAction: FraudProofWorkflowAction;
+      requirement: Requirement;
+      publicationIndex?: number;
+    }>
+  > => {
+    const input = exact(
+      action.input,
+      carriageActionInputKeys(action),
+      `${category} field action`,
+    );
+    if (
+      (input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE &&
+        input.schemaVersion !== RAW_DATUM_PREIMAGE_PREREQUISITE &&
+        input.schemaVersion !== BOUND_DATA_PUBLICATION_PREREQUISITE) ||
+      input.category !== category ||
+      (input.stage !== "publish_field_carriage" &&
+        input.stage !== "certify_field_carriage")
+    ) {
+      throw new Error(`${category} field action changed identity`);
+    }
+    const baseAction = parseBaseAction(
+      input.forAction,
+      `${category} field base action`,
+    );
+    const required = await requirement({ action: baseAction, artifact });
+    if (required === null) {
+      throw new Error(`${category} field action is no longer required`);
+    }
+    requireBoundPublicationContext(required, headerHash, baseAction);
+    const replacementOutRef = carriageReplacementOutRef(action);
+    // What a replacement is checked against, whichever output it replaces.
+    const replacement = {
+      category,
+      headerHash,
+      replacementOutRef,
+      required,
+      entries,
+      publications,
+      network,
+      ownOutputs,
+    };
+    if (input.stage === "publish_field_carriage") {
+      if (
+        typeof input.publicationIndex !== "number" ||
+        !Number.isSafeInteger(input.publicationIndex)
+      ) {
+        throw new Error(`${category} field publication index is malformed`);
+      }
+      const publicationIndex = input.publicationIndex;
+      if (
+        publicationIndex < 0 ||
+        publicationIndex >= required.publicationDatums.length ||
+        !sameJson(
+          action,
+          publicationAction({
+            category,
+            baseAction,
+            requirement: required,
+            publicationIndex,
+            replacementOutRef,
+          }),
+        )
+      ) {
+        throw new Error(`${category} field publication changed identity`);
+      }
+      await assertCarriageReplacement({
+        ...replacement,
+        address: publicationAddress(required),
+        datumCbor: required.publicationDatums[publicationIndex]!,
+      });
+      return {
+        kind: "publication",
+        baseAction,
+        requirement: required,
+        publicationIndex,
+      };
+    }
+    if (
+      required.planned.plan.tier !== "Certified" ||
+      !sameJson(
+        action,
+        certificateAction({
+          category,
+          baseAction,
+          requirement: required,
+          replacementOutRef,
+        }),
+      )
+    ) {
+      throw new Error(`${category} field certificate changed identity`);
+    }
+    await assertCarriageReplacement({
+      ...replacement,
+      address: certificateAddress(required),
+      datumCbor: required.certificateDatumCbor!,
+      unit: required.certificateUnit!,
+    });
+    return { kind: "certificate", baseAction, requirement: required };
+  };
+  const port: FieldCarriagePrerequisitePort<Category> = {
+    portVersion: FIELD_CARRIAGE_PREREQUISITE,
+    category,
+    resolveAuthenticated: async ({ headerHash, action, artifact, entries }) => {
+      const required = await requirement({ action, artifact });
+      if (required === null || required.planned.plan.tier === "Inline") {
+        return Object.freeze({
+          publications: Object.freeze([]),
+          requirement: required,
+        });
+      }
+      requireBoundPublicationContext(required, headerHash, action);
+      const ownOutputs = claimsOf(entries);
+      const resolved = await resolvePublications(
+        headerHash,
+        required,
+        ownOutputs,
+        `${category} proof step cannot use an unauthenticated field publication`,
+      );
+      if (required.planned.plan.tier !== "Certified") {
+        return Object.freeze({
+          publications: Object.freeze(resolved),
+          requirement: required,
+        });
+      }
+      const observed = await observeCertificate(
+        headerHash,
+        required,
+        ownOutputs,
+      );
+      if (observed.kind !== "confirmed") {
+        throw new Error(
+          `${category} proof step cannot use an unauthenticated field certificate`,
+        );
+      }
+      return Object.freeze({
+        publications: Object.freeze(resolved),
+        certificate: observed.utxo,
+        requirement: required,
+      });
+    },
+    inspect: async (input) => await inspect(input),
+    capture: async ({ headerHash, action, artifact, entries }) => {
+      const ownOutputs = claimsOf(entries);
+      const parsed = await exactAction({
+        headerHash,
+        action,
+        artifact,
+        entries,
+        ownOutputs,
+      });
+      signer.selectWallet(lucid);
+      if (parsed.kind === "publication") {
+        const index = parsed.publicationIndex!;
+        const publication =
+          parsed.requirement.planned.plan.publications[index]!;
+        const datumCbor = parsed.requirement.publicationDatums[index]!;
+        const unsigned = await Effect.runPromise(
+          buildUnsignedFieldPreimagePublicationProgram(lucid, {
+            publication: {
+              chunkIndex: publication.chunkIndex,
+              datumCbor,
+              byteLength: publication.bytes.length,
+              digestHex: publication.digest.toString("hex"),
+            },
+            publisherAddress: publicationAddress(parsed.requirement),
+          }),
+        );
+        const signed = await unsigned.sign.withWallet().complete();
+        const transaction: LocallyEvaluatedTransaction = Object.freeze({
+          txHash: signed.toHash().toLowerCase(),
+          signed,
+          referenceScripts: Object.freeze([]),
+        });
+        return {
+          transaction,
+          durableRecovery: recovery({
+            kind: "publication",
+            requirement: parsed.requirement,
+            transaction,
+            address: publicationAddress(parsed.requirement),
+            datumCbor,
+            unit: null,
+          }),
+        };
+      }
+      const chunkUtxos = await resolvePublications(
+        headerHash,
+        parsed.requirement,
+        ownOutputs,
+        `${category} field certificate cannot bypass authenticated chunk publication`,
+      );
+      const transaction = await captureLocallyEvaluatedTransaction(
+        async (preSubmitBoundary) => {
+          await certifyFaultProofFieldCarriage({
+            lucid,
+            network,
+            signer,
+            planned: certifiedRequirement(parsed.requirement).planned,
+            certificatePolicyId: certifiedRequirement(parsed.requirement)
+              .certificate.policyId,
+            certificateMintingScript: certifiedRequirement(parsed.requirement)
+              .certificate.mintingScript,
+            certificateReferenceScriptUtxo: certifiedRequirement(
+              parsed.requirement,
+            ).certificate.referenceScriptUtxo,
+            chunkUtxos,
+            compactCbor: certifiedRequirement(parsed.requirement).compactCbor,
+            ...(certifiedRequirement(parsed.requirement)
+              .witnessSetCompactCbor === undefined
+              ? {}
+              : {
+                  witnessSetCompactCbor: certifiedRequirement(
+                    parsed.requirement,
+                  ).witnessSetCompactCbor,
+                }),
+            preSubmitBoundary,
+            awaitConfirmation: false,
+          });
+        },
+      );
+      const address = certificateAddress(parsed.requirement);
+      return {
+        transaction,
+        durableRecovery: recovery({
+          kind: "certificate",
+          requirement: parsed.requirement,
+          transaction,
+          address,
+          datumCbor: parsed.requirement.certificateDatumCbor!,
+          unit: parsed.requirement.certificateUnit!,
+        }),
+      };
+    },
+    reconcile: async ({
+      headerHash,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
+      if (txHash === undefined || !TX_HASH.test(txHash))
+        return {
+          kind: "conflict",
+          reason: `${category} field prerequisite omitted its exact transaction hash`,
+        };
+      let recovered: Recovery;
+      try {
+        recovered = recordedCarriageRecovery({
+          category,
+          action,
+          txHash,
+          value: durableRecovery,
+        });
+        requireBoundPublicationRecoveryHeader(action, headerHash);
+      } catch (cause) {
+        return { kind: "conflict", reason: String(cause) };
+      }
+      const address =
+        recovered.kind === "publication"
+          ? (recovered.publicationAddress ?? signer.address)
+          : fieldPreimageCertificateAddress({
+              network,
+              certificatePolicyId: recovered.unit!.slice(0, 56),
+            });
+      const observation = await publications.observeExact({
+        headerHash,
+        kind:
+          recovered.kind === "publication"
+            ? "field_publication"
+            : "field_certificate",
+        address,
+        expectedOutRef: recovered.outRef,
+        expectedDatumCbor: recovered.datumCbor,
+        ...(recovered.unit === null ? {} : { expectedUnit: recovered.unit }),
+      });
+      if (observation.kind === "confirmed") {
+        return { kind: "confirmed", txHash };
+      }
+      return await reconcileCarriageWithoutOutput({
+        txHash,
+        signedTransactionCborHex,
+        authorizeResubmission,
+        publications,
+      });
+    },
+  };
+  return Object.freeze(port);
+};

@@ -4,32 +4,356 @@ on:
   push:
     branches: ["main"]
     paths:
-      - onchain/aiken/**
+      - "onchain/aiken/**"
+      - "config/deployments/**"
+      - "demo/scripts/deployment-profiles.mjs"
+      - "demo/scripts/deployment-profile-aiken.mjs"
+      - "demo/scripts/deployment-profile-identity.mjs"
+      - "demo/scripts/deployment-profile-da.mjs"
+      - "demo/scripts/deployment-profile-names.mjs"
+      - "demo/scripts/deployment-profile-budgets.mjs"
+      - "demo/scripts/deployment-profile-operator-economics.mjs"
+      - "demo/scripts/deployment-profiles.test.mjs"
+      - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
+      - "demo/scripts/deployment-profiles.retention.test.mjs"
+      - "demo/midgard-core/src/generated-deployment-profiles.ts"
+      - "demo/midgard-core/src/script-budgets.json"
+      - "demo/midgard-core/src/script-budgets.ts"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "scripts/generate-user-events-witness-script-prefix.sh"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
+      - "scripts/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/aiken-ci.yml"
   pull_request:
     paths:
-      - onchain/aiken/**
+      - "onchain/aiken/**"
+      - "config/deployments/**"
+      - "demo/scripts/deployment-profiles.mjs"
+      - "demo/scripts/deployment-profile-aiken.mjs"
+      - "demo/scripts/deployment-profile-identity.mjs"
+      - "demo/scripts/deployment-profile-da.mjs"
+      - "demo/scripts/deployment-profile-names.mjs"
+      - "demo/scripts/deployment-profile-budgets.mjs"
+      - "demo/scripts/deployment-profile-operator-economics.mjs"
+      - "demo/scripts/deployment-profiles.test.mjs"
+      - "demo/scripts/package-tasks.mjs"
+      - "demo/scripts/lib/vendored-imports.mjs"
+      - "demo/scripts/deployment-profiles.retention.test.mjs"
+      - "demo/midgard-core/src/generated-deployment-profiles.ts"
+      - "demo/midgard-core/src/script-budgets.json"
+      - "demo/midgard-core/src/script-budgets.ts"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "scripts/generate-user-events-witness-script-prefix.sh"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
+      - "scripts/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/aiken-ci.yml"
+  workflow_dispatch:
+
+# A newer push to the same pull request supersedes the running one; pushes to
+# main always run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+# THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
+# the patched fork is the SOLE compiler for `fmt`, `build` and `check`, and it
+# is what defines deployed script identity. Stock v1.1.22 is retired from every
+# role and is not installed here.
+#
+# The pin is the `aiken` input of `demo/flake.nix` (github:colll78/aiken, tag
+# midgard-c08fcece), locked to its commit in `demo/flake.lock`; nothing else
+# declares it. Every script, here and locally, runs the compiler through
+# `scripts/aiken` (`scripts/lib/aiken.mjs`), which builds exactly the locked
+# commit with nix; nothing puts an aiken on PATH, so no step can reach another
+# one. `.github/actions/aiken` installs nix and caches that build by the lock.
+#
+# The 2026-10-15 move from midgard-5adf7837 to midgard-28e42883 (colll78/aiken
+# main, v1.1.24 plus the protocol version 11 evaluator work) changes no script:
+# same tree, `--env testnet`, one compiler swapped, all 1,135 validators are
+# byte-identical on `hash` and `compiledCode`. The only source change it needed:
+# an empty list typed as `Data` is now ambiguous and is spelled
+# `builtin.list_data([])`, the value the previous compiler chose for it.
+#
+# The 2026-10-25 move to midgard-c08fcece (colll78/aiken main: 28e42883 plus
+# linear-time byte-string rotation and `aiken check` runs that stream each test
+# through generate, optimize and run instead of holding them all) changes no
+# script either: same tree, `--env testnet` and the default env, all 1,206
+# validators are byte-identical on `hash` and `compiledCode`, and every shard 1
+# test reports the same verdict and execution units. Shard 1's peak memory
+# falls from about 19 GiB to 1.5 GiB.
 
 jobs:
-  build:
+  deployment-profiles:
+    name: Deployment profiles
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          install-filter: midgard-demo
+      - name: Check deployment profiles
+        run: |
+          pnpm --dir demo deployment:check preprod-testing
+          node --test demo/scripts/deployment-profiles.test.mjs demo/scripts/deployment-profiles.retention.test.mjs
+
+  # The gates that prove the other gates can fail. They run the pinned
+  # compiler on tiny throwaway projects and finish quickly, so they run in their
+  # own job where no other failure can take them offline. (They used to sit behind the
+  # formatter check, where a formatting drift in any one .ak file took the
+  # gate-can-fail evidence offline along with the suite — which is exactly
+  # what had happened, in nine files, when #577's round-2 review looked.)
+  guard-self-tests:
+    name: Guard self-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - uses: ./.github/actions/aiken
+      # Issue #523. A focused `aiken check -m <selector>` whose selector matches
+      # nothing prints an empty report and exits 0, so every gate citing it
+      # reports success while running no tests. scripts/guard-focused-selector.mjs
+      # turns that into a nonzero exit naming the selector; its self-test
+      # includes the negative case, and an unguarded guard is worth nothing.
+      - name: Self-test the fail-closed focused-selector guard
+        run: node --test scripts/guard-focused-selector.test.mjs scripts/complete-test-shards.test.mjs
+      # The script-budget judge decides every execution-cost verdict, so a
+      # reading over its ceiling, a missing reading, an above-basis reading
+      # that fits and a growth outside its band must each fail it. Stubbed
+      # readings prove that here in seconds, without a compile.
+      - name: Self-test the script-budget judge
+        if: ${{ !cancelled() }}
+        run: node --test scripts/script-budgets.test.mjs
+
+  # Everything that needs the compiler. Once the compiler is established, every
+  # later step runs even when an earlier one failed (`steps.compiler` guards
+  # them), so a formatting drift or a red suite does not hide the verdict of
+  # the others.
+  aiken:
+    name: Aiken format and deployment profiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
     defaults:
       run:
         shell: bash
         working-directory: ./onchain/aiken
     steps:
-      - uses: actions/checkout@v3
-      - uses: aiken-lang/setup-aiken@v1.0.3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          version: v1.1.21
+          node-version-file: demo/.nvmrc
+      # No `setup-aiken` step: stock v1.1.22 is retired from every role by the
+      # owner's 2026-08-13 ruling A, so this workflow installs exactly one
+      # compiler. The fork both compiles and executes. Two reasons it has to be
+      # the fork rather than the release:
+      #   1. Identity. Stock v1.1.22 keys generated expect-decoders by LOCAL
+      #      type name with no module path (issue #521), so two same-named types
+      #      in different modules share one decoder. That bites live on this
+      #      tree: `MintRedeemer` is shared by 12 modules, and the stock
+      #      blueprint's `user_events/tx_order_v1.mint` is the WRONG artifact.
+      #      The retirement snapshot below records the measurement.
+      #   2. Runtime. Upstream aiken#1389 makes a full stock `aiken check` take
+      #      485 minutes on this tree against a 360-minute job ceiling, so a
+      #      stock-executed suite could never pass here at all.
+      - uses: ./.github/actions/aiken
+        id: compiler
       - name: Verify generated user events witness prefix
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')) }}
         working-directory: .
         run: |
           ./scripts/generate-user-events-witness-script-prefix.sh
           git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
-      - name: Run Aiken auto-formatter
-        run: aiken fmt --check
-      - name: Compile Aiken code and run test suite
-        run: aiken check
+      - name: Run normalized Aiken auto-formatter check
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        run: |
+          # The pinned fork is the formatting authority as well as the build
+          # and check authority (owner ruling A).
+          git ls-files -z '*.ak' | xargs -0 ../../scripts/aiken fmt
+          # The formatter emits trailing spaces for monadic let/expect syntax.
+          # Normalize only that formatter artifact before comparing sources.
+          git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
+          git diff --name-only --exit-code -- '*.ak'
+      # The complete test shards compile against the default env only. The pooled DA
+      # bond relations (challenge window ordering, both withdrawal-delay forms,
+      # 0 < slash penalty < DA bond, positive top-up, pool floor and record
+      # lovelace) are pinned by env-bound tests, so they run once per
+      # deployment profile to catch a profile that breaks them.
+      - name: Check the DA bond relations under every deployment profile
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        run: |
+          for env in mainnet preprod_public preprod_rehearsal preprod_testing local_devnet_testing preprod_emulator_testing; do
+            MIDGARD_AIKEN_ENV="$env" node scripts/guard-focused-selector.mjs midgard/da_bond_profile || exit 1
+          done
+      # RETIREMENT RECORD — the dual-compiler blueprint-agreement guard
+      # (issue #521; `scripts/verify-dual-compiler-blueprint-agreement.mjs`),
+      # retired by the owner's 2026-08-13 ruling A on #579 together with the
+      # stock compiler it compared against. Recorded here rather than deleted
+      # silently, because the guard's FINAL reading is the reason the switch
+      # happened and is the only surviving evidence of the defect class.
+      #
+      # Final divergence snapshot, both blueprints built from the same tree:
+      #
+      #   validator                      stock v1.1.22+39d6b04   fork v1.1.23+5adf783
+      #   user_events/tx_order_v1.mint   81fa79f4…  9,851 bytes  b5541807…  10,071 bytes
+      #
+      # ONE validator diverged, and the stock side is the WRONG artifact. Stock
+      # v1.1.22 keys generated expect-decoders as `__expect_{local_type_name}`
+      # with no module path, so types sharing a local name across modules share
+      # a single decoder and at least one of them gets a decoder that is wrong
+      # in both directions. `MintRedeemer` is declared in 12 modules on this
+      # tree, and #594 gave the tx-order mint its own `MintRedeemer` wrapper —
+      # which is exactly where the collision lands. Upstream fixed this in
+      # `cb6105cb`; the pinned fork carries that fix.
+      #
+      # The 2026-08-11 ruling's estimate of an "expected 8-validator delta" is
+      # VOID: the measured delta is 1 validator / 2 blueprint entries.
+      #
+      # The guard is not replaced by another gate. With one compiler there is
+      # no second opinion to compare against, so the property it protected is
+      # now carried by the pin itself: every step reaches the compiler only
+      # through scripts/aiken, which builds the commit demo/flake.lock pins.
       - name: Check that aiken.lock is up-to-date
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: git diff --name-only --exit-code aiken.lock
+
+  # One fresh property seed and a source-derived, complete module partition.
+  shard-plan:
+    name: Plan the complete Aiken test census
+    needs: [guard-self-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Generate whole-module shards with a fresh common seed
+        run: node onchain/aiken/scripts/guard-focused-selector.mjs --plan-shards 4 --output "$RUNNER_TEMP/aiken-plan.json"
+      - name: Publish the common source and seed plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan.json
+          if-no-files-found: error
+
+  # Filters run before test code generation in the pinned fork. Collision
+  # components stay together because module filters use substring matching.
+  # Every current and future source module is assigned; no test allowlist is
+  # involved. Independent format/profile work above still runs once.
+  aiken-tests:
+    name: Aiken complete test shard ${{ matrix.shard }}
+    needs: [shard-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      RAYON_NUM_THREADS: "2"
+    defaults:
+      run:
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - uses: ./.github/actions/aiken
+        id: compiler
+      - name: Download the common source and seed plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan
+      - name: Compile and run the Aiken test suite with the pinned fork
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        run: node scripts/guard-focused-selector.mjs --shard ${{ matrix.shard }} --plan "$RUNNER_TEMP/aiken-plan/aiken-plan.json" --output "$RUNNER_TEMP/aiken-reports/shard-${{ matrix.shard }}.json"
+      - name: Preserve the complete raw compiler report and exit metadata
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiken-shard-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/aiken-reports/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+
+  shard-collector:
+    name: Verify the complete Aiken test union
+    if: ${{ !cancelled() }}
+    needs: [shard-plan, aiken-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Download the common source and seed plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan
+      - name: Download every raw shard report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: aiken-shard-report-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/aiken-reports
+      - name: Require all shard identities, source assignments and passing test records
+        run: node onchain/aiken/scripts/guard-focused-selector.mjs --collect-shards --plan "$RUNNER_TEMP/aiken-plan/aiken-plan.json" --reports "$RUNNER_TEMP/aiken-reports"
+      - uses: ./.github/actions/aiken
+        if: ${{ !cancelled() }}
+      # Every execution cost the protocol relies on is held to its ceiling in
+      # demo/midgard-core/src/script-budgets.json. Aiken tests cannot assert
+      # their own execution units, so this is where a published cost claim can
+      # be falsified. Default-environment budgets are read from the validated
+      # census reports above; budgets under another Aiken environment are
+      # measured by focused runs.
+      - name: Hold every script budget to its ceiling
+        if: ${{ !cancelled() }}
+        run: node onchain/aiken/scripts/script-budgets.mjs check --plan "$RUNNER_TEMP/aiken-plan/aiken-plan.json" --reports "$RUNNER_TEMP/aiken-reports"
+
+  # The one check branch protection should require. It runs even when jobs
+  # above failed or were skipped, and fails unless every one of them
+  # succeeded.
+  gate:
+    name: Aiken CI gate
+    if: ${{ !cancelled() }}
+    needs:
+      [
+        deployment-profiles,
+        guard-self-tests,
+        aiken,
+        shard-plan,
+        aiken-tests,
+        shard-collector,
+      ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Require every job to have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci/check-needs-results.mjs --allow success

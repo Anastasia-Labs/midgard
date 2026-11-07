@@ -8,8 +8,8 @@ Merkle Patricia Forestry commitment, and it is invoked through a staking withdra
 rather than by spending a UTxO.
 
 <Callout type="info" title="On the name">
-`PHAS` is an opaque validator name in Midgard; the acronym is not expanded in the
-codebase (`onchain/aiken/validators/phas.ak`) or the specification.
+  `PHAS` is an opaque validator name in Midgard; the acronym is not expanded in
+  the codebase (`onchain/aiken/validators/phas.ak`) or the specification.
 </Callout>
 
 ## What the validator checks
@@ -44,7 +44,9 @@ the proof it is handed.
 Cardano runs a staking script when its reward account appears in the transaction's
 withdrawals, even for a withdrawal of zero lovelace. This makes a `withdraw` handler a
 cheap, shared place to run a check once per transaction, which any number of spending
-validators can then rely on by confirming the withdrawal is present.
+validators can then rely on by authenticating the exact staking script and
+matching its redeemer to their intended root, key, and value. Mere withdrawal
+presence does not bind the proof to a caller's claim.
 
 The reward account must be registered on-chain before it can be withdrawn from, which is
 what the node's `register-phas-membership-reward-account` command does.

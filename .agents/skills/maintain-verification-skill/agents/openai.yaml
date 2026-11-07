@@ -1,0 +1,6 @@
+interface:
+  display_name: "Maintain Verification Skill"
+  short_description: "Periodic pass that keeps a project's verification skill and feat"
+  default_prompt: "Use $maintain-verification-skill for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

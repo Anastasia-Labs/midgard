@@ -1,0 +1,395 @@
+diff --git a/off-chain/README.md b/off-chain/README.md
+index 5293496..a5e3937 100644
+--- a/off-chain/README.md
++++ b/off-chain/README.md
+@@ -112,11 +112,11 @@ You can inspect any trie using the [`util.inspect`](https://nodejs.org/api/util.
+ ```js
+ console.log(trie);
+ // ╔═══════════════════════════════════════════════════════════════════╗
+-// ║ #ee54d685370064b61cd8921f8476e54819990a67f6ebca402d1280ba1b03c75f ║
++// ║ #fa7e4f9d286646d513ea8db6774d3be8eb177deae8e3abbd6b18b46848423c01 ║
+ // ╚═══════════════════════════════════════════════════════════════════╝
+-//  ┌─ 0 #33af5a3bbf8f
++//  ┌─ 0 #495108eddc17
+ //  ├─ 1 #a38f7e65ebf6
+-//  ├─ 3 #ac9d183ca637
++//  ├─ 3 #b9a4c7f64753
+ //  └─ 9 #75eba4e4dae1
+ ```
+ 
+@@ -137,13 +137,13 @@ await trie.fetchChildren(2);
+ 
+ console.log(trie);
+ // ╔═══════════════════════════════════════════════════════════════════╗
+-// ║ #ee54d685370064b61cd8921f8476e54819990a67f6ebca402d1280ba1b03c75f ║
++// ║ #fa7e4f9d286646d513ea8db6774d3be8eb177deae8e3abbd6b18b46848423c01 ║
+ // ╚═══════════════════════════════════════════════════════════════════╝
+-//  ┌─ 09ad7..[55 digits]..19d9 #33af5a3bbf8f { apple → 🍎 }
++//  ┌─ 09ad7..[55 digits]..19d9 #495108eddc17 { apple → 🍎 }
+ //  ├─ 1 #a38f7e65ebf6
+ //  │  ├─ b021f..[54 digits]..2290 #e5f9beffc856 { tomato → 🍅 }
+ //  │  └─ e7b4b..[54 digits]..0675 #b5e92076b81f { cherries → 🍒 }
+-//  ├─ 39cd4..[55 digits]..9e65 #ac9d183ca637 { blueberry → 🫐 }
++//  ├─ 39cd4..[55 digits]..9e65 #b9a4c7f64753 { blueberry → 🫐 }
+ //  └─ 9 #75eba4e4dae1
+ //     ├─ 702e3..[54 digits]..3a28 #c8b244fad188 { grapes → 🍇 }
+ //     └─ b19ae..[54 digits]..962c #830b96edc35b { tangerine → 🍊 }
+@@ -162,11 +162,11 @@ await trie.save();
+ 
+ console.log(trie);
+ // ╔═══════════════════════════════════════════════════════════════════╗
+-// ║ #ee54d685370064b61cd8921f8476e54819990a67f6ebca402d1280ba1b03c75f ║
++// ║ #fa7e4f9d286646d513ea8db6774d3be8eb177deae8e3abbd6b18b46848423c01 ║
+ // ╚═══════════════════════════════════════════════════════════════════╝
+-//  ┌─ 0 #33af5a3bbf8f
++//  ┌─ 0 #495108eddc17
+ //  ├─ 1 #a38f7e65ebf6
+-//  ├─ 3 #ac9d183ca637
++//  ├─ 3 #b9a4c7f64753
+ //  └─ 9 #75eba4e4dae1
+ ```
+ 
+@@ -206,7 +206,7 @@ const none = await trie.childAt('ffff');
+ const apple = await trie.childAt(
+   blake2b(32).update(Buffer.from('apple')).digest('hex')
+ );
+-// 9ad7..[55 digits]..19d9 #33af5a3bbf8f { apple → 🍎 }
++// 9ad7..[55 digits]..19d9 #495108eddc17 { apple → 🍎 }
+ ```
+ 
+ ### Proving
+@@ -283,7 +283,7 @@ proofTangerine.toJSON();
+ //   {
+ //     type: 'branch',
+ //     skip: 0,
+-//     neighbors: '17a27bc4ce61078d26372800d331d6b8c4b00255080be66977c78b1554aabf8985c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f17
++//     neighbors: '94a0bb5f64518f2412a5cdca7f8cf024a4621a83b62052d255b0c676103870d885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f17
+ // 22acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000
+ // '
+ //   },
+@@ -310,7 +310,7 @@ const proofTangerine = Proof.fronJSON(
+     {
+       type: 'branch',
+       skip: 0,
+-      neighbors: '17a27bc4ce61078d26372800d331d6b8c4b00255080be66977c78b1554aabf8985c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f17
++      neighbors: '94a0bb5f64518f2412a5cdca7f8cf024a4621a83b62052d255b0c676103870d885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f17
+   22acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000
+   '
+     },
+@@ -333,7 +333,7 @@ JSON is cool, but proofs are ultimately meant to be passed on-chain as redeemer
+ 
+ ```js
+ proofTangerine.toCBOR().toString('hex');
+-// 9fd8799f005f58404be28f4839135e1f8f5372a90b54bb7bfaf997a5d13711bb4d7d93f9d4e04fbefa63eb4576001d8658219f928172eccb5448b4d7d62cd6d95228e13ebcbd53505840c1e96bcc431893eef34e03989814375d439faa592edf75c9e5dc10b3c30766700000000000000000000000000000000000000000000000000000000000000000ffffff
++// 9fd8799f005f584094a0bb5f64518f2412a5cdca7f8cf024a4621a83b62052d255b0c676103870d885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b158400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffd87b9f0058209702e39845bfd6e0d0a5b6cb4a3a1c25262528c11bcff857867a50a0670e3a285820b5898c51c32083e91b8c18c735d0ba74e08f964a20b1639c189d1e8704b78a09ffff
+ ```
+ 
+ #### `proof.toAiken(): string`
+@@ -348,7 +348,7 @@ proofTangerine.toAiken();
+ [
+   Branch {
+     skip: 0,
+-    neighbors: #"17a27bc4ce61078d26372800d331d6b8c4b00255080be66977c78b1554aabf8985c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000",
++    neighbors: #"94a0bb5f64518f2412a5cdca7f8cf024a4621a83b62052d255b0c676103870d885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000",
+   },
+   Leaf {
+     skip: 0,
+@@ -369,7 +369,7 @@ proofTangerine.toAiken();
+ ```uplc
+ (con data
+   (List
+-    [ Constr 0 [I 0, B #"17a27bc4ce61078d26372800d331d6b8c4b00255080be66977c78b1554aabf8985c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000"]
++    [ Constr 0 [I 0, B #"94a0bb5f64518f2412a5cdca7f8cf024a4621a83b62052d255b0c676103870d885c09af929492a871e4fae32d9d5c36e352471cd659bcdb61de08f1722acc3b10eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000"]
+     , Constr 2 [I 0, B #"9702e39845bfd6e0d0a5b6cb4a3a1c25262528c11bcff857867a50a0670e3a28", B #"b5898c51c32083e91b8c18c735d0ba74e08f964a20b1639c189d1e8704b78a09"]
+     ]
+   )
+diff --git a/off-chain/lib/trie.js b/off-chain/lib/trie.js
+index 90dd9d2..731e052 100644
+--- a/off-chain/lib/trie.js
++++ b/off-chain/lib/trie.js
+@@ -1085,7 +1085,7 @@ export class Leaf extends Trie {
+     const isOdd = prefix.length % 2 > 0;
+ 
+     const head = isOdd
+-      ? Buffer.concat([Buffer.from([0x00]), nibbles(prefix.slice(0, 1))])
++      ? Buffer.concat([Buffer.from([0x10]), nibbles(prefix.slice(0, 1))])
+       : Buffer.from([0xFF]);
+ 
+     const tail = Buffer.from(isOdd
+diff --git a/off-chain/package.json b/off-chain/package.json
+index 195b461..73ebdca 100644
+--- a/off-chain/package.json
++++ b/off-chain/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@aiken-lang/merkle-patricia-forestry",
+-  "version": "1.3.1-midgard.0",
++  "version": "1.3.1-midgard.1",
+   "private": false,
+   "repository": {
+     "type": "git",
+diff --git a/off-chain/tests/trie.test.js b/off-chain/tests/trie.test.js
+index ac764c3..973331e 100644
+--- a/off-chain/tests/trie.test.js
++++ b/off-chain/tests/trie.test.js
+@@ -151,21 +151,21 @@ test('Trie.load', async t => {
+ 
+   t.is(inspect(trie), unindent`
+     ╔═══════════════════════════════════════════════════════════════════╗
+-    ║ #4acd78f345a686361df77541b2e0b533f53362e36620a1fdd3a13e0b61a3b078 ║
++    ║ #6e9e11c15686694fbec2e1e685e2aa3f2bb402ab955d02ebbc2a5ec1fc69093b ║
+     ╚═══════════════════════════════════════════════════════════════════╝
+      ┌─ 0 #520a7f805c5f
+-     ├─ 1 #58c5e4a29601
++     ├─ 1 #f8f1111fd89c
+      ├─ 2 #c9431d708d20
+-     ├─ 3 #070a12b8b349
++     ├─ 3 #5ecc582a6c21
+      ├─ 4 #79519b8cdfbd
+-     ├─ 5 #08434fd717ae
+-     ├─ 7 #aeb3a9f2e198
+-     ├─ 8 #b27d20a5187a
+-     ├─ a #c2f2115774c1
++     ├─ 5 #033c3ca05164
++     ├─ 7 #4420b2d642ba
++     ├─ 8 #21e74ccebcea
++     ├─ a #ccd5016507c7
+      ├─ b #da0bdb30bf45
+      ├─ c #a22a7b4d767a
+      ├─ d #0a747d583e2e
+-     ├─ e #da1771d107c8
++     ├─ e #a379ac6be6d5
+      └─ f #117abf0e19fb
+   `);
+ });
+@@ -184,21 +184,21 @@ test('Trie.insert: whole trie in any order', async t => {
+ 
+     t.is(inspect(trie), unindent`
+       ╔═══════════════════════════════════════════════════════════════════╗
+-      ║ #4acd78f345a686361df77541b2e0b533f53362e36620a1fdd3a13e0b61a3b078 ║
++      ║ #6e9e11c15686694fbec2e1e685e2aa3f2bb402ab955d02ebbc2a5ec1fc69093b ║
+       ╚═══════════════════════════════════════════════════════════════════╝
+        ┌─ 0 #520a7f805c5f
+-       ├─ 1 #58c5e4a29601
++       ├─ 1 #f8f1111fd89c
+        ├─ 2 #c9431d708d20
+-       ├─ 3 #070a12b8b349
++       ├─ 3 #5ecc582a6c21
+        ├─ 4 #79519b8cdfbd
+-       ├─ 5 #08434fd717ae
+-       ├─ 7 #aeb3a9f2e198
+-       ├─ 8 #b27d20a5187a
+-       ├─ a #c2f2115774c1
++       ├─ 5 #033c3ca05164
++       ├─ 7 #4420b2d642ba
++       ├─ 8 #21e74ccebcea
++       ├─ a #ccd5016507c7
+        ├─ b #da0bdb30bf45
+        ├─ c #a22a7b4d767a
+        ├─ d #0a747d583e2e
+-       ├─ e #da1771d107c8
++       ├─ e #a379ac6be6d5
+        └─ f #117abf0e19fb
+     `);
+ 
+@@ -212,39 +212,39 @@ test('Trie.insert: whole trie in any order', async t => {
+     t.deepEqual(trie, sameTrie);
+     t.is(inspect(trie), unindent`
+       ╔═══════════════════════════════════════════════════════════════════╗
+-      ║ #4acd78f345a686361df77541b2e0b533f53362e36620a1fdd3a13e0b61a3b078 ║
++      ║ #6e9e11c15686694fbec2e1e685e2aa3f2bb402ab955d02ebbc2a5ec1fc69093b ║
+       ╚═══════════════════════════════════════════════════════════════════╝
+        ┌─ 0 #520a7f805c5f
+        │  ├─ 389fd..[54 digits]..1abc #56408b9882f8 { mango[uid: 0] → 🥭 }
+        │  └─ 9d230..[54 digits]..9ecc #9ca49c0d73d5 { lemon[uid: 0] → 🍋 }
+-       ├─ 16a4 #58c5e4a29601
+-       │  ├─ 3a30b..[51 digits]..a968 #86410153344f { cherry[uid: 0] → 🍒 }
+-       │  ├─ 8584c..[51 digits]..d4a5 #cda1c8929d05 { tomato[uid: 83468] → 🍅 }
+-       │  └─ b7ce0..[51 digits]..f157 #472d5ccbcae8 { plum[uid: 15492] → 🤷 }
++       ├─ 16a4 #f8f1111fd89c
++       │  ├─ 3a30b..[51 digits]..a968 #ad0fd8a65153 { cherry[uid: 0] → 🍒 }
++       │  ├─ 8584c..[51 digits]..d4a5 #444019eac1ee { tomato[uid: 83468] → 🍅 }
++       │  └─ b7ce0..[51 digits]..f157 #edb44329c8b2 { plum[uid: 15492] → 🤷 }
+        ├─ 245 #c9431d708d20
+        │  ├─ 4c787..[52 digits]..c20e #e38b422bd7d9 { pineapple[uid: 12577] → 🍍 }
+        │  ├─ a4f81..[52 digits]..90a3 #3e2491668264 { pomegranate[uid: 0] → 🤷 }
+        │  └─ e3fc8..[52 digits]..e7c3 #eda213c9a1ca { strawberry[uid: 2532] → 🍓 }
+-       ├─ 3e #070a12b8b349
+-       │  ├─ d002d..[53 digits]..f3ac #b40093af0024 { lime[uid: 0] → 🤷 }
+-       │  └─ e659e..[53 digits]..b3b9 #242b464043b4 { banana[uid: 218] → 🍌 }
++       ├─ 3e #5ecc582a6c21
++       │  ├─ d002d..[53 digits]..f3ac #f64ca98ded70 { lime[uid: 0] → 🤷 }
++       │  └─ e659e..[53 digits]..b3b9 #00ccb0145854 { banana[uid: 218] → 🍌 }
+        ├─ 4 #79519b8cdfbd
+        │  ├─ 07 #fdd60cf1b755
+        │  │  ├─ 6d8ab..[52 digits]..73ef #c538c893306a { guava[uid: 344] → 🤷 }
+        │  │  └─ c5847..[52 digits]..4a22 #785e20425cf9 { kiwi[uid: 0] → 🥝 }
+        │  └─ a522f..[54 digits]..20cd #e0b9d1f525e3 { kumquat[uid: 0] → 🤷 }
+-       ├─ 5 #08434fd717ae
++       ├─ 5 #033c3ca05164
+        │  ├─ cddcd..[54 digits]..aa9e #8a1256a87426 { watermelon[uid: 0] → 🍉 }
+-       │  └─ e #e26d8409cd76
+-       │     ├─ 7ccfe..[53 digits]..4440 #c387ec2e54f6 { yuzu[uid: 0] → 🤷 }
+-       │     └─ d71f9..[53 digits]..26d2 #cfcc9c732f50 { apple[uid: 58] → 🍎 }
+-       ├─ 78666..[55 digits]..7292 #aeb3a9f2e198 { raspberry[uid: 0] → 🤷 }
+-       ├─ 8af48..[55 digits]..04a8 #b27d20a5187a { tangerine[uid: 11] → 🍊 }
+-       ├─ a #c2f2115774c1
++       │  └─ e #dd8486a799ef
++       │     ├─ 7ccfe..[53 digits]..4440 #57f7e5e1a73c { yuzu[uid: 0] → 🤷 }
++       │     └─ d71f9..[53 digits]..26d2 #a331cd3151b7 { apple[uid: 58] → 🍎 }
++       ├─ 78666..[55 digits]..7292 #4420b2d642ba { raspberry[uid: 0] → 🤷 }
++       ├─ 8af48..[55 digits]..04a8 #21e74ccebcea { tangerine[uid: 11] → 🍊 }
++       ├─ a #ccd5016507c7
+        │  ├─ 4b927..[54 digits]..3c69 #a6a35d200876 { peach[uid: 0] → 🍑 }
+-       │  └─ f12 #8ee8d620e9d6
+-       │     ├─ a1017..[51 digits]..50e7 #a241f4660aa4 { fig[uid: 68267] → 🤷 }
+-       │     └─ ec412..[51 digits]..71fe #63c036b16617 { passionfruit[uid: 0] → 🤷 }
++       │  └─ f12 #9e53c7a37366
++       │     ├─ a1017..[51 digits]..50e7 #6441948643d0 { fig[uid: 68267] → 🤷 }
++       │     └─ ec412..[51 digits]..71fe #6cbd2ef58c2f { passionfruit[uid: 0] → 🤷 }
+        ├─ b #da0bdb30bf45
+        │  ├─ 67e71..[54 digits]..c48b #f39b1b5089f8 { grapefruit[uid: 0] → 🤷 }
+        │  └─ 88701..[54 digits]..949e #85acec96ac0f { blueberry[uid: 0] → 🫐 }
+@@ -254,7 +254,7 @@ test('Trie.insert: whole trie in any order', async t => {
+        ├─ d #0a747d583e2e
+        │  ├─ b3047..[54 digits]..502a #54d9ea3b162d { coconut[uid: 0] → 🥥 }
+        │  └─ f779e..[54 digits]..678a #a82bdd8e07c2 { pear[uid: 0] → 🍐 }
+-       ├─ e5993..[55 digits]..c9ec #da1771d107c8 { apricot[uid: 0] → 🤷 }
++       ├─ e5993..[55 digits]..c9ec #a379ac6be6d5 { apricot[uid: 0] → 🤷 }
+        └─ f #117abf0e19fb
+           ├─ 63c88..[54 digits]..21ca #62bda6837164 { papaya[uid: 0] → 🤷 }
+           └─ b69c0..[54 digits]..2145 #c8e795f7b215 { grapes[uid: 0] → 🍇 }
+@@ -327,7 +327,7 @@ test('Trie.insert: edge case fork 8', async t => {
+ 
+   t.is(
+     proof.verify(true).toString('hex'),
+-    '6308f158d046f2d7928fcae02b66e12831dc42f33e5d89591ae9fa7f92726e42',
++    '7143c72548c502a02fe79ee13c3672bde847adb09b3749a5cc2a5ae94c5f7b8a',
+   );
+ });
+ 
+@@ -376,7 +376,7 @@ test('Trie.insert: edge case fork 6', async t => {
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    'b59233f804a519ea064071251d1f948cd129543c2ece3932f001a593c99409dc'
++    '96149792c95b5da30a5c55447e652d7ca8669c8b2aec2093ceeaf0354808172e'
+   )
+ })
+ 
+@@ -405,7 +405,7 @@ test('Trie.insert: edge case fork 5', async t => {
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    '5c788efef5680d2ce466fa44943999262f5215d29263cf46069eb9a49728125f'
++    '62e1a31222df93f1e725cecea0d3429a9936a013fa9152aecdd44bc4f7a3d064'
+   )
+ })
+ 
+@@ -427,7 +427,7 @@ test('Trie.insert: edge case fork 4', async t => {
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    'a6eb3cdf9dd3da02d9463bd5cd68555ea11d6d5a77e2ece9ceb1cf6a5a9c7b27'
++    'f45b9be75cbb9fa9143c249609304c246bf7d3b9457cf4af188d5de22c1a0827'
+   )
+ })
+ 
+@@ -449,7 +449,7 @@ test('Trie.insert: edge case fork 3', async t => {
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    'b6c45bc7651f957c7c6957e1c10439ad5878ef5c7bc147c8ab6b7e163bd32554'
++    '5556e0ab2ba4be2ce33369cf3babb25fc3c1ce01e1c5426ef1ae409e43fc21a5'
+   )
+ })
+ 
+@@ -473,7 +473,7 @@ test('Trie.insert: edge case leaf 2', async t => {
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    'b76dd0926602d6e9d28a0b3707db4622184d59c7392f5a0469bf775d9aa05f33'
++    '32d3876da6fa1482070142b0dad6be6e37ba9aa6131e9ba37e4aca3299829bbd'
+   )
+ })
+ 
+@@ -492,11 +492,11 @@ test('Trie.insert: edge case leaf 1', async t => {
+ 
+   t.is(
+     proof.verify(false).toString('hex'),
+-    '08b05f422582a099e63646ccf6ed5993c1718d0279a3269c140c1daed29f0f4b'
++    '99286f8457f09a03965dd39ff8a9793cc049974aad98e3e97955b939bb9b2b9f'
+   )
+   t.is(
+     proof.verify(true).toString('hex'),
+-    'ff55eab671a6e5618b10bb8702e3e5e6ab2491d50e4a93dd5255d8666a8d4e9a'
++    'd8363eaa94dc21254e63ae623649d38aa8feb0ee8cb5bb3978aa7820373624b7'
+   )
+ })
+ 
+@@ -602,10 +602,10 @@ test('Trie: can create proof for simple tries', async t => {
+   await trie.fetchChildren(1);
+   t.is(inspect(trie), unindent`
+     ╔═══════════════════════════════════════════════════════════════════╗
+-    ║ #69509862d51b65b26be6e56d3286d2ff00a0e8091d004721f4d2ce6918325c18 ║
++    ║ #49e6cbe645e681c25d8561b34c6c3d364f4732af50308f211a2df63ce3705f0d ║
+     ╚═══════════════════════════════════════════════════════════════════╝
+-     ┌─ 84418..[55 digits]..e71d #b310552e86bf { bar → 42 }
+-     └─ b8fe9..[55 digits]..49fd #95bb7f919c90 { foo → 14 }
++     ┌─ 84418..[55 digits]..e71d #8300e29e5ccf { bar → 42 }
++     └─ b8fe9..[55 digits]..49fd #10c3136172f8 { foo → 14 }
+   `);
+ 
+   const proofs = {
+@@ -731,7 +731,7 @@ test('Proof.toJSON (mango)', async t => {
+   const proof = await trie.prove('mango[uid: 0]');
+   t.deepEqual(proof.toJSON(), [
+     {
+-      neighbors: 'c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5f1508f13471a031a21277db8817615e62a50a7427d5f8be572746aa5f0d49841758c5e4a29601399a5bd916e5f3b34c38e13253f4de2a3477114f1b2b8f9f2f4d',
++      neighbors: '670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32b7f63d93c9186c6dde0133855d374be101f11901412df025d240ddaa0b0ed12da5f3162b8c722b67892153a7f737ae9944ccaa3b792c7d4dda7fe6898e6d8e00f8f1111fd89c373c6cecb0bd43b6c932ae760f31d88c5fa71431ec39475b9e18',
+       skip: 0,
+       type: 'branch',
+     },
+@@ -751,7 +751,7 @@ test('Proof.toJSON (kumquat)', async t => {
+   const proof = await trie.prove('kumquat[uid: 0]');
+   t.deepEqual(proof.toJSON(), [
+     {
+-      neighbors: 'c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d08434fd717aea47d156185d589f44a59fc2e0158eab7ff035083a2a66cd3e15b',
++      neighbors: '670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32f69f145e31d2dc69b65adb5fc2c9d9e87c48210d874d2a2d613793ca90ed906e25069a7a1fd46757d09286b9ee4f67753a06fc706f938d01b200791fd9518f42033c3ca051645e502f48523070a0d379c37f037762d501202e9cfb19f4f16220',
+       skip: 0,
+       type: 'branch',
+     },
+@@ -774,13 +774,13 @@ test('Proof.toJSON (kumquat)', async t => {
+ test('Proof.toCBOR (mango)', async t => {
+   const trie = await Trie.fromList(FRUITS_LIST);
+   const proof = await trie.prove('mango[uid: 0]');
+-  t.true(proof.toCBOR().equals(Buffer.from('9fd8799f005f5840c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5f58401508f13471a031a21277db8817615e62a50a7427d5f8be572746aa5f0d49841758c5e4a29601399a5bd916e5f3b34c38e13253f4de2a3477114f1b2b8f9f2f4dffffd87b9f00582009d23032e6edc0522c00bc9b74edd3af226d1204a079640a367da94c84b69ecc5820c29c35ad67a5a55558084e634ab0d98f7dd1f60070b9ce2a53f9f305fd9d9795ffff', 'hex')));
++  t.true(proof.toCBOR().equals(Buffer.from('9fd8799f005f5840670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32b7f63d93c9186c6dde0133855d374be101f11901412df025d240ddaa0b0ed12d5840a5f3162b8c722b67892153a7f737ae9944ccaa3b792c7d4dda7fe6898e6d8e00f8f1111fd89c373c6cecb0bd43b6c932ae760f31d88c5fa71431ec39475b9e18ffffd87b9f00582009d23032e6edc0522c00bc9b74edd3af226d1204a079640a367da94c84b69ecc5820c29c35ad67a5a55558084e634ab0d98f7dd1f60070b9ce2a53f9f305fd9d9795ffff', 'hex')));
+ });
+ 
+ test('Proof.toCBOR (kumquat)', async t => {
+   const trie = await Trie.fromList(FRUITS_LIST);
+   const proof = await trie.prove('kumquat[uid: 0]');
+-  t.true(proof.toCBOR().equals(Buffer.from('9fd8799f005f5840c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c58403490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d08434fd717aea47d156185d589f44a59fc2e0158eab7ff035083a2a66cd3e15bffffd87a9f00d8799f0041075820a1ffbc0e72342b41129e2d01d289809079b002e54b123860077d2d66added281ffffff', 'hex')));
++  t.true(proof.toCBOR().equals(Buffer.from('9fd8799f005f5840670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32f69f145e31d2dc69b65adb5fc2c9d9e87c48210d874d2a2d613793ca90ed906e584025069a7a1fd46757d09286b9ee4f67753a06fc706f938d01b200791fd9518f42033c3ca051645e502f48523070a0d379c37f037762d501202e9cfb19f4f16220ffffd87a9f00d8799f0041075820a1ffbc0e72342b41129e2d01d289809079b002e54b123860077d2d66added281ffffff', 'hex')));
+ });
+ 
+ // -----------------------------------------------------------------------------
+@@ -792,7 +792,7 @@ test('Proof.toAiken (mango)', async t => {
+   const proof = await trie.prove('mango[uid: 0]');
+   t.is(proof.toAiken(), unindent`
+     [
+-      Branch { skip: 0, neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5f1508f13471a031a21277db8817615e62a50a7427d5f8be572746aa5f0d49841758c5e4a29601399a5bd916e5f3b34c38e13253f4de2a3477114f1b2b8f9f2f4d" },
++      Branch { skip: 0, neighbors: #"670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32b7f63d93c9186c6dde0133855d374be101f11901412df025d240ddaa0b0ed12da5f3162b8c722b67892153a7f737ae9944ccaa3b792c7d4dda7fe6898e6d8e00f8f1111fd89c373c6cecb0bd43b6c932ae760f31d88c5fa71431ec39475b9e18" },
+       Leaf { skip: 0, key: #"09d23032e6edc0522c00bc9b74edd3af226d1204a079640a367da94c84b69ecc", value: #"c29c35ad67a5a55558084e634ab0d98f7dd1f60070b9ce2a53f9f305fd9d9795" },
+     ]
+   `);
+@@ -803,7 +803,7 @@ test('Proof.toAiken (kumquat)', async t => {
+   const proof = await trie.prove('kumquat[uid: 0]');
+   t.is(proof.toAiken(), unindent`
+     [
+-      Branch { skip: 0, neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d08434fd717aea47d156185d589f44a59fc2e0158eab7ff035083a2a66cd3e15b" },
++      Branch { skip: 0, neighbors: #"670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32f69f145e31d2dc69b65adb5fc2c9d9e87c48210d874d2a2d613793ca90ed906e25069a7a1fd46757d09286b9ee4f67753a06fc706f938d01b200791fd9518f42033c3ca051645e502f48523070a0d379c37f037762d501202e9cfb19f4f16220" },
+       Fork { skip: 0, neighbor: Neighbor { nibble: 0, prefix: #"07", root: #"a1ffbc0e72342b41129e2d01d289809079b002e54b123860077d2d66added281" } },
+     ]
+   `);

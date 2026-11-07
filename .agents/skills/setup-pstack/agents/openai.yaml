@@ -1,0 +1,6 @@
+interface:
+  display_name: "Setup Pstack"
+  short_description: "Configure pstack roles for Codex and Claude, including model and"
+  default_prompt: "Use $setup-pstack for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

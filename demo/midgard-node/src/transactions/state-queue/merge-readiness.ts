@@ -1,22 +1,22 @@
-import type { LucidEvolution } from "@lucid-evolution/lucid";
-
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import {
-  type InlineWaitPolicy,
-  planSubmitTiming,
-} from "@/transactions/submit-timing.js";
-import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "@/transactions/submit-timing-due-work.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+} from "@al-ft/midgard-core/ogmios-slot";
+import * as SDK from "@al-ft/midgard-sdk";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
+
+import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import { type InlineWaitPolicy, planSubmitTiming } from "../submit-timing.js";
+import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "../submit-timing-due-work.js";
 
 export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
 
 // Keep these values in one place so diagnostics and transaction construction
 // agree on the exact maturity boundary.
-export const STATE_QUEUE_MATURITY_DURATION_MS = 30;
+export const STATE_QUEUE_MATURITY_DURATION_MS =
+  MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs;
 export const MERGE_MATURITY_DELAY_BUFFER_MS = 20_000;
 
 export type MergeReadinessStatus =
@@ -29,9 +29,12 @@ export type MergeReadinessStatus =
   | "skipped_below_min_queue_length"
   | "skipped_pending_local_work"
   | "skipped_oldest_block_unattested"
+  | "skipped_oldest_block_proven_fraud"
+  | "skipped_oldest_block_event_orphaned"
   | "skipped_oldest_block_not_mature"
   | "skipped_oldest_block_local_ledger_not_ready"
-  | "skipped_merge_candidate_changed";
+  | "skipped_merge_candidate_changed"
+  | "skipped_own_merge_in_flight";
 
 export type MergePreflightInput = {
   readonly force: boolean;
@@ -49,8 +52,11 @@ export type MergePreflightDecision = {
   readonly status: Exclude<
     MergeReadinessStatus,
     | "skipped_oldest_block_unattested"
+    | "skipped_oldest_block_proven_fraud"
+    | "skipped_oldest_block_event_orphaned"
     | "skipped_oldest_block_not_mature"
     | "skipped_merge_candidate_changed"
+    | "skipped_own_merge_in_flight"
   >;
   readonly reason: string;
   readonly queueLength: number;
@@ -152,13 +158,13 @@ export const planMergePreflight = (
 
 export const mergeMaturityWindow = (
   lucid: LucidEvolution,
-  blockEndTimeMs: number,
+  blockTimeMs: number,
 ): {
   readonly validFromUnixTime: number;
   readonly readyAfterUnixTime: number;
 } => {
   const maturityThresholdUnixTime =
-    blockEndTimeMs + STATE_QUEUE_MATURITY_DURATION_MS;
+    blockTimeMs + STATE_QUEUE_MATURITY_DURATION_MS;
   const validFromUnixTime = alignedUnixTimeStrictlyAfter(
     lucid,
     maturityThresholdUnixTime - 1,
@@ -334,8 +340,13 @@ export const mergeSubmitValidityEvidence = ({
 
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
+  /**
+   * Set when the block is a poisoned own header
+   * (`database/poisoned-own-headers.ts`): it names the hold.
+   */
+  readonly eventOrphaned?: string;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -351,6 +362,8 @@ export type OldestQueuedBlockReadiness =
   | {
       readonly status:
         | "skipped_oldest_block_unattested"
+        | "skipped_oldest_block_proven_fraud"
+        | "skipped_oldest_block_event_orphaned"
         | "skipped_oldest_block_not_mature";
       readonly headerHash: string;
       readonly reason: string;
@@ -361,8 +374,8 @@ export type OldestQueuedBlockReadiness =
 export type MergeCandidateIdentityInput = {
   readonly firstBlockOutRef: string;
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
   readonly readyAfterUnixTime: number;
 };
 
@@ -372,8 +385,8 @@ export const mergeCandidateIdentity = (
   [
     input.firstBlockOutRef,
     input.headerHash,
-    input.currentDaAttestation,
-    input.requiredDaAttestation,
+    input.provenFraud ?? "unmarked",
+    SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability),
     input.readyAfterUnixTime.toString(),
   ].join("|");
 
@@ -386,19 +399,41 @@ export type OldestQueuedBlockCandidateReadinessInput =
 export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
   readonly firstBlockOutRef: string;
   readonly candidateIdentity: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
   readonly validFromUnixTime: number;
 };
 
 export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
 ): OldestQueuedBlockReadiness => {
-  if (input.currentDaAttestation !== input.requiredDaAttestation) {
+  if (input.provenFraud !== null) {
+    return {
+      status: "skipped_oldest_block_proven_fraud",
+      headerHash: input.headerHash,
+      reason: `header=${input.headerHash},proof=${input.provenFraud},state_correction_required=true`,
+      readyAfterUnixTime: input.readyAfterUnixTime,
+      nowUnixTime: input.nowUnixTime,
+    };
+  }
+  // A landed own block whose event left the chain, or one built on it, is
+  // not merged until it leaves the landed queue; older blocks still merge.
+  if (input.eventOrphaned !== undefined) {
+    return {
+      status: "skipped_oldest_block_event_orphaned",
+      headerHash: input.headerHash,
+      reason: `header=${input.headerHash},${input.eventOrphaned}`,
+      readyAfterUnixTime: input.readyAfterUnixTime,
+      nowUnixTime: input.nowUnixTime,
+    };
+  }
+  if (
+    !SDK.daAvailabilityStateQueueStatusPermitsMerge(input.currentDaAvailability)
+  ) {
     return {
       status: "skipped_oldest_block_unattested",
       headerHash: input.headerHash,
-      reason: `header=${input.headerHash},current_da_attestation=${input.currentDaAttestation},required_da_attestation=${input.requiredDaAttestation}`,
+      reason: `header=${input.headerHash},current_da_availability=${SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability)},required_da_availability=Attested|Published`,
       readyAfterUnixTime: input.readyAfterUnixTime,
       nowUnixTime: input.nowUnixTime,
     };
@@ -429,8 +464,8 @@ export const classifyOldestQueuedBlockCandidateReadiness = (
     ...readiness,
     firstBlockOutRef: input.firstBlockOutRef,
     candidateIdentity: mergeCandidateIdentity(input),
-    currentDaAttestation: input.currentDaAttestation,
-    requiredDaAttestation: input.requiredDaAttestation,
+    currentDaAvailability: input.currentDaAvailability,
+    provenFraud: input.provenFraud,
     validFromUnixTime: input.validFromUnixTime,
   };
 };

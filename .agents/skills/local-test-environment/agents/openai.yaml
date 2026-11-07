@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Test Environment"
+  short_description: "Test Postgres, per-worktree databases and ports, dist builds and the blueprint stamp"
+  default_prompt: "Use the Midgard local-test-environment workflow."

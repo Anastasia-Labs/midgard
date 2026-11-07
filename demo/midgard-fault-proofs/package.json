@@ -3,7 +3,111 @@
   "version": "0.1.0",
   "description": "Manual Midgard fault-proof tooling",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./block-replay": {
+      "midgard-source": "./src/block-replay.ts",
+      "import": "./dist/block-replay.js"
+    },
+    "./test-support/raw-l1-terminal-fixture": {
+      "midgard-source": "./tests/support/raw-l1-terminal-fixture.ts",
+      "types": "./tests/support/raw-l1-terminal-fixture.ts"
+    },
+    "./testing/installed-workflow": {
+      "midgard-source": "./tests/support/installed-workflow.ts"
+    },
+    "./test-support/transition-history-fixture": {
+      "midgard-source": "./tests/helpers/transition-history-fixture.ts",
+      "types": "./tests/helpers/transition-history-fixture.ts"
+    },
+    "./test-support/fixture-ledger": {
+      "midgard-source": "./tests/support/fixture-ledger.ts",
+      "types": "./tests/support/fixture-ledger.ts"
+    },
+    "./test-support/predecessor-ledger": {
+      "midgard-source": "./tests/support/predecessor-ledger.ts",
+      "types": "./tests/support/predecessor-ledger.ts"
+    },
+    "./test-support/retained-reason-classifier": {
+      "midgard-source": "./tests/support/retained-reason-classifier.ts",
+      "types": "./tests/support/retained-reason-classifier.ts"
+    },
+    "./test-support/retained-transaction": {
+      "midgard-source": "./tests/support/retained-transaction.ts",
+      "types": "./tests/support/retained-transaction.ts"
+    },
+    "./test-support/canonical-block-evidence-fixture": {
+      "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
+      "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
+    },
+    "./test-support/input-existence-prepare": {
+      "midgard-source": "./src/input-existence/prepare.ts",
+      "types": "./src/input-existence/prepare.ts"
+    },
+    "./test-support/family-l1-observation": {
+      "midgard-source": "./src/workflow/family-l1-observation.ts",
+      "types": "./src/workflow/family-l1-observation.ts"
+    },
+    "./test-support/value-conservation-adapter": {
+      "midgard-source": "./src/value-not-preserved/adapter.ts",
+      "types": "./src/value-not-preserved/adapter.ts"
+    },
+    "./test-support/transition-trace-l1-events": {
+      "midgard-source": "./src/transition-trace/l1-events.ts",
+      "types": "./src/transition-trace/l1-events.ts"
+    },
+    "./test-support/cross-block-raw-emulator": {
+      "midgard-source": "./tests/support/cross-block-raw-emulator.ts",
+      "types": "./tests/support/cross-block-raw-emulator.ts"
+    },
+    "./test-support/transition-trace-retained": {
+      "midgard-source": "./tests/support/transition-trace-retained.ts",
+      "types": "./tests/support/transition-trace-retained.ts"
+    },
+    "./test-support/fabricated-history-witness": {
+      "midgard-source": "./src/fabricated-history-witness.ts",
+      "types": "./src/fabricated-history-witness.ts"
+    },
+    "./test-support/prepare-fabricated-deposit": {
+      "midgard-source": "./src/prepare-fabricated-deposit.ts",
+      "types": "./src/prepare-fabricated-deposit.ts"
+    },
+    "./test-support/prepare-fabricated-withdrawal": {
+      "midgard-source": "./src/prepare-fabricated-withdrawal.ts",
+      "types": "./src/prepare-fabricated-withdrawal.ts"
+    },
+    "./test-support/forced-order-settlement": {
+      "midgard-source": "./tests/support/forced-order-settlement.ts",
+      "types": "./tests/support/forced-order-settlement.ts"
+    },
+    "./test-support/retired-family-proof": {
+      "midgard-source": "./tests/support/emulator/retired-family-proof.ts",
+      "types": "./tests/support/emulator/retired-family-proof.ts"
+    },
+    "./test-support/history-pair": {
+      "midgard-source": "./tests/support/emulator/history-pair.ts",
+      "types": "./tests/support/emulator/history-pair.ts"
+    },
+    "./test-support/transition-trace-reconstruct": {
+      "midgard-source": "./src/transition-trace/reconstruct.ts",
+      "types": "./src/transition-trace/reconstruct.ts"
+    },
+    "./test-support/funding-measurement": {
+      "midgard-source": "./tests/support/funding-measurement.ts",
+      "types": "./tests/support/funding-measurement.ts"
+    },
+    "./test-support/validation-trace-defender-scene": {
+      "midgard-source": "./tests/support/validation-trace-defender-scene.ts",
+      "types": "./tests/support/validation-trace-defender-scene.ts"
+    },
+    "./test-support/validation-trace-challenger-runner": {
+      "midgard-source": "./tests/support/validation-trace-challenger-runner.ts",
+      "types": "./tests/support/validation-trace-challenger-runner.ts"
+    }
+  },
   "type": "module",
   "bin": {
     "midgard-fault-proofs": "./dist/bin.js"
@@ -12,12 +116,18 @@
     "dist"
   ],
   "scripts": {
+    "fixtures:withdrawal-mistag-agreement:sync": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs",
+    "fixtures:withdrawal-mistag-agreement:check": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs --check",
     "clean": "rimraf dist",
-    "build": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-fault-proofs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "node ../scripts/package-test.mjs",
+    "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
+    "check:builder-exports": "node scripts/check-builder-exports.mjs",
+    "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [
     "cardano",
@@ -30,16 +140,66 @@
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
-    "@harmoniclabs/cbor": "1.6.6",
-    "@lucid-evolution/lucid": "0.6.0",
-    "effect": "^3.14.22"
+    "@al-ft/midgard-validation": "workspace:*",
+    "@lucid-evolution/lucid": "0.8.9",
+    "effect": "^3.14.22",
+    "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
+    "typescript": "^5.7.3"
   },
   "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
+    "@lucid-evolution/scalus-uplc": "0.2.2",
+    "@lucid-evolution/uplc": "0.5.3",
+    "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
+    "midgard-node": "workspace:*",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
+  },
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup",
+            "src/index.ts",
+            "src/block-replay.ts",
+            "--format",
+            "esm",
+            "--clean"
+          ]
+        },
+        {
+          "command": [
+            "tsup",
+            "src/bin.ts",
+            "--format",
+            "esm"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "blueprint"
+        }
+      ]
+    }
   }
 }

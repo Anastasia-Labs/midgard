@@ -8,12 +8,14 @@
     "lib": ["es2022"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "customConditions": ["midgard-source"],
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "outDir": "dist",
+    "rootDir": "..",
     "pretty": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -21,6 +23,13 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["src", "tests", "vitest.config.ts"],
+  "include": [
+    "src",
+    "tests",
+    "bench",
+    "vitest.config.ts",
+    "vitest.bench.config.ts",
+    "../midgard-node/src/types"
+  ],
   "exclude": ["dist", "node_modules"]
 }

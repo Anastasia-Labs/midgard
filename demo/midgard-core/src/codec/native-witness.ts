@@ -1,10 +1,11 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
-import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
+import { ensureHash32, type Hash32 } from "./hash.js";
 import type {
   MidgardNativeTxWitnessSetCanonical,
   MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
+import { midgardFieldCommitment } from "./native-tx-field-access.js";
 import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
@@ -62,12 +63,22 @@ export const decodeNativeTxWitnessSetCanonicalValue = (
   };
 };
 
+/**
+ * The three witness-set field commitments — fields 7, 6 and 8 in that tuple
+ * order (§2.2's wire order is not the §2.5 index order).
+ *
+ * Same §4 derivation as {@link deriveNativeTxBodyCompact}'s six: a plain
+ * `blake2b_256` over the field's §5.1 preimage bytes, with no re-validation of
+ * the grammar here. The note there is the full one.
+ */
 export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): MidgardNativeTxWitnessSetCompact => ({
-  addrTxWitsHash: computeHash32(witnessSet.addrTxWitsPreimageCbor),
-  scriptTxWitsHash: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
-  redeemerTxWitsHash: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
+  addrTxWitsHash: midgardFieldCommitment(witnessSet.addrTxWitsPreimageCbor),
+  scriptTxWitsHash: midgardFieldCommitment(witnessSet.scriptTxWitsPreimageCbor),
+  redeemerTxWitsHash: midgardFieldCommitment(
+    witnessSet.redeemerTxWitsPreimageCbor,
+  ),
 });
 
 export const encodeNativeTxWitnessSetCompactCbor = (
@@ -85,9 +96,13 @@ export const decodeNativeTxWitnessSetCompactCbor = (
 
 export const encodeNativeTxWitnessPreimagesCbor = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
-  version = MIDGARD_NATIVE_TX_VERSION,
 ): Buffer =>
-  encodeCbor(encodeNativeTxWitnessSetCanonicalValue(version, witnessSet));
+  encodeCbor(
+    encodeNativeTxWitnessSetCanonicalValue(
+      MIDGARD_NATIVE_TX_VERSION,
+      witnessSet,
+    ),
+  );
 
 export const decodeNativeTxWitnessPreimagesCbor = (
   bytes: Uint8Array,

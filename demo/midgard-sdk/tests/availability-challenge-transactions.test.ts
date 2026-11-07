@@ -1,0 +1,9 @@
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/availability-challenge.js";
+import "../src/availability-challenge-transactions.js";
+import "../src/da-attestation.js";
+import "../src/linked-list.js";
+import "./availability-challenge-transactions.challenge-record-min-ada.js";
+import "./availability-challenge-transactions.timeout-output-arithmetic.js";
+import "./availability-challenge-transactions.recover-da-availability-commitment-from-apply-tx.js";

@@ -1,0 +1,139 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { Data } from "@lucid-evolution/lucid";
+
+import { H32Schema } from "../common.js";
+import { BoundedItemChunkProofSchema } from "../ledger-state.js";
+import { FieldOpeningSchema } from "./field-opening.js";
+import {
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+} from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
+import { NativeScriptFrameSchema } from "./validation-auxiliary-witness.js";
+
+export const WITNESS_SCRIPT_DECODING_CATEGORY =
+  "witnessScriptDecoding" as const;
+export const WITNESS_SCRIPT_DECODING_PROPOSED_ID = "00000022" as const;
+
+export const WITNESS_SCRIPT_DECODING_RESULT_PENDING = -1n;
+export const WITNESS_SCRIPT_DECODING_RESULT_NO_FAULT = -2n;
+export const WITNESS_SCRIPT_DECODING_RESULT_HEADER_MALFORMED = 0n;
+export const WITNESS_SCRIPT_DECODING_RESULT_NATIVE_MALFORMED = 1n;
+export const WITNESS_SCRIPT_DECODING_RESULT_NODE_LIMIT = 2n;
+export const WITNESS_SCRIPT_DECODING_RESULT_DEPTH_LIMIT = 3n;
+
+export const WitnessScriptDecodingVerdictSubjectSchema = VerdictSubjectSchema;
+
+export const WitnessScriptDecodingBoundSchema = Data.Object({
+  subject: WitnessScriptDecodingVerdictSubjectSchema,
+  witness_set_hash: H32Schema,
+  script_index: Data.Integer(),
+  accused_class: Data.Integer(),
+});
+export type WitnessScriptDecodingBound = Data.Static<
+  typeof WitnessScriptDecodingBoundSchema
+>;
+
+export const WitnessScriptDecodingScanStateSchema = Data.Object({
+  bound: WitnessScriptDecodingBoundSchema,
+  total_length: Data.Integer(),
+  item_commitment: H32Schema,
+  control_cbor: Data.Bytes(),
+  next_expected_script_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  checkpoint_hash: H32Schema,
+  result_class: Data.Integer(),
+});
+export type WitnessScriptDecodingScanState = Data.Static<
+  typeof WitnessScriptDecodingScanStateSchema
+>;
+
+export const WitnessScriptDecodingStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
+export const WitnessScriptDecodingStep01ArgsSchema = Data.Object({
+  source: WitnessScriptDecodingStep01SourceSchema,
+  script_index: Data.Integer(),
+});
+export const WitnessScriptDecodingStep01DatumSchema = faultProofStepDatumSchema(
+  Data.Any(),
+);
+export const WitnessScriptDecodingStep01RedeemerSchema =
+  faultProofStepRedeemerSchema(WitnessScriptDecodingStep01ArgsSchema);
+
+export const WitnessScriptDecodingStep02ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  opening: FieldOpeningSchema,
+  /** Reference input holding a Plutus item's script-decode record, or -1. */
+  record_reference_input_index: Data.Integer(),
+});
+export const WitnessScriptDecodingStep02DatumSchema = faultProofStepDatumSchema(
+  WitnessScriptDecodingBoundSchema,
+);
+export const WitnessScriptDecodingStep02RedeemerSchema =
+  faultProofStepRedeemerSchema(WitnessScriptDecodingStep02ArgsSchema);
+
+export const WitnessScriptDecodingStep03ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  control_cbor: Data.Bytes(),
+  chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  frames: Data.Array(NativeScriptFrameSchema),
+  step_budget: Data.Integer(),
+});
+export const WitnessScriptDecodingStep03DatumSchema = faultProofStepDatumSchema(
+  WitnessScriptDecodingScanStateSchema,
+);
+export const WitnessScriptDecodingStep03RedeemerSchema =
+  faultProofStepRedeemerSchema(WitnessScriptDecodingStep03ArgsSchema);
+
+export const WitnessScriptDecodingStep04ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+});
+export const WitnessScriptDecodingStep04DatumSchema = faultProofStepDatumSchema(
+  WitnessScriptDecodingScanStateSchema,
+);
+export const WitnessScriptDecodingStep04RedeemerSchema =
+  faultProofStepRedeemerSchema(WitnessScriptDecodingStep04ArgsSchema);
+
+export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
+  {
+    role: "firstStep",
+    title: deployedTitle("fraudProofWitnessScriptDecoding"),
+    parameters: [
+      "step_02_validator_script_hash",
+      "computation_thread_token_policy_id",
+      "hub_oracle",
+    ],
+  },
+  {
+    role: "itemAuthenticator",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep02"),
+    parameters: [
+      "step_03_validator_script_hash",
+      "computation_thread_token_policy_id",
+      "field_preimage_certificate_policy_id",
+      "script_decode_policy_id",
+    ],
+  },
+  {
+    role: "resumableScan",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep03"),
+    parameters: [
+      "step_04_validator_script_hash",
+      "computation_thread_token_policy_id",
+    ],
+  },
+  {
+    role: "terminal",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep04"),
+    parameters: [
+      "computation_thread_token_policy_id",
+      "fraud_proof_token_policy_id",
+      "fraud_proof_token_address",
+    ],
+  },
+] as const);

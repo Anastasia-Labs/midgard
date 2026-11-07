@@ -3,7 +3,7 @@ title: "Balancing, Fees & Coin Selection"
 description: "How lucid-midgard selects inputs, converges on a fee, and derives change, and why balancing is treated as a correctness feature rather than a convenience."
 ---
 
-Balancing turns a partially specified transaction into one the node will admit: it
+Balancing resolves a partially specified transaction into a value-balanced one: it
 selects inputs to cover the outputs and the fee, computes change, and produces a
 deterministic result. It runs inside `.complete()` and is implemented in
 `src/builder/balancing.ts`.
@@ -25,9 +25,9 @@ Lovelace and multi-assets are accounted for exactly. Negative asset quantities a
 rejected except in a mint map, where they represent a burn.
 
 <Callout type="warn" title="Assets are never burned by omission">
-Leaving an asset out of the change output does not burn it. A burn must be an explicit
-mint-map entry with a negative quantity and the required policy authorization.
-Balancing will not silently drop value.
+  Leaving an asset out of the change output does not burn it. A burn must be an
+  explicit mint-map entry with a negative quantity and the required policy
+  authorization. Balancing will not silently drop value.
 </Callout>
 
 ## Fees
@@ -40,7 +40,7 @@ fee >= minFeeA * native_cbor_length + minFeeB
 ```
 
 Because the fee depends on the transaction size and the transaction size depends on the
-fee, the builder iterates until the two converge. `maxFeeIterations` bounds that loop.
+fee, the builder estimates the final signed size and iterates until the two converge. `maxFeeIterations` bounds that loop.
 Failure to converge is a hard error, not a fallback to an approximate fee.
 
 `minFeeA` and `minFeeB` come from the provider snapshot by default. Supply
@@ -50,8 +50,9 @@ override it.
 
 ## Coin selection
 
-Selection is deterministic, so the same builder state and provider snapshot always
-produce the same transaction. Candidates are ordered by:
+Selection is deterministic for the same builder state, fee parameters, and actual
+UTxO query results. Capturing a provider object does not freeze its ledger data.
+Candidates are ordered by:
 
 1. UTxOs that cover the required non-lovelace assets.
 2. Higher coverage of the required asset quantity.
@@ -66,11 +67,11 @@ Additional strategies belong behind explicit named options.
 Balancing records the origin of the candidate inputs it selected, as a
 `WalletInputSource`:
 
-| Source | Meaning |
-| --- | --- |
-| `provider` | Fetched from the captured `MidgardProvider` snapshot. |
+| Source              | Meaning                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| `provider`          | Fetched from the captured `MidgardProvider` snapshot.                |
 | `instance-override` | Supplied through `LucidMidgard.overrideUTxOs(...)` before `newTx()`. |
-| `completion-preset` | Supplied through `complete({ presetWalletInputs })`. |
+| `completion-preset` | Supplied through `complete({ presetWalletInputs })`.                 |
 
 Overrides and presets are **local construction inputs only**. They do not rewrite node
 truth, hide missing state, or make a spend authoritative. Each override is normalized
