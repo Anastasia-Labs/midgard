@@ -150,7 +150,10 @@ per single-tx request is cut instead:
   a reused connection. Wallet traffic is mostly one tx per connection, so in
   the node this alone caps a core near 2.7k req/s.
 - **A lean `/submit` handler.** The Effect HTTP stack costs about 90 µs per
-  request, against about 24 µs for raw Node (F7). `/submit` gets a direct
+  request, against about 24 µs for raw Node (F7). Today's whole `/submit`
+  handler measures about 475–600 µs of main thread per request (M2
+  baseline, #871), so one thread saturates near 2,000 req/s and this
+  handler is required for 5,000 TPS. `/submit` gets a direct
   handler that keeps the same ingress checks (identity, size, rate) and
   hands off to the worker pool, without the generic router and per-request
   metric timers. The other routes keep the Effect stack.
@@ -174,8 +177,10 @@ them all in one writer submission and waits once.
   (midgard-validation `decodeMidgardSubmittedTxFromCanonicalCbor`,
   `ledger-tx/codec.encode-mint.ts:327`) already runs the core full decode
   first, so its native tx can be handed to the consensus check. Measured
-  cost of decode-once: about 0.17 ms (1 in, 2 out), 0.33 ms (4/4) and
-  1.2 ms (16/16), against 0.29, 0.83 and 5.6 ms today.
+  after decode-once landed (#876, 2026-11-07): the whole check costs about
+  0.075 ms (1 in, 2 out), 0.12 ms (4/4) and 0.33 ms (16/16). Decode-once
+  saves 10–30 % against the old path on the same build. The earlier figures
+  (0.29, 0.83 and 5.6 ms) came from a stale build.
 - **Ingress worker pool.** `checkSubmittedTransaction` and the envelope decode
   run on a dedicated `worker_threads` pool, separate from the
   block-validation pool. The size is configurable.
@@ -402,16 +407,18 @@ them for a cloud vCPU.
 | HTTP framework (main thread), Effect stack | ~90 µs/request | ~10k req/s |
 | HTTP framework, raw Node | ~24 µs/request | ~42k req/s |
 | Hand-off to workers (main thread) | 45 µs one tx per message; 4–6 µs at 16–64 per message | 22k tx/s single, 170–250k batched |
-| Worker checks, decode-once | 0.17 ms (1/2), 0.33 ms (4/4), 1.2 ms (16/16); +52 µs per vkey witness with D6 | ~25k tx/s (1/2) to ~6k tx/s (16/16) on 8 workers |
+| Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16); +52 µs per vkey witness with D6 | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
-| Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs | not measured (M2) |
+| Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs | not measured on the lean handler (M2) |
+| Today's whole `/submit` handler, main thread (M2 baseline, #871) | ~475–600 µs/request | ~1.7–2.1k req/s |
 | Peer ingest, today (F12) | one commit wait per tx | ~10 TPS per lane at low load |
 
 **Binding stage.** Every request carries one tx. With TLS at the edge, a lean
 `/submit` handler and grouped worker hand-off, the main thread spends about
 24 + 5 + 20–50 µs per tx: roughly 50–80 µs, so 12–20k TPS on this machine
-and 6–10k on a cloud core (estimate until M2). With TLS in the node and one
+and 6–10k on a cloud core (estimate until M2 runs on the lean handler;
+today's handler measures 475–600 µs). With TLS in the node and one
 connection per wallet request, the handshake alone is 390–570 µs, which
 caps the node near 1,000 TPS on a cloud core. The workers need about 1.3
 cores at 5,000 TPS. Once F10 is fixed, the database has about 7× headroom.
@@ -445,13 +452,14 @@ in D9 and closed them: the duplicate check read Postgres on the request path,
 the gauges had to be reserved before the ack, one bad row could block a shard
 forever, and shutdown had no time bound.
 
-**Not done yet:** the plan is not split into GitHub tickets, and the docs are
-not committed.
+**Tickets:** tracking issue Anastasia-Labs/midgard#870, with #871–#889
+(filed 2026-11-06).
 
 **Confidence that submit stops being the bottleneck:** high for 1,000 TPS,
 moderate for the 5,000 TPS target. All the stages measured so far clear
-5,000 TPS once F10 is fixed and TLS leaves the node. What could still bind:
-the stages not yet measured. Without the F10, F11, F13 fixes and TLS at the
+5,000 TPS once F10 is fixed, TLS leaves the node and the lean handler
+replaces today's (~500 µs per request). What could still bind: the lean
+handler's own cost and the stages not yet measured. Without the F10, F11, F13 fixes and TLS at the
 edge, submit cannot reach 1,000 TPS whatever else lands.
 
 **Measurements still needed (P0):**
@@ -459,7 +467,7 @@ edge, submit cannot reach 1,000 TPS whatever else lands.
 | # | What | Decides |
 | --- | --- | --- |
 | M1 | Admission batch latency at 10k/100k/300k backlog and 1M+ terminal rows, after the F10 fix, with asynchronous commit and the validation and block writers running against the same WAL (`fsync=on`) | Backlog size, shard count, shed threshold |
-| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed | Whether D8 is needed for 5,000 TPS |
+| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on today's handler done: 475–600 µs) | Whether D8 is needed for 5,000 TPS |
 | M3 | Peer ingest TPS per lane, before and after batch admit | Peer body size and forward timeout |
 | M7 | Gauge drift at 5,000 TPS with the 500 ms refresh | Whether the shedding signal is exact enough |
 
