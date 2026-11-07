@@ -147,7 +147,12 @@ const landedUnfinalizedMerges = (
   Database
 > =>
   Effect.gen(function* () {
-    if (!(yield* unfinishedMergeReachable(confirmedState))) return [];
+    // At genesis there is nothing to walk, so nothing to read either.
+    if (
+      confirmedState.headerHash === SDK.GENESIS_HEADER_HASH ||
+      !(yield* unfinishedMergeReachable(confirmedState))
+    )
+      return [];
     const pending: LandedUnfinalizedMerge[] = [];
     let current = confirmedState.headerHash;
     // The confirmed state carries its header's UTxO root; every older header
