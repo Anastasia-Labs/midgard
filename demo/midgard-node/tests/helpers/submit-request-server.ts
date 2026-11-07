@@ -11,13 +11,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { Effect, Layer, Logger, ManagedRuntime, Metric } from "effect";
+import { Effect, Either, Layer, Logger, ManagedRuntime, Metric } from "effect";
 
 import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { submitRefusalCounter } from "../../src/commands/http/submission-metrics.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
-import { AdmissionWriter } from "../../src/services/admission-writer.js";
+import {
+  AdmissionWriter,
+  type AdmissionWriteRequest,
+} from "../../src/services/admission-writer.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateLimitPolicy,
@@ -39,22 +42,27 @@ export const admitted: {
 }[] = [];
 
 // Acknowledges every admission at once as new.
+const acknowledge = (request: AdmissionWriteRequest) => {
+  admitted.push({
+    txId: request.txId.toString("hex"),
+    txFullHash: request.txFullHash.toString("hex"),
+  });
+  const now = new Date();
+  return {
+    kind: "new" as const,
+    txIdHex: request.txId.toString("hex"),
+    status: "queued" as const,
+    firstSeenAt: now,
+    lastSeenAt: now,
+  };
+};
 export const stubWriter = Layer.succeed(AdmissionWriter, {
   lookup: () => ({ _tag: "Unknown" }) as const,
-  admit: (request) => {
-    admitted.push({
-      txId: request.txId.toString("hex"),
-      txFullHash: request.txFullHash.toString("hex"),
-    });
-    const now = new Date();
-    return Effect.succeed({
-      kind: "new" as const,
-      txIdHex: request.txId.toString("hex"),
-      status: "queued",
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
-  },
+  admit: (request) => Effect.succeed(acknowledge(request)),
+  admitBatch: (requests) =>
+    Effect.succeed(
+      requests.map((request) => Either.right(acknowledge(request))),
+    ),
   pendingSince: () => undefined,
   health: Effect.succeed({} as never),
   flush: Effect.void,

@@ -77,8 +77,12 @@ lowercase hex, and `X-Midgard-Operator-Signature`, its signature over
 SHA-256 of `"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id ||
 body`. A missing or invalid signature returns 401 and a key outside the
 node's on-chain active operator set returns 403. Transactions pass the
-`/submit` checks and are admitted with source `peer`; `/peer/inventory`
-answers the ids the node neither holds pending nor has an admission row for.
+`/submit` checks and are admitted with source `peer`, a body's transactions
+all in one admission-writer submission with one answer. A 503 (full backlog,
+full or stalled writer) can follow the admission of the body's other
+transactions; the sender's next inventory offer finds the ones still
+missing. `/peer/inventory` answers the ids the node neither holds pending nor
+has an admission row for.
 
 `/tx-status` answers `committed` once a block includes the transaction, with
 that block's `headerHash`, and `committedMeaning` says how the node knows:

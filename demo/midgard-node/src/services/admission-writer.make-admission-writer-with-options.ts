@@ -3,6 +3,7 @@ import {
   Deferred,
   Duration,
   Effect,
+  Either,
   Exit,
   Metric,
   Queue,
@@ -10,6 +11,7 @@ import {
 } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
+import { pendingSetRefusal } from "./admission-writer.pending-bounds.js";
 import { persistWithRetry } from "./admission-writer.persist-with-retry.js";
 import { makeRecentTxIds } from "./admission-writer.recent-tx-ids.js";
 import { makeWriterTelemetry } from "./admission-writer.telemetry.js";
@@ -27,12 +29,11 @@ import {
   type AdmissionWriteItem,
   admissionWriteLostCounter,
   type AdmissionWriteRefusal,
-  AdmissionWriterFullError,
+  type AdmissionWriteRequest,
   type AdmissionWriterOptions,
   type AdmissionWriterService,
   admissionWriterShardForTxId,
   AdmissionWriterShutdownError,
-  AdmissionWriterStalledError,
   type AdmissionWriterTestHooks,
   admissionWriteStoredVariantCounter,
   DEFAULT_OPTIONS,
@@ -300,103 +301,96 @@ export const makeAdmissionWriterWithOptions = <R>(
       if (!settled) yield* Deferred.await(done);
     });
 
+    /**
+     * Registers one tx, or says why not. Synchronous, so the duplicate
+     * check, the bounds and the registration cannot interleave with another
+     * caller's; a batch runs it for each of its txs in one section.
+     */
+    const register = (
+      request: AdmissionWriteRequest,
+      nowMs: number,
+    ):
+      | { readonly ack: AdmissionAck; readonly item?: AdmissionWriteItem }
+      | { readonly refusal: AdmissionWriteRefusal } => {
+      if (!accepting) {
+        return {
+          refusal: new AdmissionWriterShutdownError({
+            message: "Admission writer is shutting down",
+            mayHaveCommitted: false,
+          }),
+        };
+      }
+      const known = lookupAt(request.txId, request.txFullHash, nowMs);
+      if (known._tag === "Conflict") return { refusal: known.error };
+      if (known._tag === "Duplicate") return { ack: known.ack };
+      const bytes = request.txCanonicalCbor.length;
+      const refusal = pendingSetRefusal({
+        oldestPendingAgeMs: oldestPendingAgeMs(nowMs),
+        stallMs,
+        rows: capacityUsed,
+        rowCapacity: options.queueCapacity,
+        bytes: bytesUsed,
+        byteCapacity: options.queueBytes,
+        txBytes: bytes,
+      });
+      if (refusal !== undefined) return { refusal };
+      const spent = request.claimInputs?.();
+      if (spent !== undefined) return { refusal: spent };
+      const item: AdmissionWriteItem = {
+        request,
+        txIdHex: request.txId.toString("hex"),
+        seq: nextSeq,
+        lane: admissionWriterShardForTxId(request.txId, options.shardCount),
+        registeredAtMs: nowMs,
+        lastSeenAtMs: nowMs,
+        requestCount: 1,
+        phase: "registered",
+        completed: false,
+      };
+      nextSeq += 1;
+      pending.set(item.txIdHex, item);
+      capacityUsed += 1;
+      bytesUsed += bytes;
+      telemetry.enter(item);
+      return {
+        item,
+        ack: {
+          kind: "new",
+          txIdHex: item.txIdHex,
+          status: "queued",
+          firstSeenAt: new Date(nowMs),
+          lastSeenAt: new Date(nowMs),
+        },
+      };
+    };
+
+    const admitBatch = (
+      requests: readonly AdmissionWriteRequest[],
+    ): Effect.Effect<
+      readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[]
+    > =>
+      Effect.gen(function* () {
+        const items: AdmissionWriteItem[] = [];
+        const results = yield* Effect.sync(() => {
+          const nowMs = Date.now();
+          return requests.map((request) => {
+            const decision = register(request, nowMs);
+            if ("refusal" in decision) return Either.left(decision.refusal);
+            if (decision.item !== undefined) items.push(decision.item);
+            return Either.right(decision.ack);
+          });
+        });
+        // In request order, so each lane's queue keeps the body's order.
+        for (const item of items)
+          yield* Queue.offer(inputQueues[item.lane]!, item);
+        return results;
+      });
+
     const service: AdmissionWriterService = {
       lookup: (txId, txFullHash) => lookupAt(txId, txFullHash, Date.now()),
       admit: (request) =>
-        Effect.gen(function* () {
-          // One synchronous section: the duplicate check, the bounds and the
-          // registration cannot interleave with another caller's.
-          const decision = yield* Effect.sync(
-            ():
-              | {
-                  readonly ack: AdmissionAck;
-                  readonly item?: AdmissionWriteItem;
-                }
-              | { readonly refusal: AdmissionWriteRefusal } => {
-              const nowMs = Date.now();
-              if (!accepting) {
-                return {
-                  refusal: new AdmissionWriterShutdownError({
-                    message: "Admission writer is shutting down",
-                    mayHaveCommitted: false,
-                  }),
-                };
-              }
-              const known = lookupAt(request.txId, request.txFullHash, nowMs);
-              if (known._tag === "Conflict") return { refusal: known.error };
-              if (known._tag === "Duplicate") return { ack: known.ack };
-              const oldestAgeMs = oldestPendingAgeMs(nowMs);
-              if (oldestAgeMs > stallMs) {
-                return {
-                  refusal: new AdmissionWriterStalledError({
-                    message:
-                      "Admission writes are stalled; retry once the node is ready",
-                    oldestPendingAgeMs: oldestAgeMs,
-                    stallMs,
-                  }),
-                };
-              }
-              const bytes = request.txCanonicalCbor.length;
-              if (capacityUsed >= options.queueCapacity) {
-                return {
-                  refusal: new AdmissionWriterFullError({
-                    message: "Admission writer row bound is full",
-                    unit: "rows",
-                    used: capacityUsed,
-                    capacity: options.queueCapacity,
-                  }),
-                };
-              }
-              if (bytesUsed + bytes > options.queueBytes) {
-                return {
-                  refusal: new AdmissionWriterFullError({
-                    message: "Admission writer byte bound is full",
-                    unit: "bytes",
-                    used: bytesUsed,
-                    capacity: options.queueBytes,
-                  }),
-                };
-              }
-              const spent = request.claimInputs?.();
-              if (spent !== undefined) return { refusal: spent };
-              const item: AdmissionWriteItem = {
-                request,
-                txIdHex: request.txId.toString("hex"),
-                seq: nextSeq,
-                lane: admissionWriterShardForTxId(
-                  request.txId,
-                  options.shardCount,
-                ),
-                registeredAtMs: nowMs,
-                lastSeenAtMs: nowMs,
-                requestCount: 1,
-                phase: "registered",
-                completed: false,
-              };
-              nextSeq += 1;
-              pending.set(item.txIdHex, item);
-              capacityUsed += 1;
-              bytesUsed += bytes;
-              telemetry.enter(item);
-              return {
-                item,
-                ack: {
-                  kind: "new",
-                  txIdHex: item.txIdHex,
-                  status: "queued",
-                  firstSeenAt: new Date(nowMs),
-                  lastSeenAt: new Date(nowMs),
-                },
-              };
-            },
-          );
-          if ("refusal" in decision)
-            return yield* Effect.fail(decision.refusal);
-          if (decision.item !== undefined) {
-            yield* Queue.offer(inputQueues[decision.item.lane]!, decision.item);
-          }
-          return decision.ack;
-        }),
+        Effect.flatMap(admitBatch([request]), ([result]) => result!),
+      admitBatch,
       pendingSince: (txId) => {
         const item = pending.get(txId.toString("hex"));
         return item === undefined ? undefined : new Date(item.registeredAtMs);

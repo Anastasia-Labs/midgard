@@ -3,6 +3,7 @@ import "effect";
 import "../database/txAdmissions.js";
 import "./database.js";
 import "./admission-writer.validate-options.js";
+import "./admission-writer.pending-bounds.js";
 import "./admission-writer.make-admission-writer-with-options.js";
 import "./admission-writer.make-admission-writer.js";
 export {

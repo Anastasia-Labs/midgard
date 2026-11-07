@@ -258,9 +258,12 @@ L1 advance, while it still has pending transactions, offers their ids and
 sends only those a peer has never seen.
 
 - `POST /peer/txs` takes a batch of transactions and admits each with source
-  `peer` after the same checks as `POST /submit`. It answers
+  `peer` after the same checks as `POST /submit`, the whole body in one
+  admission-writer submission. It answers
   `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
-  when the admission backlog is full or its writes are stalled. Like
+  when the admission backlog is full or its writes are stalled; the rest of
+  the body may already be admitted then, and the sender's next inventory offer
+  finds what is still missing. Like
   `/submit`, it counts a transaction as admitted before it is stored. Only a
   peer transaction still pending counts as a duplicate: the node keeps no
   recent peer ids, so one offered again after its row was written counts as

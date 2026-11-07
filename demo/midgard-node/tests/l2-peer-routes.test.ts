@@ -8,11 +8,18 @@
  */
 import "./utils.js";
 
+import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";
 
 import { Emulator, generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  buildLoadTx,
+  LOAD_GENESIS_OUTPUT_LOVELACE,
+  loadOutRef,
+  makeLoadKey,
+} from "../scripts/submit-ingress-load.tx.mjs";
 import {
   decodePeerList,
   encodePeerList,
@@ -125,6 +132,72 @@ describe("POST /peer/txs and /peer/inventory", () => {
       [parent.txId, "accepted"],
       [child.txId, "accepted"],
     ]);
+  });
+
+  it("admits a 500-tx body in one writer submission in under 1 s", async () => {
+    const node = await startReceiver();
+    // Admission checks no ledger: each tx spends an outref of its own that
+    // no ledger holds, under one of a few keys.
+    const bodyOf = (label: string) =>
+      Array.from({ length: 500 }, (_, index) => {
+        const key = makeLoadKey(label, index % 8);
+        return buildLoadTx({
+          inputs: [
+            {
+              key,
+              lovelace: LOAD_GENESIS_OUTPUT_LOVELACE,
+              outRef: loadOutRef(
+                createHash("sha256").update(`${label}:${index}`).digest(),
+                0,
+              ),
+            },
+          ],
+          outputAddresses: [key.addressBytes, key.addressBytes],
+          minFeeA: node.config.MIN_FEE_A,
+          minFeeB: node.config.MIN_FEE_B,
+        });
+      });
+    // A first body warms the route, the writer and the database pool.
+    const warmUp = bodyOf("peer-500-warm-up");
+    const body = bodyOf("peer-500");
+    expect(
+      (
+        await signedPeerPost(
+          node.url,
+          PEER_TXS_PATH,
+          warmUp.map((tx) => tx.txCbor),
+          sender.signer,
+        )
+      ).status,
+    ).toBe(200);
+
+    const startedAt = performance.now();
+    const reply = await signedPeerPost(
+      node.url,
+      PEER_TXS_PATH,
+      body.map((tx) => tx.txCbor),
+      sender.signer,
+    );
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(reply.status).toBe(200);
+    expect(JSON.parse(reply.body.toString())).toEqual({
+      admitted: 500,
+      duplicates: 0,
+      refused: 0,
+    });
+    expect(elapsedMs).toBeLessThan(1_000);
+    // The writer's shards commit in parallel, so rows of different shards
+    // carry no body order.
+    const stored = new Map(
+      (await node.admissions()).map((row) => [
+        row.tx_id.toString("hex"),
+        row.submit_source,
+      ]),
+    );
+    expect(stored.size).toBe(1_000);
+    for (const tx of body)
+      expect(stored.get(tx.txId.toString("hex"))).toBe("peer");
   });
 
   it("answers an inventory with exactly the ids it has never seen", async () => {

@@ -169,6 +169,21 @@ per single-tx request is cut instead:
 the writer gains a batch-admit call: the route checks every tx, then admits
 them all in one writer submission and waits once.
 
+Measured (M3, #882, 2026-11-07): the ack from memory (#874) had already
+removed F12's commit wait, so the per-tx route took about 5,200 tx/s per lane
+on 500-tx bodies (8,200 on full bodies of 888 txs of 327 B); one writer
+submission per body takes 6,700–8,200 and 9,300–9,800 (two runs, on a
+machine shared with other test runs). A full body is answered in 78–87 ms at
+the median and 160–180 ms at worst. So the receiver is not what bounds a lane:
+the `peer` rate class is (4 requests a second, burst 8), which caps a lane at
+about 3,500 tx/s for 327 B txs and about 1,100 tx/s for 1 KiB txs. That
+clears the 1,000 TPS public target, so the body bound stays one largest tx
+(about 288 KiB, so any tx fits in a body of its own). Forwarding 5,000 TPS
+on one lane would need a larger body or a faster peer rate. The forwarder's
+request timeout drops from 30 s to 10 s: 50× the slowest full body, and a
+peer slower than that is treated as stuck (the lane backs off and catches up
+by inventory instead of holding its one request for 30 s).
+
 ### D4 — Checks off the main thread, decoding once
 
 - **Decode once.** The consensus check runs on the decoded value:
@@ -427,7 +442,8 @@ them for a cloud vCPU.
 | Lean raw-Node `/submit` handler, main thread, check on two workers (M2, #885) | 335 µs/request at 10 % keep-alive; 288 µs with every connection kept alive | ~3.0k req/s |
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
 | Effect-router `/submit` handler before #881, main thread (M2 baseline, #871) | ~475–600 µs/request; 688 µs in the same-day rerun beside the row above | ~1.5–2.1k req/s |
-| Peer ingest, today (F12) | one commit wait per tx | ~10 TPS per lane at low load |
+| Peer ingest, before the ack from memory (F12) | one commit wait per tx | ~10 TPS per lane at low load |
+| Peer ingest, batch admit (M3, #882) | one writer submission per body; full body ~80 ms p50, under 0.2 s max | ~6.7–8.2k tx/s per lane (500-tx bodies), ~9.3–9.8k (full bodies); the `peer` rate class caps a lane at ~3.5k tx/s for 327 B txs |
 
 **Binding stage.** Every request carries one tx. With TLS at the edge, a lean
 `/submit` handler and grouped worker hand-off, the main thread spends about
@@ -490,8 +506,8 @@ edge, submit cannot reach 1,000 TPS whatever else lands.
 | M7 | Gauge drift at 5,000 TPS with the 500 ms refresh | Whether the shedding signal is exact enough |
 
 Done: decode-once cost (D4), worker hand-off (D4), the insert statement
-without the quota scan (D5), the quota scan's growth (F10) and TLS handshake
-cost (D7).
+without the quota scan (D5), the quota scan's growth (F10), TLS handshake
+cost (D7) and peer ingest (M3, under D3's peer route).
 
 **Docs and tests to migrate:** `demo/midgard-node/PUBLIC_HTTP.md` (bounds),
 `docs/public-testnet-parameters.md`, the public compose file and

@@ -1,4 +1,12 @@
-import { Cause, Context, Data, Effect, Metric, MetricBoundaries } from "effect";
+import {
+  Cause,
+  Context,
+  Data,
+  Effect,
+  type Either,
+  Metric,
+  MetricBoundaries,
+} from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -200,6 +208,14 @@ export type AdmissionWriterService = {
   readonly admit: (
     request: AdmissionWriteRequest,
   ) => Effect.Effect<AdmissionAck, AdmissionWriteRefusal>;
+  /** `admit` for each request, in order, in one registration: a request
+   * repeating an earlier one's tx id answers as its duplicate (or
+   * conflict). Each answer is its own; one refusal stops no other. */
+  readonly admitBatch: (
+    requests: readonly AdmissionWriteRequest[],
+  ) => Effect.Effect<
+    readonly Either.Either<AdmissionAck, AdmissionWriteRefusal>[]
+  >;
   /** Whether `txId` is waiting for its write; its first-seen time if so. */
   readonly pendingSince: (txId: Buffer) => Date | undefined;
   readonly health: Effect.Effect<AdmissionWriterHealth>;

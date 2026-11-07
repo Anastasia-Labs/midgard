@@ -11,7 +11,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Either, Option, Ref } from "effect";
 
 import { L2PeerShareDB } from "../../database/index.js";
 import {
@@ -40,7 +40,8 @@ import {
 } from "./submission-capacity.js";
 import { SUBMIT_RETRY_AFTER_SECONDS } from "./submit.js";
 import {
-  admitCheckedTransaction,
+  admitCheckedTransactions,
+  type CheckedSubmittedTx,
   checkSubmittedTransaction,
 } from "./transaction-admission.js";
 
@@ -129,7 +130,22 @@ const decodeOr400 = (bytes: Uint8Array, maxItems: number) =>
     catch: () => refuse(400, "Body must be a canonical CBOR list of bytes"),
   });
 
-/** Admits a signed batch of transactions, in body order. */
+const CAPACITY_REFUSALS = {
+  TxAdmissionBacklogFullError: "Durable admission backlog is full",
+  AdmissionWriterFullError: "Durable admission writer is full",
+  AdmissionWriterStalledError: "Durable admission writes are stalled",
+  AdmissionWriterShutdownError: "Durable admission writer is unavailable",
+} as const;
+
+/**
+ * Admits a signed batch of transactions, in body order: every tx is checked,
+ * then all that pass go to the admission writer in one submission, and the
+ * route answers once they are in its pending set (design D3, D9).
+ *
+ * A tx refused for capacity (backlog or writer full, writes stalled, writer
+ * stopping) makes the answer a 503: the sender backs off and its catch-up
+ * offers the txs again, and the inventory leaves out the ones admitted here.
+ */
 export const postPeerTxsHandler = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
 ) =>
@@ -140,38 +156,41 @@ export const postPeerTxsHandler = <R>(
       PEER_TXS_MAX_BODY_BYTES,
     );
     const txs = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
-    const admittedIds: string[] = [];
-    let admitted = 0;
-    let duplicates = 0;
     let refused = 0;
+    const candidates: CheckedSubmittedTx[] = [];
     for (const tx of txs) {
       const checked = checkSubmittedTransaction(
         tx,
         nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
       );
-      if (!checked.ok) {
-        refused++;
-        continue;
-      }
-      const outcome = yield* admitCheckedTransaction({
-        normalized: checked.normalized,
-        submitSource: "peer",
-        wakeTxQueueProcessor,
-      }).pipe(
-        Effect.map((result) => result.kind),
-        // A peer tx is never refused for its inputs; the input arm is here
-        // only because admission's refusal type carries it.
-        Effect.catchTags({
-          TxAdmissionConflictError: () => Effect.succeed("conflict" as const),
-          AdmissionInputSpentError: () => Effect.succeed("conflict" as const),
-        }),
-      );
-      if (outcome === "new") {
-        admitted++;
-        admittedIds.push(checked.normalized.txIdHex);
-      } else if (outcome === "duplicate") duplicates++;
+      if (checked.ok) candidates.push(checked.normalized);
       else refused++;
     }
+    const results = yield* admitCheckedTransactions({
+      candidates,
+      submitSource: "peer",
+      wakeTxQueueProcessor,
+    });
+    const admittedIds: string[] = [];
+    let duplicates = 0;
+    let capacityRefusal: keyof typeof CAPACITY_REFUSALS | undefined;
+    for (const [index, result] of results.entries()) {
+      if (Either.isRight(result)) {
+        if (result.right.kind === "new")
+          admittedIds.push(candidates[index]!.txIdHex);
+        else duplicates++;
+      } else {
+        refused++;
+        // A peer tx is never refused for its inputs; the input arm is here
+        // only because admission's refusal type carries it.
+        if (
+          result.left._tag !== "TxAdmissionConflictError" &&
+          result.left._tag !== "AdmissionInputSpentError"
+        )
+          capacityRefusal ??= result.left._tag;
+      }
+    }
+    const admitted = admittedIds.length;
     // The signer is not stored with the rows: this line is what ties a row
     // the tx-queue processor later forgets to the operator who sent it.
     if (admitted > 0)
@@ -180,32 +199,13 @@ export const postPeerTxsHandler = <R>(
       ).pipe(
         Effect.annotateLogs({ peerOperator: keyHash, txIds: admittedIds }),
       );
+    if (capacityRefusal !== undefined)
+      return yield* HttpServerResponse.json(
+        { error: CAPACITY_REFUSALS[capacityRefusal] },
+        UNAVAILABLE,
+      );
     return yield* HttpServerResponse.json({ admitted, duplicates, refused });
-  }).pipe(
-    Effect.catchIf(HttpServerResponse.isServerResponse, Effect.succeed),
-    Effect.catchTags({
-      TxAdmissionBacklogFullError: () =>
-        HttpServerResponse.json(
-          { error: "Durable admission backlog is full" },
-          UNAVAILABLE,
-        ),
-      AdmissionWriterFullError: () =>
-        HttpServerResponse.json(
-          { error: "Durable admission writer is full" },
-          UNAVAILABLE,
-        ),
-      AdmissionWriterStalledError: () =>
-        HttpServerResponse.json(
-          { error: "Durable admission writes are stalled" },
-          UNAVAILABLE,
-        ),
-      AdmissionWriterShutdownError: () =>
-        HttpServerResponse.json(
-          { error: "Durable admission writer is unavailable" },
-          UNAVAILABLE,
-        ),
-    }),
-  );
+  }).pipe(Effect.catchIf(HttpServerResponse.isServerResponse, Effect.succeed));
 
 /** Answers which of the offered transaction ids this node has never seen. */
 export const postPeerInventoryHandler = Effect.gen(function* () {

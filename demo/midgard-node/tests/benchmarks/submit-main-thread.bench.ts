@@ -36,7 +36,14 @@ import { promisify } from "node:util";
 
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { Effect, Layer, Logger, LogLevel, ManagedRuntime } from "effect";
+import {
+  Effect,
+  Either,
+  Layer,
+  Logger,
+  LogLevel,
+  ManagedRuntime,
+} from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -69,18 +76,21 @@ const packageRoot = path.resolve(
 
 // The writer knows no tx and acknowledges every admission at once as new.
 // It never settles, so the gauge only grows; the backlog bounds are unbounded.
+const newAck = (request: { readonly txId: Buffer }) => {
+  const now = new Date();
+  return {
+    kind: "new" as const,
+    txIdHex: request.txId.toString("hex"),
+    status: "queued" as const,
+    firstSeenAt: now,
+    lastSeenAt: now,
+  };
+};
 const stubWriter = Layer.succeed(AdmissionWriter, {
   lookup: () => ({ _tag: "Unknown" }) as const,
-  admit: (request) => {
-    const now = new Date();
-    return Effect.succeed({
-      kind: "new" as const,
-      txIdHex: request.txId.toString("hex"),
-      status: "queued",
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
-  },
+  admit: (request) => Effect.succeed(newAck(request)),
+  admitBatch: (requests) =>
+    Effect.succeed(requests.map((request) => Either.right(newAck(request)))),
   pendingSince: () => undefined,
   health: Effect.succeed({} as never),
   flush: Effect.void,
