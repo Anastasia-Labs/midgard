@@ -31,6 +31,7 @@ import {
   postPeerTxsHandler,
 } from "../../src/commands/http/peer-routes.js";
 import { V1_SUBMISSION_MEDIA_TYPE } from "../../src/commands/http/submission-capacity.js";
+import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import {
   isSubmitRequest,
   makeSubmitRequestHandler,
@@ -65,6 +66,7 @@ import {
   type ValidationPoolService,
 } from "../../src/services/index.js";
 import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.js";
+import { createSubmitCheckPool } from "../../src/services/submit-check-pool.js";
 import { WriteBehindLive } from "../../src/services/write-behind.js";
 import {
   makeMidgardTxOutput,
@@ -302,8 +304,19 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
   const handler = await run(
     NodeHttpServer.makeHandler(withHttpIngress(app, ingress)),
   );
+  // One check worker per node: a test runs several nodes in one process.
+  const checkPool = createSubmitCheckPool({
+    size: 1,
+    maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
+    maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+    config: submissionCheckConfig(config),
+  });
   const submitHandler = await run(
-    makeSubmitRequestHandler({ wakeTxQueueProcessor: Effect.void, ingress }),
+    makeSubmitRequestHandler({
+      wakeTxQueueProcessor: Effect.void,
+      checkPool,
+      ingress,
+    }),
   );
   const server = createServer((request, response) => {
     const path = (request.url ?? "").split("?", 1)[0]!;
@@ -415,6 +428,7 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
         server.closeAllConnections();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
+      await checkPool.close();
       await runtime.dispose();
     },
   };

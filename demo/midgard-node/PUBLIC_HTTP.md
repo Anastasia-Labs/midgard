@@ -123,7 +123,16 @@ plus seven envelope bytes); a larger declared length gets 413 before the body is
 read, and a `/submit` without `Content-Length` gets 411. Every `/submit` refusal
 is counted in `submit_refusal_count{reason}` on `/metrics`; its log line is
 sampled to the first refusal of each reason per second, which also says how many
-went unlogged since the previous line. A `/peer/txs` body holds at most one largest transaction
+went unlogged since the previous line. The envelope decode and the submission
+check run on a pool of worker threads apart from the validation workers
+(`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default 2); the main thread only reads the
+body and hands it over. A `/submit` request holds a slot of that pool's queue
+from the body read to the verdict: `SUBMIT_INGRESS_WORKER_QUEUE` slots
+(default 256) and `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. A full queue answers 503
+`Submit ingress capacity is full; retry later` (reason `submit_capacity`). A
+check worker that crashes or stalls is replaced; the requests it held, and any
+that arrive while no worker is running, get 503 `Submit check is unavailable;
+retry later` (reason `submit_check_unavailable`). A `/peer/txs` body holds at most one largest transaction
 (about 288 KiB) and a `/peer/inventory` body at most 20,000 ids (about 664 KiB); peer
 bodies are read under an ingress pool of their own, apart from `/submit`'s, and a
 peer body of unknown length holds only the larger of those two bounds against the

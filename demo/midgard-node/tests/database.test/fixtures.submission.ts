@@ -21,16 +21,22 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { MempoolDB, TxAdmissionsDB } from "../../src/database/index.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { NodeConfig } from "../../src/services/config.js";
+import type { NodeConfigDep } from "../../src/services/config.node-config-dep.js";
 import { BatchSql } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.js";
+import {
+  createSubmitCheckPool,
+  type SubmitCheckPool,
+} from "../../src/services/submit-check-pool.js";
 import { ValidationPool } from "../../src/services/validation-pool.js";
 import { WriteBehind } from "../../src/services/write-behind.js";
 import { makeCardanoSignedMapOutputTxBytes } from "../helpers/cardano-native-fixtures.js";
@@ -57,6 +63,30 @@ const fixtureIngress = createHttpIngress({
   policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
 });
 
+/**
+ * One submit check pool for every fixture submission, sized from the first
+ * caller's configuration; its workers do not hold the process open.
+ */
+let fixtureCheckPool: SubmitCheckPool | undefined;
+const checkPoolFor = (config: NodeConfigDep): SubmitCheckPool =>
+  (fixtureCheckPool ??= createSubmitCheckPool({
+    size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
+    maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
+    maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+    config: submissionCheckConfig(config),
+  }));
+
+/**
+ * Each POST comes from a loopback address of its own, so the ingress's
+ * per-client in-flight bound never refuses a fixture's concurrent
+ * submissions: the fixture isolates the admission contract.
+ */
+let fixtureClients = 0;
+const nextClientAddress = () => {
+  const n = fixtureClients++ % 65_536;
+  return `127.1.${(n >> 8).toString()}.${(n & 255).toString()}`;
+};
+
 /** One POST of `body` to `port`, on a connection of its own. */
 const postSubmit = (
   port: number,
@@ -75,6 +105,7 @@ const postSubmit = (
         path: "/submit",
         method: "POST",
         agent: false,
+        localAddress: nextClientAddress(),
         headers: {
           "content-type": contentType,
           "content-length": body.length.toString(),
@@ -123,6 +154,7 @@ export const submitThroughRouter = <R>(
   Effect.gen(function* () {
     const handler = yield* makeSubmitRequestHandler({
       wakeTxQueueProcessor,
+      checkPool: checkPoolFor(yield* NodeConfig),
       ingress: fixtureIngress,
     });
     const result = yield* Effect.acquireUseRelease(

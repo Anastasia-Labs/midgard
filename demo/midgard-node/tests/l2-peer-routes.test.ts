@@ -349,10 +349,13 @@ describe("peer and submit ingress permits", () => {
   );
 
   it("users holding every submit permit leave /peer/txs admitting", async () => {
-    const node = await startReceiver(behindProxy);
+    // `/submit` holds a slot of the submit check queue while it reads.
+    const node = await startReceiver({
+      config: { ...behindProxy.config, SUBMIT_INGRESS_WORKER_QUEUE: 4 },
+    });
     const tx = await buildTransfer(user, [funding], 10_000_000n, node.config);
     const held = Array.from(
-      { length: node.config.SUBMIT_INGRESS_MAX_CONCURRENCY },
+      { length: node.config.SUBMIT_INGRESS_WORKER_QUEUE },
       () =>
         holdRequest(
           node.url,

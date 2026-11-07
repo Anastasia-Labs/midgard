@@ -1,9 +1,10 @@
 /**
  * `POST /submit` as a raw Node request handler, outside the Effect router
  * (design D3). It runs the ingress checks every route runs
- * (`admitHttpRequest`), reads the body under the submit ingress permits,
- * checks it and hands the checked tx to `admitCheckedTransaction`. Every
- * other route stays on the Effect stack.
+ * (`admitHttpRequest`), reserves a slot in the submit check pool, reads the
+ * body, has a pool worker check it (design D4) and hands the checked tx to
+ * `admitCheckedTransaction`. The main thread neither decodes nor hashes the
+ * body. Every other route stays on the Effect stack.
  *
  * A refusal costs a counter increment by reason; its log line is sampled to
  * the first per reason per second. The handler records one latency
@@ -14,6 +15,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Cause, Effect, Exit, Option, Runtime } from "effect";
 
 import { AdmissionWriter, Globals, NodeConfig } from "../../services/index.js";
+import type {
+  SubmitCheckOutcome,
+  SubmitCheckPool,
+} from "../../services/submit-check-pool.js";
 import {
   admitHttpRequest,
   type createHttpIngress,
@@ -23,13 +28,10 @@ import {
 } from "../listen-http-ingress.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
-  isValidSubmitIngressPermit,
   requestMediaType,
   SUBMIT_HTTP_BODY_MAX_BYTES,
-  tryTakeSubmitIngressPermit,
   V1_SUBMISSION_MEDIA_TYPE,
 } from "./submission-capacity.js";
-import { checkSubmissionBody } from "./submission-check.js";
 import {
   createRefusalLogSampler,
   recordSubmitAdmitted,
@@ -160,16 +162,18 @@ const INTERNAL_ERROR: Answer = {
 };
 
 /**
- * Builds the raw `/submit` handler from the services in context. Admission
- * runs on the captured runtime. `ingress` is the ingress controller the
- * handler charges; by default the one the node configuration shares with
- * every other route.
+ * Builds the raw `/submit` handler from the services in context. Bodies are
+ * checked on `checkPool`; admission runs on the captured runtime. `ingress`
+ * is the ingress controller the handler charges; by default the one the
+ * node configuration shares with every other route.
  */
 export const makeSubmitRequestHandler = <R>({
   wakeTxQueueProcessor,
+  checkPool,
   ingress,
 }: {
   readonly wakeTxQueueProcessor: Effect.Effect<void, never, R>;
+  readonly checkPool: SubmitCheckPool;
   readonly ingress?: ReturnType<typeof createHttpIngress>;
 }): Effect.Effect<
   SubmitRequestHandler,
@@ -264,17 +268,9 @@ export const makeSubmitRequestHandler = <R>({
         );
         return;
       }
-      const permit = {
-        maxConcurrency: config.SUBMIT_INGRESS_MAX_CONCURRENCY,
-        maxInFlightBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-        permitBytes: Math.max(1, declared),
-      };
-      if (!isValidSubmitIngressPermit(permit)) {
-        fail(() => "invalid submit ingress permit configuration");
-        return;
-      }
-      const releasePermit = tryTakeSubmitIngressPermit(permit);
-      if (releasePermit === undefined) {
+      // The slot holds the body's bytes from the read to the verdict.
+      const ticket = checkPool.reserve(Math.max(1, declared));
+      if (ticket === undefined) {
         refuse(
           "submit_capacity",
           {
@@ -282,11 +278,11 @@ export const makeSubmitRequestHandler = <R>({
             headers: RETRY_LATER,
             body: { error: "Submit ingress capacity is full; retry later" },
           },
-          () => "submit ingress permits are exhausted",
+          () => "the submit check queue is full",
         );
         return;
       }
-      releases.push(releasePermit);
+      releases.push(ticket.release);
 
       const admit = (normalized: CheckedSubmittedTx) =>
         runCallback(
@@ -326,6 +322,37 @@ export const makeSubmitRequestHandler = <R>({
             },
           },
         );
+
+      const checked = (outcome: SubmitCheckOutcome) => {
+        switch (outcome.kind) {
+          case "unavailable":
+            refuse(
+              "submit_check_unavailable",
+              {
+                status: 503,
+                headers: RETRY_LATER,
+                body: { error: "Submit check is unavailable; retry later" },
+              },
+              () => outcome.detail,
+            );
+            return;
+          case "failed":
+            fail(() => `submit check failed: ${outcome.detail}`);
+            return;
+          case "checked": {
+            const check = outcome.check;
+            if (!check.ok) {
+              refuse(
+                check.reason,
+                { status: check.status, body: check.body },
+                () => check.log.join("; "),
+              );
+              return;
+            }
+            admit(check.normalized);
+          }
+        }
+      };
 
       // The ingress admitted at most `declared` bytes; Node's parser
       // delivers exactly the declared length unless the client goes away.
@@ -369,22 +396,9 @@ export const makeSubmitRequestHandler = <R>({
           );
           return;
         }
-        const checked = checkSubmissionBody(
-          body,
-          config.MAX_SUBMIT_TX_CBOR_BYTES,
-        );
-        // Both submit ingress permits go before admission; only the HTTP
+        // The check slot is freed before `checked` runs; only the HTTP
         // ingress slot is held to the response.
-        releasePermit();
-        if (!checked.ok) {
-          refuse(
-            checked.reason,
-            { status: checked.status, body: checked.body },
-            () => checked.log.join("; "),
-          );
-          return;
-        }
-        admit(checked.normalized);
+        ticket.check(body, checked);
       });
     };
   });

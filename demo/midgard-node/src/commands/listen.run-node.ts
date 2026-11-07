@@ -48,6 +48,7 @@ import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.j
 import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import type { StartupStepFailedError } from "../services/startup-waiting.js";
+import { acquireSubmitCheckPool } from "../services/submit-check-pool.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
@@ -296,9 +297,12 @@ export const runNode = (
     const publishHttp = startup
       .publish(
         buildListenRouter(),
-        makeSubmitRequestHandler({
-          wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
-        }),
+        Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
+          makeSubmitRequestHandler({
+            wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
+            checkPool,
+          }),
+        ),
       )
       .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 

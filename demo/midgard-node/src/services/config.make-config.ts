@@ -302,6 +302,14 @@ const makeConfig = Effect.gen(function* () {
     "SUBMIT_INGRESS_MAX_CONCURRENCY",
     4,
   );
+  const submitIngressWorkerPoolSize = yield* positiveSafeIntegerConfig(
+    "SUBMIT_INGRESS_WORKER_POOL_SIZE",
+    2,
+  );
+  const submitIngressWorkerQueue = yield* positiveSafeIntegerConfig(
+    "SUBMIT_INGRESS_WORKER_QUEUE",
+    256,
+  );
   // At least one largest submission body must fit.
   const submitIngressMaxInFlightBytes = yield* Config.integer(
     "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
@@ -906,6 +914,8 @@ const makeConfig = Effect.gen(function* () {
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,
     SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: submitIngressMaxInFlightBytes,
+    SUBMIT_INGRESS_WORKER_POOL_SIZE: submitIngressWorkerPoolSize,
+    SUBMIT_INGRESS_WORKER_QUEUE: submitIngressWorkerQueue,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:

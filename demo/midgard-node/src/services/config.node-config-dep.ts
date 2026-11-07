@@ -160,7 +160,14 @@ export type NodeConfigDep = {
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   SUBMIT_INGRESS_MAX_CONCURRENCY: number;
+  /** Body bytes `/submit` requests hold while read, queued for or in a
+   * submit check worker; a peer request's bytes are bounded on their own. */
   SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: number;
+  /** Threads of the submit check pool (`services/submit-check-pool.ts`). */
+  SUBMIT_INGRESS_WORKER_POOL_SIZE: number;
+  /** `/submit` requests read, queued for or in a submit check worker at once;
+   * past it a request is answered 503. */
+  SUBMIT_INGRESS_WORKER_QUEUE: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: number;

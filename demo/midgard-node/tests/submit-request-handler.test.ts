@@ -3,179 +3,35 @@
  * the router gives every route, the submission answers, the dispatch between
  * it and the Effect application, and a junk flood's log volume.
  */
-import { once } from "node:events";
-import { Agent, createServer, request as httpRequest } from "node:http";
-import type { AddressInfo } from "node:net";
-
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform";
-import { Effect, Layer, Logger, ManagedRuntime, Metric } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { Effect, Layer } from "effect";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../src/commands/http/submission-capacity.js";
-import { submitRefusalCounter } from "../src/commands/http/submission-metrics.js";
 import { makeSubmitRequestHandler } from "../src/commands/http/submit.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
-import {
-  createHttpIngress,
-  withHttpIngress,
-} from "../src/commands/listen-http-ingress.js";
-import { AdmissionWriter } from "../src/services/admission-writer.js";
-import {
-  DEFAULT_HTTP_RATE_LIMITS,
-  type HttpRateLimitPolicy,
-} from "../src/services/http-rate-limits.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { withHttpIngress } from "../src/commands/listen-http-ingress.js";
+import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
+import { Globals } from "../src/services/index.js";
+import { acquireSubmitCheckPool } from "../src/services/submit-check-pool.js";
 import {
   makeNativeSubmitTx,
   wrapNativeSubmitTx,
 } from "./database.test/fixtures.submission.js";
+import {
+  CLIENT,
+  closeSharedPool,
+  configLayer,
+  MEDIA,
+  noLimits,
+  refusals,
+  runCleanups,
+  serveSubmit,
+  stubWriter,
+} from "./helpers/submit-request-server.js";
 
-const MEDIA = "application/vnd.midgard.v1+cbor";
-const CLIENT = "198.51.100.7";
-
-// Acknowledges every admission at once as new.
-const stubWriter = Layer.succeed(AdmissionWriter, {
-  lookup: () => ({ _tag: "Unknown" }) as const,
-  admit: (request) => {
-    const now = new Date();
-    return Effect.succeed({
-      kind: "new" as const,
-      txIdHex: request.txId.toString("hex"),
-      status: "queued",
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
-  },
-  pendingSince: () => undefined,
-  health: Effect.succeed({} as never),
-  flush: Effect.void,
-  stats: Effect.succeed({} as never),
-});
-
-const configLayer = (policy: HttpRateLimitPolicy) =>
-  Layer.succeed(NodeConfig, {
-    HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
-    HTTP_RATE_LIMITS: policy,
-    MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
-    MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
-    SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
-    SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
-      MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
-    MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
-  } as never);
-
-const noLimits: HttpRateLimitPolicy = {
-  ...DEFAULT_HTTP_RATE_LIMITS,
-  enabled: false,
-};
-
-type Reply = {
-  readonly status: number;
-  readonly headers: Record<string, string | string[] | undefined>;
-  readonly body: Record<string, unknown>;
-};
-
-const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
-/** The raw handler on a real server; log lines are captured, not printed. */
-const serveSubmit = async (policy: HttpRateLimitPolicy = noLimits) => {
-  const lines: string[] = [];
-  const runtime = ManagedRuntime.make(
-    Layer.mergeAll(
-      configLayer(policy),
-      Globals.Default,
-      stubWriter,
-      Logger.replace(
-        Logger.defaultLogger,
-        Logger.make(({ message }) => {
-          lines.push(
-            Array.isArray(message) ? message.join(" ") : String(message),
-          );
-        }),
-      ),
-    ),
-  );
-  const handler = await runtime.runPromise(
-    makeSubmitRequestHandler({
-      wakeTxQueueProcessor: Effect.void,
-      ingress: createHttpIngress({ policy }),
-    }),
-  );
-  let connections = 0;
-  const server = createServer(handler);
-  server.on("connection", () => {
-    connections += 1;
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const port = (server.address() as AddressInfo).port;
-  const agent = new Agent({ keepAlive: true, maxSockets: 8 });
-  cleanups.push(async () => {
-    agent.destroy();
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    await runtime.dispose();
-  });
-  const call = (
-    options: {
-      readonly method?: string;
-      readonly path?: string;
-      readonly body?: Buffer;
-      readonly headers?: Record<string, string>;
-      readonly chunked?: boolean;
-      readonly client?: string | null;
-    } = {},
-  ) =>
-    new Promise<Reply>((resolve, reject) => {
-      const body = options.body ?? Buffer.alloc(0);
-      const client = options.client === undefined ? CLIENT : options.client;
-      const req = httpRequest(
-        {
-          host: "127.0.0.1",
-          port,
-          path: options.path ?? "/submit",
-          method: options.method ?? "POST",
-          agent,
-          headers: {
-            "content-type": MEDIA,
-            ...(options.chunked === true
-              ? { "transfer-encoding": "chunked" }
-              : { "content-length": body.length.toString() }),
-            ...(client === null ? {} : { "x-midgard-client-ip": client }),
-            ...options.headers,
-          },
-        },
-        (res) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (chunk: Buffer) => chunks.push(chunk));
-          res.once("end", () =>
-            resolve({
-              status: res.statusCode!,
-              headers: res.headers,
-              body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
-            }),
-          );
-        },
-      );
-      req.once("error", reject);
-      req.end(body);
-    });
-  return { call, lines, connections: () => connections, runtime };
-};
-
-const refusals = <R>(
-  runtime: ManagedRuntime.ManagedRuntime<R, never>,
-  reason: string,
-) =>
-  runtime
-    .runPromise(
-      Metric.value(submitRefusalCounter.pipe(Metric.tagged("reason", reason))),
-    )
-    .then((state) => state.count);
+afterEach(runCleanups);
+afterAll(closeSharedPool);
 
 describe("raw POST /submit handler", () => {
   it("admits a submission and answers with the admission ack", async () => {
@@ -306,12 +162,21 @@ describe("raw POST /submit handler", () => {
       2_000,
     );
     const logged = node.lines.filter((line) => line.includes("Submit refused"));
-    // One line per reason per wall-clock second the flood touched.
-    expect(logged.length).toBeGreaterThan(0);
-    expect(logged.length).toBeLessThanOrEqual(Math.ceil(seconds) + 1);
+    // Every line is the flood's one reason, most of them counting the
+    // refusals sampled away since the line before.
+    expect(
+      logged.every((line) => line.includes("(malformed_envelope)")),
+      JSON.stringify(logged),
+    ).toBe(true);
     expect(
       logged.some((line) => /\d+ more malformed_envelope/u.test(line)),
     ).toBe(true);
+    // The sampler logs one line per reason per wall-clock second: about 3
+    // here. The bound allows twice that: one loaded run logged 5 lines over
+    // a 2 s flood, which with a single reason means the wall clock stepped.
+    expect(logged.length, JSON.stringify(logged)).toBeLessThanOrEqual(
+      2 * Math.ceil(seconds) + 1,
+    );
   });
 });
 
@@ -337,9 +202,15 @@ describe("startup listener dispatch", () => {
     await Effect.runPromise(
       withStartupHttpServer(0, (startup) =>
         Effect.gen(function* () {
+          // As the node wires it: the pool lives in the startup scope.
           yield* startup.publish(
             application,
-            makeSubmitRequestHandler({ wakeTxQueueProcessor: Effect.void }),
+            Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
+              makeSubmitRequestHandler({
+                wakeTxQueueProcessor: Effect.void,
+                checkPool,
+              }),
+            ),
           );
           const port = yield* HttpServer.addressWith((address) =>
             address._tag === "TcpAddress"

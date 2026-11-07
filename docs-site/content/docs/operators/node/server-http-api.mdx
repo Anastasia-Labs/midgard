@@ -119,6 +119,16 @@ behind it; its transaction then reads as not found.
 
 A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
 keeps the connection open for the retry; other refusals of a `POST` close it.
+
+The envelope decode and the submission check run on a pool of worker threads
+apart from the validation workers (`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default
+2); the main thread only reads the body and hands it over. A `/submit` request
+holds a slot of that pool's queue from the body read to the verdict:
+`SUBMIT_INGRESS_WORKER_QUEUE` slots (default 256) and
+`SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. A full queue answers `503` with
+`Submit ingress capacity is full; retry later`. A check worker that crashes or
+stalls is replaced; the requests it held, and any that arrive while no worker
+is running, get `503` with `Submit check is unavailable; retry later`.
 The durable admission backlog
 is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 10,000) and by
 payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default the largest DA
@@ -244,8 +254,8 @@ sends only those a peer has never seen.
   neither holds pending nor has an admission row for, as the same CBOR list.
 - A `/peer/txs` body holds at most one largest transaction (about 288 KiB) and
   a `/peer/inventory` body at most 20,000 ids. Peer bodies are read under an
-  ingress pool of their own, as many requests deep as `/submit`'s, so peers
-  and users never hold each other's permits; a full pool answers `503`. Peer
+  ingress pool of their own (`SUBMIT_INGRESS_MAX_CONCURRENCY` requests deep),
+  so peers and users never hold each other's slots; a full pool answers `503`. Peer
   and user admissions do share the durable admission backlog, so a peer burst
   that fills it makes `/submit` answer `503` until it drains, and the reverse. A peer body of
   unknown length holds only the larger of those two bounds against the node's

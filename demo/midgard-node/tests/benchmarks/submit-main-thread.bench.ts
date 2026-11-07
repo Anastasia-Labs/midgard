@@ -1,7 +1,8 @@
 // M2 of the public submit ingress design: main-thread CPU per single-tx
 // `POST /submit`, with the admission writer stubbed, so what is left is the
 // node's own work on the event loop (HTTP parse, ingress checks, body read,
-// envelope decode, the submit check, the response) and nothing from Postgres.
+// the hand-off to the submit check workers, the response) and nothing from
+// Postgres. The envelope decode and the submit check run on the workers.
 //
 //   pnpm --dir demo --filter midgard-node run bench:submit-main-thread
 //
@@ -11,7 +12,8 @@
 // CPU lands on this process's main thread. The main thread's CPU is read
 // from /proc/<pid>/task/<pid>/stat over the run and divided by the requests
 // it answered. The submit check alone is timed on the same txs, in process,
-// and reported beside it.
+// and reported beside it: that is the work the workers take off the main
+// thread.
 //
 // The client stands behind a trusted proxy (`x-midgard-client-ip`), as behind
 // the nginx edge, and the ingress rate limits are off: this measures cost per
@@ -19,7 +21,8 @@
 //
 // SUBMIT_MAIN_THREAD_RATE (default 1000/s), SUBMIT_MAIN_THREAD_SECONDS
 // (default 10) and SUBMIT_MAIN_THREAD_KEEP_ALIVE (share of keep-alive
-// requests, default 0.1) set the load. The child CLI imports the built
+// requests, default 0.1) set the load; SUBMIT_MAIN_THREAD_WORKERS (default 2)
+// sizes the check pool, which needs the built dist (`submit-check.js`). The child CLI imports the built
 // workspace packages: build @al-ft/midgard-core first.
 import { execFile } from "node:child_process";
 import { once } from "node:events";
@@ -45,16 +48,19 @@ import {
   cpuShares,
   sampleProcessCpu,
 } from "../../scripts/submit-ingress-load.report.mjs";
+import { submissionCheckConfig } from "../../src/commands/http/submission-check.js";
 import { makeSubmitRequestHandler } from "../../src/commands/http/submit.js";
 import { checkSubmittedTransaction } from "../../src/commands/http/transaction-admission.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
 import { Globals, NodeConfig } from "../../src/services/index.js";
+import { createSubmitCheckPool } from "../../src/services/submit-check-pool.js";
 
 const RATE = Number(process.env.SUBMIT_MAIN_THREAD_RATE ?? "1000");
 const SECONDS = Number(process.env.SUBMIT_MAIN_THREAD_SECONDS ?? "10");
 const KEEP_ALIVE = Number(process.env.SUBMIT_MAIN_THREAD_KEEP_ALIVE ?? "0.1");
+const WORKERS = Number(process.env.SUBMIT_MAIN_THREAD_WORKERS ?? "2");
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -87,10 +93,6 @@ const benchConfig = Layer.succeed(NodeConfig, {
   HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
   MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
-  SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
-  SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
-    MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
-  MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
 } as never);
 
 describe("submit main-thread cost (M2)", () => {
@@ -123,9 +125,26 @@ describe("submit main-thread cost (M2)", () => {
           Logger.minimumLogLevel(LogLevel.Info),
         ),
       );
+      const checkPool = createSubmitCheckPool({
+        size: WORKERS,
+        maxQueued: 256,
+        maxQueuedBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
+        config: submissionCheckConfig({
+          MAX_SUBMIT_TX_CBOR_BYTES:
+            MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+        }),
+      });
+      // The load starts once every worker has loaded the check.
+      const loadDeadline = Date.now() + 60_000;
+      while (checkPool.stats().readyWorkers < WORKERS) {
+        if (Date.now() > loadDeadline)
+          throw new Error("the submit check workers did not load");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       const handler = await runtime.runPromise(
         makeSubmitRequestHandler({
           wakeTxQueueProcessor: Effect.void,
+          checkPool,
           ingress: createHttpIngress({
             policy: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
           }),
@@ -180,6 +199,7 @@ describe("submit main-thread cost (M2)", () => {
           offeredRatePerSecond: RATE,
           seconds: Number(shares.seconds.toFixed(2)),
           keepAliveShare: KEEP_ALIVE,
+          checkWorkers: WORKERS,
           requests: report.load.completed,
           notSentWhenDue: report.load.notSentWhenDue,
           txBytes: txs[0]!.length,
@@ -187,9 +207,6 @@ describe("submit main-thread cost (M2)", () => {
           processCores: Number(shares.processCores.toFixed(3)),
           mainThreadUsPerRequest: Number(mainThreadUsPerRequest.toFixed(1)),
           submitCheckUsPerTx: Number(checkUsPerTx.toFixed(1)),
-          mainThreadUsPerRequestLessCheck: Number(
-            (mainThreadUsPerRequest - checkUsPerTx).toFixed(1),
-          ),
           latencyP50Ms: report.load.latencyMs.p50,
           latencyP99Ms: report.load.latencyMs.p99,
         };
@@ -198,6 +215,7 @@ describe("submit main-thread cost (M2)", () => {
       } finally {
         server.closeAllConnections();
         server.close();
+        await checkPool.close();
         await runtime.dispose();
       }
     } finally {
