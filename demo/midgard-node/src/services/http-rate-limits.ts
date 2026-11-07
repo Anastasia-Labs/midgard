@@ -1,16 +1,18 @@
 /**
- * Request-rate policy for the node's HTTP ingress: one token bucket per client
- * and class, plus one global bucket per public class.
+ * Request-rate policy for the node's HTTP ingress: token buckets per client
+ * and class, a looser bucket per address prefix for submissions, and a global
+ * bucket for the other public classes.
  */
 
 /**
  * `health` (`/healthz`, `/readyz`), `admin` (operator routes) and `peer` (the
- * operator-to-operator sharing routes `/peer/txs` and `/peer/inventory`) have
- * no global bucket, so a public flood cannot starve them; their clients live
- * in a table of their own. A `peer` request is charged before its signature
- * is checked, so a shared bucket would let unsigned traffic refuse the
- * operators. `batch` is `POST /tx-status`; `POST /utxos` stays `read` because
- * the CLI pages it at about eight requests a second.
+ * operator-to-operator sharing routes `/peer/txs` and `/peer/inventory`) are
+ * the liveness classes: they have no global bucket, so a public flood cannot
+ * starve them, and their few clients live in a table of their own. A `peer`
+ * request is charged before its signature is checked, so a shared bucket
+ * would let unsigned traffic refuse the operators. `batch` is
+ * `POST /tx-status`; `POST /utxos` stays `read` because the CLI pages it at
+ * about eight requests a second.
  */
 export const HTTP_RATE_CLASSES = [
   "health",
@@ -22,16 +24,30 @@ export const HTTP_RATE_CLASSES = [
   "peer",
 ] as const;
 export type HttpRateClass = (typeof HTTP_RATE_CLASSES)[number];
-export const HTTP_GLOBAL_RATE_CLASSES = [
+/** Classes whose client buckets live in the fixed-size hashed arrays. */
+export const HTTP_PUBLIC_RATE_CLASSES = [
   "read",
   "batch",
   "write",
   "evaluate",
 ] as const satisfies readonly HttpRateClass[];
+export type HttpPublicRateClass = (typeof HTTP_PUBLIC_RATE_CLASSES)[number];
+export const isHttpPublicRateClass = (
+  kind: HttpRateClass,
+): kind is HttpPublicRateClass =>
+  (HTTP_PUBLIC_RATE_CLASSES as readonly HttpRateClass[]).includes(kind);
 
 export type HttpRate = { readonly burst: number; readonly perSecond: number };
+/**
+ * `peer` is the per-client bucket: one IPv4 address or one IPv6 /56. `prefix`
+ * is shared by every client in the same IPv4 /24 or IPv6 /48, so a holder of
+ * a whole prefix cannot multiply its quota by spreading over its addresses.
+ * `global` is shared by every client. Only public classes take `prefix` or
+ * `global`.
+ */
 export type HttpRateClassPolicy = {
   readonly peer: HttpRate;
+  readonly prefix?: HttpRate;
   readonly global?: HttpRate;
 };
 export type HttpRateLimitPolicy = {
@@ -39,29 +55,10 @@ export type HttpRateLimitPolicy = {
   readonly classes: Readonly<Record<HttpRateClass, HttpRateClassPolicy>>;
 };
 
-/** Each client table holds at most this many keys. */
-export const HTTP_PEER_MAX_ENTRIES = 8_192;
-/** A key unused for this long may be evicted from the public table. */
-export const HTTP_PEER_IDLE_MS = 60_000;
-
 /**
- * The most public-table keys one idle window can create while the limiter is
- * enabled: only accepted requests allocate keys, and each draws a global token.
- */
-export const httpPublicKeysPerIdleWindow = (
-  policy: Pick<HttpRateLimitPolicy, "classes">,
-): number =>
-  Object.values(policy.classes).reduce(
-    (sum, { global }) =>
-      global === undefined
-        ? sum
-        : sum + global.burst + (global.perSecond * HTTP_PEER_IDLE_MS) / 1_000,
-    0,
-  );
-
-/**
- * Public-profile defaults. The global buckets bound the keys one idle window
- * can create: 6,200 + 256 + 256 + 68 = 6,780, within `HTTP_PEER_MAX_ENTRIES`.
+ * Public-profile defaults. A submission is charged per transaction: 20 a
+ * second per client with a burst of 100, and 200 a second per /24 or /48. It
+ * has no global bucket; load shedding on queue state is the global bound.
  */
 export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
   enabled: true,
@@ -77,8 +74,8 @@ export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
       global: { burst: 16, perSecond: 4 },
     },
     write: {
-      peer: { burst: 4, perSecond: 1 },
-      global: { burst: 16, perSecond: 4 },
+      peer: { burst: 100, perSecond: 20 },
+      prefix: { burst: 1_000, perSecond: 200 },
     },
     evaluate: {
       peer: { burst: 2, perSecond: 0.2 },

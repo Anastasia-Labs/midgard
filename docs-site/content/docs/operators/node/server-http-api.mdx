@@ -121,47 +121,54 @@ until every refusing bucket has a token again, and this body:
 { "error": "Request rate exceeded", "error_code": "E_HTTP_RATE_LIMITED" }
 ```
 
-| Class      | Routes                                   | Per client (burst, refill) | Global (burst, refill) |
-| ---------- | ---------------------------------------- | -------------------------- | ---------------------- |
-| `health`   | `GET /healthz`, `GET /readyz`            | 20, 5/s                    | none                   |
-| `admin`    | every admin route                        | 30, 10/s                   | none                   |
-| `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | 200, 100/s             |
-| `batch`    | `POST /tx-status`                        | 4, 1/s                     | 16, 4/s                |
-| `write`    | `POST /submit`                           | 4, 1/s                     | 16, 4/s                |
-| `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | 8, 1/s                 |
-| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 8, 4/s                     | none                   |
+| Class      | Routes                                   | Per client (burst, refill) | Per /24 or /48 (burst, refill) | Global (burst, refill) |
+| ---------- | ---------------------------------------- | -------------------------- | ------------------------------ | ---------------------- |
+| `health`   | `GET /healthz`, `GET /readyz`            | 20, 5/s                    | none                           | none                   |
+| `admin`    | every admin route                        | 30, 10/s                   | none                           | none                   |
+| `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | none                           | 200, 100/s             |
+| `batch`    | `POST /tx-status`                        | 4, 1/s                     | none                           | 16, 4/s                |
+| `write`    | `POST /submit`                           | 100, 20/s                  | 1,000, 200/s                   | none                   |
+| `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | none                           | 8, 1/s                 |
+| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 8, 4/s                     | none                           | none                   |
 
-Health, admin and peer routes have no global bucket and keep their clients in a
-table of their own. A peer request is charged before its signature is checked,
-so a shared bucket would let unsigned traffic refuse the operators. They also have their own concurrency budget, and `/readyz` and the
-admin database reads use a database connection of their own. Neither a
-flood of public requests nor slow public requests holding every public slot
-can refuse them.
+A submission is charged one token per transaction; `/submit` carries one.
+Submissions have no global bucket: load shedding on queue state bounds the
+total, not a fixed rate.
 
-A client is its TCP peer address; IPv6 addresses share one bucket per /64. The
-node reads `X-Midgard-Client-IP` only when the TCP peer is listed in
+A client is an IPv4 address or an IPv6 /56, and its prefix the IPv4 /24 or the
+IPv6 /48 around it. The prefix bucket keeps the holder of a whole /48 from
+multiplying its quota by spreading over its /56s. The node reads
+`X-Midgard-Client-IP` only when the TCP peer is listed in
 `HTTP_TRUSTED_PROXY_PEERS`, the private IPv4 addresses of a reverse proxy that
 overwrites that header. It never reads `X-Forwarded-For`.
 
-Each client table holds at most 8,192 entries. When the public table is full,
-entries idle for 60 seconds are evicted; a new client that still finds no room
-gets `429` with `Retry-After: 5` and the error `Peer quota capacity is full`.
-The global rates keep it from filling: the node refuses to start when the sum of
-`globalBurst + 60 × globalPerSecond` over the public classes exceeds 8,192. The
-health, admin and peer table, and the public table while rate limits are disabled,
-evict the least recently used entry instead and never refuse a new client.
+The `read`, `batch`, `write` and `evaluate` buckets live in fixed arrays of 2 ×
+2^18 cells per tier. A client maps to one cell per row through a hash keyed
+with a secret drawn at start, and a request passes only when both of its cells
+hold enough tokens. Memory is the same for ten clients or ten million: no
+client is ever evicted, and no new client is ever refused for lack of room. Two
+clients sharing a cell only tighten each other's limit, and an honest client is
+wrongly refused only when saturated clients share both of its cells.
+
+Health, admin and peer routes have no global bucket and keep their clients in a
+small table of their own, which drops its least recently used idle client when
+it reaches 8,192. A peer request is charged before its signature is checked,
+so a shared bucket would let unsigned traffic refuse the operators. They also
+have their own concurrency budget, and `/readyz` and the admin database reads
+use a database connection of their own. Neither a flood of public requests nor
+slow public requests holding every public slot can refuse them.
 
 Public requests are capped at 64 in flight plus a bound on in-flight body
-bytes; health and admin requests at 8 in flight; each client at 4 in flight per
-table. Overflow answers `503` with `Retry-After: 5` and
-`E_HTTP_INGRESS_CAPACITY`.
+bytes; health and admin requests at 8 in flight; each client at 4 in flight.
+Overflow answers `503` with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
 
-| Variable                                                                                             | Default         | Meaning                                                                                         |
-| ---------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| `HTTP_RATE_LIMIT_ENABLED`                                                                            | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
-| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`                            | the table above | `peerBurst,peerPerSecond`                                                                       |
-| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_WRITE`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `peerBurst,peerPerSecond,globalBurst,globalPerSecond`                                           |
-| `HTTP_TRUSTED_PROXY_PEERS`                                                                           | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
+| Variable                                                                    | Default         | Meaning                                                                                         |
+| --------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                   | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`   | the table above | `clientBurst,clientPerSecond`                                                                   |
+| `HTTP_RATE_LIMIT_WRITE`                                                     | the table above | `clientBurst,clientPerSecond,prefixBurst,prefixPerSecond`                                       |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `clientBurst,clientPerSecond,globalBurst,globalPerSecond`                                       |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                  | empty           | up to 8 private IPv4 proxy addresses allowed to set `X-Midgard-Client-IP`                       |
 
 Bursts are positive integers and refills positive numbers per second. The public
 ingress proxy applies its own per-IP and global limits in front of these; its

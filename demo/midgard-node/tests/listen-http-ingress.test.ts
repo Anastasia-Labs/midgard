@@ -21,11 +21,11 @@ import {
 } from "../src/commands/listen-admin-access.js";
 import {
   createHttpIngress,
-  HTTP_PEER_MAX_ENTRIES,
   httpClientIdentity,
   httpPeerIdentity,
   withHttpIngress,
 } from "../src/commands/listen-http-ingress.js";
+import { HTTP_LIVENESS_MAX_ENTRIES } from "../src/commands/listen-http-rate-limit.js";
 import { encodeReadPage } from "../src/commands/listen-read-page.js";
 import { stateQueueHeaderPage } from "../src/commands/listen-state-queue-page.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -151,44 +151,21 @@ describe("HTTP admission quotas and admin replay", () => {
       advisoryBytes: 0,
     });
   });
-  it("does not allocate peers for global rate refusals and bounds accepted peer cardinality", () => {
+  it("keeps operator-peer clients, which no global bucket bounds, in a bounded table of their own", () => {
     let now = 0;
     const ingress = createHttpIngress({ now: () => now });
-    for (let index = 0; index < 200; index += 1) {
-      const result = ingress.reserve(`burst-${index}`, "read", 0);
-      expect(result.accepted).toBe(true);
-      if (result.accepted) result.release();
-    }
-    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES; index += 1)
-      expect(ingress.reserve(`refused-${index}`, "read", 0)).toMatchObject({
-        accepted: false,
-        status: 429,
-      });
-    expect(ingress.snapshot().peers).toBe(200);
-    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES * 3; index += 1) {
-      now += 10;
-      const result = ingress.reserve(`accepted-${index}`, "read", 0);
-      if (result.accepted) result.release();
-      expect(ingress.snapshot().peers).toBeLessThanOrEqual(
-        HTTP_PEER_MAX_ENTRIES,
-      );
-    }
-    now += 60_001;
-    const recovered = ingress.reserve("new", "read", 0);
-    expect(recovered.accepted).toBe(true);
-    if (recovered.accepted) recovered.release();
-  });
-  it("keeps operator-peer clients, which no global bucket bounds, out of the public client table", () => {
-    let now = 0;
-    const ingress = createHttpIngress({ now: () => now });
-    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES + 100; index += 1) {
+    for (let index = 0; index < HTTP_LIVENESS_MAX_ENTRIES + 100; index += 1) {
       now += 1;
-      const result = ingress.reserve(`peer-${index}`, "peer", 0);
+      const result = ingress.reserve(
+        `10.${(index >> 16) & 255}.${(index >> 8) & 255}.${index & 255}`,
+        "peer",
+        0,
+      );
       expect(result.accepted).toBe(true);
       if (result.accepted) result.release();
     }
-    expect(ingress.snapshot().peers).toBe(0);
-    const reader = ingress.reserve("reader", "read", 0);
+    expect(ingress.snapshot().livenessPeers).toBe(HTTP_LIVENESS_MAX_ENTRIES);
+    const reader = ingress.reserve("192.0.2.1", "read", 0);
     expect(reader.accepted).toBe(true);
     if (reader.accepted) reader.release();
   });

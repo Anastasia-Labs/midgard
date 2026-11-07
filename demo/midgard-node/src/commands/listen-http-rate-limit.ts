@@ -1,22 +1,54 @@
+import { hash, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 
 import {
-  HTTP_PEER_IDLE_MS,
-  HTTP_PEER_MAX_ENTRIES,
+  HTTP_PUBLIC_RATE_CLASSES,
+  type HttpPublicRateClass,
   type HttpRate,
   type HttpRateClass,
   type HttpRateLimitPolicy,
+  isHttpPublicRateClass,
 } from "../services/http-rate-limits.js";
 
-export { HTTP_PEER_MAX_ENTRIES } from "../services/http-rate-limits.js";
-const TABLE_FULL_RETRY_AFTER_SECONDS = 5;
+/** Requests one client may have in flight at once. */
+const CLIENT_ACTIVE_MAX = 4;
+/** Cells in each of the two rows of a hashed array. */
+const ROW_CELLS = 2 ** 18;
+const CELL_MASK = ROW_CELLS - 1;
+/** Health, admin and peer clients remembered; the least recently used idle one goes first. */
+export const HTTP_LIVENESS_MAX_ENTRIES = 8_192;
+/** Float32 refills are inexact; a bucket this close to the cost pays it. */
+const TOKEN_EPSILON = 1e-3;
 
 type Bucket = { tokens: number; updatedAt: number };
-export type HttpRatePeer = {
+type LivenessEntry = {
   active: number;
-  lastUsed: number;
   readonly buckets: Partial<Record<HttpRateClass, Bucket>>;
 };
+/** One tier of a public class: a bucket per cell, refilled in whole seconds. */
+type HashedTier = {
+  readonly rate: HttpRate;
+  readonly tokens: Float32Array;
+  /** Seconds since the limiter started; Uint32 seconds wrap after 136 years. */
+  readonly refilledAt: Uint32Array;
+};
+type Cells = readonly [number, number];
+
+/** What `admit` and `release` need about a client that passed `check`. */
+export type HttpRateClient =
+  | {
+      readonly public: true;
+      readonly kind: HttpPublicRateClass;
+      readonly cost: number;
+      readonly cells: Cells;
+      readonly prefixCells: Cells | undefined;
+    }
+  | {
+      readonly public: false;
+      readonly kind: HttpRateClass;
+      readonly key: string;
+      readonly entry: LivenessEntry;
+    };
 export type HttpRateRefusal = {
   readonly accepted: false;
   readonly status: 429;
@@ -28,177 +60,296 @@ export type HttpRateCheck =
   | HttpRateRefusal
   | {
       readonly accepted: true;
-      readonly peer: HttpRatePeer;
-      readonly isNew: boolean;
+      readonly client: HttpRateClient;
+      /** The client already has its maximum number of requests in flight. */
+      readonly busy: boolean;
     };
 
-const refill = (bucket: Bucket, rate: HttpRate, now: number): void => {
+const refusal = (retryAfterSeconds: number): HttpRateRefusal => ({
+  accepted: false,
+  status: 429,
+  error: "Request rate exceeded",
+  errorCode: "E_HTTP_RATE_LIMITED",
+  retryAfterSeconds,
+});
+
+const ipv6Words = (part: string): number[] =>
+  part === ""
+    ? []
+    : part.split(":").flatMap((group) => {
+        if (!group.includes(".")) return [Number.parseInt(group, 16)];
+        const [a = 0, b = 0, c = 0, d = 0] = group.split(".").map(Number);
+        return [a * 256 + b, c * 256 + d];
+      });
+
+/**
+ * The 4 bytes of an IPv4 address or the 16 of an IPv6 address. An
+ * IPv4-mapped IPv6 address is the IPv4 address it maps.
+ */
+export const httpAddressBytes = (address: string): Uint8Array => {
+  const family = isIP(address);
+  if (family === 4) return Uint8Array.from(address.split(".").map(Number));
+  if (family !== 6) throw new Error(`Not an IP address: ${address}`);
+  const [head = "", tail] = address.split("%", 1)[0]!.split("::");
+  const left = ipv6Words(head);
+  const right = tail === undefined ? [] : ipv6Words(tail);
+  const words = [
+    ...left,
+    ...Array<number>(8 - left.length - right.length).fill(0),
+    ...right,
+  ];
+  const bytes = new Uint8Array(16);
+  words.forEach((word, index) => {
+    bytes[2 * index] = word >> 8;
+    bytes[2 * index + 1] = word & 255;
+  });
+  const mapped =
+    bytes.subarray(0, 10).every((byte) => byte === 0) &&
+    bytes[10] === 255 &&
+    bytes[11] === 255;
+  return mapped ? bytes.slice(12) : bytes;
+};
+
+/**
+ * The client of an address is the IPv4 address or the IPv6 /56, and its
+ * prefix the IPv4 /24 or the IPv6 /48. One IPv6 subscriber is normally
+ * handed a /56 or a /48, so a key per /64 would let one subscriber claim
+ * 256 to 65,536 keys.
+ */
+const clientAndPrefix = (bytes: Uint8Array) =>
+  bytes.length === 4
+    ? { client: bytes, prefix: bytes.subarray(0, 3) }
+    : { client: bytes.subarray(0, 7), prefix: bytes.subarray(0, 6) };
+
+const createTier = (rate: HttpRate): HashedTier => ({
+  rate,
+  tokens: new Float32Array(2 * ROW_CELLS).fill(rate.burst),
+  refilledAt: new Uint32Array(2 * ROW_CELLS),
+});
+
+/** Refills both cells; 0 when both hold `cost` tokens, else whole seconds until they do. */
+const tierWait = (
+  tier: HashedTier,
+  cells: Cells,
+  cost: number,
+  seconds: number,
+): number => {
+  let tokens = tier.rate.burst;
+  for (const cell of cells) {
+    const elapsed = seconds - tier.refilledAt[cell]!;
+    if (elapsed > 0) {
+      tier.tokens[cell] = Math.min(
+        tier.rate.burst,
+        tier.tokens[cell]! + elapsed * tier.rate.perSecond,
+      );
+      tier.refilledAt[cell] = seconds;
+    }
+    tokens = Math.min(tokens, tier.tokens[cell]!);
+  }
+  return tokens >= cost - TOKEN_EPSILON
+    ? 0
+    : Math.max(1, Math.ceil((cost - tokens) / tier.rate.perSecond));
+};
+
+const debit = (tier: HashedTier, cells: Cells, cost: number): void => {
+  for (const cell of cells) tier.tokens[cell] = tier.tokens[cell]! - cost;
+};
+
+/** Refills a millisecond bucket; 0 when it holds `cost`, else whole seconds until it does. */
+const bucketWait = (
+  bucket: Bucket,
+  rate: HttpRate,
+  cost: number,
+  now: number,
+): number => {
   bucket.tokens = Math.min(
     rate.burst,
     bucket.tokens +
       (Math.max(0, now - bucket.updatedAt) * rate.perSecond) / 1_000,
   );
   bucket.updatedAt = now;
-};
-
-const refusal = (
-  error: string,
-  retryAfterSeconds: number,
-): HttpRateRefusal => ({
-  accepted: false,
-  status: 429,
-  error,
-  errorCode: "E_HTTP_RATE_LIMITED",
-  retryAfterSeconds,
-});
-
-/** Refills the bucket; 0 when a token is available, else whole seconds until one is back. */
-const waitSeconds = (bucket: Bucket, rate: HttpRate, now: number): number => {
-  refill(bucket, rate, now);
-  if (bucket.tokens >= 1) return 0;
-  return Math.max(1, Math.ceil((1 - bucket.tokens) / rate.perSecond));
-};
-
-const ipv6Groups = (part: string): string[] =>
-  part === ""
-    ? []
-    : part
-        .split(":")
-        .flatMap((group) => (group.includes(".") ? ["0", "0"] : [group]));
-
-/**
- * The rate key of a client address. One IPv6 subscriber is normally handed a
- * whole /64, so IPv6 addresses share one key per /64; IPv4 keys are the address.
- */
-export const httpRateKey = (address: string): string => {
-  if (isIP(address) !== 6) return address;
-  const [head = "", tail] = address.split("%", 1)[0]!.split("::");
-  const left = ipv6Groups(head);
-  const right = tail === undefined ? [] : ipv6Groups(tail);
-  const groups =
-    tail === undefined
-      ? left
-      : [
-          ...left,
-          ...Array<string>(8 - left.length - right.length).fill("0"),
-          ...right,
-        ];
-  return `${groups
-    .slice(0, 4)
-    .map((group) => Number.parseInt(group, 16).toString(16))
-    .join(":")}::/64`;
-};
-
-/** Drops the least recently used key that has no request in flight. */
-const evictLeastRecent = (table: Map<string, HttpRatePeer>): boolean => {
-  for (const [entry, value] of table)
-    if (value.active === 0) {
-      table.delete(entry);
-      return true;
-    }
-  return false;
+  if (bucket.tokens >= cost) return 0;
+  return Math.max(1, Math.ceil((cost - bucket.tokens) / rate.perSecond));
 };
 
 /**
- * Token buckets per client key and class, plus one global bucket per public
- * class. Clients of a class with no global bucket (health, admin, peer) live
- * in their own table, so neither a public flood nor an address spray against
- * public routes can refuse them. Each table keeps its keys in
- * least-recently-used order.
+ * Token buckets per client and class.
+ *
+ * The public classes (read, batch, write, evaluate) keep their client and
+ * prefix buckets in fixed typed arrays of 2 rows × 2^18 cells, plus one
+ * global bucket where the class has one. A key maps to one cell per row
+ * through SHA-256 keyed with a secret drawn at start, so clients cannot aim
+ * at each other's cells. A request of cost `c` passes only if every cell it
+ * maps to holds `c` tokens, and admission debits them all. Nothing is
+ * allocated per client and nothing is evicted: a collision only tightens a
+ * limit, and wrongly limits an honest key only when saturated keys share its
+ * cell in both rows. Each client's in-flight count lives in a Uint16 array on
+ * the same cells.
+ *
+ * Health, admin and peer clients are few, so they keep a small table in
+ * least-recently-used order, separate from the public arrays: no public flood
+ * or address spray can refuse them.
  */
 export const createHttpRateLimiter = (
   policy: HttpRateLimitPolicy,
   start: number,
 ) => {
-  const publicPeers = new Map<string, HttpRatePeer>();
-  const livenessPeers = new Map<string, HttpRatePeer>();
-  const globals: Partial<Record<HttpRateClass, Bucket>> = {};
-  for (const [kind, rates] of Object.entries(policy.classes))
-    if (rates.global !== undefined)
-      globals[kind as HttpRateClass] = {
-        tokens: rates.global.burst,
-        updatedAt: start,
-      };
-  // Only global buckets bound how fast the public table fills.
-  const tableFor = (kind: HttpRateClass) =>
-    policy.classes[kind].global === undefined ? livenessPeers : publicPeers;
+  const secret = randomBytes(16);
+  const hashInput = Buffer.alloc(secret.length + 1 + 7);
+  secret.copy(hashInput);
+  /** `tag` keeps the address family and tier of equal-length keys apart. */
+  const cellsOf = (tag: number, bytes: Uint8Array): Cells => {
+    hashInput[secret.length] = tag;
+    hashInput.set(bytes, secret.length + 1);
+    const digest = hash(
+      "sha256",
+      hashInput.subarray(0, secret.length + 1 + bytes.length),
+      "buffer",
+    );
+    return [
+      digest.readUInt32LE(0) & CELL_MASK,
+      ROW_CELLS + (digest.readUInt32LE(4) & CELL_MASK),
+    ];
+  };
+  const inFlight = new Uint16Array(2 * ROW_CELLS);
+  const tiers = Object.fromEntries(
+    HTTP_PUBLIC_RATE_CLASSES.map((kind) => {
+      const rates = policy.classes[kind];
+      return [
+        kind,
+        {
+          client: createTier(rates.peer),
+          prefix:
+            rates.prefix === undefined ? undefined : createTier(rates.prefix),
+          global:
+            rates.global === undefined
+              ? undefined
+              : { tokens: rates.global.burst, updatedAt: start },
+        },
+      ];
+    }),
+  ) as Record<
+    HttpPublicRateClass,
+    {
+      readonly client: HashedTier;
+      readonly prefix: HashedTier | undefined;
+      readonly global: Bucket | undefined;
+    }
+  >;
+  const liveness = new Map<string, LivenessEntry>();
 
-  /** Checks every bucket a request draws from. Allocates nothing. */
-  const check = (
-    key: string,
+  const checkPublic = (
+    bytes: Uint8Array,
+    kind: HttpPublicRateClass,
+    cost: number,
+    now: number,
+  ): HttpRateCheck => {
+    const { client, prefix } = clientAndPrefix(bytes);
+    const cells = cellsOf(bytes.length, client);
+    const state = tiers[kind];
+    const prefixCells =
+      state.prefix === undefined
+        ? undefined
+        : cellsOf(bytes.length | 0x80, prefix);
+    if (policy.enabled) {
+      const seconds = Math.max(0, Math.floor((now - start) / 1_000));
+      const globalRate = policy.classes[kind].global;
+      // Retry-After covers every refusing bucket, not only the first one.
+      const wait = Math.max(
+        tierWait(state.client, cells, cost, seconds),
+        state.prefix === undefined || prefixCells === undefined
+          ? 0
+          : tierWait(state.prefix, prefixCells, cost, seconds),
+        state.global === undefined || globalRate === undefined
+          ? 0
+          : bucketWait(state.global, globalRate, cost, now),
+      );
+      if (wait > 0) return refusal(wait);
+    }
+    return {
+      accepted: true,
+      client: { public: true, kind, cost, cells, prefixCells },
+      busy:
+        Math.min(inFlight[cells[0]]!, inFlight[cells[1]]!) >= CLIENT_ACTIVE_MAX,
+    };
+  };
+
+  const checkLiveness = (
+    bytes: Uint8Array,
     kind: HttpRateClass,
     now: number,
   ): HttpRateCheck => {
-    const rates = policy.classes[kind];
-    const existing = tableFor(kind).get(key);
-    const peer = existing ?? { active: 0, lastUsed: now, buckets: {} };
+    const key = Buffer.from(clientAndPrefix(bytes).client).toString("hex");
+    const entry = liveness.get(key) ?? { active: 0, buckets: {} };
     if (policy.enabled) {
-      const global = globals[kind];
-      const bucket = (peer.buckets[kind] ??= {
-        tokens: rates.peer.burst,
+      const rate = policy.classes[kind].peer;
+      const bucket = (entry.buckets[kind] ??= {
+        tokens: rate.burst,
         updatedAt: now,
       });
-      // Retry-After covers every refusing bucket, not only the first one.
-      const wait = Math.max(
-        global === undefined || rates.global === undefined
-          ? 0
-          : waitSeconds(global, rates.global, now),
-        waitSeconds(bucket, rates.peer, now),
-      );
-      if (wait > 0) return refusal("Request rate exceeded", wait);
+      const wait = bucketWait(bucket, rate, 1, now);
+      if (wait > 0) return refusal(wait);
     }
-    return { accepted: true, peer, isNew: existing === undefined };
+    return {
+      accepted: true,
+      client: { public: false, kind, key, entry },
+      busy: entry.active >= CLIENT_ACTIVE_MAX,
+    };
   };
 
   /**
-   * Records an accepted request. When a table is full, a new key needs room:
-   * - the enabled public table evicts only keys idle for the whole window, so
-   *   eviction cannot reset a public client's quota, and refuses otherwise;
-   *   the global rates keep it from filling (checked when config loads);
-   * - the health/admin/peer table, and the public table with rate limits
-   *   disabled,
-   *   evict the least recently used key, because losing such a quota costs
-   *   nothing and refusing the client is the harm.
-   * At most 72 requests are in flight, so an evictable key always exists.
+   * Checks every bucket a request of `cost` draws from, without debiting.
+   * `address` must be an IP address.
    */
-  const admit = (
-    key: string,
+  const check = (
+    address: string,
     kind: HttpRateClass,
-    checked: Extract<HttpRateCheck, { accepted: true }>,
+    cost: number,
     now: number,
-  ): HttpRateRefusal | undefined => {
-    const table = tableFor(kind);
-    if (checked.isNew && table.size >= HTTP_PEER_MAX_ENTRIES) {
-      if (table === publicPeers && policy.enabled) {
-        for (const [entry, value] of table)
-          if (value.active === 0 && now - value.lastUsed >= HTTP_PEER_IDLE_MS)
-            table.delete(entry);
-      } else evictLeastRecent(table);
-      if (table.size >= HTTP_PEER_MAX_ENTRIES)
-        return refusal(
-          "Peer quota capacity is full",
-          TABLE_FULL_RETRY_AFTER_SECONDS,
-        );
+  ): HttpRateCheck => {
+    const bytes = httpAddressBytes(address);
+    return isHttpPublicRateClass(kind)
+      ? checkPublic(bytes, kind, cost, now)
+      : checkLiveness(bytes, kind, now);
+  };
+
+  /** Debits the buckets of a checked request and counts it in flight. */
+  const admit = (client: HttpRateClient): void => {
+    if (!client.public) {
+      // Re-inserting keeps the table in least-recently-used order. Refused
+      // requests neither add a key nor refresh one. At most 72 requests are
+      // in flight, so an idle key to drop always exists.
+      liveness.delete(client.key);
+      liveness.set(client.key, client.entry);
+      if (liveness.size > HTTP_LIVENESS_MAX_ENTRIES)
+        for (const [key, entry] of liveness)
+          if (entry.active === 0) {
+            liveness.delete(key);
+            break;
+          }
+      client.entry.active += 1;
+      if (policy.enabled) client.entry.buckets[client.kind]!.tokens -= 1;
+      return;
     }
-    // Re-inserting keeps the table in least-recently-used order. Refused
-    // requests neither allocate a key nor extend its idle lifetime.
-    table.delete(key);
-    table.set(key, checked.peer);
-    checked.peer.lastUsed = now;
-    if (policy.enabled) {
-      checked.peer.buckets[kind]!.tokens -= 1;
-      const global = globals[kind];
-      if (global !== undefined) global.tokens -= 1;
-    }
-    return undefined;
+    for (const cell of client.cells) inFlight[cell] = inFlight[cell]! + 1;
+    if (!policy.enabled) return;
+    const state = tiers[client.kind];
+    debit(state.client, client.cells, client.cost);
+    if (state.prefix !== undefined && client.prefixCells !== undefined)
+      debit(state.prefix, client.prefixCells, client.cost);
+    if (state.global !== undefined) state.global.tokens -= client.cost;
+  };
+
+  /** Ends an admitted request's in-flight count. Call once per admit. */
+  const release = (client: HttpRateClient): void => {
+    if (!client.public) client.entry.active -= 1;
+    else for (const cell of client.cells) inFlight[cell] = inFlight[cell]! - 1;
   };
 
   return {
     check,
     admit,
-    snapshot: () => ({
-      peers: publicPeers.size,
-      livenessPeers: livenessPeers.size,
-    }),
+    release,
+    snapshot: () => ({ livenessPeers: liveness.size }),
   };
 };

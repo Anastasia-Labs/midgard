@@ -1,7 +1,6 @@
 import { ConfigProvider, Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HTTP_PEER_MAX_ENTRIES } from "../src/commands/listen-http-ingress.js";
 import { httpIngressConfig } from "../src/services/config.http-proxy-peers.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import {
@@ -73,24 +72,26 @@ describe("HTTP request rate limits", () => {
     const refused = await node.call("/tx", { client: "198.51.100.6" });
     expect(refused.status).toBe(429);
     expect(refused.body.error_code).toBe("E_HTTP_RATE_LIMITED");
-    // Global refusals do not allocate a client entry.
-    expect(node.ingress.snapshot().peers).toBe(5);
   });
 
-  it("holds evaluation, submission and batch status to stricter default rates than single reads", async () => {
+  it("gives each class its default per-client burst: 100 submissions, 30 reads, 4 batch reads and 2 evaluations", async () => {
     const node = await serve(proxied);
-    const accepted = async (path: string, method: string, client: string) =>
-      (await node.statuses(40, path, { method, client })).filter(
+    const accepted = async (
+      count: number,
+      path: string,
+      method: string,
+      client: string,
+    ) =>
+      (await node.statuses(count, path, { method, client })).filter(
         (status) => status === 200,
       ).length;
-    const reads = await accepted("/tx-status", "GET", "198.51.100.1");
-    const batches = await accepted("/tx-status", "POST", "198.51.100.2");
-    const submits = await accepted("/submit", "POST", "198.51.100.3");
-    const evaluations = await accepted("/tx/evaluate", "POST", "198.51.100.4");
-    expect(reads).toBe(30);
-    expect(batches).toBe(4);
-    expect(submits).toBe(4);
-    expect(evaluations).toBe(2);
+    expect(await accepted(120, "/submit", "POST", "198.51.100.3")).toBe(100);
+    expect(await accepted(40, "/tx-status", "GET", "198.51.100.1")).toBe(30);
+    expect(await accepted(40, "/tx-status", "POST", "198.51.100.2")).toBe(4);
+    expect(await accepted(40, "/tx/evaluate", "POST", "198.51.100.4")).toBe(2);
+    // Submissions refill at 20 a second.
+    node.advance(1_000);
+    expect(await accepted(30, "/submit", "POST", "198.51.100.3")).toBe(20);
   });
 
   it("ignores client-supplied forwarding headers without a trusted proxy", async () => {
@@ -138,7 +139,7 @@ describe("HTTP request rate limits", () => {
     });
   });
 
-  it("groups IPv6 clients by /64", async () => {
+  it("groups IPv6 clients by /56 and keeps mapped IPv4 clients on their IPv4 bucket", async () => {
     const node = await serve({
       ...proxied,
       policy: policyWith({
@@ -148,67 +149,24 @@ describe("HTTP request rate limits", () => {
         },
       }),
     });
-    expect((await node.call("/tx", { client: "2001:db8:1:2::1" })).status).toBe(
-      200,
-    );
-    expect(
-      (await node.call("/tx", { client: "2001:db8:1:2:ffff:0:0:7" })).status,
-    ).toBe(200);
-    expect(
-      (await node.call("/tx", { client: "2001:0db8:0001:0002::abcd" })).status,
-    ).toBe(429);
-    expect((await node.call("/tx", { client: "2001:db8:1:3::1" })).status).toBe(
-      200,
-    );
+    const status = async (client: string) =>
+      (await node.call("/tx", { client })).status;
+    // 2001:db8:1:200::/56 holds 2001:db8:1:2ff:ffff::9.
+    expect(await status("2001:db8:1:200::1")).toBe(200);
+    expect(await status("2001:db8:1:2ff:ffff::9")).toBe(200);
+    expect(await status("2001:0db8:0001:02ab::abcd")).toBe(429);
+    expect(await status("2001:db8:1:300::1")).toBe(200);
+    expect(await status("198.51.100.7")).toBe(200);
+    expect(await status("::ffff:198.51.100.7")).toBe(200);
+    expect(await status("::ffff:c633:6407")).toBe(429);
   });
-
-  it("keeps the client table bounded under 10,000 distinct addresses and frees idle entries", async () => {
-    const node = await serve({
-      ...proxied,
-      policy: policyWith({
-        read: {
-          peer: { burst: 1, perSecond: 1 },
-          global: { burst: 1_000_000, perSecond: 1_000_000 },
-        },
-      }),
-    });
-    let refused = 0;
-    for (let index = 0; index < 10_000; index += 1) {
-      node.advance(1);
-      const client = `10.${(index >> 16) & 255}.${(index >> 8) & 255}.${index & 255}`;
-      if ((await node.call("/tx", { client })).status === 429) refused += 1;
-      expect(node.ingress.snapshot().peers).toBeLessThanOrEqual(
-        HTTP_PEER_MAX_ENTRIES,
-      );
-    }
-    expect(refused).toBe(10_000 - HTTP_PEER_MAX_ENTRIES);
-    // Health and admin clients keep their own table.
-    expect((await node.call("/healthz", { client: "192.0.2.1" })).status).toBe(
-      200,
-    );
-    expect(
-      (await node.call("/admin/session", { client: "192.0.2.1" })).status,
-    ).toBe(200);
-    node.advance(60_000);
-    expect((await node.call("/tx", { client: "198.51.100.1" })).status).toBe(
-      200,
-    );
-    // 10,000 addresses inside one /64 occupy one entry.
-    const before = node.ingress.snapshot().peers;
-    for (let index = 0; index < 10_000; index += 1)
-      await node.call("/tx", { client: `2001:db8::${index.toString(16)}` });
-    expect(node.ingress.snapshot().peers).toBe(before + 1);
-  }, 120_000);
 
   it("answers health, readiness and admin routes while public classes are flooded", async () => {
     const node = await serve(proxied);
     for (let index = 0; index < 400; index += 1)
       await node.call("/tx", { client: `198.51.100.${index % 250}` });
-    for (let index = 0; index < 40; index += 1)
-      await node.call("/submit", {
-        method: "POST",
-        client: `203.0.113.${index}`,
-      });
+    for (let index = 0; index < 100; index += 1)
+      await node.call("/submit", { method: "POST", client: "192.0.2.1" });
     expect((await node.call("/tx", { client: "192.0.2.1" })).status).toBe(429);
     expect(
       (await node.call("/submit", { method: "POST", client: "192.0.2.1" }))
@@ -281,8 +239,20 @@ describe("HTTP rate-limit configuration", () => {
     expect(policy.classes.read).toEqual(DEFAULT_HTTP_RATE_LIMITS.classes.read);
   });
 
+  it("reads a submission override as client and prefix rates", () => {
+    expect(
+      load({ HTTP_RATE_LIMIT_WRITE: "50,10,500,100" }).HTTP_RATE_LIMITS.classes
+        .write,
+    ).toEqual({
+      peer: { burst: 50, perSecond: 10 },
+      prefix: { burst: 500, perSecond: 100 },
+    });
+  });
+
   it.each([
     ["HTTP_RATE_LIMIT_ENABLED", "maybe"],
+    ["HTTP_RATE_LIMIT_WRITE", "100,20"],
+    ["HTTP_RATE_LIMIT_WRITE", "100,20,1000,200,16,4"],
     ["HTTP_RATE_LIMIT_READ", "30,10"],
     ["HTTP_RATE_LIMIT_READ", "0,10,200,100"],
     ["HTTP_RATE_LIMIT_WRITE", "4,1,16,-4"],
@@ -297,18 +267,10 @@ describe("HTTP rate-limit configuration", () => {
     expect(() => load({ [name]: value })).toThrow();
   });
 
-  it("refuses global rates that could fill the client table within one idle window", () => {
-    expect(() => load({ HTTP_RATE_LIMIT_READ: "30,10,2000,1000" })).toThrow(
-      /8192/u,
-    );
-  });
-
-  it("accepts any global rates when the limiter is disabled", () => {
+  it("accepts global rates of any size, since no client table can fill", () => {
     expect(
-      load({
-        HTTP_RATE_LIMIT_ENABLED: "false",
-        HTTP_RATE_LIMIT_READ: "30,10,2000,1000",
-      }).HTTP_RATE_LIMITS.classes.read.global,
-    ).toEqual({ burst: 2_000, perSecond: 1_000 });
+      load({ HTTP_RATE_LIMIT_READ: "30,10,20000,10000" }).HTTP_RATE_LIMITS
+        .classes.read.global,
+    ).toEqual({ burst: 20_000, perSecond: 10_000 });
   });
 });

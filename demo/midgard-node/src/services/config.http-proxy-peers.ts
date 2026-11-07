@@ -4,9 +4,7 @@ import { Config } from "effect";
 
 import {
   DEFAULT_HTTP_RATE_LIMITS,
-  HTTP_PEER_MAX_ENTRIES,
   HTTP_RATE_CLASSES,
-  httpPublicKeysPerIdleWindow,
   type HttpRate,
   type HttpRateClass,
   type HttpRateClassPolicy,
@@ -61,35 +59,40 @@ const parseRate = (
   return rate;
 };
 
+const RATE_TIERS = ["peer", "prefix", "global"] as const;
+
 /**
- * `HTTP_RATE_LIMIT_<CLASS>` overrides one class: `peerBurst,peerPerSecond` for
- * HEALTH, ADMIN and PEER, and `peerBurst,peerPerSecond,globalBurst,globalPerSecond`
- * for READ, BATCH, WRITE and EVALUATE. Unset keeps the default.
+ * `HTTP_RATE_LIMIT_<CLASS>` overrides one class with a `burst,perSecond` pair
+ * for each tier the class has, in the order client, prefix, global:
+ * `clientBurst,clientPerSecond` for HEALTH, ADMIN and PEER;
+ * `clientBurst,clientPerSecond,prefixBurst,prefixPerSecond` for WRITE; and
+ * `clientBurst,clientPerSecond,globalBurst,globalPerSecond` for READ, BATCH
+ * and EVALUATE. Unset keeps the default.
  */
 const httpRateClassConfig = (kind: HttpRateClass) => {
   const name = `HTTP_RATE_LIMIT_${kind.toUpperCase()}`;
   const fallback = DEFAULT_HTTP_RATE_LIMITS.classes[kind];
+  const tiers = RATE_TIERS.filter((tier) => fallback[tier] !== undefined);
   return Config.string(name).pipe(
     Config.withDefault(""),
     Config.mapAttempt((input): HttpRateClassPolicy => {
       if (input.trim().length === 0) return fallback;
       const fields = input.split(",").map((field) => field.trim());
-      const expected = fallback.global === undefined ? 2 : 4;
-      if (fields.length !== expected)
-        throw new Error(`${name} needs ${expected.toString()} numbers`);
-      const peer = parseRate(name, fields[0]!, fields[1]!);
-      return expected === 2
-        ? { peer }
-        : { peer, global: parseRate(name, fields[2]!, fields[3]!) };
+      if (fields.length !== 2 * tiers.length)
+        throw new Error(
+          `${name} needs ${(2 * tiers.length).toString()} numbers: a burst and a per-second refill for ${tiers.map((tier) => (tier === "peer" ? "client" : tier)).join(", ")}`,
+        );
+      return Object.fromEntries(
+        tiers.map((tier, index) => [
+          tier,
+          parseRate(name, fields[2 * index]!, fields[2 * index + 1]!),
+        ]),
+      ) as HttpRateClassPolicy;
     }),
   );
 };
 
-/**
- * Testing profiles may disable rate refusals; public profiles refuse that
- * before binding. Enabled global rates must keep the public client table from
- * filling within one idle window, or new clients would be refused.
- */
+/** Testing profiles may disable rate refusals; public profiles refuse that before binding. */
 export const httpRateLimitConfig = Config.all({
   enabled: Config.string("HTTP_RATE_LIMIT_ENABLED").pipe(
     Config.withDefault("true"),
@@ -105,16 +108,7 @@ export const httpRateLimitConfig = Config.all({
       HTTP_RATE_CLASSES.map((kind) => [kind, httpRateClassConfig(kind)]),
     ) as Record<HttpRateClass, Config.Config<HttpRateClassPolicy>>,
   ),
-}).pipe(
-  Config.mapAttempt((policy): HttpRateLimitPolicy => {
-    const keys = httpPublicKeysPerIdleWindow(policy);
-    if (policy.enabled && keys > HTTP_PEER_MAX_ENTRIES)
-      throw new Error(
-        `HTTP_RATE_LIMIT_READ, _BATCH, _WRITE and _EVALUATE global rates admit ${Math.ceil(keys).toString()} clients per 60 s; the client table holds ${HTTP_PEER_MAX_ENTRIES.toString()} (sum of globalBurst + 60 x globalPerSecond must not exceed it)`,
-      );
-    return policy;
-  }),
-) satisfies Config.Config<HttpRateLimitPolicy>;
+}) satisfies Config.Config<HttpRateLimitPolicy>;
 
 /** HTTP configuration is one component; preserve existing admin-key decoding. */
 export const httpIngressConfig = Config.all({

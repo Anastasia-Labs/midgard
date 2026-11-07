@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HTTP_PEER_MAX_ENTRIES } from "../src/commands/listen-http-ingress.js";
+import { HTTP_LIVENESS_MAX_ENTRIES } from "../src/commands/listen-http-rate-limit.js";
 import {
   closeServers,
   policyWith,
@@ -68,39 +68,23 @@ describe("HTTP liveness routes under public load", () => {
 
   it("answers new health and admin clients after an address spray fills their table", async () => {
     const node = await serve(proxied);
-    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES; index += 1) {
+    for (let index = 0; index < HTTP_LIVENESS_MAX_ENTRIES; index += 1) {
       node.advance(1);
       expect(
         (await node.call("/healthz", { client: address(10, index) })).status,
       ).toBe(200);
     }
-    expect(node.ingress.snapshot().livenessPeers).toBe(HTTP_PEER_MAX_ENTRIES);
+    expect(node.ingress.snapshot().livenessPeers).toBe(
+      HTTP_LIVENESS_MAX_ENTRIES,
+    );
     expect(
       (await node.call("/admin/session", { client: "192.0.2.1" })).status,
     ).toBe(200);
     expect((await node.call("/healthz", { client: "192.0.2.2" })).status).toBe(
       200,
     );
-    expect(node.ingress.snapshot().livenessPeers).toBe(HTTP_PEER_MAX_ENTRIES);
-    // The public table is separate and stays empty.
-    expect(node.ingress.snapshot().peers).toBe(0);
-  }, 120_000);
-});
-
-describe("HTTP rate limiter disabled for testing", () => {
-  it("never refuses for client-table capacity", async () => {
-    const node = await serve({ ...proxied, policy: policyWith({}, false) });
-    let refused = 0;
-    for (let index = 0; index < HTTP_PEER_MAX_ENTRIES + 10; index += 1) {
-      node.advance(1);
-      if (
-        (await node.call("/tx", { client: address(10, index) })).status !== 200
-      )
-        refused += 1;
-    }
-    expect(refused).toBe(0);
-    expect(node.ingress.snapshot().peers).toBeLessThanOrEqual(
-      HTTP_PEER_MAX_ENTRIES,
+    expect(node.ingress.snapshot().livenessPeers).toBe(
+      HTTP_LIVENESS_MAX_ENTRIES,
     );
   }, 120_000);
 });

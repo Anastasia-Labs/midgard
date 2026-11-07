@@ -235,9 +235,11 @@ Every contract item merges before the validator freeze.
 - **Request limits.** In progress. Bound request bodies, content types, per-IP
   and global rates, and pagination at the proxy and in the app, including
   `/tx/evaluate`, and prove the bounds with a load test. The app limits every
-  route per client (IPv6 by /64) and every public route globally, with stricter
-  classes for `/tx/evaluate`, `/submit` and batch status and separate health
-  and admin classes (`9b6994157`, `10fcf75c8`); the load test is open.
+  route per client (an IPv4 address or IPv6 /56) in fixed-memory hashed
+  buckets, `/submit` per transaction and per /24 or /48 as well, and the other
+  public routes globally, with stricter classes for `/tx/evaluate` and batch
+  status and separate health and admin classes (`9b6994157`, `10fcf75c8`,
+  #880); the load test is open.
 - **Log redaction.** Open. Public routes never log raw CBOR or request bodies.
   Test redaction of seeds, keys, credentials, transaction CBOR and addresses.
 

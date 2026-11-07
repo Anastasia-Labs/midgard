@@ -20,12 +20,8 @@ import {
 import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
 import { HTTP_ROUTE_ACTIONS } from "./http/routes.js";
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "./http/submission-capacity.js";
-import {
-  createHttpRateLimiter,
-  httpRateKey,
-} from "./listen-http-rate-limit.js";
+import { createHttpRateLimiter } from "./listen-http-rate-limit.js";
 export { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
-export { HTTP_PEER_MAX_ENTRIES } from "./listen-http-rate-limit.js";
 
 export const HTTP_JSON_BODY_MAX_BYTES = 65_536;
 export const HTTP_QUERY_MAX_BYTES = 2_048;
@@ -109,19 +105,24 @@ export const createHttpIngress = ({
   let livenessActive = 0;
   let inFlightBytes = 0;
   let advisoryBytes = 0;
+  /**
+   * Admits a request from `client` (an IP address) of `cost` rate tokens
+   * whose body may hold `bytes`. A submission costs one token per
+   * transaction it carries; every other request costs one.
+   */
   const reserve = (
-    key: string,
+    client: string,
     kind: HttpRateClass,
     bytes: number,
+    cost = 1,
   ): IngressReservation => {
-    const timestamp = now();
-    const checked = rates.check(key, kind, timestamp);
+    const checked = rates.check(client, kind, cost, now());
     if (!checked.accepted) return checked;
     const liveness = kind === "health" || kind === "admin";
     if (
       !Number.isSafeInteger(bytes) ||
       bytes < 0 ||
-      checked.peer.active >= 4 ||
+      checked.busy ||
       (liveness
         ? livenessActive >= LIVENESS_ACTIVE_MAX
         : active >= PUBLIC_ACTIVE_MAX ||
@@ -131,11 +132,8 @@ export const createHttpIngress = ({
             advisoryBytes + bytes > MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes))
     )
       return capacityFull;
-    const refused = rates.admit(key, kind, checked, timestamp);
-    if (refused !== undefined) return refused;
-    const peer = checked.peer;
+    rates.admit(checked.client);
     const counted = liveness ? 0 : bytes;
-    peer.active += 1;
     if (liveness) livenessActive += 1;
     else active += 1;
     inFlightBytes += counted;
@@ -146,7 +144,7 @@ export const createHttpIngress = ({
       release: () => {
         if (released) return;
         released = true;
-        peer.active -= 1;
+        rates.release(checked.client);
         if (liveness) livenessActive -= 1;
         else active -= 1;
         inFlightBytes -= counted;
@@ -285,8 +283,9 @@ export const withHttpIngress = <E, R>(
         { status: 415, headers: { connection: "close" } },
       );
     // Unknown lengths reserve the full allowance. Declared lengths are enforced by the bounded reader.
+    // A submission carries one transaction, so every request costs one token.
     const reservation = (controller ?? ingressFor(config)).reserve(
-      httpRateKey(identity),
+      identity,
       kind,
       declared,
     );

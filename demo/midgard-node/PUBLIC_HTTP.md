@@ -136,13 +136,18 @@ than transaction or proof-material blobs. Public status and submission errors
 preserve authoritative rejection codes and identifiers while suppressing arbitrary
 upstream diagnostic text; explicit testing/private profiles retain that text.
 
-Per-peer and global rates, concurrent requests and weighted bodies are bounded
-before parsing/evaluation. A rate refusal returns 429 with `E_HTTP_RATE_LIMITED`
+Per-client, per-prefix and global rates, concurrent requests and weighted
+bodies are bounded before parsing/evaluation. A client is an IPv4 address or an
+IPv6 /56, and a submission is charged per transaction: 20 a second per client
+with a burst of 100, and 200 a second per IPv4 /24 or IPv6 /48. Submissions
+have no global rate; load shedding bounds the total. The public classes keep
+their buckets in fixed hashed arrays, so memory does not grow with the number
+of clients and no client is evicted or refused for lack of room. A rate refusal returns 429 with `E_HTTP_RATE_LIMITED`
 and `Retry-After` in seconds until every refusing bucket has a token again; full
 capacity returns 503 with `Retry-After: 5`. A 429, 503 or 409 keeps the
 connection, so the client can retry on it; other refused POSTs (malformed,
 oversized, unauthorized) close it. Health, readiness and admin routes
-have their own client table, concurrency budget and database connections, so
+have their own small client table, concurrency budget and database connections, so
 public traffic cannot refuse them. Classes, defaults and the
 `HTTP_RATE_LIMIT_*` variables are in the docs-site server HTTP API page; public
 profiles refuse `HTTP_RATE_LIMIT_ENABLED=false`.
