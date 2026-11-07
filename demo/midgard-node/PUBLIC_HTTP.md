@@ -136,6 +136,13 @@ when either is full, instead of holding the request. `/readyz` reports
 `queue_depth_exceeded` once the backlog passes 95 % of
 `MAX_DURABLE_ADMISSION_BACKLOG`, so load balancers drain the node just before
 its backlog fills.
+The transaction bytes leave the admission tables at the verdict: acceptance
+copies them into the mempool and both verdicts delete the payload row in the
+same transaction. A duplicate is recognized by its full hash on the admission
+row, so the same id with different witnesses still answers 409. Verdict rows
+are deleted `ADMISSION_TERMINAL_RETENTION_MS` after the verdict (default one
+hour; `0` keeps them) unless the transaction is still pending or its rejection
+is retained; a resubmission after that is admitted and validated again.
 The `peer` rate class has no global bucket, because it is charged before the
 signature is checked. Targets
 are at most 2 KiB and responses at most 1 MiB.

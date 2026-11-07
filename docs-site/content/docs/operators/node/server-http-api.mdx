@@ -102,6 +102,13 @@ The durable admission backlog is bounded by rows
 bounds are checked in memory before the write: a full backlog answers `503`
 without touching the database, even for a duplicate.
 
+A resubmission is a duplicate while the node keeps its admission row. An
+accepted or rejected row is kept for `ADMISSION_TERMINAL_RETENTION_MS` after
+its verdict (default one hour; `0` keeps them), and for as long as the
+transaction is still pending or its rejection is retained. After that the
+same transaction is admitted again (`202`) and validated again; `/tx-status`
+never reads the deleted row, so its answer does not change.
+
 `POST /tx/evaluate` answers `200` with
 `{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal
 strings except `tag`), or `422` with `E_TX_EVALUATION_FAILED` and a detail

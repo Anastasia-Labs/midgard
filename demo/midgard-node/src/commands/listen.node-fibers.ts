@@ -1,7 +1,9 @@
 import { Duration, Effect, Schedule } from "effect";
 
 import {
+  ADMISSION_RETENTION_SWEEP_INTERVAL_MS,
   admissionBacklogGaugeFiber,
+  admissionRetentionFiber,
   ALERT_SIGNALS_SAMPLE_INTERVAL_MS,
   alertSignalsFiber,
   attestationTimeoutCorrectionFiber,
@@ -119,6 +121,10 @@ export const nodeFibers = ({
 }) => ({
   admissionBacklogGauge: admissionBacklogGaugeFiber(
     mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
+  ),
+  admissionRetention: admissionRetentionFiber(
+    mkSchedule(ADMISSION_RETENTION_SWEEP_INTERVAL_MS),
+    nodeConfig.ADMISSION_TERMINAL_RETENTION_MS,
   ),
   settlement: heldRestart("settlement", settlementFiber),
   writeBehind: writeBehindFiber,

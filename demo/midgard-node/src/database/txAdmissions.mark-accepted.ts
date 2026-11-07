@@ -26,6 +26,13 @@ import {
 } from "./txAdmissions.verify-claimed-payload-rows.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
+/**
+ * Marks the leased rows of `processedTxs` accepted in one synchronous
+ * transaction: their bytes are copied into `mempool`, their ledger effects
+ * applied, and their payload rows deleted, since nothing reads a payload
+ * after the terminal mark (the duplicate check compares the full hash on the
+ * admission row).
+ */
 export const markAccepted = ({
   rows,
   leaseOwner,
@@ -155,6 +162,12 @@ export const markAccepted = ({
                     ${sql(Columns.TX_CANONICAL_CBOR)}
                   FROM accepted_admissions
                 ),
+                payload_delete AS (
+                  DELETE FROM ${sql(payloadTableName)} AS payload
+                  USING accepted_admissions AS accepted
+                  WHERE payload.${sql(Columns.TX_ID)} = accepted.${sql(Columns.TX_ID)}
+                  RETURNING 1
+                ),
                 produced_insert AS (
                   INSERT INTO ${sql(MempoolLedgerDB.tableName)} (
                     ${sql(MempoolLedgerDB.Columns.TX_ID)},
@@ -207,6 +220,8 @@ export const markAccepted = ({
                 SELECT
                   (SELECT COUNT(*)::bigint FROM accepted_admissions)
                     AS accepted_count,
+                  (SELECT COUNT(*)::bigint FROM payload_delete)
+                    AS deleted_payload_count,
                   (SELECT COUNT(*)::bigint FROM spent_delete)
                     AS spent_count,
                   (SELECT COUNT(*)::bigint FROM spent_delete
@@ -249,11 +264,19 @@ export const markAccepted = ({
                     AND admission.${sql(Columns.TX_ID)} =
                       ANY(${pg.array(acceptedTxIdArray)}::bytea[])
                     AND payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
+                  RETURNING admission.${sql(Columns.TX_ID)}
+                ),
+                payload_delete AS (
+                  DELETE FROM ${sql(payloadTableName)} AS payload
+                  USING accepted_admissions AS accepted
+                  WHERE payload.${sql(Columns.TX_ID)} = accepted.${sql(Columns.TX_ID)}
                   RETURNING 1
                 )
                 SELECT
                   (SELECT COUNT(*)::bigint FROM accepted_admissions)
                     AS accepted_count,
+                  (SELECT COUNT(*)::bigint FROM payload_delete)
+                    AS deleted_payload_count,
                   ${BigInt(spent.length)}::bigint AS spent_count,
                   0::bigint AS consumed_deposit_count,
                   0::bigint AS updated_deposit_count
@@ -261,6 +284,7 @@ export const markAccepted = ({
           const result = counts[0];
           const expected = {
             accepted_count: processedTxs.length,
+            deleted_payload_count: processedTxs.length,
             ...(compactArrays === null ? {} : { spent_count: spent.length }),
           } as const;
           const mismatch = Object.entries(expected).find(

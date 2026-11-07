@@ -8,6 +8,7 @@ import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Columns,
   type Entry,
+  payloadTableName,
   type RawEntry,
   tableName,
   toBigInt,
@@ -81,7 +82,10 @@ export const markRejected = ({
               }),
             );
           }
+          // The payload row goes in the same transaction: nothing reads it
+          // after the terminal mark.
           const updated = yield* sql<Pick<RawEntry, Columns.TX_ID>>`
+          WITH rejected_admissions AS (
           UPDATE ${sql(tableName)} AS admissions
           SET
             ${sql(Columns.STATUS)} = 'rejected',
@@ -114,7 +118,13 @@ export const markRejected = ({
           WHERE admissions.${sql(Columns.TX_ID)} = rejected.tx_id
             AND admissions.${sql(Columns.STATUS)} = 'validating'
             AND admissions.${sql(Columns.LEASE_OWNER)} = ${leaseOwner}
-          RETURNING admissions.${sql(Columns.TX_ID)}`;
+          RETURNING admissions.${sql(Columns.TX_ID)}
+          ), payload_delete AS (
+            DELETE FROM ${sql(payloadTableName)} AS payload
+            USING rejected_admissions AS marked
+            WHERE payload.${sql(Columns.TX_ID)} = marked.${sql(Columns.TX_ID)}
+          )
+          SELECT ${sql(Columns.TX_ID)} FROM rejected_admissions`;
           if (updated.length !== txIds.length) {
             return yield* Effect.fail(
               new DatabaseError({

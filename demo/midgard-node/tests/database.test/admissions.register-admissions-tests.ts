@@ -107,6 +107,7 @@ import {
   retrieveAllMempool,
   submitThroughRouter,
   type TxQueueWakeRequirements,
+  withoutScriptWitnesses,
   wrapNativeSubmitTx,
 } from "./fixtures.js";
 
@@ -569,6 +570,31 @@ export const registerAdmissionsTests = () => {
                 ],
               ]);
             }
+            // The rejection deleted every payload in its own transaction.
+            const sql = yield* SqlClient.SqlClient;
+            expect(yield* sql`SELECT tx_id FROM tx_admission_payloads`).toEqual(
+              [],
+            );
+            // Without the payload, a resubmission is still a duplicate, and
+            // the same id with other witnesses is still a conflict.
+            const [first] = attempts;
+            const resubmitted = yield* submit(first!.proofEnvelope);
+            expect(resubmitted.status).toBe(200);
+            expect(resubmitted.body).toMatchObject({
+              txId: first!.txIdHex,
+              status: TxAdmissionsDB.Status.Rejected,
+              duplicate: true,
+            });
+            const otherWitnesses = yield* submit(
+              encodeMidgardProofSubmission({
+                transactionCbor: withoutScriptWitnesses(first!.txCanonicalCbor),
+              }),
+            );
+            expect(otherWitnesses.status).toBe(409);
+            expect(otherWitnesses.body).toMatchObject({
+              error: "E_TX_ID_BYTES_CONFLICT",
+              txId: first!.txIdHex,
+            });
           }).pipe(Effect.provide(Globals.Default)),
         ),
     );
@@ -630,6 +656,11 @@ export const registerAdmissionsTests = () => {
             expect(yield* MempoolDB.retrieveTxCborByHash(attempt.txId)).toEqual(
               attempt.txCanonicalCbor,
             );
+            // Acceptance deleted the payload: the mempool row holds the bytes.
+            const sql = yield* SqlClient.SqlClient;
+            expect(yield* sql`SELECT tx_id FROM tx_admission_payloads`).toEqual(
+              [],
+            );
 
             const duplicate = yield* submit();
             expect(duplicate.status).toBe(200);
@@ -641,6 +672,22 @@ export const registerAdmissionsTests = () => {
             expect(
               (yield* TxAdmissionsDB.getByTxId(attempt.txId))?.request_count,
             ).toBe(2n);
+            const otherWitnesses = yield* submitThroughRouter(
+              encodeMidgardProofSubmission({
+                transactionCbor: withoutScriptWitnesses(
+                  attempt.txCanonicalCbor,
+                ),
+              }),
+              Effect.void,
+            ).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, nodeConfig),
+            );
+            expect(otherWitnesses.status).toBe(409);
+            expect(otherWitnesses.body).toMatchObject({
+              error: "E_TX_ID_BYTES_CONFLICT",
+              txId: attempt.txIdHex,
+            });
           }).pipe(Effect.provide(Globals.Default)),
         ),
     );

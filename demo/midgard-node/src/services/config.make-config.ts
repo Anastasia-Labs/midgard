@@ -617,6 +617,19 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
+  const admissionTerminalRetentionMs = yield* Config.integer(
+    "ADMISSION_TERMINAL_RETENTION_MS",
+  ).pipe(
+    Config.withDefault(3_600_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(
+          "ADMISSION_TERMINAL_RETENTION_MS must be a non-negative safe integer",
+        );
+      }
+      return value;
+    }),
+  );
   const mempoolRetrievePageSize = yield* Config.integer(
     "MEMPOOL_RETRIEVE_PAGE_SIZE",
   ).pipe(
@@ -948,6 +961,7 @@ const makeConfig = Effect.gen(function* () {
     POSTGRES_BATCH_POOL_SIZE: postgresBatchPoolSize,
     POSTGRES_WORKER_POOL_SIZE: postgresWorkerPoolSize,
     ADMISSION_BACKLOG_REFRESH_MS: admissionBacklogRefreshMs,
+    ADMISSION_TERMINAL_RETENTION_MS: admissionTerminalRetentionMs,
     MEMPOOL_RETRIEVE_PAGE_SIZE: mempoolRetrievePageSize,
     WRITE_BEHIND_FLUSH_INTERVAL_MS: writeBehindFlushIntervalMs,
     WRITE_BEHIND_MAX_BATCH: writeBehindMaxBatch,

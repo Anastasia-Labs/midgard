@@ -32,6 +32,7 @@ export const postgresByteaArray = (
 
 export type AcceptedPersistenceCounts = {
   readonly accepted_count: string | number | bigint;
+  readonly deleted_payload_count: string | number | bigint;
   readonly spent_count: string | number | bigint;
   readonly consumed_deposit_count: string | number | bigint;
   readonly updated_deposit_count: string | number | bigint;

@@ -110,6 +110,7 @@ describe("splitSqlStatements", () => {
       [32, "peer_submit_source", true],
       [33, "foreign_tx_inclusions", true],
       [34, "admission_payload_bytes", true],
+      [35, "admission_terminal_retention", true],
     ]);
   });
 

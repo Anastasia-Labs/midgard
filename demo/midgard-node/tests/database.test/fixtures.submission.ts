@@ -195,6 +195,26 @@ export const makeScriptProofSubmitTx = (nonce: number) => {
   };
 };
 
+/**
+ * The same transaction with its script witnesses dropped: the tx id, which
+ * covers only the body, is unchanged, but the canonical bytes and the full
+ * hash differ.
+ */
+export const withoutScriptWitnesses = (txCanonicalCbor: Buffer): Buffer => {
+  const full = decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
+  return encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: full.version,
+      validity: full.validity,
+      body: full.body,
+      witnessSet: {
+        ...full.witnessSet,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    }),
+  );
+};
+
 export const makeReferenceScriptProofSubmitTx = (nonce: number) => {
   const attached = makeScriptProofSubmitTx(nonce);
   const referenceOutRef = makeOutRefCbor(

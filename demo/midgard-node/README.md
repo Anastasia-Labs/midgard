@@ -60,6 +60,12 @@ It is responsible for:
   mempool/immutable transaction CBOR. The writer never drops live-process rows:
   queue overflow falls back to an inline write, and graceful shutdown drains the
   queue.
+- The admission retention fiber runs every minute and deletes accepted and
+  rejected `tx_admissions` rows whose verdict is older than
+  `ADMISSION_TERMINAL_RETENTION_MS` (default 3600000; `0` keeps them), in
+  batches of 5,000 that skip locked rows. A row stays while `mempool`,
+  `processed_mempool` or `tx_rejections` names its tx, so a rejected row goes
+  with its rejection under `RETENTION_DAYS`.
 - The retention sweeper runs every `WAIT_BETWEEN_RETENTION_SWEEPS` ms. The
   default is a quarter of the profile's DA attestation timeout, capped at 15
   minutes: 900000 on the public profiles and 150000 on the testing profiles.

@@ -42,5 +42,6 @@ export {
   retrieveAllMempool,
   submitThroughRouter,
   type TxQueueWakeRequirements,
+  withoutScriptWitnesses,
   wrapNativeSubmitTx,
 } from "./fixtures.submission.js";

@@ -19,6 +19,7 @@ import "./txAdmissions.admit-reserved-batch.js";
 import "./txAdmissions.claim-batch-lease.js";
 import "./txAdmissions.mark-accepted.js";
 import "./txAdmissions.mark-rejected.js";
+import "./txAdmissions.prune-terminal.js";
 export { admit, touchDuplicate, tryInsert } from "./txAdmissions.admit.js";
 export {
   admitReservedBatch,
@@ -42,6 +43,11 @@ export {
   markRejected,
   oldestQueuedAgeMs,
 } from "./txAdmissions.mark-rejected.js";
+export {
+  pruneTerminalBatch,
+  type TerminalAdmissionCursor,
+  type TerminalAdmissionPruneBatch,
+} from "./txAdmissions.prune-terminal.js";
 export {
   admissionBacklogRejectCounter,
   type AdmitResult,

@@ -222,6 +222,8 @@ export type NodeConfigDep = {
   POSTGRES_BATCH_POOL_SIZE: number;
   POSTGRES_WORKER_POOL_SIZE: number;
   ADMISSION_BACKLOG_REFRESH_MS: number;
+  /** Terminal admission rows older than this are deleted; 0 keeps them. */
+  ADMISSION_TERMINAL_RETENTION_MS: number;
   MEMPOOL_RETRIEVE_PAGE_SIZE: number;
   WRITE_BEHIND_FLUSH_INTERVAL_MS: number;
   WRITE_BEHIND_MAX_BATCH: number;

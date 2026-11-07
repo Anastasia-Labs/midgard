@@ -58,22 +58,22 @@ The migration runner creates `schema_migrations` and
 
 ## Table Map
 
-| Table                                 | Primary role                                                                                                                             |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `blocks`                              | Local index from submitted state-queue header hash to included L2 tx ids.                                                                |
-| `mempool`                             | Live accepted-tx membership; legacy/direct rows may carry bytes, while admission-backed rows resolve bytes from `tx_admission_payloads`. |
-| `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path.       |
-| `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                                     |
-| `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                             |
-| `tx_rejection_causes`                 | The rejected transactions a dependent or batch rejection follows from, so a revived journal can delete the rejections it caused.         |
-| `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                            |
-| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                            |
-| `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                                    |
-| `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                           |
-| `tx_admission_payloads`               | Immutable canonical bytes for durable admissions; also the normal payload source for accepted `mempool` membership.                      |
-| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                                    |
-| `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                        |
-| `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                          |
+| Table                                 | Primary role                                                                                                                       |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `blocks`                              | Local index from submitted state-queue header hash to included L2 tx ids.                                                          |
+| `mempool`                             | Live accepted-tx membership with the accepted tx's canonical bytes.                                                                |
+| `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path. |
+| `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                               |
+| `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                       |
+| `tx_rejection_causes`                 | The rejected transactions a dependent or batch rejection follows from, so a revived journal can delete the rejections it caused.   |
+| `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                      |
+| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                      |
+| `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                              |
+| `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                     |
+| `tx_admission_payloads`               | Canonical bytes of a queued or validating admission; the terminal mark deletes the row.                                            |
+| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                              |
+| `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                  |
+| `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                    |
 
 ## `blocks`
 
@@ -174,39 +174,28 @@ Known gaps:
 ### Purpose
 
 `mempool` is the live membership set for accepted L2 transactions awaiting a
-commit path. Its legacy `tx` column is nullable. Normal durable admission
-acceptance writes only `tx_id`; canonical bytes remain in
-`tx_admission_payloads`. Legacy and direct administrative writers keep storing
-physical bytes in `mempool.tx`.
-
-Every adapter read resolves
-`COALESCE(mempool.tx, tx_admission_payloads.tx_canonical_cbor)` through a left
-join. A row with neither source is an integrity failure, including page,
-single-id, batch-id, commit-candidate, and address-history reads. Acceptance is
-also fail-closed: membership insertion and the terminal admission update both
-require the durable payload row and verify exact affected-row counts inside the
-same transaction.
+commit path. Durable admission acceptance copies the canonical bytes from
+`tx_admission_payloads` into `mempool.tx` and deletes the payload row in the
+same transaction, so every membership row carries its own bytes. Acceptance is
+fail-closed: membership insertion, the terminal admission update and the
+payload deletion each verify exact affected-row counts inside that
+transaction.
 
 ### Stored Information
 
 - `tx_id BYTEA PRIMARY KEY`
-- `tx BYTEA` for legacy/direct payloads; normally `NULL` for admission-backed
-  accepted rows
+- `tx BYTEA`, the canonical bytes
 - `time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
-The keyset index is `(time_stamp_tz, tx_id)`. Nullable legacy payload storage
-preserves direct-writer compatibility while admission-backed rows use the
-immutable payload table.
+The keyset index is `(time_stamp_tz, tx_id)`.
 
 ### Relationships And Invariants
 
-- An admission-backed membership row must have a matching
-  `tx_admission_payloads` row.
-- A direct/legacy row may have no admission row, but must carry `mempool.tx`.
-- If both payload sources exist, the legacy physical value has precedence for
-  compatibility.
-- Missing both payload sources is not an empty or skipped transaction; readers
-  fail closed.
+- A membership row carries `mempool.tx`; its admission row, if any, has no
+  payload row left.
+- An admission row whose tx has a `mempool` or `processed_mempool` row is never
+  deleted by retention: the mempool page order, the replay order and the peer
+  catch-up read its `arrival_seq`.
 - Accepted membership, ledger effects, consumed-deposit updates, and terminal
   admission state remain one synchronous SQL transaction. Derived delta and
   address-history projection use the bounded write-behind path.
@@ -792,8 +781,10 @@ Known gaps:
 ### Purpose
 
 `tx_admissions` is the durable `/submit` admission queue and validation status
-ledger. Its immutable transaction bytes live in `tx_admission_payloads`, so
-queued → validating → terminal lease updates do not rewrite the large payload.
+ledger. The transaction bytes of a queued or validating row live in
+`tx_admission_payloads`, so queued → validating lease updates do not rewrite
+the large payload; the terminal mark deletes the payload row in the same
+transaction.
 Together they replaced the older in-memory-only submission queue for
 production reliability.
 
@@ -880,6 +871,9 @@ Current indexes:
 
 - `idx_tx_admissions_queued_arrival` on `(arrival_seq, tx_id)` for queued rows;
 - `idx_tx_admissions_lease` on `lease_expires_at` for validating rows;
+- `idx_tx_admissions_terminal` on `(terminal_at, tx_id)` for accepted and
+  rejected rows, the retention sweep's walk
+  ([0035_admission_terminal_retention.sql](src/database/migrations/sql/0035_admission_terminal_retention.sql));
 - the primary-key index on `tx_id`.
 
 Important check constraints enforce lease/status consistency, terminal status
@@ -925,14 +919,21 @@ Readers include:
 1. `/submit` inserts a row with `status='queued'`.
 2. The queue processor claims a batch, moving rows to `validating` under a lease.
 3. Phase A and Phase B validation run.
-4. Accepted rows transition to `accepted`, and a `tx_id` membership row is
-   inserted into `mempool`; the canonical bytes remain in
-   `tx_admission_payloads` and are resolved by joined reads.
+4. Accepted rows transition to `accepted`, and a membership row carrying the
+   canonical bytes is inserted into `mempool`; the payload row is deleted in
+   the same transaction.
 5. Rejected rows transition to `rejected`, with rejection metadata also written
-   to `tx_rejections`.
+   to `tx_rejections`; the payload row is deleted in the same transaction.
 6. If validation infrastructure fails, rows are released back to `queued` with
    retry backoff.
-7. Accepted/rejected rows are terminal admission history.
+7. Accepted/rejected rows are terminal admission history. The admission
+   retention fiber (`src/fibers/admission-retention.ts`) deletes one once its
+   `terminal_at` is older than `ADMISSION_TERMINAL_RETENTION_MS` (default one
+   hour; 0 keeps them) and neither `mempool`, `processed_mempool` nor
+   `tx_rejections` names its tx. It walks in bounded batches and skips locked
+   rows. `/tx-status` never reads a terminal admission row, so deleting one
+   changes no answer; a resubmission of that tx is admitted again and
+   validation decides it again.
 
 ### Relationships
 
@@ -950,13 +951,13 @@ Expected invariants:
 - only validating rows can have leases;
 - only terminal rows can have `terminal_at`;
 - rejected rows must have reject metadata;
-- accepted/rejected rows are durable status evidence and should not be pruned
-  casually.
+- a terminal row with a pending or rejection row naming its tx is never
+  deleted; the rejection row's own retention releases it.
 
 Known gaps:
 
-- Admission history should not be generically pruned while it remains canonical
-  status evidence.
+- A rejected row lives as long as its `tx_rejections` row (`RETENTION_DAYS`),
+  so rejected admissions grow with rejection evidence under junk load.
 
 ## `local_mutation_jobs`
 

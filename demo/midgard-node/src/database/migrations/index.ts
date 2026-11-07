@@ -33,6 +33,7 @@ import dropUserSubmissionRecordsSql from "./sql/0031_drop_user_submission_record
 import peerSubmitSourceSql from "./sql/0032_peer_submit_source.sql";
 import foreignTxInclusionsSql from "./sql/0033_foreign_tx_inclusions.sql";
 import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
+import admissionTerminalRetentionSql from "./sql/0035_admission_terminal_retention.sql";
 
 export type Migration = {
   readonly version: number;
@@ -281,6 +282,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: admissionPayloadBytesSql,
     transactional: true,
   },
+  {
+    version: 35,
+    name: "admission_terminal_retention",
+    checksumSha256: sha256Hex(admissionTerminalRetentionSql),
+    sql: admissionTerminalRetentionSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -396,6 +404,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_tx_admissions_lease",
   "idx_tx_admissions_active_lease",
   "idx_tx_admissions_queued_arrival",
+  "idx_tx_admissions_terminal",
   "uniq_tx_rejections_tx_id",
   "idx_tx_rejection_causes_cause",
   "idx_local_mutation_jobs_status_updated",
