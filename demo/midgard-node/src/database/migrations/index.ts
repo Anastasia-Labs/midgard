@@ -32,6 +32,7 @@ import importCheckRetriesSql from "./sql/0030_import_check_retries.sql";
 import dropUserSubmissionRecordsSql from "./sql/0031_drop_user_submission_records.sql";
 import peerSubmitSourceSql from "./sql/0032_peer_submit_source.sql";
 import foreignTxInclusionsSql from "./sql/0033_foreign_tx_inclusions.sql";
+import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
 
 export type Migration = {
   readonly version: number;
@@ -271,6 +272,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "foreign_tx_inclusions",
     checksumSha256: sha256Hex(foreignTxInclusionsSql),
     sql: foreignTxInclusionsSql,
+    transactional: true,
+  },
+  {
+    version: 34,
+    name: "admission_payload_bytes",
+    checksumSha256: sha256Hex(admissionPayloadBytesSql),
+    sql: admissionPayloadBytesSql,
     transactional: true,
   },
 ] as const;

@@ -195,6 +195,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         ADMISSION_BACKLOG_BASE: 0n,
         ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
         ADMISSION_BACKLOG_IN_FLIGHT: 0n,
+        ADMISSION_BACKLOG_BYTES_BASE: 0n,
+        ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
+        ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
         ADMISSION_BACKLOG_REFRESHED_AT: 0,
       },
     );

@@ -1,3 +1,4 @@
+import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit } from "effect";
 import { expect } from "vitest";
@@ -38,15 +39,19 @@ export const verifySemanticState = (
         fixture.duplicateGroupRequests[lane]!.txId,
       );
       expect(duplicateGroup?.request_count).toBe(2n);
-      expect(duplicateGroup?.tx_canonical_cbor).toEqual(
-        fixture.duplicateGroupRequests[lane]!.txCanonicalCbor,
+      expect(duplicateGroup?.tx_full_hash_v1).toEqual(
+        computeMidgardNativeTxFullHashFromCanonicalCbor(
+          fixture.duplicateGroupRequests[lane]!.txCanonicalCbor,
+        ),
       );
       const existing = yield* TxAdmissionsDB.getByTxId(
         fixture.existingRequests[lane]!.txId,
       );
       expect(existing?.request_count).toBe(2n);
-      expect(existing?.tx_canonical_cbor).toEqual(
-        fixture.existingRequests[lane]!.txCanonicalCbor,
+      expect(existing?.tx_full_hash_v1).toEqual(
+        computeMidgardNativeTxFullHashFromCanonicalCbor(
+          fixture.existingRequests[lane]!.txCanonicalCbor,
+        ),
       );
     }
 

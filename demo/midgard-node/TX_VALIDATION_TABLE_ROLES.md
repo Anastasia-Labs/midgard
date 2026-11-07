@@ -70,7 +70,7 @@ The migration runner creates `schema_migrations` and
 | `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                            |
 | `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                                    |
 | `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                           |
-| `tx_admission_payloads`               | Immutable canonical bytes and content hash for durable admissions; also the normal payload source for accepted `mempool` membership.     |
+| `tx_admission_payloads`               | Immutable canonical bytes for durable admissions; also the normal payload source for accepted `mempool` membership.                      |
 | `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                                    |
 | `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                        |
 | `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                          |
@@ -831,9 +831,16 @@ Columns:
   operator's `/peer/txs`; a peer row whose verdict is `E_INPUT_NOT_FOUND` or
   `E_DEPENDS_ON_REJECTED_TX` is deleted instead of rejected)
 - `request_count BIGINT NOT NULL DEFAULT 1`
+- `payload_bytes INTEGER NOT NULL CHECK (payload_bytes > 0)` (length of the
+  canonical bytes, so the backlog byte total needs no payload read)
+- `tx_full_hash_v1 BYTEA NOT NULL CHECK (octet_length(tx_full_hash_v1) = 32)`
+  (moved from `tx_admission_payloads` by
+  [0034_admission_payload_bytes.sql](src/database/migrations/sql/0034_admission_payload_bytes.sql);
+  a resubmission is a duplicate when its full hash matches this column)
 
 After applying the [Flat-script migration](src/database/migrations/sql/0029_drop_cek_program_material.sql),
-`tx_admission_payloads` stores canonical transaction bytes and their full hash.
+`tx_admission_payloads` stores canonical transaction bytes (their full hash
+lives on `tx_admissions` since migration 34).
 Script witnesses remain inside those transaction bytes. The migration also
 removes the separate CEK material tables and sidecar columns.
 
@@ -856,7 +863,6 @@ or old-format compatibility conversion is performed by this migration.
 
 - `tx_id BYTEA PRIMARY KEY REFERENCES tx_admissions(tx_id) ON DELETE CASCADE`
 - `tx_canonical_cbor BYTEA NOT NULL`
-- `tx_full_hash_v1 BYTEA NOT NULL`
 
 Statuses:
 

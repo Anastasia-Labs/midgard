@@ -15,6 +15,10 @@ export type AdmissionBacklogGaugeState = {
    * being erased by a live-count refresh.
    */
   readonly ADMISSION_BACKLOG_IN_FLIGHT: bigint;
+  /** The same three parts, counting payload bytes instead of rows. */
+  readonly ADMISSION_BACKLOG_BYTES_BASE: bigint;
+  readonly ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: bigint;
+  readonly ADMISSION_BACKLOG_BYTES_IN_FLIGHT: bigint;
   readonly ADMISSION_BACKLOG_REFRESHED_AT: number;
 };
 

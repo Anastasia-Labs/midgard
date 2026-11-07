@@ -12,24 +12,20 @@ import "./mempoolLedger.js";
 import "./txRejections.js";
 import "./utils/common.js";
 import "./txAdmissions.verify-claimed-payload-rows.js";
-import "./txAdmissions.admit-without-byte-quota.js";
+import "./txAdmissions.admit.js";
 import "./txAdmissions.group-reserved-admission-variants.js";
 import "./txAdmissions.persist-reserved-admission-batch.js";
 import "./txAdmissions.admit-reserved-batch.js";
 import "./txAdmissions.claim-batch-lease.js";
 import "./txAdmissions.mark-accepted.js";
 import "./txAdmissions.mark-rejected.js";
+export { admit, touchDuplicate, tryInsert } from "./txAdmissions.admit.js";
 export {
   admitReservedBatch,
   claimBatch,
   getByTxId,
   requeueExpiredLeases,
 } from "./txAdmissions.admit-reserved-batch.js";
-export {
-  admit,
-  touchDuplicate,
-  tryInsert,
-} from "./txAdmissions.admit-without-byte-quota.js";
 export {
   claimBatchLease,
   forgetLeasedPeerRows,
@@ -39,12 +35,15 @@ export {
 export { markAccepted } from "./txAdmissions.mark-accepted.js";
 export {
   type AdmissionRejection,
+  type BacklogSize,
   countBacklog,
+  countBacklogSize,
   markAcceptedRejectedAfterCorrection,
   markRejected,
   oldestQueuedAgeMs,
 } from "./txAdmissions.mark-rejected.js";
 export {
+  admissionBacklogRejectCounter,
   type AdmitResult,
   type ClaimedEntry,
   type ClaimedLeaseEntry,

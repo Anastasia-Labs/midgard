@@ -95,8 +95,6 @@ export const admitTransfersTogether = async (
         txId: queued.txId,
         txCanonicalCbor: queued.txCbor,
         submitSource: "native",
-        currentBacklog: 0n,
-        maxBacklog: h.production.nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
       }),
     );
   }

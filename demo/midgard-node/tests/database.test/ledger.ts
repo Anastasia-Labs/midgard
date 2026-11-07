@@ -734,8 +734,6 @@ export const registerLedgerTests = () => {
               txId,
               txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const writeBehind = yield* WriteBehind;
             const result = yield* Effect.either(

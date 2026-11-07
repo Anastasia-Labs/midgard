@@ -8,22 +8,16 @@ import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTx } from "@al-ft/midgard-core/consensus-validation";
 import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
-import { SqlClient } from "@effect/sql/SqlClient";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Metric, Option } from "effect";
 
 import { TxAdmissionsDB } from "../../database/index.js";
-import { DatabaseError } from "../../database/utils/common.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
   commitAdmissionBacklogSlot,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
 } from "../../fibers/index.js";
-import {
-  AdmissionWriter,
-  type AdmissionWriterShutdownError,
-  NodeConfig,
-} from "../../services/index.js";
+import { AdmissionWriter, NodeConfig } from "../../services/index.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
   decodeSubmitTxCanonicalCbor,
@@ -136,7 +130,8 @@ export const checkSubmittedTransaction = (
 /**
  * Durably admits a checked transaction under `submitSource`, within the
  * node's admission backlog bounds, and wakes the tx-queue processor when the
- * row is new.
+ * row is new. The row and byte bounds are checked in memory: a full backlog
+ * refuses with `TxAdmissionBacklogFullError` and no database work.
  */
 export const admitCheckedTransaction = <R>({
   normalized,
@@ -149,56 +144,50 @@ export const admitCheckedTransaction = <R>({
 }) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const reservation = yield* reserveAdmissionBacklogSlot(
-      nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-    );
-    const admissionWriter = yield* AdmissionWriter;
-    const admissionEffect: Effect.Effect<
-      TxAdmissionsDB.AdmitResult,
-      | DatabaseError
-      | TxAdmissionsDB.TxAdmissionConflictError
-      | TxAdmissionsDB.TxAdmissionBacklogFullError
-      | AdmissionWriterShutdownError,
-      SqlClient
-    > = reservation.reserved
-      ? admissionWriter.admitReserved({
-          txId: normalized.txId,
-          txCanonicalCbor: normalized.txCanonicalCbor,
-          submitSource,
-          maxBacklogBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-        })
-      : TxAdmissionsDB.admit({
-          txId: normalized.txId,
-          txCanonicalCbor: normalized.txCanonicalCbor,
-          submitSource,
-          currentBacklog: reservation.currentBacklog,
-          maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-          maxBacklogBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
-        });
-    const admitted = yield* admissionEffect.pipe(
-      Effect.onExit((exit) => {
-        if (!reservation.reserved) return Effect.void;
-        if (Exit.isSuccess(exit)) {
-          return exit.value.kind === "new"
-            ? commitAdmissionBacklogSlot
-            : releaseAdmissionBacklogSlot;
-        }
-        const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
-        // Conflict/backlog errors prove no row was inserted. A SqlError,
-        // interruption, or defect can be observed after PostgreSQL committed,
-        // so retain the slot conservatively until the next live-count refresh.
-        return admissionFailureDefinitelyDidNotInsert(failure)
-          ? releaseAdmissionBacklogSlot
-          : commitAdmissionBacklogSlot;
-      }),
-    );
-    if (admitted.kind === "new") {
-      if (!reservation.reserved) {
-        return yield* Effect.dieMessage(
-          "Durable admission inserted without a reserved backlog slot",
-        );
-      }
-      yield* wakeTxQueueProcessor;
+    const reservation = yield* reserveAdmissionBacklogSlot({
+      maxRows: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+      maxBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+      bytes: normalized.txCanonicalCbor.length,
+    });
+    if (!reservation.reserved) {
+      yield* Metric.increment(TxAdmissionsDB.admissionBacklogRejectCounter);
+      return yield* Effect.fail(
+        new TxAdmissionsDB.TxAdmissionBacklogFullError({
+          backlog: reservation.backlog,
+          maxBacklog: reservation.maxBacklog,
+          unit: reservation.unit,
+          message:
+            reservation.unit === "bytes"
+              ? "Durable submission admission byte backlog is full; retry later"
+              : "Durable submission admission backlog is full; retry later",
+        }),
+      );
     }
+    const admissionWriter = yield* AdmissionWriter;
+    const admitted = yield* admissionWriter
+      .admitReserved({
+        txId: normalized.txId,
+        txCanonicalCbor: normalized.txCanonicalCbor,
+        submitSource,
+      })
+      .pipe(
+        Effect.onExit((exit) => {
+          if (Exit.isSuccess(exit)) {
+            return exit.value.kind === "new"
+              ? commitAdmissionBacklogSlot(reservation)
+              : releaseAdmissionBacklogSlot(reservation);
+          }
+          const failure = Option.getOrUndefined(
+            Cause.failureOption(exit.cause),
+          );
+          // A conflict proves no row was inserted. A SqlError, interruption,
+          // or defect can be observed after PostgreSQL committed, so retain
+          // the slot conservatively until the next live-count refresh.
+          return admissionFailureDefinitelyDidNotInsert(failure)
+            ? releaseAdmissionBacklogSlot(reservation)
+            : commitAdmissionBacklogSlot(reservation);
+        }),
+      );
+    if (admitted.kind === "new") yield* wakeTxQueueProcessor;
     return admitted;
   });

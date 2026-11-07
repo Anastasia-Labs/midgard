@@ -138,19 +138,13 @@ describe("stored Flat migration", () => {
             const status = yield* migration;
             expect(status.compatible).toBe(true);
             expect(yield* retiredStorageShape).toEqual([]);
-            yield* sql`INSERT INTO tx_admissions (tx_id, status, submit_source)
-        VALUES (${txId}, 'queued', 'native')`;
-            yield* sql`INSERT INTO tx_admission_payloads (tx_id, tx_canonical_cbor, tx_full_hash_v1)
-        VALUES (${txId}, ${txCbor}, ${fullHash})`;
+            yield* sql`INSERT INTO tx_admissions (tx_id, status, submit_source, payload_bytes, tx_full_hash_v1)
+        VALUES (${txId}, 'queued', 'native', ${txCbor.length}, ${fullHash})`;
+            yield* sql`INSERT INTO tx_admission_payloads (tx_id, tx_canonical_cbor)
+        VALUES (${txId}, ${txCbor})`;
             expect(
               yield* sql`SELECT * FROM tx_admission_payloads WHERE tx_id = ${txId}`,
-            ).toEqual([
-              {
-                tx_id: txId,
-                tx_canonical_cbor: txCbor,
-                tx_full_hash_v1: fullHash,
-              },
-            ]);
+            ).toEqual([{ tx_id: txId, tx_canonical_cbor: txCbor }]);
             const [constraint] = yield* sql<{
               definition: string;
             }>`SELECT pg_get_constraintdef(oid) AS definition
@@ -163,11 +157,11 @@ describe("stored Flat migration", () => {
             ])
               expect(constraint?.definition).toContain(fragment);
             const malformedIdentity =
-              yield* Effect.either(sql`UPDATE tx_admission_payloads
+              yield* Effect.either(sql`UPDATE tx_admissions
         SET tx_full_hash_v1 = ${Buffer.alloc(31)} WHERE tx_id = ${txId}`);
             expect(malformedIdentity._tag).toBe("Left");
             expect(
-              yield* sql`SELECT tx_full_hash_v1 FROM tx_admission_payloads WHERE tx_id = ${txId}`,
+              yield* sql`SELECT tx_full_hash_v1 FROM tx_admissions WHERE tx_id = ${txId}`,
             ).toEqual([{ tx_full_hash_v1: fullHash }]);
           }),
         ),

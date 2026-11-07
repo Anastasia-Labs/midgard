@@ -2,11 +2,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import {
-  ADMISSION_BYTE_QUOTA_LOCK_KEY,
-  currentBacklogPayloadBytes,
-  normalizedMaxBacklogBytes,
-} from "./txAdmissions.admit-without-byte-quota.js";
 import { persistReservedAdmissionBatch } from "./txAdmissions.persist-reserved-admission-batch.js";
 import {
   type ClaimedEntry,
@@ -19,7 +14,6 @@ import {
   type ReservedAdmissionOutcome,
   type ReservedAdmissionRequest,
   tableName,
-  TxAdmissionBacklogFullError,
   verifyClaimedPayloadRows,
 } from "./txAdmissions.verify-claimed-payload-rows.js";
 import {
@@ -28,6 +22,11 @@ import {
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 
+/**
+ * Durably admits one batch of reserved requests in one transaction. The caller
+ * reserved each request's backlog row and bytes in memory beforehand, so the
+ * batch takes no lock and reads no backlog total: shards write in parallel.
+ */
 export const admitReservedBatch = (
   requests: readonly ReservedAdmissionRequest[],
 ): Effect.Effect<
@@ -37,86 +36,15 @@ export const admitReservedBatch = (
 > =>
   Effect.gen(function* () {
     if (requests.length === 0) return [];
-    const maxBacklogBytes = requests
-      .slice(1)
-      .reduce(
-        (minimum, request) =>
-          minimum < normalizedMaxBacklogBytes(request.maxBacklogBytes)
-            ? minimum
-            : normalizedMaxBacklogBytes(request.maxBacklogBytes),
-        normalizedMaxBacklogBytes(requests[0]?.maxBacklogBytes),
-      );
-    const outerSql = yield* SqlClient.SqlClient;
-    return yield* outerSql.withTransaction(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`SELECT pg_advisory_xact_lock(${ADMISSION_BYTE_QUOTA_LOCK_KEY})`;
-        const uniqueTxIds = [
-          ...new Map(
-            requests.map((request) => [
-              request.txId.toString("hex"),
-              request.txId,
-            ]),
-          ).values(),
-        ];
-        const existingRows = yield* sql<{
-          readonly tx_id: Buffer;
-        }>`SELECT ${sql(Columns.TX_ID)} AS tx_id
-          FROM ${sql(tableName)}
-          WHERE ${sql.in(Columns.TX_ID, uniqueTxIds)}`;
-        const existingTxIds = new Set(
-          existingRows.map((row) => row.tx_id.toString("hex")),
-        );
-        let projectedBacklogBytes = yield* currentBacklogPayloadBytes;
-        const admittedTxIds = new Set<string>();
-        const deniedTxIds = new Set<string>();
-        for (const request of requests) {
-          const txIdHex = request.txId.toString("hex");
-          if (
-            existingTxIds.has(txIdHex) ||
-            admittedTxIds.has(txIdHex) ||
-            deniedTxIds.has(txIdHex)
-          ) {
-            continue;
-          }
-          const requestedBytes = BigInt(request.txCanonicalCbor.length);
-          if (projectedBacklogBytes + requestedBytes > maxBacklogBytes) {
-            deniedTxIds.add(txIdHex);
-          } else {
-            admittedTxIds.add(txIdHex);
-            projectedBacklogBytes += requestedBytes;
-          }
-        }
-        const eligibleRequests = requests.filter(
-          (request) => !deniedTxIds.has(request.txId.toString("hex")),
-        );
-        const eligibleOutcomes =
-          yield* persistReservedAdmissionBatch(eligibleRequests);
-        let eligibleIndex = 0;
-        return requests.map((request): ReservedAdmissionOutcome => {
-          if (!deniedTxIds.has(request.txId.toString("hex"))) {
-            return eligibleOutcomes[eligibleIndex++]!;
-          }
-          return {
-            _tag: "Conflict",
-            error: new TxAdmissionBacklogFullError({
-              backlog: projectedBacklogBytes,
-              maxBacklog: maxBacklogBytes,
-              unit: "bytes",
-              message:
-                "Durable submission admission byte backlog is full; retry later",
-            }),
-          };
-        });
-      }),
-    );
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(persistReservedAdmissionBatch(requests));
   }).pipe(
     Effect.tapErrorTag("SqlError", (error) =>
-      logDatabaseError(tableName, "admitReservedBatchByteQuota", error),
+      logDatabaseError(tableName, "admitReservedBatch", error),
     ),
     sqlErrorToDatabaseError(
       tableName,
-      "Failed to enforce reserved admission byte backlog",
+      "Failed to durably admit reserved transaction batch",
     ),
   );
 
@@ -153,15 +81,9 @@ export const getByTxId = (
 ): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<RawEntry>`SELECT
-        admission.*,
-        payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)}
-      FROM ${sql(tableName)} AS admission
-      INNER JOIN ${sql(payloadTableName)} AS payload
-        ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
-      WHERE admission.${sql(Columns.TX_ID)} = ${txId}
-      LIMIT 1`;
+    const rows = yield* sql<RawEntry>`SELECT *
+      FROM ${sql(tableName)}
+      WHERE ${sql(Columns.TX_ID)} = ${txId}`;
     return rows.length === 0 ? null : normalizeRow(rows[0]!);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to retrieve tx admission"),
@@ -228,7 +150,7 @@ export const claimBatch = ({
           RETURNING
             admissions.${sql(Columns.TX_ID)},
             payload.${sql(Columns.TX_CANONICAL_CBOR)},
-            payload.${sql(Columns.TX_FULL_HASH_V1)},
+            admissions.${sql(Columns.TX_FULL_HASH_V1)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},
             admissions.${sql(Columns.FIRST_SEEN_AT)},
             admissions.${sql(Columns.VALIDATION_STARTED_AT)}

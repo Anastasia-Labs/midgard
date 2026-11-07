@@ -109,6 +109,7 @@ describe("splitSqlStatements", () => {
       [31, "drop_user_submission_records", true],
       [32, "peer_submit_source", true],
       [33, "foreign_tx_inclusions", true],
+      [34, "admission_payload_bytes", true],
     ]);
   });
 

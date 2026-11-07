@@ -127,6 +127,10 @@ peer body of unknown length holds only the larger of those two bounds against th
 shared ingress byte budget. Peers and users never hold each other's permits or
 rate tokens, but their admissions share the durable admission backlog: a peer
 burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
+The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`) and by payload
+bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`). Both are checked against an
+in-memory gauge before the write, so a full backlog answers 503 with no
+database work, a resubmitted duplicate included.
 The `peer` rate class has no global bucket, because it is charged before the
 signature is checked. Targets
 are at most 2 KiB and responses at most 1 MiB.

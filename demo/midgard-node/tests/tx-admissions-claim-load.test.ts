@@ -335,7 +335,7 @@ describe("durable admission lightweight claim and payload load", () => {
             leaseDurationMs: 30_000,
           });
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`UPDATE tx_admission_payloads
+          yield* sql`UPDATE tx_admissions
             SET tx_full_hash_v1 = decode(repeat('00', 32), 'hex')
             WHERE tx_id = ${input.txId}`;
 
@@ -506,18 +506,6 @@ describe("durable admission lightweight claim and payload load", () => {
             admissionInput(`rewrite-race-${index.toString()}`),
           );
           yield* insertAdmissions(inputs);
-          const fullHashes = yield* Effect.all(
-            inputs.map((input) =>
-              sql<{
-                readonly tx_full_hash_v1: Buffer;
-              }>`SELECT tx_full_hash_v1
-                  FROM tx_admission_payloads
-                  WHERE tx_id = ${input.txId}`.pipe(
-                Effect.map((rows) => rows[0]!.tx_full_hash_v1),
-              ),
-            ),
-          );
-
           const scenario = Effect.gen(function* () {
             yield* sql.unsafe(
               `CREATE FUNCTION claim_snapshot_gate() RETURNS trigger
@@ -545,11 +533,10 @@ describe("durable admission lightweight claim and payload load", () => {
                   yield* Deferred.await(releaseGate);
                   yield* Effect.forEach(
                     inputs,
-                    (input, index) =>
+                    (input) =>
                       // The production duplicate-submission path.
                       TxAdmissionsDB.touchDuplicate({
                         txId: input.txId,
-                        txFullHashV1: fullHashes[index]!,
                         txCanonicalCbor: input.txCanonicalCbor,
                       }),
                     { discard: true },

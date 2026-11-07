@@ -44,12 +44,9 @@ import {
 } from "../../src/database/index.js";
 import {
   admissionBacklogGaugeFiber,
-  commitAdmissionBacklogSlot,
-  noteLocalAdmit,
   readAdmissionBacklogGauge,
+  readAdmissionBacklogSize,
   refreshAdmissionBacklogGauge,
-  releaseAdmissionBacklogSlot,
-  reserveAdmissionBacklogSlot,
 } from "../../src/fibers/admission-backlog-gauge.js";
 import {
   requestTxQueueProcessorWakeup,
@@ -62,6 +59,7 @@ import {
   persistCommitStageRejectedTransactions,
   resolveTxDeltaForCommit,
 } from "../../src/mpf/index.js";
+import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { AdmissionSql, BatchSql } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
@@ -152,7 +150,7 @@ export const registerAdmissionsTests = () => {
               duplicate: false,
             });
             const stored = yield* TxAdmissionsDB.getByTxId(proofTx.txId);
-            expect(stored?.tx_canonical_cbor).toEqual(proofTx.txCanonicalCbor);
+            expect(stored?.payload_bytes).toBe(proofTx.txCanonicalCbor.length);
             expect(stored?.tx_full_hash_v1).toEqual(
               computeMidgardNativeTxFullHashFromCanonicalCbor(
                 proofTx.txCanonicalCbor,
@@ -554,8 +552,8 @@ export const registerAdmissionsTests = () => {
             for (const attempt of attempts) {
               const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
               expect(stored?.status).toBe(TxAdmissionsDB.Status.Rejected);
-              expect(stored?.tx_canonical_cbor).toEqual(
-                attempt.txCanonicalCbor,
+              expect(stored?.payload_bytes).toBe(
+                attempt.txCanonicalCbor.length,
               );
               expect(
                 (yield* TxRejectionsDB.retrieveByTxId(attempt.txId)).map(
@@ -623,7 +621,7 @@ export const registerAdmissionsTests = () => {
 
             const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
             expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
-            expect(stored?.tx_canonical_cbor).toEqual(attempt.txCanonicalCbor);
+            expect(stored?.payload_bytes).toBe(attempt.txCanonicalCbor.length);
             expect(stored?.tx_full_hash_v1).toEqual(
               computeMidgardNativeTxFullHashFromCanonicalCbor(
                 attempt.txCanonicalCbor,
@@ -693,7 +691,7 @@ export const registerAdmissionsTests = () => {
 
             const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
             expect(stored?.status).toBe(TxAdmissionsDB.Status.Validating);
-            expect(stored?.tx_canonical_cbor).toEqual(attempt.txCanonicalCbor);
+            expect(stored?.payload_bytes).toBe(attempt.txCanonicalCbor.length);
             expect(stored?.lease_owner).toBe(leaseOwner);
             expect(yield* MempoolDB.retrieveTxCborByHash(attempt.txId)).toEqual(
               attempt.txCanonicalCbor,
@@ -744,13 +742,13 @@ export const registerAdmissionsTests = () => {
 
             const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
             expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
-            expect(stored?.tx_canonical_cbor).toEqual(attempt.txCanonicalCbor);
+            expect(stored?.payload_bytes).toBe(attempt.txCanonicalCbor.length);
             expect(yield* MempoolDB.retrieveTxCborByHash(attempt.txId)).toEqual(
               attempt.txCanonicalCbor,
             );
             expect(
               decodeMidgardNativeTxFullFromCanonicalCbor(
-                stored!.tx_canonical_cbor,
+                (yield* MempoolDB.retrieveTxCborByHash(attempt.txId))!,
               ).body.referenceInputsPreimageCbor,
             ).toEqual(encodeCbor([attempt.referenceOutRef]));
           }).pipe(Effect.provide(Globals.Default)),
@@ -803,8 +801,6 @@ export const registerAdmissionsTests = () => {
                 Buffer.from([0]),
               ]),
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const conflict = yield* submit(conflictTx.txCanonicalCbor);
             expect(conflict.status).toBe(409);
@@ -819,16 +815,41 @@ export const registerAdmissionsTests = () => {
               ADMISSION_BACKLOG_BASE: 2n,
               ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
+              ADMISSION_BACKLOG_BYTES_BASE: 0n,
+              ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
+              ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
               ADMISSION_BACKLOG_REFRESHED_AT: Date.now(),
             });
-            const duplicateWhileFull = yield* submit(firstTx.txCanonicalCbor);
-            expectSubmitBody(duplicateWhileFull, {
-              status: 200,
-              txIdHex: firstTx.txIdHex,
-              duplicate: true,
+            // A full backlog refuses from memory: neither the writer nor the
+            // database is reached, whether or not the tx is a duplicate.
+            const unreachableWriter = AdmissionWriter.of({
+              admitReserved: () =>
+                Effect.dieMessage("a full backlog must not reach the writer"),
+              stats: Effect.dieMessage("unused"),
             });
+            const unreachableSql = new Proxy({} as SqlClient.SqlClient, {
+              get: (_target, property) => {
+                if (typeof property === "symbol") return undefined;
+                throw new Error("a full backlog must not reach the database");
+              },
+            });
+            const submitWhileFull = (txCanonicalCbor: Buffer) =>
+              submitThroughRouter(
+                wrapNativeSubmitTx(txCanonicalCbor),
+                Effect.void,
+              ).pipe(
+                Effect.provideService(SqlClient.SqlClient, unreachableSql),
+                Effect.provideService(NodeConfig, testConfig),
+                Effect.provideService(AdmissionWriter, unreachableWriter),
+              );
+            const duplicateWhileFull = yield* submitWhileFull(
+              firstTx.txCanonicalCbor,
+            );
+            expect(duplicateWhileFull.status).toBe(503);
             const newWhileFullTx = makeNativeSubmitTx();
-            const newWhileFull = yield* submit(newWhileFullTx.txCanonicalCbor);
+            const newWhileFull = yield* submitWhileFull(
+              newWhileFullTx.txCanonicalCbor,
+            );
             expect(newWhileFull).toEqual({
               status: 503,
               body: {
@@ -848,6 +869,9 @@ export const registerAdmissionsTests = () => {
               ADMISSION_BACKLOG_BASE: 0n,
               ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
+              ADMISSION_BACKLOG_BYTES_BASE: 0n,
+              ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
+              ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
               ADMISSION_BACKLOG_REFRESHED_AT: Date.now(),
             });
             const identical = yield* Effect.all(
@@ -946,12 +970,19 @@ export const registerAdmissionsTests = () => {
               bytes: maxBacklogBytes.toString(),
               count: "4",
             });
+            // The in-memory gauge agrees with the live rows and bytes, both
+            // from its local deltas and after a live refresh.
+            const live = { rows: 4n, bytes: BigInt(maxBacklogBytes) };
+            expect(yield* readAdmissionBacklogSize).toEqual(live);
+            yield* refreshAdmissionBacklogGauge;
+            expect(yield* readAdmissionBacklogSize).toEqual(live);
 
+            // A full byte backlog refuses from memory, before any duplicate
+            // lookup in the database.
             const duplicate = yield* submit(
               attempts[accepted[0]!.index]!.txCanonicalCbor,
             );
-            expect(duplicate.status).toBe(200);
-            expect(duplicate.body.duplicate).toBe(true);
+            expect(duplicate.status).toBe(503);
           }).pipe(Effect.provide(Globals.Default)),
         ),
     );
@@ -986,7 +1017,6 @@ export const registerAdmissionsTests = () => {
                 Effect.provideService(NodeConfig, testConfig),
                 Effect.provideService(Globals, globals),
               );
-            const maxBacklog = 5;
             for (let index = 0; index < 3; index += 1) {
               yield* TxAdmissionsDB.admit({
                 txId: databaseTxHash(`admission.http-frozen-seed-${index}`),
@@ -995,8 +1025,6 @@ export const registerAdmissionsTests = () => {
                   64,
                 ),
                 submitSource: "native",
-                currentBacklog: BigInt(index),
-                maxBacklog,
               });
             }
             yield* refreshAdmissionBacklogGauge.pipe(
@@ -1378,10 +1406,15 @@ export const registerAdmissionsTests = () => {
               return { txId, txCanonicalCbor, source, produced };
             });
             yield* sql`INSERT INTO ${sql(TxAdmissionsDB.tableName)} ${sql.insert(
-              txs.map(({ txId }) => ({
+              txs.map(({ txId, txCanonicalCbor }) => ({
                 tx_id: txId,
                 status: TxAdmissionsDB.Status.Queued,
                 submit_source: "native",
+                payload_bytes: txCanonicalCbor.length,
+                tx_full_hash_v1:
+                  computeMidgardNativeTxFullHashFromCanonicalCbor(
+                    txCanonicalCbor,
+                  ),
               })),
             )}`;
             yield* sql`INSERT INTO ${sql(
@@ -1390,10 +1423,6 @@ export const registerAdmissionsTests = () => {
               txs.map(({ txId, txCanonicalCbor }) => ({
                 tx_id: txId,
                 tx_canonical_cbor: txCanonicalCbor,
-                tx_full_hash_v1:
-                  computeMidgardNativeTxFullHashFromCanonicalCbor(
-                    txCanonicalCbor,
-                  ),
               })),
             )}`;
             yield* MempoolLedgerDB.insert(txs.map(({ source }) => source));
@@ -1497,8 +1526,6 @@ export const registerAdmissionsTests = () => {
                   txId,
                   txCanonicalCbor,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded", discard: true },
@@ -1612,8 +1639,6 @@ export const registerAdmissionsTests = () => {
                   txId,
                   txCanonicalCbor,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded", discard: true },
@@ -1704,8 +1729,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             yield* MempoolLedgerDB.insert([source]);
             const leaseOwner = "database-test:membership-conflict";
@@ -1749,7 +1772,7 @@ export const registerAdmissionsTests = () => {
     );
 
     it.effect(
-      "preserves new, duplicate, conflict, and backlog-full admission semantics",
+      "preserves new, duplicate, and conflict admission semantics",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -1759,8 +1782,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor: txCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             expect(first.kind).toBe("new");
             expect(first.entry.request_count).toBe(1n);
@@ -1769,8 +1790,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor: txCbor,
               submitSource: "native",
-              currentBacklog: 10n,
-              maxBacklog: 10,
             });
             expect(duplicate.kind).toBe("duplicate");
             expect(duplicate.entry.request_count).toBe(2n);
@@ -1786,33 +1805,11 @@ export const registerAdmissionsTests = () => {
                   64,
                 ),
                 submitSource: "native",
-                currentBacklog: 0n,
-                maxBacklog: 10,
               }),
             );
             expect(conflict._tag).toBe("Left");
             if (conflict._tag === "Left") {
               expect(conflict.left._tag).toBe("TxAdmissionConflictError");
-            }
-
-            const backlogFull = yield* Effect.either(
-              TxAdmissionsDB.admit({
-                txId: databaseTxHash("admission.backlog-full"),
-                txCanonicalCbor: databaseFixtureBytes(
-                  "admission.backlog-full",
-                  64,
-                ),
-                submitSource: "native",
-                currentBacklog: 10n,
-                maxBacklog: 10,
-              }),
-            );
-            expect(backlogFull._tag).toBe("Left");
-            if (backlogFull._tag === "Left") {
-              expect(backlogFull.left._tag).toBe("TxAdmissionBacklogFullError");
-              if (backlogFull.left._tag === "TxAdmissionBacklogFullError") {
-                expect(backlogFull.left.backlog).toBe(10n);
-              }
             }
           }),
         ),
@@ -1832,8 +1829,6 @@ export const registerAdmissionsTests = () => {
                 txId,
                 txCanonicalCbor,
                 submitSource: "native",
-                currentBacklog: 0n,
-                maxBacklog: 100,
               }),
             ),
             { concurrency: "unbounded" },
@@ -2004,98 +1999,6 @@ export const registerAdmissionsTests = () => {
         ),
     );
 
-    it.effect(
-      "does not overshoot a stale live count when local admits fill the cap",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const maxBacklog = 5;
-            let accepted = 0;
-            let rejected = 0;
-            for (let index = 0; index < maxBacklog + 3; index += 1) {
-              const result = yield* Effect.either(
-                TxAdmissionsDB.admit({
-                  txId: databaseTxHash(
-                    `admission.stale-gauge-${index.toString()}`,
-                  ),
-                  txCanonicalCbor: databaseFixtureBytes(
-                    `admission.stale-gauge-${index.toString()}`,
-                    64,
-                  ),
-                  submitSource: "native",
-                  currentBacklog: yield* readAdmissionBacklogGauge,
-                  maxBacklog,
-                }),
-              );
-              if (result._tag === "Right") {
-                accepted += 1;
-                yield* noteLocalAdmit;
-              } else {
-                rejected += 1;
-              }
-            }
-            expect(accepted).toBe(maxBacklog);
-            expect(rejected).toBe(3);
-            expect(yield* TxAdmissionsDB.countBacklog).toBe(BigInt(maxBacklog));
-          }).pipe(Effect.provide(Globals.Default)),
-        ),
-    );
-
-    it.effect("does not overshoot the cap under parallel distinct admits", () =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const maxBacklog = 5;
-          const results = yield* Effect.all(
-            Array.from({ length: 16 }, (_, index) =>
-              Effect.gen(function* () {
-                const reservation =
-                  yield* reserveAdmissionBacklogSlot(maxBacklog);
-                const result = yield* Effect.either(
-                  TxAdmissionsDB.admit({
-                    txId: databaseTxHash(
-                      `admission.parallel-cap-${index.toString()}`,
-                    ),
-                    txCanonicalCbor: databaseFixtureBytes(
-                      `admission.parallel-cap-${index.toString()}`,
-                      64,
-                    ),
-                    submitSource: "native",
-                    currentBacklog: reservation.currentBacklog,
-                    maxBacklog,
-                  }),
-                );
-                if (reservation.reserved) {
-                  if (result._tag === "Right" && result.right.kind === "new") {
-                    yield* commitAdmissionBacklogSlot;
-                  } else {
-                    yield* releaseAdmissionBacklogSlot;
-                  }
-                }
-                return result;
-              }),
-            ),
-            { concurrency: "unbounded" },
-          );
-
-          expect(
-            results.filter(
-              (result) =>
-                result._tag === "Right" && result.right.kind === "new",
-            ),
-          ).toHaveLength(maxBacklog);
-          expect(
-            results.filter(
-              (result) =>
-                result._tag === "Left" &&
-                result.left._tag === "TxAdmissionBacklogFullError",
-            ),
-          ).toHaveLength(results.length - maxBacklog);
-          expect(yield* TxAdmissionsDB.countBacklog).toBe(BigInt(maxBacklog));
-          expect(yield* readAdmissionBacklogGauge).toBe(BigInt(maxBacklog));
-        }).pipe(Effect.provide(Globals.Default)),
-      ),
-    );
-
     it.effect("batch-updates per-row rejection metadata under one lease", () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -2114,8 +2017,6 @@ export const registerAdmissionsTests = () => {
               TxAdmissionsDB.admit({
                 ...input,
                 submitSource: "native",
-                currentBacklog: 0n,
-                maxBacklog: 10,
               }),
             ),
             { concurrency: "unbounded" },
@@ -2172,8 +2073,6 @@ export const registerAdmissionsTests = () => {
                 TxAdmissionsDB.admit({
                   ...input,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 20,
                 }),
               ),
               { concurrency: "unbounded" },
@@ -2223,8 +2122,6 @@ export const registerAdmissionsTests = () => {
               yield* TxAdmissionsDB.admit({
                 ...input,
                 submitSource: "native",
-                currentBacklog: 0n,
-                maxBacklog: 10,
               });
             }
             const leaseOwner = "database-test:split-claim";
@@ -2291,8 +2188,6 @@ export const registerAdmissionsTests = () => {
               64,
             ),
             submitSource: "native",
-            currentBacklog: 0n,
-            maxBacklog: 10,
           });
           expect(yield* readSetting(sql)).toBe("on");
           expect(yield* readSetting(admissionSql)).toBe("on");
@@ -2327,8 +2222,6 @@ export const registerAdmissionsTests = () => {
                     64,
                   ),
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded" },
@@ -2378,8 +2271,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const leaseOwner = "worker-crash:lease";
             const claimed = yield* TxAdmissionsDB.claimBatch({
@@ -2495,8 +2386,6 @@ export const registerAdmissionsTests = () => {
               txId: tx.txId,
               txCanonicalCbor: tx.txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const leaseOwner = "phase1-write-behind-crash";
             const claimed = yield* TxAdmissionsDB.claimBatch({
@@ -2625,8 +2514,6 @@ export const registerAdmissionsTests = () => {
                   txId,
                   txCanonicalCbor,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded", discard: true },
@@ -2737,8 +2624,6 @@ export const registerAdmissionsTests = () => {
                   txId,
                   txCanonicalCbor,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded", discard: true },
@@ -2830,8 +2715,6 @@ export const registerAdmissionsTests = () => {
                 TxAdmissionsDB.admit({
                   ...input,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded" },
@@ -2885,8 +2768,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const leaseOwner = "database-test:accept-fallback-inline";
             const claimed = yield* TxAdmissionsDB.claimBatch({
@@ -2937,8 +2818,6 @@ export const registerAdmissionsTests = () => {
               txId,
               txCanonicalCbor,
               submitSource: "native",
-              currentBacklog: 0n,
-              maxBacklog: 10,
             });
             const leaseOwner = "database-test:accept-missing-payload";
             const claimed = yield* TxAdmissionsDB.claimBatch({
@@ -3004,8 +2883,6 @@ export const registerAdmissionsTests = () => {
                 TxAdmissionsDB.admit({
                   ...input,
                   submitSource: "native",
-                  currentBacklog: 0n,
-                  maxBacklog: 10,
                 }),
               ),
               { concurrency: "unbounded" },

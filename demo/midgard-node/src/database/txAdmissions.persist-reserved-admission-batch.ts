@@ -3,7 +3,7 @@ import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Metric } from "effect";
 
 import { Database } from "../services/database.js";
-import { touchDuplicateCount } from "./txAdmissions.admit-without-byte-quota.js";
+import { touchDuplicateCount } from "./txAdmissions.admit.js";
 import {
   type BatchResolvedRawEntry,
   groupReservedAdmissionVariants,
@@ -26,14 +26,40 @@ import {
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 
+const ENTRY_COLUMNS: readonly Columns[] = [
+  Columns.TX_ID,
+  Columns.TX_FULL_HASH_V1,
+  Columns.PAYLOAD_BYTES,
+  Columns.ARRIVAL_SEQ,
+  Columns.STATUS,
+  Columns.FIRST_SEEN_AT,
+  Columns.LAST_SEEN_AT,
+  Columns.UPDATED_AT,
+  Columns.VALIDATION_STARTED_AT,
+  Columns.TERMINAL_AT,
+  Columns.LEASE_OWNER,
+  Columns.LEASE_EXPIRES_AT,
+  Columns.ATTEMPT_COUNT,
+  Columns.NEXT_ATTEMPT_AT,
+  Columns.REJECT_CODE,
+  Columns.REJECT_DETAIL,
+  Columns.SUBMIT_SOURCE,
+  Columns.REQUEST_COUNT,
+];
+
+// Both branches of the result UNION name the admission columns in one order.
+const entryColumnList = (alias: string): string =>
+  ENTRY_COLUMNS.map((column) => `${alias}.${column}`).join(", ");
+
 /**
  * Resolves reserved admission requests in one atomic PostgreSQL statement on
  * the uncontended path. A concurrent ON CONFLICT loser may need one bounded
  * follow-up touch because PostgreSQL's statement snapshot cannot see the row
  * whose conflicting insert it just waited for.
  * The first byte variant for an absent tx id wins; existing rows instead match
- * their persisted bytes. Deterministic tx-id ordering prevents opposite-order
- * microbatches from acquiring conflicting unique-index locks in opposite order.
+ * their persisted full hash. Deterministic tx-id ordering prevents
+ * opposite-order microbatches from acquiring conflicting unique-index locks in
+ * opposite order.
  */
 export const persistReservedAdmissionBatch = (
   requests: readonly ReservedAdmissionRequest[],
@@ -53,6 +79,7 @@ export const persistReservedAdmissionBatch = (
           ${pg.array(postgresByteaArray(variants.map((value) => value.txId)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCbor)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
+          ${pg.array(variants.map((value) => value.txCanonicalCbor.length))}::integer[],
           ${pg.array(variants.map((value) => value.submitSource))}::text[],
           ${pg.array(variants.map((value) => value.requestIndices.length))}::integer[],
           ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
@@ -61,6 +88,7 @@ export const persistReservedAdmissionBatch = (
           tx_id,
           tx_canonical_cbor,
           tx_full_hash_v1,
+          payload_bytes,
           submit_source,
           request_count,
           variant_ordinal,
@@ -71,13 +99,17 @@ export const persistReservedAdmissionBatch = (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.STATUS)},
           ${sql(Columns.SUBMIT_SOURCE)},
-          ${sql(Columns.REQUEST_COUNT)}
+          ${sql(Columns.REQUEST_COUNT)},
+          ${sql(Columns.PAYLOAD_BYTES)},
+          ${sql(Columns.TX_FULL_HASH_V1)}
         )
         SELECT
           input.tx_id,
           'queued',
           input.submit_source,
-          input.request_count
+          input.request_count,
+          input.payload_bytes,
+          input.tx_full_hash_v1
         FROM input
         WHERE input.first_variant_for_tx_id
         ORDER BY input.variant_ordinal
@@ -86,18 +118,16 @@ export const persistReservedAdmissionBatch = (
       ), inserted_payload AS (
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
-          ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_FULL_HASH_V1)}
+          ${sql(Columns.TX_CANONICAL_CBOR)}
         )
         SELECT
           inserted.${sql(Columns.TX_ID)},
-          input.tx_canonical_cbor,
-          input.tx_full_hash_v1
+          input.tx_canonical_cbor
         FROM inserted_admission inserted
         INNER JOIN input
           ON input.tx_id = inserted.${sql(Columns.TX_ID)}
           AND input.first_variant_for_tx_id
-        RETURNING *
+        RETURNING ${sql(Columns.TX_ID)}
       ), updated_existing AS (
         UPDATE ${sql(tableName)} admissions
         SET
@@ -115,13 +145,9 @@ export const persistReservedAdmissionBatch = (
           ${sql(Columns.REQUEST_COUNT)} =
             admissions.${sql(Columns.REQUEST_COUNT)} + input.request_count
         FROM input
-        INNER JOIN ${sql(payloadTableName)} payload
-          ON payload.${sql(Columns.TX_ID)} = input.tx_id
-          AND payload.${sql(Columns.TX_FULL_HASH_V1)} =
-            input.tx_full_hash_v1
-          AND payload.${sql(Columns.TX_CANONICAL_CBOR)} =
-            input.tx_canonical_cbor
         WHERE admissions.${sql(Columns.TX_ID)} = input.tx_id
+          AND admissions.${sql(Columns.TX_FULL_HASH_V1)} =
+            input.tx_full_hash_v1
           AND NOT EXISTS (
             SELECT 1
             FROM inserted_admission inserted
@@ -132,9 +158,7 @@ export const persistReservedAdmissionBatch = (
       SELECT
         input.variant_ordinal,
         'new'::text AS result_kind,
-        inserted.*,
-        payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)}
+        ${sql.literal(entryColumnList("inserted"))}
       FROM input
       INNER JOIN inserted_admission inserted
         ON inserted.${sql(Columns.TX_ID)} = input.tx_id
@@ -145,28 +169,8 @@ export const persistReservedAdmissionBatch = (
       SELECT
         updated.variant_ordinal,
         'duplicate'::text AS result_kind,
-        updated.${sql(Columns.TX_ID)},
-        updated.${sql(Columns.ARRIVAL_SEQ)},
-        updated.${sql(Columns.STATUS)},
-        updated.${sql(Columns.FIRST_SEEN_AT)},
-        updated.${sql(Columns.LAST_SEEN_AT)},
-        updated.${sql(Columns.UPDATED_AT)},
-        updated.${sql(Columns.VALIDATION_STARTED_AT)},
-        updated.${sql(Columns.TERMINAL_AT)},
-        updated.${sql(Columns.LEASE_OWNER)},
-        updated.${sql(Columns.LEASE_EXPIRES_AT)},
-        updated.${sql(Columns.ATTEMPT_COUNT)},
-        updated.${sql(Columns.NEXT_ATTEMPT_AT)},
-        updated.${sql(Columns.REJECT_CODE)},
-        updated.${sql(Columns.REJECT_DETAIL)},
-        updated.${sql(Columns.SUBMIT_SOURCE)},
-        updated.${sql(Columns.REQUEST_COUNT)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)}
+        ${sql.literal(entryColumnList("updated"))}
       FROM updated_existing updated
-      INNER JOIN input ON input.variant_ordinal = updated.variant_ordinal
-      INNER JOIN ${sql(payloadTableName)} payload
-        ON payload.${sql(Columns.TX_ID)} = updated.${sql(Columns.TX_ID)}
       ORDER BY variant_ordinal`;
 
     const resolvedByVariant = new Map(
@@ -183,7 +187,6 @@ export const persistReservedAdmissionBatch = (
       const duplicate = yield* touchDuplicateCount({
         txId: variant.txId,
         txFullHashV1: variant.txFullHashV1,
-        txCanonicalCbor: variant.txCanonicalCbor,
         requestCount: variant.requestIndices.length,
       });
       if (duplicate !== null) {

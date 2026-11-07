@@ -228,6 +228,42 @@ export const countBacklog: Effect.Effect<bigint, DatabaseError, Database> =
     return toBigInt(rows[0].count);
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to count backlog"));
 
+export type BacklogSize = {
+  readonly rows: bigint;
+  readonly bytes: bigint;
+};
+
+/**
+ * Live rows and payload bytes of the backlog (queued and validating rows).
+ * Each status is read through its own partial index; the bytes come from the
+ * narrow `payload_bytes` column, never from the payload table.
+ */
+export const countBacklogSize: Effect.Effect<
+  BacklogSize,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly count: bigint | number | string;
+    readonly bytes: bigint | number | string;
+  }>`
+    WITH queued AS (
+      SELECT COUNT(*) AS count, COALESCE(SUM(${sql(Columns.PAYLOAD_BYTES)}), 0) AS bytes
+      FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATUS)} = 'queued'
+    ), validating AS (
+      SELECT COUNT(*) AS count, COALESCE(SUM(${sql(Columns.PAYLOAD_BYTES)}), 0) AS bytes
+      FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATUS)} = 'validating'
+    )
+    SELECT
+      (queued.count + validating.count)::bigint AS count,
+      (queued.bytes + validating.bytes)::bigint AS bytes
+    FROM queued, validating`;
+  return { rows: toBigInt(rows[0].count), bytes: toBigInt(rows[0].bytes) };
+}).pipe(sqlErrorToDatabaseError(tableName, "Failed to size backlog"));
+
 export const oldestQueuedAgeMs: Effect.Effect<number, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;

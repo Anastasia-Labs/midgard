@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 
 import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
 import {
-  admissionFailureDefinitelyDidNotInsert,
   commitAdmissionBacklogSlot,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
@@ -16,7 +15,6 @@ import {
 import {
   AdmissionWriter,
   admissionWriterShardForTxId,
-  AdmissionWriterShutdownError,
   makeAdmissionWriterWithOptions,
 } from "../src/services/admission-writer.js";
 import { Globals } from "../src/services/globals.js";
@@ -266,11 +264,16 @@ describe("durable admission microbatch writer", () => {
           const count = 32;
           const reservations = yield* Effect.all(
             Array.from({ length: count }, () =>
-              reserveAdmissionBacklogSlot(100),
+              reserveAdmissionBacklogSlot({
+                maxRows: 100,
+                maxBytes: 1_000_000,
+                bytes: identical.txCanonicalCbor.length,
+              }),
             ),
             { concurrency: "unbounded" },
           );
           expect(reservations.every((entry) => entry.reserved)).toBe(true);
+          const slot = { bytes: BigInt(identical.txCanonicalCbor.length) };
           expect(
             (yield* Ref.get(globals.ADMISSION_BACKLOG_GAUGE))
               .ADMISSION_BACKLOG_IN_FLIGHT,
@@ -283,8 +286,8 @@ describe("durable admission microbatch writer", () => {
                 .pipe(
                   Effect.tap((result) =>
                     result.kind === "new"
-                      ? commitAdmissionBacklogSlot
-                      : releaseAdmissionBacklogSlot,
+                      ? commitAdmissionBacklogSlot(slot)
+                      : releaseAdmissionBacklogSlot(slot),
                   ),
                 ),
             ),
@@ -304,55 +307,12 @@ describe("durable admission microbatch writer", () => {
             {
               ADMISSION_BACKLOG_LOCAL_DELTA: 1n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
+              ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: slot.bytes,
+              ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
             },
           );
         }).pipe(Effect.provide(Globals.Default)),
       ),
-    );
-  });
-
-  it("releases known-unstarted shutdown reservations and retains durability-unknown ones", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const knownUnstarted = new AdmissionWriterShutdownError({
-          message: "queued during shutdown",
-          mayHaveCommitted: false,
-        });
-        const durabilityUnknown = new AdmissionWriterShutdownError({
-          message: "in flight during shutdown",
-          mayHaveCommitted: true,
-        });
-        expect(admissionFailureDefinitelyDidNotInsert(knownUnstarted)).toBe(
-          true,
-        );
-        expect(admissionFailureDefinitelyDidNotInsert(durabilityUnknown)).toBe(
-          false,
-        );
-
-        for (const error of [knownUnstarted, durabilityUnknown]) {
-          expect((yield* reserveAdmissionBacklogSlot(10)).reserved).toBe(true);
-          yield* Effect.fail(error).pipe(
-            Effect.onExit((exit) => {
-              const failure = Exit.isFailure(exit)
-                ? Cause.failureOption(exit.cause)
-                : undefined;
-              const value =
-                failure !== undefined && failure._tag === "Some"
-                  ? failure.value
-                  : undefined;
-              return admissionFailureDefinitelyDidNotInsert(value)
-                ? releaseAdmissionBacklogSlot
-                : commitAdmissionBacklogSlot;
-            }),
-            Effect.either,
-          );
-        }
-        expect(yield* Ref.get(globals.ADMISSION_BACKLOG_GAUGE)).toMatchObject({
-          ADMISSION_BACKLOG_LOCAL_DELTA: 1n,
-          ADMISSION_BACKLOG_IN_FLIGHT: 0n,
-        });
-      }).pipe(Effect.provide(Globals.Default)),
     );
   });
 

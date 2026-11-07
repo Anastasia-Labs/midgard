@@ -59,6 +59,8 @@ const seed = Effect.gen(function* () {
       status: "accepted",
       terminal_at: BATCH,
       submit_source: "native",
+      payload_bytes: 1,
+      tx_full_hash_v1: Buffer.alloc(32, row.arrival_seq),
     })),
   )}`;
 });

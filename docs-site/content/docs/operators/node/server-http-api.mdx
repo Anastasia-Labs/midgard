@@ -96,6 +96,11 @@ is distinct from successful ledger validation or settlement.
 
 A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
 keeps the connection open for the retry; other refusals of a `POST` close it.
+The durable admission backlog is bounded by rows
+(`MAX_DURABLE_ADMISSION_BACKLOG`, default 10,000) and by payload bytes
+(`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default the largest DA payload). Both
+bounds are checked in memory before the write: a full backlog answers `503`
+without touching the database, even for a duplicate.
 
 `POST /tx/evaluate` answers `200` with
 `{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal

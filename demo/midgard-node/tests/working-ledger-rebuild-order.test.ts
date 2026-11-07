@@ -74,6 +74,8 @@ const admitted =
             status: "accepted",
             terminal_at: new Date(),
             submit_source: "native",
+            payload_bytes: 1,
+            tx_full_hash_v1: Buffer.alloc(32, index + 1),
           })}`,
       );
   };

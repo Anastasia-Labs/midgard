@@ -76,8 +76,6 @@ export const admitL2Tx = async (
       txId: built.txId,
       txCanonicalCbor: built.txCbor,
       submitSource: "native",
-      currentBacklog: 0n,
-      maxBacklog: 1,
     }),
   );
   expect(admittedL2Transfer.kind).toBe("new");

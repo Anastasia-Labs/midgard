@@ -552,19 +552,15 @@ const preloadAdmissions = async (
       sql.withTransaction(
         Effect.gen(function* () {
           yield* sql`INSERT INTO tx_admissions ${sql.insert(
-            inserting.map(
-              ({
-                tx_canonical_cbor: _cbor,
-                tx_full_hash_v1: _hash,
-                ...admission
-              }) => admission,
-            ),
+            inserting.map(({ tx_canonical_cbor, ...admission }) => ({
+              ...admission,
+              payload_bytes: tx_canonical_cbor.length,
+            })),
           )}`;
           yield* sql`INSERT INTO tx_admission_payloads ${sql.insert(
-            inserting.map(({ tx_id, tx_canonical_cbor, tx_full_hash_v1 }) => ({
+            inserting.map(({ tx_id, tx_canonical_cbor }) => ({
               tx_id,
               tx_canonical_cbor,
-              tx_full_hash_v1,
             })),
           )}`;
           yield* sql`INSERT INTO phase2_expected_tx_ids ${sql.insert(

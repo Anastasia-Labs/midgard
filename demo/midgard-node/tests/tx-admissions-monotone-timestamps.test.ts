@@ -43,8 +43,6 @@ describe("durable admission monotone timestamps", () => {
             txId,
             txCanonicalCbor,
             submitSource: "native",
-            currentBacklog: 1n,
-            maxBacklog: 10,
           });
           expect(duplicate.kind).toBe("duplicate");
           expect(duplicate.entry.last_seen_at.getTime()).toBeGreaterThanOrEqual(
@@ -111,8 +109,6 @@ describe("durable admission monotone timestamps", () => {
             txId,
             txCanonicalCbor,
             submitSource: "native",
-            currentBacklog: 0n,
-            maxBacklog: 10,
           });
           expect(idempotentSubmit).toMatchObject({
             kind: "duplicate",

@@ -125,7 +125,7 @@ export const loadClaimedPayloads = ({
     const rows = yield* sql<RawClaimedPayloadEntry>`SELECT
         admission.${sql(Columns.TX_ID)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        admission.${sql(Columns.TX_FULL_HASH_V1)},
         admission.${sql(Columns.ARRIVAL_SEQ)},
         admission.${sql(Columns.FIRST_SEEN_AT)},
         admission.${sql(Columns.VALIDATION_STARTED_AT)}

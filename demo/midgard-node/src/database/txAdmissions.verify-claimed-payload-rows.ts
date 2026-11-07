@@ -82,6 +82,7 @@ export enum Columns {
   TX_ID = "tx_id",
   TX_CANONICAL_CBOR = "tx_canonical_cbor",
   TX_FULL_HASH_V1 = "tx_full_hash_v1",
+  PAYLOAD_BYTES = "payload_bytes",
   ARRIVAL_SEQ = "arrival_seq",
   STATUS = "status",
   FIRST_SEEN_AT = "first_seen_at",
@@ -99,10 +100,14 @@ export enum Columns {
   REQUEST_COUNT = "request_count",
 }
 
+/**
+ * One `tx_admissions` row. It carries the payload's size and canonical V1
+ * full hash but not the payload bytes, which live in `tx_admission_payloads`.
+ */
 export type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
-  readonly [Columns.TX_CANONICAL_CBOR]: Buffer;
   readonly [Columns.TX_FULL_HASH_V1]: Buffer;
+  readonly [Columns.PAYLOAD_BYTES]: number;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
   readonly [Columns.STATUS]: Status;
   readonly [Columns.FIRST_SEEN_AT]: Date;
@@ -131,11 +136,10 @@ export type Entry = Omit<
 type RawClaimedEntry = Pick<
   RawEntry,
   | Columns.TX_ID
-  | Columns.TX_CANONICAL_CBOR
   | Columns.ARRIVAL_SEQ
   | Columns.FIRST_SEEN_AT
   | Columns.VALIDATION_STARTED_AT
->;
+> & { readonly [Columns.TX_CANONICAL_CBOR]: Buffer };
 
 export type ClaimedEntry = Omit<RawClaimedEntry, Columns.ARRIVAL_SEQ> & {
   readonly [Columns.ARRIVAL_SEQ]: bigint;
@@ -167,18 +171,22 @@ export type AdmitResult = {
   readonly kind: "new" | "duplicate";
 };
 
+/**
+ * A checked transaction whose backlog row and bytes the caller already
+ * reserved in the in-memory gauge (`fibers/admission-backlog-gauge.ts`).
+ * The database applies no quota of its own.
+ */
 export type ReservedAdmissionRequest = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
-  readonly maxBacklogBytes?: number;
 };
 
 export type ReservedAdmissionOutcome =
   | { readonly _tag: "Success"; readonly result: AdmitResult }
   | {
       readonly _tag: "Conflict";
-      readonly error: TxAdmissionConflictError | TxAdmissionBacklogFullError;
+      readonly error: TxAdmissionConflictError;
     };
 
 export class TxAdmissionConflictError extends Data.TaggedError(

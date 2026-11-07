@@ -31,7 +31,6 @@ export class AdmissionWriterShutdownError extends Data.TaggedError(
 export type AdmissionWriteError =
   | DatabaseError
   | TxAdmissionsDB.TxAdmissionConflictError
-  | TxAdmissionsDB.TxAdmissionBacklogFullError
   | AdmissionWriterShutdownError;
 
 export type AdmissionWriteItem = {
