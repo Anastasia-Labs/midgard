@@ -68,6 +68,9 @@ const CHALLENGER_SUCCESSOR_HASH = {
   contextRedeemerSelectHash: [1, 0, 0, 0, 0, 0, 1, 3],
   contextRedeemerSelectFinish: [1, 0, 0, 0, 0, 0, 1, 3],
   contextFinalizeSpend: [1, 0, 0, 0, 0, 1, 3],
+  contextFinalizeMint: [1, 0, 0, 0, 0, 1, 3],
+  contextFinalizeWithdraw: [1, 0, 0, 0, 0, 1, 3],
+  contextFinalizeMidgard: [1, 0, 0, 0, 0, 1, 3],
   ...CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH,
   ...PHASE_CHALLENGER_SUCCESSOR_HASH,
 } as const;

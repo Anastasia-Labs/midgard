@@ -37,6 +37,7 @@ import {
   referenceSeedDeposits,
   type ScenarioMint,
   type ScenarioNative,
+  type ScenarioPlutusPurpose,
   scenarioSeedLovelace,
   type ScenarioSigners,
   type ScriptSpend,
@@ -95,6 +96,19 @@ export type Scene = {
   readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
 
+/** How the scene's failing transaction is shaped; see setUpScene. */
+export type FailingTransactionShape = {
+  readonly failingRedeemerData?: Uint8Array;
+  readonly failingReferenceInputs?: number;
+  readonly failingSigners?: ScenarioSigners;
+  readonly failingScript?: MidgardVersionedScript;
+  readonly failingExUnits?: readonly [bigint, bigint];
+  readonly failingNativeSpend?: boolean;
+  readonly failingNativeMint?: ScenarioMint;
+  readonly failingNative?: ScenarioNative;
+  readonly failingPlutusPurpose?: ScenarioPlutusPurpose;
+};
+
 /** The scene's harness and dispute contracts, before its blocks exist. */
 export type SceneContracts = Pick<Scene, "h" | "chain">;
 
@@ -120,6 +134,8 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * and under others as it says;
  * `failingNative` shapes the native script it witnesses and what else it
  * does with it;
+ * `failingPlutusPurpose` is a Plutus script it also runs as a minting
+ * policy or a withdrawal;
  * with `failingStampedInvalid` the failing block stamps that transaction
  * TxIsInvalid, as an honest block does.
  * The passing transaction spends under `passingSpend` when given.
@@ -135,17 +151,10 @@ export const setUpScene = async (
     failingNativeSpend = false,
     failingNativeMint = false,
     failingNative,
+    failingPlutusPurpose,
     failingStampedInvalid = false,
     passingSpend,
-  }: {
-    readonly failingRedeemerData?: Uint8Array;
-    readonly failingReferenceInputs?: number;
-    readonly failingSigners?: ScenarioSigners;
-    readonly failingScript?: MidgardVersionedScript;
-    readonly failingExUnits?: readonly [bigint, bigint];
-    readonly failingNativeSpend?: boolean;
-    readonly failingNativeMint?: ScenarioMint;
-    readonly failingNative?: ScenarioNative;
+  }: FailingTransactionShape & {
     readonly failingStampedInvalid?: boolean;
     readonly passingSpend?: ScriptSpend;
   } = {},
@@ -280,6 +289,9 @@ export const setUpScene = async (
             nativeSpend: failingNativeSpend,
             nativeMint: failingNativeMint,
             ...(failingNative === undefined ? {} : { native: failingNative }),
+            ...(failingPlutusPurpose === undefined
+              ? {}
+              : { plutusPurpose: failingPlutusPurpose }),
           }
         : {}),
       ...(spend === undefined ? {} : { spend }),

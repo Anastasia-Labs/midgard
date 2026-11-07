@@ -1,9 +1,10 @@
 /** The finalization our runner plans for a CEK context step of the finalize
- * authenticate, from its evidence and the context control: for a Cardano
- * spend, the redeemers control's items and current redeemer the pending
- * finalization carries; no finalization for any other purpose, which the
- * runner does not drive; and its refusal of evidence of the other
- * purpose's shape. */
+ * authenticate, from its evidence and the context control: the finalize the
+ * authenticate routes the context to, a MidgardV1 execution's to the
+ * finalize midgard and a PlutusV3 one's by its purpose, with the redeemers
+ * control's items and current redeemer the pending finalization carries;
+ * no finalization for a PlutusV3 receive, which no honest trace reaches;
+ * and its refusal of evidence of the other purpose's shape. */
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -36,17 +37,33 @@ const plan = (evidence: Data, languageTag: bigint, purposeKind: bigint) =>
   });
 
 describe("validation-trace one-step CEK context finalization plan", () => {
-  it("carries a Cardano spend's redeemer items and current redeemer from its redeemers control", () => {
+  it("routes a Cardano spend to the finalize spend, with the redeemer items and current redeemer of its redeemers control", () => {
     expect(plan(spendEvidence, 3n, 0n)).toStrictEqual({
+      holder: "contextFinalizeSpend",
       redeemerItemsCbor: Data.to(items),
       redeemerCbor: Data.to(redeemer),
     });
   });
 
-  it("plans no finalization for another purpose, or for a Midgard script's spend", () => {
-    for (const purposeKind of [1n, 2n, 3n])
-      expect(plan(finalizeEvidence, 3n, purposeKind)).toBeUndefined();
-    expect(plan(finalizeEvidence, 128n, 0n)).toBeUndefined();
+  it("routes a PlutusV3 mint and required observer to the finalize mint and withdraw, and every MidgardV1 purpose to the finalize midgard", () => {
+    const routes: readonly (readonly [bigint, bigint, string])[] = [
+      [3n, 1n, "contextFinalizeMint"],
+      [3n, 2n, "contextFinalizeWithdraw"],
+      [128n, 0n, "contextFinalizeMidgard"],
+      [128n, 1n, "contextFinalizeMidgard"],
+      [128n, 2n, "contextFinalizeMidgard"],
+      [128n, 3n, "contextFinalizeMidgard"],
+    ];
+    for (const [languageTag, purposeKind, holder] of routes)
+      expect(plan(finalizeEvidence, languageTag, purposeKind)).toStrictEqual({
+        holder,
+        redeemerItemsCbor: Data.to(items),
+        redeemerCbor: Data.to(redeemer),
+      });
+  });
+
+  it("plans no finalization for a PlutusV3 receive, which no honest trace reaches", () => {
+    expect(plan(finalizeEvidence, 3n, 3n)).toBeUndefined();
   });
 
   it("refuses a Cardano spend's evidence without its spent input, and another purpose's with one", () => {

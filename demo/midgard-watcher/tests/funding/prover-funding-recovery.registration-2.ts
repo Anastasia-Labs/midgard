@@ -28,6 +28,14 @@ import {
 it.each([
   "fraudProofValueNotPreservedUnionMint",
   "fraudProofDoubleWithdraw",
+  // The CEK context finalize resolvers of a minting policy and of a
+  // withdrawal-purpose script, which a dispute thread is paid to.
+  "validationTraceDisputeCekContextFinalizeMint",
+  "validationTraceDisputeCekContextFinalizeWithdraw",
+  // Spending validators named for the minting step they prove.
+  "fraudProofUnusedScriptWitnessAllPurposesMint",
+  "fraudProofScriptIntegrityHashMismatchAllPurposesMint",
+  "fraudProofDistinctAssetAccumulationLimitMint",
 ] as const)(
   "admits manifest-bound %s spending custody while refusing policy and unknown addresses",
   async (name) => {

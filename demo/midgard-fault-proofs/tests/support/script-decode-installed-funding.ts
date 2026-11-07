@@ -16,6 +16,7 @@
  */
 import { join } from "node:path";
 
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   credentialToAddress,
   type Emulator,
@@ -193,10 +194,18 @@ export const openInstalledProverFunding = async ({
     }>
   >();
   for (const [name, scriptHash] of Object.entries(scriptHashes)) {
+    // Like the watcher factory, custody is held only at spending validators:
+    // a manifest member by its purpose, and every harness-only name here is
+    // a spending fixture.
+    const member = (
+      DEPLOYMENT_MEMBERS as Readonly<
+        Record<string, { readonly purpose: string } | undefined>
+      >
+    )[name];
     const role =
-      name.endsWith("Mint") || name.endsWith("Withdraw")
-        ? undefined
-        : custodyRole(name);
+      member === undefined || member.purpose === "spend"
+        ? custodyRole(name)
+        : undefined;
     if (role === undefined) continue;
     const address = credentialToAddress(
       "Custom",

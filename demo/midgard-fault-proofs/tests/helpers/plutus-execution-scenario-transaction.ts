@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-validation";
 import {
   hashScriptWitness,
+  makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
   makeRedeemersCbor,
@@ -98,6 +99,29 @@ export const anyoneObserverScript = (index: number) =>
     scripts: [{ type: "after", slot: BigInt(index) }],
   });
 
+/** A Plutus script the transaction also runs, under a purpose other than
+ * a spend: as a minting policy (`mint`), minting one asset under its
+ * policy into the first output, or as a required observer (`withdraw`,
+ * Cardano's rewarding purpose), under redeemer index 0 either way. */
+export type ScenarioPlutusPurpose = Readonly<{
+  purpose: "mint" | "withdraw";
+  script: MidgardVersionedScript;
+}>;
+
+/** The asset a Plutus minting policy mints. */
+const PLUTUS_MINT_ASSET = "50";
+
+/** What `plutusPurpose` mints: its policy's one asset, if it mints. */
+const plutusMintAssets = (plutusPurpose: ScenarioPlutusPurpose | undefined) =>
+  plutusPurpose?.purpose === "mint"
+    ? new Map([
+        [
+          hashScriptWitness(plutusPurpose.script),
+          new Map([[PLUTUS_MINT_ASSET, 1n]]),
+        ],
+      ])
+    : new Map<string, ReadonlyMap<string, bigint>>();
+
 /** How `scenarioTransaction` builds the script spend; every field defaults
  * to the plain scenario. */
 export type ScenarioTransactionOptions = Readonly<{
@@ -109,6 +133,7 @@ export type ScenarioTransactionOptions = Readonly<{
   nativeMint?: ScenarioMint;
   native?: ScenarioNative;
   passingSpends?: readonly LedgerEntry[];
+  plutusPurpose?: ScenarioPlutusPurpose;
 }>;
 
 /** A lovelace amount whose encoding is the longest a coin has: an output
@@ -168,19 +193,23 @@ export const scenarioSeedLovelace = (
   );
 
 /** The outputs of a transaction over `spent` outputs, its seed's lovelace
- * `scenarioSeedLovelace`, minting `nativeMint` under `native`'s script:
- * the first holds what it spends beside its outputs' minimums. */
+ * `scenarioSeedLovelace`, minting `nativeMint` under `native`'s script and
+ * what `plutusPurpose` mints: the first holds what it spends beside its
+ * outputs' minimums, and what the Plutus policy mints. */
 export const scenarioOutputs = (
   spent: bigint,
   nativeMint: ScenarioMint,
   native: ScenarioNative = {},
+  plutusPurpose?: ScenarioPlutusPurpose,
 ): readonly Buffer[] => {
+  if (plutusPurpose?.purpose === "mint" && nativeMint !== false)
+    throw new Error("a Plutus mint does not mint beside a native mint");
   const { address, held, minimums } = mintOutputs(nativeMint, native);
   return held.map((run, at) =>
     makeOutput(
       (at === 0 ? spent * SEED_LOVELACE : 0n) + minimums[at]!,
       address,
-      new Map(run),
+      new Map([...run, ...(at === 0 ? plutusMintAssets(plutusPurpose) : [])]),
     ),
   );
 };
@@ -210,7 +239,9 @@ export const extraSignerKeyHash = (index: number) =>
  * witnessed first, and under any further policy `nativeMint` names,
  * witnessed last, into its outputs (`scenarioOutputs`); `native` shapes that native
  * script. With `passingSpends`, it first spends those passing-script
- * outputs, each under its own redeemer. */
+ * outputs, each under its own redeemer. With `plutusPurpose`, it also runs
+ * that Plutus script as a minting policy or a required observer, after the
+ * spends. The script integrity hash names every Plutus language it runs. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
@@ -223,16 +254,25 @@ export const scenarioTransaction = (
     nativeMint = false,
     native = {},
     passingSpends = [],
+    plutusPurpose,
   }: ScenarioTransactionOptions = {},
 ) => {
+  if (plutusPurpose?.purpose === "withdraw" && native.observer === true)
+    throw new Error("a Plutus observer is not required beside native ones");
   const scriptIndex = BigInt(passingSpends.length);
   const outputs = [
     ...scenarioOutputs(
       scriptIndex + (nativeSpend === undefined ? 1n : 2n),
       nativeMint,
       native,
+      plutusPurpose,
     ),
   ];
+  const spendScript = scenarioScript(scenario, spend);
+  const plutusPurposeHash =
+    plutusPurpose === undefined
+      ? undefined
+      : Buffer.from(hashScriptWitness(plutusPurpose.script), "hex");
   const nativeScript = native.script ?? NATIVE_SPEND_SCRIPT;
   const extraObservers = Array.from(
     { length: native.observer === true ? (native.extraObservers ?? 0) : 0 },
@@ -265,16 +305,32 @@ export const scenarioTransaction = (
       privateKey: key,
       scriptWitnesses: [
         ...(witnessesNative ? [nativeScript] : []),
-        scenarioScript(scenario, spend),
+        spendScript,
         ...(passingSpends.length === 0 ? [] : [PASSING_SCRIPT]),
         ...extraObservers,
         ...mintPolicies(nativeMint, nativeScript).slice(1),
+        ...(plutusPurpose === undefined ? [] : [plutusPurpose.script]),
       ],
       ...(nativeMint === false
         ? {}
         : {
             mintPreimageCbor: nativeMintPreimageCbor(nativeMint, nativeScript),
           }),
+      ...(plutusPurpose?.purpose === "mint"
+        ? {
+            mintPreimageCbor: makeMintPreimageCbor(
+              new Map([
+                [
+                  plutusPurposeHash!,
+                  new Map([[Buffer.from(PLUTUS_MINT_ASSET, "hex"), 1n]]),
+                ],
+              ]),
+            ),
+          }
+        : {}),
+      ...(plutusPurpose?.purpose === "withdraw"
+        ? { requiredObserverItems: [plutusPurposeHash!], networkId: 0n }
+        : {}),
       // A transaction that requires observers names its network.
       ...(native.observer === true
         ? {
@@ -309,8 +365,27 @@ export const scenarioTransaction = (
           ...(redeemerData === undefined ? {} : { data: redeemerData }),
           ...(spend?.exUnits === undefined ? {} : { exUnits: spend.exUnits }),
         },
+        ...(plutusPurpose === undefined
+          ? []
+          : [
+              {
+                tag:
+                  plutusPurpose.purpose === "mint"
+                    ? MidgardRedeemerTag.Mint
+                    : MidgardRedeemerTag.Reward,
+                index: 0n,
+              },
+            ]),
       ]),
-      scriptLanguages: ["PlutusV3"],
+      scriptLanguages: [
+        ...new Set([
+          spendScript.language,
+          ...(passingSpends.length === 0 ? [] : [PASSING_SCRIPT.language]),
+          ...(plutusPurpose === undefined
+            ? []
+            : [plutusPurpose.script.language]),
+        ]),
+      ] as ("PlutusV3" | "MidgardV1")[],
     });
   } finally {
     key.free();

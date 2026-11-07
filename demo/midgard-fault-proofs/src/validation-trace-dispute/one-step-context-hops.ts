@@ -10,8 +10,9 @@
  * fold, or from the redeemer select authenticate, which binds the select
  * (RedeemerSelectionPending), through its initialize (RedeemerPurposePending),
  * hash (RedeemerInitialPending) and finish, or from the finalize
- * authenticate, which binds a Cardano spend's redeemers
- * (FinalizationPending), through the finalize spend; and from the settle to
+ * authenticate, which binds the execution's redeemers
+ * (FinalizationPending), through the finalize it routes the context to
+ * (spend, mint, withdraw or midgard); and from the settle to
  * the award. Every hop is redeemed with the step's witness and evidence
  * (`VerifyContext`), and each successor carries the state its next holder
  * checks, derived from our trace (one-step-context.ts). */
@@ -182,15 +183,21 @@ export const validationTraceContextHop = ({
     const { finalization } = context;
     if (finalization === undefined)
       throw new Error(
-        `validation-trace ${holder} holds a thread whose step finalizes no Cardano spend`,
+        `validation-trace ${holder} holds a thread whose step routes to no driven finalize`,
       );
-    return hop("contextFinalizeSpend", [
+    // The finalize the authenticate routes the staged context to.
+    return hop(finalization.holder, [
       state,
       finalization.redeemerItemsCbor,
       finalization.redeemerCbor,
     ]);
   }
-  if (holder === "contextFinalizeSpend")
+  if (
+    holder === "contextFinalizeSpend" ||
+    holder === "contextFinalizeMint" ||
+    holder === "contextFinalizeWithdraw" ||
+    holder === "contextFinalizeMidgard"
+  )
     // ContextVerified { staged, successor }, from the pending
     // finalization's staged context.
     return hop("contextSettle", [

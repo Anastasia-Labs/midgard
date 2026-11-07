@@ -152,6 +152,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-data-scalar-integer.test.ts",
   "./tests/validation-trace-dispute-one-step-context-assemble.test.ts",
   "./tests/validation-trace-dispute-one-step-context-finalize.test.ts",
+  "./tests/validation-trace-dispute-one-step-context-finalize-mint.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-107.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-108.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-109.test.ts",

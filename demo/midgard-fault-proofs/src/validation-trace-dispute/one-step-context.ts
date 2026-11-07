@@ -55,8 +55,8 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
  * redeemer item chain verifies, the observer authenticate, whose step's
  * opening the observer fold folds, the redeemer select authenticate,
  * whose select the initialize, hash and finish carry on, and the finalize
- * authenticate, whose Cardano spend the finalize spend finalizes
- * (one-step-context-followers.ts).
+ * authenticate, whose step the finalize it routes to (spend, mint, withdraw
+ * or midgard) finalizes (one-step-context-followers.ts).
  */
 export const DRIVEN_CEK_CONTEXT_STAGES = [
   "redeemerBegin",

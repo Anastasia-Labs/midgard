@@ -4,7 +4,6 @@
  * an enrolled successor operator with one that agrees up to the state before
  * a CEK machine step. The runner records each transaction it signs and, when
  * asked, observes the convicted block's removal over the recorded L1. */
-import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import { parseOutRefLabel as outRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -29,11 +28,6 @@ import {
   type ValidationTraceDisputeDeployment,
   type ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
-import type {
-  ScenarioMint,
-  ScenarioNative,
-  ScenarioSigners,
-} from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
@@ -62,6 +56,7 @@ import {
 } from "./validation-trace-dispute-one-step-play.js";
 import {
   failingMaterial,
+  type FailingTransactionShape,
   type Scene,
   setUpScene,
 } from "./validation-trace-dispute-open-scene.js";
@@ -121,17 +116,10 @@ export const defendTwoThreads = async ({
   phases = false,
   scriptSourcesRedeemers = false,
   certifies = false,
-  failingRedeemerData,
-  failingReferenceInputs,
-  failingSigners,
-  failingScript,
-  failingExUnits,
-  failingNativeSpend,
-  failingNativeMint,
-  failingNative,
   wrap,
   releaseDepth,
-}: {
+  ...failing
+}: FailingTransactionShape & {
   readonly withRemoval: boolean;
   /** The operator's last agreed state, or how to pick it from our trace. */
   readonly operatorFrom?:
@@ -157,25 +145,6 @@ export const defendTwoThreads = async ({
   readonly scriptSourcesRedeemers?: boolean;
   /** Whether it publishes the field-preimage certificate policy. */
   readonly certifies?: boolean;
-  /** The failing transaction's redeemer, as Plutus Data CBOR. */
-  readonly failingRedeemerData?: Uint8Array;
-  /** How many reference inputs the failing transaction reads. */
-  readonly failingReferenceInputs?: number;
-  /** Who signs the failing transaction beside its owner. */
-  readonly failingSigners?: ScenarioSigners;
-  /** The script the failing transaction's spend runs. */
-  readonly failingScript?: MidgardVersionedScript;
-  /** The execution units the failing transaction's spend declares. */
-  readonly failingExUnits?: readonly [bigint, bigint];
-  /** Whether the failing transaction also spends an output a native script
-   * holds. */
-  readonly failingNativeSpend?: boolean;
-  /** What the failing transaction also mints, under a native script's
-   * policy and any others. */
-  readonly failingNativeMint?: ScenarioMint;
-  /** The native script the failing transaction witnesses, and what else it
-   * does with it. */
-  readonly failingNative?: ScenarioNative;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
   /** How many blocks below the tip the runner's release-final point stands;
@@ -188,54 +157,39 @@ export const defendTwoThreads = async ({
   // the source verification's window from the failing block's end.
   let oneStep: ValidationTraceOneStepReferences | undefined;
   let certificate: Parameters<typeof oneStepDeployment>[3];
-  const scene = await setUpScene(
-    async (contracts) => {
-      if (certifies)
-        certificate = await publishFieldPreimageCertificate(contracts);
-      oneStep = {
-        ...(await publishOneStepReferences(contracts)),
-        ...(selections
-          ? { cekSelection: await publishSelectionReferences(contracts) }
-          : {}),
-        ...(contexts
-          ? { cekContext: await publishContextReferences(contracts) }
-          : {}),
-        ...(builtins
-          ? { cekBuiltins: await publishBuiltinArmReferences(contracts) }
-          : {}),
-        ...(canonicalDecode
-          ? {
-              canonicalDecode:
-                await publishCanonicalDecodeReferences(contracts),
-            }
-          : {}),
-        ...(phases
-          ? {
-              phases: await publishPhaseReferences(contracts),
-              phaseYields: await publishPhaseYieldReferences(contracts),
-            }
-          : {}),
-        ...(scriptSourcesRedeemers
-          ? {
-              scriptSourcesRedeemers:
-                await publishScriptSourcesRedeemerReferences(contracts),
-            }
-          : {}),
-      };
-    },
-    {
-      ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
-      ...(failingReferenceInputs === undefined
-        ? {}
-        : { failingReferenceInputs }),
-      ...(failingSigners === undefined ? {} : { failingSigners }),
-      ...(failingScript === undefined ? {} : { failingScript }),
-      ...(failingExUnits === undefined ? {} : { failingExUnits }),
-      ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
-      ...(failingNativeMint === undefined ? {} : { failingNativeMint }),
-      ...(failingNative === undefined ? {} : { failingNative }),
-    },
-  );
+  const scene = await setUpScene(async (contracts) => {
+    if (certifies)
+      certificate = await publishFieldPreimageCertificate(contracts);
+    oneStep = {
+      ...(await publishOneStepReferences(contracts)),
+      ...(selections
+        ? { cekSelection: await publishSelectionReferences(contracts) }
+        : {}),
+      ...(contexts
+        ? { cekContext: await publishContextReferences(contracts) }
+        : {}),
+      ...(builtins
+        ? { cekBuiltins: await publishBuiltinArmReferences(contracts) }
+        : {}),
+      ...(canonicalDecode
+        ? {
+            canonicalDecode: await publishCanonicalDecodeReferences(contracts),
+          }
+        : {}),
+      ...(phases
+        ? {
+            phases: await publishPhaseReferences(contracts),
+            phaseYields: await publishPhaseYieldReferences(contracts),
+          }
+        : {}),
+      ...(scriptSourcesRedeemers
+        ? {
+            scriptSourcesRedeemers:
+              await publishScriptSourcesRedeemerReferences(contracts),
+          }
+        : {}),
+    };
+  }, failing);
   const removal =
     recorder === undefined ? undefined : await recordedRemoval(scene, recorder);
   const successor = await enrollSuccessor(

@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowRuntimeFundingPolicy,
@@ -244,16 +245,19 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       const contracts = Object.entries(
         watcherDeploymentAppliedScriptHashes(input.deploymentIdentity),
       ).flatMap(([name, scriptHash]) => {
-        // These deployed names describe proof subjects, not script purposes:
-        // both are spending validators despite their Mint/Withdraw suffixes.
-        const namedProofSpend =
-          name === "fraudProofValueNotPreservedUnionMint" ||
-          name === "fraudProofDoubleWithdraw";
-        if (
-          !namedProofSpend &&
-          (name.endsWith("Mint") || name.endsWith("Withdraw"))
-        )
-          return [];
+        // Custody is held only at spending validators. The manifest member's
+        // purpose decides, not the name: many proof spending validators are
+        // named for the Mint or Withdraw step they prove.
+        const member = (
+          DEPLOYMENT_MEMBERS as Readonly<
+            Record<string, { readonly purpose: string } | undefined>
+          >
+        )[name];
+        if (member === undefined)
+          throw new Error(
+            `deployed contract ${name} has no deployment manifest member`,
+          );
+        if (member.purpose !== "spend") return [];
         const role =
           name === "correctionLockSpend"
             ? ("correction_lock" as const)
@@ -277,6 +281,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
           input.deploymentIdentity.network,
           scriptHashToCredential(scriptHash),
         );
+        // Rebuilds the earlier suffix-filtered roster only to recover old reservations.
         if (!name.endsWith("Mint") && !name.endsWith("Withdraw"))
           priorAddresses.add(address);
         return [{ address, scriptHash, role }];

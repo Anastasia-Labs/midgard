@@ -84,11 +84,15 @@ export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
 /** What the failing transaction carries for a stage's step that the plain
  * fixture's does not reach, or beside it, and the operator's last agreed
  * state on its trace, the first CEK compute step's as on the plain one: a
- * mint, for the mint item stage. */
+ * mint, for the mint item stage; and a passing spend beside a failing
+ * Plutus minting policy, for the finalize mint
+ * (validation-trace-dispute-one-step-context-finalize-drive.ts). */
 export type ContextInstalls = Pick<
   Parameters<typeof defendTwoThreads>[0],
   | "failingNativeMint"
   | "failingNative"
+  | "failingScript"
+  | "failingPlutusPurpose"
   | "failingReferenceInputs"
   | "operatorFrom"
   | "certifies"

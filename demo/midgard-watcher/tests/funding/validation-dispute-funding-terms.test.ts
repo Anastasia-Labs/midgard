@@ -47,17 +47,17 @@ const OUTSIDE_RESOLUTION = new Set([
  * redeemer, each convicted by its own family), the value-and-mint
  * resolution, which a dispute opened on a Plutus execution failure never
  * reaches (decisions/2026-11-05-vtd-missing-phases.md), and the CEK context
- * finalize stages of a script that is not a Cardano spend, which the runner
- * does not drive. */
+ * finalize observe: the finalize authenticate routes a PlutusV3 context
+ * there by purpose kind 3, a receive, but a PlutusV3 receive is rejected at
+ * its execution's selection before any context is built, and the resolver's
+ * `script_purpose_summary_v1(3, ..., False)` derives no script info, so no
+ * honest trace reaches it. */
 const NOT_PLAYED = new Set([
   "validationTraceDisputeCekFinishSemantic",
   "validationTraceDisputeResolveInputsNonMembershipSemantic",
   "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
   "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
-  "validationTraceDisputeCekContextFinalizeMint",
-  "validationTraceDisputeCekContextFinalizeWithdraw",
   "validationTraceDisputeCekContextFinalizeObserve",
-  "validationTraceDisputeCekContextFinalizeMidgard",
 ]);
 
 /** The deployment members the thread moves pay a thread to past the

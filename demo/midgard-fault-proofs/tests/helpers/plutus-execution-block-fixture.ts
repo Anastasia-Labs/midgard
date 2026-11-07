@@ -50,6 +50,7 @@ export {
   extraSignerKeyHash,
   type PlutusExecutionScenario,
   type ScenarioNative,
+  type ScenarioPlutusPurpose,
   scenarioSeedLovelace,
   type ScenarioSigners,
   scenarioTransaction,
@@ -210,6 +211,7 @@ export const plutusExecutionBlockFixture = async (
     BigInt(spent.length),
     nativeMint,
     spendOptions.native,
+    spendOptions.plutusPurpose,
   ).map((output, outputIndex) => ({
     outRef: encodeMidgardSpendInputItem({
       txId: Buffer.from(tx.txId, "hex"),
