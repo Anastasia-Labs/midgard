@@ -79,13 +79,17 @@ for as long as it keeps its own committed transactions, so the answer stays
 array, under `finalityVocabulary.txStatusCommittedMeaning`.
 
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
-`200` for a duplicate, `415` for the wrong media type, `413` for a body that
-exceeds or fails its bounded read, `400` for malformed content, and `409` for a
-transaction-identity conflict. Capacity or admission-writer unavailability
+`200` for a duplicate, `415` for the wrong media type, `411` for a request
+without `Content-Length`, `413` for a body that exceeds or fails its bounded
+read, `400` for malformed content, and `409` for a transaction-identity
+conflict. A `/submit` or `/tx/evaluate` body holds one envelope around at most
+one largest transaction, 295,048 bytes; a larger declared length is refused
+before the body is read. Capacity or admission-writer unavailability
 returns `503`; other operational failures can return `500`. HTTP admission
 is distinct from successful ledger validation or settlement.
 
-A `503` from `/submit` carries `Retry-After: 5`.
+A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
+keeps the connection open for the retry; other refusals of a `POST` close it.
 
 `POST /tx/evaluate` answers `200` with
 `{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal
@@ -188,7 +192,7 @@ sends only those a peer has never seen.
   and user admissions do share the durable admission backlog, so a peer burst
   that fills it makes `/submit` answer `503` until it drains, and the reverse. A peer body of
   unknown length holds only the larger of those two bounds against the node's
-  shared ingress byte budget, never the 64 MiB proof envelope.
+  shared ingress byte budget.
 
 Both take `Content-Type: application/cbor`, a canonical CBOR array of byte
 strings, and two headers: `X-Midgard-Operator-Key`, the sender's 32-byte

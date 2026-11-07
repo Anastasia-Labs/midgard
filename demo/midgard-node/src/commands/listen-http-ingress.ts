@@ -19,6 +19,7 @@ import {
 } from "../services/http-rate-limits.js";
 import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
 import { HTTP_ROUTE_ACTIONS } from "./http/routes.js";
+import { SUBMIT_HTTP_BODY_MAX_BYTES } from "./http/submission-capacity.js";
 import {
   createHttpRateLimiter,
   httpRateKey,
@@ -29,6 +30,18 @@ export { HTTP_PEER_MAX_ENTRIES } from "./listen-http-rate-limit.js";
 export const HTTP_JSON_BODY_MAX_BYTES = 65_536;
 export const HTTP_QUERY_MAX_BYTES = 2_048;
 const RETRY_AFTER = { "retry-after": "5", connection: "close" };
+
+/**
+ * Whether a POST answered with `status` keeps its connection. A client
+ * retries a rate or capacity refusal (429, 503) and a conflict (409), so
+ * those keep it, unless the unread body is larger than one submission: the
+ * server would read such a body to its end before the next request. Every
+ * other error closes the connection.
+ */
+const keepsConnection = (status: number, declaredBytes: number): boolean =>
+  status < 400 ||
+  ((status === 409 || status === 429 || status === 503) &&
+    declaredBytes <= SUBMIT_HTTP_BODY_MAX_BYTES);
 
 /** Socket identity only. Forwarded headers cannot mint additional quotas. */
 export const httpPeerIdentity = (
@@ -222,7 +235,7 @@ export const withHttpIngress = <E, R>(
                 : request.method === "POST" && path !== "/utxos"
                   ? "write"
                   : "read";
-    // Binary bodies: up to the DA proof bound for a submission or an
+    // Binary bodies: one submission envelope for a submission or an
     // evaluation, up to the peer bound for a peer's CBOR list.
     const proofBody = path === "/submit" || path === "/tx/evaluate";
     const maxBody =
@@ -231,13 +244,23 @@ export const withHttpIngress = <E, R>(
         : kind === "peer"
           ? PEER_MAX_BODY_BYTES
           : proofBody
-            ? MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
+            ? SUBMIT_HTTP_BODY_MAX_BYTES
             : HTTP_JSON_BODY_MAX_BYTES;
     const rawLength = request.headers["content-length"];
     if (rawLength !== undefined && !/^(0|[1-9][0-9]*)$/u.test(rawLength))
       return yield* HttpServerResponse.json(
         { error: "Invalid Content-Length" },
         { status: 400, headers: { connection: "close" } },
+      );
+    // A submission declares its length, so it holds only the bytes it sends.
+    if (
+      request.method === "POST" &&
+      path === "/submit" &&
+      rawLength === undefined
+    )
+      return yield* HttpServerResponse.json(
+        { error: "Content-Length is required" },
+        { status: 411, headers: { connection: "close" } },
       );
     const declared = rawLength === undefined ? maxBody : Number(rawLength);
     if (!Number.isSafeInteger(declared) || declared > maxBody)
@@ -274,7 +297,9 @@ export const withHttpIngress = <E, R>(
           status: reservation.status,
           headers: {
             "retry-after": reservation.retryAfterSeconds.toString(),
-            connection: "close",
+            ...(keepsConnection(reservation.status, declared)
+              ? {}
+              : { connection: "close" }),
           },
         },
       );
@@ -296,7 +321,7 @@ export const withHttpIngress = <E, R>(
             ),
       ),
       Effect.map((response) =>
-        request.method === "POST" && response.status >= 400
+        request.method === "POST" && !keepsConnection(response.status, declared)
           ? HttpServerResponse.setHeader(response, "connection", "close")
           : response,
       ),

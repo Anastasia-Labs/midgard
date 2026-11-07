@@ -105,8 +105,10 @@ create a fresh signed request if the operation is still required.
 
 ## Bounds and operator holds
 
-JSON bodies are at most 64 KiB; proof submission/evaluation bodies use the compiled
-64 MiB protocol envelope. A `/peer/txs` body holds at most one largest transaction
+JSON bodies are at most 64 KiB. A proof submission or evaluation body is one V1
+envelope around at most one largest transaction: 295,048 B (the transaction bound
+plus seven envelope bytes); a larger declared length gets 413 before the body is
+read, and a `/submit` without `Content-Length` gets 411. A `/peer/txs` body holds at most one largest transaction
 (about 288 KiB) and a `/peer/inventory` body at most 20,000 ids (about 664 KiB); peer
 bodies are read under an ingress pool of their own, apart from `/submit`'s, and a
 peer body of unknown length holds only the larger of those two bounds against the
@@ -137,7 +139,9 @@ upstream diagnostic text; explicit testing/private profiles retain that text.
 Per-peer and global rates, concurrent requests and weighted bodies are bounded
 before parsing/evaluation. A rate refusal returns 429 with `E_HTTP_RATE_LIMITED`
 and `Retry-After` in seconds until every refusing bucket has a token again; full
-capacity returns 503 with `Retry-After: 5`. Health, readiness and admin routes
+capacity returns 503 with `Retry-After: 5`. A 429, 503 or 409 keeps the
+connection, so the client can retry on it; other refused POSTs (malformed,
+oversized, unauthorized) close it. Health, readiness and admin routes
 have their own client table, concurrency budget and database connections, so
 public traffic cannot refuse them. Classes, defaults and the
 `HTTP_RATE_LIMIT_*` variables are in the docs-site server HTTP API page; public

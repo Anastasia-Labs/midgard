@@ -5,6 +5,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../src/commands/http/submission-capacity.js";
 import { NodeConfig } from "../src/services/config.js";
 
 const loadNodeConfig = () =>
@@ -70,7 +71,7 @@ describe("submit ingress resource configuration", () => {
     vi.unstubAllEnvs();
   });
 
-  it("defaults to four concurrent requests and one full V1 envelope", async () => {
+  it("defaults to four concurrent requests and 64 MiB of bodies in flight", async () => {
     await expect(loadNodeConfig()).resolves.toMatchObject({
       SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
       SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
@@ -91,7 +92,17 @@ describe("submit ingress resource configuration", () => {
     });
   });
 
-  it("rejects non-positive concurrency and a byte cap below one envelope", async () => {
+  it("accepts a byte cap of one largest submission body", async () => {
+    vi.stubEnv(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+      String(SUBMIT_HTTP_BODY_MAX_BYTES),
+    );
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: SUBMIT_HTTP_BODY_MAX_BYTES,
+    });
+  });
+
+  it("rejects non-positive concurrency and a byte cap below one submission body", async () => {
     vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "0");
     await expect(loadNodeConfig()).rejects.toThrow(
       "SUBMIT_INGRESS_MAX_CONCURRENCY must be a positive safe integer",
@@ -100,7 +111,7 @@ describe("submit ingress resource configuration", () => {
     vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "4");
     vi.stubEnv(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
-      String(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes - 1),
+      String(SUBMIT_HTTP_BODY_MAX_BYTES - 1),
     );
     await expect(loadNodeConfig()).rejects.toThrow(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least",

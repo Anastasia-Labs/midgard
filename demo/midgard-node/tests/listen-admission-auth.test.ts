@@ -169,7 +169,6 @@ describe("submit admission helpers", () => {
   it("uses the protocol body bound on real Node HTTP and rejects concurrent or oversized requests", async () => {
     const entered = Effect.runSync(Deferred.make<void>());
     const release = Effect.runSync(Deferred.make<void>());
-    const mebibyte = 1024 * 1024;
     const app = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const reservation = resolveSubmitIngressReservation(
@@ -183,7 +182,7 @@ describe("submit admission helpers", () => {
       }
       const admitted = yield* withSubmitIngressPermit({
         maxConcurrency: 2,
-        maxInFlightBytes: 12 * mebibyte,
+        maxInFlightBytes: SUBMIT_HTTP_BODY_MAX_BYTES + 65_536,
         permitBytes: reservation.permitBytes,
         effect: Effect.gen(function* () {
           const body = yield* Effect.either(
@@ -203,9 +202,9 @@ describe("submit admission helpers", () => {
             status: admitted.value.status,
           });
     }).pipe(
-      // Reproduce @effect/platform-node's 10 MiB server default. The submit
-      // reader must override it to the protocol envelope.
-      HttpIncomingMessage.withMaxBodySize(Option.some(10 * mebibyte)),
+      // A server default below the envelope: the submit reader must
+      // override it to the protocol envelope.
+      HttpIncomingMessage.withMaxBodySize(Option.some(65_536)),
     );
     const handler = Effect.runSync(NodeHttpServer.makeHandler(app));
     const server: Server = createServer(handler);
@@ -215,7 +214,7 @@ describe("submit admission helpers", () => {
       await once(server, "listening");
       const port = (server.address() as AddressInfo).port;
       const url = `http://127.0.0.1:${port.toString()}/submit`;
-      const firstBody = Buffer.alloc(11 * mebibyte, 0x41);
+      const firstBody = Buffer.alloc(SUBMIT_HTTP_BODY_MAX_BYTES, 0x41);
       const first = fetch(url, {
         method: "POST",
         headers: { "x-hold": "true" },
@@ -225,7 +224,7 @@ describe("submit admission helpers", () => {
 
       const denied = await fetch(url, {
         method: "POST",
-        body: Buffer.alloc(2 * mebibyte, 0x42),
+        body: Buffer.alloc(65_537, 0x42),
       });
       expect(denied.status).toBe(503);
       expect(await denied.text()).toBe("capacity");

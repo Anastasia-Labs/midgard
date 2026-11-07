@@ -5,8 +5,14 @@ import { Effect, Option } from "effect";
 
 export const V1_SUBMISSION_MEDIA_TYPE = "application/vnd.midgard.v1+cbor";
 
+/**
+ * The largest `/submit` and `/tx/evaluate` body: the V1 envelope
+ * `[version, txCbor]` around one largest transaction. The array head and the
+ * version take one byte each, and a byte string of more than 65,535 bytes has
+ * a five-byte head.
+ */
 export const SUBMIT_HTTP_BODY_MAX_BYTES =
-  MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes;
+  1 + 1 + 5 + MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes;
 
 type SubmitIngressPool = {
   readonly concurrency: Effect.Semaphore;
@@ -45,9 +51,10 @@ export type SubmitIngressReservation =
     };
 
 /**
- * Resolves the request's resource weight without consuming its body. Requests
- * without a trustworthy length reserve the full protocol envelope, while a
- * declared bounded length reserves its exact byte weight.
+ * Resolves the request's resource weight without consuming its body. A
+ * request without a length (the HTTP ingress refuses one on `/submit`)
+ * reserves the largest envelope, while a declared bounded length reserves its
+ * exact byte weight.
  */
 export const resolveSubmitIngressReservation = (
   contentLength: string | undefined,

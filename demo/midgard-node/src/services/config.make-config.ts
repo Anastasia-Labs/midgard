@@ -8,6 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
+import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../commands/http/submission-capacity.js";
 import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   VERIFICATION_KEY_HASH_HEX_LENGTH,
@@ -300,17 +301,15 @@ const makeConfig = Effect.gen(function* () {
     "SUBMIT_INGRESS_MAX_CONCURRENCY",
     4,
   );
+  // At least one largest submission body must fit.
   const submitIngressMaxInFlightBytes = yield* Config.integer(
     "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
   ).pipe(
     Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
     Config.mapAttempt((value) => {
-      if (
-        !Number.isSafeInteger(value) ||
-        value < MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
-      ) {
+      if (!Number.isSafeInteger(value) || value < SUBMIT_HTTP_BODY_MAX_BYTES) {
         throw new Error(
-          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
+          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${SUBMIT_HTTP_BODY_MAX_BYTES.toString()}`,
         );
       }
       return value;

@@ -71,6 +71,10 @@ export const serve = async (
       ),
     ),
   );
+  let connections = 0;
+  server.on("connection", () => {
+    connections += 1;
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const port = (server.address() as AddressInfo).port;
@@ -91,10 +95,15 @@ export const serve = async (
       method = "GET",
       client,
       headers = {},
+      body,
+      chunked = false,
     }: {
       readonly method?: string;
       readonly client?: string;
       readonly headers?: Record<string, string>;
+      readonly body?: Buffer;
+      /** Sends the body chunked, with no Content-Length. */
+      readonly chunked?: boolean;
     } = {},
   ) =>
     new Promise<Reply>((resolve, reject) => {
@@ -107,7 +116,12 @@ export const serve = async (
           agent,
           headers: {
             ...(method === "POST"
-              ? { "content-type": "application/json", "content-length": "0" }
+              ? {
+                  "content-type": "application/json",
+                  ...(chunked
+                    ? { "transfer-encoding": "chunked" }
+                    : { "content-length": String(body?.length ?? 0) }),
+                }
               : {}),
             ...(client === undefined ? {} : { "x-midgard-client-ip": client }),
             ...headers,
@@ -126,7 +140,7 @@ export const serve = async (
         },
       );
       req.once("error", reject);
-      req.end();
+      req.end(body);
     });
   const statuses = async (
     count: number,
@@ -179,6 +193,8 @@ export const serve = async (
       clock += ms;
     },
     invoked: () => invoked,
+    /** TCP connections the server accepted; the client reuses one when it can. */
+    connections: () => connections,
   };
 };
 
