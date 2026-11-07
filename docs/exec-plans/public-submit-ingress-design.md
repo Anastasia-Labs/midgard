@@ -247,8 +247,8 @@ them all in one writer submission and waits once.
   (`database/l2PeerShare.ts:32-39`), and correction rejects read only the
   status. So mark-accepted and mark-rejected delete the payload row in the
   same transaction. The one reader that breaks is the duplicate check, which
-  compares the stored bytes (`touchDuplicateCount`,
-  `database/txAdmissions.admit-without-byte-quota.ts:74-113`). It compares
+  compared the stored bytes (`touchDuplicateCount` in
+  `txAdmissions.admit-without-byte-quota.ts`, deleted by #872). It compares
   instead the 32-byte full hash, which moves onto the admission row. The full
   hash covers the witnesses, so equal hashes mean equal canonical bytes.
 - **Retention.** Terminal admission rows, now small without their payloads,
