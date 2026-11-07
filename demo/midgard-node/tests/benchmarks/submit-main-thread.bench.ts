@@ -21,9 +21,20 @@
 //
 // SUBMIT_MAIN_THREAD_RATE (default 1000/s), SUBMIT_MAIN_THREAD_SECONDS
 // (default 10) and SUBMIT_MAIN_THREAD_KEEP_ALIVE (share of keep-alive
-// requests, default 0.1) set the load; SUBMIT_MAIN_THREAD_WORKERS (default 2)
-// sizes the check pool, which needs the built dist (`submit-check.js`). The child CLI imports the built
-// workspace packages: build @al-ft/midgard-core first.
+// requests, default 0.1) set the load. A warm-up run of
+// SUBMIT_MAIN_THREAD_WARMUP_SECONDS (default 3) at the same rate, on its own
+// txs, comes first and is left out of the numbers: a cold process (JIT, the
+// first worker batches) can answer its first second's requests late enough
+// that the ingress refuses some for capacity, which says nothing about the
+// steady cost per request. Every request of the measured run must be
+// admitted.
+//
+// SUBMIT_MAIN_THREAD_WORKERS sizes the check pool. By default it is sized
+// from the submit check cost measured below, so the workers run at about
+// half load at RATE: a pool short of the offered rate queues bodies until
+// the ingress refuses for capacity, which measures the workers, not the main
+// thread. The pool needs the built dist (`submit-check.js`). The child CLI
+// imports the built workspace packages: build @al-ft/midgard-core first.
 import { execFile } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -72,7 +83,10 @@ import { createSubmitCheckPool } from "../../src/services/submit-check-pool.js";
 const RATE = Number(process.env.SUBMIT_MAIN_THREAD_RATE ?? "1000");
 const SECONDS = Number(process.env.SUBMIT_MAIN_THREAD_SECONDS ?? "10");
 const KEEP_ALIVE = Number(process.env.SUBMIT_MAIN_THREAD_KEEP_ALIVE ?? "0.1");
-const WORKERS = Number(process.env.SUBMIT_MAIN_THREAD_WORKERS ?? "2");
+const WORKERS_OVERRIDE = process.env.SUBMIT_MAIN_THREAD_WORKERS;
+const WARMUP_SECONDS = Number(
+  process.env.SUBMIT_MAIN_THREAD_WARMUP_SECONDS ?? "3",
+);
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -128,6 +142,14 @@ describe("submit main-thread cost (M2)", () => {
         validCount: Math.ceil(RATE * SECONDS),
         junkMix: parseJunkMix(""),
       });
+      const warmupDirectory = path.join(scratch, "warmup");
+      if (WARMUP_SECONDS > 0)
+        buildCorpus({
+          directory: warmupDirectory,
+          seed: "m2-warmup",
+          validCount: Math.ceil(RATE * WARMUP_SECONDS),
+          junkMix: parseJunkMix(""),
+        });
 
       // The submit check alone, on the same txs.
       const txs = readCorpus(corpusDirectory).requests.map(
@@ -141,6 +163,10 @@ describe("submit main-thread cost (M2)", () => {
         checkSubmittedTransaction(tx, 32_768, RULES, Date.now());
       const checkUsPerTx =
         Number(process.hrtime.bigint() - checkStartedAt) / 1e3 / txs.length;
+      const workers =
+        WORKERS_OVERRIDE === undefined
+          ? Math.max(2, Math.ceil((2 * RATE * checkUsPerTx) / 1e6))
+          : Number(WORKERS_OVERRIDE);
 
       const runtime = ManagedRuntime.make(
         Layer.mergeAll(
@@ -151,7 +177,7 @@ describe("submit main-thread cost (M2)", () => {
         ),
       );
       const checkPool = createSubmitCheckPool({
-        size: WORKERS,
+        size: workers,
         maxQueued: 256,
         maxQueuedBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
         config: submissionCheckConfig(
@@ -164,7 +190,7 @@ describe("submit main-thread cost (M2)", () => {
       });
       // The load starts once every worker has loaded the check.
       const loadDeadline = Date.now() + 60_000;
-      while (checkPool.stats().readyWorkers < WORKERS) {
+      while (checkPool.stats().readyWorkers < workers) {
         if (Date.now() > loadDeadline)
           throw new Error("the submit check workers did not load");
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -185,28 +211,36 @@ describe("submit main-thread cost (M2)", () => {
       await once(server, "listening");
       const { port } = server.address() as AddressInfo;
       const reportFile = path.join(scratch, "report.json");
-      try {
-        const before = sampleProcessCpu(process.pid);
-        await promisify(execFile)(
+      const load = (corpus: string, seconds: number, report: string) =>
+        promisify(execFile)(
           process.execPath,
           [
             path.join(packageRoot, "scripts/submit-ingress-load.mjs"),
             "run",
             "--corpus",
-            corpusDirectory,
+            corpus,
             "--url",
             `http://127.0.0.1:${port.toString()}`,
             "--rate",
             RATE.toString(),
             "--duration",
-            (SECONDS + 5).toString(),
+            (seconds + 5).toString(),
             "--keep-alive-share",
             KEEP_ALIVE.toString(),
             "--report",
-            reportFile,
+            report,
           ],
           { cwd: packageRoot, maxBuffer: 16 * 1024 * 1024 },
         );
+      try {
+        if (WARMUP_SECONDS > 0)
+          await load(
+            warmupDirectory,
+            WARMUP_SECONDS,
+            path.join(scratch, "warmup-report.json"),
+          );
+        const before = sampleProcessCpu(process.pid);
+        await load(corpusDirectory, SECONDS, reportFile);
         const after = sampleProcessCpu(process.pid);
         const report = JSON.parse(fs.readFileSync(reportFile, "utf8")) as {
           load: {
@@ -215,10 +249,29 @@ describe("submit main-thread cost (M2)", () => {
             outcomes: Record<string, number>;
             offeredMs: number;
             notSentWhenDue: number;
+            maxLagRequests: number;
             latencyMs: { p50: number; p99: number };
           };
         };
-        expect(report.load.admitted).toBe(txs.length);
+        // What each run got back, so a refused request can be told apart
+        // from a client burst (`maxLagRequests`: requests the client sent at
+        // once after falling behind).
+        console.log(
+          `SUBMIT_MAIN_THREAD_OUTCOMES ${JSON.stringify({
+            warmup:
+              WARMUP_SECONDS > 0
+                ? (
+                    JSON.parse(
+                      fs.readFileSync(
+                        path.join(scratch, "warmup-report.json"),
+                        "utf8",
+                      ),
+                    ) as { load: unknown }
+                  ).load
+                : undefined,
+            measured: report.load,
+          })}`,
+        );
         const shares = cpuShares(before, after);
         const mainThreadUsPerRequest =
           (shares.mainThreadCores * shares.seconds * 1e6) /
@@ -227,9 +280,11 @@ describe("submit main-thread cost (M2)", () => {
           offeredRatePerSecond: RATE,
           seconds: Number(shares.seconds.toFixed(2)),
           keepAliveShare: KEEP_ALIVE,
-          checkWorkers: WORKERS,
+          warmupSeconds: WARMUP_SECONDS,
+          checkWorkers: workers,
           requests: report.load.completed,
           notSentWhenDue: report.load.notSentWhenDue,
+          maxLagRequests: report.load.maxLagRequests,
           txBytes: txs[0]!.length,
           mainThreadCores: Number(shares.mainThreadCores.toFixed(3)),
           processCores: Number(shares.processCores.toFixed(3)),
@@ -240,6 +295,9 @@ describe("submit main-thread cost (M2)", () => {
         };
         console.table([row]);
         console.log(`SUBMIT_MAIN_THREAD ${JSON.stringify(row)}`);
+        // The numbers are printed first, so a run with refusals still shows
+        // its cost; it fails here.
+        expect(report.load.admitted).toBe(txs.length);
       } finally {
         server.closeAllConnections();
         server.close();
