@@ -12,7 +12,7 @@ import {
   midgardOutRefToCborHex,
   type RejectCode,
   RejectCodes,
-  validatePhaseASingle,
+  validatePhaseASingleDecoded,
 } from "@al-ft/midgard-validation";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -106,22 +106,28 @@ const INGRESS_PHASE_A_REFUSALS: ReadonlySet<RejectCode> = new Set([
 ]);
 
 /**
- * Phase A on the submitted bytes with the validation pool's settings, then
- * expiry. Each refusal is one validation would make, with validation's code,
- * so ingress and validation cannot disagree (design D6). Undefined when the
- * tx passes.
+ * Phase A with the validation pool's settings, then expiry. Phase A runs on
+ * the check's own decode of the bytes and returns what the pool's
+ * `validatePhaseASingle` returns for them. Each refusal is one validation
+ * would make, with validation's code, so ingress and validation cannot
+ * disagree (design D6). Undefined when the tx passes.
  */
 const statelessRefusal = (
-  txId: Buffer,
-  txCbor: Buffer,
-  validityIntervalEnd: bigint | undefined,
+  decoded: Parameters<typeof validatePhaseASingleDecoded>[1],
   rules: SubmittedTxRules,
   nowMs: number,
 ): Extract<SubmittedTxCheck, { ok: false }> | undefined => {
-  let verdict: ReturnType<typeof validatePhaseASingle>;
+  const { txCbor, ledgerTx } = decoded.submittedTx;
+  let verdict: ReturnType<typeof validatePhaseASingleDecoded>;
   try {
-    verdict = validatePhaseASingle(
-      { txId, txCbor, arrivalSeq: 0n, createdAt: new Date(nowMs) },
+    verdict = validatePhaseASingleDecoded(
+      {
+        txId: ledgerTx.txId,
+        txCbor,
+        arrivalSeq: 0n,
+        createdAt: new Date(nowMs),
+      },
+      decoded,
       {
         expectedNetworkId: rules.expectedNetworkId,
         minFeeA: rules.minFeeA,
@@ -157,6 +163,7 @@ const statelessRefusal = (
     rules.slotConfig,
     nowMs - SUBMIT_EXPIRY_CLOCK_MARGIN_MS,
   );
+  const { validityIntervalEnd } = ledgerTx;
   if (
     validityIntervalEnd !== undefined &&
     BigInt(pastSlot) >= validityIntervalEnd
@@ -230,15 +237,9 @@ export const checkSubmittedTransaction = (
       },
       log: [],
     };
-  const { ledgerTx, txCbor } = decoded.submittedTx;
-  const refusal = statelessRefusal(
-    ledgerTx.txId,
-    txCbor,
-    ledgerTx.validityIntervalEnd,
-    rules,
-    nowMs,
-  );
+  const refusal = statelessRefusal(decoded, rules, nowMs);
   if (refusal !== undefined) return refusal;
+  const { ledgerTx, txCbor } = decoded.submittedTx;
   return {
     ok: true,
     normalized: {

@@ -299,8 +299,9 @@ by inventory instead of holding its one request for 30 s).
 
 **Stateless, in the worker. Definitive (done, #886; in the submit check
 workers since #885).** These reuse Phase A
-(`validatePhaseASingle`, midgard-validation
-`phase-a.validate-phase-asingle.ts:243`) and its reject codes, so ingress and
+(`validatePhaseASingleDecoded`, midgard-validation
+`phase-a.validate-phase-asingle.ts`, which returns what the validation pool's
+`validatePhaseASingle` returns) and its reject codes, so ingress and
 validation cannot disagree:
 - Vkey witnesses verify over the body hash (Ed25519 costs about 52 µs each,
   measured).
@@ -311,8 +312,8 @@ validation cannot disagree:
   clock.
 - The network id is correct.
 
-As built (#886), `checkSubmittedTransaction` runs the whole of
-`validatePhaseASingle` with the validation pool's settings and refuses only
+As built (#886), `checkSubmittedTransaction` runs the whole of Phase A with
+the validation pool's settings on its own decode and refuses only
 on `E_INVALID_SIGNATURE`, `E_MIN_FEE` and `E_NETWORK_ID_MISMATCH`, so every
 refusal is one Phase A itself makes; Phase A's other verdicts go on to the
 validation pool. Expiry is Phase B's check (`E_VALIDITY_INTERVAL_MISMATCH`)
@@ -328,8 +329,10 @@ has initialised (bounded at 10 s, under the pool's 30 s start bound); one
 that cannot initialise stops, so its waiting bodies answer 503 and a fresh
 worker is started.
 `/peer/txs` runs the same checks: only the stateful check is skipped for
-peers (below). Phase A takes bytes, not a decoded tx, so the check pays
-Phase A's own decode on top of its own; see the capacity table.
+peers (below). Phase A's decoded entry point (`validatePhaseASingleDecoded`)
+reads the check's decode, so the tx is decoded once. It returns exactly what
+`validatePhaseASingle` returns for the same bytes, and the two share every
+check after the decode; see the capacity table.
 
 **Stateful, on the main thread. Advisory.**
 - Each input must be in the mempool ledger state, or be an output of a pending
@@ -464,7 +467,7 @@ them for a cloud vCPU.
 | HTTP framework, raw Node | ~24 µs/request | ~42k req/s |
 | Hand-off to workers (main thread) | 45 µs one tx per message; 4–6 µs at 16–64 per message | 22k tx/s single, 170–250k batched |
 | Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16) | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
-| Worker checks with D6, Phase A run whole (measured on #886) | 0.46 ms (1/2), 0.76 ms (4/4), 2.1 ms (16/16); Phase A alone is 0.41 ms (1/2) and 1.79 ms (16/16), of which one Ed25519 verify is 55 µs and Phase A's decode and scans up to its fee check 0.32 ms (1/2) | ~17k tx/s (1/2) to ~3.8k tx/s (16/16) on 8 workers; ~2.2k tx/s (1/2) if it ran on the main thread |
+| Worker checks with D6, Phase A on the check's decode (measured on #886) | 0.19 ms (1/2), 0.44 ms (4/4), 1.52 ms (16/16); 0.46, 0.78 and 2.08 ms while Phase A decoded the bytes again. Signatures dominate at 16/16: 16 vkeys × ~55 µs ≈ 0.88 ms is the floor, the rest ~0.64 ms | ~42k tx/s (1/2), ~18k (4/4), ~5.3k (16/16) on 8 workers |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |

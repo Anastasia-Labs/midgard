@@ -41,6 +41,12 @@ type PhaseAConfig = {
 `validatePhaseASingle` runs the checks in order and returns the first rejection it
 encounters. The order matters, later checks assume earlier ones passed.
 
+`validatePhaseASingleDecoded` runs the same checks on a normal transaction the
+caller has already decoded with
+`decodeMidgardSubmittedNativeTxFromCanonicalCbor`, and returns exactly what
+`validatePhaseASingle` returns for those bytes without decoding them again. The
+node's submit check (`checkSubmittedTransaction`) uses it on its own decode.
+
 ### 1. Decode
 
 The queued CBOR is decoded with

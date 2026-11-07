@@ -13,4 +13,5 @@ import "./phase-a.validate-phase-asingle.js";
 export {
   runPhaseAValidation,
   validatePhaseASingle,
+  validatePhaseASingleDecoded,
 } from "./phase-a.validate-phase-asingle.js";

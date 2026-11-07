@@ -22,44 +22,60 @@ const FIXED_ITEM_BYTES: Readonly<Record<number, number>> = {
 };
 
 /**
- * The first `FieldItemWidthIllegal` order refusal CanonicalDecode reaches.
+ * The first `FieldItemWidthIllegal` order refusal CanonicalDecode reaches,
+ * over the nine field preimages in field order (the order of
+ * `deriveMidgardTxFieldPreimages`).
  *
  * The walk visits fields and items in the machine's order. An item the
  * machine refuses or cannot open for its width comes first, so the walk
  * stops there with `undefined` and leaves that verdict to its existing path.
  */
-export const canonicalFieldOrderFault = (
-  bytes: Buffer,
-  sourceKind: "normal" | "forced",
+export const canonicalFieldOrderFaultInPreimages = (
+  fieldPreimages: readonly Uint8Array[],
 ): CanonicalFieldOrderFault | undefined => {
   try {
-    for (const field of deriveMidgardTxFieldPreimages(bytes, sourceKind)) {
-      const items = decodeMidgardFieldPreimage(field.preimageCbor);
+    for (
+      let fieldIndex = 0;
+      fieldIndex < fieldPreimages.length;
+      fieldIndex += 1
+    ) {
+      const items = decodeMidgardFieldPreimage(fieldPreimages[fieldIndex]!);
       for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
         const item = items[itemIndex]!;
-        const fixed = FIXED_ITEM_BYTES[field.fieldIndex];
+        const fixed = FIXED_ITEM_BYTES[fieldIndex];
         if (
           (fixed !== undefined && item.length !== fixed) ||
-          (field.fieldIndex === 5 && item.length === 0) ||
-          canonicalFieldItemEncodedLength(field.fieldIndex, item.length) ===
-            null
+          (fieldIndex === 5 && item.length === 0) ||
+          canonicalFieldItemEncodedLength(fieldIndex, item.length) === null
         )
           return undefined;
         if (
           itemIndex > 0 &&
-          !midgardFieldItemOrderIsValid(
-            field.fieldIndex,
-            items[itemIndex - 1]!,
-            item,
-          )
+          !midgardFieldItemOrderIsValid(fieldIndex, items[itemIndex - 1]!, item)
         )
-          return { fieldIndex: field.fieldIndex, itemIndex };
+          return { fieldIndex, itemIndex };
       }
     }
   } catch {
     return undefined;
   }
   return undefined;
+};
+
+/** `canonicalFieldOrderFaultInPreimages` over the bytes' derived fields. */
+export const canonicalFieldOrderFault = (
+  bytes: Buffer,
+  sourceKind: "normal" | "forced",
+): CanonicalFieldOrderFault | undefined => {
+  let fieldPreimages: readonly Uint8Array[];
+  try {
+    fieldPreimages = deriveMidgardTxFieldPreimages(bytes, sourceKind).map(
+      (field) => field.preimageCbor,
+    );
+  } catch {
+    return undefined;
+  }
+  return canonicalFieldOrderFaultInPreimages(fieldPreimages);
 };
 
 /** CanonicalDecode's encoded length of item `itemIndex`; null is FIWI. */
