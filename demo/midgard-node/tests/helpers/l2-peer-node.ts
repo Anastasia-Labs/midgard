@@ -47,6 +47,7 @@ import {
 } from "../../src/l2-peer/protocol.js";
 import { AdmissionWriterLive } from "../../src/services/admission-writer.js";
 import { Database } from "../../src/services/database.js";
+import type { HttpRateLimitPolicy } from "../../src/services/http-rate-limits.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -157,6 +158,8 @@ export type PeerNodeOptions = {
   readonly config?: Partial<NodeConfigDep>;
   /** The port to serve on; any free one when omitted. */
   readonly port?: number;
+  /** The HTTP ingress rate-limit policy; the public defaults when omitted. */
+  readonly ingressPolicy?: HttpRateLimitPolicy;
 };
 
 export type PostReply = {
@@ -286,7 +289,16 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
     HttpRouter.post("/peer/inventory", postPeerInventoryHandler),
   );
   const handler = await run(
-    NodeHttpServer.makeHandler(withHttpIngress(app, createHttpIngress())),
+    NodeHttpServer.makeHandler(
+      withHttpIngress(
+        app,
+        createHttpIngress(
+          options.ingressPolicy === undefined
+            ? {}
+            : { policy: options.ingressPolicy },
+        ),
+      ),
+    ),
   );
   const server = createServer((request, response) => {
     const path = (request.url ?? "").split("?", 1)[0]!;

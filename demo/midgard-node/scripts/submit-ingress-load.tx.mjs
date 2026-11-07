@@ -72,7 +72,7 @@ export const loadOutRef = (txId, outputIndex) =>
 
 const encodeByteList = (items) => encodeCbor([...items]);
 
-const encodeSignedTx = ({ inputs, outputs, fee }) => {
+const encodeSignedTx = ({ inputs, outputs, fee, signedTxId }) => {
   const spendItems = inputs
     .map((input) => input.outRef)
     .sort((left, right) => Buffer.compare(left, right));
@@ -101,7 +101,7 @@ const encodeSignedTx = ({ inputs, outputs, fee }) => {
     .map((key) =>
       Buffer.from(
         CML.make_vkey_witness(
-          CML.TransactionHash.from_raw_bytes(txId),
+          CML.TransactionHash.from_raw_bytes(signedTxId ?? txId),
           key.privateKey,
         ).to_cbor_bytes(),
       ),
@@ -123,7 +123,8 @@ const encodeSignedTx = ({ inputs, outputs, fee }) => {
  * one output per entry of `outputAddresses`, paying at least
  * `minFeeA * size + minFeeB`. The inputs' value less the fee is split evenly;
  * the first output takes the remainder. `feeOverride` pins the fee instead
- * (junk corpora use it for a fee below the minimum).
+ * (junk corpora use it for a fee below the minimum), and `signedTxId` is an
+ * id the witnesses sign in place of the tx's own (for a bad signature).
  */
 export const buildLoadTx = ({
   inputs,
@@ -131,6 +132,7 @@ export const buildLoadTx = ({
   minFeeA,
   minFeeB,
   feeOverride,
+  signedTxId,
 }) => {
   if (inputs.length === 0) throw new Error("a load tx needs an input");
   if (outputAddresses.length === 0)
@@ -147,7 +149,11 @@ export const buildLoadTx = ({
     const outputs = outputAddresses.map((address, index) =>
       makeLoadOutput(address, index === 0 ? share + remainder : share),
     );
-    return { ...encodeSignedTx({ inputs, outputs, fee }), fee, outputs };
+    return {
+      ...encodeSignedTx({ inputs, outputs, fee, signedTxId }),
+      fee,
+      outputs,
+    };
   };
   if (feeOverride !== undefined) return build(feeOverride);
   let fee = minFeeB;

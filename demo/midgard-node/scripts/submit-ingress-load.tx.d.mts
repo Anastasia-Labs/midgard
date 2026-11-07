@@ -37,6 +37,7 @@ export declare const buildLoadTx: (options: {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly feeOverride?: bigint;
+  readonly signedTxId?: Buffer;
 }) => LoadTx;
 export declare const buildLoadTxShape: (options: {
   readonly inputCount: number;

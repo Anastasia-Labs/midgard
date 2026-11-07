@@ -990,6 +990,56 @@ Notes:
   candidate evaluations, pass/fail reasons, and the metric evidence used for
   bottleneck classification.
 
+## Submit Ingress Load Harness
+
+`scripts/submit-ingress-load.mjs` measures `/submit` apart from block
+production: one tx per request, mostly on new connections, from many client
+addresses, at a fixed offered rate. Build `@al-ft/midgard-core` first
+(`node scripts/contrib.mjs build --package @al-ft/midgard-core` from the
+repository root).
+
+```sh
+# A corpus: valid txs, each spending its own genesis output, plus junk.
+pnpm load:submit-ingress corpus --out /tmp/ingress-corpus --valid 300000 \
+  --junk bad-cbor=0.02,bad-signature=0.02,low-fee=0.02,missing-input=0.02,double-spend=0.02
+
+# A run: offers the corpus, drains admitted rows, writes the report.
+pnpm load:submit-ingress run --corpus /tmp/ingress-corpus \
+  --url http://127.0.0.1:3000 --rate 2000 --duration 60 \
+  --database-url "$NODE_DATABASE_URL" --drain-rate 5000 --node-pid "$NODE_PID" \
+  --report benchmark-results/submit-ingress.json
+```
+
+The report holds the admitted rate, the outcome mix overall and per corpus
+kind, p50/p90/p99 latency, admission rows/s and Postgres tuple and commit
+rates, and the node's main-thread and whole-process CPU (from
+`/proc/<pid>/task/<pid>/stat`; a containerized node's host pid comes from
+`docker inspect -f '{{.State.Pid}}' <container>`). Bad CBOR is refused at
+ingress; the other junk kinds are well-formed txs that validation refuses.
+
+- **Drain stub.** `--drain-rate` (or `drain` on its own) marks queued
+  admissions `rejected` with `E_LOAD_DRAIN_STUB`, oldest first. It takes rows
+  with `SKIP LOCKED`, so the node's own tx-queue processor still claims some;
+  the report counts the stub's share.
+- **Client addresses.** Straight to the node, each request names a synthetic
+  client in `x-midgard-client-ip`; the node honours it only from a socket
+  peer in `HTTP_TRUSTED_PROXY_PEERS`. The nginx edge overwrites that header,
+  so through the edge use `--loopback-sources <n>` with the edge on the host
+  network (Docker's userland port proxy hides source addresses).
+- **Limits.** The defaults cap `write` at 1/s per client and 4/s overall,
+  the edge at 10 r/s per address and 100 r/s overall, and the durable backlog
+  at 10,000 rows (`MAX_DURABLE_ADMISSION_BACKLOG`). A run measures those
+  limits unless they are raised; the report's outcome mix shows which one
+  refused.
+- **Reruns.** Each run sends each request once. Against the same database a
+  second run sees duplicates; use a new `--seed`, a fresh database or
+  `--offset`.
+
+`pnpm bench:submit-main-thread` measures main-thread CPU per `/submit` request
+with the admission writer stubbed (M2 in
+`docs/exec-plans/public-submit-ingress-design.md`), and `pnpm
+bench:submit-check` the submit check alone per tx shape.
+
 ## Nominal Sustained Activity Test
 
 Run a lower-rate sustained generator that:
