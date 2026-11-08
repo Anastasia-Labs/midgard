@@ -19,37 +19,20 @@
  */
 import { Worker } from "node:worker_threads";
 
-import { Effect, Runtime, type Scope } from "effect";
-
-import {
-  type SubmissionCheck,
-  type SubmissionCheckConfig,
-  submissionCheckConfig,
-} from "../commands/http/submission-check.js";
-import {
-  type CheckedSubmittedTx,
-  submittedTxRules,
-} from "../commands/http/transaction-admission.js";
+import type { SubmissionCheckConfig } from "../commands/http/submission-check.js";
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
-import {
-  SUBMIT_CHECK_FULL_HASH_END,
-  SUBMIT_CHECK_TX_ID_BYTES,
-  type SubmitCheckBatch,
-  type SubmitCheckWireResult,
-  type SubmitCheckWorkerInit,
-  type SubmitCheckWorkerMessage,
+import type {
+  SubmitCheckBatch,
+  SubmitCheckWorkerInit,
+  SubmitCheckWorkerMessage,
 } from "../workers/utils/submit-check-protocol.js";
-import { NodeConfig } from "./config.js";
-import { Lucid } from "./lucid.js";
+import {
+  outcomeOf,
+  type SubmitCheckOutcome,
+} from "./submit-check-pool.submit-check-outcome.js";
 import { BUNDLED_WORKER_EXEC_ARGV } from "./validation-pool.bundled-worker-exec-argv.js";
 
-/** What became of one posted body. */
-export type SubmitCheckOutcome =
-  | { readonly kind: "checked"; readonly check: SubmissionCheck }
-  /** Its worker stopped, or the pool closed, before a verdict. */
-  | { readonly kind: "unavailable"; readonly detail: string }
-  /** The check threw on it. */
-  | { readonly kind: "failed"; readonly detail: string };
+export type { SubmitCheckOutcome } from "./submit-check-pool.submit-check-outcome.js";
 
 /** One request's slot in the pool. */
 export type SubmitCheckTicket = {
@@ -110,7 +93,7 @@ export type SubmitCheckPoolOptions = {
 };
 
 const DEFAULT_BATCH_TIMEOUT_MS = 10_000;
-const DEFAULT_START_TIMEOUT_MS = 30_000;
+export const DEFAULT_START_TIMEOUT_MS = 30_000;
 const RESPAWN_BASE_DELAY_MS = 50;
 const RESPAWN_MAX_DELAY_MS = 5_000;
 
@@ -134,37 +117,6 @@ type Slot = {
   inFlightBodies: number;
   readonly batches: Map<number, InFlight>;
   failures: number;
-};
-
-/** The canonical bytes of a result, viewed without a copy. */
-const checkedTx = (
-  result: Extract<SubmitCheckWireResult, { readonly ok: true }>,
-): CheckedSubmittedTx => {
-  const bytes = Buffer.from(result.bytes);
-  return {
-    txId: bytes.subarray(0, SUBMIT_CHECK_TX_ID_BYTES),
-    txIdHex: result.txIdHex,
-    txFullHash: bytes.subarray(
-      SUBMIT_CHECK_TX_ID_BYTES,
-      SUBMIT_CHECK_FULL_HASH_END,
-    ),
-    txCanonicalCbor: bytes.subarray(SUBMIT_CHECK_FULL_HASH_END),
-    spentOutRefs: result.spentOutRefs,
-    producedOutRefs: result.producedOutRefs,
-    fee: result.fee,
-    byteLength: result.byteLength,
-    source: "native",
-  };
-};
-
-const outcomeOf = (result: SubmitCheckWireResult): SubmitCheckOutcome => {
-  if (result.ok === "failed") return { kind: "failed", detail: result.detail };
-  if (result.ok)
-    return {
-      kind: "checked",
-      check: { ok: true, normalized: checkedTx(result) },
-    };
-  return { kind: "checked", check: result };
 };
 
 /** The built worker module beside `dist/`. */
@@ -448,42 +400,3 @@ export const createSubmitCheckPool = ({
     },
   };
 };
-
-/**
- * The node's submit check pool for the enclosing scope, sized by
- * `SUBMIT_INGRESS_WORKER_POOL_SIZE`, `SUBMIT_INGRESS_WORKER_QUEUE` and
- * `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES`, checking with the node's rules
- * (`submittedTxRules`, read once here). Worker stops are logged.
- */
-export const acquireSubmitCheckPool: Effect.Effect<
-  SubmitCheckPool,
-  never,
-  NodeConfig | Lucid | Scope.Scope
-> = Effect.gen(function* () {
-  const config = yield* NodeConfig;
-  const rules = yield* submittedTxRules;
-  const runFork = Runtime.runFork(yield* Effect.runtime<never>());
-  const pool = yield* Effect.acquireRelease(
-    Effect.sync(() =>
-      createSubmitCheckPool({
-        size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
-        maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
-        maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-        config: submissionCheckConfig(config, rules),
-        onWorkerStopped: (_, detail) => {
-          runFork(Effect.logError(`${detail}; replacing it`));
-        },
-      }),
-    ),
-    (pool) => Effect.promise(() => pool.close()),
-  );
-  // /submit is served only after this resolves, so its first requests find a
-  // loaded worker instead of holding ingress slots while workers load. A pool
-  // that loads no worker in time is served anyway: its requests then wait for
-  // a replacement worker or answer 503, as after any worker crash.
-  if (!(yield* Effect.promise(() => pool.whenReady(DEFAULT_START_TIMEOUT_MS))))
-    yield* Effect.logWarning(
-      `no submit check worker loaded within ${DEFAULT_START_TIMEOUT_MS.toString()} ms; serving /submit while workers restart`,
-    );
-  return pool;
-});

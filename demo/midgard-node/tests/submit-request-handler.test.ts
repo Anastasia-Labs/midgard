@@ -13,7 +13,7 @@ import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { withHttpIngress } from "../src/commands/listen-http-ingress.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import { Globals } from "../src/services/index.js";
-import { acquireSubmitCheckPool } from "../src/services/submit-check-pool.js";
+import { acquireSubmitCheckPool } from "../src/services/submit-check-pool.acquire-submit-check-pool.js";
 import {
   makeNativeSubmitTx,
   wrapNativeSubmitTx,
