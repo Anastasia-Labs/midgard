@@ -1,12 +1,15 @@
 /**
  * The submit check pool (design D4): `worker_threads` that run the
- * `/submit` body check (`commands/http/submission-check.ts`) off the main
- * thread, separate from the block-validation pool.
+ * `/submit` body check, and the same check of a peer's bare transactions
+ * (`commands/http/submission-check.ts`), off the main thread, separate from
+ * the block-validation pool.
  *
  * A request reserves a slot before its body is read; the slot holds the
  * body's bytes until the worker's verdict comes back. The pool holds at most
  * `maxQueued` slots and `maxQueuedBytes` bytes, so a full pool refuses at
- * once and nothing waits unbounded.
+ * once and nothing waits unbounded. A peer's transactions
+ * (`checkTransactions`) hold no slot: the peer route's own ingress permit
+ * bounds them.
  *
  * Bodies are sent in groups, their buffers transferred: a group goes out
  * once `FLUSH_AT_ONCE_BODIES` bodies wait, or `FLUSH_DELAY_MS` after the
@@ -74,6 +77,13 @@ export type SubmitCheckPoolStats = {
 export type SubmitCheckPool = {
   /** A slot for a body of `bytes` bytes; `undefined` when the pool is full. */
   readonly reserve: (bytes: number) => SubmitCheckTicket | undefined;
+  /**
+   * Checks bare transactions, as `/peer/txs` carries them, and resolves
+   * their outcomes in order. Takes no slot and copies the bytes.
+   */
+  readonly checkTransactions: (
+    txs: readonly Uint8Array[],
+  ) => Promise<readonly SubmitCheckOutcome[]>;
   readonly stats: () => SubmitCheckPoolStats;
   /**
    * Resolves `true` once a worker has loaded the check, or `false` if none
@@ -111,6 +121,8 @@ const RESPAWN_BASE_DELAY_MS = 50;
 const RESPAWN_MAX_DELAY_MS = 5_000;
 
 type Posted = {
+  /** Whether `buffer` is a bare transaction, not a `/submit` body. */
+  readonly raw: boolean;
   readonly buffer: ArrayBuffer;
   readonly settle: (outcome: SubmitCheckOutcome) => void;
 };
@@ -275,7 +287,12 @@ export const createSubmitCheckPool = ({
     );
   };
 
-  const send = (slot: Slot, worker: Worker, items: readonly Posted[]) => {
+  const send = (
+    slot: Slot,
+    worker: Worker,
+    raw: boolean,
+    items: readonly Posted[],
+  ) => {
     const batch = nextBatch++;
     const timer = setTimeout(
       () =>
@@ -290,8 +307,24 @@ export const createSubmitCheckPool = ({
     slot.batches.set(batch, { items, timer });
     slot.inFlightBodies += items.length;
     const bodies = items.map((item) => item.buffer);
-    const message: SubmitCheckBatch = { batch, bodies };
+    const message: SubmitCheckBatch = { batch, raw, bodies };
     worker.postMessage(message, bodies);
+  };
+
+  /** Sends `items`, all of one kind, to the ready workers `live`. */
+  const dispatch = (live: readonly Slot[], raw: boolean, items: Posted[]) => {
+    if (items.length === 0) return;
+    // The workers holding the fewest bodies take the group: whole when it
+    // is small, else in equal chunks of at least `MIN_CHUNK_BODIES`.
+    const targets = [...live]
+      .sort((a, b) => a.inFlightBodies - b.inFlightBodies)
+      .slice(0, Math.max(1, Math.floor(items.length / MIN_CHUNK_BODIES)));
+    let start = 0;
+    targets.forEach((slot, index) => {
+      const end = Math.round(((index + 1) * items.length) / targets.length);
+      send(slot, slot.worker!, raw, items.slice(start, end));
+      start = end;
+    });
   };
 
   const flush = () => {
@@ -316,17 +349,16 @@ export const createSubmitCheckPool = ({
         });
       return;
     }
-    // The workers holding the fewest bodies take the group: whole when it
-    // is small, else in equal chunks of at least `MIN_CHUNK_BODIES`.
-    const targets = [...live]
-      .sort((a, b) => a.inFlightBodies - b.inFlightBodies)
-      .slice(0, Math.max(1, Math.floor(items.length / MIN_CHUNK_BODIES)));
-    let start = 0;
-    targets.forEach((slot, index) => {
-      const end = Math.round(((index + 1) * items.length) / targets.length);
-      send(slot, slot.worker!, items.slice(start, end));
-      start = end;
-    });
+    dispatch(
+      live,
+      false,
+      items.filter((item) => !item.raw),
+    );
+    dispatch(
+      live,
+      true,
+      items.filter((item) => item.raw),
+    );
   };
 
   const reserve = (bytes: number): SubmitCheckTicket | undefined => {
@@ -364,11 +396,40 @@ export const createSubmitCheckPool = ({
           body.byteOffset === 0 && body.byteLength === body.buffer.byteLength
             ? (body.buffer as ArrayBuffer)
             : new Uint8Array(body).buffer;
-        pending.push({ buffer, settle });
+        pending.push({ raw: false, buffer, settle });
         scheduleFlush();
       },
     };
   };
+
+  const checkTransactions = (
+    txs: readonly Uint8Array[],
+  ): Promise<readonly SubmitCheckOutcome[]> =>
+    new Promise((resolve) => {
+      const outcomes: SubmitCheckOutcome[] = [];
+      let left = txs.length;
+      if (left === 0) resolve(outcomes);
+      txs.forEach((tx, index) => {
+        let settled = false;
+        const settle = (outcome: SubmitCheckOutcome) => {
+          if (settled) return;
+          settled = true;
+          outcomes[index] = outcome;
+          left -= 1;
+          if (left === 0) resolve(outcomes);
+        };
+        if (closed)
+          settle({ kind: "unavailable", detail: "submit check pool closed" });
+        // A copy, so the caller's bytes stay readable.
+        else
+          pending.push({
+            raw: true,
+            buffer: new Uint8Array(tx).buffer,
+            settle,
+          });
+      });
+      scheduleFlush();
+    });
 
   const whenReady = (timeoutMs: number): Promise<boolean> => {
     if (slots.some((slot) => slot.worker !== null && slot.ready))
@@ -389,6 +450,7 @@ export const createSubmitCheckPool = ({
 
   return {
     reserve,
+    checkTransactions,
     whenReady,
     stats: () => ({
       workers: size,

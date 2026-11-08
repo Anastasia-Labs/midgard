@@ -78,9 +78,12 @@ SHA-256 of `"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id ||
 body`. A missing or invalid signature returns 401 and a key outside the
 node's on-chain active operator set returns 403. Transactions pass the
 `/submit` checks, including the stateless validation checks below (a refused
-one counts in `refused`), and are admitted with source `peer`, a body's transactions
-all in one admission-writer submission with one answer. A 503 (full backlog,
-full or stalled writer) can follow the admission of the body's other
+one counts in `refused`), on the same check worker pool as `/submit` and under
+the request's peer permit rather than a `/submit` queue slot, and are admitted
+with source `peer`, a body's transactions all in one admission-writer
+submission with one answer. A 503 (full backlog, full or stalled writer, or
+`Peer tx check is unavailable; retry later` when no check worker answered) can
+follow the admission of the body's other
 transactions; the sender's next inventory offer finds the ones still
 missing. `/peer/inventory` answers the ids the node neither holds pending nor
 has an admission row for.
@@ -217,8 +220,12 @@ and resolved after the answer: the stored version stays, and
 are deleted `ADMISSION_TERMINAL_RETENTION_MS` after the verdict (default one
 hour; `0` keeps them) unless the transaction is still pending or its rejection
 is retained; a resubmission after that is admitted and validated again.
-The `peer` rate class has no global bucket, because it is charged before the
-signature is checked. Targets
+The `peer` rate class (per client: burst 40, 20 a second) has no global
+bucket, because it is charged before the signature is checked. 20 a second
+lets one sending operator forward 5,000 TPS of 4-in/4-out transactions: a full
+`/peer/txs` body holds 347 of them (845 B each), so 14.4 bodies a second, plus
+about 0.75 inventory pages a second (15 pages of 20,000 ids for a 300,000-tx
+backlog, offered on each L1 advance). Targets
 are at most 2 KiB and responses at most 1 MiB.
 Pages use `limit` (default 25, maximum 100) and an exclusive lowercase hex `cursor`;
 `nextCursor` is null at the end. Address-history and block cursors are transaction

@@ -184,6 +184,27 @@ request timeout drops from 30 s to 10 s: 50× the slowest full body, and a
 peer slower than that is treated as stuck (the lane backs off and catches up
 by inventory instead of holding its one request for 30 s).
 
+Those numbers predate Phase A on the check (#886), which made the inline
+check about 0.23 ms per 1/2 tx on the main thread: a full body of 888 then
+blocked the event loop 200–207 ms at the median (up to 608 ms), stalling
+`/submit` for as long, and since every node checks about (N−1)/N of cluster
+traffic this way, the main thread capped the cluster near 4,000 TPS whatever
+N. **Landed (#870 wave 3):** the route checks a body's txs on the submit
+check workers (`SubmitCheckPool.checkTransactions`, a batch flag that skips
+the `/submit` envelope decode), under the request's peer permit rather than
+`/submit`'s queue slots, and still admits the passing txs in one writer
+submission. No worker answering makes the answer 503, and the sender backs
+off and catches up by inventory. Measured on one check worker, 20 full bodies
+of 888 txs of 327 B, one request at a time (two interleaved runs each): the
+event loop blocks 18–21 ms per body at the median (30–33 ms at worst), down
+from 200–207 ms; the lane takes 4,250–4,630 tx/s, up from 3,470–3,750, bound
+by that one worker (888 × 0.19 ms). The `peer` rate class rises to 20
+requests a second, burst 40, so one lane carries 5,000 TPS of 4-in/4-out txs
+(347 per full body: 14.4 bodies a second, plus about 0.75 inventory pages a
+second for a 300,000-tx backlog offered every L1 advance). The check workers
+now carry the whole cluster's traffic, so `SUBMIT_INGRESS_WORKER_POOL_SIZE`
+is sized for cluster TPS.
+
 ### D4 — Checks off the main thread, decoding once
 
 - **Decode once.** The consensus check runs on the decoded value:
@@ -500,7 +521,9 @@ them for a cloud vCPU.
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
 | Effect-router `/submit` handler before #881, main thread (M2 baseline, #871) | ~475–600 µs/request; 688 µs in the same-day rerun beside the row above | ~1.5–2.1k req/s |
 | Peer ingest, before the ack from memory (F12) | one commit wait per tx | ~10 TPS per lane at low load |
-| Peer ingest, batch admit (M3, #882) | one writer submission per body; full body ~80 ms p50, under 0.2 s max | ~6.7–8.2k tx/s per lane (500-tx bodies), ~9.3–9.8k (full bodies); the `peer` rate class caps a lane at ~3.5k tx/s for 327 B txs |
+| Peer ingest, batch admit (M3, #882) | one writer submission per body; full body ~80 ms p50, under 0.2 s max (before #886's Phase A) | ~6.7–8.2k tx/s per lane (500-tx bodies), ~9.3–9.8k (full bodies); the `peer` rate class capped a lane at ~3.5k tx/s for 327 B txs |
+| Peer ingest, checks inline after #886 (M3, #870 wave 3) | full body of 888 blocks the main thread 200–207 ms p50 | 3.5–3.8k tx/s per lane; main thread caps the cluster near 4k TPS |
+| Peer ingest, checks on the submit check workers (M3, #870 wave 3) | main thread 18–21 ms per full body p50; worker 0.19 ms (1/2) to 0.44 ms (4/4) per tx | 4.2–4.6k tx/s per lane on one worker; `peer` rate 20/s carries 5k TPS of 4/4 per lane |
 
 **Binding stage.** Every request carries one tx. With TLS at the edge, a lean
 `/submit` handler and grouped worker hand-off, the main thread spends about
@@ -562,7 +585,7 @@ edge, submit cannot reach 1,000 TPS whatever else lands.
 | --- | --- | --- |
 | M1 | Admission batch latency at 10k/100k/300k backlog and 1M+ terminal rows, after the F10 fix, with asynchronous commit and the validation and block writers running against the same WAL (`fsync=on`) | Backlog size, shard count, shed threshold |
 | M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on the Effect handler done: 475–600 µs, 688 µs on 2026-11-07; lean handler with the check on the main thread, #881: 506 µs, 467 µs all keep-alive; check on two workers, #885: 335 µs, 288 µs all keep-alive; bodies grouped per worker message, all keep-alive: 114–119 µs at 3k req/s, 82–87 µs at 5k) | Whether D8 is needed for 5,000 TPS |
-| M3 | Peer ingest TPS per lane, before and after batch admit | Peer body size and forward timeout |
+| M3 | Peer ingest TPS per lane, before and after batch admit (done, #882); before and after checks on the workers (done, #870 wave 3: 3.5–3.8k → 4.2–4.6k tx/s on one worker, event loop 200–207 → 18–21 ms per full body) | Peer body size, forward timeout, peer rate |
 | M7 | Gauge drift at 5,000 TPS with the 500 ms refresh | Whether the shedding signal is exact enough |
 
 Done: decode-once cost (D4), worker hand-off (D4), the insert statement

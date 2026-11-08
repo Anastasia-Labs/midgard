@@ -211,11 +211,14 @@ until every refusing bucket has a token again, and this body:
 | `batch`    | `POST /tx-status`                        | 4, 1/s                     | none                           | 16, 4/s                |
 | `write`    | `POST /submit`                           | 100, 20/s                  | 1,000, 200/s                   | none                   |
 | `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | none                           | 8, 1/s                 |
-| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 8, 4/s                     | none                           | none                   |
+| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 40, 20/s                   | none                           | none                   |
 
 A submission is charged one token per transaction; `/submit` carries one.
 Submissions have no global bucket: load shedding on queue state bounds the
-total, not a fixed rate.
+total, not a fixed rate. The `peer` rate lets one sending operator forward
+5,000 TPS of 4-in/4-out transactions: a full `/peer/txs` body holds 347 of
+them, so 14.4 bodies a second, and inventory offers add under one request a
+second.
 
 A client is an IPv4 address or an IPv6 /56, and its prefix the IPv4 /24 or the
 IPv6 /48 around it. The prefix bucket keeps the holder of a whole /48 from
@@ -273,11 +276,13 @@ L1 advance, while it still has pending transactions, offers their ids and
 sends only those a peer has never seen.
 
 - `POST /peer/txs` takes a batch of transactions and admits each with source
-  `peer` after the same checks as `POST /submit`, including the stateless
+  `peer` after the same checks as `POST /submit`, run on the same check
+  worker pool (the main thread only waits for them), including the stateless
   validation checks (a refused one counts in `refused`), the whole body in one
   admission-writer submission. It answers
   `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
-  when the admission backlog is full or its writes are stalled; the rest of
+  when the admission backlog is full, its writes are stalled or no check
+  worker answered (`Peer tx check is unavailable; retry later`); the rest of
   the body may already be admitted then, and the sender's next inventory offer
   finds what is still missing. Like
   `/submit`, it counts a transaction as admitted before it is stored. Only a
@@ -289,7 +294,8 @@ sends only those a peer has never seen.
 - A `/peer/txs` body holds at most one largest transaction (about 288 KiB) and
   a `/peer/inventory` body at most 20,000 ids. Peer bodies are read under an
   ingress pool of their own (`SUBMIT_INGRESS_MAX_CONCURRENCY` requests deep),
-  so peers and users never hold each other's slots; a full pool answers `503`. Peer
+  so peers and users never hold each other's slots; a full pool answers `503`.
+  A body's checks run under its peer slot, not the `/submit` check queue. Peer
   and user admissions do share the durable admission backlog, so a peer burst
   that fills 80 % of it makes `/submit` answer `503` until it drains, while
   user traffic alone never fills the last 20 % that peers keep. A peer body of

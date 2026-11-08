@@ -2,8 +2,9 @@
  * `POST /peer/txs` and `POST /peer/inventory`: other active operators share
  * the L2 transactions they accepted. Each request must be signed by an
  * operator key in this node's on-chain active operator set. A peer's
- * transactions pass the same checks as `/submit` and are admitted with
- * source `peer`; this node's own validation decides their fate.
+ * transactions pass the same checks as `/submit`, on the submit check
+ * workers, and are admitted with source `peer`; this node's own validation
+ * decides their fate.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -32,6 +33,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../../services/index.js";
+import type { SubmitCheckPool } from "../../services/submit-check-pool.js";
 import { failWith500 } from "../listen-response.js";
 import { admitCheckedTransactions } from "./checked-transaction-admission.js";
 import {
@@ -40,11 +42,7 @@ import {
   withSubmitIngressPermit,
 } from "./submission-capacity.js";
 import { SUBMIT_RETRY_AFTER_SECONDS } from "./submit.js";
-import {
-  type CheckedSubmittedTx,
-  checkSubmittedTransaction,
-  submittedTxRules,
-} from "./transaction-admission.js";
+import { type CheckedSubmittedTx } from "./transaction-admission.js";
 
 const UNAVAILABLE = {
   status: 503,
@@ -56,12 +54,20 @@ const refuse = (status: number, error: string) =>
 
 /**
  * Reads a peer body of at most `maxBytes` while holding a permit of the
- * peer ingress pool, then checks its signature and the signer's place in the
- * active set. The pool is apart from `/submit`'s and as many requests deep,
- * so peers and users never hold each other's permits. Gives the body and the
- * signer's key hash; left is the refusal.
+ * peer ingress pool, checks its signature and the signer's place in the
+ * active set, and runs `use` on the body and the signer's key hash, still
+ * holding the permit. The pool is apart from `/submit`'s and as many
+ * requests deep, so peers and users never hold each other's permits. The
+ * failure is the refusal.
  */
-const readAuthorizedBody = (path: string, maxBytes: number) =>
+const withAuthorizedBody = <A, R>(
+  path: string,
+  maxBytes: number,
+  use: (body: {
+    readonly bytes: Buffer;
+    readonly keyHash: string;
+  }) => Effect.Effect<A, HttpServerResponse.HttpServerResponse, R>,
+) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -79,50 +85,54 @@ const readAuthorizedBody = (path: string, maxBytes: number) =>
           ? refuse(413, `Peer body exceeds ${maxBytes.toString()} bytes`)
           : refuse(400, "Invalid Content-Length"),
       );
-    const body = yield* withSubmitIngressPermit({
+    const contracts = yield* MidgardContracts;
+    const globals = yield* Globals;
+    const result = yield* withSubmitIngressPermit({
       pool: "peer",
       maxConcurrency: nodeConfig.SUBMIT_INGRESS_MAX_CONCURRENCY,
       maxInFlightBytes:
         nodeConfig.SUBMIT_INGRESS_MAX_CONCURRENCY * PEER_MAX_BODY_BYTES,
       permitBytes: reservation.permitBytes,
-      effect: HttpIncomingMessage.withMaxBodySize(
-        request.arrayBuffer,
-        Option.some(maxBytes),
-      ).pipe(
-        Effect.mapError(() =>
-          refuse(413, `Peer body exceeds ${maxBytes.toString()} bytes`),
-        ),
-      ),
+      effect: Effect.gen(function* () {
+        const body = yield* HttpIncomingMessage.withMaxBodySize(
+          request.arrayBuffer,
+          Option.some(maxBytes),
+        ).pipe(
+          Effect.mapError(() =>
+            refuse(413, `Peer body exceeds ${maxBytes.toString()} bytes`),
+          ),
+        );
+        const bytes = Buffer.from(body);
+        const keyHash = verifyPeerRequest(
+          request.headers,
+          path,
+          contracts.hubOracle.policyId,
+          bytes,
+        );
+        if (keyHash === null)
+          return yield* Effect.fail(
+            refuse(401, "Missing or invalid peer signature"),
+          );
+        const published = yield* Ref.get(globals.OPERATOR_SET);
+        const active =
+          published?.set.active.some(
+            (node) => SDK.nodeKeyHex(node.datum.key)?.toLowerCase() === keyHash,
+          ) ?? false;
+        if (!active)
+          return yield* Effect.fail(
+            refuse(403, "Signer is not an active operator here"),
+          );
+        return yield* use({ bytes, keyHash });
+      }),
     });
-    if (Option.isNone(body))
+    if (Option.isNone(result))
       return yield* Effect.fail(
         HttpServerResponse.unsafeJson(
           { error: "Peer ingress capacity is full; retry later" },
           UNAVAILABLE,
         ),
       );
-    const bytes = Buffer.from(body.value);
-    const contracts = yield* MidgardContracts;
-    const keyHash = verifyPeerRequest(
-      request.headers,
-      path,
-      contracts.hubOracle.policyId,
-      bytes,
-    );
-    if (keyHash === null)
-      return yield* Effect.fail(
-        refuse(401, "Missing or invalid peer signature"),
-      );
-    const published = yield* Ref.get((yield* Globals).OPERATOR_SET);
-    const active =
-      published?.set.active.some(
-        (node) => SDK.nodeKeyHex(node.datum.key)?.toLowerCase() === keyHash,
-      ) ?? false;
-    if (!active)
-      return yield* Effect.fail(
-        refuse(403, "Signer is not an active operator here"),
-      );
-    return { bytes, keyHash };
+    return result.value;
   });
 
 const decodeOr400 = (bytes: Uint8Array, maxItems: number) =>
@@ -139,42 +149,54 @@ const CAPACITY_REFUSALS = {
 } as const;
 
 /**
- * Admits a signed batch of transactions, in body order: every tx is checked,
+ * Admits a signed batch of transactions, in body order: every tx is checked
+ * on the submit check workers (`checkPool`; the main thread only waits),
  * then all that pass go to the admission writer in one submission, and the
- * route answers once they are in its pending set (design D3, D9).
+ * route answers once they are in its pending set (design D3, D9). The
+ * checks run under the request's peer permit, not `/submit`'s queue slots.
  *
  * A tx refused for capacity (backlog or writer full, writes stalled, writer
- * stopping) makes the answer a 503: the sender backs off and its catch-up
- * offers the txs again, and the inventory leaves out the ones admitted here.
+ * stopping), or left unchecked because no check worker answered, makes the
+ * answer a 503: the sender backs off and its catch-up offers the txs again,
+ * and the inventory leaves out the ones admitted here.
  */
 export const postPeerTxsHandler = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
+  checkPool: SubmitCheckPool,
 ) =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
-    const { bytes, keyHash } = yield* readAuthorizedBody(
+    const { txs, outcomes, keyHash } = yield* withAuthorizedBody(
       PEER_TXS_PATH,
       PEER_TXS_MAX_BODY_BYTES,
+      ({ bytes, keyHash }) =>
+        Effect.gen(function* () {
+          const txs = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
+          // A peer's tx passes the same stateless checks as a user's (design
+          // D6): they read no ledger, so a tx the sender admitted passes them
+          // here too. The permit stays held until every verdict is in.
+          const outcomes = yield* Effect.promise(() =>
+            checkPool.checkTransactions(txs),
+          ).pipe(Effect.uninterruptible);
+          return { txs, outcomes, keyHash };
+        }),
     );
-    const txs = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
-    // A peer's tx passes the same stateless checks as a user's (design D6):
-    // they read no ledger, so a tx the sender admitted passes them here too.
-    const rules = yield* submittedTxRules;
-    const nowMs = Date.now();
     let refused = 0;
     let verifierUnavailable = false;
+    let checkUnavailable = false;
     const candidates: CheckedSubmittedTx[] = [];
-    for (const tx of txs) {
-      const checked = checkSubmittedTransaction(
-        tx,
-        nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-        rules,
-        nowMs,
-      );
-      if (checked.ok) candidates.push(checked.normalized);
+    for (const [index, outcome] of outcomes.entries()) {
+      if (outcome.kind === "unavailable") checkUnavailable = true;
+      else if (outcome.kind === "failed") {
+        // The check threw on this tx: it is not admitted here, and the
+        // rest of the body still is.
+        refused++;
+        yield* Effect.logError(
+          `peer tx ${index.toString()} of ${txs.length.toString()} from ${keyHash}: check failed: ${outcome.detail}`,
+        );
+      } else if (outcome.check.ok) candidates.push(outcome.check.normalized);
       else {
         refused++;
-        if (checked.status === 503) verifierUnavailable = true;
+        if (outcome.check.status === 503) verifierUnavailable = true;
       }
     }
     const results = yield* admitCheckedTransactions({
@@ -215,6 +237,11 @@ export const postPeerTxsHandler = <R>(
         { error: CAPACITY_REFUSALS[capacityRefusal] },
         UNAVAILABLE,
       );
+    if (checkUnavailable)
+      return yield* HttpServerResponse.json(
+        { error: "Peer tx check is unavailable; retry later" },
+        UNAVAILABLE,
+      );
     if (verifierUnavailable)
       return yield* HttpServerResponse.json(
         { error: "Signature verification is unavailable" },
@@ -225,9 +252,10 @@ export const postPeerTxsHandler = <R>(
 
 /** Answers which of the offered transaction ids this node has never seen. */
 export const postPeerInventoryHandler = Effect.gen(function* () {
-  const { bytes } = yield* readAuthorizedBody(
+  const { bytes } = yield* withAuthorizedBody(
     PEER_INVENTORY_PATH,
     PEER_INVENTORY_MAX_BODY_BYTES,
+    Effect.succeed,
   );
   const ids = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
   if (ids.some((id) => id.length !== 32))

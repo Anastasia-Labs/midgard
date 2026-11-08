@@ -1,6 +1,7 @@
 /**
- * A submit check worker: runs `checkSubmissionBody`, the same module the
- * HTTP handler imports, on each body of a batch and answers the verdicts in
+ * A submit check worker: runs `checkSubmissionBody` (a `/submit` body) or
+ * `checkTransactionBytes` (a peer's bare transaction), from the module the
+ * HTTP handlers import, on each body of a batch and answers the verdicts in
  * body order. An accepted tx comes back as one transferred buffer holding
  * its tx id, full hash and canonical bytes, so the main thread neither
  * decodes nor hashes it.
@@ -9,7 +10,10 @@ import { parentPort, workerData } from "node:worker_threads";
 
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 
-import { checkSubmissionBody } from "../commands/http/submission-check.js";
+import {
+  checkSubmissionBody,
+  checkTransactionBytes,
+} from "../commands/http/submission-check.js";
 import {
   SUBMIT_CHECK_FULL_HASH_END,
   SUBMIT_CHECK_TX_ID_BYTES,
@@ -28,12 +32,13 @@ if (port === null) {
 const { config } = workerData as SubmitCheckWorkerInit;
 
 const checkOne = (
+  check: typeof checkSubmissionBody,
   body: ArrayBuffer,
   nowMs: number,
   transfer: ArrayBuffer[],
 ): SubmitCheckWireResult => {
   try {
-    const checked = checkSubmissionBody(new Uint8Array(body), config, nowMs);
+    const checked = check(new Uint8Array(body), config, nowMs);
     if (!checked.ok)
       return {
         ok: false,
@@ -68,11 +73,12 @@ const checkOne = (
   }
 };
 
-port.on("message", ({ batch, bodies }: SubmitCheckBatch) => {
+port.on("message", ({ batch, raw, bodies }: SubmitCheckBatch) => {
   const transfer: ArrayBuffer[] = [];
   // This worker's own clock, read once per batch, for the expiry check.
   const nowMs = Date.now();
-  const results = bodies.map((body) => checkOne(body, nowMs, transfer));
+  const check = raw ? checkTransactionBytes : checkSubmissionBody;
+  const results = bodies.map((body) => checkOne(check, body, nowMs, transfer));
   const reply: SubmitCheckBatchResult = { batch, results };
   port.postMessage(reply, transfer);
 });

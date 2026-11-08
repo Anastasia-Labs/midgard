@@ -298,17 +298,16 @@ export const runNode = (
         ),
       );
 
-    const publishHttp = startup
-      .publish(
-        buildListenRouter(),
-        Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
-          makeSubmitRequestHandler({
-            wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
-            checkPool,
-          }),
-        ),
-      )
-      .pipe(Effect.provide(admissionAsDefaultSqlLayer));
+    // `/submit` and `/peer/txs` check on one pool.
+    const publishHttp = Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
+      startup.publish(
+        buildListenRouter(checkPool),
+        makeSubmitRequestHandler({
+          wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
+          checkPool,
+        }),
+      ),
+    ).pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
     // Membership comes from the follower's operator-set hook; no duty waits
     // on its first run. A removed operator's duties are held through

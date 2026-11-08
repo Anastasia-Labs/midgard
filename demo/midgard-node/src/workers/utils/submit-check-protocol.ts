@@ -13,10 +13,16 @@ export type SubmitCheckWorkerInit = {
   readonly config: SubmissionCheckConfig;
 };
 
-/** One message to a worker: the bodies of the requests of one tick. */
+/** One message to a worker: bodies posted together. */
 export type SubmitCheckBatch = {
   readonly batch: number;
-  /** One request body each, transferred. */
+  /**
+   * Whether each body is a bare transaction (a peer's), checked by
+   * `checkTransactionBytes`, rather than a `/submit` body, checked by
+   * `checkSubmissionBody`.
+   */
+  readonly raw: boolean;
+  /** One body each, transferred. */
   readonly bodies: readonly ArrayBuffer[];
 };
 

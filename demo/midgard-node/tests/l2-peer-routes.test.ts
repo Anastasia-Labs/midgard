@@ -200,6 +200,26 @@ describe("POST /peer/txs and /peer/inventory", () => {
       expect(stored.get(tx.txId.toString("hex"))).toBe("peer");
   });
 
+  it("checks on the submit check workers: with none answering it answers 503 and writes nothing", async () => {
+    // The node's only check worker exits as it starts, again and again.
+    const node = await startReceiver({
+      checkWorker: new URL("data:text/javascript,process.exit(3)"),
+    });
+    const tx = await buildTransfer(user, [funding], 10_000_000n, node.config);
+    const reply = await signedPeerPost(
+      node.url,
+      PEER_TXS_PATH,
+      [tx.txCbor],
+      sender.signer,
+    );
+    expect(reply.status).toBe(503);
+    expect(reply.headers.get("retry-after")).toBe("5");
+    expect(JSON.parse(reply.body.toString())).toEqual({
+      error: "Peer tx check is unavailable; retry later",
+    });
+    expect(await node.admissions()).toEqual([]);
+  });
+
   it("answers an inventory with exactly the ids it has never seen", async () => {
     const { parent, child } = await buildChain();
     const node = await startReceiver();

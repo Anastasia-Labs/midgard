@@ -59,6 +59,13 @@ export type HttpRateLimitPolicy = {
  * Public-profile defaults. A submission is charged per transaction: 20 a
  * second per client with a burst of 100, and 200 a second per /24 or /48. It
  * has no global bucket; load shedding on queue state is the global bound.
+ *
+ * `peer` (20 a second, burst 40) lets one forwarding lane carry 5,000 TPS of
+ * 4-in/4-out txs: a full body holds 347 of them (845 B each), so 14.4 bodies
+ * a second, plus about 0.75 inventory pages a second (15 pages of 20,000 ids
+ * for a 300,000-tx backlog, offered on each L1 advance, about 20 s). 16 a
+ * second would leave 5 % headroom, and a refusal makes the lane back off and
+ * catch up by inventory, costing more requests.
  */
 export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
   enabled: true,
@@ -81,6 +88,6 @@ export const DEFAULT_HTTP_RATE_LIMITS: HttpRateLimitPolicy = {
       peer: { burst: 2, perSecond: 0.2 },
       global: { burst: 8, perSecond: 1 },
     },
-    peer: { peer: { burst: 8, perSecond: 4 } },
+    peer: { peer: { burst: 40, perSecond: 20 } },
   },
 };

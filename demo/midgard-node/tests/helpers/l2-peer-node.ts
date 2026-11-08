@@ -171,6 +171,8 @@ export type PeerNodeOptions = {
   readonly port?: number;
   /** The HTTP ingress rate-limit policy; the public defaults when omitted. */
   readonly ingressPolicy?: HttpRateLimitPolicy;
+  /** The check worker module; the production one, loaded first, if omitted. */
+  readonly checkWorker?: URL;
 };
 
 export type PostReply = {
@@ -294,10 +296,20 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
   // The backlog's input claims, as the node rebuilds them before serving.
   await run(rebuildAdmissionInputClaimsOnStartup());
 
+  // One check worker per node, shared by `/submit` and `/peer/txs`.
+  const checkPool = createSubmitCheckPool({
+    size: 1,
+    maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
+    maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+    config: submissionCheckConfig(config, await run(submittedTxRules)),
+    ...(options.checkWorker && { entry: options.checkWorker }),
+  });
+  if (options.checkWorker === undefined && !(await checkPool.whenReady(30_000)))
+    throw new Error("the submit check worker did not load");
   // Every request this node's server receives, by path.
   const received = new Map<string, number>();
   const app = HttpRouter.empty.pipe(
-    HttpRouter.post("/peer/txs", postPeerTxsHandler(Effect.void)),
+    HttpRouter.post("/peer/txs", postPeerTxsHandler(Effect.void, checkPool)),
     HttpRouter.post("/peer/inventory", postPeerInventoryHandler),
   );
   // `/submit` is the raw handler, as in the node; both charge one ingress.
@@ -309,16 +321,6 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
   const handler = await run(
     NodeHttpServer.makeHandler(withHttpIngress(app, ingress)),
   );
-  // One check worker per node: a test runs several nodes in one process.
-  const checkPool = createSubmitCheckPool({
-    size: 1,
-    maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
-    maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
-    config: submissionCheckConfig(config, await run(submittedTxRules)),
-  });
-  // As the node does before serving /submit.
-  if (!(await checkPool.whenReady(30_000)))
-    throw new Error("the submit check worker did not load");
   const submitHandler = await run(
     makeSubmitRequestHandler({
       wakeTxQueueProcessor: Effect.void,

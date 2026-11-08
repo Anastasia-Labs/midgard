@@ -1,9 +1,10 @@
 /**
  * The check of one `/submit` body: the V1 proof-submission envelope, then
- * `checkSubmittedTransaction` on the transaction it carries. A pure function
- * of the body bytes, `SubmissionCheckConfig` (plain data) and the clock, so
- * the submit check workers (`workers/submit-check.ts`) import and run this
- * module as it is, each reading its own clock.
+ * `checkSubmittedTransaction` on the transaction it carries; and the same
+ * check of a bare transaction, as a peer sends it (`/peer/txs`). Pure
+ * functions of the bytes, `SubmissionCheckConfig` (plain data) and the
+ * clock, so the submit check workers (`workers/submit-check.ts`) import and
+ * run this module as it is, each reading its own clock.
  */
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 
@@ -44,6 +45,30 @@ export const submissionCheckConfig = (
   rules,
 });
 
+/** `checkSubmittedTransaction` on bare transaction bytes, with its reason. */
+export const checkTransactionBytes = (
+  transactionCbor: Uint8Array,
+  config: SubmissionCheckConfig,
+  nowMs: number,
+): SubmissionCheck => {
+  const checked = checkSubmittedTransaction(
+    transactionCbor,
+    config.maxSubmitTxCborBytes,
+    config.rules,
+    nowMs,
+  );
+  if (checked.ok) return checked;
+  // A 503 is the only verdict that is not about the tx: the signature
+  // verifier could not answer, and the sender retries.
+  return {
+    ...checked,
+    reason:
+      checked.status === 503
+        ? "signature_verifier_unavailable"
+        : "invalid_transaction",
+  };
+};
+
 export const checkSubmissionBody = (
   body: Uint8Array,
   config: SubmissionCheckConfig,
@@ -61,20 +86,5 @@ export const checkSubmissionBody = (
       log: ["malformed V1 submission envelope"],
     };
   }
-  const checked = checkSubmittedTransaction(
-    transactionCbor,
-    config.maxSubmitTxCborBytes,
-    config.rules,
-    nowMs,
-  );
-  if (checked.ok) return checked;
-  // A 503 is the only verdict that is not about the tx: the signature
-  // verifier could not answer, and the sender retries.
-  return {
-    ...checked,
-    reason:
-      checked.status === 503
-        ? "signature_verifier_unavailable"
-        : "invalid_transaction",
-  };
+  return checkTransactionBytes(transactionCbor, config, nowMs);
 };

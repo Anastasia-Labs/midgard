@@ -10,7 +10,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardProofSubmission,
+  encodeMidgardProofSubmission,
+} from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -22,6 +25,7 @@ import {
 } from "../scripts/submit-ingress-load.corpus.mjs";
 import {
   checkSubmissionBody,
+  checkTransactionBytes,
   type SubmissionCheck,
   type SubmissionCheckConfig,
 } from "../src/commands/http/submission-check.js";
@@ -154,6 +158,57 @@ describe("submit check pool", () => {
       "malformed_envelope:400",
     ]);
     expect(pool.stats()).toMatchObject({ held: 0, heldBytes: 0, restarts: 0 });
+  });
+
+  it("gives a peer's bare txs the production worker's verdicts exactly as the check run inline, holding no /submit slot", async () => {
+    const corpus = path.join(scratch, "raw-corpus");
+    buildCorpus({
+      directory: corpus,
+      seed: "submit-check-pool-raw",
+      validCount: 24,
+      junkMix: parseJunkMix(
+        "bad-signature=0.1,low-fee=0.1,missing-input=0.1,bad-cbor=0.1,double-spend=0.1",
+      ),
+      keyCount: 8,
+    });
+    // The tx each body carries; a body that is no envelope, as it is.
+    const txs = [
+      ...readCorpus(corpus).requests.map(({ body }) => {
+        try {
+          return Buffer.from(
+            decodeMidgardProofSubmission(Buffer.from(body)).transactionCbor,
+          );
+        } catch {
+          return Buffer.from(body);
+        }
+      }),
+      Buffer.from("ff00ff", "hex"),
+      Buffer.from("8200", "hex"),
+      Buffer.alloc(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes + 1),
+    ];
+    // The pool's only /submit slot is taken.
+    const pool = startPool({ maxQueued: 1 });
+    expect(pool.reserve(1)).toBeDefined();
+    expect(pool.reserve(1)).toBeUndefined();
+    const outcomes = await pool.checkTransactions(txs);
+    await ledgerEd25519SignatureReady();
+    const kinds = new Set<string>();
+    expect(outcomes).toHaveLength(txs.length);
+    outcomes.forEach((outcome, index) => {
+      expect(outcome.kind).toBe("checked");
+      if (outcome.kind !== "checked") return;
+      const inline = checkTransactionBytes(txs[index]!, config, Date.now());
+      expect(plain(outcome.check)).toEqual(plain(inline));
+      kinds.add(inline.ok ? "accepted" : `${inline.reason}:${inline.status}`);
+    });
+    expect([...kinds].sort()).toEqual([
+      "accepted",
+      "invalid_transaction:400",
+      "invalid_transaction:413",
+    ]);
+    // The caller's bytes are copied, not transferred.
+    expect(txs.at(-2)).toEqual(Buffer.from("8200", "hex"));
+    expect(pool.stats()).toMatchObject({ held: 1, restarts: 0 });
   });
 
   it("sends bodies posted together to a worker as one message", async () => {
@@ -338,15 +393,22 @@ describe("submit check pool", () => {
     expect(await waiting).toBe(false);
   });
 
-  it("answers every held body as unavailable when it closes", async () => {
+  it("answers every held body and peer tx as unavailable when it closes", async () => {
     const pool = startPool({ size: 1, entry: cannedWorker });
     const pending = check(pool, Buffer.from("hang"));
     await new Promise((resolve) => setTimeout(resolve, 100));
+    const peerTxs = pool.checkTransactions([Buffer.from("hang")]);
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await pool.close();
-    expect(await pending).toEqual({
+    const closedOutcome = {
       kind: "unavailable",
       detail: "submit check pool closed",
-    });
+    };
+    expect(await pending).toEqual(closedOutcome);
+    expect(await peerTxs).toEqual([closedOutcome]);
     expect(pool.reserve(1)).toBeUndefined();
+    expect(await pool.checkTransactions([Buffer.from([1])])).toEqual([
+      closedOutcome,
+    ]);
   });
 });

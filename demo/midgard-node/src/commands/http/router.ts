@@ -24,6 +24,7 @@ import {
   WriteBehind,
 } from "../../services/index.js";
 import { type IntentJournal } from "../../services/intent-journal.js";
+import type { SubmitCheckPool } from "../../services/submit-check-pool.js";
 import {
   getAdminSessionHandler,
   withAdminAccess,
@@ -71,6 +72,7 @@ import {
   UTXO_ENDPOINT,
   UTXOS_ENDPOINT,
 } from "./routes.js";
+import { SUBMIT_RETRY_AFTER_SECONDS } from "./submit.js";
 import {
   getTxHandler,
   getTxStatusHandler,
@@ -83,11 +85,25 @@ import {
   postUtxosByTxOutRefsHandler,
 } from "./utxo-reads.js";
 
+/** `/peer/txs` of a router built without a check pool. */
+const peerTxsWithoutChecks = Effect.succeed(
+  HttpServerResponse.unsafeJson(
+    { error: "Peer tx check is unavailable; retry later" },
+    {
+      status: 503,
+      headers: { "retry-after": SUBMIT_RETRY_AFTER_SECONDS.toString() },
+    },
+  ),
+);
+
 /**
  * Builds the HTTP router for the node command server: every route except
- * `POST /submit`, which the raw handler in `submit.ts` answers.
+ * `POST /submit`, which the raw handler in `submit.ts` answers. `/peer/txs`
+ * checks on `checkPool`, and answers 503 without one.
  */
-export const buildListenRouter = (): Effect.Effect<
+export const buildListenRouter = (
+  checkPool?: SubmitCheckPool,
+): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
@@ -188,7 +204,9 @@ export const buildListenRouter = (): Effect.Effect<
       HttpRouter.post(`/${TX_EVALUATE_ENDPOINT}`, postTxEvaluateHandler),
       HttpRouter.post(
         PEER_TXS_PATH,
-        postPeerTxsHandler(requestTxQueueProcessorWakeup),
+        checkPool === undefined
+          ? peerTxsWithoutChecks
+          : postPeerTxsHandler(requestTxQueueProcessorWakeup, checkPool),
       ),
       HttpRouter.post(PEER_INVENTORY_PATH, postPeerInventoryHandler),
     )

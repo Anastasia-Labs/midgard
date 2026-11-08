@@ -44,10 +44,11 @@ import {
 import { Globals, MidgardContracts, NodeConfig } from "../services/index.js";
 
 /**
- * A full body (about 890 small txs) is checked and admitted in under 0.2 s
- * (M3, 2026-11-07), so 10 s is 50x headroom; a peer slower than that is
- * stuck, and the lane backs off and catches up by inventory. Below the
- * receiver's own 30 s request bound (`listen-public-http`).
+ * A full body (about 890 small txs) is checked and admitted in about 0.25 s
+ * at worst on a single check worker (M3, 2026-11-08), so 10 s is 40x
+ * headroom; a peer slower than that is stuck, and the lane backs off and
+ * catches up by inventory. Below the receiver's own 30 s request bound
+ * (`listen-public-http`).
  */
 const PEER_REQUEST_TIMEOUT_MS = 10_000;
 
