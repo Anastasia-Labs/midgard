@@ -4,6 +4,7 @@ import "./globals.globals.js";
 import "./globals.with-l1-control-plane-held.js";
 export { Globals, withL1ControlPlane } from "./globals.globals.js";
 export {
+  type AdmissionBacklogGauge,
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,

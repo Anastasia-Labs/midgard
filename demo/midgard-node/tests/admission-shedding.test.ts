@@ -9,7 +9,7 @@ import "./utils.js";
 import { createHash } from "node:crypto";
 
 import { Emulator, generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
-import { Ref } from "effect";
+import { MutableRef } from "effect";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -79,15 +79,13 @@ const loadTx = (node: PeerNode, label: string) => {
  */
 const setBacklog = async (node: PeerNode, rows: bigint, bytes: bigint) => {
   await node.admissions();
-  await node.run(
-    Ref.update(node.globals.ADMISSION_BACKLOG_GAUGE, (gauge) => ({
-      ...gauge,
-      ADMISSION_BACKLOG_BASE: rows,
-      ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
-      ADMISSION_BACKLOG_BYTES_BASE: bytes,
-      ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
-    })),
-  );
+  MutableRef.update(node.globals.ADMISSION_BACKLOG_GAUGE, (gauge) => ({
+    ...gauge,
+    ADMISSION_BACKLOG_BASE: rows,
+    ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
+    ADMISSION_BACKLOG_BYTES_BASE: bytes,
+    ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
+  }));
 };
 
 const offer = (node: PeerNode, tx: { readonly txCbor: Uint8Array }) =>

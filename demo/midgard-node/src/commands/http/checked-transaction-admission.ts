@@ -5,13 +5,12 @@
  * it once `transaction-admission.ts`'s checks passed.
  */
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { Effect, Either, Metric, Option, Runtime } from "effect";
+import { Effect, Either, Option, Runtime } from "effect";
 
 import { TxAdmissionsDB } from "../../database/index.js";
 import {
-  commitAdmissionBacklogSlot,
-  releaseAdmissionBacklogSlot,
-  reserveAdmissionBacklogSlot,
+  settleAdmissionBacklogSlot,
+  tryReserveAdmissionBacklogSlot,
 } from "../../fibers/index.js";
 import { admissionBacklogLimitsFor } from "../../services/config.admission-backlog.js";
 import {
@@ -77,7 +76,7 @@ type BatchEntry =
       readonly _tag: "Reserved";
       readonly request: AdmissionWriteRequest;
       /** Gives back the backlog slot and any input claims this call took. */
-      readonly release: Effect.Effect<void>;
+      readonly release: () => void;
     };
 
 /** One tx's admission answer. */
@@ -124,7 +123,9 @@ export const makeCheckedTransactionsAdmitter = <R>(
   Effect.gen(function* () {
     const admissionWriter = yield* AdmissionWriter;
     const nodeConfig = yield* NodeConfig;
-    const claims = (yield* Globals).ADMISSION_INPUT_CLAIMS;
+    const globals = yield* Globals;
+    const claims = globals.ADMISSION_INPUT_CLAIMS;
+    const backlog = globals.ADMISSION_BACKLOG_GAUGE;
     const cache = yield* Effect.serviceOption(MempoolLedgerCache);
     const runtime = yield* Effect.runtime<Globals | R>();
     const runSync = Runtime.runSync(runtime);
@@ -164,16 +165,14 @@ export const makeCheckedTransactionsAdmitter = <R>(
         }
         // Load shedding (D5): an anonymous tx is refused from memory once
         // the backlog passes its share; a peer tx only once it is full.
-        const reservation = runSync(
-          reserveAdmissionBacklogSlot({
-            ...limits[submitSource],
-            bytes: normalized.txCanonicalCbor.length,
-          }),
-        );
+        // Plain synchronous calls, not an Effect per tx: this runs for every
+        // request on the main thread.
+        const reservation = tryReserveAdmissionBacklogSlot(backlog, {
+          ...limits[submitSource],
+          bytes: normalized.txCanonicalCbor.length,
+        });
         if (!reservation.reserved) {
-          runSync(
-            Metric.increment(TxAdmissionsDB.admissionBacklogRejectCounter),
-          );
+          TxAdmissionsDB.admissionBacklogRejectCounter.unsafeUpdate(1n, []);
           entries.push({
             _tag: "Answered",
             result: Either.left(
@@ -193,13 +192,11 @@ export const makeCheckedTransactionsAdmitter = <R>(
         // Set when this call took the claims, so a write that stores no
         // new row gives them back; claims a pending copy holds stay with it.
         let claimed = false;
-        const release = Effect.zipRight(
-          Effect.sync(() => {
-            if (claimed) claims.release(normalized.txIdHex);
-            claimed = false;
-          }),
-          releaseAdmissionBacklogSlot(reservation),
-        ).pipe(Effect.provide(runtime.context));
+        const release = () => {
+          if (claimed) claims.release(normalized.txIdHex);
+          claimed = false;
+          settleAdmissionBacklogSlot(backlog, reservation, false);
+        };
         entries.push({
           _tag: "Reserved",
           release,
@@ -209,11 +206,11 @@ export const makeCheckedTransactionsAdmitter = <R>(
             txFullHash,
             submitSource,
             settle: (written) =>
-              written
-                ? commitAdmissionBacklogSlot(reservation).pipe(
-                    Effect.provide(runtime.context),
-                  )
-                : release,
+              Effect.sync(() =>
+                written
+                  ? settleAdmissionBacklogSlot(backlog, reservation, true)
+                  : release(),
+              ),
             wakeOnCommit,
             claimInputs: () => {
               const outcome = claims.take({
@@ -247,7 +244,7 @@ export const makeCheckedTransactionsAdmitter = <R>(
         const result: AdmissionResult = written[next++]!;
         // The writer owns the reservation only after answering `new`.
         if (!(Either.isRight(result) && result.right.kind === "new"))
-          runSync(entry.release);
+          entry.release();
         return result;
       });
     };

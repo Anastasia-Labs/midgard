@@ -491,6 +491,7 @@ them for a cloud vCPU.
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
 | Admission writer, main thread, before the linger: 2 lanes, ~11 rows per batch (`bench:admission-writer`, 5,000 TPS, 400 B txs) | 162–168 µs (three runs) | ~6k tx/s on the main thread alone |
 | Admission writer, main thread, 10 ms linger and 1 lane: ~100 rows per batch, ~50 commits/s (same bench, interleaved with the row above) | 86–101 µs (three runs); 67 µs at 10,000 TPS (~250 rows per batch) | ~10–12k tx/s on the main thread alone |
+| Admission writer, main thread, also with the backlog slot reserved and settled synchronously, not as an Effect per tx (same bench, five runs interleaved with five of the same code without it, which measured 77–84 µs) | 64–70 µs | ~14–15k tx/s on the main thread alone |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |
 | Lean raw-Node `/submit` handler, main thread, check on two workers (M2, #885) | 335 µs/request at 10 % keep-alive; 288 µs with every connection kept alive | ~3.0k req/s |
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
@@ -505,8 +506,9 @@ and 6–10k on a cloud core (an estimate M2 does not bear out yet: with the
 check on workers the lean handler measures 335 µs per request, and 288 µs
 when every connection is kept alive, so connection setup does not explain
 the gap; where the rest goes needs a profile). M2 stubs the writer: the
-admission writer's own main-thread cost (86–101 µs per tx at 5,000 TPS with
-the linger, `bench:admission-writer`) comes on top. With TLS in the node and one
+admission writer's own main-thread cost (64–70 µs per tx at 5,000 TPS with
+the linger and the synchronous backlog reservation, `bench:admission-writer`)
+comes on top. With TLS in the node and one
 connection per wallet request, the handshake alone is 390–570 µs, which
 caps the node near 1,000 TPS on a cloud core. The workers need about 1.3
 cores at 5,000 TPS. Once F10 is fixed, the database has about 7× headroom.

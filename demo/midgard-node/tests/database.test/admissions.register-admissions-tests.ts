@@ -18,6 +18,7 @@ import {
   Duration,
   Effect,
   Fiber,
+  MutableRef,
   Option,
   Ref,
   Schedule,
@@ -875,7 +876,7 @@ export const registerAdmissionsTests = () => {
             ).toBe(storedVariantCbor.length);
 
             const globals = yield* Globals;
-            yield* Ref.set(globals.ADMISSION_BACKLOG_GAUGE, {
+            MutableRef.set(globals.ADMISSION_BACKLOG_GAUGE, {
               ADMISSION_BACKLOG_BASE: 2n,
               ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
@@ -938,7 +939,7 @@ export const registerAdmissionsTests = () => {
               ...testConfig,
               MAX_DURABLE_ADMISSION_BACKLOG: 100,
             };
-            yield* Ref.set(globals.ADMISSION_BACKLOG_GAUGE, {
+            MutableRef.set(globals.ADMISSION_BACKLOG_GAUGE, {
               ADMISSION_BACKLOG_BASE: 0n,
               ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
@@ -1069,8 +1070,8 @@ export const registerAdmissionsTests = () => {
         isolatedDb(
           Effect.gen(function* () {
             const originalGlobals = yield* Globals;
-            const backlogGauge = yield* SubscriptionRef.make(
-              yield* Ref.get(originalGlobals.ADMISSION_BACKLOG_GAUGE),
+            const backlogGauge = MutableRef.make(
+              MutableRef.get(originalGlobals.ADMISSION_BACKLOG_GAUGE),
             );
             const globals = Globals.make({
               ...originalGlobals,
@@ -1166,15 +1167,19 @@ export const registerAdmissionsTests = () => {
               yield* Deferred.succeed(unfreeze, undefined);
               // Observe the refresh's real PostgreSQL completion, not elapsed
               // virtual time: TestClock cannot make the COUNT query finish.
-              yield* backlogGauge.changes.pipe(
-                Stream.filter(
-                  (state) =>
-                    state.ADMISSION_BACKLOG_BASE === 0n &&
-                    state.ADMISSION_BACKLOG_LOCAL_DELTA === 0n &&
-                    state.ADMISSION_BACKLOG_IN_FLIGHT === 0n,
-                ),
-                Stream.runHead,
-              );
+              for (let attempt = 0; attempt < 1_000; attempt += 1) {
+                const state = MutableRef.get(backlogGauge);
+                if (
+                  state.ADMISSION_BACKLOG_BASE === 0n &&
+                  state.ADMISSION_BACKLOG_LOCAL_DELTA === 0n &&
+                  state.ADMISSION_BACKLOG_IN_FLIGHT === 0n
+                ) {
+                  break;
+                }
+                yield* Effect.promise(
+                  () => new Promise<void>((resolve) => setTimeout(resolve, 10)),
+                );
+              }
               expect(
                 yield* readAdmissionBacklogGauge.pipe(
                   Effect.provideService(Globals, globals),

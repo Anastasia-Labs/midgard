@@ -1,10 +1,14 @@
-import { Cause, Duration, Effect, Metric, Ref, Schedule } from "effect";
+import { Cause, Duration, Effect, Metric, MutableRef, Schedule } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import { Database } from "../services/database.js";
-import { AdmissionBacklogGaugeState, Globals } from "../services/globals.js";
+import {
+  type AdmissionBacklogGauge,
+  AdmissionBacklogGaugeState,
+  Globals,
+} from "../services/globals.js";
 import {
   ADMISSION_BACKLOG_UNREAD,
   retryStartupStep,
@@ -116,7 +120,7 @@ export const readAdmissionBacklogSize: Effect.Effect<
   Globals
 > = Effect.gen(function* () {
   const globals = yield* Globals;
-  const state = yield* Ref.get(globals.ADMISSION_BACKLOG_GAUGE);
+  const state = MutableRef.get(globals.ADMISSION_BACKLOG_GAUGE);
   yield* reportGaugeMetrics(state);
   return { rows: stateValue(state), bytes: stateBytes(state) };
 });
@@ -130,7 +134,7 @@ export const noteLocalAdmit = (
 ): Effect.Effect<void, never, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const state = yield* Ref.updateAndGet(
+    const state = MutableRef.updateAndGet(
       globals.ADMISSION_BACKLOG_GAUGE,
       (current) => ({
         ...current,
@@ -144,89 +148,101 @@ export const noteLocalAdmit = (
   });
 
 /**
- * Atomically checks both process-local caps and reserves one row of `bytes`.
- * Distinct concurrent submit fibers therefore cannot all observe the same
- * stale value. A refusal costs no database work.
+ * Checks both process-local caps and reserves one row of `bytes`, in one
+ * synchronous step: no other admission can read the gauge between the check
+ * and the reservation. A refusal costs no database work and changes nothing.
  */
-export const reserveAdmissionBacklogSlot = ({
-  maxRows,
-  maxBytes,
-  bytes,
-}: AdmissionBacklogLimits & {
-  readonly bytes: number;
-}): Effect.Effect<AdmissionBacklogReservation, never, Globals> =>
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    const rowLimit = BigInt(Math.max(0, maxRows));
-    const byteLimit = BigInt(Math.max(0, maxBytes));
-    const requested = BigInt(bytes);
-    return yield* Ref.modify(
-      globals.ADMISSION_BACKLOG_GAUGE,
-      (current): [AdmissionBacklogReservation, AdmissionBacklogGaugeState] => {
-        const rows = stateValue(current);
-        if (rows >= rowLimit) {
-          return [
-            {
-              reserved: false,
-              unit: "rows",
-              backlog: rows,
-              maxBacklog: rowLimit,
-            },
-            current,
-          ];
-        }
-        const backlogBytes = stateBytes(current);
-        if (backlogBytes + requested > byteLimit) {
-          return [
-            {
-              reserved: false,
-              unit: "bytes",
-              backlog: backlogBytes,
-              maxBacklog: byteLimit,
-            },
-            current,
-          ];
-        }
-        return [
-          { reserved: true, bytes: requested },
-          {
-            ...current,
-            ADMISSION_BACKLOG_IN_FLIGHT:
-              current.ADMISSION_BACKLOG_IN_FLIGHT + 1n,
-            ADMISSION_BACKLOG_BYTES_IN_FLIGHT:
-              current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT + requested,
-          },
-        ];
-      },
-    );
+export const tryReserveAdmissionBacklogSlot = (
+  gauge: AdmissionBacklogGauge,
+  {
+    maxRows,
+    maxBytes,
+    bytes,
+  }: AdmissionBacklogLimits & {
+    readonly bytes: number;
+  },
+): AdmissionBacklogReservation => {
+  const current = MutableRef.get(gauge);
+  const rowLimit = BigInt(Math.max(0, maxRows));
+  const rows = stateValue(current);
+  if (rows >= rowLimit) {
+    return {
+      reserved: false,
+      unit: "rows",
+      backlog: rows,
+      maxBacklog: rowLimit,
+    };
+  }
+  const byteLimit = BigInt(Math.max(0, maxBytes));
+  const requested = BigInt(bytes);
+  const backlogBytes = stateBytes(current);
+  if (backlogBytes + requested > byteLimit) {
+    return {
+      reserved: false,
+      unit: "bytes",
+      backlog: backlogBytes,
+      maxBacklog: byteLimit,
+    };
+  }
+  MutableRef.set(gauge, {
+    ...current,
+    ADMISSION_BACKLOG_IN_FLIGHT: current.ADMISSION_BACKLOG_IN_FLIGHT + 1n,
+    ADMISSION_BACKLOG_BYTES_IN_FLIGHT:
+      current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT + requested,
   });
+  return { reserved: true, bytes: requested };
+};
+
+/**
+ * Ends a reservation: a written row (`written`) counts until the next
+ * refresh, an unwritten one (a duplicate or a refusal) gives its slot back.
+ * Ending more reservations than were taken throws.
+ */
+export const settleAdmissionBacklogSlot = (
+  gauge: AdmissionBacklogGauge,
+  slot: AdmissionBacklogSlot,
+  written: boolean,
+): void => {
+  const current = MutableRef.get(gauge);
+  if (
+    current.ADMISSION_BACKLOG_IN_FLIGHT <= 0n ||
+    current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT < slot.bytes
+  ) {
+    throw new Error("Admission backlog reservation underflow");
+  }
+  MutableRef.set(gauge, {
+    ...current,
+    ADMISSION_BACKLOG_LOCAL_DELTA:
+      current.ADMISSION_BACKLOG_LOCAL_DELTA + (written ? 1n : 0n),
+    ADMISSION_BACKLOG_IN_FLIGHT: current.ADMISSION_BACKLOG_IN_FLIGHT - 1n,
+    ADMISSION_BACKLOG_BYTES_LOCAL_DELTA:
+      current.ADMISSION_BACKLOG_BYTES_LOCAL_DELTA + (written ? slot.bytes : 0n),
+    ADMISSION_BACKLOG_BYTES_IN_FLIGHT:
+      current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT - slot.bytes,
+  });
+};
+
+/** `tryReserveAdmissionBacklogSlot` on the node's gauge. */
+export const reserveAdmissionBacklogSlot = (
+  request: AdmissionBacklogLimits & { readonly bytes: number },
+): Effect.Effect<AdmissionBacklogReservation, never, Globals> =>
+  Effect.map(Globals, (globals) =>
+    tryReserveAdmissionBacklogSlot(globals.ADMISSION_BACKLOG_GAUGE, request),
+  );
 
 const finishAdmissionBacklogReservation = (
   slot: AdmissionBacklogSlot,
-  admitted: boolean,
+  written: boolean,
 ): Effect.Effect<void, never, Globals> =>
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    yield* Ref.update(globals.ADMISSION_BACKLOG_GAUGE, (current) => {
-      if (
-        current.ADMISSION_BACKLOG_IN_FLIGHT <= 0n ||
-        current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT < slot.bytes
-      ) {
-        throw new Error("Admission backlog reservation underflow");
-      }
-      return {
-        ...current,
-        ADMISSION_BACKLOG_LOCAL_DELTA:
-          current.ADMISSION_BACKLOG_LOCAL_DELTA + (admitted ? 1n : 0n),
-        ADMISSION_BACKLOG_IN_FLIGHT: current.ADMISSION_BACKLOG_IN_FLIGHT - 1n,
-        ADMISSION_BACKLOG_BYTES_LOCAL_DELTA:
-          current.ADMISSION_BACKLOG_BYTES_LOCAL_DELTA +
-          (admitted ? slot.bytes : 0n),
-        ADMISSION_BACKLOG_BYTES_IN_FLIGHT:
-          current.ADMISSION_BACKLOG_BYTES_IN_FLIGHT - slot.bytes,
-      };
-    });
-  });
+  Effect.flatMap(Globals, (globals) =>
+    Effect.sync(() =>
+      settleAdmissionBacklogSlot(
+        globals.ADMISSION_BACKLOG_GAUGE,
+        slot,
+        written,
+      ),
+    ),
+  );
 
 /** The reserved row was written: it now counts until the next refresh. */
 export const commitAdmissionBacklogSlot = (
@@ -264,14 +280,14 @@ export const refreshAdmissionBacklogGauge: Effect.Effect<
   // deltas. The live count can include some of those admits too, which only
   // makes the gauge conservatively high until the next refresh; it can never
   // under-count them.
-  yield* Ref.update(
+  MutableRef.update(
     globals.ADMISSION_BACKLOG_GAUGE,
     beginAdmissionBacklogRefresh,
   );
 
   const live = yield* TxAdmissionsDB.countBacklogSize;
   const refreshedAtMs = Date.now();
-  const state = yield* Ref.updateAndGet(
+  const state = MutableRef.updateAndGet(
     globals.ADMISSION_BACKLOG_GAUGE,
     (current) => completeAdmissionBacklogRefresh(current, live, refreshedAtMs),
   );

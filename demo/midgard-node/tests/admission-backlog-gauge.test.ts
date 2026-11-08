@@ -6,7 +6,7 @@ import {
   Effect,
   Exit,
   Fiber,
-  Ref,
+  MutableRef,
   Schedule,
 } from "effect";
 import { describe, expect, it } from "vitest";
@@ -69,7 +69,7 @@ describe("admission backlog gauge", () => {
     const value = await Effect.runPromise(
       Effect.gen(function* () {
         const globals = yield* Globals;
-        yield* Ref.set(globals.ADMISSION_BACKLOG_GAUGE, {
+        MutableRef.set(globals.ADMISSION_BACKLOG_GAUGE, {
           ADMISSION_BACKLOG_BASE: 5n,
           ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
           ADMISSION_BACKLOG_IN_FLIGHT: 0n,
@@ -270,7 +270,7 @@ describe("admission backlog gauge", () => {
           let committedLocal = 0n;
           let inFlight = 0n;
           let committedAtRefreshStart = 0n;
-          yield* Ref.set(globals.ADMISSION_BACKLOG_GAUGE, {
+          MutableRef.set(globals.ADMISSION_BACKLOG_GAUGE, {
             ADMISSION_BACKLOG_BASE: initialBase,
             ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
             ADMISSION_BACKLOG_IN_FLIGHT: 0n,
@@ -307,13 +307,13 @@ describe("admission backlog gauge", () => {
                 break;
               case "begin-refresh":
                 committedAtRefreshStart = committedLocal;
-                yield* Ref.update(
+                MutableRef.update(
                   globals.ADMISSION_BACKLOG_GAUGE,
                   beginAdmissionBacklogRefresh,
                 );
                 break;
               case "complete-refresh":
-                yield* Ref.update(globals.ADMISSION_BACKLOG_GAUGE, (current) =>
+                MutableRef.update(globals.ADMISSION_BACKLOG_GAUGE, (current) =>
                   completeAdmissionBacklogRefresh(
                     current,
                     {
@@ -388,7 +388,7 @@ describe("admission backlog gauge", () => {
             Effect.either,
           );
         }
-        expect(yield* Ref.get(globals.ADMISSION_BACKLOG_GAUGE)).toMatchObject({
+        expect(MutableRef.get(globals.ADMISSION_BACKLOG_GAUGE)).toMatchObject({
           ADMISSION_BACKLOG_LOCAL_DELTA: 1n,
           ADMISSION_BACKLOG_IN_FLIGHT: 0n,
           ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 10n,

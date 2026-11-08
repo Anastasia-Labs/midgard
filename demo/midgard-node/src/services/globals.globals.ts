@@ -1,5 +1,5 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
+import { Deferred, Effect, MutableRef, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
@@ -28,6 +28,7 @@ import {
   type L1ControlPlaneActivity,
 } from "./globals.l1-control-plane.js";
 import {
+  type AdmissionBacklogGauge,
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,
@@ -191,11 +192,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       undefined,
     );
 
-    // Hybrid durable-admission backlog gauge. These fields share one Ref so a
-    // refresh can roll the local delta into the base without exposing an
+    // Hybrid durable-admission backlog gauge. These fields share one cell so
+    // a refresh can roll the local delta into the base without exposing an
     // under-counted intermediate state to concurrent submit handlers.
-    const ADMISSION_BACKLOG_GAUGE = yield* Ref.make<AdmissionBacklogGaugeState>(
-      {
+    const ADMISSION_BACKLOG_GAUGE: AdmissionBacklogGauge =
+      MutableRef.make<AdmissionBacklogGaugeState>({
         ADMISSION_BACKLOG_BASE: 0n,
         ADMISSION_BACKLOG_LOCAL_DELTA: 0n,
         ADMISSION_BACKLOG_IN_FLIGHT: 0n,
@@ -203,8 +204,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         ADMISSION_BACKLOG_BYTES_LOCAL_DELTA: 0n,
         ADMISSION_BACKLOG_BYTES_IN_FLIGHT: 0n,
         ADMISSION_BACKLOG_REFRESHED_AT: 0,
-      },
-    );
+      });
 
     // First-seen input claims of the txs pending admission or validation
     // (design D6). Read and written only in synchronous sections, by

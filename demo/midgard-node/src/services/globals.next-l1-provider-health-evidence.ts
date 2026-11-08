@@ -1,5 +1,5 @@
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import { Metric } from "effect";
+import { Metric, type MutableRef } from "effect";
 
 export type CommitPipelinePhase =
   | "idle"
@@ -21,6 +21,15 @@ export type AdmissionBacklogGaugeState = {
   readonly ADMISSION_BACKLOG_BYTES_IN_FLIGHT: bigint;
   readonly ADMISSION_BACKLOG_REFRESHED_AT: number;
 };
+
+/**
+ * The admission backlog gauge's one cell. Admission reserves and settles
+ * slots on it synchronously, with no fiber per tx; every reader and writer
+ * replaces the whole state in one synchronous step, so a refresh never
+ * exposes an under-counted intermediate state.
+ */
+export type AdmissionBacklogGauge =
+  MutableRef.MutableRef<AdmissionBacklogGaugeState>;
 
 export type MempoolLedgerDelta = {
   readonly version: number;

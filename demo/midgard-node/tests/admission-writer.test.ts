@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
-import { Deferred, Effect, Exit, Fiber, Ref, Scope } from "effect";
+import { Deferred, Effect, Exit, Fiber, MutableRef, Scope } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { getTxStatusHandler } from "../src/commands/http/transaction-status.js";
@@ -262,7 +262,7 @@ describe("durable admission microbatch writer", () => {
             payload_bytes: tx.txCanonicalCbor.length,
           });
           // The written row took its backlog reservation for good.
-          expect(yield* Ref.get(globals.ADMISSION_BACKLOG_GAUGE)).toMatchObject(
+          expect(MutableRef.get(globals.ADMISSION_BACKLOG_GAUGE)).toMatchObject(
             {
               ADMISSION_BACKLOG_LOCAL_DELTA: 1n,
               ADMISSION_BACKLOG_IN_FLIGHT: 0n,
