@@ -112,8 +112,10 @@ const fixtureIngress = createHttpIngress({
 
 /**
  * One submit check pool per check configuration (size limit and rules) for
- * every fixture submission, sized from the first such caller's
- * configuration; its workers do not hold the process open.
+ * every fixture submission; its workers do not hold the process open. One
+ * worker: a fixture submits one body at a time, and the first submission
+ * waits for a worker to load, which several workers loading at once on a
+ * small CI runner slow past the budget a caller gives that submission.
  */
 const fixtureCheckPools = new Map<string, SubmitCheckPool>();
 const checkPoolFor = (
@@ -127,7 +129,7 @@ const checkPoolFor = (
   let pool = fixtureCheckPools.get(key);
   if (pool === undefined) {
     pool = createSubmitCheckPool({
-      size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
+      size: 1,
       maxQueued: config.SUBMIT_INGRESS_WORKER_QUEUE,
       maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
       config: checkConfig,
