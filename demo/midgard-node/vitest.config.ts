@@ -29,6 +29,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  * for, and the reason the shard scheme exists.
  *
  *   tests/admission-writer.test.ts
+ *   tests/admission-writer-linger.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
  *   tests/settlement-journal.test.ts
  *   tests/settlement-ownership-handoff.test.ts

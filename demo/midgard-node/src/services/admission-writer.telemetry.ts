@@ -16,6 +16,8 @@ import {
 
 type Phase = AdmissionWriteItem["phase"];
 
+const STAGES = ["input", "prepared", "persisting", "completion"] as const;
+
 const STAGE_OF: Record<
   Phase,
   "input" | "prepared" | "persisting" | "completion"
@@ -33,8 +35,8 @@ export type WriterStatsInput = Omit<
 
 /**
  * Per-lane stage depths and batch telemetry of the admission writer. Every
- * method but `recordBatch` and `report` is synchronous, so the writer calls
- * them inside its own synchronous sections.
+ * method but `recordBatch`, `report` and `reportEverySecond` is synchronous,
+ * so the writer calls them inside its own synchronous sections.
  */
 export const makeWriterTelemetry = (shardCount: number) => {
   let maxQueueDepth = 0;
@@ -76,6 +78,49 @@ export const makeWriterTelemetry = (shardCount: number) => {
 
   const queueDepths = () =>
     stageDepths.map((stages) => stages.input + stages.prepared);
+
+  // Tagged once here: tagging builds a new metric key each call.
+  const stageGauges = stageDepths.map((_, lane) =>
+    STAGES.map(
+      (stage) =>
+        [
+          stage,
+          Metric.tagged(
+            Metric.tagged(
+              admissionWriteStageDepthGauge,
+              "lane",
+              lane.toString(),
+            ),
+            "stage",
+            stage,
+          ),
+        ] as const,
+    ),
+  );
+
+  /** Sets the depth and capacity gauges. */
+  const report = (
+    capacityUsed: number,
+    bytesUsed: number,
+  ): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const depths = queueDepths();
+      const updates: Effect.Effect<void>[] = [
+        Metric.set(
+          admissionWriteQueueDepthGauge,
+          depths.reduce((sum, value) => sum + value, 0),
+        ),
+        Metric.set(admissionWriteQueueMaxDepthGauge, maxQueueDepth),
+        Metric.set(admissionWriteCapacityUsedGauge, capacityUsed),
+        Metric.set(admissionWriteBytesUsedGauge, bytesUsed),
+      ];
+      for (const [lane, gauges] of stageGauges.entries()) {
+        for (const [stage, gauge] of gauges) {
+          updates.push(Metric.set(gauge, stageDepths[lane]![stage]));
+        }
+      }
+      return Effect.all(updates, { discard: true });
+    });
 
   return {
     enter: (item: AdmissionWriteItem): void => {
@@ -125,34 +170,19 @@ export const makeWriterTelemetry = (shardCount: number) => {
         );
         yield* admissionWriteBatchRowsHistogram(Effect.succeed(rows));
       }),
-    report: (capacityUsed: number, bytesUsed: number) =>
-      Effect.gen(function* () {
-        const depths = yield* Effect.sync(queueDepths);
-        yield* admissionWriteQueueDepthGauge(
-          Effect.succeed(depths.reduce((sum, value) => sum + value, 0)),
-        );
-        yield* admissionWriteQueueMaxDepthGauge(Effect.succeed(maxQueueDepth));
-        yield* admissionWriteCapacityUsedGauge(Effect.succeed(capacityUsed));
-        yield* admissionWriteBytesUsedGauge(Effect.succeed(bytesUsed));
-        for (const [lane, stages] of stageDepths.entries()) {
-          for (const stage of [
-            "input",
-            "prepared",
-            "persisting",
-            "completion",
-          ] as const) {
-            yield* Metric.tagged(
-              Metric.tagged(
-                admissionWriteStageDepthGauge,
-                "lane",
-                lane.toString(),
-              ),
-              "stage",
-              stage,
-            )(Effect.succeed(stages[stage]));
-          }
-        }
-      }),
+    report,
+    /** `report` once a second, for good, on what `read` answers. */
+    reportEverySecond: (
+      read: () => readonly [capacityUsed: number, bytesUsed: number],
+    ): Effect.Effect<never> =>
+      Effect.forever(
+        Effect.zipRight(
+          Effect.sleep(Duration.seconds(1)),
+          Effect.suspend(() => report(...read())),
+        ),
+      ),
+    /** Rows waiting in `lane`'s input queue, not yet collected. */
+    inputDepth: (lane: number): number => stageDepths[lane]!.input,
     stats: (input: WriterStatsInput): AdmissionWriterStats => {
       const depths = queueDepths();
       const lanes: AdmissionWriterShardStats[] = shardTelemetry.map(

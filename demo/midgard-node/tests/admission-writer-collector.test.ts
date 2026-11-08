@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Ref } from "effect";
+import { Deferred, Effect, Ref, TestClock } from "effect";
 import { describe, expect } from "vitest";
 
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
@@ -56,6 +56,7 @@ describe("group-commit admission writer collector", () => {
         {
           shardCount: 1,
           batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
+          lingerMs: 0,
           queueCapacity: ADMISSION_WRITE_BATCH_MAX_ROWS + 2,
           queueBytes: 1_048_576,
         },
@@ -77,7 +78,7 @@ describe("group-commit admission writer collector", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("writes a lone request without waiting on a clock", () =>
+  it.effect("writes a lone request once the linger has passed", () =>
     Effect.gen(function* () {
       const calls = yield* Ref.make(0);
       const writer = yield* makeAdmissionWriterWithOptions(
@@ -88,24 +89,61 @@ describe("group-commit admission writer collector", () => {
         {
           shardCount: 1,
           batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
+          lingerMs: 10,
           queueCapacity: 128,
           queueBytes: 1_048_576,
         },
       );
+      const yieldMany = Effect.gen(function* () {
+        for (let step = 0; step < 1_000; step++) yield* Effect.yieldNow();
+      });
       const ack = yield* writer.admit(request("lone"));
       expect(ack.kind).toBe("new");
-      // The TestClock never moves here, so a batch deadline would hold the
-      // request forever; the write must happen within plain fiber yields.
+      // The batch lingers for more rows while the test clock stands still.
+      yield* yieldMany;
+      expect(yield* Ref.get(calls)).toBe(0);
+      yield* TestClock.adjust("10 millis");
       for (
         let step = 0;
-        step < 1_000 && (yield* Ref.get(calls)) === 0;
+        step < 1_000 && (yield* writer.stats).pending > 0;
         step++
       ) {
         yield* Effect.yieldNow();
       }
       expect(yield* Ref.get(calls)).toBe(1);
-      yield* writer.flush;
       expect((yield* writer.stats).pending).toBe(0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("writes a batch that fills during the linger at once", () =>
+    Effect.gen(function* () {
+      const batches = yield* Ref.make<readonly number[]>([]);
+      const writer = yield* makeAdmissionWriterWithOptions(
+        (requests) =>
+          Ref.update(batches, (current) => [...current, requests.length]).pipe(
+            Effect.as(conflicts(requests)),
+          ),
+        {
+          shardCount: 1,
+          batchMaxRows: 4,
+          lingerMs: 60_000,
+          queueCapacity: 128,
+          queueBytes: 1_048_576,
+        },
+      );
+      yield* writer.admit(request("fill-0"));
+      for (let step = 0; step < 100; step++) yield* Effect.yieldNow();
+      // The collector holds one row and lingers; three more fill the batch.
+      for (const label of ["fill-1", "fill-2", "fill-3"])
+        yield* writer.admit(request(label));
+      for (
+        let step = 0;
+        step < 1_000 && (yield* Ref.get(batches)).length === 0;
+        step++
+      ) {
+        yield* Effect.yieldNow();
+      }
+      expect(yield* Ref.get(batches)).toEqual([4]);
     }).pipe(Effect.scoped),
   );
 });

@@ -233,10 +233,22 @@ by inventory instead of holding its one request for 30 s).
   `capacity.take(1)` becomes a try-take, and the writer queue gets a byte
   bound (e.g. 64 MiB of queued payload) beside its row bound.
 - **Group commit.** Keep the pipelined collector and persister, but drop the
-  fixed deadline: the collector hands over whatever is queued (up to 256
-  rows) as soon as the persister is free. One transaction per batch. The 202
-  no longer waits for it (D9). Shards stay keyed by tx id, so one tx id is
+  fixed deadline: the collector waits for the persister to be free, then
+  hands over what is queued (up to 256 rows). One transaction per batch. The
+  202 no longer waits for it (D9). Shards stay keyed by tx id, so one tx id is
   always written in order.
+- **Batch linger and one lane (#870 wave 3).** Each batch costs the main
+  thread about the same whatever its size, so with no wait at all a 5,000 TPS
+  stream was written in ~11-row batches at ~170 µs of main thread per tx.
+  Once the persister is free, a part-full batch now lingers up to 10 ms
+  (`ADMISSION_WRITE_LINGER_MS`) for more rows. A full batch, a `flush` caller
+  or a stop ends the wait at once; the stall bound, the queue bounds and the
+  ack from memory are unchanged. The writer runs one lane, not two: with the
+  ack from memory a second lane buys no latency a client sees, a slow
+  Postgres slows both lanes alike, and two lanes halve the batch size, which
+  costs ~97 µs per tx against ~82 µs for one. One lane at 256 rows per batch
+  wrote 10,000 TPS (17 ms commits), so it has about 2× headroom over the
+  5,000 TPS target; past that, raise `ADMISSION_WRITE_SHARD_COUNT`.
 - **Asynchronous commit (owner, 2026-11-06).** The admission transaction runs
   `SET LOCAL synchronous_commit = off`, as lease claims already do
   (`database/txAdmissions.admit-reserved-batch.ts:186`). Since the 202 comes
@@ -477,6 +489,8 @@ them for a cloud vCPU.
 | Worker checks with D6, Phase A on the check's decode (measured on #886) | 0.19 ms (1/2), 0.44 ms (4/4), 1.52 ms (16/16); 0.46, 0.78 and 2.08 ms while Phase A decoded the bytes again. Signatures dominate at 16/16: 16 vkeys × ~55 µs ≈ 0.88 ms is the floor, the rest ~0.64 ms. Until wave 3 the cost also grew with process age, because the value-size check leaked CML objects per output (consensus check alone, 1/2: 84 → 451 µs over 60 s; 16/16: 0.32 → 3.5 ms); it now stays flat | ~42k tx/s (1/2), ~18k (4/4), ~5.3k (16/16) on 8 workers |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
+| Admission writer, main thread, before the linger: 2 lanes, ~11 rows per batch (`bench:admission-writer`, 5,000 TPS, 400 B txs) | 162–168 µs (three runs) | ~6k tx/s on the main thread alone |
+| Admission writer, main thread, 10 ms linger and 1 lane: ~100 rows per batch, ~50 commits/s (same bench, interleaved with the row above) | 86–101 µs (three runs); 67 µs at 10,000 TPS (~250 rows per batch) | ~10–12k tx/s on the main thread alone |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |
 | Lean raw-Node `/submit` handler, main thread, check on two workers (M2, #885) | 335 µs/request at 10 % keep-alive; 288 µs with every connection kept alive | ~3.0k req/s |
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
@@ -490,7 +504,9 @@ them for a cloud vCPU.
 and 6–10k on a cloud core (an estimate M2 does not bear out yet: with the
 check on workers the lean handler measures 335 µs per request, and 288 µs
 when every connection is kept alive, so connection setup does not explain
-the gap; where the rest goes needs a profile). With TLS in the node and one
+the gap; where the rest goes needs a profile). M2 stubs the writer: the
+admission writer's own main-thread cost (86–101 µs per tx at 5,000 TPS with
+the linger, `bench:admission-writer`) comes on top. With TLS in the node and one
 connection per wallet request, the handshake alone is 390–570 µs, which
 caps the node near 1,000 TPS on a cloud core. The workers need about 1.3
 cores at 5,000 TPS. Once F10 is fixed, the database has about 7× headroom.
@@ -509,7 +525,7 @@ longer wait for a WAL flush.
 | Phase | Content | Gate |
 | --- | --- | --- |
 | P0 | Harness and the measurements below. The harness sends one tx per request from many source IPs (or through the trusted-proxy header), mostly on new connections as wallets do, from a pre-built corpus of valid txs spending a 300k-UTxO genesis, plus a junk mix. A **drain stub** marks admitted rows terminal at a set rate, so ingress is measured apart from block production (about 140 TPS today). | Baseline report through nginx on the public profile |
-| P1 | F10 O(1) byte quota and no global lock; F11 no fallback; F14 fail-fast writer and readiness; F4 size cap and 411; F5 keep-alive on refusals; group commit without deadline; asynchronous commit for admissions; `payload_bytes` column; payload deleted at the terminal mark, duplicate check by full hash; D9 ack from memory with the bounded pending set; D4 decode-once (still on the main thread); retention. | Admission rows/s flat from 10k to 300k backlog; 503 under overload costs no database work |
+| P1 | F10 O(1) byte quota and no global lock; F11 no fallback; F14 fail-fast writer and readiness; F4 size cap and 411; F5 keep-alive on refusals; group commit without a fixed deadline (a bounded 10 ms linger since #870 wave 3); asynchronous commit for admissions; `payload_bytes` column; payload deleted at the terminal mark, duplicate check by full hash; D9 ack from memory with the bounded pending set; D4 decode-once (still on the main thread); retention. | Admission rows/s flat from 10k to 300k backlog; 503 under overload costs no database work |
 | P2 | D7 TLS at the edge, Unix socket to the node and nginx changes; D1; D3 lean `/submit` handler with sampled refusal logs; batch admit for the peer route (F12); D5 shedding and larger backlog. | With the drain stub: 5,000 TPS admitted from 1,000+ source IPs on new connections; a peer body of 500 txs admitted in under 1 s |
 | P3 | D4 worker pool, D6. | With the drain stub: 5,000 TPS admitted for 10 min with 20 % junk added; no junk that the checks catch reaches Postgres; p99 admission latency under 250 ms |
 | P4 | D8 (optional). | Second ingress process adds capacity |

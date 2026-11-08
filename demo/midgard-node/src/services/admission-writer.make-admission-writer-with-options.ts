@@ -11,12 +11,14 @@ import {
 } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
+import { makeBatchLinger } from "./admission-writer.batch-linger.js";
 import { pendingSetRefusal } from "./admission-writer.pending-bounds.js";
 import { persistWithRetry } from "./admission-writer.persist-with-retry.js";
 import { makeRecentTxIds } from "./admission-writer.recent-tx-ids.js";
 import { makeWriterTelemetry } from "./admission-writer.telemetry.js";
 import {
   ADMISSION_WRITE_ATTEMPT_TIMEOUT_MS,
+  ADMISSION_WRITE_LINGER_MS,
   ADMISSION_WRITE_RETRY_BASE_MS,
   ADMISSION_WRITE_RETRY_MAX_MS,
   ADMISSION_WRITE_SHUTDOWN_FLUSH_MS,
@@ -73,7 +75,7 @@ export const makeAdmissionWriterWithOptions = <R>(
     // Group commit: a persister offers one token each time it is free, and
     // its collector waits for that token before taking what is queued. The
     // batch therefore holds everything that arrived during the previous
-    // write, with no timer.
+    // write, and a part-full one then lingers briefly for more rows.
     const persisterFree = yield* Effect.forEach(lanes, () =>
       Queue.bounded<void>(1),
     );
@@ -250,6 +252,14 @@ export const makeAdmissionWriterWithOptions = <R>(
         telemetry.recordBatch(items[0]!.lane, items.length, durationMs),
     });
 
+    const linger = makeBatchLinger({
+      laneCount: options.shardCount,
+      lingerMs: options.lingerMs ?? ADMISSION_WRITE_LINGER_MS,
+      isFull: (lane) => telemetry.inputDepth(lane) >= options.batchMaxRows,
+      // Not for a `flush` caller or a stop.
+      mayWait: () => accepting && flushWaiters.length === 0,
+    });
+
     const runCollector = (lane: number) =>
       Effect.gen(function* () {
         yield* Queue.take(persisterFree[lane]!);
@@ -257,6 +267,7 @@ export const makeAdmissionWriterWithOptions = <R>(
           yield* testHooks.beforeCollect(lane);
         }
         const first = yield* Queue.take(inputQueues[lane]!);
+        yield* linger.wait(lane);
         const rest = yield* Queue.takeUpTo(
           inputQueues[lane]!,
           options.batchMaxRows - 1,
@@ -264,7 +275,6 @@ export const makeAdmissionWriterWithOptions = <R>(
         const items = [first, ...Chunk.toReadonlyArray(rest)];
         yield* Effect.sync(() => telemetry.move(items, "collected"));
         yield* Queue.offer(preparedQueues[lane]!, items);
-        yield* telemetry.report(capacityUsed, bytesUsed);
       });
 
     const runPersister = (lane: number) =>
@@ -275,11 +285,9 @@ export const makeAdmissionWriterWithOptions = <R>(
         yield* Queue.offer(persisterFree[lane]!, undefined);
         const items = yield* Queue.take(preparedQueues[lane]!);
         yield* Effect.sync(() => telemetry.move(items, "inflight"));
-        yield* telemetry.report(capacityUsed, bytesUsed);
         const results = yield* write(items);
         yield* Effect.sync(() => telemetry.move(items, "completing"));
         yield* Queue.offer(completionQueues[lane]!, { items, results });
-        yield* telemetry.report(capacityUsed, bytesUsed);
       });
 
     const runCompletion = (lane: number) =>
@@ -288,7 +296,6 @@ export const makeAdmissionWriterWithOptions = <R>(
           yield* testHooks.beforeComplete(lane);
         }
         yield* completeBatch(yield* Queue.take(completionQueues[lane]!));
-        yield* telemetry.report(capacityUsed, bytesUsed);
       });
 
     const flush = Effect.gen(function* () {
@@ -296,6 +303,7 @@ export const makeAdmissionWriterWithOptions = <R>(
       const settled = yield* Effect.sync(() => {
         if (settledBefore(nextSeq)) return true;
         flushWaiters.push({ target: nextSeq, done });
+        linger.wakeAll();
         return false;
       });
       if (!settled) yield* Deferred.await(done);
@@ -378,8 +386,10 @@ export const makeAdmissionWriterWithOptions = <R>(
       // In request order, so each lane's queue keeps the body's order. The
       // lane queues are unbounded and shut down only after `accepting`
       // turned false, so every registered item is taken.
-      for (const item of items)
+      for (const item of items) {
         Queue.unsafeOffer(inputQueues[item.lane]!, item);
+        linger.wakeIfFull(item.lane);
+      }
       return results;
     };
 
@@ -433,6 +443,9 @@ export const makeAdmissionWriterWithOptions = <R>(
         ),
       { concurrency: "unbounded", discard: true },
     );
+    yield* Effect.forkScoped(
+      telemetry.reportEverySecond(() => [capacityUsed, bytesUsed]),
+    );
     // Registered after the lane fibers, so this LIFO finalizer runs while
     // they are still writing: stop taking txs, give the pending set a bounded
     // time to flush, then name every tx still unwritten.
@@ -440,6 +453,7 @@ export const makeAdmissionWriterWithOptions = <R>(
       Effect.gen(function* () {
         yield* Effect.sync(() => {
           accepting = false;
+          linger.wakeAll();
         });
         // Finalizers run uninterruptibly: without `interruptible` the
         // timeout could not stop the wait, and a stop with Postgres stalled

@@ -161,6 +161,7 @@ describe("two-lane admission writer pipeline", () => {
           {
             shardCount: 1,
             batchMaxRows: 4,
+            lingerMs: 0,
             queueCapacity: 8,
             queueBytes: 1_048_576,
           },

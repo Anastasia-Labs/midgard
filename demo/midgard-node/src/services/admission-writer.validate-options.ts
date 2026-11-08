@@ -12,9 +12,26 @@ import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { AdmissionInputSpentError } from "./admission-input-claims.js";
 
-export const ADMISSION_WRITE_SHARD_COUNT = 2;
+/**
+ * One lane. With the batch linger, one lane at 5,000 tx/s writes ~100-row
+ * batches at ~50 commits/s and costs the event loop ~80 µs per tx; two lanes
+ * halve every batch and cost ~110 µs (`bench:admission-writer`). A second
+ * lane buys no liveness: the pending set acks from memory either way, a
+ * slow database slows both lanes alike, and the stall bound watches the
+ * oldest pending tx whichever lane holds it.
+ */
+export const ADMISSION_WRITE_SHARD_COUNT = 1;
 
 export const ADMISSION_WRITE_BATCH_MAX_ROWS = 256;
+
+/**
+ * How long a free persister waits for its batch to fill before it writes a
+ * part-full one. Each batch costs the event loop about the same whatever its
+ * size, so a short wait under load trades a few milliseconds of durable-write
+ * latency (invisible to clients: the ack is from memory) for far fewer,
+ * larger batches. A full batch, `flush` and a stop end the wait at once.
+ */
+export const ADMISSION_WRITE_LINGER_MS = 10;
 
 export const ADMISSION_WRITE_QUEUE_CAPACITY = 20_000;
 
@@ -231,6 +248,9 @@ export class AdmissionWriter extends Context.Tag("AdmissionWriter")<
 export type AdmissionWriterOptions = {
   readonly shardCount: number;
   readonly batchMaxRows: number;
+  /** Longest wait for a part-full batch to fill; 0 writes at once.
+   * Defaults to `ADMISSION_WRITE_LINGER_MS`. */
+  readonly lingerMs?: number;
   /** Row bound of the pending set (the unpersisted part). */
   readonly queueCapacity: number;
   /** Payload byte bound of the pending set. */
@@ -384,14 +404,15 @@ export const validateOptions = (options: AdmissionWriterOptions): void => {
       throw new Error(`admission writer ${name} must be a positive integer`);
     }
   }
-  if (
-    options.recentTxIdMaxAgeMs !== undefined &&
-    (!Number.isSafeInteger(options.recentTxIdMaxAgeMs) ||
-      options.recentTxIdMaxAgeMs < 0)
-  ) {
-    throw new Error(
-      "admission writer recentTxIdMaxAgeMs must be a non-negative integer",
-    );
+  for (const [name, value] of Object.entries({
+    lingerMs: options.lingerMs,
+    recentTxIdMaxAgeMs: options.recentTxIdMaxAgeMs,
+  })) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new Error(
+        `admission writer ${name} must be a non-negative integer`,
+      );
+    }
   }
   if (options.queueCapacity < options.shardCount) {
     throw new Error(
