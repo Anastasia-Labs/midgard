@@ -11,7 +11,12 @@ import {
   validatePhaseASingle,
   validatePhaseASingleDecoded,
 } from "../src/index.js";
+import { validatePhaseASingleFromBytes } from "../src/phase-a.validate-phase-asingle.js";
 import { ASSET_ENTRY_ROWS } from "./emission-order.asset-entries.rows.js";
+import {
+  FORCED_OUTPUT_ROWS,
+  FORCED_ROWS,
+} from "./emission-order.forced.rows.js";
 import { NATIVE_ROWS } from "./emission-order.native.rows.js";
 import { FULL, PLAIN } from "./emission-order.resolve-inputs.rows.js";
 import { ORDER_ROWS } from "./emission-order.rows.js";
@@ -29,9 +34,11 @@ import {
 
 /**
  * `validatePhaseASingleDecoded` is Phase A on a normal tx the caller already
- * decoded. For every tx that decodes, it must return exactly what
- * `validatePhaseASingle` returns for the same bytes: same verdict, code,
- * detail, phase and subject, or the same validated candidate.
+ * decoded, and `validatePhaseASingle` takes it for every normal tx that
+ * decodes. Both must return exactly what `validatePhaseASingleFromBytes`, the
+ * path that derives everything from the bytes, returns for the same bytes:
+ * same verdict, code, detail, phase and subject, or the same validated
+ * candidate.
  */
 
 beforeAll(() => ledgerEd25519SignatureReady());
@@ -151,16 +158,56 @@ const handBuiltCases: readonly Case[] = [
   ),
 ];
 
-/** Every normal tx of the emission-order corpora (Phase A and B faults). */
-const rowCases: readonly Case[] = [
+const ROWS = [
   ...ORDER_ROWS,
   ...NATIVE_ROWS,
   ...ASSET_ENTRY_ROWS,
   ...FULL,
   ...PLAIN,
-]
-  .filter((row) => row.source !== "forced")
-  .map((row) => fixtureCase(`row ${row.name}`, transactionOf(row)));
+  ...FORCED_ROWS,
+  ...FORCED_OUTPUT_ROWS,
+];
+
+/** Every normal tx of the emission-order corpora (Phase A and B faults). */
+const rowCases: readonly Case[] = ROWS.filter(
+  (row) => row.source !== "forced",
+).map((row) => fixtureCase(`row ${row.name}`, transactionOf(row)));
+
+/** Every forced tx of the same corpora, which never takes the decoded path. */
+const forcedRowCases: readonly Case[] = ROWS.filter(
+  (row) => row.source === "forced",
+).map((row) => {
+  const { txId, txCbor } = transactionOf(row);
+  return {
+    name: `forced row ${row.name}`,
+    queued: { ...makeQueued(txId, txCbor), sourceKind: "forced" },
+  };
+});
+
+/** Bytes that do not decode, each refused by the bytes path. */
+const valid = makeNativeTx({ outputs });
+const undecodableCases: readonly Case[] = [
+  fixtureCase("empty bytes", { ...valid, txCbor: Buffer.alloc(0) }),
+  fixtureCase("an empty CBOR array", { ...valid, txCbor: Buffer.from([0x80]) }),
+  fixtureCase("truncated by one byte", {
+    ...valid,
+    txCbor: valid.txCbor.subarray(0, -1),
+  }),
+  fixtureCase("one trailing byte", {
+    ...valid,
+    txCbor: Buffer.concat([valid.txCbor, Buffer.from([0x00])]),
+  }),
+  ...[8, Math.floor(valid.txCbor.length / 2), valid.txCbor.length - 4].map(
+    (offset) => {
+      const txCbor = Buffer.from(valid.txCbor);
+      txCbor[offset] = txCbor[offset]! ^ 0x01;
+      return fixtureCase(`byte ${offset.toString()} flipped`, {
+        ...valid,
+        txCbor,
+      });
+    },
+  ),
+];
 
 const CONFIGS: readonly (readonly [string, PhaseAConfig])[] = [
   [
@@ -211,7 +258,7 @@ describe("Phase A on an already-decoded tx", () => {
         continue;
       }
       for (const [configName, config] of CONFIGS) {
-        const fromBytes = validatePhaseASingle(queued, config);
+        const fromBytes = validatePhaseASingleFromBytes(queued, config);
         const fromDecoded = validatePhaseASingleDecoded(
           queued,
           decoded,
@@ -244,6 +291,51 @@ describe("Phase A on an already-decoded tx", () => {
     // A native witness that does not parse fails the ledger-stage decode, so
     // a caller refuses it before Phase A and the decoded path never sees it.
     expect(undecodable).toEqual(["row e_refusal_malformed_native_witness"]);
+  });
+
+  it("returns the bytes path's verdict from the bytes entry point for every tx", () => {
+    const labels = new Set<string>();
+    let compared = 0;
+    for (const { name, queued } of [
+      ...handBuiltCases,
+      ...rowCases,
+      ...forcedRowCases,
+      ...undecodableCases,
+    ]) {
+      for (const [configName, config] of CONFIGS) {
+        const fromBytes = validatePhaseASingleFromBytes(queued, config);
+        expect(
+          validatePhaseASingle(queued, config),
+          `${name} (${configName})`,
+        ).toStrictEqual(fromBytes);
+        labels.add(verdictLabel(fromBytes));
+        compared += 1;
+      }
+    }
+    // Besides every verdict of the decoded path, the comparison reaches the
+    // refusals of bytes that do not decode, at the canonical decode and at
+    // the ledger-stage decode.
+    expect([...labels].sort()).toEqual(
+      expect.arrayContaining([
+        "accepted",
+        "E_CBOR_DESERIALIZATION",
+        "E_INVALID_FIELD_TYPE",
+        "E_INVALID_FIELD_TYPE/FieldItemWidthIllegal/field0",
+        "E_INVALID_FIELD_TYPE/FieldItemWidthIllegal/field2",
+        "E_INVALID_FIELD_TYPE/FieldItemWidthIllegal/field7",
+        "E_INVALID_SIGNATURE",
+        "E_MIN_FEE",
+        "E_TX_HASH_MISMATCH",
+      ]),
+    );
+    expect(forcedRowCases.length).toBeGreaterThan(0);
+    expect(compared).toBe(
+      CONFIGS.length *
+        (handBuiltCases.length +
+          rowCases.length +
+          forcedRowCases.length +
+          undecodableCases.length),
+    );
   });
 
   it("refuses a forced transaction", () => {

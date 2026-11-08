@@ -13,6 +13,7 @@ import { Effect } from "effect";
 
 import { awaitLedgerEd25519SignatureReady } from "./ledger-ed25519-ready.js";
 import {
+  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
   decodeMidgardSubmittedTxFromCanonicalCbor,
   locateMidgardForcedTxOutputFault,
   locateMidgardForcedTxWitnessScriptFault,
@@ -282,7 +283,13 @@ const validatePhaseAAfterDecode = (
   });
 };
 
-export const validatePhaseASingle = (
+/**
+ * Phase A over the bytes alone: every scan derives what it reads from
+ * `queuedTx.txCbor`. `validatePhaseASingle` takes this path for forced
+ * transactions and for normal ones that do not decode; for a normal one that
+ * decodes it returns the same through `validatePhaseASingleDecoded`.
+ */
+export const validatePhaseASingleFromBytes = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
 ): PhaseAValidatedTx | RejectedTx => {
@@ -378,12 +385,40 @@ export const validatePhaseASingle = (
 };
 
 /**
+ * Phase A for one queued transaction. A normal transaction is decoded once and
+ * checked through `validatePhaseASingleDecoded`; one that does not decode, and
+ * every forced transaction, takes `validatePhaseASingleFromBytes`, which
+ * derives the refusal (code, detail and subject) from the bytes.
+ */
+export const validatePhaseASingle = (
+  queuedTx: QueuedTx,
+  config: PhaseAConfig,
+): PhaseAValidatedTx | RejectedTx => {
+  if ((queuedTx.sourceKind ?? "normal") === "normal") {
+    let decoded:
+      | ReturnType<typeof decodeMidgardSubmittedNativeTxFromCanonicalCbor>
+      | undefined;
+    try {
+      decoded = decodeMidgardSubmittedNativeTxFromCanonicalCbor(
+        queuedTx.txCbor,
+      );
+    } catch {
+      // The bytes path names the refusal.
+    }
+    if (decoded !== undefined)
+      return validatePhaseASingleDecoded(queuedTx, decoded, config);
+  }
+  return validatePhaseASingleFromBytes(queuedTx, config);
+};
+
+/**
  * Phase A for a normal transaction the caller has already decoded with
  * `decodeMidgardSubmittedNativeTxFromCanonicalCbor(queuedTx.txCbor)`. It
- * returns exactly what `validatePhaseASingle(queuedTx, config)` returns for
- * those bytes, without decoding them again: the canonical item scans read the
- * decoded field preimages, which are the ones `deriveMidgardTxFieldPreimages`
- * derives from the same bytes, and the consensus check reads the decoded tx.
+ * returns exactly what `validatePhaseASingleFromBytes(queuedTx, config)`
+ * returns for those bytes, without decoding them again: the canonical item
+ * scans read the decoded field preimages, which are the ones
+ * `deriveMidgardTxFieldPreimages` derives from the same bytes, and the
+ * consensus check reads the decoded tx.
  */
 export const validatePhaseASingleDecoded = (
   queuedTx: QueuedTx,

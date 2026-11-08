@@ -334,7 +334,12 @@ not hold ingress slots while workers load.
 peers (below). Phase A's decoded entry point (`validatePhaseASingleDecoded`)
 reads the check's decode, so the tx is decoded once. It returns exactly what
 `validatePhaseASingle` returns for the same bytes, and the two share every
-check after the decode; see the capacity table.
+check after the decode; see the capacity table. Since wave 3 the validation
+pool's `validatePhaseASingle` also decodes a normal tx once and takes the
+decoded entry point; only forced txs and bytes that do not decode take the
+bytes path (`validatePhaseASingleFromBytes`), which names the refusal. Phase A
+per tx went from 327 to 176 µs (1/2), 627 to 444 µs (4/4) and 1.84 to 1.53 ms
+(16/16).
 
 **Stateful, on the main thread. Advisory.**
 - Each input must be in the mempool ledger state, or be an output of a pending
