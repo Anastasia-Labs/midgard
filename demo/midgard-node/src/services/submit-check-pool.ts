@@ -85,6 +85,11 @@ export type SubmitCheckPool = {
   /** A slot for a body of `bytes` bytes; `undefined` when the pool is full. */
   readonly reserve: (bytes: number) => SubmitCheckTicket | undefined;
   readonly stats: () => SubmitCheckPoolStats;
+  /**
+   * Resolves `true` once a worker has loaded the check, or `false` if none
+   * has within `timeoutMs` or the pool closes first.
+   */
+  readonly whenReady: (timeoutMs: number) => Promise<boolean>;
   /** Terminates the workers; every body still held is `unavailable`. */
   readonly close: () => Promise<void>;
 };
@@ -193,6 +198,10 @@ export const createSubmitCheckPool = ({
   let heldBytes = 0;
   let restarts = 0;
   let closed = false;
+  const readyWaiters = new Set<(ready: boolean) => void>();
+  const wakeReadyWaiters = (ready: boolean) => {
+    for (const wake of [...readyWaiters]) wake(ready);
+  };
 
   const scheduleFlush = () => {
     if (flushScheduled || pending.length === 0) return;
@@ -258,6 +267,7 @@ export const createSubmitCheckPool = ({
         slot.ready = true;
         if (slot.startTimer !== null) clearTimeout(slot.startTimer);
         slot.startTimer = null;
+        wakeReadyWaiters(true);
         scheduleFlush();
         return;
       }
@@ -389,10 +399,26 @@ export const createSubmitCheckPool = ({
     };
   };
 
+  const whenReady = (timeoutMs: number): Promise<boolean> => {
+    if (slots.some((slot) => slot.worker !== null && slot.ready))
+      return Promise.resolve(true);
+    if (closed) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const wake = (ready: boolean) => {
+        clearTimeout(timer);
+        readyWaiters.delete(wake);
+        resolve(ready);
+      };
+      const timer = setTimeout(() => wake(false), timeoutMs);
+      readyWaiters.add(wake);
+    });
+  };
+
   for (const slot of slots) spawn(slot);
 
   return {
     reserve,
+    whenReady,
     stats: () => ({
       workers: size,
       liveWorkers: slots.filter((slot) => slot.worker !== null).length,
@@ -404,6 +430,7 @@ export const createSubmitCheckPool = ({
     }),
     close: async () => {
       closed = true;
+      wakeReadyWaiters(false);
       const items = pending;
       pending = [];
       for (const item of items)
@@ -436,7 +463,7 @@ export const acquireSubmitCheckPool: Effect.Effect<
   const config = yield* NodeConfig;
   const rules = yield* submittedTxRules;
   const runFork = Runtime.runFork(yield* Effect.runtime<never>());
-  return yield* Effect.acquireRelease(
+  const pool = yield* Effect.acquireRelease(
     Effect.sync(() =>
       createSubmitCheckPool({
         size: config.SUBMIT_INGRESS_WORKER_POOL_SIZE,
@@ -450,4 +477,13 @@ export const acquireSubmitCheckPool: Effect.Effect<
     ),
     (pool) => Effect.promise(() => pool.close()),
   );
+  // /submit is served only after this resolves, so its first requests find a
+  // loaded worker instead of holding ingress slots while workers load. A pool
+  // that loads no worker in time is served anyway: its requests then wait for
+  // a replacement worker or answer 503, as after any worker crash.
+  if (!(yield* Effect.promise(() => pool.whenReady(DEFAULT_START_TIMEOUT_MS))))
+    yield* Effect.logWarning(
+      `no submit check worker loaded within ${DEFAULT_START_TIMEOUT_MS.toString()} ms; serving /submit while workers restart`,
+    );
+  return pool;
 });

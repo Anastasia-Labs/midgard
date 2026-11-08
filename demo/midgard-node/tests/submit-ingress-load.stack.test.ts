@@ -74,23 +74,30 @@ describe("submit-ingress load harness against an in-process node", () => {
         ratePerSecond: 200,
         durationMs: 30_000,
       });
-      // The ingress check refuses only the bad CBOR; every other kind is a
-      // well-formed tx that validation, not ingress, refuses.
+      // Ingress refuses what it can judge alone: bad CBOR, a bad signature
+      // and a low fee (Phase A), and a second spender of an input a pending
+      // tx has claimed. A missing input is admitted: the node's ledger view
+      // stays cold here (its tx-queue processor never runs), so only
+      // validation can refuse it.
       const counts = corpus.manifest.counts;
-      const queued = corpus.requests.length - counts["bad-cbor"];
-      expect({
-        sent: load.sent,
-        completed: load.completed,
-        admitted: load.admitted,
-        refusedBadCbor: load.byKind["bad-cbor"],
-      }).toEqual({
+      const queued = counts.valid + counts["missing-input"];
+      expect({ sent: load.sent, completed: load.completed }).toEqual({
         sent: corpus.requests.length,
         completed: corpus.requests.length,
-        admitted: queued,
-        refusedBadCbor: {
+      });
+      expect(load.byKind).toEqual({
+        valid: { "202 queued": counts.valid },
+        "missing-input": { "202 queued": counts["missing-input"] },
+        "bad-cbor": {
           "400 Invalid canonical transaction CBOR payload": counts["bad-cbor"],
         },
+        "bad-signature": {
+          "400 E_INVALID_SIGNATURE": counts["bad-signature"],
+        },
+        "low-fee": { "400 E_MIN_FEE": counts["low-fee"] },
+        "double-spend": { "409 E_INPUT_SPENT": counts["double-spend"] },
       });
+      expect(load.admitted).toBe(queued);
       // A 202 is answered from memory and the row follows by group commit,
       // so wait for the writer before counting rows.
       await node.admissions();

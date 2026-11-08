@@ -242,6 +242,28 @@ describe("submit check pool", () => {
     expect(pool.stats()).toMatchObject({ held: 0, restarts: 1 });
   });
 
+  it("tells a caller once a worker has loaded, or that none loaded in time", async () => {
+    const loading = startPool({
+      size: 1,
+      entry: cannedWorker,
+      config: { ...config, cannedLoadDelayMs: 300 } as SubmissionCheckConfig,
+    });
+    expect(loading.stats().readyWorkers).toBe(0);
+    expect(await loading.whenReady(10_000)).toBe(true);
+    expect(loading.stats().readyWorkers).toBe(1);
+    expect(await loading.whenReady(0)).toBe(true);
+
+    const stuck = startPool({
+      size: 1,
+      entry: cannedWorker,
+      config: { ...config, cannedLoadDelayMs: -1 } as SubmissionCheckConfig,
+    });
+    expect(await stuck.whenReady(200)).toBe(false);
+    const waiting = stuck.whenReady(10_000);
+    await stuck.close();
+    expect(await waiting).toBe(false);
+  });
+
   it("answers every held body as unavailable when it closes", async () => {
     const pool = startPool({ size: 1, entry: cannedWorker });
     const pending = check(pool, Buffer.from("hang"));

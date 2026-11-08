@@ -316,6 +316,9 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
     maxQueuedBytes: config.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
     config: submissionCheckConfig(config, await run(submittedTxRules)),
   });
+  // As the node does before serving /submit.
+  if (!(await checkPool.whenReady(30_000)))
+    throw new Error("the submit check worker did not load");
   const submitHandler = await run(
     makeSubmitRequestHandler({
       wakeTxQueueProcessor: Effect.void,

@@ -327,7 +327,9 @@ slot mapping from Lucid) and handed to every worker as plain data; each
 worker reads its own clock. A worker says it is ready only once libsodium
 has initialised (bounded at 10 s, under the pool's 30 s start bound); one
 that cannot initialise stops, so its waiting bodies answer 503 and a fresh
-worker is started.
+worker is started. The node serves `/submit` only once a worker is ready
+(waiting at most that 30 s start bound), so requests arriving at startup do
+not hold ingress slots while workers load.
 `/peer/txs` runs the same checks: only the stateful check is skipped for
 peers (below). Phase A's decoded entry point (`validatePhaseASingleDecoded`)
 reads the check's decode, so the tx is decoded once. It returns exactly what
