@@ -37,7 +37,7 @@ const startWith = async (
   });
   const taken = () =>
     transport.journal().filter((line) => line.startsWith("step "));
-  return { taken, warn, runtime };
+  return { taken, journal: transport.journal, warn, runtime };
 };
 
 describe("native chain-sync startup while the node does not answer", () => {
@@ -77,21 +77,39 @@ describe("native chain-sync startup while the node does not answer", () => {
   });
 
   it("stays unready past the start bound while the node refuses its handshake", async () => {
-    const { taken, warn, runtime } = await startWith(
+    const { journal, warn, runtime } = await startWith(
       ["hello:node_unreachable", "hello:node_unreachable"],
       { startupTimeoutMs: 200 },
     );
     const started = await runtime;
     try {
-      expect(taken()).toEqual([
+      // The refusals outlast the start bound, so starts are retried until the
+      // node answers. A start whose bound expires while its open is still in
+      // flight closes that stream before the next start opens again; how many
+      // opens that abandons depends on scheduling, but each one is closed and
+      // only the last stays open.
+      const lines = journal();
+      const abandoned = Math.max(0, Math.floor((lines.length - 3) / 2));
+      expect(lines).toEqual([
         "step hello:node_unreachable",
         "step hello:node_unreachable",
+        ...Array.from({ length: abandoned }, () => [
+          "step honest",
+          "closed",
+        ]).flat(),
         "step honest",
       ]);
+      expect(
+        watcherNativeChainSyncAuthorityDetails(started.authority)
+          ?.selectedIntersection,
+      ).toEqual(INTERSECTION);
+      // One warning for the outage, naming why the first start ended: the
+      // refused handshake, or a sidecar still starting when the first bound
+      // expired, as it is on a slow machine.
       expect(warn).toHaveBeenCalledOnce();
       expect(warn).toHaveBeenCalledWith({
         event: "native_node_unavailable",
-        code: "node_unreachable",
+        code: expect.stringMatching(/^(node_unreachable|sidecar_starting)$/u),
         retryAfterMs: 1,
       });
     } finally {

@@ -11,6 +11,7 @@ import {
 import { CommitteeService } from "../../src/committee-service.js";
 import type { DaPayloadSource } from "../../src/da/source.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
+import type { PostgresCommitteeStore } from "../../src/store/postgres.js";
 import {
   makeObservedNode,
   makePayloadFixture,
@@ -35,7 +36,15 @@ const policy: AvailabilityResponseAdmissionPolicy = {
   supportedRecoveryMs: 0,
 };
 
-export const promiseAdmissionFixture = async () => {
+export const promiseAdmissionFixture = async (
+  options: Readonly<{
+    /**
+     * A store the calling file opened once, for tests that only read it:
+     * the fixture then creates no database of its own and cannot reopen it.
+     */
+    sharedStore?: PostgresCommitteeStore;
+  }> = {},
+) => {
   const dir = await tempDir();
   const rebind = async (
     base: Awaited<ReturnType<typeof makePayloadFixture>>,
@@ -97,9 +106,14 @@ export const promiseAdmissionFixture = async () => {
     signer,
     signerIndex: 0,
   });
-  const database = await testStoreDatabase();
-  const open = () => openTestCommitteeStore(database);
-  const store = await open();
+  const database =
+    options.sharedStore === undefined ? await testStoreDatabase() : undefined;
+  const open = async (): Promise<PostgresCommitteeStore> => {
+    if (database === undefined)
+      throw new Error("a fixture on a shared store cannot reopen it");
+    return await openTestCommitteeStore(database);
+  };
+  const store = options.sharedStore ?? (await open());
   const bytes = new Map([
     [first.headerHash, first.payloadCbor],
     [second.headerHash, second.payloadCbor],

@@ -3,9 +3,11 @@ import { join } from "node:path";
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createCommitteePromiseAdmissionSource } from "../src/availability/create-promise-admission-source.js";
+import type { PostgresCommitteeStore } from "../src/store/postgres.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { followerBoundary } from "./helpers/follower-boundary.js";
 import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
@@ -15,8 +17,15 @@ afterEach(() => {
   journals.clear();
 });
 
+// The source only reads the committee store, and no test here writes it, so
+// every test shares one empty store instead of creating a database each.
+let store: PostgresCommitteeStore;
+beforeAll(async () => {
+  store = await openTestCommitteeStore();
+});
+
 const fixture = async (compatibleClaims = false, prepareClaims = false) => {
-  const f = await promiseAdmissionFixture();
+  const f = await promiseAdmissionFixture({ sharedStore: store });
   const actor = "12".repeat(28);
   const identity = String(f.config.contractDeploymentInfo.manifestId);
   const journal = openAvailabilityOperationJournal(join(f.dir, "actor.sqlite"));
