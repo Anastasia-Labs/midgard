@@ -226,15 +226,41 @@ export const PRE_REMAINING_PHASE_PINS = {
 // publications, each a role that only the node runtime publishes.
 // Projecting out exactly those entries reproduces every pre-remaining-phase
 // pin and the 705/700 counts.
-export const MANIFEST_CONTRACT_ORDER_DIGEST =
+const PRE_FIELD_GRAMMAR_MANIFEST_CONTRACT_ORDER_DIGEST =
   "f6ff9340910a369dcafb48c14b8c2daf8a97e54bfbf778a3eadc018e5de08a32";
-export const MANIFEST_ROLE_ORDER_DIGEST =
+const PRE_FIELD_GRAMMAR_MANIFEST_ROLE_ORDER_DIGEST =
   "80bc4ea46a7e4be7601c4fa9a1fc36d03de1663dc9dd05f0cfad41cf539603e5";
+const PRE_FIELD_GRAMMAR_REAL_PUBLICATION_ORDER_DIGEST =
+  "5a5b6f7b4a3ce23eed9c47780012bac6561bc6c8008f91aef383fa729fd7f089";
+const PRE_FIELD_GRAMMAR_REAL_COMMAND_ORDER_DIGEST =
+  "16298c998e07d9b3ae1d5fa63af15b67964a7ff882cc07bd7ebdeaa22e6cd48f";
+const PRE_FIELD_GRAMMAR_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
+  "5a5b6f7b4a3ce23eed9c47780012bac6561bc6c8008f91aef383fa729fd7f089";
+const PRE_FIELD_GRAMMAR_PLACEHOLDER_COMMAND_ORDER_DIGEST =
+  "16298c998e07d9b3ae1d5fa63af15b67964a7ff882cc07bd7ebdeaa22e6cd48f";
+export const PRE_FIELD_GRAMMAR_PINS = {
+  manifestContract: PRE_FIELD_GRAMMAR_MANIFEST_CONTRACT_ORDER_DIGEST,
+  manifestRole: PRE_FIELD_GRAMMAR_MANIFEST_ROLE_ORDER_DIGEST,
+  realPublication: PRE_FIELD_GRAMMAR_REAL_PUBLICATION_ORDER_DIGEST,
+  placeholderPublication:
+    PRE_FIELD_GRAMMAR_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+  realCommand: PRE_FIELD_GRAMMAR_REAL_COMMAND_ORDER_DIGEST,
+  placeholderCommand: PRE_FIELD_GRAMMAR_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+} as const;
+
+// The field grammar certificate's spend and mint append two manifest entries
+// and two publications, each a role that only the node runtime publishes.
+// Projecting out exactly those entries reproduces every pre-field-grammar pin
+// and the 726/721 counts.
+export const MANIFEST_CONTRACT_ORDER_DIGEST =
+  "aab6decc991318785e884bff6a381d6e0e7f54d32e19ae04eea36404fe1b1202";
+export const MANIFEST_ROLE_ORDER_DIGEST =
+  "372376b9f3972faf5e044163849292c48f8363827bdd9e7973a16b859bdfd0b8";
 export const REAL_PUBLICATION_ORDER_DIGEST =
-  "5a5b6f7b4a3ce23eed9c47780012bac6561bc6c8008f91aef383fa729fd7f089";
+  "a48b60d5f3941be4d4552ef1a5e35cc51d94a9d7291ae189be3934cab4ab0a49";
 export const REAL_COMMAND_ORDER_DIGEST =
-  "16298c998e07d9b3ae1d5fa63af15b67964a7ff882cc07bd7ebdeaa22e6cd48f";
+  "397b97dbf0b0ef54ca9daa2d62e10a851f3bb48f3c9296dcfc5cdf27217bd792";
 export const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "5a5b6f7b4a3ce23eed9c47780012bac6561bc6c8008f91aef383fa729fd7f089";
+  "a48b60d5f3941be4d4552ef1a5e35cc51d94a9d7291ae189be3934cab4ab0a49";
 export const PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "16298c998e07d9b3ae1d5fa63af15b67964a7ff882cc07bd7ebdeaa22e6cd48f";
+  "397b97dbf0b0ef54ca9daa2d62e10a851f3bb48f3c9296dcfc5cdf27217bd792";

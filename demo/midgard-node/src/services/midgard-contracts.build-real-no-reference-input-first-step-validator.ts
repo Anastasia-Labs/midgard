@@ -137,6 +137,25 @@ export const buildRealTxOrderContracts = (
     });
   });
 
+/** Derives the field grammar certificate over the deployed certificate policy. */
+export const buildRealFieldGrammarCertificateValidator = (
+  network: Network,
+  fieldPreimageCertificatePolicyId: string,
+): Effect.Effect<SDK.SpendingValidator & SDK.MintingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildFieldGrammarCertificateValidator({
+          blueprint,
+          network,
+          fieldPreimageCertificatePolicyId,
+        }),
+      catch: (cause) =>
+        new Error("Failed to derive the field grammar certificate", { cause }),
+    });
+  });
+
 export const buildRealSettlementValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,

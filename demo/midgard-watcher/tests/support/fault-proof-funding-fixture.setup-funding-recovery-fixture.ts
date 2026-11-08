@@ -234,6 +234,7 @@ export const setupFundingRecoveryFixture = async (
                     "fraudProofSpend",
                     "fraudProofCatalogueSpend",
                     "fieldPreimageCertificateSpend",
+                    "fieldGrammarCertificateSpend",
                     "scriptDecodeSpend",
                     "validationTraceDisputeProofItem",
                   ].includes(name)

@@ -1,7 +1,5 @@
 import "./utils.js";
 
-import { createHash } from "node:crypto";
-
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -16,10 +14,11 @@ import {
   caseRoles,
   cekResolverContracts,
   cekResolverRoles,
-  cekStagedContracts,
-  cekStagedRoles,
   dataCanonicityContracts,
   dataCanonicityRoles,
+  FIELD_GRAMMAR_CATALOGUE_ADDITIONS,
+  fieldGrammarContracts,
+  fieldGrammarRoles,
   HISTORY_CATALOGUE_ADDITIONS,
   historyContracts,
   historyRoles,
@@ -29,15 +28,16 @@ import {
   poolContracts,
   poolRoles,
   REMAINING_PHASE_CATALOGUE_ADDITIONS,
-  remainingPhaseContracts,
-  remainingPhaseRoles,
-  withRetiredBondRole,
 } from "./helpers/deployable-catalogue-additions.js";
 import {
   manifestDeployableScripts,
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
 } from "./helpers/deployable-catalogue-before-canonical.js";
+import {
+  expectOrdersWithout,
+  orderDigest,
+} from "./helpers/deployable-catalogue-expect-orders.js";
 import * as orderPins from "./helpers/deployable-catalogue-order-pins.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -46,6 +46,8 @@ import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contract
 const PRE_CEK_STAGED_LENGTHS = [694, 689] as const;
 /** The manifest and publication lengths before the remaining phases' additions. */
 const PRE_REMAINING_PHASE_LENGTHS = [705, 700] as const;
+/** The manifest and publication lengths before the field grammar additions. */
+const PRE_FIELD_GRAMMAR_LENGTHS = [726, 721] as const;
 
 type CatalogueAddition = {
   readonly contract: string;
@@ -53,9 +55,6 @@ type CatalogueAddition = {
   readonly purpose: string;
   readonly commands: readonly string[];
 };
-
-const orderDigest = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 const CONTRACT_BY_ROLE: Readonly<Record<string, string>> =
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE;
@@ -70,73 +69,6 @@ const commandOrder = (contracts: SDK.MidgardValidators) => {
     commandName,
     byCommand[commandName].map(({ name }) => name),
   ]);
-};
-
-/**
- * Every order of `sets` (the real contract set first) with the remaining
- * phases' additions, the staged-operand additions unless `keepStaged`, and
- * exactly the given contracts and roles excluded: the manifest and
- * publication lengths, and the manifest, publication and per-command order
- * digests an older generation pinned.
- */
-const expectOrdersWithout = (
-  [real, ...others]: readonly SDK.MidgardValidators[],
-  {
-    contracts,
-    roles,
-    lengths: [manifestLength, targetLength],
-    pins,
-    restoreRetiredBond,
-    keepStaged,
-  }: {
-    readonly contracts: readonly ReadonlySet<string>[];
-    readonly roles: readonly ReadonlySet<string>[];
-    readonly lengths: readonly [number, number];
-    readonly pins: Readonly<Record<string, string>>;
-    /** Older generations still listed the retired per-header bond yield. */
-    readonly restoreRetiredBond?: boolean;
-    /** The pre-remaining-phase generation already listed the staged steps. */
-    readonly keepStaged?: boolean;
-  },
-) => {
-  const staged = keepStaged === true ? [] : [cekStagedContracts];
-  const stagedRoles = keepStaged === true ? [] : [cekStagedRoles];
-  const excludedContracts = [remainingPhaseContracts, ...staged, ...contracts];
-  const excludedRoles = [remainingPhaseRoles, ...stagedRoles, ...roles];
-  const restore = <T extends string | null>(names: readonly T[]) =>
-    restoreRetiredBond === true ? withRetiredBondRole(names) : names;
-  const without = (names: readonly string[]) =>
-    restore(
-      names.filter((name) => !excludedRoles.some((set) => set.has(name))),
-    );
-  for (const contracts of [real!, ...others]) {
-    const manifest = manifestDeployableScripts(contracts).filter(
-      ({ contract }) => !excludedContracts.some((set) => set.has(contract)),
-    );
-    const roles = restore(manifest.map(({ role }) => role ?? null));
-    expect(roles).toHaveLength(manifestLength);
-    // The older generations' contract names are not pinned (see the pins).
-    if (pins.manifestContract !== undefined)
-      expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
-        pins.manifestContract,
-      );
-    expect(orderDigest(roles)).toEqual(pins.manifestRole);
-    const targets = without(
-      nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
-    );
-    expect(targets).toHaveLength(targetLength);
-    const kind = contracts === real ? "real" : "placeholder";
-    expect(orderDigest(targets)).toEqual(pins[`${kind}Publication`]);
-    const byCommand = referenceScriptTargetsByCommand(contracts);
-    expect(
-      orderDigest(
-        REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
-          commandName,
-          without(byCommand[commandName].map(({ name }) => name)),
-        ]),
-      ),
-    ).toEqual(pins[`${kind}Command`]);
-  }
 };
 
 describe("deployable-script catalogue", () => {
@@ -162,7 +94,7 @@ describe("deployable-script catalogue", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
       expect(manifest).toHaveLength(
-        PRE_REMAINING_PHASE_LENGTHS[0] + remainingPhaseContracts.size,
+        PRE_FIELD_GRAMMAR_LENGTHS[0] + fieldGrammarContracts.size,
       );
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         orderPins.MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -176,7 +108,7 @@ describe("deployable-script catalogue", () => {
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
     expect(realTargets).toHaveLength(
-      PRE_REMAINING_PHASE_LENGTHS[1] + remainingPhaseRoles.size,
+      PRE_FIELD_GRAMMAR_LENGTHS[1] + fieldGrammarRoles.size,
     );
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       orderPins.REAL_PUBLICATION_ORDER_DIGEST,
@@ -196,6 +128,16 @@ describe("deployable-script catalogue", () => {
     expect(orderDigest(commandOrder(placeholder))).toEqual(
       orderPins.PLACEHOLDER_COMMAND_ORDER_DIGEST,
     );
+  });
+
+  it("preserves every pre-field-grammar order after excluding exactly the field grammar additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [],
+      roles: [],
+      keepRemaining: true,
+      lengths: PRE_FIELD_GRAMMAR_LENGTHS,
+      pins: orderPins.PRE_FIELD_GRAMMAR_PINS,
+    });
   });
 
   it("preserves every pre-remaining-phase order after excluding exactly the remaining phases' additions", () => {
@@ -400,6 +342,7 @@ describe("deployable-script catalogue", () => {
     ["all six history", 6, HISTORY_CATALOGUE_ADDITIONS],
     ["both pool", 2, POOL_CATALOGUE_ADDITIONS],
     ["all 21 remaining-phase", 21, REMAINING_PHASE_CATALOGUE_ADDITIONS],
+    ["both field grammar", 2, FIELD_GRAMMAR_CATALOGUE_ADDITIONS],
   ] as readonly (readonly [string, number, readonly CatalogueAddition[]])[])
     it(`publishes ${label} additions with their exact roles, purposes and command coverage`, () => {
       const additionContracts = new Set<string>(

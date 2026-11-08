@@ -66,6 +66,19 @@ export const midgardContractsFromDeploymentManifest = (
       "fieldPreimageCertificateMint",
     ),
   };
+  const fieldGrammarCertificate = {
+    ...spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "fieldGrammarCertificateSpend",
+    ),
+    ...mintingValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "fieldGrammarCertificateMint",
+    ),
+  };
   const scriptDecode = scriptDecodeFromManifest(network, manifest, sourcePath);
   const transitionTraceScripts = faultProofFamilyScriptsFromManifest(
     network,
@@ -559,6 +572,7 @@ export const midgardContractsFromDeploymentManifest = (
     withdrawal,
     txOrder,
     fieldPreimageCertificate,
+    fieldGrammarCertificate,
     scriptDecode,
     settlement: authenticatedValidatorFromManifest(
       network,

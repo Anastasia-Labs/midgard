@@ -27,6 +27,7 @@ import "./validator-scenario-registry.execution-native-script-scenarios.js";
 import "./validator-scenario-registry.receive-purpose-language-scenarios.js";
 import "./validator-scenario-registry.distinct-asset-accumulation-limit-scenarios.js";
 import "./validator-scenario-registry.unused-script-witness-scenarios.js";
+import "./validator-scenario-registry.field-grammar-certificate-scenarios.js";
 import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";
@@ -41,6 +42,7 @@ import {
   EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_SCENARIOS,
 } from "./validator-scenario-registry.execution-native-script-scenarios.js";
 import { FAMILY_SCENARIOS as SHARED_FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
+import { FIELD_GRAMMAR_CERTIFICATE_SCENARIOS } from "./validator-scenario-registry.field-grammar-certificate-scenarios.js";
 import {
   RECEIVE_PURPOSE_LANGUAGE_FAMILY_SCENARIOS,
   RECEIVE_PURPOSE_LANGUAGE_SCENARIOS,
@@ -76,6 +78,7 @@ export const VALIDATOR_SCENARIOS: typeof SHARED_VALIDATOR_SCENARIOS = {
   ...RECEIVE_PURPOSE_LANGUAGE_SCENARIOS,
   ...DISTINCT_ASSET_ACCUMULATION_LIMIT_SCENARIOS,
   ...UNUSED_SCRIPT_WITNESS_SCENARIOS,
+  ...FIELD_GRAMMAR_CERTIFICATE_SCENARIOS,
 };
 export {
   UNMAPPED_FAMILIES,

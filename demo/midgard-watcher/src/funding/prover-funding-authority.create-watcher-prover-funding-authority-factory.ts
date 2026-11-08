@@ -264,6 +264,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             : name === "fraudProofSpend" ||
                 name === "fraudProofCatalogueSpend" ||
                 name === "fieldPreimageCertificateSpend" ||
+                name === "fieldGrammarCertificateSpend" ||
                 name === "scriptDecodeSpend" ||
                 // Append-only proof-item publication uses the same immutable
                 // spending validator as the fraud-proof certificate carriers.

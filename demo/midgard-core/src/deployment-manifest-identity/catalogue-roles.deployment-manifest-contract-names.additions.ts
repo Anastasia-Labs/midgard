@@ -40,6 +40,11 @@ const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
   "validationTraceDisputeValueAndMintMintAssetSemantic",
   "validationTraceDisputeValueAndMintMintFinishSemantic",
   "validationTraceDisputeValueAndMintFinalizeSemantic",
+  // The field grammar certificate: one script whose mint opens a certificate
+  // and whose spend advances or reclaims it. A step that holds one reads an
+  // item of a variable-width field without walking the whole field.
+  "fieldGrammarCertificateSpend",
+  "fieldGrammarCertificateMint",
 ] as const;
 
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([

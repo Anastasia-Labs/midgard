@@ -539,6 +539,55 @@ pub fn authenticated_resumable_field_view_with_commitment(
   Pair(expected_hash, view)
 }
 
+/// The checkpointed-walk door with tier 3 read as whole bytes.
+///
+/// Tiers 1–2 are exactly `authenticated_resumable_field_view_with_commitment`.
+/// Under tier 3 the manifest's chunks are concatenated in order and handed to
+/// `resumable_whole_view`, which hashes them once against the positional §4
+/// commitment, as `authenticated_whole_field_view_by_commitment` does, but
+/// without `walk_to_end`: the count stays provisional for the grammar walk to
+/// certify. Every item header a walk then reads is a slice of bytes already
+/// in hand, so a batch costs the same per item under every tier. The manifest
+/// still supplies the §8.4 partition and the `(tx_id, field_index,
+/// field_hash)` binding its token carries, and no chunk digest is re-checked:
+/// a substituted chunk changes the concatenation and so fails the hash.
+pub fn authenticated_materialised_resumable_field_view_with_commitment(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(expected_hash, stride) = field_door_prologue(
+    verified,
+    witness_set,
+    field_index,
+  )
+  let preimage = when carriage is {
+    Inline { preimage } -> preimage
+    RawUtxo { ref_input_index } ->
+      raw_carriage_bytes(reference_inputs, ref_input_index)
+    Certified { cert_ref_input_index, chunk_ref_input_indices } -> {
+      let CertifiedChunksV1 { chunks, .. } = certified_chunks(
+        verified.tx_id,
+        field_index,
+        expected_hash,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+      list.foldl(
+        chunks,
+        #"",
+        fn(chunk, joined) { bytearray.concat(joined, chunk) },
+      )
+    }
+  }
+  Pair(expected_hash, resumable_whole_view(preimage, expected_hash, stride))
+}
+
 /// Everything both public doors do before they look at the carriage: check the
 /// field index, establish positional identity for the witness-set fields, and
 /// derive the `(expected commitment, §5.3 stride)` pair the tier branches all

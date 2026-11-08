@@ -66,6 +66,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_field_view,
+  authenticated_materialised_resumable_field_view_with_commitment,
   authenticated_resumable_body_field_view_with_commitment,
   authenticated_resumable_field_view_with_commitment,
   authenticated_resumable_witness_field_view_with_commitment, field_count,
@@ -250,6 +251,85 @@ pub fn certify_field_grammar(
   }
 }
 
+/// `certify_field_grammar` with the position carried as two integers through
+/// the batch and the checkpoint rebuilt once at its end. Every item makes the
+/// same read through `field_item_header_at` and the same checks, so for every
+/// view, checkpoint and budget it returns the same checkpoint or fails the
+/// same way; it costs less per item, which is what lets one transaction
+/// certify more items.
+pub fn certify_field_grammar_batch(
+  view: FieldViewV1,
+  checkpoint: FieldGrammarCheckpointV1,
+  budget: Int,
+) -> FieldGrammarCheckpointV1 {
+  expect budget >= 0
+  if or {
+    budget == 0,
+    field_grammar_is_complete(checkpoint),
+  } {
+    checkpoint
+  } else {
+    let
+        FieldGrammarCheckpointV1 {
+          total_length,
+          declared_count,
+          next_item_index,
+          next_offset,
+          ..
+        }
+      = checkpoint
+    expect next_item_index < declared_count
+    let stop = if next_item_index + budget < declared_count {
+      next_item_index + budget
+    } else {
+      declared_count
+    }
+    FieldGrammarCheckpointV1 {
+      ..checkpoint,
+      next_item_index: stop,
+      next_offset: certify_field_grammar_span(
+        view,
+        next_item_index,
+        next_offset,
+        stop,
+        declared_count,
+        total_length,
+      ),
+    }
+  }
+}
+
+fn certify_field_grammar_span(
+  view: FieldViewV1,
+  next_item_index: Int,
+  next_offset: Int,
+  stop: Int,
+  declared_count: Int,
+  total_length: Int,
+) -> Int {
+  if next_item_index == stop {
+    next_offset
+  } else {
+    let Pair(payload_offset, length) = field_item_header_at(view, next_offset)
+    let next_offset = payload_offset + length
+    let next_item_index = next_item_index + 1
+    expect
+      if next_item_index == declared_count {
+        next_offset == total_length
+      } else {
+        next_offset < total_length
+      }
+    certify_field_grammar_span(
+      view,
+      next_item_index,
+      next_offset,
+      stop,
+      declared_count,
+      total_length,
+    )
+  }
+}
+
 pub fn field_grammar_is_complete(checkpoint: FieldGrammarCheckpointV1) -> Bool {
   and {
     checkpoint.next_item_index == checkpoint.declared_count,
@@ -287,6 +367,99 @@ pub fn resume_field_grammar_certification_from_commitment(
       checkpoint,
     )
   Pair(view, checkpoint)
+}
+
+/// `open_field_grammar_certification` through the materialising door: tier 3
+/// is concatenated and hashed once, so each item header the walk reads is a
+/// slice of bytes in hand. The checkpoint is the same type and wire form, so
+/// a position opened here resumes through either resume.
+pub fn open_materialised_field_grammar_certification(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(field_commitment, view) = authenticated_materialised_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  // Refuses a view that needs no grammar certification.
+  let declared_count = provisional_field_item_count_for_certification(view)
+  Pair(
+    view,
+    FieldGrammarCheckpointV1 {
+      tx_id: verified.tx_id,
+      field_index,
+      field_commitment,
+      total_length: field_total_length(view),
+      declared_count,
+      next_item_index: 0,
+      next_offset: field_header_len(view),
+    },
+  )
+}
+
+/// `resume_field_grammar_certification_from_commitment` through the
+/// materialising door, with the same digest and binding checks.
+pub fn resume_materialised_field_grammar_certification_from_commitment(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  committed: ByteArray,
+  checkpoint_bytes: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let checkpoint = decode_field_grammar_checkpoint(checkpoint_bytes)
+  expect field_grammar_checkpoint_hash(checkpoint) == committed
+  let Pair(field_commitment, view) = authenticated_materialised_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    checkpoint.field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect field_count_requires_certification(view)
+  expect
+    grammar_checkpoint_is_bound_to_view(
+      verified.tx_id,
+      field_commitment,
+      view,
+      checkpoint,
+    )
+  Pair(view, checkpoint)
+}
+
+/// The field a grammar position is over. A reader, not a route in: the
+/// position was opened, advanced or commitment-resumed to get here.
+pub fn field_grammar_field_index(checkpoint: FieldGrammarCheckpointV1) -> Int {
+  checkpoint.field_index
+}
+
+/// The positional §4 commitment the door opened this position against.
+pub fn field_grammar_field_commitment(
+  checkpoint: FieldGrammarCheckpointV1,
+) -> ByteArray {
+  checkpoint.field_commitment
+}
+
+/// Items `[0, field_grammar_next_item_index)` have been certified.
+pub fn field_grammar_next_item_index(
+  checkpoint: FieldGrammarCheckpointV1,
+) -> Int {
+  checkpoint.next_item_index
+}
+
+/// The byte offset of item `field_grammar_next_item_index`'s §5.1 wrapper.
+pub fn field_grammar_next_offset(checkpoint: FieldGrammarCheckpointV1) -> Int {
+  checkpoint.next_offset
 }
 
 fn grammar_checkpoint_is_bound_to_view(

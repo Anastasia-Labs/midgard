@@ -18,6 +18,14 @@ export const assertPublishedFundingCustodyRoles = (
   ).toEqual([
     expect.objectContaining({ scriptHash: carrierHash, role: "field_carrier" }),
   ]);
+  // Field grammar certificates hold a reclaimable prover deposit, as the
+  // field-preimage certificates do.
+  expect(contracts).toContainEqual(
+    expect.objectContaining({
+      scriptHash: manifest.contracts.fieldGrammarCertificateSpend.scriptHash,
+      role: "field_carrier",
+    }),
+  );
   // The active computation chain keeps independent proof-thread custody.
   expect(contracts).toContainEqual(
     expect.objectContaining({

@@ -18,6 +18,7 @@ import {
 import {
   buildRealActiveOperatorsValidator,
   buildRealCorrectionLockValidator,
+  buildRealFieldGrammarCertificateValidator,
   buildRealPayoutValidator,
   buildRealRegisteredOperatorsValidator,
   buildRealReserveValidator,
@@ -208,6 +209,10 @@ export const withRealStateQueueAndOperatorContracts = (
       // mint above is parameterized by THIS policy id, so a set that reported
       // the stand-in would describe a door the deployed script does not consult.
       fieldPreimageCertificate: realTxOrderContracts.fieldPreimageCertificate,
+      fieldGrammarCertificate: yield* buildRealFieldGrammarCertificateValidator(
+        network,
+        realTxOrderContracts.fieldPreimageCertificate.policyId,
+      ),
     };
 
     const withRealUserEvents = withRealHubOracleDepositAndTxOrder;

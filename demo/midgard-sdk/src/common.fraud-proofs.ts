@@ -172,6 +172,13 @@ export type MidgardValidators = {
    */
   fieldPreimageCertificate: SpendingValidator & MintingValidator;
   /**
+   * The field grammar certificate: a field grammar certificate lets a step
+   * read one item of a variable-width field without walking the whole field,
+   * so the step's cost no longer grows with the field's item count. Its one
+   * parameter is the field-preimage certificate policy id.
+   */
+  fieldGrammarCertificate: SpendingValidator & MintingValidator;
+  /**
    * The script-decode family: anyone may walk a script's decode at its
    * spending address and mint the verdict as a permanent record under its
    * policy. The validator takes its class stakers' hashes and the stakers

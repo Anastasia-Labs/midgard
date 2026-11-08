@@ -34,6 +34,7 @@ export * from "./execution-native-script-invalid.js";
 export * from "./execution-source-script-decoding.js";
 export * from "./fabricated-deposit.js";
 export * from "./fabricated-withdrawal.js";
+export * from "./field-grammar-certificate.js";
 export * from "./field-opening.js";
 export * from "./field-preimage-carriage.js";
 export * from "./field-preimage-length-mismatch.js";

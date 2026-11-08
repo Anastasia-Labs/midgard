@@ -111,6 +111,7 @@ const custodyRole = (name: string) =>
           "fraudProofSpend",
           "fraudProofCatalogueSpend",
           "fieldPreimageCertificateSpend",
+          "fieldGrammarCertificateSpend",
           SCRIPT_DECODE_SPEND_ROLE,
           "validationTraceDisputeProofItem",
         ].includes(name)

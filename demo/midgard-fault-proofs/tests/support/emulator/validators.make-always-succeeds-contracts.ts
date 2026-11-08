@@ -132,6 +132,7 @@ export const makeAlwaysSucceedsContracts = (
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
     fieldPreimageCertificate: fieldPreimageCertificateV1,
+    fieldGrammarCertificate: fieldPreimageCertificateV1,
     scriptDecode,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,

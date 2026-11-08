@@ -427,3 +427,30 @@ export const remainingPhaseContracts = new Set<string>(
 export const remainingPhaseRoles = new Set<string>(
   REMAINING_PHASE_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The field grammar certificate's spend and mint, appended after the last
+// member. A field grammar certificate lets a step read one item of a
+// variable-width field without walking the whole field, so the step's cost no
+// longer grows with the field's item count. Both are reference scripts that
+// only the node runtime publishes.
+export const FIELD_GRAMMAR_CATALOGUE_ADDITIONS = [
+  {
+    contract: "fieldGrammarCertificateSpend",
+    role: "V1 field grammar certificate",
+    purpose: "spend",
+    commands: [],
+  },
+  {
+    contract: "fieldGrammarCertificateMint",
+    role: "V1 field grammar certificate minting",
+    purpose: "mint",
+    commands: [],
+  },
+] as const;
+
+export const fieldGrammarContracts = new Set<string>(
+  FIELD_GRAMMAR_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const fieldGrammarRoles = new Set<string>(
+  FIELD_GRAMMAR_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

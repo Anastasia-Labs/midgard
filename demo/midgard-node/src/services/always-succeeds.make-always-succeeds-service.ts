@@ -521,6 +521,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       withdrawal,
       txOrder,
       fieldPreimageCertificate,
+      fieldGrammarCertificate: fieldPreimageCertificate,
       scriptDecode,
       settlement,
       reserve,

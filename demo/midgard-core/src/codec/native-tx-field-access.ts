@@ -93,6 +93,7 @@ import "./native-tx-field-access.decode-midgard-field-array-header-at.js";
 import "./native-tx-field-access.build-midgard-whole-field-view.js";
 import "./native-tx-field-access.build-midgard-chunked-field-view.js";
 import "./native-tx-field-access.authenticated-midgard-field-view.js";
+import "./native-tx-field-access.field-grammar-certificate.js";
 export {
   authenticatedMidgardFieldView,
   midgardFieldItemAt,
@@ -152,3 +153,15 @@ export {
   MIDGARD_WALK_DERIVED_STRIDE,
   type MidgardFieldArrayHeader,
 } from "./native-tx-field-access.encode-midgard-definite-bytes.js";
+export {
+  deriveMidgardFieldGrammarCertificate,
+  encodeMidgardFieldGrammarCheckpoint,
+  MIDGARD_FIELD_GRAMMAR_CERTIFICATE_ASSET_NAME,
+  MIDGARD_FIELD_GRAMMAR_WAYPOINT_BYTES,
+  MIDGARD_FIELD_GRAMMAR_WAYPOINT_INTERVAL,
+  type MidgardFieldGrammar,
+  type MidgardFieldGrammarCertificate,
+  midgardFieldGrammarCheckpointHash,
+  midgardFieldGrammarWaypoints,
+  walkMidgardFieldGrammar,
+} from "./native-tx-field-access.field-grammar-certificate.js";

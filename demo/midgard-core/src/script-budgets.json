@@ -3418,6 +3418,78 @@
       "aboveBasis": {
         "why": "the valueContains failure step at its consensus maximum, arguments filling the direct bound (9,215 revealed bytes): the semantics hop costs 81.0x the memory basis, so the step does not fit one L1 transaction and resolves for the defender."
       }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_outputs_tier3_full_batch_cost - field_grammar_certificate_handlers_open_outputs_tier3_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_outputs_tier3_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_open_outputs_tier3_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 9885445,
+        "cpu": 3002966549
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_outputs_tier3_final_full_batch_cost - field_grammar_certificate_handlers_advance_outputs_tier3_final_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_outputs_tier3_final_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_advance_outputs_tier3_final_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 10280467,
+        "cpu": 3123481692
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_scripts_tier3_full_batch_cost - field_grammar_certificate_handlers_open_scripts_tier3_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_scripts_tier3_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_open_scripts_tier3_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 10802414,
+        "cpu": 3302608029
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_scripts_tier3_final_full_batch_cost - field_grammar_certificate_handlers_advance_scripts_tier3_final_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_scripts_tier3_final_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_advance_scripts_tier3_final_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 11280831,
+        "cpu": 3435688454
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_outputs_tier1_full_batch_cost - field_grammar_certificate_handlers_open_outputs_tier1_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_outputs_tier1_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_open_outputs_tier1_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 9665571,
+        "cpu": 2916471093
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_outputs_tier1_final_full_batch_cost - field_grammar_certificate_handlers_advance_outputs_tier1_final_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_outputs_tier1_final_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_advance_outputs_tier1_final_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 10059689,
+        "cpu": 3036670400
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_scripts_tier1_full_batch_cost - field_grammar_certificate_handlers_open_scripts_tier1_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_open_scripts_tier1_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_open_scripts_tier1_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 10582535,
+        "cpu": 3216225062
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_scripts_tier1_final_full_batch_cost - field_grammar_certificate_handlers_advance_scripts_tier1_final_full_batch_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_advance_scripts_tier1_final_full_batch_cost",
+      "minusControl": "field_grammar_certificate_handlers_advance_scripts_tier1_final_full_batch_fixture_only",
+      "ceiling": {
+        "mem": 11059368,
+        "cpu": 3348158030
+      }
+    },
+    "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_reclaim_cost - field_grammar_certificate_handlers_reclaim_fixture_only": {
+      "test": "field_grammar_certificate_handlers.test/field_grammar_certificate_handlers_reclaim_cost",
+      "minusControl": "field_grammar_certificate_handlers_reclaim_fixture_only",
+      "ceiling": {
+        "mem": 2319581,
+        "cpu": 691594708
+      }
     }
   },
   "growth": {

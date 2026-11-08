@@ -53,6 +53,8 @@ const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
     "V1VtValueMintMintFinishSem",
   "V1 validation-trace value-and-mint finalize semantic":
     "V1VtValueMintFinalizeSem",
+  "V1 field grammar certificate": "V1FieldGrammarCertSpend",
+  "V1 field grammar certificate minting": "V1FieldGrammarCertMint",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
