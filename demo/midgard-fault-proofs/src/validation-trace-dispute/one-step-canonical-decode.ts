@@ -20,7 +20,7 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCborArgumentHeaderSize,
-  canonicalFieldItemEncodedLength,
+  canonicalOrderedItemEncodedLength,
   type ValidationMachineFieldCarriageResolver,
   type ValidationMachineWorkWitness,
 } from "@al-ft/midgard-validation";
@@ -58,9 +58,8 @@ export const CANONICAL_DECODE_RESOLVER_INDEX = 0;
 export const CANONICAL_DECODE_EMPTY_SEMANTIC_RESOLVER_INDEX = 0;
 export const CANONICAL_DECODE_ITEM_SEMANTIC_RESOLVER_INDEX = 1;
 
-/** `TransactionFieldItemWitness`'s and `TransactionFieldChunkWitness`'s
- * constructors among the auxiliary witnesses, and `Inline`'s among the field
- * carriages. */
+/** `TransactionFieldItemWitness`'s constructor among the auxiliary
+ * witnesses, and `Inline`'s among the field carriages. */
 const TRANSACTION_FIELD_ITEM_AUXILIARY = 28;
 const INLINE_CARRIAGE = 0;
 
@@ -164,13 +163,11 @@ export type ValidationTraceCanonicalDecodeItem = Readonly<{
 
 /** A canonical-decode step as its resolution needs it: the evidence hash
  * the resolver commits (the transition beside `NoAuxiliaryWitness`), and an
- * item step's staging records; or why the runner does not drive it. */
-export type ValidationTraceCanonicalDecodeStep =
-  | Readonly<{
-      preparedEvidenceHash: string;
-      item: ValidationTraceCanonicalDecodeItem | undefined;
-    }>
-  | Readonly<{ driven: false; reason: string }>;
+ * item step's staging records. */
+export type ValidationTraceCanonicalDecodeStep = Readonly<{
+  preparedEvidenceHash: string;
+  item: ValidationTraceCanonicalDecodeItem | undefined;
+}>;
 
 const asInteger = (value: unknown, label: string): number => {
   if (typeof value !== "bigint" && typeof value !== "number")
@@ -205,13 +202,6 @@ export const planValidationTraceCanonicalDecodeStep = ({
     return { preparedEvidenceHash, item: undefined };
   const auxiliary = witness.auxiliary;
   const evidence = Data.from(auxiliaryCbor);
-  // An item longer than one publication's complete item is walked chunk by
-  // chunk, a route no deployed canonical-decode semantic resolver verifies.
-  if (auxiliary?.kind === "transactionFieldChunk")
-    return {
-      driven: false,
-      reason: `a canonical-decode chunk step of an item of a ${auxiliary.fieldPreimage.length.toString()}-byte field, which no deployed canonical-decode semantic resolver verifies`,
-    };
   if (
     semanticResolverIndex !== CANONICAL_DECODE_ITEM_SEMANTIC_RESOLVER_INDEX ||
     auxiliary?.kind !== "transactionFieldItem" ||
@@ -259,9 +249,14 @@ export const planValidationTraceCanonicalDecodeStep = ({
   const orderIsValid =
     itemIndex === 0 ||
     midgardFieldItemOrderIsValid(fieldIndex, items[itemIndex - 1]!, item);
-  const encoded = orderIsValid
-    ? canonicalFieldItemEncodedLength(fieldIndex, item.length)
-    : null;
+  // The trace builder's derivation of the item's encoding (null where the
+  // item's order or width is illegal), so the proof stage's record is the
+  // one the trace committed.
+  const encoded = canonicalOrderedItemEncodedLength(
+    fieldIndex,
+    items.map((bytes) => ({ bytes })),
+    itemIndex,
+  );
   const before = firstItem
     ? canonicalCborArgumentHeaderSize(activeItemCount)
     : encodedLength;
@@ -332,10 +327,7 @@ export const canonicalDecodeHop = ({
   readonly prover: string;
   readonly semanticResolverIndex: number;
   readonly transitionCbor: string;
-  readonly step: Extract<
-    ValidationTraceCanonicalDecodeStep,
-    { preparedEvidenceHash: string }
-  >;
+  readonly step: ValidationTraceCanonicalDecodeStep;
   readonly carriage?: ValidationTraceFieldCarriage | undefined;
 }): CanonicalDecodeHop => {
   const item = (): ValidationTraceCanonicalDecodeItem => {

@@ -124,10 +124,7 @@ export type ValidationTraceCanonicalDecodePlan =
   ValidationTraceOneStepArgument &
     Readonly<{
       kind: "canonicalDecode";
-      canonicalDecode: Extract<
-        ValidationTraceCanonicalDecodeStep,
-        { preparedEvidenceHash: string }
-      >;
+      canonicalDecode: ValidationTraceCanonicalDecodeStep;
     }>;
 
 /** A phase step's resolution, as the runner drives it. */
@@ -247,7 +244,6 @@ export const planValidationTraceOneStep = async ({
       auxiliaryCbor: common.auxiliaryCbor,
       evidenceHash: hashOneStepEvidence,
     });
-    if ("driven" in step) return unsupported(step.reason);
     return {
       kind: "plan",
       plan: Object.freeze({

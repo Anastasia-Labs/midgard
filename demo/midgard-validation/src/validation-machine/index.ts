@@ -1,7 +1,5 @@
-export {
-  canonicalCborArgumentHeaderSize,
-  canonicalFieldItemEncodedLength,
-} from "./canonical-field-item.js";
+export { canonicalCborArgumentHeaderSize } from "./canonical-field-item.js";
+export { canonicalOrderedItemEncodedLength } from "./canonical-field-order.js";
 export {
   buildTraceAtStepCountV1,
   decideValidationChallengeV1,

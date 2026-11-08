@@ -20,6 +20,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-canonical-decode-7.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-8-observe-copy-tier-2.test.ts",
+  "./tests/validation-trace-dispute-one-step-canonical-decode-8-observe-certified.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-builtin-bls-final.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-builtin-direct-scalar.test.ts",
   "./tests/validation-trace-dispute-one-step-cek-builtin-direct-structured.test.ts",

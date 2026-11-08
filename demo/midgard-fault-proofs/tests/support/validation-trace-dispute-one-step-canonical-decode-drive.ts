@@ -145,6 +145,7 @@ export const canonicalDecodeDrive = ({
 
   return {
     dispute: drive.dispute,
+    plan: drive.plan,
     setUp: drive.setUp,
     awards: drive.awards,
     pays: drive.pays,
