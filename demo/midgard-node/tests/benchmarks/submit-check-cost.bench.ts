@@ -12,9 +12,7 @@
 // pipeline, rebuilt from the same parts: the submitted-tx decode, then the
 // consensus check decoding the bytes again.
 //
-// The consensus check allocates a CML value per output, so one process's
-// timings drift with the wasm heap as a run goes on. For numbers worth
-// comparing, run one shape and one variant per process:
+// To time one shape or one variant alone:
 //   SUBMIT_CHECK_BENCH_SHAPE=16/16 SUBMIT_CHECK_BENCH_VARIANT=check
 // SUBMIT_CHECK_BENCH_TXS sets the distinct txs per shape (default 256) and
 // SUBMIT_CHECK_BENCH_ROUNDS the timed passes over them (default 30).

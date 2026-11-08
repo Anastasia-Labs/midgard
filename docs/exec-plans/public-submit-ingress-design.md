@@ -469,7 +469,7 @@ them for a cloud vCPU.
 | HTTP framework, raw Node | ~24 µs/request | ~42k req/s |
 | Hand-off to workers (main thread) | 45 µs one tx per message; 4–6 µs at 16–64 per message | 22k tx/s single, 170–250k batched |
 | Worker checks, decode-once (measured on #876) | 0.075 ms (1/2), 0.12 ms (4/4), 0.33 ms (16/16) | ~100k tx/s (1/2) to ~24k tx/s (16/16) on 8 workers |
-| Worker checks with D6, Phase A on the check's decode (measured on #886) | 0.19 ms (1/2), 0.44 ms (4/4), 1.52 ms (16/16); 0.46, 0.78 and 2.08 ms while Phase A decoded the bytes again. Signatures dominate at 16/16: 16 vkeys × ~55 µs ≈ 0.88 ms is the floor, the rest ~0.64 ms | ~42k tx/s (1/2), ~18k (4/4), ~5.3k (16/16) on 8 workers |
+| Worker checks with D6, Phase A on the check's decode (measured on #886) | 0.19 ms (1/2), 0.44 ms (4/4), 1.52 ms (16/16); 0.46, 0.78 and 2.08 ms while Phase A decoded the bytes again. Signatures dominate at 16/16: 16 vkeys × ~55 µs ≈ 0.88 ms is the floor, the rest ~0.64 ms. Until wave 3 the cost also grew with process age, because the value-size check leaked CML objects per output (consensus check alone, 1/2: 84 → 451 µs over 60 s; 16/16: 0.32 → 3.5 ms); it now stays flat | ~42k tx/s (1/2), ~18k (4/4), ~5.3k (16/16) on 8 workers |
 | Durable write, today (F10) | O(backlog) | ~10k rows/s at 10k backlog, ~0.9k at 300k |
 | Durable write, O(1) quota | 3.5 ms per 64-row statement | ~36k rows/s on 2 connections, `fsync=off` |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |

@@ -207,32 +207,136 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
   return value;
 };
 
+/**
+ * `value` as a CML `Value`. The caller owns the returned object and frees it;
+ * the intermediate CML objects built here are freed before returning.
+ */
 export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {
   const multiasset = CML.MultiAsset.new();
+  try {
+    for (const [policyHex, assets] of value.assets.entries()) {
+      const cmlAssets = CML.MapAssetNameToCoin.new();
+      try {
+        for (const [assetNameHex, quantity] of assets.entries()) {
+          if (quantity <= 0n) {
+            fail("Midgard value asset quantity must be positive", assetNameHex);
+          }
+          const assetName = CML.AssetName.from_raw_bytes(
+            Buffer.from(assetNameHex, "hex"),
+          );
+          try {
+            cmlAssets.insert(assetName, quantity);
+          } finally {
+            assetName.free();
+          }
+        }
+        if (cmlAssets.len() > 0) {
+          const policy = CML.ScriptHash.from_hex(policyHex);
+          try {
+            multiasset.insert_assets(policy, cmlAssets);
+          } finally {
+            policy.free();
+          }
+        }
+      } finally {
+        cmlAssets.free();
+      }
+    }
+    return multiasset.policy_count() === 0
+      ? CML.Value.from_coin(value.lovelace)
+      : CML.Value.new(value.lovelace, multiasset);
+  } finally {
+    multiasset.free();
+  }
+};
+
+const MAX_UINT64 = 0xffff_ffff_ffff_ffffn;
+const HEX_PATTERN = /^(?:[0-9a-f]{2})*$/;
+
+/** The byte length of the shortest CBOR head carrying `argument`. */
+const cborHeadLength = (argument: bigint): number => {
+  if (argument < 24n) return 1;
+  if (argument <= 0xffn) return 2;
+  if (argument <= 0xffffn) return 3;
+  if (argument <= 0xffff_ffffn) return 5;
+  return 9;
+};
+
+const uint64Argument = (argument: bigint, fieldName: string): bigint =>
+  argument >= 0n && argument <= MAX_UINT64
+    ? argument
+    : fail(
+        `${fieldName} must be an unsigned 64-bit integer`,
+        argument.toString(),
+      );
+
+/** A value key's hex, lower-cased so two spellings of one key collide. */
+const valueKeyHex = (hex: string, fieldName: string): string => {
+  const lower = hex.toLowerCase();
+  return HEX_PATTERN.test(lower)
+    ? lower
+    : fail(`${fieldName} must be hex`, hex);
+};
+
+/**
+ * The byte length of `value` as one Cardano output carries it: the ledger
+ * descriptor's `cardano_value_size`, which the value-size cap and the
+ * withdrawal payout size both read.
+ *
+ * Computed from the value's shape, without building the CML `Value` whose
+ * `to_cbor_bytes()` it equals: a bare coin when no asset remains, otherwise
+ * `[coin, {policy => {asset_name => quantity}}]`, every head in its shortest
+ * form. Keys name bytes, so two hex spellings of one key are one entry, the
+ * later one replacing the earlier as a CML map insert does; a policy with no
+ * assets is left out. Key order does not change the length. An integer
+ * outside the unsigned 64-bit range throws, where CML would wrap it.
+ */
+export const midgardCardanoValueCborLength = (value: MidgardValue): number => {
+  const coinLength = cborHeadLength(
+    uint64Argument(value.lovelace, "Midgard value lovelace"),
+  );
+  if (value.assets.size === 0) return coinLength;
+  const policyLengths = new Map<string, number>();
   for (const [policyHex, assets] of value.assets.entries()) {
-    const cmlAssets = CML.MapAssetNameToCoin.new();
-    let assetCount = 0;
+    const assetLengths = new Map<string, number>();
     for (const [assetNameHex, quantity] of assets.entries()) {
       if (quantity <= 0n) {
         fail("Midgard value asset quantity must be positive", assetNameHex);
       }
-      cmlAssets.insert(
-        CML.AssetName.from_raw_bytes(Buffer.from(assetNameHex, "hex")),
-        quantity,
+      const assetName = valueKeyHex(assetNameHex, "value.asset_name");
+      const nameLength = assetName.length / 2;
+      if (nameLength > MAX_ASSET_NAME_LENGTH) {
+        fail("Value asset name must be at most 32 bytes", assetNameHex);
+      }
+      assetLengths.set(
+        assetName,
+        cborHeadLength(BigInt(nameLength)) +
+          nameLength +
+          cborHeadLength(uint64Argument(quantity, "Midgard value quantity")),
       );
-      assetCount += 1;
     }
-    if (assetCount > 0) {
-      multiasset.insert_assets(CML.ScriptHash.from_hex(policyHex), cmlAssets);
+    if (assetLengths.size > 0) {
+      const policy = valueKeyHex(policyHex, "value.policy_id");
+      if (policy.length !== POLICY_ID_LENGTH * 2) {
+        fail("Value policy id must be 28 bytes", policyHex);
+      }
+      let policyLength =
+        cborHeadLength(BigInt(POLICY_ID_LENGTH)) +
+        POLICY_ID_LENGTH +
+        cborHeadLength(BigInt(assetLengths.size));
+      for (const assetLength of assetLengths.values()) {
+        policyLength += assetLength;
+      }
+      policyLengths.set(policy, policyLength);
     }
   }
-  return multiasset.policy_count() === 0
-    ? CML.Value.from_coin(value.lovelace)
-    : CML.Value.new(value.lovelace, multiasset);
+  if (policyLengths.size === 0) return coinLength;
+  let length =
+    cborHeadLength(2n) +
+    coinLength +
+    cborHeadLength(BigInt(policyLengths.size));
+  for (const policyLength of policyLengths.values()) {
+    length += policyLength;
+  }
+  return length;
 };
-
-/** The byte length of `value` as one Cardano output carries it: the ledger
- * descriptor's `cardano_value_size`, which the value-size cap and the
- * withdrawal payout size both read. */
-export const midgardCardanoValueCborLength = (value: MidgardValue): number =>
-  midgardValueToCmlValue(value).to_cbor_bytes().length;
