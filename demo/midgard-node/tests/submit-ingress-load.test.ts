@@ -7,6 +7,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -55,6 +56,9 @@ type Verdict = { readonly stage: string; readonly code: string };
 // genesis, all in one batch in send order. A valid tx that reaches Phase B
 // accepted is one ingress did not refuse.
 const verdictsOf = async (directory: string) => {
+  // As a submit check worker does before it takes a body: the check answers
+  // 503 while the shared verifier is still loading.
+  await ledgerEd25519SignatureReady();
   const { manifest, requests } = readCorpus(directory);
   const genesis = new Map<string, Buffer>();
   for (const { outRef, output } of readCorpusGenesis(directory))
