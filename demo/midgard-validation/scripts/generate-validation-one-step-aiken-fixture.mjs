@@ -179,8 +179,7 @@ const trace = await Effect.runPromise(
 
 /**
  * An accepted spend whose field-6 script witness has exactly `itemBytes` bytes.
- * Output items always take the complete-item route; script items above the
- * publication limit still exercise canonical decoding through field chunks.
+ * Its native-script scan reads that item through a field-chunk auxiliary.
  */
 const buildTraceForScriptItem = async (itemBytes) => {
   const signature = {
@@ -358,13 +357,12 @@ const tierVector = async (itemBytes, expectedTier) => {
   const vectorTrace = await buildTraceForScriptItem(itemBytes);
   const stateIndex = vectorTrace.witnesses.findIndex(
     (witness) =>
-      witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldChunk" &&
       witness.auxiliary.fieldIndex === 6,
   );
   if (stateIndex < 0) {
     throw new Error(
-      `generated ${expectedTier} trace has no field-6 canonical transactionFieldChunk transition`,
+      `generated ${expectedTier} trace has no field-6 transactionFieldChunk transition`,
     );
   }
   const planInput = vectorTrace.witnesses[stateIndex].auxiliary;

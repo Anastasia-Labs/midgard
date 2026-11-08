@@ -11,7 +11,6 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   MidgardVersionedScript, PlutusV3Script, native_tx_version_v1,
 }
-use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -183,9 +182,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
       // hashes it once against `script_tx_wits_hash`. The retired form asserted
       // a per-item collection opening against that same flat hash, which is the
       // unsatisfiable predicate #592 is about.
-      auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-        field_index: 6,
-        item_index: 0,
+      auxiliary: vm_machine_types.TransactionFieldItemWitness {
         carriage: inline_field_carriage([item_cbor]),
       },
     },
@@ -193,7 +190,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
 }
 
-test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
+test canonical_decode_refuses_a_field_chunk_auxiliary() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
@@ -257,55 +254,32 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     claimed_successor: post,
   }
   let honest_carriage = inline_field_carriage([item_cbor])
-  // C29, rewritten for #592. The substitution is now refused by the machine's
-  // own field-index check rather than by domain-separated hashing. §4 removed
-  // field-index domain separation — two fields holding the same items commit to
-  // the same 32 bytes and a flat hash says nothing about which slot it came
-  // from — so §8's door authenticates whichever slot the step's *control* names
-  // and it is `field_index == control.field_index` inside
-  // `verify_canonical_decode_chunk` that refuses evidence pointing at the
-  // retired field-7 slot. Every conjunct below is pinned to its own measured
-  // disposition, as the earlier `test ... fail` form could not be.
+  // The canonical-decode chunk route was retired (deleted on-chain in
+  // 2e52d2ef4): every non-empty item is read through the complete-item route.
+  // The same transition and carriage authenticate as an item step and are
+  // refused when presented as a field-chunk step.
   and {
-    // The substitution is a real one and not a collision: this transaction's
-    // field-6 preimage does not commit to the same 32 bytes as its (empty)
-    // field-7 slot.
-    native_tx_field_access_v1.field_commitment(
-      native_tx_field_access_v1.encode_field_preimage([item_cbor]),
-    ) != native_tx_field_access_v1.empty_field_commitment,
-    // Field-7-flavoured evidence does not authenticate a field-6 item on the
-    // semantic path ...
-    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      transition,
-      inline_field_door(),
-      7,
-      0,
-      honest_carriage,
-    ),
-    // ... nor on the deployed one-step path.
-    !vm_one_step.verify_canonical_decode_one_step_v1(
+    vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
       vm_machine_types.ValidationOneStepEvidenceV1 {
         transition,
-        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-          field_index: 7,
-          item_index: 0,
+        auxiliary: vm_machine_types.TransactionFieldItemWitness {
           carriage: honest_carriage,
         },
       },
       inline_field_door(),
     ),
-    // And an item index the authenticated field does not have is refused for
-    // the same reason: the index is checked against the control's cursor, never
-    // taken from the evidence.
-    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
+    !vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      transition,
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
+          field_index: 6,
+          item_index: 0,
+          carriage: honest_carriage,
+        },
+      },
       inline_field_door(),
-      6,
-      1,
-      honest_carriage,
     ),
   }
 }
@@ -313,31 +287,12 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
 // V-9 (#532). This was `test ... fail` over a single call to
 // `verify_canonical_decode_one_step_v1`, so it went green as soon as any guard
 // anywhere under that call was false and the name could not establish that the
-// claimed successor is what fired. Single-conjunct mutation controls (each
-// conjunct neutralized to `True` in turn, aiken-fork v1.1.23, this exact
-// selector):
-//
-//   verify_canonical_decode_one_step_v1
-//     1  pre.phase == CanonicalDecode                       -> pass
-//     2  structural_transition_is_valid(pre, transition)    -> pass
-//     3  verify_canonical_decode(pre, transition, aux)      -> FAIL
-//
-//   verify_canonical_decode_chunk (reached through conjunct 3)
-//     1..8   control binding, non-empty field commitment, first/continuing
-//            chunk, positive authenticated item count, the evidence's
-//            field/item index equalities, the chunk-index bound  -> all pass
-//     9      the claimed-successor exactness branch                -> FAIL
-//
-// (Conjunct numbering re-measured after #592: the retired `verify_item` /
-// `verify_chunk` openings and the four proof length/commitment equalities they
-// needed are gone, so the arm is shorter. The disposition is unchanged.)
-//
-// So the structural transition IS valid here — the vector differs from the
-// passing sibling `canonical_decode_authenticates_one_bounded_script_item` in
-// nothing but the claimed successor, and conjunct 9 of the chunk arm (the
-// claimed-successor exactness branch, as the control above measures) is the sole
-// falsifier. The dispositions are now pinned individually below, with that
-// sibling's correct successor as the differential.
+// claimed successor is what fired. The vector differs from the passing sibling
+// `canonical_decode_authenticates_one_bounded_script_item` in nothing but the
+// claimed successor. Each disposition is pinned individually below: the
+// one-step guard's phase and structural conjuncts hold, the item route's source
+// binding, observation and item proof hold, and only its successor check
+// refuses, with that sibling's correct successor as the differential.
 test canonical_decode_rejects_a_wrong_claimed_successor() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
@@ -418,11 +373,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     ),
   }
   let carriage = inline_field_carriage([item_cbor])
-  let auxiliary = vm_machine_types.TransactionFieldChunkWitness {
-    field_index: 6,
-    item_index: 0,
-    carriage,
-  }
+  let auxiliary = vm_machine_types.TransactionFieldItemWitness { carriage }
   let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: terminal,
@@ -439,20 +390,46 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     // binding, the program counter, the immutable context, the phase
     // succession, or the budget is what rejects it.
     vm_shared.structural_transition_is_valid(pre, transition),
-    // Conjunct 3 is the sole falsifier, and it falsifies through the chunk arm.
+    // Conjunct 3 is the sole falsifier, and it falsifies through the item arm.
     !vm_one_step.verify_canonical_decode_semantics_v1(
       pre,
       vm_machine_types.ValidationOneStepEvidenceV1 { transition, auxiliary },
       inline_field_door(),
     ),
-    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      transition,
-      inline_field_door(),
-      6,
-      0,
-      carriage,
-    ),
+    // Inside the item arm the source binds, the observation is consistent (the
+    // item proof would not be produced otherwise) and the item is well formed,
+    // so the successor check alone refuses.
+    {
+      let source = vm_canonical_decode.bind_canonical_decode_item_source_v1(
+        pre,
+        transition,
+      )
+      let proof = vm_canonical_decode.verify_canonical_decode_item_observation_v1(
+        transition,
+        source,
+        vm_canonical_decode.observe_canonical_decode_item_v1(
+          pre,
+          transition,
+          inline_field_door(),
+          carriage,
+        ),
+      )
+      and {
+        proof.item_encoding_is_valid,
+        !vm_canonical_decode.verify_canonical_decode_item_successor_v1(
+          pre,
+          transition,
+          source,
+          proof,
+        ),
+        vm_canonical_decode.verify_canonical_decode_item_successor_v1(
+          pre,
+          correct_transition,
+          source,
+          proof,
+        ),
+      }
+    },
     !vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
       vm_machine_types.ValidationOneStepEvidenceV1 { transition, auxiliary },

@@ -12,8 +12,8 @@ use midgard/rejection_reason_v1.{
 use midgard/validation_machine/machine_types.{
   CanonicalDecodeControlV1, CanonicalDecodeItemObservationV1,
   CanonicalDecodeItemProofV1, CanonicalDecodeItemSourceV1, NoAuxiliaryWitness,
-  TransactionFieldChunkWitness, TransactionFieldItemWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/shared.{
   canonical_argument_header_size, rejected_successor_is_exact,
@@ -185,164 +185,6 @@ pub fn canonical_item_order_is_valid(
       previous,
       current,
     )
-  }
-}
-
-/// One chunk of one item of the field the `CanonicalDecode` phase is scanning.
-///
-/// **The item is reached through §8's door and the machine's own walk position,
-/// not by a per-item opening.** `control.encoded_length` is the number of
-/// preimage bytes before the item this step reads, which is exactly the offset
-/// of that item's §5.1 wrapper (§10.2), so a continuing step costs one header
-/// decode instead of a re-walk. The first step of a field has no position yet
-/// and opens item 0, whose offset is the array header the view already knows.
-fn verify_canonical_decode_chunk(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  control: CanonicalDecodeControlV1,
-  door: field_door.MachineFieldDoorV1,
-  field_index: Int,
-  item_index: Int,
-  carriage: native_tx_field_access_v1.FieldCarriageV1,
-) -> Bool {
-  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
-    pre.source_kind,
-    pre.transaction_id,
-    control.compact_cbor,
-    control.witness_set_compact_cbor,
-    control.field_preimage_lengths_cbor,
-  )
-  let expected_field_commitment = transaction_field_commitment(
-    verified.tx_compact,
-    witness_set,
-    control.field_index,
-  )
-  let field_lengths = decode_native_tx_field_preimage_lengths_v1(
-    control.field_preimage_lengths_cbor,
-  )
-  let expected_field_length = transaction_field_preimage_length(
-    field_lengths,
-    control.field_index,
-  )
-  let first_chunk = and {
-    control.item_index == 0,
-    control.chunk_index == 0,
-    control.item_count == -1,
-    control.encoded_length == 0,
-  }
-  let continuing_chunk = and {
-    control.item_count > 0,
-    control.item_index < control.item_count,
-  }
-  let Pair(item, active_item_count) = if first_chunk {
-    let opened = field_door.open_machine_field_item(
-      door,
-      verified,
-      witness_set,
-      control.field_index,
-      0,
-      carriage,
-    )
-    Pair(opened, field_door.machine_field_item_count(opened))
-  } else {
-    Pair(
-      field_door.open_machine_field_item_at(
-        door,
-        verified,
-        witness_set,
-        control.field_index,
-        control.item_index,
-        control.encoded_length,
-        carriage,
-      ),
-      control.item_count,
-    )
-  }
-  let item_length = field_door.machine_field_item_length(item)
-  let length_before_item = if first_chunk {
-    canonical_argument_header_size(active_item_count)
-  } else {
-    control.encoded_length
-  }
-  let chunk_count = field_door.machine_field_item_chunk_count(item)
-  let item_finished = control.chunk_index + 1 == chunk_count
-  and {
-    canonical_decode_control_is_bound(pre, witness, control, verified),
-    expected_field_commitment != native_tx_field_access_v1.empty_field_commitment,
-    or {
-      first_chunk,
-      continuing_chunk,
-    },
-    active_item_count > 0,
-    field_index == control.field_index,
-    item_index == control.item_index,
-    control.chunk_index < chunk_count,
-    if !item_finished {
-      canonical_scan_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        control.compact_cbor,
-        control.witness_set_compact_cbor,
-        control.field_preimage_lengths_cbor,
-        control.context_cbor,
-        control.field_index,
-        control.item_index,
-        control.chunk_index + 1,
-        active_item_count,
-        length_before_item,
-      )
-    } else {
-      let encoded_length = if canonical_item_order_is_valid(item) {
-        transaction_field_item_encoded_length(control.field_index, item_length)
-      } else {
-        None
-      }
-      when encoded_length is {
-        None ->
-          rejected_successor_is_exact(
-            pre,
-            witness.claimed_successor,
-            FieldItemWidthIllegal {
-              field_index: control.field_index,
-              item_index: control.item_index,
-            },
-          )
-        Some(item_encoded_length) -> {
-          let next_encoded_length = length_before_item + item_encoded_length
-          if control.item_index + 1 < active_item_count {
-            canonical_scan_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              control.compact_cbor,
-              control.witness_set_compact_cbor,
-              control.field_preimage_lengths_cbor,
-              control.context_cbor,
-              control.field_index,
-              control.item_index + 1,
-              0,
-              active_item_count,
-              next_encoded_length,
-            )
-          } else if next_encoded_length != expected_field_length {
-            rejected_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              FieldPreimageLengthMismatch { field_index: control.field_index },
-            )
-          } else {
-            canonical_scan_field_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              control.compact_cbor,
-              control.witness_set_compact_cbor,
-              control.field_preimage_lengths_cbor,
-              control.context_cbor,
-              control.field_index,
-            )
-          }
-        }
-      }
-    },
   }
 }
 
@@ -654,25 +496,6 @@ pub fn verify_canonical_decode_empty_semantics_v1(
   )
 }
 
-pub fn verify_canonical_decode_chunk_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  door: field_door.MachineFieldDoorV1,
-  field_index: Int,
-  item_index: Int,
-  carriage: native_tx_field_access_v1.FieldCarriageV1,
-) -> Bool {
-  verify_canonical_decode_chunk(
-    pre,
-    witness,
-    canonical_decode_control_from_witness(witness.work_witness_cbor),
-    door,
-    field_index,
-    item_index,
-    carriage,
-  )
-}
-
 pub fn verify_canonical_decode(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -682,16 +505,6 @@ pub fn verify_canonical_decode(
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
     NoAuxiliaryWitness -> verify_canonical_decode_empty(pre, witness, control)
-    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
-      verify_canonical_decode_chunk(
-        pre,
-        witness,
-        control,
-        door,
-        field_index,
-        item_index,
-        carriage,
-      )
     TransactionFieldItemWitness { carriage } ->
       verify_canonical_decode_item(pre, witness, control, door, carriage)
     _ -> False

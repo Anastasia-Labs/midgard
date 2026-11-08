@@ -20,10 +20,9 @@ describeInlineCap({
   limit: VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES,
   unit: "byte",
   fieldBytes: (bytes) => bytes,
-  // The canonical decode of a field this large takes more steps before
-  // the stage: 8 more at the consensus field's largest.
-  stepOf: (bytes) =>
-    bytes < MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES ? 48 : 56,
+  // The canonical decode takes the same steps before the stage at every
+  // field size, up to the consensus field's largest.
+  stepOf: () => 48,
   installs: (bytes) => ({
     failingRedeemerData: redeemerDataForFieldPreimage(bytes),
   }),

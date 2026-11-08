@@ -138,8 +138,8 @@ use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_whole_field_view,
   authenticated_whole_field_view_by_commitment,
   authenticated_whole_fixed_field_view, field_fixed_item_extent,
-  field_item_count, field_item_extent, field_item_header_at, field_read_range,
-  whole_view_item_count, whole_view_read_range,
+  field_item_count, field_item_extent, field_read_range, whole_view_item_count,
+  whole_view_read_range,
 }
 
 /// The two arguments §8's door needs that a machine step has no other way to
@@ -224,47 +224,6 @@ pub fn open_machine_field_item_by_commitment(
   MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
 }
 
-/// The same opening, with the item located from a **carried walk position**
-/// instead of from its index (§10.2, §10.5).
-///
-/// `CanonicalDecode` already carries the position: its control's
-/// `encoded_length` is the number of preimage bytes before the item it is about
-/// to read, which is precisely the offset of that item's §5.1 wrapper. Using it
-/// turns a variable-width field's O(index) walk into one header decode, and it
-/// is not a new trust assumption: the offset is a position, never a claim about
-/// content, and `field_item_header_at` reads it through the authenticated view,
-/// so an offset that does not land on an item's wrapper fails closed.
-///
-/// The caller still says which item index it believes it is at; nothing here
-/// checks the two against each other, because for a variable-width field only
-/// the walk relates them and re-walking is the cost this entry point exists to
-/// avoid. What binds them is the phase's own successor exactness: the control
-/// that carries `encoded_length` carries `item_index` beside it, and both are
-/// re-derived from the previous step's authenticated read.
-pub fn open_machine_field_item_at(
-  door: MachineFieldDoorV1,
-  verified: VerifiedTxSourceView,
-  witness_set: NativeTxWitnessSetCompact,
-  field_index: Int,
-  item_index: Int,
-  item_wrapper_offset: Int,
-  carriage: FieldCarriageV1,
-) -> MachineFieldItemV1 {
-  let view = authenticated_whole_field_view(
-    verified,
-    witness_set,
-    field_index,
-    carriage,
-    door.reference_inputs,
-    door.certificate_policy_id,
-  )
-  let Pair(item_offset, item_length) = field_item_header_at(
-    view,
-    item_wrapper_offset,
-  )
-  MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
-}
-
 /// The field's authenticated §5.2 item count, with no item located.
 ///
 /// For the one phase whose *item index* is derived from the count — the CEK
@@ -346,11 +305,6 @@ pub fn machine_field_item_commitment(item: MachineFieldItemV1) -> ByteArray {
     item.item_index,
     machine_field_item_bytes(item),
   )
-}
-
-/// How many `bounded_item_v1` chunks this item spans.
-pub fn machine_field_item_chunk_count(item: MachineFieldItemV1) -> Int {
-  bounded_item_v1.chunk_count(item.item_length)
 }
 
 /// The item's payload length as a step's guards see it. Named so a call site

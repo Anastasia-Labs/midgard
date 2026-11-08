@@ -457,33 +457,12 @@ pub fn verify_maximum_field_terminal_fixture_v1(
     fixture.terminal_chunk_index + 1 == bounded_item_v1.chunk_count(
       bytearray.length(terminal_item),
     ),
-    // The terminal fold authenticates.
-    vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
+    // The terminal item authenticates through the complete-item route.
+    vm_canonical_decode.verify_canonical_decode_item_from_source_v1(
       pre,
       transition,
+      vm_canonical_decode.bind_canonical_decode_item_source_v1(pre, transition),
       inline_field_door(),
-      fixture.field_index,
-      fixture.item_index,
-      terminal_fixture_carriage(fixture),
-    ),
-    // Evidence naming a neighbouring slot does not authenticate this one: §4
-    // removed domain separation and the machine re-establishes it by checking the
-    // index against the control's.
-    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      transition,
-      inline_field_door(),
-      fixture.field_index + 1,
-      fixture.item_index,
-      terminal_fixture_carriage(fixture),
-    ),
-    // Nor does evidence naming a different item of the same field.
-    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      transition,
-      inline_field_door(),
-      fixture.field_index,
-      fixture.item_index - 1,
       terminal_fixture_carriage(fixture),
     ),
     // A declared §5.1 length that disagrees with the authenticated preimage's own
@@ -491,9 +470,8 @@ pub fn verify_maximum_field_terminal_fixture_v1(
     // one of the two `CanonicalDecode` verdicts the door leaves reachable (the
     // other being `FieldItemWidthIllegal`; committed bytes that are not a
     // §5.1 envelope at all are #596's).
-    vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
-      alternate_length_pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
+    {
+      let alternate_length_transition = vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: terminal_fixture_alternate_length_work_witness(
           fixture,
         ),
@@ -503,12 +481,18 @@ pub fn verify_maximum_field_terminal_fixture_v1(
             field_index: fixture.field_index,
           },
         ),
-      },
-      inline_field_door(),
-      fixture.field_index,
-      fixture.item_index,
-      terminal_fixture_carriage(fixture),
-    ),
+      }
+      vm_canonical_decode.verify_canonical_decode_item_from_source_v1(
+        alternate_length_pre,
+        alternate_length_transition,
+        vm_canonical_decode.bind_canonical_decode_item_source_v1(
+          alternate_length_pre,
+          alternate_length_transition,
+        ),
+        inline_field_door(),
+        terminal_fixture_carriage(fixture),
+      )
+    },
   }
 }
 

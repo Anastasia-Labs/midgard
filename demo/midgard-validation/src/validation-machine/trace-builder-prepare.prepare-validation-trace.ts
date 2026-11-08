@@ -34,7 +34,6 @@ import {
   hashMidgardValidationMachineState,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  MIDGARD_CONSENSUS_LIMITS,
   midgardBlake2b,
   type MidgardBlake2b224TraceControl,
   MidgardBlake2b224TraceStages,
@@ -98,7 +97,6 @@ import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
 import {
   canonicalCborArgumentHeaderSize,
-  canonicalFieldItemEncodedLength,
   MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
   MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
 } from "./canonical-field-item.js";
@@ -1248,104 +1246,54 @@ export const prepareValidationTrace = (
       let itemCount = -1;
       let encodedLength = 0;
       for (const item of collection.items) {
-        if (
-          // Output items use the deployed complete-item route at every supported
-          // size. Its content door resolves delivery at observe construction;
-          // the old publication-size heuristic cannot select a retired wire.
-          field.fieldIndex === 2 ||
-          item.bytes.length <=
-            MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes
-        ) {
-          pushWitness(
-            "canonicalDecode",
-            encodeCbor([
-              proofSource.compactCbor,
-              proofSource.witnessSetCompactCbor,
-              proofSource.fieldPreimageLengthsCbor,
-              contextCbor,
-              BigInt(field.fieldIndex),
-              BigInt(item.itemIndex),
-              0n,
-              BigInt(itemCount),
-              BigInt(encodedLength),
-            ]),
-            {
-              kind: "transactionFieldItem",
-              fieldIndex: field.fieldIndex,
-              fieldPreimage: fieldPreimage(field.fieldIndex),
-            },
-          );
-          if (itemCount === -1) {
-            itemCount = collection.items.length;
-            encodedLength = canonicalCborArgumentHeaderSize(itemCount);
-          }
-          const itemEncodedLength = canonicalOrderedItemEncodedLength(
-            field.fieldIndex,
-            collection.items,
-            item.itemIndex,
-          );
-          if (itemEncodedLength === null) {
-            if (
-              terminalPhase !== "canonicalDecode" ||
-              rejectionCode !== RejectCodes.InvalidFieldType
-            )
-              return yield* Effect.fail(
-                new Error(
-                  "canonical item bound disagrees with authoritative rejection",
-                ),
-              );
-            stopReason = {
-              FieldItemWidthIllegal: {
-                field_index: BigInt(field.fieldIndex),
-                item_index: BigInt(item.itemIndex),
-              },
-            };
-            stoppedAtRejection = true;
-            break;
-          }
-          encodedLength += itemEncodedLength;
-          continue;
+        pushWitness(
+          "canonicalDecode",
+          encodeCbor([
+            proofSource.compactCbor,
+            proofSource.witnessSetCompactCbor,
+            proofSource.fieldPreimageLengthsCbor,
+            contextCbor,
+            BigInt(field.fieldIndex),
+            BigInt(item.itemIndex),
+            0n,
+            BigInt(itemCount),
+            BigInt(encodedLength),
+          ]),
+          {
+            kind: "transactionFieldItem",
+            fieldIndex: field.fieldIndex,
+            fieldPreimage: fieldPreimage(field.fieldIndex),
+          },
+        );
+        if (itemCount === -1) {
+          itemCount = collection.items.length;
+          encodedLength = canonicalCborArgumentHeaderSize(itemCount);
         }
-        const chunkCount = midgardBoundedItemChunkCount(item.bytes.length);
-        for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
-          pushWitness(
-            "canonicalDecode",
-            encodeCbor([
-              proofSource.compactCbor,
-              proofSource.witnessSetCompactCbor,
-              proofSource.fieldPreimageLengthsCbor,
-              contextCbor,
-              BigInt(field.fieldIndex),
-              BigInt(item.itemIndex),
-              BigInt(chunkIndex),
-              BigInt(itemCount),
-              BigInt(encodedLength),
-            ]),
-            {
-              kind: "transactionFieldChunk",
-              fieldIndex: field.fieldIndex,
-              itemIndex: item.itemIndex,
-              fieldPreimage: fieldPreimage(field.fieldIndex),
-            },
-          );
-          if (itemCount === -1) {
-            itemCount = collection.items.length;
-            encodedLength = canonicalCborArgumentHeaderSize(itemCount);
-          }
-          if (chunkIndex + 1 === chunkCount) {
-            const itemEncodedLength = canonicalFieldItemEncodedLength(
-              field.fieldIndex,
-              item.bytes.length,
+        const itemEncodedLength = canonicalOrderedItemEncodedLength(
+          field.fieldIndex,
+          collection.items,
+          item.itemIndex,
+        );
+        if (itemEncodedLength === null) {
+          if (
+            terminalPhase !== "canonicalDecode" ||
+            rejectionCode !== RejectCodes.InvalidFieldType
+          )
+            return yield* Effect.fail(
+              new Error(
+                "canonical item bound disagrees with authoritative rejection",
+              ),
             );
-            if (itemEncodedLength === null)
-              return yield* Effect.fail(
-                new Error(
-                  "canonical output must use the deployed complete-item rejection route",
-                ),
-              );
-            encodedLength += itemEncodedLength;
-          }
+          stopReason = {
+            FieldItemWidthIllegal: {
+              field_index: BigInt(field.fieldIndex),
+              item_index: BigInt(item.itemIndex),
+            },
+          };
+          stoppedAtRejection = true;
+          break;
         }
+        encodedLength += itemEncodedLength;
       }
     }
     for (const phase of ["compactBinding", "staticLedgerRules"] as const) {

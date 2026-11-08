@@ -30,12 +30,7 @@ export const validationSemanticResolverIndex = (
   switch (witness.phase) {
     case "canonicalDecode":
       if (auxiliary === null) return 0;
-      if (
-        auxiliary.kind === "transactionFieldChunk" ||
-        auxiliary.kind === "transactionFieldItem"
-      ) {
-        return 1;
-      }
+      if (auxiliary.kind === "transactionFieldItem") return 1;
       break;
     case "compactBinding":
     case "staticLedgerRules":

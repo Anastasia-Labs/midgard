@@ -83,8 +83,9 @@ export type ValidationMachineWorkWitness = {
          *
          * `fieldIndex` and `itemIndex` are on the wire because §4 removed
          * field-index domain separation; the step checks both against its own
-         * control. `inputSets` and `signatures` use `transactionFieldItem`
-         * instead: their controls fix the item, so the prover chooses neither.
+         * control. `canonicalDecode`, `inputSets` and `signatures` use
+         * `transactionFieldItem` instead: their controls fix the item, so the
+         * prover chooses neither.
          *
          * `fieldPreimage` is the plan input, not wire: it is replaced by the §8
          * carriage §8.4 admits for its length when the auxiliary is encoded

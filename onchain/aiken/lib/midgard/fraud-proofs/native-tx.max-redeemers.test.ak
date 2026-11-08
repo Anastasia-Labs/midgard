@@ -212,9 +212,7 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
         // once against the compact structure's `redeemer_tx_wits_hash` (which
         // `maximum_cardano_spend_redeemer_preimage_hash` pins) and item 295 is
         // then a slice.
-        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-          field_index: 8,
-          item_index: 295,
+        auxiliary: vm_machine_types.TransactionFieldItemWitness {
           carriage: native_tx_field_access_v1.Inline {
             preimage: encode_redeemer_witness_preimage(
               maximum_cardano_spend_redeemers_from(1),

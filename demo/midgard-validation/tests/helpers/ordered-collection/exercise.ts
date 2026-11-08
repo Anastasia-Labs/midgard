@@ -114,7 +114,9 @@ export const exerciseMidgardOrderedCollectionBoundary = ({
     validationContextCbor,
     BigInt(fieldIndex),
     BigInt(terminalFieldStep.chunkProof.itemIndex),
-    BigInt(terminalFieldStep.chunkProof.chunkIndex),
+    // CanonicalDecode reads the terminal item in one complete-item step, so
+    // the step's chunk index is always 0 whatever the item's size.
+    0n,
     BigInt(terminalFieldStep.collectionProof.itemCount),
     BigInt(encodedLengthBeforeItem),
   ]);

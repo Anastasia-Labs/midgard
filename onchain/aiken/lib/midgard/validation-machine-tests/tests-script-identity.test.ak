@@ -34,7 +34,7 @@ use midgard/validation_machine_tests/fixtures_script_identity.{
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
-/// The on-wire size of one `CanonicalDecode` chunk instruction, at both ends of
+/// The on-wire size of one `CanonicalDecode` item instruction, at both ends of
 /// §8's carriage ladder.
 ///
 /// The retired counted evidence was bounded by *proof* size — a 14-peak
@@ -49,7 +49,7 @@ use midgard/validation_trace_v1
 ///     `max_tier3_chunk_count` chunk reference inputs, so it is O(1) in the
 ///     field's size — which is what makes the measured 16,225-byte field-2
 ///     maximum reachable by a machine step at all (#593 Ruling 1, option c).
-test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
+test maximum_general_field_item_instruction_evidence_is_bounded() {
   let Pair(_pre, base_evidence) = canonical_step_fixture()
   let maximum_tier1_preimage = zero_filler_bytes(
     native_tx_field_access_v1.max_tier1_redeemer_preimage_bytes,
@@ -57,9 +57,7 @@ test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
   let maximum_tier3_chunk_indices = [1, 2, 3]
   let tier1_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: base_evidence.transition,
-    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-      field_index: 8,
-      item_index: 16_382,
+    auxiliary: vm_machine_types.TransactionFieldItemWitness {
       carriage: native_tx_field_access_v1.Inline {
         preimage: maximum_tier1_preimage,
       },
@@ -67,9 +65,7 @@ test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
   }
   let tier3_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: base_evidence.transition,
-    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-      field_index: 8,
-      item_index: 16_382,
+    auxiliary: vm_machine_types.TransactionFieldItemWitness {
       carriage: native_tx_field_access_v1.Certified {
         cert_ref_input_index: 0,
         chunk_ref_input_indices: maximum_tier3_chunk_indices,

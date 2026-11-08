@@ -28,7 +28,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
 use midgard/validation_trace_v1 as vm_trace
 
 /// The ordered lists a mode authors: spend/reference inputs and address
-/// witnesses (see `order_step_via` for the modes).
+/// witnesses (see `order_step` for the modes).
 fn order_lists(
   mode: Int,
 ) -> Pair<List<MidgardTxInput>, List<MidgardAddressWitness>> {
@@ -81,18 +81,9 @@ fn order_lists(
   Pair(inputs, addresses)
 }
 
-fn order_step(field_index: Int, mode: Int, reject: Bool) -> Bool {
-  order_step_via(field_index, mode, reject, False)
-}
-
 /// Modes: 0 sorted, 1 descending, 2 exact repeat; field 7 only: 3 one signer
 /// with ascending item bytes, 4 one signer with descending item bytes.
-fn order_step_via(
-  field_index: Int,
-  mode: Int,
-  reject: Bool,
-  chunk_route: Bool,
-) -> Bool {
+fn order_step(field_index: Int, mode: Int, reject: Bool) -> Bool {
   let first = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let Pair(inputs, addresses) = order_lists(mode)
   let base = empty_v1_transaction()
@@ -189,24 +180,13 @@ fn order_step_via(
       accepted
     },
   }
-  if chunk_route {
-    canonical.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      step,
-      inline_field_door(),
-      field_index,
-      1,
-      access.Inline { preimage },
-    )
-  } else {
-    canonical.verify_canonical_decode_item_from_source_v1(
-      pre,
-      step,
-      canonical.bind_canonical_decode_item_source_v1(pre, step),
-      inline_field_door(),
-      access.Inline { preimage },
-    )
-  }
+  canonical.verify_canonical_decode_item_from_source_v1(
+    pre,
+    step,
+    canonical.bind_canonical_decode_item_source_v1(pre, step),
+    inline_field_door(),
+    access.Inline { preimage },
+  )
 }
 
 test field_0_sorted_accepts() {
@@ -295,36 +275,6 @@ test field_7_one_signer_descending_bytes_rejects() {
 
 test field_7_one_signer_descending_bytes_refuses_acceptance() {
   !order_step(7, 4, False)
-}
-
-// The one-step chunk route renders the same verdict as the item route.
-
-test chunk_route_field_0_sorted_accepts() {
-  order_step_via(0, 0, False, True)
-}
-
-test chunk_route_field_0_descending_rejects() {
-  order_step_via(0, 1, True, True)
-}
-
-test chunk_route_field_0_descending_refuses_acceptance() {
-  !order_step_via(0, 1, False, True)
-}
-
-test chunk_route_field_1_duplicate_accepts() {
-  order_step_via(1, 2, False, True)
-}
-
-test chunk_route_field_7_duplicate_rejects() {
-  order_step_via(7, 2, True, True)
-}
-
-test chunk_route_field_7_duplicate_refuses_acceptance() {
-  !order_step_via(7, 2, False, True)
-}
-
-test chunk_route_field_7_sorted_refuses_rejection() {
-  !order_step_via(7, 0, True, True)
 }
 
 // Fixed-item legality (the FIWI predicate) and CanonicalDecode give one verdict

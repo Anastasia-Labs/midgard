@@ -37,7 +37,7 @@ const maximum_cardano_inline_datum_validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
 
 const maximum_cardano_inline_datum_terminal_pre_work_root =
-  #"f35a2d6843514959acd6bae4307ae79288b282ea911daeacfeb1b70e6b7b2437"
+  #"b5db8f4d318617376f507d7c2ac0cba35315c5e2bf5c02b4b404d460ca425e7f"
 
 const maximum_cardano_inline_datum_terminal_post_work_root =
   #"bb748d14a67b2932d004a45d7bed13b9a619c3ea0ecbf022e367f46bd8cc8303"
@@ -104,7 +104,7 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
     maximum_cardano_inline_datum_validation_context_cbor,
     2,
     0,
-    3,
+    0,
     1,
     1,
   )
@@ -193,10 +193,8 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
         // program exists to retire; at the repaired `K` the preimage splits
         // `[15,148, 1,077]` and both chunks publish (§8.3 erratum E1). The door
         // then materialises the manifest's chunks, hashes the concatenation once
-        // against `outputs_hash`, and chunk 3 of item 0 is a slice.
-        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
-          field_index: 2,
-          item_index: 0,
+        // against `outputs_hash`, and item 0 is read whole as a slice.
+        auxiliary: vm_machine_types.TransactionFieldItemWitness {
           carriage: binding_fixture.certified_carriage_v1(
             maximum_cardano_inline_datum_field_preimage(),
           ),

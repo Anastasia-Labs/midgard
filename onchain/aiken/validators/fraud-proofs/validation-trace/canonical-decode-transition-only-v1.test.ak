@@ -759,6 +759,34 @@ test prepare_refuses_a_third_semantic_resolver_index() fail {
   )
 }
 
+/// The index bound on its own: a third resolver entry exists and names the
+/// output's script, so only the prepare's two-slot bound (empty field, item)
+/// refuses index 2. The same list at index 1 is the passing control.
+test prepare_bounds_the_semantic_resolver_index_to_the_empty_and_item_slots() {
+  let f = small_fixture()
+  let resolver_hashes = [
+    fixture.step_script_hash,
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
+  ]
+  and {
+    run_prepare(
+      f,
+      resolver_hashes,
+      1,
+      f.transition,
+      expected_prepared_output(f),
+    ),
+    !run_prepare(
+      f,
+      resolver_hashes,
+      2,
+      f.transition,
+      expected_prepared_output(f),
+    ),
+  }
+}
+
 /// The phase pin: a resolution state parked in another phase cannot be
 /// prepared through the canonical-decode resolver, even when its transition
 /// is structurally coherent for that phase.

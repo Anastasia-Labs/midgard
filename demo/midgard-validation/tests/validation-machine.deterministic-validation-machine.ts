@@ -133,14 +133,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
-        // #597: both constructors carry the field's whole §5.1 preimage as
+        // #597: the item constructor carries the field's whole §5.1 preimage as
         // tier-1 `Inline` carriage, so the step's envelope is its control plus
         // that preimage. Tier 1 is bounded by construction — the producer
         // refuses above the cap — so this measures the whole admitted domain.
-        if (
-          witness.auxiliary.kind === "transactionFieldItem" ||
-          witness.auxiliary.kind === "transactionFieldChunk"
-        ) {
+        if (witness.auxiliary.kind === "transactionFieldItem") {
           return (
             witness.cbor.length + stepFieldPreimage(witness.auxiliary).length <
             16 * 1024
@@ -292,10 +289,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;
         if (witness.auxiliary === null) return true;
-        if (
-          witness.auxiliary.kind === "transactionFieldItem" ||
-          witness.auxiliary.kind === "transactionFieldChunk"
-        ) {
+        if (witness.auxiliary.kind === "transactionFieldItem") {
           return !stepFieldPreimage(witness.auxiliary).includes(
             transaction.txCbor,
           );
