@@ -1,6 +1,6 @@
 /**
  * The submit check pool with real worker threads: the production worker's
- * verdicts against the check run inline, the batching of one tick's bodies,
+ * verdicts against the check run inline, the grouping of bodies into messages,
  * the bounds, the wait for a loading worker, and the replacement of a
  * worker that stops answering or never loads.
  */
@@ -89,6 +89,24 @@ const plain = (check: SubmissionCheck) =>
         : value,
   ) as unknown;
 
+/** The size of the message each outcome came in, as the canned worker
+ * reports it (its `fee`). */
+const batchSizes = (outcomes: readonly SubmitCheckOutcome[]) =>
+  outcomes.map((outcome) => {
+    if (outcome.kind !== "checked" || !outcome.check.ok)
+      throw new Error(`not accepted: ${JSON.stringify(outcome)}`);
+    return outcome.check.normalized.fee;
+  });
+
+/** Waits until `count` workers have loaded the check. */
+const waitForReadyWorkers = async (pool: SubmitCheckPool, count: number) => {
+  const deadline = Date.now() + 10_000;
+  while (pool.stats().readyWorkers < count) {
+    if (Date.now() > deadline) throw new Error("the workers did not load");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+};
+
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "submit-check-pool-"));
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
@@ -138,7 +156,7 @@ describe("submit check pool", () => {
     expect(pool.stats()).toMatchObject({ held: 0, heldBytes: 0, restarts: 0 });
   });
 
-  it("sends the bodies of one tick to a worker as one message", async () => {
+  it("sends bodies posted together to a worker as one message", async () => {
     const pool = startPool({ size: 1, entry: cannedWorker });
     const outcomes = await Promise.all(
       Array.from({ length: 10 }, (_, index) =>
@@ -157,6 +175,62 @@ describe("submit check pool", () => {
         Buffer.alloc(32, 0x22),
       );
     }
+  });
+
+  it("sends a burst of bodies to one worker whole, not spread over every worker", async () => {
+    const pool = startPool({ size: 4, entry: cannedWorker });
+    await waitForReadyWorkers(pool, 4);
+    const outcomes = await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        check(pool, Buffer.from([index])),
+      ),
+    );
+    // The canned worker reports its batch size as the fee: one message.
+    expect(batchSizes(outcomes)).toEqual(Array.from({ length: 10 }, () => 10n));
+  });
+
+  it("splits a large burst into chunks of at least 32 bodies across the workers", async () => {
+    const pool = startPool({ size: 4, entry: cannedWorker });
+    await waitForReadyWorkers(pool, 4);
+    const outcomes = await Promise.all(
+      Array.from({ length: 100 }, (_, index) =>
+        check(pool, Buffer.from([index])),
+      ),
+    );
+    const sizes = batchSizes(outcomes);
+    // Three chunks (34, 33 and 33 bodies), on three workers.
+    expect(new Set(sizes)).toEqual(new Set([33n, 34n]));
+    expect(sizes.filter((size) => size === 34n)).toHaveLength(34);
+    for (const [index, outcome] of outcomes.entries())
+      if (outcome.kind === "checked" && outcome.check.ok)
+        expect(outcome.check.normalized.txCanonicalCbor).toEqual(
+          Buffer.from([index]),
+        );
+  });
+
+  it("groups bodies posted on successive event-loop turns into shared messages", async () => {
+    const pool = startPool({ size: 2, entry: cannedWorker });
+    await waitForReadyWorkers(pool, 2);
+    // One body per turn, as requests arriving a few hundred µs apart are.
+    const outcomes: Promise<SubmitCheckOutcome>[] = [];
+    for (let index = 0; index < 8; index += 1) {
+      outcomes.push(check(pool, Buffer.from([index])));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const sizes = batchSizes(await Promise.all(outcomes));
+    expect(Math.max(...sizes.map(Number))).toBeGreaterThan(1);
+  });
+
+  it("answers a lone body within a few milliseconds", async () => {
+    const pool = startPool({ size: 2, entry: cannedWorker });
+    await waitForReadyWorkers(pool, 2);
+    // Warm the worker's message path, then time one body on its own.
+    await check(pool, Buffer.from([0]));
+    const startedAt = performance.now();
+    const outcome = await check(pool, Buffer.from([1]));
+    expect(outcome.kind).toBe("checked");
+    expect(batchSizes([outcome])).toEqual([1n]);
+    expect(performance.now() - startedAt).toBeLessThan(50);
   });
 
   it("refuses a slot past the queue or byte bound, and frees it on release", () => {

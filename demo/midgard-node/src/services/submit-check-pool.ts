@@ -6,8 +6,15 @@
  * A request reserves a slot before its body is read; the slot holds the
  * body's bytes until the worker's verdict comes back. The pool holds at most
  * `maxQueued` slots and `maxQueuedBytes` bytes, so a full pool refuses at
- * once and nothing waits unbounded. Bodies posted in one tick go out as one
- * message per worker, their buffers transferred.
+ * once and nothing waits unbounded.
+ *
+ * Bodies are sent in groups, their buffers transferred: a group goes out
+ * once `FLUSH_AT_ONCE_BODIES` bodies wait, or `FLUSH_DELAY_MS` after the
+ * first of them was posted. A group smaller than two chunks of
+ * `MIN_CHUNK_BODIES` goes whole to the worker holding the fewest bodies; a
+ * larger one is split into such chunks across the workers holding the
+ * fewest. One message per body would cost the main thread more than the
+ * request itself at a few thousand requests a second.
  *
  * A worker takes bodies once it has loaded the check and said so. Bodies
  * posted while every running worker is still loading wait for the first
@@ -92,6 +99,12 @@ export type SubmitCheckPoolOptions = {
   readonly onWorkerStopped?: (workerIndex: number, detail: string) => void;
 };
 
+/** Bodies waiting that are sent at once, without the delay below. */
+const FLUSH_AT_ONCE_BODIES = 32;
+/** The longest a posted body waits for others to share its message. */
+const FLUSH_DELAY_MS = 1;
+/** The fewest bodies a group is split into per worker. */
+const MIN_CHUNK_BODIES = 32;
 const DEFAULT_BATCH_TIMEOUT_MS = 10_000;
 export const DEFAULT_START_TIMEOUT_MS = 30_000;
 const RESPAWN_BASE_DELAY_MS = 50;
@@ -144,7 +157,10 @@ export const createSubmitCheckPool = ({
     failures: 0,
   }));
   let pending: Posted[] = [];
-  let flushScheduled = false;
+  /** The delayed flush of the bodies waiting, while it is pending. */
+  let flushTimer: NodeJS.Timeout | null = null;
+  /** Whether a flush is queued to run once the current task ends. */
+  let flushQueued = false;
   let nextBatch = 0;
   let held = 0;
   let heldBytes = 0;
@@ -156,9 +172,13 @@ export const createSubmitCheckPool = ({
   };
 
   const scheduleFlush = () => {
-    if (flushScheduled || pending.length === 0) return;
-    flushScheduled = true;
-    setImmediate(flush);
+    if (flushQueued || pending.length === 0) return;
+    if (pending.length >= FLUSH_AT_ONCE_BODIES) {
+      // After the current task, so no outcome settles inside `check`.
+      flushQueued = true;
+      queueMicrotask(flush);
+    } else if (flushTimer === null)
+      flushTimer = setTimeout(flush, FLUSH_DELAY_MS);
   };
 
   const stop = (slot: Slot, worker: Worker, detail: string) => {
@@ -275,7 +295,9 @@ export const createSubmitCheckPool = ({
   };
 
   const flush = () => {
-    flushScheduled = false;
+    flushQueued = false;
+    if (flushTimer !== null) clearTimeout(flushTimer);
+    flushTimer = null;
     const items = pending;
     pending = [];
     if (items.length === 0) return;
@@ -294,19 +316,16 @@ export const createSubmitCheckPool = ({
         });
       return;
     }
-    // Each body goes to the worker holding the fewest bodies so far.
-    const load = live.map((slot) => slot.inFlightBodies);
-    const assigned: Posted[][] = live.map(() => []);
-    for (const item of items) {
-      let target = 0;
-      for (let index = 1; index < live.length; index += 1)
-        if (load[index]! < load[target]!) target = index;
-      assigned[target]!.push(item);
-      load[target]! += 1;
-    }
-    live.forEach((slot, index) => {
-      const share = assigned[index]!;
-      if (share.length > 0) send(slot, slot.worker!, share);
+    // The workers holding the fewest bodies take the group: whole when it
+    // is small, else in equal chunks of at least `MIN_CHUNK_BODIES`.
+    const targets = [...live]
+      .sort((a, b) => a.inFlightBodies - b.inFlightBodies)
+      .slice(0, Math.max(1, Math.floor(items.length / MIN_CHUNK_BODIES)));
+    let start = 0;
+    targets.forEach((slot, index) => {
+      const end = Math.round(((index + 1) * items.length) / targets.length);
+      send(slot, slot.worker!, items.slice(start, end));
+      start = end;
     });
   };
 
@@ -382,6 +401,8 @@ export const createSubmitCheckPool = ({
     }),
     close: async () => {
       closed = true;
+      if (flushTimer !== null) clearTimeout(flushTimer);
+      flushTimer = null;
       wakeReadyWaiters(false);
       const items = pending;
       pending = [];

@@ -205,8 +205,8 @@ by inventory instead of holding its one request for 30 s).
   produced outrefs, fee, size}`. The full hash moves off the main thread
   (today `database/txAdmissions.group-reserved-admission-variants.ts`).
 - **Hand-off.** The main thread groups txs from concurrent requests into one
-  message per worker per tick: 45 µs per tx sent alone, 4–6 µs batched
-  (measured).
+  message: 45 µs per tx sent alone, 4–6 µs batched (measured). It sends at
+  once when 32 bodies wait and otherwise after 1 ms.
 - A new `SUBMIT_INGRESS_WORKER_QUEUE` bounds the worker queue.
   `SUBMIT_INGRESS_MAX_CONCURRENCY` keeps sizing the peer pool
   (`commands/http/submission-capacity.ts`).
@@ -215,8 +215,10 @@ by inventory instead of holding its one request for 30 s).
   handler used) in `workers/submit-check.ts`, `SUBMIT_INGRESS_WORKER_POOL_SIZE`
   workers (default 2). A `/submit` request reserves a queue slot (default 256
   slots, and `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes) before its body is
-  read and holds it to the verdict; a full queue answers 503 at once. The
-  bodies of one tick go to each worker as one message, transferred, and an
+  read and holds it to the verdict; a full queue answers 503 at once. Waiting
+  bodies are sent when 32 have gathered or 1 ms after the first, as one
+  transferred message to the least-loaded worker; only a group of 64 or more
+  is split, into chunks of at least 32 across workers. An
   accepted tx comes back as one transferred buffer of tx id, full hash and
   canonical bytes. A worker takes bodies once it has loaded the check; one
   that exits, throws, does not load within 30 s or leaves a batch unanswered
@@ -493,6 +495,7 @@ them for a cloud vCPU.
 | Admission writer, main thread, 10 ms linger and 1 lane: ~100 rows per batch, ~50 commits/s (same bench, interleaved with the row above) | 86–101 µs (three runs); 67 µs at 10,000 TPS (~250 rows per batch) | ~10–12k tx/s on the main thread alone |
 | Admission writer, main thread, also with the backlog slot reserved and settled synchronously, not as an Effect per tx (same bench, five runs interleaved with five of the same code without it, which measured 77–84 µs) | 64–70 µs | ~14–15k tx/s on the main thread alone |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |
+| Lean raw-Node `/submit` handler, main thread, bodies grouped per worker message (M2, #870 wave 3, every connection kept alive, interleaved runs) | 114–119 µs/request at 3k req/s on 4 workers (151–166 µs sending per tick); 82–87 µs at 5k req/s on 6 workers (126–131 µs); p50 latency +1.5–2.3 ms | ~8.5–12k req/s |
 | Lean raw-Node `/submit` handler, main thread, check on two workers (M2, #885) | 335 µs/request at 10 % keep-alive; 288 µs with every connection kept alive | ~3.0k req/s |
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
 | Effect-router `/submit` handler before #881, main thread (M2 baseline, #871) | ~475–600 µs/request; 688 µs in the same-day rerun beside the row above | ~1.5–2.1k req/s |
@@ -558,7 +561,7 @@ edge, submit cannot reach 1,000 TPS whatever else lands.
 | # | What | Decides |
 | --- | --- | --- |
 | M1 | Admission batch latency at 10k/100k/300k backlog and 1M+ terminal rows, after the F10 fix, with asynchronous commit and the validation and block writers running against the same WAL (`fsync=on`) | Backlog size, shard count, shed threshold |
-| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on the Effect handler done: 475–600 µs, 688 µs on 2026-11-07; lean handler with the check on the main thread, #881: 506 µs, 467 µs all keep-alive; check on two workers, #885: 335 µs, 288 µs all keep-alive) | Whether D8 is needed for 5,000 TPS |
+| M2 | Main-thread µs per single-tx `/submit` through the lean handler, writer and worker stubbed (baseline on the Effect handler done: 475–600 µs, 688 µs on 2026-11-07; lean handler with the check on the main thread, #881: 506 µs, 467 µs all keep-alive; check on two workers, #885: 335 µs, 288 µs all keep-alive; bodies grouped per worker message, all keep-alive: 114–119 µs at 3k req/s, 82–87 µs at 5k) | Whether D8 is needed for 5,000 TPS |
 | M3 | Peer ingest TPS per lane, before and after batch admit | Peer body size and forward timeout |
 | M7 | Gauge drift at 5,000 TPS with the 500 ms refresh | Whether the shedding signal is exact enough |
 
