@@ -245,7 +245,9 @@ ingress sits on a Docker network of its own, with no route to the node.
 The ingress caps `/submit` and `/tx/evaluate` bodies at the node's
 submission limit, and refuses a client with more than four requests in flight
 or a liveness or admin route flood. It applies no request rate to submit or
-read routes; the node's limiter decides those.
+read routes; the node's limiter decides those. It reads each `/submit`,
+`/tx/evaluate` and `/peer/*` body whole, spooling large ones to its `/tmp`,
+before the node sees the request.
 
 ### Host ports and the Postgres password
 

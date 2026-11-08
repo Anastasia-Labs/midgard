@@ -139,8 +139,21 @@ const capacityFull = {
   retryAfterSeconds: 5,
 } as const satisfies IngressReservation;
 
-/** Public requests in flight; health and admin requests do not count here. */
+/**
+ * Public requests in flight other than `/submit`: reads (which take database
+ * connections), evaluations and peer requests. Health and admin requests do
+ * not count here.
+ */
 const PUBLIC_ACTIVE_MAX = 64;
+/**
+ * `/submit` requests in flight by default, the default
+ * `SUBMIT_INGRESS_WORKER_QUEUE`. A `/submit` request holds a submit check
+ * pool slot from its body read to its verdict, so the pool's own slot and
+ * byte bounds are the real bound; this one only keeps a /submit burst out of
+ * the 64 above, where at 5,000 req/s any main-thread pause past 13 ms would
+ * refuse it.
+ */
+const SUBMIT_ACTIVE_MAX = 256;
 /**
  * Health and admin requests in flight. A budget of their own keeps them
  * answering while public requests hold every public slot. Their bodies are
@@ -152,12 +165,16 @@ const LIVENESS_ACTIVE_MAX = 8;
 export const createHttpIngress = ({
   now = () => performance.now(),
   policy = DEFAULT_HTTP_RATE_LIMITS,
+  submitActiveMax = SUBMIT_ACTIVE_MAX,
 }: {
   readonly now?: () => number;
   readonly policy?: HttpRateLimitPolicy;
+  /** `/submit` requests in flight at once (`SUBMIT_INGRESS_WORKER_QUEUE`). */
+  readonly submitActiveMax?: number | undefined;
 } = {}) => {
   const rates = createHttpRateLimiter(policy, now());
   let active = 0;
+  let submitActive = 0;
   let livenessActive = 0;
   let inFlightBytes = 0;
   let advisoryBytes = 0;
@@ -175,13 +192,17 @@ export const createHttpIngress = ({
     const checked = rates.check(client, kind, cost, now());
     if (!checked.accepted) return checked;
     const liveness = kind === "health" || kind === "admin";
+    // The `write` class is `/submit` alone.
+    const submit = kind === "write";
     if (
       !Number.isSafeInteger(bytes) ||
       bytes < 0 ||
       checked.busy ||
       (liveness
         ? livenessActive >= LIVENESS_ACTIVE_MAX
-        : active >= PUBLIC_ACTIVE_MAX ||
+        : (submit
+            ? submitActive >= submitActiveMax
+            : active >= PUBLIC_ACTIVE_MAX) ||
           inFlightBytes + bytes >
             2 * MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes ||
           (kind === "evaluate" &&
@@ -191,6 +212,7 @@ export const createHttpIngress = ({
     rates.admit(checked.client);
     const counted = liveness ? 0 : bytes;
     if (liveness) livenessActive += 1;
+    else if (submit) submitActive += 1;
     else active += 1;
     inFlightBytes += counted;
     if (kind === "evaluate") advisoryBytes += bytes;
@@ -202,6 +224,7 @@ export const createHttpIngress = ({
         released = true;
         rates.release(checked.client);
         if (liveness) livenessActive -= 1;
+        else if (submit) submitActive -= 1;
         else active -= 1;
         inFlightBytes -= counted;
         if (kind === "evaluate") advisoryBytes -= bytes;
@@ -213,6 +236,7 @@ export const createHttpIngress = ({
     snapshot: () => ({
       ...rates.snapshot(),
       active,
+      submitActive,
       livenessActive,
       inFlightBytes,
       advisoryBytes,
@@ -223,12 +247,14 @@ export const createHttpIngress = ({
 const controllers = new WeakMap<object, ReturnType<typeof createHttpIngress>>();
 /** The one ingress controller of a node configuration, shared by every route. */
 export const httpIngressFor = (
-  config: Pick<NodeConfigDep, "HTTP_RATE_LIMITS">,
+  config: Pick<NodeConfigDep, "HTTP_RATE_LIMITS"> &
+    Partial<Pick<NodeConfigDep, "SUBMIT_INGRESS_WORKER_QUEUE">>,
 ) => {
   let controller = controllers.get(config);
   if (controller === undefined) {
     controller = createHttpIngress({
       policy: config.HTTP_RATE_LIMITS ?? DEFAULT_HTTP_RATE_LIMITS,
+      submitActiveMax: config.SUBMIT_INGRESS_WORKER_QUEUE,
     });
     controllers.set(config, controller);
   }

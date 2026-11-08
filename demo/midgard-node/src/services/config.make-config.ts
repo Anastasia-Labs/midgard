@@ -308,7 +308,7 @@ const makeConfig = Effect.gen(function* () {
   );
   const submitIngressWorkerPoolSize = yield* positiveSafeIntegerConfig(
     "SUBMIT_INGRESS_WORKER_POOL_SIZE",
-    2,
+    4,
   );
   const submitIngressWorkerQueue = yield* positiveSafeIntegerConfig(
     "SUBMIT_INGRESS_WORKER_QUEUE",

@@ -137,11 +137,14 @@ describe("HTTP admission quotas and admin replay", () => {
       first.release();
     }
     expect(ingress.snapshot()).toMatchObject({
-      active: 1,
+      submitActive: 1,
       inFlightBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
     });
     if (second.accepted) second.release();
-    expect(ingress.snapshot()).toMatchObject({ active: 0, inFlightBytes: 0 });
+    expect(ingress.snapshot()).toMatchObject({
+      submitActive: 0,
+      inFlightBytes: 0,
+    });
   });
   it("reserves a full protocol body for submission even while advisory bytes are full", () => {
     const ingress = createHttpIngress({ now: () => 0 });

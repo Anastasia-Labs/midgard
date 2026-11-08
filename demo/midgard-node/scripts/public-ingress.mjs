@@ -41,6 +41,13 @@ const UNIX_SOCKET_PATH = /^\/[A-Za-z0-9._/-]{1,99}$/u;
  * readiness and admin routes, which no public flood can drain. The refusals
  * nginx makes itself answer in the node's JSON shape with Retry-After;
  * responses from the node pass through untouched.
+ *
+ * nginx reads a whole request body before it opens the request to the node
+ * on the body routes (`/submit`, `/tx/evaluate`, `/peer/*`): a slow upload
+ * holds an nginx buffer (a temp file past `client_body_buffer_size`), never
+ * a node ingress or check slot, and the node always sees the body's
+ * Content-Length. A body over the route cap gets 413 from nginx and never
+ * reaches the node.
  */
 export const renderPublicIngress = (env, { socketPath, submitBodyBytes }) => {
   const hostname = publicApiHostname(env);
@@ -133,10 +140,10 @@ http {
     proxy_connect_timeout 3s;
     proxy_read_timeout 30s;
     proxy_send_timeout 10s;
-    location = /submit { client_max_body_size ${submitBodyBytes.toString()}; proxy_pass http://midgard_node; }
-    location = /tx/evaluate { client_max_body_size ${submitBodyBytes.toString()}; proxy_pass http://midgard_node; }
-    location = /peer/txs { client_max_body_size 1m; proxy_pass http://midgard_node; }
-    location = /peer/inventory { client_max_body_size 1m; proxy_pass http://midgard_node; }
+    location = /submit { client_max_body_size ${submitBodyBytes.toString()}; proxy_request_buffering on; proxy_pass http://midgard_node; }
+    location = /tx/evaluate { client_max_body_size ${submitBodyBytes.toString()}; proxy_request_buffering on; proxy_pass http://midgard_node; }
+    location = /peer/txs { client_max_body_size 1m; proxy_request_buffering on; proxy_pass http://midgard_node; }
+    location = /peer/inventory { client_max_body_size 1m; proxy_request_buffering on; proxy_pass http://midgard_node; }
     location ~ ^/(healthz|readyz|init|commit|merge|stateQueue|logBlocksDB|logGlobals|operator/status|admin/session)$ { limit_req zone=liveness_ip burst=30 nodelay; proxy_pass http://midgard_node; }
     location / { proxy_pass http://midgard_node; }
     location @busy { default_type application/json; add_header Retry-After 5 always; return 503 '${busy}'; }

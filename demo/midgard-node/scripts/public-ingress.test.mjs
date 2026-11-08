@@ -318,6 +318,78 @@ describe("public ingress served by nginx", { skip }, () => {
     assert.equal(over.status, 413);
   });
 
+  /** A POST whose body the caller writes in parts. */
+  const upload = (path, headers = {}) => {
+    const outgoing = request({
+      host: "127.0.0.1",
+      port,
+      servername: HOST,
+      ca,
+      agent: new Agent({ keepAlive: false }),
+      path,
+      method: "POST",
+      headers: { host: HOST, ...headers },
+    });
+    const response = new Promise((resolve, reject) => {
+      outgoing.once("error", reject);
+      outgoing.once("response", (incoming) => {
+        incoming.resume();
+        incoming.once("end", () => resolve(incoming.statusCode));
+      });
+    });
+    return { outgoing, response };
+  };
+  const seenAt = (url) => seen.requests.filter((r) => r.url === url);
+
+  test("hands a body route's request to the node only once its body is whole", async () => {
+    seen.requests.length = 0;
+    const paths = ["/submit", "/tx/evaluate", "/peer/txs", "/peer/inventory"];
+    const uploads = paths.map((path) =>
+      upload(path, { "content-length": "1000" }),
+    );
+    for (const { outgoing } of uploads) outgoing.write(Buffer.alloc(500));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      // A client part way through its upload holds nothing on the node.
+      assert.deepEqual(seen.requests, []);
+    } catch (error) {
+      // Free the address's connection slots for the tests after this one.
+      for (const { outgoing, response } of uploads) {
+        response.catch(() => undefined);
+        outgoing.destroy();
+      }
+      throw error;
+    }
+    for (const { outgoing } of uploads) outgoing.end(Buffer.alloc(500));
+    assert.deepEqual(
+      await Promise.all(uploads.map(({ response }) => response)),
+      [200, 200, 200, 200],
+    );
+    for (const path of paths)
+      assert.deepEqual(
+        seenAt(path).map(({ contentLength }) => contentLength),
+        ["1000"],
+      );
+  });
+
+  test("gives the node a chunked submission's length, and refuses one over the cap without reaching the node", async () => {
+    seen.requests.length = 0;
+    const chunked = upload("/submit", { "transfer-encoding": "chunked" });
+    chunked.outgoing.write(Buffer.alloc(600));
+    chunked.outgoing.end(Buffer.alloc(400));
+    assert.equal(await chunked.response, 200);
+    assert.deepEqual(
+      seenAt("/submit").map(({ contentLength }) => contentLength),
+      ["1000"],
+    );
+    seen.requests.length = 0;
+    const over = upload("/submit", { "transfer-encoding": "chunked" });
+    over.outgoing.write(Buffer.alloc(BODY_BYTES));
+    over.outgoing.end(Buffer.alloc(1));
+    assert.equal(await over.response, 413);
+    assert.deepEqual(seen.requests, []);
+  });
+
   test("refuses a fifth concurrent request from one address, and floods of health checks, in the node's JSON shape", async () => {
     const fresh = new Agent({ keepAlive: false });
     const slow = await Promise.all(

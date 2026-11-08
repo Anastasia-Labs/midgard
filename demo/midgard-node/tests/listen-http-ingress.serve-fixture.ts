@@ -46,6 +46,8 @@ export const serve = async (
   options: {
     readonly policy?: HttpRateLimitPolicy;
     readonly trustedProxyPeers?: readonly string[];
+    /** `/submit` requests in flight at once; the node's default if omitted. */
+    readonly submitActiveMax?: number;
   } = {},
 ) => {
   let clock = 0;
@@ -53,6 +55,7 @@ export const serve = async (
   const ingress = createHttpIngress({
     now: () => clock,
     policy: options.policy ?? DEFAULT_HTTP_RATE_LIMITS,
+    submitActiveMax: options.submitActiveMax,
   });
   const handler = Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;

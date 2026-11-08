@@ -148,14 +148,36 @@ is counted in `submit_refusal_count{reason}` on `/metrics`; its log line is
 sampled to the first refusal of each reason per second, which also says how many
 went unlogged since the previous line. The envelope decode and the submission
 check run on a pool of worker threads apart from the validation workers
-(`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default 2); the main thread only reads the
+(`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default 4); the main thread only reads the
 body and hands it over. A `/submit` request holds a slot of that pool's queue
 from the body read to the verdict: `SUBMIT_INGRESS_WORKER_QUEUE` slots
-(default 256) and `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. A full queue answers 503
+(default 256) and `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. The node's
+HTTP ingress lets that many `/submit` requests run at once, apart from the 64
+in flight the other public routes share, so reads never take a submission's
+slot and a burst of submissions never takes a read's. A full queue answers 503
 `Submit ingress capacity is full; retry later` (reason `submit_capacity`). A
 check worker that crashes or stalls is replaced; the requests it held, and any
 that arrive while no worker is running, get 503 `Submit check is unavailable;
-retry later` (reason `submit_check_unavailable`). A `/peer/txs` body holds at most one largest transaction
+retry later` (reason `submit_check_unavailable`).
+
+The same workers check every `/peer/txs` transaction, and each node checks
+every transaction of the cluster once (its own users' through `/submit`, the
+rest as its peers forward them), so size `SUBMIT_INGRESS_WORKER_POOL_SIZE` for
+the cluster's TPS, not this node's share. One worker checks, by transaction
+shape (inputs/outputs, measured on #886's Phase A):
+
+| Shape | Worker time per tx | Txs a second per worker |
+| ----- | ------------------ | ----------------------- |
+| 1/2   | 0.19 ms            | about 4,400             |
+| 4/4   | 0.44 ms            | about 2,100             |
+| 16/16 | 1.52 ms            | about 650               |
+
+The default of 4 checks about 8,400 4-in/4-out txs a second, room over a
+5,000 TPS cluster; 2 workers stop near 4,200. Give the pool one more worker
+than cluster TPS ÷ per-worker rate, on cores the validation workers do not
+need.
+
+A `/peer/txs` body holds at most one largest transaction
 (about 288 KiB) and a `/peer/inventory` body at most 20,000 ids (about 664 KiB); peer
 bodies are read under an ingress pool of their own, apart from `/submit`'s, and a
 peer body of unknown length holds only the larger of those two bounds against the
@@ -295,7 +317,11 @@ ingress has a Docker network of its own and no route to the node over TCP; the
 node publishes no API port. The ingress caps `/submit` and `/tx/evaluate`
 bodies at the node's submission limit (295,048 bytes), caps each address at 4
 requests in flight, and rate limits only the health, readiness and admin
-routes; the node's limiter decides submit and read routes. Its own refusals are
+routes; the node's limiter decides submit and read routes. On `/submit`,
+`/tx/evaluate` and `/peer/*` it reads the whole body (spooling past its memory
+buffer to a temp file) before it passes the request on, so a slow upload holds
+no node slot and the node always gets the body's `Content-Length`; a chunked
+body over the cap gets 413 from the ingress. Its own refusals are
 JSON with `Retry-After`, using the node's error codes. `public.ingressHostPort`
 adds an extra host port for it. No Docker socket is mounted.
 

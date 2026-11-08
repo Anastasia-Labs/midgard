@@ -163,10 +163,12 @@ export type NodeConfigDep = {
   /** Body bytes `/submit` requests hold while read, queued for or in a
    * submit check worker; a peer request's bytes are bounded on their own. */
   SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: number;
-  /** Threads of the submit check pool (`services/submit-check-pool.ts`). */
+  /** Threads of the submit check pool (`services/submit-check-pool.ts`),
+   * which checks `/submit` and `/peer/txs` alike: sized for cluster TPS. */
   SUBMIT_INGRESS_WORKER_POOL_SIZE: number;
-  /** `/submit` requests read, queued for or in a submit check worker at once;
-   * past it a request is answered 503. */
+  /** `/submit` requests read, queued for or in a submit check worker at once,
+   * and the HTTP ingress's in-flight bound for `/submit`; past it a request
+   * is answered 503. */
   SUBMIT_INGRESS_WORKER_QUEUE: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;

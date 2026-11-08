@@ -147,13 +147,20 @@ keeps the connection open for the retry; other refusals of a `POST` close it.
 
 The envelope decode and the submission check run on a pool of worker threads
 apart from the validation workers (`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default
-2); the main thread only reads the body and hands it over. A `/submit` request
+4); the main thread only reads the body and hands it over. A `/submit` request
 holds a slot of that pool's queue from the body read to the verdict:
 `SUBMIT_INGRESS_WORKER_QUEUE` slots (default 256) and
 `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. A full queue answers `503` with
 `Submit ingress capacity is full; retry later`. A check worker that crashes or
 stalls is replaced; the requests it held, and any that arrive while no worker
 is running, get `503` with `Submit check is unavailable; retry later`.
+
+The same workers check every `/peer/txs` transaction, and each node checks
+every transaction of the cluster once, so size the pool for the cluster's TPS.
+One worker checks about 4,400 txs a second of 1 input and 2 outputs (0.19 ms
+each), 2,100 of 4/4 (0.44 ms) or 650 of 16/16 (1.52 ms). The default of 4
+covers about 8,400 4/4 txs a second; give the pool one more worker than
+cluster TPS divided by the per-worker rate.
 The durable admission backlog
 is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 300,000, which is
 60 s at 5,000 TPS) and by payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`,
@@ -245,8 +252,11 @@ have their own concurrency budget, and `/readyz` and the admin database reads
 use a database connection of their own. Neither a flood of public requests nor
 slow public requests holding every public slot can refuse them.
 
-Public requests are capped at 64 in flight plus a bound on in-flight body
-bytes; health and admin requests at 8 in flight; each client at 4 in flight.
+`/submit` requests are capped at `SUBMIT_INGRESS_WORKER_QUEUE` in flight
+(default 256, the check pool's queue) and the other public requests at 64,
+so neither can take the other's slots; both share a bound on in-flight body
+bytes. Health and admin requests are capped at 8 in flight; each client at 4
+in flight.
 Overflow answers `503` with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
 
 | Variable                                                                    | Default         | Meaning                                                                                                                                                           |
@@ -261,7 +271,10 @@ Overflow answers `503` with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
 Bursts are positive integers and refills positive numbers per second. The public
 TLS ingress applies no request rate to submit and read routes: these limits
 decide them. It caps each address at 4 requests in flight, and its health,
-readiness and admin routes keep a per-address rate zone of their own. A CDN or
+readiness and admin routes keep a per-address rate zone of their own. On
+`/submit`, `/tx/evaluate` and `/peer/*` it reads the whole body before it
+passes the request on, so a slow upload holds no node slot and the node always
+gets the body's `Content-Length`. A CDN or
 load balancer in front of the ingress makes every client behind it look like
 the CDN's addresses, so they share those buckets; rate limit at the CDN as
 well, or keep the ingress as the first hop.

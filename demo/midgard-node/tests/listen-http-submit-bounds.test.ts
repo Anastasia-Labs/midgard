@@ -14,6 +14,8 @@ afterEach(closeServers);
 
 describe("HTTP submission body bounds and kept connections", () => {
   const client = "198.51.100.1";
+  /** A small `/submit` in-flight bound, so a test can fill it. */
+  const SUBMIT_ACTIVE_MAX = 8;
 
   it("caps a submission at one envelope around the largest transaction", async () => {
     const largest = encodeMidgardProofSubmission({
@@ -74,6 +76,7 @@ describe("HTTP submission body bounds and kept connections", () => {
   it("keeps the connection on rate and capacity refusals and closes it on malformed requests", async () => {
     const node = await serve({
       ...proxied,
+      submitActiveMax: SUBMIT_ACTIVE_MAX,
       policy: policyWith({
         write: {
           peer: { burst: 1, perSecond: 1 },
@@ -89,11 +92,12 @@ describe("HTTP submission body bounds and kept connections", () => {
     expect((await submit()).status).toBe(200);
     expect(node.connections()).toBe(1);
 
-    // Every public slot held: the capacity refusal keeps the connection too.
-    for (let holder = 1; holder <= 16; holder += 1)
-      for (let slot = 0; slot < 4; slot += 1)
-        node.hold("/utxos", { client: `203.0.113.${holder}` });
-    await node.waitFor(() => node.ingress.snapshot().active === 64);
+    // Every /submit slot held: the capacity refusal keeps the connection too.
+    for (let holder = 1; holder <= SUBMIT_ACTIVE_MAX; holder += 1)
+      node.hold("/submit", { client: `203.0.113.${holder}` });
+    await node.waitFor(
+      () => node.ingress.snapshot().submitActive === SUBMIT_ACTIVE_MAX,
+    );
     const before = node.connections();
     node.advance(1_000);
     const full = await submit();
@@ -102,7 +106,7 @@ describe("HTTP submission body bounds and kept connections", () => {
       "E_HTTP_INGRESS_CAPACITY",
     ]);
     node.releaseHeld();
-    await node.waitFor(() => node.ingress.snapshot().active === 0);
+    await node.waitFor(() => node.ingress.snapshot().submitActive === 0);
     node.advance(1_000);
     expect((await submit()).status).toBe(200);
     expect(node.connections()).toBe(before);
@@ -120,5 +124,35 @@ describe("HTTP submission body bounds and kept connections", () => {
     node.advance(1_000);
     expect((await submit()).status).toBe(200);
     expect(node.connections()).toBe(before + 1);
+  });
+
+  it("admits /submit while reads hold every other public slot", async () => {
+    const node = await serve(proxied);
+    for (let holder = 1; holder <= 16; holder += 1)
+      for (let slot = 0; slot < 4; slot += 1)
+        node.hold("/utxos", { client: `203.0.113.${holder}` });
+    await node.waitFor(() => node.ingress.snapshot().active === 64);
+    expect((await node.call("/tx", { client })).body.error_code).toBe(
+      "E_HTTP_INGRESS_CAPACITY",
+    );
+    expect(
+      (await node.call("/submit", { method: "POST", client })).status,
+    ).toBe(200);
+  });
+
+  it("admits a /submit burst past 64 in flight, up to its own bound", async () => {
+    const node = await serve({ ...proxied, submitActiveMax: 100 });
+    // 25 clients, 4 in flight each: one client's own cap.
+    for (let holder = 1; holder <= 25; holder += 1)
+      for (let slot = 0; slot < 4; slot += 1)
+        node.hold("/submit", { client: `203.0.113.${holder}` });
+    await node.waitFor(() => node.ingress.snapshot().submitActive === 100);
+    const full = await node.call("/submit", { method: "POST", client });
+    expect([full.status, full.body.error_code]).toEqual([
+      503,
+      "E_HTTP_INGRESS_CAPACITY",
+    ]);
+    // Reads keep their own 64.
+    expect((await node.call("/tx", { client })).status).toBe(200);
   });
 });

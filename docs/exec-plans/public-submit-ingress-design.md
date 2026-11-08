@@ -234,7 +234,9 @@ is sized for cluster TPS.
 - **Landed (#885).** `services/submit-check-pool.ts` runs
   `checkSubmissionBody` (`commands/http/submission-check.ts`, the module the
   handler used) in `workers/submit-check.ts`, `SUBMIT_INGRESS_WORKER_POOL_SIZE`
-  workers (default 2). A `/submit` request reserves a queue slot (default 256
+  workers (default 2, raised to 4 in #870 wave 3: two stop near 4,200 4/4
+  txs a second, and since D3's peer checks moved onto the pool it is sized
+  for cluster TPS). A `/submit` request reserves a queue slot (default 256
   slots, and `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes) before its body is
   read and holds it to the verdict; a full queue answers 503 at once. Waiting
   bodies are sent when 32 have gathered or 1 ms after the first, as one
@@ -329,6 +331,19 @@ is sized for cluster TPS.
   config floor that holds `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` at
   `maxDaPayloadBytes` or more (`services/config.make-config.ts:303-316`)
   drops to that cap.
+- **Landed (#870 wave 3): `/submit` in-flight bound.** The HTTP ingress
+  counts `/submit` apart from the other public routes and lets it run up to
+  `SUBMIT_INGRESS_WORKER_QUEUE` (default 256) at once, the bound the check
+  pool already holds each request to; reads, evaluate and `/tx-status` keep
+  the 64 they share, for their database load. The shared in-flight byte
+  budget (2 × `maxDaPayloadBytes`) stays the memory bound. Raising the one
+  public cap instead would have let reads take submission slots, and the
+  reverse. M2 refusals fell from 94–109 of 30,000 to none at 3,000 req/s, and
+  from 653–1,995 of 50,000 to 57–64 at 5,000 (see the measurement row). The per-client limit stays 4, not
+  the 8 above: behind nginx a client is one connecting address, honest
+  wallets keep one or two requests in flight, the benches run with rate
+  limits off so they cannot show it binding, and nginx `limit_conn` (4) would
+  have to move with it.
 
 ### D6 — Fail fast before the durable write
 
@@ -425,6 +440,15 @@ nginx config (F13). It changes as follows.
   ranges of cloud load balancers.
 - Drop `connection: close` on 429, 503 and 409. Keep it only for malformed
   requests. (Duplicates already return 200 and keep the connection.)
+- **Landed (#870 wave 3): request buffering on the body routes.** nginx
+  sets `proxy_request_buffering on` for `/submit`, `/tx/evaluate`,
+  `/peer/txs` and `/peer/inventory` (off elsewhere): it reads a body whole,
+  spooling past `client_body_buffer_size` to `/tmp/client-body`, before it
+  opens the request to the node. Before, a client uploading slowly held a
+  node ingress slot and a check-queue slot for the whole upload (16 addresses
+  × 4 could pin all 64). The node now always sees `Content-Length`: a chunked
+  `/submit` reaches it with its length instead of drawing the 411, and a
+  chunked body over the cap gets 413 from nginx without reaching the node.
 
 ### D8 — Scale out (optional, beyond one node)
 
@@ -517,6 +541,7 @@ them for a cloud vCPU.
 | Admission writer, main thread, also with the backlog slot reserved and settled synchronously, not as an Effect per tx (same bench, five runs interleaved with five of the same code without it, which measured 77–84 µs) | 64–70 µs | ~14–15k tx/s on the main thread alone |
 | Main thread residual: ingress check, writer enqueue, `Deferred`, response | estimate 20–50 µs; measured far higher (next row) | — |
 | Lean raw-Node `/submit` handler, main thread, bodies grouped per worker message (M2, #870 wave 3, every connection kept alive, interleaved runs) | 114–119 µs/request at 3k req/s on 4 workers (151–166 µs sending per tick); 82–87 µs at 5k req/s on 6 workers (126–131 µs); p50 latency +1.5–2.3 ms | ~8.5–12k req/s |
+| `/submit` refusals at the HTTP ingress (M2, #870 wave 3, every connection kept alive, two interleaved runs each) | 3k req/s on 4 workers: 109 and 94 of 30,000 refused on the shared 64-slot cap, 0 and 0 with `/submit`'s own 256-slot bound; 5k req/s on 6 workers: 1,995 and 653 of 50,000, then 64 and 57. Main thread per request unchanged within noise (120–146 µs at 3k, 85–107 µs at 5k) | The bench does not split the 5k remainder by reason; the 256-slot bound (ingress and check queue alike) during main-thread pauses (p99 74–94 ms) is the likely cap |
 | Lean raw-Node `/submit` handler, main thread, check on two workers (M2, #885) | 335 µs/request at 10 % keep-alive; 288 µs with every connection kept alive | ~3.0k req/s |
 | Lean raw-Node `/submit` handler, main thread, submit check still on it (M2, #881) | 506 µs/request (429 µs less the 77 µs check) at 10 % keep-alive; 467 µs with every connection kept alive | ~2.0k req/s |
 | Effect-router `/submit` handler before #881, main thread (M2 baseline, #871) | ~475–600 µs/request; 688 µs in the same-day rerun beside the row above | ~1.5–2.1k req/s |
