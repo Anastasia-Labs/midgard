@@ -5,6 +5,7 @@ import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { MintingValidator, SpendingValidator } from "../../../common.js";
+import { buildFieldGrammarCertificateValidator } from "../../field-grammar-certificate.build-field-grammar-certificate-validator.js";
 import {
   applyBlueprintParams,
   applyThreadHolderParams,
@@ -67,6 +68,19 @@ export const buildValidationTraceDisputeChain = ({
   Error
 > =>
   Effect.gen(function* () {
+    // The field grammar certificate policy the stages that read a
+    // variable-width field's item take: a pure function of the blueprint and
+    // the field-preimage certificate policy, as the protocol's own
+    // certificate validator is.
+    const fieldGrammarCertificatePolicyId = yield* tryBuild(
+      "Failed to build field grammar certificate policy",
+      () =>
+        buildFieldGrammarCertificateValidator({
+          blueprint,
+          network,
+          fieldPreimageCertificatePolicyId,
+        }).policyId,
+    );
     // The case and its hand-off scripts. From Defend on, a thread carries a
     // token of the case policy, so every validator a thread passes through
     // takes the case policy as its thread policy. Only the opener and the
@@ -222,6 +236,7 @@ export const buildValidationTraceDisputeChain = ({
             threadPolicyId,
             proofItem.spendingScriptHash,
             fieldPreimageCertificatePolicyId,
+            fieldGrammarCertificatePolicyId,
           ]),
         ),
     );
@@ -274,6 +289,7 @@ export const buildValidationTraceDisputeChain = ({
         "field_preimage_certificate_policy_id",
         fieldPreimageCertificatePolicyId,
       ],
+      ["field_grammar_certificate_policy_id", fieldGrammarCertificatePolicyId],
       [
         "source_binder_script_hash",
         canonicalDecodeItemSource.spendingScriptHash,
@@ -474,6 +490,7 @@ export const buildValidationTraceDisputeChain = ({
                 ]!.spendingScriptHash,
               ],
               fieldPreimageCertificatePolicyId,
+              fieldGrammarCertificatePolicyId,
             ],
           ),
         ),
@@ -511,6 +528,7 @@ export const buildValidationTraceDisputeChain = ({
                 ]!.spendingScriptHash,
               ],
               fieldPreimageCertificatePolicyId,
+              fieldGrammarCertificatePolicyId,
             ],
           ),
         ),
@@ -942,6 +960,7 @@ export const buildValidationTraceDisputeChain = ({
             ]!.spendingScriptHash,
             award.spendingScriptHash,
             fieldPreimageCertificatePolicyId,
+            fieldGrammarCertificatePolicyId,
           ]),
         ),
     );
@@ -957,6 +976,7 @@ export const buildValidationTraceDisputeChain = ({
             ]!.spendingScriptHash,
             award.spendingScriptHash,
             fieldPreimageCertificatePolicyId,
+            fieldGrammarCertificatePolicyId,
           ]),
         ),
     );

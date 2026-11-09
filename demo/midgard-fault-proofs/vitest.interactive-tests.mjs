@@ -17,6 +17,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-canonical-decode-0.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-1.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-2.test.ts",
+  "./tests/validation-trace-dispute-one-step-canonical-decode-2-observe-certified-grammar.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-7.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-8-observe-copy-tier-2.test.ts",

@@ -46,6 +46,12 @@ import {
   integer,
   stepDatum,
 } from "./one-step-data.js";
+import {
+  fieldItemRouteCbor,
+  fieldItemRouteReferences,
+  type ValidationTraceFieldItemRouteReads,
+  validationTraceObserveRouteExtraBytes,
+} from "./one-step-field-item-route.js";
 
 /** `NoAuxiliaryWitness`: what the canonical-decode resolver commits beside
  * the transition. */
@@ -65,11 +71,12 @@ const INLINE_CARRIAGE = 0;
 
 /** The longest field preimage whose `Inline` carriage the observe move
  * carries within the transaction size limit less its 512-byte reserve,
- * measured on the move paid from our wallet (the canonical-decode-8
- * observe-copy test). The observe move of an item of a longer field reads
- * the field from our publications of it instead: one (`RawUtxo`) up to
+ * measured on the walking move paid from our wallet (the canonical-decode-8
+ * observe-copy test); the certified route's read takes its room from it.
+ * The observe move of an item of a longer field reads the field from our
+ * publications of it instead: one (`RawUtxo`) up to
  * §8.4's chunk, past it its chunks under their certificate (`Certified`). */
-export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_620;
+export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_617;
 
 /** The carriage a canonical-decode step's evidence names for its field.
  * The canonical-decode resolver commits none of it, and the observe move
@@ -145,6 +152,8 @@ export const canonicalDecodeValidators = (
 
 /** What each item stage records, as the Data CBOR the stage derives. */
 export type ValidationTraceCanonicalDecodeItem = Readonly<{
+  /** The field the item is read from. */
+  fieldIndex: number;
   /** The carriage the observe stage opens the item from. */
   carriageCbor: string;
   /** `CanonicalDecodeItemSourceV1`: the field's commitment and length. */
@@ -223,7 +232,9 @@ export const planValidationTraceCanonicalDecodeStep = ({
     asInteger(control[8], "encoded_length"),
   ];
   const carried =
-    preimage.length > VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES
+    preimage.length >
+    VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES -
+      validationTraceObserveRouteExtraBytes(fieldIndex, preimage)
       ? Object.freeze({ fieldIndex, preimage: Buffer.from(preimage) })
       : undefined;
   const carriageCbor = plutusConstrFieldCbor(auxiliaryCbor, [0]);
@@ -263,6 +274,7 @@ export const planValidationTraceCanonicalDecodeStep = ({
   return {
     preparedEvidenceHash,
     item: Object.freeze({
+      fieldIndex,
       carriageCbor,
       sourceCbor: constr(0, [
         bytes(midgardFieldCommitment(preimage).toString("hex")),
@@ -311,7 +323,9 @@ const indices = (inputIndex: bigint, outputIndex: bigint) => [
  * The hop of the thread with datum `datum`, of prover `prover`, held by
  * the canonical-decode holder `holder`, in the resolution of the step whose
  * transition is `transitionCbor` and whose plan is `step`; the observe hop
- * of an item whose field is `carried` reads it from our `carriage` of it.
+ * of an item whose field is `carried` reads it from our `carriage` of it,
+ * and takes the route `route` beside its carriage (the field's grammar
+ * certificate, or the walk without one).
  */
 export const canonicalDecodeHop = ({
   holder,
@@ -321,6 +335,7 @@ export const canonicalDecodeHop = ({
   transitionCbor,
   step,
   carriage,
+  route,
 }: {
   readonly holder: ValidationTraceCanonicalDecodeHolder;
   readonly datum: string;
@@ -329,6 +344,7 @@ export const canonicalDecodeHop = ({
   readonly transitionCbor: string;
   readonly step: ValidationTraceCanonicalDecodeStep;
   readonly carriage?: ValidationTraceFieldCarriage | undefined;
+  readonly route?: ValidationTraceFieldItemRouteReads | undefined;
 }): CanonicalDecodeHop => {
   const item = (): ValidationTraceCanonicalDecodeItem => {
     if (step.item === undefined)
@@ -394,13 +410,28 @@ export const canonicalDecodeHop = ({
       };
     case "canonicalDecodeItemObserve": {
       const { observationCbor, carriageCbor: inline, carried } = item();
+      // Without a route the observe walks the field.
+      const routeOf = (context: RedeemerContext) =>
+        route === undefined
+          ? constr(0, [])
+          : fieldItemRouteCbor(route, context);
+      const certificate = fieldItemRouteReferences(route);
       if (carried === undefined)
         return {
           next: "canonicalDecodeItemProof",
           datum: stepDatum(prover, staged(datum, observationCbor)),
-          redeemer: (inputIndex, outputIndex) =>
-            continued(constr(0, [...indices(inputIndex, outputIndex), inline])),
+          redeemer: (inputIndex, outputIndex, context) =>
+            continued(
+              constr(0, [
+                ...indices(inputIndex, outputIndex),
+                inline,
+                routeOf(context),
+              ]),
+            ),
           proverOnly: true,
+          ...(certificate.length === 0
+            ? {}
+            : { reads: { references: certificate, yields: [] } }),
         };
       if (carriage === undefined)
         throw new Error(
@@ -414,10 +445,14 @@ export const canonicalDecodeHop = ({
             constr(0, [
               ...indices(inputIndex, outputIndex),
               carriageCbor(carriageAmong(carriage, context.referenceInputs)),
+              routeOf(context),
             ]),
           ),
         proverOnly: true,
-        reads: { references: carriageReads(carriage), yields: [] },
+        reads: {
+          references: [...carriageReads(carriage), ...certificate],
+          yields: [],
+        },
       };
     }
     case "canonicalDecodeItemProof":

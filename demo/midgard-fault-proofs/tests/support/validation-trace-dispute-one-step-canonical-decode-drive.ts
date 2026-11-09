@@ -90,17 +90,21 @@ export const canonicalDecodeDrive = ({
   at,
   failingRedeemerData,
   failingSigners,
+  failingOutputs,
   certifies,
   minFeeA,
   releaseDepth,
 }: {
-  readonly from: number;
+  /** Our trace's state, or how to pick it from our trace. */
+  readonly from: Parameters<typeof resolutionDrive>[0]["from"];
   readonly kind: CanonicalDecodeKind;
   readonly at: ValidationTraceCanonicalDecodeHolder;
   /** The failing transaction's redeemer, as Plutus Data CBOR. */
   readonly failingRedeemerData?: Uint8Array;
   /** Who signs the failing transaction beside its owner. */
   readonly failingSigners?: ScenarioSigners;
+  /** How many outputs the failing transaction pays past its own. */
+  readonly failingOutputs?: number;
   /** Whether the deployment publishes the field-preimage certificate
    * policy. */
   readonly certifies?: boolean;
@@ -118,6 +122,7 @@ export const canonicalDecodeDrive = ({
       canonicalDecode: true,
       ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
       ...(failingSigners === undefined ? {} : { failingSigners }),
+      ...(failingOutputs === undefined ? {} : { failingOutputs }),
       ...(certifies === undefined ? {} : { certifies }),
       ...(releaseDepth === undefined ? {} : { releaseDepth }),
     },
@@ -157,7 +162,7 @@ export const canonicalDecodeDrive = ({
      * `kind`, committing the transition alone. */
     routes: async () => {
       const plan = await drive.plan();
-      expect(plan.stateIndex).toBe(from);
+      if (typeof from === "number") expect(plan.stateIndex).toBe(from);
       expect(plan.preState.phase).toBe("canonicalDecode");
       expect(plan.semanticResolverIndex).toBe(kind === "empty" ? 0 : 1);
       expect(plan.canonicalDecode.item === undefined).toBe(kind === "empty");

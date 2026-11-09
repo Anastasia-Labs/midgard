@@ -45,6 +45,7 @@ import {
   contextItemReads,
   redeemerItemCarried,
 } from "./one-step-context-item-hops.js";
+import { validationTraceFieldItemRouteAt } from "./one-step-field-item-route.js";
 import {
   type ValidationTraceOneStepContract,
   validationTraceOneStepDrives,
@@ -52,7 +53,10 @@ import {
   validationTraceOneStepHolderAt,
 } from "./one-step-holders.js";
 import { phaseYieldListReads, phaseYieldReads } from "./one-step-phase.js";
-import { planValidationTraceThread } from "./one-step-plan.js";
+import {
+  planValidationTraceThread,
+  type ValidationTraceOneStepPlan,
+} from "./one-step-plan.js";
 import { planned, resolvingPlan } from "./one-step-resolving-plan.js";
 import {
   isScriptSourcesRedeemerOwnHolder,
@@ -188,37 +192,52 @@ const resolvingThread = async (
   return Object.freeze({ utxo, ...recorded, holder, caseThread });
 };
 
+type ReaderInput = Readonly<{
+  deployment: ValidationTraceDisputeDeployment;
+  material: ValidationTraceClaimMaterial | undefined;
+  utxo: UTxO;
+}>;
+
+/** Our plan of the step of our thread `utxo` past the boundary, by our
+ * trace in `material`, with the holder it stands at; none along a shared
+ * item chain or at a staged step's holders, whose plan reads the thread's
+ * history. */
+export const validationTraceReaderPlan = async ({
+  deployment,
+  material,
+  utxo,
+}: ReaderInput): Promise<
+  | Readonly<{
+      plan: ValidationTraceOneStepPlan;
+      holder: ValidationTraceOneStepContract["holder"];
+    }>
+  | undefined
+> => {
+  const at = validationTraceOneStepHolderAt(deployment, utxo.address)?.holder;
+  if (
+    at === undefined ||
+    at === "award" ||
+    at === "boundary" ||
+    isValidationTraceContextItemChainHolder(at) ||
+    isScriptSourcesRedeemerOwnHolder(at)
+  )
+    return undefined;
+  const plan = await resolvingPlan({
+    ...{ deployment, material, utxo, holder: at },
+    ...{ caseThread: undefined, carried: undefined },
+  });
+  return Object.freeze({ plan, holder: at });
+};
+
 /** The field the move of our thread `utxo` reads by reference, or binds
  * its evidence to our publications of, by our trace in `material`; none
  * where its step's evidence carries every field it reads inline. A thread
  * along a shared item chain, or at a staged step's holders, reads none. */
-export const validationTraceCarriedField = async ({
-  deployment,
-  material,
-  utxo,
-}: {
-  readonly deployment: ValidationTraceDisputeDeployment;
-  readonly material: ValidationTraceClaimMaterial | undefined;
-  readonly utxo: UTxO;
-}): Promise<ValidationTraceCarriedField | undefined> => {
-  const holder = validationTraceOneStepHolderAt(deployment, utxo.address);
-  if (
-    holder === undefined ||
-    holder.holder === "award" ||
-    holder.holder === "boundary" ||
-    isValidationTraceContextItemChainHolder(holder.holder) ||
-    isScriptSourcesRedeemerOwnHolder(holder.holder)
-  )
-    return undefined;
-  const plan = await resolvingPlan({
-    deployment,
-    material,
-    utxo,
-    holder: holder.holder,
-    caseThread: undefined,
-    carried: undefined,
-  });
-  return validationTraceCarriedFieldAt(plan, holder.holder);
+export const validationTraceCarriedField = async (
+  input: ReaderInput,
+): Promise<ValidationTraceCarriedField | undefined> => {
+  const reader = await validationTraceReaderPlan(input);
+  return reader && validationTraceCarriedFieldAt(reader.plan, reader.holder);
 };
 
 /** A hop of our thread through its one-step resolution, now; along the
@@ -279,12 +298,23 @@ export const captureValidationTraceResolve = async (
       ? await validationTraceSelectionReads({ input, plan })
       : undefined;
   const staging = await stagingOutputs(lucid, plan);
+  // The route of the item read the step makes through a routed door, and
+  // the certificate it reads through, if any.
+  const route = await validationTraceFieldItemRouteAt({
+    lucid,
+    deployment,
+    material: input.material,
+    plan,
+    holder,
+    owner: signer.paymentKeyHash,
+  });
   const hop = validationTraceCarriedMove({
     deployment,
     plan,
     holder: from.holder,
     datum: thread.utxo.datum ?? "",
     carriage,
+    route,
     hop: (bound) =>
       validationTraceHop({
         plan: bound,
@@ -310,6 +340,7 @@ export const captureValidationTraceResolve = async (
             }
           : {}),
         ...(bound.kind === "canonicalDecode" ? { carriage } : {}),
+        route,
         staging,
       }),
   });

@@ -5,9 +5,11 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  midgardFieldCommitment,
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-validation";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -160,6 +162,9 @@ export type ValidationTraceClaimMaterial = {
    * it: a normal transaction, its id, and its compact and witness-set
    * compact bytes. */
   readonly fieldSource: () => ValidationTraceFieldSource;
+  /** The preimage of the disputed transaction's field `fieldIndex`, checked
+   * against the field's commitment. */
+  readonly fieldPreimage: (fieldIndex: number) => Buffer;
 };
 
 /** A disputed transaction's identity as field carriage names it. */
@@ -186,6 +191,29 @@ const fieldSourceOf = (transactionCbor: Uint8Array) => {
       witnessSetCompactCbor: witnessSetCompactCbor.toString("hex"),
     });
     return source;
+  };
+};
+
+/** The field preimages of the normal transaction `transactionCbor`, each
+ * checked against its commitment. */
+const fieldPreimageOf = (transactionCbor: Uint8Array) => {
+  let preimages: readonly Buffer[] | undefined;
+  return (fieldIndex: number): Buffer => {
+    preimages ??= deriveMidgardTxFieldPreimages(transactionCbor).map(
+      ({ fieldIndex: index, preimageCbor, expectedHash }) => {
+        if (!midgardFieldCommitment(preimageCbor).equals(expectedHash))
+          throw new Error(
+            `validation-trace disputed transaction's field ${index.toString()} does not match its commitment`,
+          );
+        return preimageCbor;
+      },
+    );
+    const preimage = preimages[fieldIndex];
+    if (preimage === undefined)
+      throw new Error(
+        `validation-trace disputed transaction has no field ${fieldIndex.toString()}`,
+      );
+    return preimage;
   };
 };
 
@@ -323,5 +351,6 @@ export const buildValidationTraceClaimMaterial = async ({
       ledger,
     }),
     fieldSource: fieldSourceOf(event.entry.fullTransactionCbor),
+    fieldPreimage: fieldPreimageOf(event.entry.fullTransactionCbor),
   };
 };

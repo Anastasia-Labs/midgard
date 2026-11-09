@@ -34,6 +34,26 @@ export type ValidationTraceFieldPreimageCertificate = Readonly<{
   reference: UTxO;
 }>;
 
+/** The field grammar certificate validator the dispute's stages are
+ * applied with (its policy id is its spend credential), and its published
+ * reference script: a stage reads a variable-width field's item through a
+ * `Complete` certificate of it, so its cost no longer grows with the
+ * field's item count. */
+export type ValidationTraceFieldGrammarCertificate = Readonly<{
+  validator: Readonly<{ spendingScript: Script; spendingScriptHash: string }>;
+  reference: UTxO;
+}>;
+
+/** The certificates a deployment's reads of a field go through. */
+export type ValidationTraceFieldCertificates = Readonly<{
+  /** The policy certifying a field of ours too long for one publication. */
+  fieldPreimageCertificate?: ValidationTraceFieldPreimageCertificate;
+  /** The field grammar certificate the dispute's stages read a
+   * variable-width field's item through; without it a step that reads
+   * through it does not build. */
+  fieldGrammarCertificate?: ValidationTraceFieldGrammarCertificate;
+}>;
+
 /** Our published carriage of a field: its publications, in chunk order, and
  * their certificate past one publication. */
 export type ValidationTraceFieldCarriage = Readonly<{

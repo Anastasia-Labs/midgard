@@ -131,14 +131,22 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/bounded_item_v1
+use midgard/field_grammar_certificate_v1.{
+  certified_field_grammar_at, certified_field_item_count,
+  certified_field_item_extent,
+}
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, FieldViewV1, authenticated_whole_field_view,
-  authenticated_whole_field_view_by_commitment,
+  FieldCarriageV1, FieldViewV1, ProvisionalWhole, Whole,
+  authenticated_materialised_field_preimage_by_commitment,
+  authenticated_materialised_resumable_field_view_by_commitment,
+  authenticated_materialised_resumable_field_view_with_commitment,
+  authenticated_whole_field_view, authenticated_whole_field_view_by_commitment,
   authenticated_whole_fixed_field_view, field_fixed_item_extent,
-  field_item_count, field_item_extent, field_read_range, whole_view_item_count,
+  field_item_count, field_item_extent, field_read_range, field_stride,
+  walk_derived_stride, walked_field_view, whole_view_item_count,
   whole_view_read_range,
 }
 
@@ -222,6 +230,311 @@ pub fn open_machine_field_item_by_commitment(
   )
   let Pair(item_offset, item_length) = field_item_extent(view, item_index)
   MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
+}
+
+// ---------------------------------------------------------------------------
+// Certified route for a variable-width field (2, 5, 6, 8)
+// ---------------------------------------------------------------------------
+//
+// `open_machine_field_item` walks a variable-width field's envelope twice —
+// once to settle the count at view construction, once to reach the item — so
+// a step's cost grows with the field's item count. The certified route reads
+// the item through the field grammar certificate instead
+// (`midgard/field_grammar_certificate_v1`), so its cost no longer grows with
+// the field's item count: the preimage is hashed once against the same
+// commitment, the certificate bound to that commitment supplies the item
+// count, and the item is reached from the nearest waypoint in at most
+// `field_grammar_waypoint_interval` header reads.
+//
+// The item it returns is the item `open_machine_field_item` returns for the
+// same field and index. A `Complete` certificate bound to the commitment the
+// bytes hash to records exactly what `whole_view`'s walk establishes — the
+// header's declared item count, consumed to the field's last byte — and its
+// waypoints are offsets into those same bytes, so the view is the same
+// `Whole` view and every accessor below answers identically on either route.
+// The certificate is itself a pure function of the committed field, which is
+// why the route can be the prover's choice without the step's successor
+// depending on it.
+
+/// How a step reaches an item of a variable-width field: by walking the
+/// field (`open_machine_field_item`), or through the field grammar
+/// certificate at reference input `cert_ref_input_index`.
+///
+/// Carried in a redeemer beside a step's evidence, never inside it: either
+/// route yields the same item, so the route is not part of what the step
+/// commits. `WalkFieldItem` is Constr 0 with no fields — the same Data as the
+/// `Void` an unused redeemer carries.
+pub type MachineFieldItemRouteV1 {
+  WalkFieldItem
+  CertifiedFieldItem { cert_ref_input_index: Int }
+}
+
+/// `open_machine_field_item` for a variable-width field, by `route`: the
+/// field is hash-checked once through the resumable door, then either settled
+/// by `whole_view`'s walk (`WalkFieldItem`) or read through the field grammar
+/// certificate at reference input `cert_ref_input_index`, minted under
+/// `grammar_certificate_policy_id` (`CertifiedFieldItem`). The certified route
+/// fails unless that certificate is `Complete` and bound to this transaction,
+/// field, commitment and length, and unless `field_index` is variable-width (a
+/// fixed-stride field has no certificate).
+pub fn open_machine_variable_field_item(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: MachineFieldItemRouteV1,
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  let Pair(field_commitment, view) = authenticated_materialised_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  routed_machine_field_item(
+    door,
+    grammar_certificate_policy_id,
+    route,
+    verified.tx_id,
+    field_commitment,
+    field_index,
+    item_index,
+    view,
+  )
+}
+
+/// `open_machine_variable_field_item` for a commitment extracted from an
+/// already authenticated machine control, as
+/// `open_machine_field_item_by_commitment` is to `open_machine_field_item`.
+/// The caller still pins the field index to the commitment it extracted.
+pub fn open_machine_variable_field_item_by_commitment(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: MachineFieldItemRouteV1,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  routed_machine_field_item(
+    door,
+    grammar_certificate_policy_id,
+    route,
+    tx_id,
+    field_commitment,
+    field_index,
+    item_index,
+    authenticated_materialised_resumable_field_view_by_commitment(
+      tx_id,
+      field_index,
+      field_commitment,
+      carriage,
+      door.reference_inputs,
+      door.certificate_policy_id,
+    ),
+  )
+}
+
+/// The half both routed openers share, from the hash-checked view on.
+fn routed_machine_field_item(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: MachineFieldItemRouteV1,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  view: FieldViewV1,
+) -> MachineFieldItemV1 {
+  when route is {
+    WalkFieldItem -> {
+      let view = walked_field_view(view)
+      let Pair(item_offset, item_length) = field_item_extent(view, item_index)
+      MachineFieldItemV1 {
+        view,
+        field_index,
+        item_index,
+        item_offset,
+        item_length,
+      }
+    }
+    CertifiedFieldItem { cert_ref_input_index } ->
+      certified_machine_field_item(
+        door,
+        grammar_certificate_policy_id,
+        cert_ref_input_index,
+        tx_id,
+        field_commitment,
+        field_index,
+        item_index,
+        view,
+      )
+  }
+}
+
+/// `open_machine_variable_field_item` on the certified route alone, for a
+/// stage that reads its variable-width field only through the field grammar
+/// certificate at reference input `cert_ref_input_index`.
+pub fn open_machine_certified_field_item(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  cert_ref_input_index: Int,
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  let Pair(field_commitment, view) = authenticated_materialised_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  certified_machine_field_item(
+    door,
+    grammar_certificate_policy_id,
+    cert_ref_input_index,
+    verified.tx_id,
+    field_commitment,
+    field_index,
+    item_index,
+    view,
+  )
+}
+
+/// `open_machine_variable_field_item_by_commitment` on the certified route
+/// alone, for a stage that reads its variable-width field only through the
+/// field grammar certificate at reference input `cert_ref_input_index`.
+pub fn open_machine_certified_field_item_by_commitment(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  cert_ref_input_index: Int,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  certified_machine_field_item(
+    door,
+    grammar_certificate_policy_id,
+    cert_ref_input_index,
+    tx_id,
+    field_commitment,
+    field_index,
+    item_index,
+    authenticated_materialised_resumable_field_view_by_commitment(
+      tx_id,
+      field_index,
+      field_commitment,
+      carriage,
+      door.reference_inputs,
+      door.certificate_policy_id,
+    ),
+  )
+}
+
+/// `open_machine_certified_field_item_by_commitment`, read straight to the
+/// two things a stage that only commits to the item needs: the certified item
+/// count and the item's payload bytes. The payload is the one
+/// `machine_field_item_bytes` reads from the opened item, and its length is
+/// that item's `machine_field_item_length`.
+///
+/// Fails for a fixed-stride field, which has no certificate, as the certified
+/// route does. Past that the preimage is only hash-checked: the certificate,
+/// bound to that commitment and the preimage's length, settles the rest of
+/// what the resumable door checks (see
+/// `authenticated_materialised_field_preimage_by_commitment`), and the view
+/// the item is read through is the `ProvisionalWhole` view that door opens,
+/// its count the certified one.
+pub fn open_machine_certified_field_payload_by_commitment(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  cert_ref_input_index: Int,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> Pair<Int, ByteArray> {
+  expect field_stride(field_index) == walk_derived_stride
+  let bytes = authenticated_materialised_field_preimage_by_commitment(
+    tx_id,
+    field_index,
+    field_commitment,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  let certified = certified_field_grammar_at(
+    door.reference_inputs,
+    cert_ref_input_index,
+    grammar_certificate_policy_id,
+    tx_id,
+    field_index,
+    field_commitment,
+    bytearray.length(bytes),
+  )
+  let item_count = certified_field_item_count(certified)
+  let view = ProvisionalWhole {
+    bytes,
+    count: item_count,
+    stride: walk_derived_stride,
+  }
+  let Pair(item_offset, item_length) = certified_field_item_extent(
+    view,
+    certified,
+    item_index,
+  )
+  Pair(item_count, field_read_range(view, item_offset, item_length))
+}
+
+/// The certified route from the hash-checked view on: bind the certificate to
+/// the hash-checked bytes, locate the item from its waypoint, and hand back
+/// the `Whole` view `whole_view` would have built, its count the certified
+/// one.
+fn certified_machine_field_item(
+  door: MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  cert_ref_input_index: Int,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  view: FieldViewV1,
+) -> MachineFieldItemV1 {
+  // Only a variable-width field opens provisional; a fixed-stride one opens
+  // `Whole` and is refused here.
+  expect ProvisionalWhole { bytes, stride, .. } = view
+  let certified = certified_field_grammar_at(
+    door.reference_inputs,
+    cert_ref_input_index,
+    grammar_certificate_policy_id,
+    tx_id,
+    field_index,
+    field_commitment,
+    bytearray.length(bytes),
+  )
+  let Pair(item_offset, item_length) = certified_field_item_extent(
+    view,
+    certified,
+    item_index,
+  )
+  MachineFieldItemV1 {
+    view: Whole { bytes, count: certified_field_item_count(certified), stride },
+    field_index,
+    item_index,
+    item_offset,
+    item_length,
+  }
 }
 
 /// The field's authenticated §5.2 item count, with no item located.

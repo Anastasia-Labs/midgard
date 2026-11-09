@@ -3490,6 +3490,54 @@
         "mem": 2319581,
         "cpu": 691594708
       }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/observe_certified_item_760_of_761_outputs_at_scale - observe_certified_item_760_of_761_outputs_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/observe_certified_item_760_of_761_outputs_at_scale",
+      "minusControl": "observe_certified_item_760_of_761_outputs_fixture_only",
+      "ceiling": {
+        "mem": 1269149,
+        "cpu": 449989981
+      }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/observe_certified_item_3639_of_3640_scripts_at_scale - observe_certified_item_3639_of_3640_scripts_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/observe_certified_item_3639_of_3640_scripts_at_scale",
+      "minusControl": "observe_certified_item_3639_of_3640_scripts_fixture_only",
+      "ceiling": {
+        "mem": 562291,
+        "cpu": 323101508
+      }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_zero_begin_certified_source_895_of_900_at_scale - stage_zero_begin_certified_source_895_of_900_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_zero_begin_certified_source_895_of_900_at_scale",
+      "minusControl": "stage_zero_begin_certified_source_895_of_900_fixture_only",
+      "ceiling": {
+        "mem": 3557006,
+        "cpu": 1363912275
+      }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_one_begin_certified_redeemer_1711_of_1724_at_scale - stage_one_begin_certified_redeemer_1711_of_1724_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_one_begin_certified_redeemer_1711_of_1724_at_scale",
+      "minusControl": "stage_one_begin_certified_redeemer_1711_of_1724_fixture_only",
+      "ceiling": {
+        "mem": 3830041,
+        "cpu": 1467458177
+      }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_four_begin_certified_output_760_of_761_at_scale - stage_four_begin_certified_output_760_of_761_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_four_begin_certified_output_760_of_761_at_scale",
+      "minusControl": "stage_four_begin_certified_output_760_of_761_fixture_only",
+      "ceiling": {
+        "mem": 3518545,
+        "cpu": 1294213453
+      }
+    },
+    "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_six_begin_policy_certified_entry_895_of_910_at_scale - stage_six_begin_policy_certified_entry_895_of_910_fixture_only": {
+      "test": "fraud_proofs/validation_trace/certified_field_item_v1.test/stage_six_begin_policy_certified_entry_895_of_910_at_scale",
+      "minusControl": "stage_six_begin_policy_certified_entry_895_of_910_fixture_only",
+      "ceiling": {
+        "mem": 6387378,
+        "cpu": 2331329250
+      }
     }
   },
   "growth": {

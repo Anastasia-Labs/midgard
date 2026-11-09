@@ -107,6 +107,7 @@ export type FailingTransactionShape = {
   readonly failingNativeMint?: ScenarioMint;
   readonly failingNative?: ScenarioNative;
   readonly failingPlutusPurpose?: ScenarioPlutusPurpose;
+  readonly failingOutputs?: number;
 };
 
 /** The scene's harness and dispute contracts, before its blocks exist. */
@@ -136,6 +137,7 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * does with it;
  * `failingPlutusPurpose` is a Plutus script it also runs as a minting
  * policy or a withdrawal;
+ * it pays `failingOutputs` outputs past its own, each holding its minimum;
  * with `failingStampedInvalid` the failing block stamps that transaction
  * TxIsInvalid, as an honest block does.
  * The passing transaction spends under `passingSpend` when given.
@@ -152,6 +154,7 @@ export const setUpScene = async (
     failingNativeMint = false,
     failingNative,
     failingPlutusPurpose,
+    failingOutputs = 0,
     failingStampedInvalid = false,
     passingSpend,
   }: FailingTransactionShape & {
@@ -238,7 +241,11 @@ export const setUpScene = async (
           byte,
           scenarioSpend(scenario as PlutusExecutionScenario),
           isFailing(scenario as PlutusExecutionScenario)
-            ? scenarioSeedLovelace(failingNativeMint, failingNative)
+            ? scenarioSeedLovelace(
+                failingNativeMint,
+                failingNative,
+                failingOutputs,
+              )
             : undefined,
         ),
       ),
@@ -292,6 +299,7 @@ export const setUpScene = async (
             ...(failingPlutusPurpose === undefined
               ? {}
               : { plutusPurpose: failingPlutusPurpose }),
+            extraOutputs: failingOutputs,
           }
         : {}),
       ...(spend === undefined ? {} : { spend }),

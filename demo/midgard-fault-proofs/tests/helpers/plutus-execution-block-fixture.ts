@@ -165,7 +165,11 @@ export const plutusExecutionBlockFixture = async (
   const scriptSeed = depositSeed(
     seedByte,
     scriptCredential(scenario, spendOptions.spend),
-    scenarioSeedLovelace(nativeMint, spendOptions.native),
+    scenarioSeedLovelace(
+      nativeMint,
+      spendOptions.native,
+      spendOptions.extraOutputs,
+    ),
   );
   const keySeed = depositSeed(KEY_SEED_BYTE, keyCredential());
   const predecessorEntries = requestedPredecessor ?? [
@@ -212,6 +216,7 @@ export const plutusExecutionBlockFixture = async (
     nativeMint,
     spendOptions.native,
     spendOptions.plutusPurpose,
+    spendOptions.extraOutputs,
   ).map((output, outputIndex) => ({
     outRef: encodeMidgardSpendInputItem({
       txId: Buffer.from(tx.txId, "hex"),

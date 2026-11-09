@@ -64,6 +64,11 @@ const YIELD_MEMBERS: Readonly<Record<string, string>> = Object.freeze(
  * long for one publication (transactions.ts `fieldPreimageCertificate`). */
 export const FIELD_PREIMAGE_CERTIFICATE_MINT = "fieldPreimageCertificateMint";
 
+/** The manifest member whose spending script holds the field grammar
+ * certificates a stage reads a variable-width field's item through
+ * (transactions.ts `fieldGrammarCertificate`). */
+export const FIELD_GRAMMAR_CERTIFICATE_SPEND = "fieldGrammarCertificateSpend";
+
 /**
  * The one-step resolution's roster entries: each role is the manifest
  * member it names, for the holders, the yields and the script-decode
@@ -78,6 +83,7 @@ export const VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS: Readonly<
       ...Object.values(YIELD_MEMBERS),
       ...Object.values(SCRIPT_DECODE_REFERENCE_SCRIPTS),
       FIELD_PREIMAGE_CERTIFICATE_MINT,
+      FIELD_GRAMMAR_CERTIFICATE_SPEND,
     ].map((member) => [member, member]),
   ),
 );

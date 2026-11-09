@@ -9,9 +9,15 @@ import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import type { ValidationTraceFieldPreimageCertificate } from "../../src/validation-trace-dispute/one-step-carriage.js";
+import type {
+  ValidationTraceFieldGrammarCertificate,
+  ValidationTraceFieldPreimageCertificate,
+} from "../../src/validation-trace-dispute/one-step-carriage.js";
 import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "../../src/validation-trace-dispute/one-step-holders.js";
-import { FIELD_PREIMAGE_CERTIFICATE_MINT } from "../../src/validation-trace-dispute/one-step-references.js";
+import {
+  FIELD_GRAMMAR_CERTIFICATE_SPEND,
+  FIELD_PREIMAGE_CERTIFICATE_MINT,
+} from "../../src/validation-trace-dispute/one-step-references.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "../../src/validation-trace-dispute/workflow.js";
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
@@ -24,6 +30,7 @@ import {
   publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
+  publishFieldGrammarCertificate,
   publishFieldPreimageCertificate,
   publishOneStepReferences,
   publishPhaseReferences,
@@ -49,6 +56,8 @@ export type InstalledScene = Readonly<{
   oneStep: ValidationTraceOneStepReferences;
   /** The field-preimage certificate policy's published minting script. */
   certificate: ValidationTraceFieldPreimageCertificate;
+  /** The field grammar certificate validator's published script. */
+  grammar: ValidationTraceFieldGrammarCertificate;
   removal: Removal;
 }>;
 
@@ -56,8 +65,10 @@ export const setUpInstalledScene = async (): Promise<InstalledScene> => {
   let oneStep: ValidationTraceOneStepReferences | undefined;
   let removal: Removal | undefined;
   let certificate: ValidationTraceFieldPreimageCertificate | undefined;
+  let grammar: ValidationTraceFieldGrammarCertificate | undefined;
   const scene = await setUpScene(async (contracts) => {
     certificate = await publishFieldPreimageCertificate(contracts);
+    grammar = await publishFieldGrammarCertificate(contracts);
     oneStep = {
       ...(await publishOneStepReferences(contracts)),
       cekSelection: await publishSelectionReferences(contracts),
@@ -80,6 +91,7 @@ export const setUpInstalledScene = async (): Promise<InstalledScene> => {
     scene,
     oneStep: oneStep!,
     certificate: certificate!,
+    grammar: grammar!,
     removal: removal!,
   };
 };
@@ -105,6 +117,7 @@ export const sceneRoster = ({
   scene,
   oneStep,
   certificate,
+  grammar,
 }: InstalledScene) => {
   const { h, chain } = scene;
   const byHash = new Map(
@@ -163,6 +176,7 @@ export const sceneRoster = ({
     ...yieldMembers,
     [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.reference],
     [FIELD_PREIMAGE_CERTIFICATE_MINT, certificate.reference],
+    [FIELD_GRAMMAR_CERTIFICATE_SPEND, grammar.reference],
     ...SDK.SCRIPT_DECODE_STAKER_CLASS_NAMES.map((name): [string, UTxO] => [
       SDK.SCRIPT_DECODE_STAKER_MEMBERS[name],
       scriptDecode.stakerReferences[name],

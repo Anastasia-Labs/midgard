@@ -102,6 +102,7 @@ export const resolutionDrive = <
     | "failingNativeSpend"
     | "failingNativeMint"
     | "failingNative"
+    | "failingOutputs"
     | "releaseDepth"
     | "certifies"
   >;
@@ -347,7 +348,8 @@ export const resolutionDrive = <
                   installs.failingScript !== undefined ||
                   installs.failingNativeSpend !== undefined ||
                   installs.failingNativeMint !== undefined ||
-                  installs.failingNative !== undefined)) ||
+                  installs.failingNative !== undefined ||
+                  installs.failingOutputs !== undefined)) ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,

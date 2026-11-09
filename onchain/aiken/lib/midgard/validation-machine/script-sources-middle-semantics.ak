@@ -4,6 +4,7 @@
 use aiken/cbor
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
+use cardano/assets.{PolicyId}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{
@@ -110,6 +111,8 @@ pub fn stage_four_begin(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let frame = raw.open_frame_v1(pre, witness, 28, 4)
@@ -119,6 +122,8 @@ pub fn stage_four_begin(
     TransactionRedeemerItemBeginWitness { carriage },
     base_control(frame),
     door,
+    grammar_certificate_policy_id,
+    route,
     fn(next) {
       raw.successor_is_exact_v1(
         pre,
@@ -167,6 +172,8 @@ pub fn stage_six_begin(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
   field_index: Int,
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
@@ -179,16 +186,25 @@ pub fn stage_six_begin(
     frame.witness_set_compact_cbor,
     frame.field_preimage_lengths_cbor,
   )
+  // The stage reads its policy item only through the field grammar
+  // certificate, so its cost no longer grows with the field's item count.
+  expect field_door.CertifiedFieldItem { cert_ref_input_index } = route
   middle.script_sources_begin_mint_policy_with_successor(
     pre,
     witness,
     base_control(frame),
-    verified,
-    ws,
-    door,
+    field_door.open_machine_certified_field_item(
+      door,
+      grammar_certificate_policy_id,
+      cert_ref_input_index,
+      verified,
+      ws,
+      5,
+      item_index,
+      carriage,
+    ),
     field_index,
     item_index,
-    carriage,
     fn(next) {
       let next_cbor = raw.replace_items_v1(
         frame,

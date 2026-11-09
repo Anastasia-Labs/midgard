@@ -3,7 +3,12 @@
  * deployment the host loaded, and the run over retained DA that replays the
  * challenged block's scripts. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  type LucidEvolution,
+  type UTxO,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 
 import {
   parseContractDeploymentDisputeBondLovelace,
@@ -44,6 +49,7 @@ import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
 import {
+  FIELD_GRAMMAR_CERTIFICATE_SPEND,
   FIELD_PREIMAGE_CERTIFICATE_MINT,
   validationTraceOneStepReferences,
   validationTraceScriptDecodeReferences,
@@ -154,6 +160,34 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       );
     return bound(contractName, utxo);
   };
+  // The field grammar certificate validator the stages are applied with,
+  // from the blueprint over the bound field-preimage certificate policy,
+  // and its published reference script, which must run exactly it.
+  const fieldGrammarCertificateOf = (
+    fieldPreimageCertificatePolicyId: string,
+  ) => {
+    const validator = SDK.buildFieldGrammarCertificateValidator({
+      blueprint: SDK.parseFaultProofBlueprint(binding.blueprint),
+      network: binding.network,
+      fieldPreimageCertificatePolicyId,
+    });
+    const reference = member(FIELD_GRAMMAR_CERTIFICATE_SPEND);
+    if (
+      reference.scriptRef == null ||
+      validatorToScriptHash(reference.scriptRef) !==
+        validator.spendingScriptHash
+    )
+      throw new Error(
+        "validation-trace field grammar certificate reference script differs from the blueprint's",
+      );
+    return Object.freeze({
+      validator: {
+        spendingScript: validator.spendingScript,
+        spendingScriptHash: validator.spendingScriptHash,
+      },
+      reference,
+    });
+  };
   const deployment: ValidationTraceDisputeDeployment = Object.freeze({
     deploymentFingerprint: binding.deploymentFingerprint,
     network: binding.network,
@@ -209,6 +243,9 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
             ...binding.fieldPreimageCertificate,
             reference: member(FIELD_PREIMAGE_CERTIFICATE_MINT),
           }),
+          fieldGrammarCertificate: fieldGrammarCertificateOf(
+            binding.fieldPreimageCertificate.policyId,
+          ),
         }),
   });
   const l1 = createFraudProofFamilyL1ObservationPort({

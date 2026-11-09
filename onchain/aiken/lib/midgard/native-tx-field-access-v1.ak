@@ -1009,6 +1009,118 @@ pub fn authenticated_whole_field_view_by_commitment(
   }
 }
 
+/// `authenticated_materialised_resumable_field_view_with_commitment` for a
+/// commitment the caller already authenticated, as
+/// `authenticated_whole_field_view_by_commitment` is to
+/// `authenticated_whole_field_view`: the same carriage tiers, the same
+/// tier-3 materialise-then-hash, and the same §4 hash check, but no §5.1 walk.
+/// A variable-width field comes back `ProvisionalWhole`, whose count no caller
+/// may read until a field grammar certificate bound to this commitment has
+/// settled it.
+pub fn authenticated_materialised_resumable_field_view_by_commitment(
+  tx_id: ByteArray,
+  field_index: Int,
+  expected_hash: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> FieldViewV1 {
+  // `field_stride` checks the field index.
+  resumable_whole_view(
+    materialised_field_preimage(
+      tx_id,
+      field_index,
+      expected_hash,
+      carriage,
+      reference_inputs,
+      certificate_policy_id,
+    ),
+    expected_hash,
+    field_stride(field_index),
+  )
+}
+
+/// The preimage `authenticated_materialised_resumable_field_view_by_commitment`
+/// opens, hash-checked against `expected_hash` and nothing more: no aggregate
+/// bound, header decode or stride. For a reader that reads the field through
+/// a field grammar certificate bound to `expected_hash` and the preimage's
+/// length: the certificate's mint opened the same bytes through the resumable
+/// door and ran every one of those checks on them, and refuses a field that
+/// needs no certification, so the binding settles them all.
+pub fn authenticated_materialised_field_preimage_by_commitment(
+  tx_id: ByteArray,
+  field_index: Int,
+  expected_hash: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ByteArray {
+  let preimage = materialised_field_preimage(
+    tx_id,
+    field_index,
+    expected_hash,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect field_commitment(preimage) == expected_hash
+  preimage
+}
+
+/// The preimage a carriage names, tier 3's chunks concatenated, before any
+/// check of the bytes themselves.
+fn materialised_field_preimage(
+  tx_id: ByteArray,
+  field_index: Int,
+  expected_hash: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ByteArray {
+  when carriage is {
+    Inline { preimage } -> preimage
+    RawUtxo { ref_input_index } ->
+      raw_carriage_bytes(reference_inputs, ref_input_index)
+    Certified { cert_ref_input_index, chunk_ref_input_indices } -> {
+      let CertifiedChunksV1 { chunks, .. } = certified_chunks(
+        tx_id,
+        field_index,
+        expected_hash,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+      list.foldl(
+        chunks,
+        #"",
+        fn(chunk, joined) { bytearray.concat(joined, chunk) },
+      )
+    }
+  }
+}
+
+/// Settle a materialised resumable view by `whole_view`'s own §5.1 walk:
+/// a `ProvisionalWhole` view becomes the `Whole` view `whole_view` builds from
+/// the same bytes, and fails exactly where `whole_view` would. The resumable
+/// door has already run every other `whole_view` check on those bytes — the
+/// §4 hash, the aggregate bound and the header decode — so a resumable view
+/// settled here is `whole_view`'s view, check for check. A view that is
+/// already `Whole` (a fixed-stride field, whose §7.4 arithmetic check the
+/// resumable door runs in full) is returned as it is.
+pub fn walked_field_view(view: FieldViewV1) -> FieldViewV1 {
+  when view is {
+    ProvisionalWhole { bytes, count, stride } -> {
+      expect
+        walk_to_end(bytes, header_len_for_count(count), count) == bytearray.length(
+          bytes,
+        )
+      Whole { bytes, count, stride }
+    }
+    _ -> view
+  }
+}
+
 /// The door, opened for the one consumer that must render a **verdict** about
 /// the committed bytes instead of reading items out of them — §12.7's
 /// canonical-decodability fault family.

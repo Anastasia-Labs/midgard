@@ -6,7 +6,11 @@
  * canonical-decode holders; and the phase holders, with the yields their
  * semantic resolvers invoke under their roles' authentication tokens. */
 import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
-import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import {
+  buildFieldGrammarCertificateValidator,
+  type createReferenceScriptAuthPolicy,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -14,7 +18,10 @@ import {
   canonicalDecodeValidators,
   type ValidationTraceCanonicalDecodeHolder,
 } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
-import type { ValidationTraceFieldPreimageCertificate } from "../../src/validation-trace-dispute/one-step-carriage.js";
+import type {
+  ValidationTraceFieldGrammarCertificate,
+  ValidationTraceFieldPreimageCertificate,
+} from "../../src/validation-trace-dispute/one-step-carriage.js";
 import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
   CONTEXT_FOLLOWER_HOLDERS,
@@ -59,6 +66,11 @@ import type {
   ValidationTraceDisputeDeployment,
   ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
+import {
+  network,
+  readBlueprint,
+  realBlueprintPath,
+} from "./emulator/blueprints.js";
 import { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
@@ -355,6 +367,30 @@ export const publishFieldPreimageCertificate = async (
   return Object.freeze({ policyId, mintingScript, reference: utxo });
 };
 
+/** Publishes the field grammar certificate validator, parameterized by the
+ * scene's field-preimage certificate policy as the dispute's stages are:
+ * the deployment's `fieldGrammarCertificate`. */
+export const publishFieldGrammarCertificate = async (
+  scene: SceneContracts,
+): Promise<ValidationTraceFieldGrammarCertificate> => {
+  const { spendingScript, spendingScriptHash } =
+    buildFieldGrammarCertificateValidator({
+      blueprint: parseFaultProofBlueprint(readBlueprint(realBlueprintPath)),
+      network,
+      fieldPreimageCertificatePolicyId:
+        scene.h.contracts.fieldPreimageCertificate.policyId,
+    });
+  const { utxo } = await publishPlainReferenceScriptUtxo({
+    lucid: scene.h.proverLucid,
+    script: spendingScript,
+    label: "field grammar certificate",
+  });
+  return Object.freeze({
+    validator: { spendingScript, spendingScriptHash },
+    reference: utxo,
+  });
+};
+
 /** Publishes the yields the phases' semantic resolvers invoke, under their
  * roles' authentication tokens; the scene's setup registers the yields'
  * reward accounts. */
@@ -385,6 +421,7 @@ export const oneStepDeployment = (
   oneStep: ValidationTraceOneStepReferences,
   deploymentFingerprint?: string,
   fieldPreimageCertificate?: ValidationTraceFieldPreimageCertificate,
+  fieldGrammarCertificate?: ValidationTraceFieldGrammarCertificate,
 ): ValidationTraceDisputeDeployment => {
   const deployment = runnerDeployment(scene, deploymentFingerprint);
   return {
@@ -392,6 +429,9 @@ export const oneStepDeployment = (
     ...(fieldPreimageCertificate === undefined
       ? {}
       : { fieldPreimageCertificate }),
+    ...(fieldGrammarCertificate === undefined
+      ? {}
+      : { fieldGrammarCertificate }),
     references: { ...deployment.references, oneStep },
     ...(oneStep.cekSelection === undefined
       ? {}

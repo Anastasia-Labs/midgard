@@ -13,7 +13,8 @@
  * it, is final at release depth while no thread of the case past the
  * boundary has a move reading it: only while our funding reservation still
  * holds it, when funding signs. A certificate stays where its policy sends
- * it. */
+ * it. In front of them, the field grammar certificates our steps read an
+ * item through (one-step-field-grammar-certify.ts). */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
@@ -57,6 +58,7 @@ import {
   carriageReads,
   type ValidationTraceFieldCarriage,
 } from "./one-step-carriage.js";
+import { validationTraceFieldGrammarCertification } from "./one-step-field-grammar-certify.js";
 import { validationTraceOneStepHolder } from "./one-step-holders.js";
 import { validationTraceCarriedField } from "./one-step-moves.js";
 import {
@@ -244,6 +246,12 @@ export const validationTraceCarriedFields = ({
     return undefined;
   };
 
+  const certification = validationTraceFieldGrammarCertification({
+    ...{ lucid, signer, deployment, caseHistory, signedRecovery, materialOf },
+    carriageOf: async (context, consumes) =>
+      await of(context, { stage: "resolve", consumes }),
+  });
+
   const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
   /** The outputs a move of a thread of our case past the boundary reads to
    * carry its field; undefined while that cannot be told. */
@@ -417,7 +425,8 @@ export const validationTraceCarriedFields = ({
   const wrap = (
     base: FraudProofFamilyWorkflowAdapter,
   ): FraudProofFamilyWorkflowAdapter => {
-    if (ports.every(({ port }) => port === undefined)) return base;
+    if (ports.every(({ port }) => port === undefined))
+      return certification.wrap(base);
     let wrapped = base;
     for (const { port, raw } of ports)
       if (port !== undefined)
@@ -427,12 +436,14 @@ export const validationTraceCarriedFields = ({
           prerequisite: port,
           rawDatum: raw,
         });
-    return withOwnKeyActions({
-      base: wrapped,
-      own,
-      signedRecovery,
-      label: "copy reclaim",
-    });
+    return certification.wrap(
+      withOwnKeyActions({
+        base: wrapped,
+        own,
+        signedRecovery,
+        label: "copy reclaim",
+      }),
+    );
   };
 
   return {

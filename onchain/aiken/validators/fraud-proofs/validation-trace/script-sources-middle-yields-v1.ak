@@ -7,7 +7,9 @@ use cardano/transaction.{Transaction}
 use midgard/bounded_item_v1
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/validation_machine/script_sources_middle_semantics as semantic
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
+use midgard/validation_machine_field_door_v1.{
+  MachineFieldDoorV1, MachineFieldItemRouteV1,
+}
 use midgard/validation_script_sources_yield_v1.{middle_dispatch}
 
 validator stage_two_advance(dispatcher_script_hashes: List<ScriptHash>) {
@@ -71,11 +73,19 @@ validator stage_three_finish(dispatcher_script_hashes: List<ScriptHash>) {
   }
 }
 
+/// The stage reads its output through the field grammar certificate when the
+/// withdraw redeemer names one, so its cost no longer grows with the field's
+/// item count; the redeemer sits beside the committed evidence, not in it.
 validator stage_four_begin(
   dispatcher_script_hashes: List<ScriptHash>,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
+  withdraw(
+    route: MachineFieldItemRouteV1,
+    _credential: Credential,
+    tx: Transaction,
+  ) {
     let (pre, transition, fields) = middle_dispatch(
       dispatcher_script_hashes,
       tx,
@@ -92,6 +102,8 @@ validator stage_four_begin(
         reference_inputs: tx.reference_inputs,
         certificate_policy_id: field_preimage_certificate_policy_id,
       },
+      field_grammar_certificate_policy_id,
+      route,
       carriage,
     )
   }
@@ -118,11 +130,20 @@ validator stage_four_finish(dispatcher_script_hashes: List<ScriptHash>) {
   }
 }
 
+/// Reads its mint policy item through the field grammar certificate the
+/// withdraw redeemer names (`CertifiedFieldItem`), so its cost no longer grows
+/// with the field's item count; the redeemer sits beside the committed
+/// evidence, not in it.
 validator stage_six_begin_policy(
   dispatcher_script_hashes: List<ScriptHash>,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
+  withdraw(
+    route: MachineFieldItemRouteV1,
+    _credential: Credential,
+    tx: Transaction,
+  ) {
     let (pre, transition, fields) = middle_dispatch(
       dispatcher_script_hashes,
       tx,
@@ -138,6 +159,8 @@ validator stage_six_begin_policy(
         reference_inputs: tx.reference_inputs,
         certificate_policy_id: field_preimage_certificate_policy_id,
       },
+      field_grammar_certificate_policy_id,
+      route,
       builtin.un_i_data(field_index),
       builtin.un_i_data(item_index),
       carriage,

@@ -10,24 +10,34 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
 use midgard/validation_machine/canonical_decode.{
-  observe_canonical_decode_item_v1,
+  observe_canonical_decode_item_routed_v1,
 }
 use midgard/validation_machine/machine_types.{
   TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
   ValidationProofItemDatumV1,
 }
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
+use midgard/validation_machine_field_door_v1.{
+  MachineFieldDoorV1, MachineFieldItemRouteV1,
+}
 use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
 pub type Datum =
   ct.StepDatum<staging.PreparedCanonicalDecodeItemV1>
 
+/// `route` sits beside the carriage, outside the step's evidence: either
+/// route opens the same item (`MachineFieldItemRouteV1`).
 pub type ActionV1 {
-  Observe { input_index: Int, output_index: Int, carriage: FieldCarriageV1 }
+  Observe {
+    input_index: Int,
+    output_index: Int,
+    carriage: FieldCarriageV1,
+    route: MachineFieldItemRouteV1,
+  }
   ObserveReference {
     input_index: Int,
     output_index: Int,
     reference_input_index: Int,
+    route: MachineFieldItemRouteV1,
   }
 }
 
@@ -39,6 +49,7 @@ validator main(
   computation_thread_policy_id: PolicyId,
   proof_item_script_hash: ScriptHash,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -56,15 +67,17 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Observe { input_index, output_index, carriage }) ->
+      ct.Continue(Observe { input_index, output_index, carriage, route }) ->
         observe_item(
           proof_verifier_script_hash,
           computation_thread_policy_id,
           field_preimage_certificate_policy_id,
+          field_grammar_certificate_policy_id,
           datum,
           input_index,
           output_index,
           TransactionFieldItemWitness { carriage },
+          route,
           own_out_ref,
           tx,
         )
@@ -72,6 +85,7 @@ validator main(
         input_index,
         output_index,
         reference_input_index,
+        route,
       }) -> {
         let pre = datum |> semantic_pre_state
         let auxiliary = proof_item_from_reference(
@@ -85,10 +99,12 @@ validator main(
           proof_verifier_script_hash,
           computation_thread_policy_id,
           field_preimage_certificate_policy_id,
+          field_grammar_certificate_policy_id,
           datum,
           input_index,
           output_index,
           TransactionFieldItemWitness { carriage },
+          route,
           own_out_ref,
           tx,
         )
@@ -105,10 +121,12 @@ fn observe_item(
   proof_verifier_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
   datum: Option<Datum>,
   input_index: Int,
   output_index: Int,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  route: MachineFieldItemRouteV1,
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
@@ -142,13 +160,15 @@ fn observe_item(
       // on why a later stage cannot re-check them from a datum alone.
       let expected_output_state: Data = staging.observe(
         prepared,
-        observe_canonical_decode_item_v1(
+        observe_canonical_decode_item_routed_v1(
           prepared.authenticated.base.resolution.pre_state,
           prepared.authenticated.transition,
           MachineFieldDoorV1 {
             reference_inputs: tx.reference_inputs,
             certificate_policy_id: field_preimage_certificate_policy_id,
           },
+          field_grammar_certificate_policy_id,
+          route,
           carriage,
         ),
       )

@@ -31,9 +31,13 @@ use midgard/validation_machine/script_sources_late_stages as vm_script_sources_l
 use midgard/validation_machine/script_sources_middle_semantics as vm_middle_semantics
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1.{
+  CertifiedFieldItem, MachineFieldDoorV1, WalkFieldItem,
+}
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_28_b, h_a, test_l1_slot_config,
 }
+use midgard/validation_machine_tests/fixtures_certified_field_item as certified_field_item
 use midgard/validation_machine_tests/fixtures_parity.{
   stage_twelve_finish_fixture, verify_descriptor_ten_match_parity,
   verify_descriptor_ten_mismatch_parity,
@@ -141,6 +145,8 @@ test script_sources_commits_inline_reference_script_candidates() {
         claimed_successor: pending_post,
       },
       inline_field_door(),
+      #"",
+      WalkFieldItem,
       6,
       0,
       carriage,
@@ -443,11 +449,25 @@ test script_sources_stage_one_begin_matches_canonical_transition() {
       vm_machine_types.NoAuxiliaryWitness,
       inline_field_door(),
     ),
+    // The deployed stage-one begin reads the redeemer through the field
+    // grammar certificate and accepts the same begin successor the walking
+    // stage-one semantics accepts above.
     vm_script_sources_early_stages.verify_script_sources_stage_one_begin_raw_semantics(
       pre,
       begin_transition,
       carriage,
-      inline_field_door(),
+      MachineFieldDoorV1 {
+        ..inline_field_door(),
+        reference_inputs: [
+          certified_field_item.certificate_input(
+            pre.transaction_id,
+            8,
+            native_tx_field_access_v1.encode_field_preimage([redeemer_cbor]),
+          ),
+        ],
+      },
+      certified_field_item.grammar_certificate_policy_id,
+      0,
     ),
   }
 }
@@ -1259,7 +1279,20 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
         work_witness_cbor: begin_work_witness_cbor,
         claimed_successor: begin_post,
       },
-      inline_field_door(),
+      // The yield reads its policy item through the field grammar certificate
+      // alone, here reference input 0.
+      MachineFieldDoorV1 {
+        ..inline_field_door(),
+        reference_inputs: [
+          certified_field_item.certificate_input(
+            begin_pre.transaction_id,
+            5,
+            mint_cbor,
+          ),
+        ],
+      },
+      certified_field_item.grammar_certificate_policy_id,
+      CertifiedFieldItem { cert_ref_input_index: 0 },
       5,
       0,
       carriage,

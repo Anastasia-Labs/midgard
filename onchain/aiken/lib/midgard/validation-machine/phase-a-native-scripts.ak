@@ -1,4 +1,5 @@
 use aiken/primitive/bytearray
+use cardano/assets.{PolicyId}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/native_script_scan_v1
@@ -362,6 +363,8 @@ pub fn verify_phase_a_native_item_native_payload_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
@@ -372,8 +375,10 @@ pub fn verify_phase_a_native_item_native_payload_v1(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let item = field_door.open_machine_field_item(
+  let item = field_door.open_machine_variable_field_item(
     door,
+    grammar_certificate_policy_id,
+    route,
     verified,
     witness_set,
     6,
@@ -428,6 +433,8 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
@@ -438,8 +445,13 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let item = field_door.open_machine_field_item(
+  // The foreign yield reads its script item only through the field grammar
+  // certificate, so its cost no longer grows with the field's item count.
+  expect field_door.CertifiedFieldItem { cert_ref_input_index } = route
+  let item = field_door.open_machine_certified_field_item(
     door,
+    grammar_certificate_policy_id,
+    cert_ref_input_index,
     verified,
     witness_set,
     6,

@@ -16,6 +16,7 @@ use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/script_sources_early_stages as vm_script_sources_early_stages
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1.{WalkFieldItem}
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_a, h_b, h_c, validation_context_cbor, zero,
 }
@@ -243,6 +244,8 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
       claimed_successor: post,
     },
     inline_field_door(),
+    #"",
+    WalkFieldItem,
     6,
     0,
     carriage,

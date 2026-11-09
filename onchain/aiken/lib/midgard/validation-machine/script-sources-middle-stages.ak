@@ -1,5 +1,6 @@
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
+use cardano/assets.{PolicyId}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_definite_array_header_at,
@@ -291,6 +292,8 @@ pub fn script_sources_stage_four(
     auxiliary,
     control,
     door,
+    #"",
+    field_door.WalkFieldItem,
     fn(next) { script_sources_control_successor_is_exact(pre, witness, next) },
   )
 }
@@ -301,6 +304,8 @@ pub fn script_sources_stage_four_with_successor(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
   successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
 ) -> Bool {
   let Pair(verified_source, stage_four_witness_set) = verify_tx_proof_source_v1(
@@ -350,8 +355,10 @@ pub fn script_sources_stage_four_with_successor(
     // preimage rides reference inputs; a tier-1 plan for a large field-2
     // preimage is refused by the L1 transaction size, not by this rule.
     expect TransactionRedeemerItemBeginWitness { carriage } = auxiliary
-    let item = field_door.open_machine_field_item(
+    let item = field_door.open_machine_variable_field_item(
       door,
+      grammar_certificate_policy_id,
+      route,
       verified_source,
       stage_four_witness_set,
       2,
@@ -771,37 +778,34 @@ fn script_sources_begin_mint_policy(
     pre,
     witness,
     control,
-    verified,
-    witness_set,
-    door,
+    field_door.open_machine_field_item(
+      door,
+      verified,
+      witness_set,
+      5,
+      control.mint_fold.policy_cursor,
+      carriage,
+    ),
     field_index,
     item_index,
-    carriage,
     fn(next) { script_sources_control_successor_is_exact(pre, witness, next) },
   )
 }
 
+/// Begin one mint policy from `item`, field 5's item at the fold's policy
+/// cursor as the caller opened it (`item_index` must name that cursor): this path walks the field, the stage-six yield reads it
+/// through the field grammar certificate. Either way it is the same item, so
+/// the successor is the same.
 pub fn script_sources_begin_mint_policy_with_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
-  verified: VerifiedTxSourceView,
-  witness_set: NativeTxWitnessSetCompact,
-  door: field_door.MachineFieldDoorV1,
+  item: field_door.MachineFieldItemV1,
   field_index: Int,
   item_index: Int,
-  carriage: native_tx_field_access_v1.FieldCarriageV1,
   successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
 ) -> Bool {
   let fold = control.mint_fold
-  let item = field_door.open_machine_field_item(
-    door,
-    verified,
-    witness_set,
-    5,
-    fold.policy_cursor,
-    carriage,
-  )
   let first_chunk = field_door.machine_field_item_chunk(item, 0)
   let item_length = field_door.machine_field_item_length(item)
   let Pair(policy_offset, item_count) = decode_definite_array_header_at(

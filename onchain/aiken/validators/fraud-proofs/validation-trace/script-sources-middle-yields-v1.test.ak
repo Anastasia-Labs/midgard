@@ -32,6 +32,7 @@ use fraud_proofs/validation_trace/script_sources_middle_yields_v1 as yields
 use midgard/computation_thread as ct
 use midgard/ledger_output_commitment_v1
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine_field_door_v1.{WalkFieldItem}
 use midgard/validation_machine_tests/constants.{h_a, h_b}
 use midgard/validation_machine_tests/fixtures_phase_a.{singleton_root}
 use midgard/validation_machine_tests/fixtures_script_sources.{
@@ -108,7 +109,8 @@ fn stage_four_begin_with(tag: Int) -> Bool {
   yields.stage_four_begin.withdraw(
     [dispatcher],
     #"",
-    builtin.i_data(0),
+    #"",
+    WalkFieldItem,
     address.Script(dispatcher),
     dispatch(pre, transition, builtin.constr_data(tag, [carriage_data]), 3),
   )

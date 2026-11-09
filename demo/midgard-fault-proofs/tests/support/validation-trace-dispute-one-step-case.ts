@@ -41,6 +41,7 @@ import {
   publishBuiltinArmReferences,
   publishCanonicalDecodeReferences,
   publishContextReferences,
+  publishFieldGrammarCertificate,
   publishFieldPreimageCertificate,
   publishOneStepReferences,
   publishPhaseReferences,
@@ -157,9 +158,14 @@ export const defendTwoThreads = async ({
   // the source verification's window from the failing block's end.
   let oneStep: ValidationTraceOneStepReferences | undefined;
   let certificate: Parameters<typeof oneStepDeployment>[3];
+  let grammar: Parameters<typeof oneStepDeployment>[4];
   const scene = await setUpScene(async (contracts) => {
     if (certifies)
       certificate = await publishFieldPreimageCertificate(contracts);
+    // The steps that read a variable-width field's item read it through
+    // its field grammar certificate past the walking route's bound.
+    if (canonicalDecode || phases)
+      grammar = await publishFieldGrammarCertificate(contracts);
     oneStep = {
       ...(await publishOneStepReferences(contracts)),
       ...(selections
@@ -196,7 +202,13 @@ export const defendTwoThreads = async ({
     scene.h as never,
     scene.operator.vkey,
   );
-  const deployment = oneStepDeployment(scene, oneStep!, undefined, certificate);
+  const deployment = oneStepDeployment(
+    scene,
+    oneStep!,
+    undefined,
+    certificate,
+    grammar,
+  );
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,

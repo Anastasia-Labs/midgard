@@ -27,6 +27,8 @@ use midgard/native_tx_field_access_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1.{CertifiedFieldItem, WalkFieldItem}
+use midgard/validation_machine_tests/fixtures_certified_field_item as cfi
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1 as item_resolution
 use midgard/validation_trace_v1
@@ -401,6 +403,23 @@ fn shaped_native_item_yield_transaction(
     carriage,
   }
   let transition_data: Data = transition
+  // Mutations 8, 9 and 10 read the item through the field grammar
+  // certificate, which sits after the role token; 10 also commits that route
+  // inside the step's auxiliary. 8 and 11 run the foreign yield, which reads
+  // the item through the certificate alone.
+  let certified = mutation == 8 || mutation == 9 || mutation == 10
+  let reward_route = if certified {
+    CertifiedFieldItem { cert_ref_input_index: 1 }
+  } else {
+    WalkFieldItem
+  }
+  let committed_auxiliary = if mutation == 10 {
+    let route_data: Data = reward_route
+    let Pair(tag, fields) = builtin.un_constr_data(auxiliary)
+    builtin.constr_data(tag, list.concat(fields, [route_data]))
+  } else {
+    auxiliary
+  }
   let state = item_resolution.PreparedValidationResolutionStateV1 {
     version: 1,
     resolution: item_resolution.ValidationResolutionStateV1 {
@@ -411,7 +430,7 @@ fn shaped_native_item_yield_transaction(
     },
     evidence_hash: item_resolution.hash_one_step_evidence(
       transition_data,
-      auxiliary,
+      committed_auxiliary,
     ),
   }
   let datum = item_ct.StepDatum {
@@ -480,7 +499,7 @@ fn shaped_native_item_yield_transaction(
   )
   let template = item_fixture.continue_mid_step_l1_tx_v1("item-split", winning)
   let reward_hash = item_fixture.catalogue_script_hash
-  let reward_redeemer: Data = 0
+  let reward_redeemer: Data = reward_route
   let transaction = item_l1.Transaction {
     ..template,
     outputs: [output],
@@ -507,6 +526,17 @@ fn shaped_native_item_yield_transaction(
           reference_script: Some(reward_hash),
         },
       },
+      ..if certified {
+        [
+          cfi.certificate_input(
+            pre.transaction_id,
+            6,
+            native_tx_field_access_v1.encode_field_preimage([item_cbor]),
+          ),
+        ]
+      } else {
+        []
+      }
     ],
     withdrawals: if mutation == 1 {
       []
@@ -538,12 +568,13 @@ fn shaped_native_item_yield_transaction(
       item_fixture.own_out_ref(),
       transaction,
     ),
-    if mutation == 8 {
+    if mutation == 8 || mutation == 11 {
       item_yields.foreign.withdraw(
         item_fixture.step_script_hash,
         item_fixture.next_step_script_hash,
         item_fixture.test_certificate_policy_id,
-        reward_redeemer,
+        cfi.grammar_certificate_policy_id,
+        reward_route,
         item_address.Script(reward_hash),
         transaction,
       )
@@ -556,7 +587,8 @@ fn shaped_native_item_yield_transaction(
         },
         item_fixture.next_step_script_hash,
         item_fixture.test_certificate_policy_id,
-        reward_redeemer,
+        cfi.grammar_certificate_policy_id,
+        reward_route,
         item_address.Script(reward_hash),
         transaction,
       )
@@ -598,6 +630,25 @@ test native_item_refuses_wrong_dispatcher_hash() fail {
 
 test foreign_item_yield_refuses_native_header() {
   !native_item_yield_transaction(8)
+}
+
+/// The foreign yield reads its script item through the field grammar
+/// certificate alone: a withdrawal naming the walking route is refused.
+test foreign_item_yield_refuses_the_walking_route() fail {
+  native_item_yield_transaction(11)
+}
+
+/// The same step with the item read through the field grammar certificate:
+/// the dispatcher's committed evidence and the yield's successor are the
+/// walking route's.
+test native_item_yield_accepts_the_certified_route() {
+  native_item_yield_transaction(9)
+}
+
+/// The route rides the yield's redeemer; evidence that commits it inside the
+/// auxiliary is refused by the dispatcher.
+test native_item_refuses_the_route_in_its_evidence() fail {
+  native_item_yield_transaction(10)
 }
 
 // ## Census: who funds and who signs the winning item move

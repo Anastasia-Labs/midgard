@@ -17,6 +17,7 @@ import {
   type Proof,
   REDEEMER_ITEM_EXECUTOR_KEYS,
 } from "../src/index.js";
+import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -184,3 +185,25 @@ export const certificatePolicyId = (blueprint: FaultProofBlueprint): string =>
       SDK.FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
     ),
   );
+
+/**
+ * The bindings of the two certificate policies a stage that reads a field
+ * takes, re-derived the same way: the field grammar certificate validator is
+ * applied to the field-preimage certificate policy alone, and its mint and
+ * spend are one script, so the script hash of the applied script is its
+ * policy id.
+ */
+export const certificateParameterBindings = (
+  blueprint: FaultProofBlueprint,
+): Readonly<Record<string, string>> => ({
+  field_preimage_certificate_policy_id: certificatePolicyId(blueprint),
+  field_grammar_certificate_policy_id: spendingScriptHash(
+    applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        SDK.FIELD_GRAMMAR_CERTIFICATE_CONTRACT_TITLES.mint,
+      ),
+      [certificatePolicyId(blueprint)],
+    ),
+  ),
+});

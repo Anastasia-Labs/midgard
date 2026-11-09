@@ -55,6 +55,7 @@ import {
   integer,
   stepDatum,
 } from "./one-step-data.js";
+import type { ValidationTraceFieldItemRouteReads } from "./one-step-field-item-route.js";
 import { type ValidationTraceOneStepHolder } from "./one-step-holders.js";
 import {
   isValidationTracePhaseHolder,
@@ -92,10 +93,16 @@ export type ValidationTraceHop = Readonly<{
   /** Whether the holder lets the prover alone move the thread. */
   proverOnly: boolean;
   /** What else the holder reads: further reference inputs, and the yields it
-   * requires invoked by a zero withdrawal each. */
+   * requires invoked by a zero withdrawal each, redeemed by `Void` but the
+   * item yield `routedYield` names, which takes its route as its withdraw
+   * redeemer in the final transaction. */
   reads?: Readonly<{
     references: readonly UTxO[];
     yields: readonly Script[];
+    routedYield?: Readonly<{
+      script: Script;
+      redeemer: (context: RedeemerContext) => string;
+    }>;
   }>;
 }>;
 
@@ -158,7 +165,8 @@ const datumOf = (utxo: UTxO): string => {
  * semantic resolver's hop reads `phaseYield`, the yield it invokes, and a
  * hop through a script-sources redeemer normalization step reads
  * `redeemerChain`, a canonical-decode item's observe hop of a field too
- * long to carry inline reads our publications of it, `carriage`, and a staged
+ * long to carry inline reads our publications of it, `carriage`, a holder
+ * reading its field's item through a routed door takes `route`, and a staged
  * step's hops from the PrepareSelected move through its arm chain read its
  * `staging` outputs (one-step-staged.ts).
  */
@@ -173,6 +181,7 @@ export const validationTraceHop = ({
   phaseYieldList,
   redeemerChain,
   carriage,
+  route,
   staging,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
@@ -185,6 +194,8 @@ export const validationTraceHop = ({
   readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
   readonly redeemerChain?: ValidationTraceScriptSourcesRedeemerReads;
   readonly carriage?: ValidationTraceFieldCarriage | undefined;
+  /** The route of the item read the holder makes through a routed door. */
+  readonly route?: ValidationTraceFieldItemRouteReads | undefined;
   readonly staging?: readonly UTxO[] | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
@@ -218,6 +229,7 @@ export const validationTraceHop = ({
       transitionCbor: plan.transitionCbor,
       step: plan.canonicalDecode,
       carriage,
+      route,
     });
   }
   if (isValidationTracePhaseHolder(holder)) {
@@ -238,6 +250,7 @@ export const validationTraceHop = ({
           ...(phaseYieldList === undefined
             ? {}
             : { yieldList: phaseYieldList }),
+          route,
         });
   }
   if (isValidationTraceCoreHolder(holder))
@@ -400,11 +413,14 @@ export const buildValidationTraceHop = ({
   const network = lucid.config().network;
   if (network === undefined)
     throw new Error("validation-trace hop has no network");
+  const routed = hop.reads?.routedYield;
   for (const script of hop.reads?.yields ?? [])
     tx = tx.withdraw(
       validatorToRewardAddress(network, script),
       0n,
-      Data.void(),
+      routed !== undefined && routed.script.script === script.script
+        ? (ctx: RedeemerContext) => routed.redeemer(ctx)
+        : Data.void(),
     );
   tx = tx.pay
     .ToContract(

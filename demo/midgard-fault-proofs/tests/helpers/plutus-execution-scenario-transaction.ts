@@ -134,11 +134,19 @@ export type ScenarioTransactionOptions = Readonly<{
   native?: ScenarioNative;
   passingSpends?: readonly LedgerEntry[];
   plutusPurpose?: ScenarioPlutusPurpose;
+  /** How many outputs it pays past its own, each holding its minimum
+   * lovelace at the owner's address. */
+  extraOutputs?: number;
 }>;
 
 /** A lovelace amount whose encoding is the longest a coin has: an output
  * that holds it is at least as long as one holding its minimum. */
 const LONGEST_COIN = 2n ** 32n;
+
+/** The lovelace each extra output holds: a plain output's minimum. */
+const EXTRA_OUTPUT_LOVELACE = outputCborMinAdaLovelace(
+  makeOutput(LONGEST_COIN),
+);
 
 /** The outputs that hold what `nativeMint` mints under `native`'s script,
  * at its protected address when `native` says so: one, when it fits under
@@ -181,37 +189,46 @@ const mintOutputs = (
 };
 
 /** The lovelace the seed of a transaction minting `nativeMint` under
- * `native`'s script holds: the seed's own, and the minimum of each output
- * the mint needs past the first. */
+ * `native`'s script, paying `extraOutputs` outputs past its own, holds: the
+ * seed's own, the minimum of each output the mint needs past the first,
+ * and each extra output's. */
 export const scenarioSeedLovelace = (
   nativeMint: ScenarioMint,
   native: ScenarioNative = {},
+  extraOutputs = 0,
 ): bigint =>
   mintOutputs(nativeMint, native).minimums.reduce(
     (sum, minimum) => sum + minimum,
-    SEED_LOVELACE,
+    SEED_LOVELACE + BigInt(extraOutputs) * EXTRA_OUTPUT_LOVELACE,
   );
 
 /** The outputs of a transaction over `spent` outputs, its seed's lovelace
  * `scenarioSeedLovelace`, minting `nativeMint` under `native`'s script and
  * what `plutusPurpose` mints: the first holds what it spends beside its
- * outputs' minimums, and what the Plutus policy mints. */
+ * outputs' minimums, and what the Plutus policy mints; `extraOutputs` more
+ * each hold their minimum. */
 export const scenarioOutputs = (
   spent: bigint,
   nativeMint: ScenarioMint,
   native: ScenarioNative = {},
   plutusPurpose?: ScenarioPlutusPurpose,
+  extraOutputs = 0,
 ): readonly Buffer[] => {
   if (plutusPurpose?.purpose === "mint" && nativeMint !== false)
     throw new Error("a Plutus mint does not mint beside a native mint");
   const { address, held, minimums } = mintOutputs(nativeMint, native);
-  return held.map((run, at) =>
-    makeOutput(
-      (at === 0 ? spent * SEED_LOVELACE : 0n) + minimums[at]!,
-      address,
-      new Map([...run, ...(at === 0 ? plutusMintAssets(plutusPurpose) : [])]),
+  return [
+    ...held.map((run, at) =>
+      makeOutput(
+        (at === 0 ? spent * SEED_LOVELACE : 0n) + minimums[at]!,
+        address,
+        new Map([...run, ...(at === 0 ? plutusMintAssets(plutusPurpose) : [])]),
+      ),
     ),
-  );
+    ...Array.from({ length: extraOutputs }, () =>
+      makeOutput(EXTRA_OUTPUT_LOVELACE),
+    ),
+  ];
 };
 
 /** The `index`th key beyond the owner's. */
@@ -255,6 +272,7 @@ export const scenarioTransaction = (
     native = {},
     passingSpends = [],
     plutusPurpose,
+    extraOutputs = 0,
   }: ScenarioTransactionOptions = {},
 ) => {
   if (plutusPurpose?.purpose === "withdraw" && native.observer === true)
@@ -266,6 +284,7 @@ export const scenarioTransaction = (
       nativeMint,
       native,
       plutusPurpose,
+      extraOutputs,
     ),
   ];
   const spendScript = scenarioScript(scenario, spend);

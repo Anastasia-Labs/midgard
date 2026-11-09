@@ -11,7 +11,7 @@ use midgard/validation_machine/script_sources_early_stages.{
   verify_script_sources_stage_one_begin_raw_semantics,
 }
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
-use midgard/validation_semantic_v1.{Datum, continue_winning}
+use midgard/validation_semantic_v1.{Datum, continue_winning_at}
 use midgard/validation_trace_v1.{ScriptSources}
 
 pub type ActionV1 {
@@ -20,6 +20,9 @@ pub type ActionV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     carriage: FieldCarriageV1,
+    /// The field grammar certificate's reference input, beside the evidence
+    /// and not in it: the certificate is a function of the committed field.
+    cert_ref_input_index: Int,
   }
 }
 
@@ -30,6 +33,7 @@ validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -52,6 +56,7 @@ validator main(
         output_index,
         transition,
         carriage,
+        cert_ref_input_index,
       }) -> {
         let auxiliary_data: Data = TransactionRedeemerItemBeginWitness {
           carriage,
@@ -60,7 +65,7 @@ validator main(
           reference_inputs: tx.reference_inputs,
           certificate_policy_id: field_preimage_certificate_policy_id,
         }
-        continue_winning(
+        continue_winning_at(
           ScriptSources,
           award_script_hash,
           computation_thread_policy_id,
@@ -69,12 +74,16 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_script_sources_stage_one_begin_raw_semantics(
-            datum |> semantic_pre_state,
-            transition,
-            carriage,
-            door,
-          ),
+          fn(pre) {
+            verify_script_sources_stage_one_begin_raw_semantics(
+              pre,
+              transition,
+              carriage,
+              door,
+              field_grammar_certificate_policy_id,
+              cert_ref_input_index,
+            )
+          },
           own_out_ref,
           tx,
         )
@@ -85,9 +94,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-fn semantic_pre_state(datum: Option<Datum>) {
-  expect Some(ct.StepDatum { data: Some(state), .. }) = datum
-  state.resolution.pre_state
 }

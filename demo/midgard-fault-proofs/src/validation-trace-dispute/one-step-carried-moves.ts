@@ -20,6 +20,10 @@ import {
   type ValidationTraceFieldCarriage,
 } from "./one-step-carriage.js";
 import {
+  fieldItemRouteReferences,
+  type ValidationTraceFieldItemRouteReads,
+} from "./one-step-field-item-route.js";
+import {
   type ValidationTraceOneStepContract,
   validationTraceOneStepHolder,
 } from "./one-step-holders.js";
@@ -55,12 +59,14 @@ const readsCarriage = (plan: ValidationTraceOneStepPlan, holder: Holder) =>
 
 /** The reference inputs the reader of the field `plan` carries reads, with
  * our publications of it `carriage`: its holder's script, the yields a
- * phase semantic resolver invokes, and the publications. */
+ * phase semantic resolver invokes, the field grammar certificate it reads
+ * its item through, if any, and the publications. */
 const readerReferences = (
   deployment: ValidationTraceDisputeDeployment,
   plan: ValidationTraceOneStepPlan,
   reader: Holder,
   carriage: ValidationTraceFieldCarriage,
+  certificate: readonly UTxO[],
 ): readonly UTxO[] => {
   const { reference } = validationTraceOneStepHolder(deployment, reader);
   if (reference === undefined)
@@ -75,7 +81,7 @@ const readerReferences = (
     ...(item === undefined ? [] : [item.reference]),
     ...(list?.references ?? []),
   ];
-  return [reference, ...yields, ...carriageReads(carriage)];
+  return [reference, ...yields, ...certificate, ...carriageReads(carriage)];
 };
 
 /** Where a holder whose thread the evidence-committing move left keeps the
@@ -85,7 +91,9 @@ const COMMITTED_EVIDENCE = [1, 0, 2] as const;
 
 /**
  * The resolution `plan` of a thread of ours at `holder`, whose datum is
- * `datum`, bound to our publications `carriage` of the field it reads, and
+ * `datum`, bound to our publications `carriage` of the field it reads
+ * (among the reader's reference inputs, beside the field grammar
+ * certificate `route` reads, if any), and
  * the hop `hop` builds of it, reading them where the move does; throws
  * where the thread's holder committed other evidence, and, at the reader,
  * should the move's reference inputs place them elsewhere.
@@ -96,6 +104,7 @@ export const validationTraceCarriedMove = ({
   holder,
   datum,
   carriage,
+  route,
   hop,
 }: {
   readonly deployment: ValidationTraceDisputeDeployment;
@@ -103,13 +112,20 @@ export const validationTraceCarriedMove = ({
   readonly holder: Holder;
   readonly datum: string;
   readonly carriage: ValidationTraceFieldCarriage | undefined;
+  readonly route?: ValidationTraceFieldItemRouteReads | undefined;
   readonly hop: (plan: ValidationTraceOneStepPlan) => ValidationTraceHop;
 }): ValidationTraceHop => {
   const { carried } = plan;
   if (carried === undefined || carriage === undefined) return hop(plan);
   const bound = carriageAmong(
     carriage,
-    readerReferences(deployment, plan, carried.reader, carriage),
+    readerReferences(
+      deployment,
+      plan,
+      carried.reader,
+      carriage,
+      fieldItemRouteReferences(route),
+    ),
   );
   const rebound = carried.rebind(bound);
   if (
@@ -138,6 +154,7 @@ export const validationTraceCarriedMove = ({
       return built.redeemer(inputIndex, outputIndex, context);
     },
     reads: {
+      ...built.reads,
       references: [
         ...(built.reads?.references ?? []),
         ...carriageReads(carriage),

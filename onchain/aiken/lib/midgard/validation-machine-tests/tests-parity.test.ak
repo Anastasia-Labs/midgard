@@ -13,6 +13,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionWitnessSet, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, ScriptCredential,
 }
+use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -22,7 +23,11 @@ use midgard/validation_machine/script_sources_early_stages as vm_script_sources_
 use midgard/validation_machine/script_sources_late_stages as vm_script_sources_late_stages
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1.{
+  CertifiedFieldItem, MachineFieldDoorV1, WalkFieldItem,
+}
 use midgard/validation_machine_tests/constants.{h_28_a, h_a, h_b, zero}
+use midgard/validation_machine_tests/fixtures_certified_field_item as certified_field_item
 use midgard/validation_machine_tests/fixtures_parity.{
   cek_context_step_kind_fixture, cek_core_step_kind_fixture,
   cek_execution_selection_kind_fixture, cek_finish_kind_fixture,
@@ -143,6 +148,8 @@ test stage_differential_zero_begin_routes_agree() {
         pre,
         accepting,
         inline_field_door(),
+        #"",
+        WalkFieldItem,
         6,
         0,
         carriage,
@@ -160,6 +167,8 @@ test stage_differential_zero_begin_routes_agree() {
         pre,
         rejecting,
         inline_field_door(),
+        #"",
+        WalkFieldItem,
         6,
         0,
         carriage,
@@ -1314,11 +1323,26 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
       pre,
       witness,
       inline_field_door(),
+      #"",
+      WalkFieldItem,
       carriage,
     ) || vm_phase_a_native_scripts.verify_phase_a_native_item_foreign_payload_v1(
       pre,
       witness,
-      inline_field_door(),
+      // The foreign yield reads its item through the field grammar
+      // certificate alone, here reference input 0.
+      MachineFieldDoorV1 {
+        ..inline_field_door(),
+        reference_inputs: [
+          certified_field_item.certificate_input(
+            pre.transaction_id,
+            6,
+            native_tx_field_access_v1.encode_field_preimage([item_cbor]),
+          ),
+        ],
+      },
+      certified_field_item.grammar_certificate_policy_id,
+      CertifiedFieldItem { cert_ref_input_index: 0 },
       carriage,
     ),
   }

@@ -37,6 +37,7 @@ import { registerInvalidRangeBlueprintIsolationTest } from "./fault-proof.invali
 import {
   blueprintPath,
   CEK_REDEEMER_ITEM_TITLES,
+  certificateParameterBindings,
   certificatePolicyId,
   collectTitles,
   compiledScript,
@@ -755,6 +756,7 @@ describe("fault-proof contract builder", () => {
       // allowlist. Only this family's titles (plus the shared ones) are
       // admitted, so the leg still shows the builder needs no other family.
       ...collectTitles(FAULT_PROOF_SHARED_TITLES),
+      ...collectTitles(SDK.FIELD_GRAMMAR_CERTIFICATE_CONTRACT_TITLES),
       ...collectTitles(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES),
       ...collectTitles(CEK_CORE_STAGE_TITLES),
       ...collectTitles(CEK_CONTEXT_STAGE_TITLES),
@@ -943,7 +945,7 @@ describe("fault-proof contract builder", () => {
       award_script_hash: spendingScriptHash(expectedAward),
       computation_thread_policy_id: threadPolicyId,
       thread_expiry_script_hash: threadExpiryHash,
-      field_preimage_certificate_policy_id: certificatePolicyId(blueprint),
+      ...certificateParameterBindings(blueprint),
       reference_script_auth_policy_id: h28,
       source_binder_script_hash:
         dispute.canonicalDecodeItemStages.source.spendingScriptHash,

@@ -92,6 +92,9 @@ const ct_asset = "option-b-thread"
 const proof_item_hash =
   #"9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c"
 
+const test_grammar_certificate_policy_id =
+  #"6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+
 /// Everything one genuine canonical-decode complete-item step needs, derived
 /// from a real `MidgardTransaction` so every anchor — transaction id, proof
 /// commitment, witness-set hash, field commitment, preimage lengths — is the
@@ -382,11 +385,13 @@ type ObserveWireMirrorV1 {
     input_index: Int,
     output_index: Int,
     carriage: field_access.FieldCarriageV1,
+    route: Data,
   }
   ObserveReferenceMirror {
     input_index: Int,
     output_index: Int,
     reference_input_index: Int,
+    route: Data,
   }
 }
 
@@ -464,14 +469,16 @@ test verify_wire_layout_is_pinned() {
   }
 }
 
-/// The observe redeemer did not move: both delivery arms stay, at the same
-/// indices, with the same arities.
+/// The observe redeemer did not move: both delivery arms stay at the same
+/// indices with their fields in place; each gains only the item route after
+/// them, whose walk arm is the empty constructor.
 test observe_wire_layout_is_unmoved() {
   let direct: observe_validator.SpendRedeemer = ct.Continue(
     observe_validator.Observe {
       input_index: 1,
       output_index: 2,
       carriage: field_access.Inline { preimage: #"" },
+      route: field_door.WalkFieldItem,
     },
   )
   let direct_mirror: ct.StepRedeemer<ObserveWireMirrorV1> = ct.Continue(
@@ -479,6 +486,7 @@ test observe_wire_layout_is_unmoved() {
       input_index: 1,
       output_index: 2,
       carriage: field_access.Inline { preimage: #"" },
+      route: builtin.constr_data(0, []),
     },
   )
   let referenced: observe_validator.SpendRedeemer = ct.Continue(
@@ -486,6 +494,7 @@ test observe_wire_layout_is_unmoved() {
       input_index: 1,
       output_index: 2,
       reference_input_index: 3,
+      route: field_door.WalkFieldItem,
     },
   )
   let referenced_mirror: ct.StepRedeemer<ObserveWireMirrorV1> = ct.Continue(
@@ -493,6 +502,7 @@ test observe_wire_layout_is_unmoved() {
       input_index: 1,
       output_index: 2,
       reference_input_index: 3,
+      route: builtin.constr_data(0, []),
     },
   )
   and {
@@ -1012,6 +1022,7 @@ fn shaped_observe(
     fixture.computation_thread_policy_id,
     proof_item_hash,
     fixture.test_certificate_policy_id,
+    test_grammar_certificate_policy_id,
     Some(observe_datum(prepared_stage(f, base))),
     ct.Continue(action),
     fixture.own_out_ref(),
@@ -1039,6 +1050,7 @@ test observe_opens_the_committed_item_inline() {
       input_index: 0,
       output_index: 0,
       carriage: field_access.Inline { preimage: f.field_preimage },
+      route: field_door.WalkFieldItem,
     },
     [],
     observed_output(f, f.base),
@@ -1056,6 +1068,7 @@ test observe_opens_the_same_item_by_raw_reference() {
       input_index: 0,
       output_index: 0,
       carriage: field_access.RawUtxo { ref_input_index: 0 },
+      route: field_door.WalkFieldItem,
     },
     [raw_bytes_input(f.field_preimage)],
     observed_output(f, f.base),
@@ -1073,6 +1086,7 @@ test observe_opens_the_same_item_from_a_publication() {
       input_index: 0,
       output_index: 0,
       reference_input_index: 0,
+      route: field_door.WalkFieldItem,
     },
     [publication_input(honest_publication(f))],
     observed_output(f, f.base),
@@ -1103,6 +1117,7 @@ test observe_certified_carriage_opens_a_boundary_item() {
       input_index: 0,
       output_index: 0,
       carriage: fixture.certified_carriage_v1(f.field_preimage),
+      route: field_door.WalkFieldItem,
     },
     fixture.certified_reference_inputs_v1(
       f.pre.transaction_id,
@@ -1125,6 +1140,7 @@ test observe_aborts_a_byte_flipped_inline_preimage() fail {
       carriage: field_access.Inline {
         preimage: flip_first_byte(f.field_preimage),
       },
+      route: field_door.WalkFieldItem,
     },
     [],
     observed_output(f, f.base),
@@ -1141,6 +1157,7 @@ test observe_aborts_a_byte_flipped_raw_reference() fail {
       input_index: 0,
       output_index: 0,
       carriage: field_access.RawUtxo { ref_input_index: 0 },
+      route: field_door.WalkFieldItem,
     },
     [raw_bytes_input(flip_first_byte(f.field_preimage))],
     observed_output(f, f.base),
@@ -1182,6 +1199,7 @@ test observe_aborts_a_substituted_certified_chunk() fail {
       input_index: 0,
       output_index: 0,
       carriage: fixture.certified_carriage_v1(f.field_preimage),
+      route: field_door.WalkFieldItem,
     },
     substituted,
     observed_output(f, f.base),
@@ -1200,6 +1218,7 @@ test observe_aborts_a_publication_with_flipped_bytes() fail {
       input_index: 0,
       output_index: 0,
       reference_input_index: 0,
+      route: field_door.WalkFieldItem,
     },
     [
       publication_input(
@@ -1224,6 +1243,7 @@ test observe_refuses_a_publication_for_another_transaction() fail {
       input_index: 0,
       output_index: 0,
       reference_input_index: 0,
+      route: field_door.WalkFieldItem,
     },
     [
       publication_input(
@@ -1247,6 +1267,7 @@ test observe_refuses_a_publication_with_a_wrong_commitment() fail {
       input_index: 0,
       output_index: 0,
       reference_input_index: 0,
+      route: field_door.WalkFieldItem,
     },
     [
       publication_input(
@@ -1280,6 +1301,7 @@ test observe_no_longer_rechecks_the_evidence_hash() {
       input_index: 0,
       output_index: 0,
       carriage: field_access.Inline { preimage: f.field_preimage },
+      route: field_door.WalkFieldItem,
     },
     [],
     observed_output(f, retired_base),
@@ -1305,6 +1327,7 @@ test observe_refuses_a_forged_observation() fail {
       input_index: 0,
       output_index: 0,
       carriage: field_access.Inline { preimage: f.field_preimage },
+      route: field_door.WalkFieldItem,
     },
     [],
     forged,
@@ -1329,6 +1352,7 @@ test observe_refuses_a_forged_order_verdict() fail {
       input_index: 0,
       output_index: 0,
       carriage: field_access.Inline { preimage: f.field_preimage },
+      route: field_door.WalkFieldItem,
     },
     [],
     forged,
@@ -1344,12 +1368,14 @@ test observe_refuses_a_wrong_output_script() fail {
     fixture.computation_thread_policy_id,
     proof_item_hash,
     fixture.test_certificate_policy_id,
+    test_grammar_certificate_policy_id,
     Some(observe_datum(prepared_stage(f, f.base))),
     ct.Continue(
       observe_validator.Observe {
         input_index: 0,
         output_index: 0,
         carriage: field_access.Inline { preimage: f.field_preimage },
+        route: field_door.WalkFieldItem,
       },
     ),
     fixture.own_out_ref(),
@@ -1435,6 +1461,7 @@ fn observe_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
       input_index: 0,
       output_index: 0,
       carriage: field_access.Inline { preimage: f.field_preimage },
+      route: field_door.WalkFieldItem,
     },
     [],
     observed_output(f, f.base),

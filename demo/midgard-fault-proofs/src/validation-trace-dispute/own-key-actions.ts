@@ -1,6 +1,7 @@
 /** Actions of ours that run no script of the dispute: transactions our key
- * alone signs (a field copy spent back, an operand staged or spent back),
- * put in front of a family adapter. Each is taken in place of what the
+ * alone signs (a field copy spent back, an operand staged or spent back, a
+ * field grammar certificate opened or advanced, whose validator runs from
+ * its published reference script alone), put in front of a family adapter. Each is taken in place of what the
  * adapter observes when `next` says so, or in place of a resolution by
  * another record when `resolved` says so, built from the live chain at its
  * preflight, and reconciled from its exact signed bytes. A build that fails
@@ -31,6 +32,7 @@ import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
   submitCapturedTransaction,
 } from "../workflow/transaction-boundary.js";
 
@@ -55,13 +57,18 @@ export type OwnKeyActions = Readonly<{
   resolved?: (
     context: FraudProofWorkflowAdapterContext,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
-  /** The signed transaction of `action`, and what its recovery keeps
-   * besides the signed bytes. */
+  /** The signed transaction of `action`, what its recovery keeps besides
+   * the signed bytes, and the published reference scripts it runs, if it
+   * runs any (each script it runs must be one of them). */
   build: (
     context: FraudProofWorkflowAdapterContext,
     action: FraudProofWorkflowAction,
   ) => Promise<
-    Readonly<{ signed: TxSigned; recovery?: Record<string, JournalJsonValue> }>
+    Readonly<{
+      signed: TxSigned;
+      recovery?: Record<string, JournalJsonValue>;
+      referenceScripts?: LocallyEvaluatedTransaction["referenceScripts"];
+    }>
   >;
 }>;
 
@@ -166,22 +173,31 @@ export const withOwnKeyActions = ({
           `validation-trace ${actionId} does not build: ${String(cause)}`,
         );
       }
+      const referenceScripts = built.referenceScripts ?? [];
       const transaction: LocallyEvaluatedTransaction = {
         txHash: built.signed.toHash().toLowerCase(),
         signed: built.signed,
-        referenceScripts: [],
+        referenceScripts,
       };
+      if (referenceScripts.length > 0)
+        requireReferenceOnlyScriptWitnesses({
+          transaction,
+          label: `validation-trace ${label}`,
+        });
       prepared.set(key, transaction);
       return bindWorkflowPreflightTransaction(
         {
           actionId,
           txHash: transaction.txHash,
-          scriptExecution: "none" as const,
+          scriptExecution:
+            referenceScripts.length === 0
+              ? ("none" as const)
+              : ("reference_scripts" as const),
           localUplcEvaluation: {
             status: "passed" as const,
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
-          referenceScripts: [],
+          referenceScripts,
           durableRecovery: {
             ...built.recovery,
             signedTransactionCborHex: transaction.signed.toCBOR(),

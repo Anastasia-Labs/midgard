@@ -1,4 +1,5 @@
 use aiken/builtin
+use cardano/assets.{PolicyId}
 use midgard/cbor_deserialise
 use midgard/fixed_item_legality_v1
 use midgard/fraud_proofs/native_tx/compact.{
@@ -301,6 +302,44 @@ pub fn observe_canonical_decode_item_v1(
   )
   let item = field_door.open_machine_field_item(
     door,
+    verified,
+    witness_set,
+    control.field_index,
+    control.item_index,
+    carriage,
+  )
+  CanonicalDecodeItemObservationV1 {
+    item_count: field_door.machine_field_item_count(item),
+    item_length: field_door.machine_field_item_length(item),
+    item_order_is_valid: canonical_item_order_is_valid(item),
+  }
+}
+
+/// `observe_canonical_decode_item_v1` with the item reached by `route`: by
+/// walking its field, or, for a variable-width field, through the field
+/// grammar certificate `route` names, so the observation's cost no longer
+/// grows with the field's item count. Both routes open the same item, so the
+/// observation — and every stage past it — is the same.
+pub fn observe_canonical_decode_item_routed_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+  grammar_certificate_policy_id: PolicyId,
+  route: field_door.MachineFieldItemRouteV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+) -> CanonicalDecodeItemObservationV1 {
+  let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let item = field_door.open_machine_variable_field_item(
+    door,
+    grammar_certificate_policy_id,
+    route,
     verified,
     witness_set,
     control.field_index,

@@ -10,7 +10,9 @@ use midgard/validation_machine/machine_types.{
 use midgard/validation_machine/script_sources_early_stages.{
   verify_script_sources_stage_zero_begin_semantics_v1,
 }
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
+use midgard/validation_machine_field_door_v1.{
+  MachineFieldDoorV1, MachineFieldItemRouteV1,
+}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{ScriptSources}
 
@@ -22,6 +24,8 @@ pub type ActionV1 {
     field_index: Int,
     item_index: Int,
     carriage: FieldCarriageV1,
+    /// Beside the evidence, not in it: either route opens the same item.
+    route: MachineFieldItemRouteV1,
   }
 }
 
@@ -32,6 +36,7 @@ validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -56,6 +61,7 @@ validator main(
         field_index,
         item_index,
         carriage,
+        route,
       }) -> {
         let auxiliary = TransactionFieldChunkWitness {
           field_index,
@@ -80,6 +86,8 @@ validator main(
             datum |> semantic_pre_state,
             transition,
             door,
+            field_grammar_certificate_policy_id,
+            route,
             field_index,
             item_index,
             carriage,
