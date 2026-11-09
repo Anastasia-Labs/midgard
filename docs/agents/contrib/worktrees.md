@@ -30,4 +30,8 @@ branch is kept. It never removes the main checkout.
 
 `contrib test` names each run's databases `midgard_contrib_<hash>_<random>`
 and drops them when the run ends; the receipt's `databaseCleanup` says what
-was dropped, or why nothing could be.
+was dropped, or why nothing could be. The same cleanup drops the databases of
+any worktree that no longer exists, so one removed with plain
+`git worktree remove` does not leave its databases behind; a database that
+still has a connection is left alone. The receipt's `removedWorktreeCleanup`
+lists both.

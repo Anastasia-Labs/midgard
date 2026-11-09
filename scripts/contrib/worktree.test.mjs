@@ -16,6 +16,7 @@ import { validateTestDatabasePrefix } from "../../demo/midgard-test-support/data
 import { worktreeIdentity } from "../lib/worktree-identity.mjs";
 import {
   checkoutDatabasePrefixes,
+  dropRemovedWorktreeDatabases,
   dropTestDatabases,
   invocationDatabasePrefix,
 } from "./databases.mjs";
@@ -174,7 +175,7 @@ test("remove drops only the worktree's hashed prefixes, then removes it; --force
 });
 
 // A stand-in for pg.Client that serves a fixed catalogue and records queries.
-const fakeClient = (names, { refuse = false } = {}) => {
+const fakeClient = (names, { refuse = false, connected = [] } = {}) => {
   const queries = [];
   return {
     queries,
@@ -186,6 +187,10 @@ const fakeClient = (names, { refuse = false } = {}) => {
     },
     query: async (sql) => {
       queries.push(sql);
+      if (connected.some((name) => sql === `DROP DATABASE IF EXISTS "${name}"`))
+        throw Object.assign(new Error("database is being accessed"), {
+          code: "55006",
+        });
       return sql.startsWith("SELECT datname")
         ? { rows: names.databases.map((name) => ({ name })) }
         : sql.startsWith("SELECT nspname")
@@ -238,6 +243,64 @@ test("database cleanup refuses a prefix that is not scoped to one checkout", asy
 test("database cleanup reports a stopped server instead of failing", async () => {
   const result = await dropTestDatabases("/unused", ["midgard_test_0123abcd"], {
     env: {},
+    client: fakeClient({}, { refuse: true }),
+  });
+  assert.equal(result.status, "unavailable");
+});
+
+test("a removed worktree's databases are dropped, and no live checkout's", async (t) => {
+  const { main, add } = repository(t);
+  const kept = add("kept");
+  const removed = add("removed");
+  const live = worktreeIdentity(kept).hash;
+  const gone = worktreeIdentity(removed).hash;
+  git(main, "worktree", "remove", removed);
+  const client = fakeClient({
+    databases: [
+      `midgard_test_${live}_w1`,
+      `midgard_tools_test_${live}_w2`,
+      `midgard_test_${gone}_w1`,
+      `midgard_tools_test_${gone}_w0`,
+      `midgard_contrib_${gone}_0f1e2d3c_w3`,
+      "midgard_test_w1",
+      "midgard_test_cifix_w0",
+      "postgres",
+    ],
+    schemas: [],
+  });
+  const result = await dropRemovedWorktreeDatabases(main, { env, client });
+  assert.deepEqual(result, {
+    status: "dropped",
+    databases: [
+      `midgard_test_${gone}_w1`,
+      `midgard_tools_test_${gone}_w0`,
+      `midgard_contrib_${gone}_0f1e2d3c_w3`,
+    ],
+    inUse: [],
+  });
+});
+
+test("a removed worktree's database that is still connected is left alone", async (t) => {
+  const { main } = repository(t);
+  const busy = "midgard_test_0123abcd_w1";
+  const result = await dropRemovedWorktreeDatabases(main, {
+    env,
+    client: fakeClient(
+      { databases: [busy, "midgard_test_0123abcd_w2"], schemas: [] },
+      { connected: [busy] },
+    ),
+  });
+  assert.deepEqual(result, {
+    status: "dropped",
+    databases: ["midgard_test_0123abcd_w2"],
+    inUse: [busy],
+  });
+});
+
+test("removed-worktree cleanup reports a stopped server instead of failing", async (t) => {
+  const { main } = repository(t);
+  const result = await dropRemovedWorktreeDatabases(main, {
+    env,
     client: fakeClient({}, { refuse: true }),
   });
   assert.equal(result.status, "unavailable");

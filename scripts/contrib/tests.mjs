@@ -10,7 +10,11 @@ import { createRequire } from "node:module";
 
 import { probePostgres } from "../preflight/probes.mjs";
 import { blueprintReadiness, ensureBlueprint } from "./blueprint.mjs";
-import { dropTestDatabases, invocationDatabasePrefix } from "./databases.mjs";
+import {
+  dropRemovedWorktreeDatabases,
+  dropTestDatabases,
+  invocationDatabasePrefix,
+} from "./databases.mjs";
 import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import {
   atomicJson,
@@ -370,6 +374,7 @@ export const runTests = async (
   const reportPath = resolve(directory, "vitest.json");
   const steps = [];
   let databaseCleanup;
+  let removedWorktreeCleanup;
   try {
     // A focused run is the package's Vitest suites only; the plain-Node
     // preludes belong to the whole-package run CI makes.
@@ -427,6 +432,10 @@ export const runTests = async (
       [runEnv.MIDGARD_TEST_DATABASE_PREFIX],
       { env: runEnv },
     ).catch((error) => ({ status: "failed", detail: error.message }));
+    // So do the databases of worktrees removed since, which nothing else drops.
+    removedWorktreeCleanup = await dropRemovedWorktreeDatabases(root, {
+      env: runEnv,
+    }).catch((error) => ({ status: "failed", detail: error.message }));
   }
   const after = inputIdentity(root, pkg.name);
   const receipt = writeReceipt({
@@ -484,6 +493,7 @@ export const runTests = async (
     ...(reach ? { reach } : {}),
     databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
     databaseCleanup,
+    removedWorktreeCleanup,
     sourceOnly,
     nativeArtifacts: native,
     evidenceFiles: [

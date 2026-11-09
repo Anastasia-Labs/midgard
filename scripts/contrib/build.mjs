@@ -8,8 +8,10 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { delimiter, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -38,9 +40,34 @@ import { pinnedPnpmEnvironment, requireInstalled } from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { resourceDirectory, withResource } from "./resources.mjs";
 
+// A run folder holds one command's logs and receipt, kept a week so a
+// failure can still be read back; nothing reads an older one. The first run
+// folder a process makes clears the older ones, or they pile up forever.
+const RUN_RETENTION_MS = 7 * 24 * 3_600_000;
+let oldRunsCleared = false;
+
+const clearOldRuns = (runs) => {
+  const cutoff = Date.now() - RUN_RETENTION_MS;
+  for (const name of readdirSync(runs)) {
+    const path = resolve(runs, name);
+    try {
+      if (statSync(path).mtimeMs < cutoff)
+        rmSync(path, { recursive: true, force: true });
+    } catch (error) {
+      // Another process cleared it first.
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+};
+
 export const runDirectory = () => {
-  const directory = resolve(resourceDirectory(), "runs", randomUUID());
+  const runs = resolve(resourceDirectory(), "runs");
+  const directory = resolve(runs, randomUUID());
   mkdirSync(directory, { recursive: true, mode: 0o700 });
+  if (!oldRunsCleared) {
+    oldRunsCleared = true;
+    clearOldRuns(runs);
+  }
   return directory;
 };
 
