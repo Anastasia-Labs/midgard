@@ -9,6 +9,8 @@ use fraud_proofs/field_item_width_illegal/step_01 as validator_01
 use fraud_proofs/field_item_width_illegal/step_02 as validator_02
 use fraud_proofs/field_item_width_illegal/step_03 as validator_03
 use midgard/computation_thread as ct
+use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_item_width_illegal/rule
 use midgard/fraud_proofs/field_item_width_illegal/step_01
 use midgard/fraud_proofs/field_item_width_illegal/step_02
@@ -115,8 +117,16 @@ fn finish_chain(
       fixture.step_script_hash,
       fixture.computation_thread_policy_id,
       fixture.test_certificate_policy_id,
+      grammar.test_grammar_certificate_policy_id,
       Some(bound_datum),
-      ct.Continue(step_02.Args { input_index: 0, output_index: 0, opening }),
+      ct.Continue(
+        step_02.Args {
+          input_index: 0,
+          output_index: 0,
+          opening,
+          grammar_ref_input_index: None,
+        },
+      ),
       fixture.own_out_ref(),
       second_tx,
     )
@@ -377,4 +387,280 @@ test fiwi_chain_rejects_substituted_field_bytes() fail {
 test fiwi_chain_rejects_a_self_consistent_substituted_witness_set() fail {
   expect _ = accepted_chain(False, False, 2)
   True
+}
+
+// ## Step 02 through the field grammar certificate
+//
+// 761 items fill field 2 or 5 under tier 3. The coordinate sits at 751,
+// fifteen items past its waypoint, so the width read pays the most header
+// reads a certified read can.
+
+const certified_count = 761
+
+const certified_index = 751
+
+type Step02Case {
+  datum: Option<step_02.Datum>,
+  redeemer: step_02.SpendRedeemer,
+  tx: Transaction,
+}
+
+/// Step 02 over field `field_index` holding `item` at `certified_index`
+/// among 41-byte items, at coordinate `index`, read through the certificate
+/// `certificate(tx_id, preimage)` builds. `observation` is the state the
+/// step must write.
+fn certified_step_02(
+  field_index: Int,
+  item: ByteArray,
+  index: Int,
+  certificate: fn(ByteArray, ByteArray) -> FieldGrammarCertificateV1,
+  observation: rule.ItemObservationV1,
+) -> Step02Case {
+  let preimage = grammar.field_preimage_with_item_v1(
+    fixture.repeated_bytes_v1(#"a1", 41),
+    certified_count,
+    certified_index,
+    item,
+  )
+  step_02_over(
+    field_index,
+    preimage,
+    index,
+    observation,
+    fn(block) {
+      Route {
+        opening: fixture.certified_body_opening(block.compact_cbor, preimage),
+        grammar_ref_input_index: Some(
+          grammar.grammar_ref_input_index_v1(preimage),
+        ),
+        reference_inputs: grammar.certified_grammar_reference_inputs_v1(
+          block.tx_id,
+          field_index,
+          preimage,
+          certificate(block.tx_id, preimage),
+        ),
+      }
+    },
+  )
+}
+
+/// How a case opens the field: the opening, the grammar certificate's slot
+/// and the L1 reference inputs, for the block committing it.
+type Route {
+  opening: FieldOpeningV1,
+  grammar_ref_input_index: Option<Int>,
+  reference_inputs: List<Input>,
+}
+
+/// Step 02 over field `field_index` committing `preimage`, at coordinate
+/// `index`, opened by `route`. `observation` is the state the step must
+/// write.
+fn step_02_over(
+  field_index: Int,
+  preimage: ByteArray,
+  index: Int,
+  observation: rule.ItemObservationV1,
+  route: fn(fixture.NativeBlockFixtureV1) -> Route,
+) -> Step02Case {
+  let block = fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    field_index,
+    preimage,
+  )
+  let subject = substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: block.tx_id,
+    source_key: #"",
+    rejection_reason: None,
+  }
+  let bound = rule.BoundCoordinateV1 {
+    subject,
+    field_index,
+    item_index: index,
+    compact: TxCompactView {
+      body: block.compact.body,
+      witness_set_hash: block.compact.witness_set_hash,
+      validity_code: Some(block.compact.validity_code),
+    },
+  }
+  let next_state: Data = rule.AuthenticatedItemV1 {
+    subject,
+    field_index,
+    item_index: index,
+    observation,
+  }
+  let route = route(block)
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      step_02.Args {
+        input_index: 0,
+        output_index: 0,
+        opening: Some(route.opening),
+        grammar_ref_input_index: route.grammar_ref_input_index,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        next_state,
+      ),
+      reference_inputs: route.reference_inputs,
+    },
+  }
+}
+
+fn run_certified_step_02(case: Step02Case) -> Bool {
+  validator_02.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+fn certificate_of(
+  field_index: Int,
+) -> fn(ByteArray, ByteArray) -> FieldGrammarCertificateV1 {
+  fn(tx_id, preimage) {
+    grammar.complete_field_grammar_certificate_v1(
+      tx_id,
+      field_index,
+      preimage,
+      certified_count,
+    )
+  }
+}
+
+/// The empty mint item: a width field 5 never admits.
+fn illegal_mint_case() -> Step02Case {
+  certified_step_02(
+    5,
+    #"",
+    certified_index,
+    certificate_of(5),
+    rule.ItemLegality { item_is_legal: False },
+  )
+}
+
+test fiwi_step_02_certified_route_fixture_only_at_the_tier3_maximum() {
+  illegal_mint_case().datum != None
+}
+
+test fiwi_step_02_certified_route_at_the_tier3_maximum_cost() {
+  run_certified_step_02(illegal_mint_case())
+}
+
+test fiwi_step_02_certified_route_observes_a_legal_output_width() {
+  run_certified_step_02(
+    certified_step_02(
+      2,
+      fixture.repeated_bytes_v1(#"b2", 41),
+      certified_index,
+      certificate_of(2),
+      rule.ItemLegality { item_is_legal: True },
+    ),
+  )
+}
+
+test fiwi_step_02_certified_route_refuses_a_legal_reading_of_an_illegal_width() fail {
+  run_certified_step_02(
+    certified_step_02(
+      5,
+      #"",
+      certified_index,
+      certificate_of(5),
+      rule.ItemLegality { item_is_legal: True },
+    ),
+  )
+}
+
+/// The certified count also serves a chunked field: the coordinate one past
+/// the last item is out of the field's domain.
+test fiwi_step_02_certified_route_observes_an_index_past_the_count() {
+  run_certified_step_02(
+    certified_step_02(
+      5,
+      #"",
+      certified_count,
+      certificate_of(5),
+      rule.ItemOutOfDomain,
+    ),
+  )
+}
+
+test fiwi_step_02_certified_route_refuses_another_fields_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      5,
+      #"",
+      certified_index,
+      certificate_of(2),
+      rule.ItemLegality { item_is_legal: False },
+    ),
+  )
+}
+
+test fiwi_step_02_certified_route_refuses_an_in_progress_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      5,
+      #"",
+      certified_index,
+      fn(tx_id, preimage) {
+        grammar.in_progress_field_grammar_certificate_v1(
+          tx_id,
+          5,
+          preimage,
+          certified_count,
+        )
+      },
+      rule.ItemLegality { item_is_legal: False },
+    ),
+  )
+}
+
+// ### The walked route at its limit
+//
+// The walk decides the coordinate's domain by counting the field, which it
+// can for a field carried inline or in one raw UTxO. Its dearest case is
+// `grammar.walked_item_limit` items under tier 1, the coordinate last.
+
+fn walked_limit_case() -> Step02Case {
+  let preimage = grammar.walked_limit_inline_preimage_v1(#"")
+  step_02_over(
+    5,
+    preimage,
+    grammar.walked_item_limit - 1,
+    rule.ItemLegality { item_is_legal: False },
+    fn(block) {
+      Route {
+        opening: BodyFieldOpening {
+          native_tx_compact_cbor: block.compact_cbor,
+          carriage: Inline { preimage },
+        },
+        grammar_ref_input_index: None,
+        reference_inputs: [],
+      }
+    },
+  )
+}
+
+test fiwi_step_02_walked_route_fixture_only_at_the_walked_limit() {
+  walked_limit_case().datum != None
+}
+
+test fiwi_step_02_walked_route_at_the_walked_limit_cost() {
+  run_certified_step_02(walked_limit_case())
 }

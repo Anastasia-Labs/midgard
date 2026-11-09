@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { journalFaultProofFieldGrammarAfterCarriage } from "../field-grammar-certificate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
@@ -256,14 +257,20 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
                   await centralJournal.confirmAuxiliary(txHash);
               },
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        ...journalFaultProofFieldGrammarAfterCarriage({
+          fieldGrammar: config.fieldGrammar,
+          journal: centralJournal,
+          familyIdentity,
+          stage: "step02" as const,
+          stepBoundary:
+            preSubmitBoundary ??
+            centralJournal?.boundary(
+              action,
+              familyIdentity,
+              transition[0],
+              transition[1],
+            ),
+        }),
       });
       return {
         stage: result.stage,

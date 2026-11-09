@@ -6,7 +6,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type {
+  CertifiedFaultProofChainInputs,
+  FieldGrammarCertifiedChainInput,
+} from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -50,7 +53,9 @@ export const buildProtectedOutputSignerMissingChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  fieldGrammarCertificatePolicyId,
+}: CertifiedFaultProofChainInputs &
+  FieldGrammarCertifiedChainInput): Effect.Effect<
   ProtectedOutputSignerMissingFaultProofContracts["protectedOutputSignerMissing"],
   Error
 > =>
@@ -94,6 +99,7 @@ export const buildProtectedOutputSignerMissingChain = ({
         step05.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        fieldGrammarCertificatePolicyId,
       ],
       "Failed to build protected-output-signer-missing step 02",
     );

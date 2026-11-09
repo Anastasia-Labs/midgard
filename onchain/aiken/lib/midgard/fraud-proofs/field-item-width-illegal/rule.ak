@@ -2,6 +2,10 @@
 
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/field_grammar_certificate_v1.{
+  CertifiedFieldGrammarV1, certified_field_item_count,
+  certified_field_item_extent,
+}
 use midgard/fixed_item_legality_v1
 use midgard/fraud_proofs/first_fault_v1
 use midgard/fraud_proofs/native_tx/types.{TxCompactView}
@@ -122,6 +126,41 @@ pub fn authenticate_item_legality_v1(
       )
     }
     ItemLegality { item_is_legal: legal }
+  }
+  AuthenticatedItemV1 {
+    subject: bound.subject,
+    field_index: bound.field_index,
+    item_index: bound.item_index,
+    observation,
+  }
+}
+
+/// `authenticate_item_legality_v1` for a variable-width field (2 or 5) read
+/// through its field grammar certificate: the certified count decides the
+/// domain, and the item's width is the certified extent's length, so the cost
+/// no longer grows with the field's item count. `view` and `certified` come
+/// from one `opened_certified_field` call, which bound them to each other.
+pub fn authenticate_certified_item_legality_v1(
+  bound: BoundCoordinateV1,
+  view: FieldViewV1,
+  certified: CertifiedFieldGrammarV1,
+) -> AuthenticatedItemV1 {
+  expect bound.item_index >= 0
+  expect bound.field_index == 2 || bound.field_index == 5
+  let observation = if bound.item_index >= certified_field_item_count(certified) {
+    ItemOutOfDomain
+  } else {
+    let Pair(_, width) = certified_field_item_extent(
+      view,
+      certified,
+      bound.item_index,
+    )
+    ItemLegality {
+      item_is_legal: fixed_item_legality_v1.item_width_is_legal_v1(
+        bound.field_index,
+        width,
+      ),
+    }
   }
   AuthenticatedItemV1 {
     subject: bound.subject,

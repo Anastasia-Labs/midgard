@@ -6,7 +6,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type {
+  CertifiedFaultProofChainInputs,
+  FieldGrammarCertifiedChainInput,
+} from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -48,7 +51,9 @@ export const buildRedeemerCanonicityChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  fieldGrammarCertificatePolicyId,
+}: CertifiedFaultProofChainInputs &
+  FieldGrammarCertifiedChainInput): Effect.Effect<
   RedeemerCanonicityFaultProofContracts["redeemerCanonicity"],
   Error
 > =>
@@ -78,6 +83,7 @@ export const buildRedeemerCanonicityChain = ({
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        fieldGrammarCertificatePolicyId,
       ],
       "Failed to build redeemer-canonicity step 02",
     );

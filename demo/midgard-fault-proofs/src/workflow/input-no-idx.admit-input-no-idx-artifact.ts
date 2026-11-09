@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
@@ -271,6 +272,8 @@ export type BoundConfig = Readonly<{
   headerHash: string;
   referenceScripts: InputNoIdxWorkflowReferenceScripts;
   certificate: FieldPreimageCertificateBinding;
+  /** Step 04 counts the producer's outputs through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;

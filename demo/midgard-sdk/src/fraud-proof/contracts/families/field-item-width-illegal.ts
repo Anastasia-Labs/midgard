@@ -6,7 +6,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type {
+  CertifiedFaultProofChainInputs,
+  FieldGrammarCertifiedChainInput,
+} from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -46,7 +49,9 @@ export const buildFieldItemWidthIllegalChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  fieldGrammarCertificatePolicyId,
+}: CertifiedFaultProofChainInputs &
+  FieldGrammarCertifiedChainInput): Effect.Effect<
   FieldItemWidthIllegalFaultProofContracts["fieldItemWidthIllegal"],
   Error
 > =>
@@ -69,6 +74,7 @@ export const buildFieldItemWidthIllegalChain = ({
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        fieldGrammarCertificatePolicyId,
       ],
       "Failed to build field-item-width-illegal step 02",
     );

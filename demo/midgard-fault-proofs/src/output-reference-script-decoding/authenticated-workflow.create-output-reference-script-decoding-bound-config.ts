@@ -7,6 +7,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
@@ -37,6 +41,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS =
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
     fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+    fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
   } as const);
 
 export type OutputReferenceScriptDecodingReferenceScripts = Readonly<{
@@ -47,6 +52,7 @@ export type OutputReferenceScriptDecodingReferenceScripts = Readonly<{
   step05: UTxO;
   step06: UTxO;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -61,6 +67,8 @@ export type ManifestBoundOutputReferenceScriptDecodingConfig = Readonly<{
   binding: OutputReferenceScriptDecodingDeploymentBinding;
   contracts: OutputReferenceScriptDecodingContracts;
   referenceScripts: OutputReferenceScriptDecodingReferenceScripts;
+  /** Steps 02 and 04 read the accused output through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
   /**
    * The script-decode deployment step 04 finds a Plutus item's record in;
    * without it a Plutus item cannot be proven.
@@ -144,6 +152,11 @@ export const bindOutputReferenceScriptDecodingReferenceScripts = ({
       binding,
       contractName: names.fieldPreimageCertificateMint,
       utxo: referenceScripts.fieldPreimageCertificateMint,
+    }),
+    fieldGrammarCertificateSpend: bindReference({
+      binding,
+      contractName: names.fieldGrammarCertificateSpend,
+      utxo: referenceScripts.fieldGrammarCertificateSpend,
     }),
     witnesses: Object.freeze({
       ...referenceScripts.witnesses,
@@ -237,6 +250,12 @@ export const createOutputReferenceScriptDecodingBoundConfig = (
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    fieldGrammar: resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: referenceScripts.fieldGrammarCertificateSpend,
+      label: "outputReferenceScriptDecoding",
+    }),
     ...(scriptDecode === undefined ? {} : { scriptDecode }),
   });
 };

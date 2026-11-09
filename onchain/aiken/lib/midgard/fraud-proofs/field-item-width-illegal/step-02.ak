@@ -9,6 +9,11 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   opening: Option<FieldOpeningV1>,
+  /// Fields 2 and 5 only: `None` authenticates the count and the item's width
+  /// by walking the field; `Some(i)` takes both from the field grammar
+  /// certificate at reference input `i`, so the step's cost no longer grows
+  /// with the field's item count.
+  grammar_ref_input_index: Option<Int>,
 }
 
 pub type SpendRedeemer =

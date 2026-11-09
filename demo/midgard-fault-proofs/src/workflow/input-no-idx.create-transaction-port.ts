@@ -5,6 +5,7 @@ import {
   InputNoIdxStep04Datum,
 } from "@al-ft/midgard-sdk";
 
+import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
@@ -233,6 +234,7 @@ const createTransactionPort = (
                 nativeTxCompactCbor:
                   admitted.artifact.producingTx.nativeTxCompactCbor,
                 witnessReferenceScripts: config.referenceScripts.witnesses,
+                fieldGrammar: config.fieldGrammar,
               });
             }
           },
@@ -276,6 +278,7 @@ export const INPUT_NO_IDX_FAMILY_DEFINITION = defineLinearFamily({
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "linear",
@@ -289,6 +292,10 @@ export const INPUT_NO_IDX_FAMILY_DEFINITION = defineLinearFamily({
         headerHash: context.binding.definition.headerHash,
         referenceScripts: context.references,
         certificate: context.certificate,
+        fieldGrammar: requireFaultProofFieldGrammarDeployment(
+          context.fieldGrammar,
+          "nonExistentInputNoIndex",
+        ),
         stateQueueMutationLeaseCoordinator:
           context.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

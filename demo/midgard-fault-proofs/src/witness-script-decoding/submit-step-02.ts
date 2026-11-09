@@ -21,6 +21,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -69,6 +73,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
   onCarriageReady,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -97,6 +102,8 @@ export const submitWitnessScriptDecodingStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void> | void;
+  /** The field grammar certificate, for a field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -173,6 +180,28 @@ export const submitWitnessScriptDecodingStep02 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "item",
+    itemCount: planned.itemCount,
+    source: {
+      sourceKind: planned.sourceKind,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...carriageUtxos,
+      ...(resolvedCertificateUtxo === undefined
+        ? []
+        : [resolvedCertificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: `${FAMILY} step 02 field 6`,
+  });
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
@@ -183,6 +212,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
   const extraReferenceInputs = [
     ...(resolvedCertificateUtxo === undefined ? [] : [resolvedCertificateUtxo]),
     ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
+    ...grammar.referenceInputs,
   ];
   const nextState: WitnessScriptDecodingScanState = {
     bound,
@@ -236,6 +266,9 @@ export const submitWitnessScriptDecodingStep02 = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} step 02 decode record`,
                   ),
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
           },
         ],
       } as never,

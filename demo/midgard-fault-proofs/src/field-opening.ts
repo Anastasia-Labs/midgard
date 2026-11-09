@@ -63,6 +63,7 @@ export {
 export {
   type FaultProofFieldOpeningPlan,
   parseNativeTxCompactCbor,
+  parseNativeTxWitnessSetCompactCbor,
   planFaultProofFieldOpening,
 } from "./field-opening.plan-fault-proof-field-opening.js";
 export {

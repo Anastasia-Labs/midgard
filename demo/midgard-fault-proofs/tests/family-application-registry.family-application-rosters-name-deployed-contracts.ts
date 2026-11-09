@@ -98,6 +98,9 @@ describe("family application rosters name deployed contracts", () => {
           expect(referenceScripts.fieldPreimageCertificateMint).toBe(
             references.fieldPreimageCertificateMint,
           );
+          expect(referenceScripts.fieldGrammarCertificateSpend).toBe(
+            references.fieldGrammarCertificateSpend,
+          );
         }
       } else {
         // The contract-name-keyed shape: each role's reference sits under the
@@ -128,6 +131,11 @@ describe("family application rosters name deployed contracts", () => {
           ? "fieldPreimageCertificateMint"
           : undefined,
       );
+      expect(roster.fieldGrammarCertificateSpend).toBe(
+        definition.fieldGrammarCertificate === true
+          ? "fieldGrammarCertificateSpend"
+          : undefined,
+      );
       const auxiliary = definition.auxiliaryReferenceScripts ?? {};
       for (const [role, contractName] of Object.entries(auxiliary)) {
         expect(roster[role]).toBe(contractName);
@@ -136,6 +144,7 @@ describe("family application rosters name deployed contracts", () => {
         steps.length +
           definition.witnessRoles.length +
           (definition.fieldPreimageCertificate ? 1 : 0) +
+          (definition.fieldGrammarCertificate === true ? 1 : 0) +
           Object.keys(auxiliary).length,
       );
     },

@@ -140,6 +140,8 @@ export type FamilyRosterDefinition = Readonly<{
   category: FamilyCategory;
   witnessRoles: readonly FaultProofWitnessRole[];
   fieldPreimageCertificate: boolean;
+  /** Whether the roster carries the field grammar certificate's spend role. */
+  fieldGrammarCertificate?: true;
   /** Family-specific published script roles, mapped to manifest contracts. */
   auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
   adapter: Readonly<
@@ -151,7 +153,8 @@ export type FamilyRosterDefinition = Readonly<{
 /**
  * The roster of a family assembled from a definition: one role per chain step
  * in step order, one per declared witness role, the field-preimage
- * certificate minting policy when the definition binds the certificate, and
+ * certificate minting policy when the definition binds the certificate, the
+ * field grammar certificate's spend role when a step reads through it, and
  * one role per declared auxiliary reference script. Every witness role and
  * the certificate role name their manifest contract identically, so that
  * mapping is the identity; an auxiliary role maps to the contract its
@@ -171,6 +174,9 @@ export const familyDefinitionRoster = (
     ...(definition.fieldPreimageCertificate
       ? { fieldPreimageCertificateMint: "fieldPreimageCertificateMint" }
       : {}),
+    ...(definition.fieldGrammarCertificate === true
+      ? { fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend" }
+      : {}),
     ...definition.auxiliaryReferenceScripts,
   });
 
@@ -178,6 +184,7 @@ export const familyDefinitionRoster = (
  * Refuses a derived roster that does not cover its definition: one role per
  * chain step, in step order and naming that step's contract; one per declared
  * witness role; the certificate role exactly when the definition binds it;
+ * the field grammar certificate role exactly when a step reads through it;
  * one per declared auxiliary reference script; and nothing besides.
  *
  * `bindConfig` reads exactly these roles, so a roster that drifts from the
@@ -206,6 +213,11 @@ export const assertFamilyDefinitionRoster = (
     ...(definition.fieldPreimageCertificate
       ? ([
           ["fieldPreimageCertificateMint", "fieldPreimageCertificateMint"],
+        ] as const)
+      : []),
+    ...(definition.fieldGrammarCertificate === true
+      ? ([
+          ["fieldGrammarCertificateSpend", "fieldGrammarCertificateSpend"],
         ] as const)
       : []),
     ...Object.entries(definition.auxiliaryReferenceScripts ?? {}),

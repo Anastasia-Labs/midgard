@@ -17,6 +17,10 @@ pub type Args {
   /// The prover's chosen §8 carriage for the producing transaction's field-2
   /// preimage.
   outputs_opening: FieldOpeningV1,
+  /// `None` takes the output count from walking field 2; `Some(i)` takes it
+  /// from the field grammar certificate at reference input `i`, so the
+  /// certified count also serves a chunked field.
+  grammar_ref_input_index: Option<Int>,
 }
 
 pub type SpendRedeemer =

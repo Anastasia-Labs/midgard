@@ -6,6 +6,10 @@ import {
 } from "@al-ft/midgard-core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  requireFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
@@ -69,6 +73,7 @@ export type RedeemerCanonicityWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
   witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   removal: RedeemerCanonicityRemovalReferenceScripts;
 }>;
 
@@ -94,6 +99,8 @@ export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
   signer: ResolvedProverSigner;
   contracts: RedeemerCanonicityContracts;
   referenceScripts: RedeemerCanonicityWorkflowReferenceScripts;
+  /** Step 02 reads the accused redeemer through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   adapter: FraudProofFamilyWorkflowAdapter;
@@ -138,6 +145,10 @@ const bindFamily = (context: BoundContext): RedeemerWorkflowCore => {
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   };
+  const fieldGrammar = requireFaultProofFieldGrammarDeployment(
+    context.fieldGrammar,
+    "redeemerCanonicity",
+  );
   return {
     binding,
     l1: context.l1,
@@ -148,9 +159,11 @@ const bindFamily = (context: BoundContext): RedeemerWorkflowCore => {
       ...context.references,
       steps,
       witnesses,
+      fieldGrammarCertificateSpend: fieldGrammar.certificateReferenceScriptUtxo,
       removal:
         context.auxiliaryReferences as RedeemerCanonicityRemovalReferenceScripts,
     },
+    fieldGrammar,
     stateQueueMutationLeaseCoordinator:
       context.stateQueueMutationLeaseCoordinator,
   };

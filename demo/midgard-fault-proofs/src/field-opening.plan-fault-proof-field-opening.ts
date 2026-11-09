@@ -18,7 +18,7 @@ import {
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
-import { requireRecord } from "./json-file.js";
+import { parseHex, requireRecord } from "./json-file.js";
 
 /**
  * The `--native-tx-compact` file every re-derived step-02-class command takes:
@@ -42,6 +42,26 @@ export const parseNativeTxCompactCbor = (
     );
   }
   return cbor.toLowerCase();
+};
+
+/**
+ * JSON `{ "addrTxWitsHash", "scriptTxWitsHash", "redeemerTxWitsHash" }`, the
+ * file `--witness-set-compact` names: a transaction's compact witness set,
+ * returned as the compact witness-set CBOR a certified field read
+ * authenticates the field against.
+ */
+export const parseNativeTxWitnessSetCompactCbor = (
+  value: unknown,
+  label: string,
+): string => {
+  const record = requireRecord(value, label);
+  const hash = (key: string): Buffer =>
+    Buffer.from(parseHex(record[key], `${label}.${key}`, 32), "hex");
+  return encodeMidgardNativeTxWitnessSetCompact({
+    addrTxWitsHash: hash("addrTxWitsHash"),
+    scriptTxWitsHash: hash("scriptTxWitsHash"),
+    redeemerTxWitsHash: hash("redeemerTxWitsHash"),
+  }).toString("hex");
 };
 
 /**

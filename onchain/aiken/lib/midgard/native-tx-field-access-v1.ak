@@ -539,6 +539,49 @@ pub fn authenticated_resumable_field_view_with_commitment(
   Pair(expected_hash, view)
 }
 
+/// `authenticated_field_view_with_commitment` when `resumable` is False and
+/// `authenticated_resumable_field_view_with_commitment` when it is True, with
+/// one prologue and one carriage dispatch serving both. A step that offers
+/// both routes opens its field through this door, so it carries the door once.
+pub fn authenticated_field_view_with_commitment_by(
+  verified: VerifiedTxSourceView,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+  resumable: Bool,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(expected_hash, stride) = field_door_prologue(
+    verified,
+    witness_set,
+    field_index,
+  )
+  let view = when carriage is {
+    Inline { preimage } ->
+      whole_view_by(preimage, expected_hash, stride, resumable)
+    RawUtxo { ref_input_index } ->
+      whole_view_by(
+        raw_carriage_bytes(reference_inputs, ref_input_index),
+        expected_hash,
+        stride,
+        resumable,
+      )
+    Certified { cert_ref_input_index, chunk_ref_input_indices } ->
+      certified_view(
+        verified.tx_id,
+        field_index,
+        expected_hash,
+        stride,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+  }
+  Pair(expected_hash, view)
+}
+
 /// The checkpointed-walk door with tier 3 read as whole bytes.
 ///
 /// Tiers 1–2 are exactly `authenticated_resumable_field_view_with_commitment`.
@@ -778,6 +821,30 @@ fn resumable_whole_view(
     // grammar-certification checkpoint machine.
     expect header_len + count <= total_length
     ProvisionalWhole { bytes: preimage, count, stride }
+  }
+}
+
+/// `whole_view` when `resumable` is False and `resumable_whole_view` when it
+/// is True: the same checks in the same order, and the same view.
+fn whole_view_by(
+  preimage: ByteArray,
+  expected_hash: ByteArray,
+  stride: Int,
+  resumable: Bool,
+) -> FieldViewV1 {
+  expect field_commitment(preimage) == expected_hash
+  let total_length = bytearray.length(preimage)
+  expect total_length <= max_transaction_aggregate_field_bytes
+  let Pair(header_len, count) = decode_field_array_header(preimage)
+  if stride > walk_derived_stride {
+    expect header_len + stride * count == total_length
+    Whole { bytes: preimage, count, stride }
+  } else if resumable {
+    expect header_len + count <= total_length
+    ProvisionalWhole { bytes: preimage, count, stride }
+  } else {
+    expect walk_to_end(preimage, header_len, count) == total_length
+    Whole { bytes: preimage, count, stride }
   }
 }
 

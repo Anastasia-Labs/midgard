@@ -76,6 +76,7 @@ export const RedeemerCanonicityStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   opening: FieldOpeningSchema,
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 export const RedeemerCanonicityStep02RedeemerSchema =
   faultProofStepRedeemerSchema(RedeemerCanonicityStep02ArgsSchema);

@@ -243,10 +243,15 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
   it("encodes both absent and present step-02 openings with their Option wrapper", () => {
     expect(
       Data.to(
-        { input_index: 0n, output_index: 1n, opening: null } as never,
+        {
+          input_index: 0n,
+          output_index: 1n,
+          opening: null,
+          grammar_ref_input_index: null,
+        } as never,
         FieldItemWidthStep02ArgsSchema as never,
       ),
-    ).toBe("d8799f0001d87a80ff");
+    ).toBe("d8799f0001d87a80d87a80ff");
     expect(
       Data.to(
         {
@@ -258,10 +263,11 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
               carriage: { Inline: { preimage: "80" } },
             },
           },
+          grammar_ref_input_index: 2n,
         } as never,
         FieldItemWidthStep02ArgsSchema as never,
       ),
-    ).toBe("d8799f0001d8799fd8799f4101d8799f4180ffffffff");
+    ).toBe("d8799f0001d8799fd8799f4101d8799f4180ffffffd8799f02ffff");
   });
 
   it("refuses the obsolete short bound datum", () => {

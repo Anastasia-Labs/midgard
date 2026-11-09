@@ -130,6 +130,7 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

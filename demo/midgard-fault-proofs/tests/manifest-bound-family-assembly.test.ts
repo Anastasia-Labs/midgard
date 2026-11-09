@@ -1,212 +1,19 @@
-import {
-  credentialToAddress,
-  type UTxO,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as inspection from "../src/inspect-contracts.js";
-import * as deployment from "../src/workflow/deployment-manifest-binding.js";
-import {
-  type FamilyCategory,
-  familyStepContractNames,
-} from "../src/workflow/family-definition.js";
-import * as observations from "../src/workflow/family-l1-observation.js";
-import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
-import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../src/workflow/manifest-bound-family-assembly.js";
 import * as orchestrator from "../src/workflow/orchestrator.js";
-import * as proofChunks from "../src/workflow/proof-chunk-prerequisite.js";
-import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
-import { cursorAssemblyRuntimeFixture } from "./support/cursor-assembly-runtime-fixtures.js";
-import { createAuthenticatedFamilyAssemblyRuntimeFixture } from "./support/family-assembly-runtime-fixtures.js";
-import { REGISTERED_FAMILY_DEFINITIONS } from "./support/registered-family-definitions.js";
+import {
+  categories,
+  definitionOf,
+  fixture,
+  HEADER,
+} from "./support/manifest-bound-family-assembly-fixture.js";
 
 afterEach(() => vi.restoreAllMocks());
-
-const categories = [...REGISTERED_FAMILY_DEFINITIONS.keys()];
-const definitionOf = (category: FamilyCategory) =>
-  REGISTERED_FAMILY_DEFINITIONS.get(category)!;
-const OWNER = "11".repeat(28);
-const HEADER = "aa".repeat(28);
-const SCRIPT = { type: "PlutusV3", script: "49480100002221200101" } as const;
-
-/**
- * A fake deployment binding that resolves every reference script the
- * definition can ask for, plus a fake L1 port whose provider never starts.
- * Verified-manifest loading and provider startup are isolated; the assembly,
- * the exact manifest out-ref/script checks and the family's own port factory
- * stay real. Step contract names come from whichever spec the definition's
- * arm uses.
- */
-const fixture = (category: FamilyCategory) => {
-  const definition = definitionOf(category);
-  const stepNames = familyStepContractNames(definition);
-  const address = credentialToAddress("Preprod", { type: "Key", hash: OWNER });
-  const names = [
-    ...stepNames,
-    ...definition.witnessRoles,
-    "fieldPreimageCertificateMint",
-    ...Object.values(definition.auxiliaryReferenceScripts ?? {}),
-  ];
-  const utxoAt = (index: number): UTxO => ({
-    txHash: "22".repeat(32),
-    outputIndex: index,
-    address,
-    assets: { lovelace: 2_000_000n },
-    scriptRef: SCRIPT,
-  });
-  const references = new Map(names.map((name, index) => [name, utxoAt(index)]));
-  const steps = stepNames.map((name) => references.get(name)!);
-  const witnesses = Object.fromEntries(
-    definition.witnessRoles.map((role) => [role, references.get(role)!]),
-  );
-  const contractSteps = steps.map((_step, index) => ({
-    spendingScriptAddress: address,
-    spendingScriptHash: `${index.toString().padStart(2, "0")}`.repeat(28),
-  }));
-  const binding = {
-    deploymentFingerprint: "44".repeat(32),
-    network: "Preprod",
-    blueprint: {},
-    deploymentInfo: {},
-    releaseFinality: { policy: { confirmationDepth: 1 } },
-    releaseEconomics: { policy: { fraudProverRewardLovelace: "1000000" } },
-    cardanoProtocolParameters: { maxTxSize: 16384 },
-    fieldPreimageCertificate: {
-      policyId: "55".repeat(28),
-      mintingScript: SCRIPT,
-    },
-    referenceScriptsByContract: Object.fromEntries(
-      names.map((name) => {
-        const utxo = references.get(name)!;
-        return [
-          name,
-          {
-            outRef: `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-            scriptHash: validatorToScriptHash(SCRIPT),
-          },
-        ];
-      }),
-    ),
-    definition: { category, headerHash: HEADER, proverCredential: OWNER },
-    contractEntries: {
-      hubOracleMint: { scriptHash: "88".repeat(28) },
-      stateQueueMint: { scriptHash: "33".repeat(28) },
-    },
-    resolvedContracts: {
-      contracts: {
-        [category]: {
-          steps: contractSteps,
-          firstStep: contractSteps[0],
-          acceptedStep02: contractSteps[1],
-          forcedStep02: contractSteps[2],
-          certificateStep03: contractSteps[3],
-        },
-        computationThread: { policyId: "66".repeat(28) },
-        fraudProof: {
-          policyId: "77".repeat(28),
-          mintingScript: SCRIPT,
-          spendingScriptAddress: address,
-        },
-      },
-      stateQueuePolicyId: "33".repeat(28),
-      hubOraclePolicyId: "88".repeat(28),
-      category: { categoryId: "0000000b" },
-    },
-  };
-  vi.spyOn(deployment, "bindFraudProofWorkflowDeployment").mockResolvedValue(
-    binding as unknown as Awaited<
-      ReturnType<typeof deployment.bindFraudProofWorkflowDeployment>
-    >,
-  );
-  const bindReference = vi.spyOn(
-    deployment,
-    "requireManifestBoundReferenceScriptUtxo",
-  );
-  const observation = { fake: "observation" };
-  const l1 = {
-    portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
-    category,
-    rawL1: { authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY },
-    publications: {
-      observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
-      observeExact: vi.fn(),
-    },
-    observeHeader: vi.fn(async () => observation),
-    observeBoundary: vi.fn(),
-    transactionConfirmed: vi.fn(async () => false),
-    observe: vi.fn(),
-  };
-  const observe = vi
-    .spyOn(observations, "createFraudProofFamilyL1ObservationPort")
-    .mockReturnValue(l1 as never);
-  const withField = vi.spyOn(fieldCarriage, "withFieldCarriagePrerequisite");
-  const withChunks = vi.spyOn(proofChunks, "withProofChunkPrerequisite");
-  const config = {
-    manifest: {},
-    blueprintJson: "{}",
-    deploymentInfo: {},
-    headerHash: HEADER,
-    lucid: { fake: "lucid" },
-    signer: { address, paymentKeyHash: OWNER },
-    referenceScripts: {
-      steps,
-      witnesses,
-      fieldPreimageCertificateMint: references.get(
-        "fieldPreimageCertificateMint",
-      )!,
-    },
-    l1Source: {},
-    auxiliaryReferenceScripts: Object.fromEntries(
-      Object.entries(definition.auxiliaryReferenceScripts ?? {}).map(
-        ([role, contractName]) => [role, references.get(contractName)!],
-      ),
-    ),
-    stateQueueMutationLeaseCoordinator: { acquire: vi.fn() },
-  };
-  vi.spyOn(
-    inspection,
-    "parseContractDeploymentReferenceScriptAuthPolicyId",
-  ).mockReturnValue("ab".repeat(28));
-  const runtime =
-    createAuthenticatedFamilyAssemblyRuntimeFixture(category, {
-      binding,
-      config,
-    }) ??
-    cursorAssemblyRuntimeFixture({ category, binding, l1, config }) ??
-    (category === "minAda"
-      ? {}
-      : category === "transitionTrace"
-        ? { config, cell: {} }
-        : undefined);
-  const assemble = () =>
-    assembleManifestBoundFamilyWorkflow(
-      definition as never,
-      config as never,
-      runtime,
-    );
-  return {
-    definition,
-    runtime,
-    stepNames,
-    binding,
-    config,
-    references,
-    l1,
-    observation,
-    assemble,
-    bindReference,
-    observe,
-    withField,
-    withChunks,
-  };
-};
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
@@ -267,6 +74,9 @@ describe("manifest-bound family assembly", () => {
         ...f.definition.witnessRoles,
         ...(f.definition.fieldPreimageCertificate
           ? ["fieldPreimageCertificateMint"]
+          : []),
+        ...(f.definition.fieldGrammarCertificate === true
+          ? ["fieldGrammarCertificateSpend"]
           : []),
         ...Object.values(f.definition.auxiliaryReferenceScripts ?? {}),
       ];

@@ -13,6 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -59,6 +63,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
   onCarriageReady,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -79,6 +84,8 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
+  /** The field grammar certificate, for a field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -153,6 +160,26 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "item",
+    itemCount: items.length,
+    source: {
+      sourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...carriageUtxos,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: "transaction-output-non-canonical field opening",
+  });
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
@@ -206,7 +233,14 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
+          },
         ],
       } as never,
       TransactionOutputStep02RedeemerSchema as never,
@@ -224,8 +258,10 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
+    extraReferenceInputs: [
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      ...grammar.referenceInputs,
+    ],
     preSubmitBoundary,
     awaitConfirmation,
   });

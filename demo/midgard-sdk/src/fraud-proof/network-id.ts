@@ -96,6 +96,7 @@ export const NetworkIdStep02ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
   outputs_opening: Data.Nullable(FieldOpeningSchema),
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 export type NetworkIdStep02Args = Data.Static<typeof NetworkIdStep02ArgsSchema>;
 export const NetworkIdStep02Args = asDataType<NetworkIdStep02Args>(

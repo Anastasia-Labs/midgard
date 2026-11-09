@@ -50,6 +50,7 @@ const references = (): OutputReferenceScriptDecodingReferenceScripts => ({
   step05: utxo("5", 4),
   step06: utxo("6", 5),
   fieldPreimageCertificateMint: utxo("7", 6),
+  fieldGrammarCertificateSpend: utxo("b", 10),
   witnesses: {
     computationThreadMint: utxo("8", 7),
     fraudProofMint: utxo("9", 8),
@@ -72,6 +73,7 @@ describe("outputReferenceScriptDecoding production workflow", () => {
       "fraudProofMint",
       "phasMembershipWithdraw",
       "fieldPreimageCertificateMint",
+      "fieldGrammarCertificateSpend",
     ]);
   });
 
@@ -91,6 +93,7 @@ describe("outputReferenceScriptDecoding production workflow", () => {
       supplied.witnesses.fraudProofMint,
       supplied.witnesses.phasMembershipWithdraw,
       supplied.fieldPreimageCertificateMint,
+      supplied.fieldGrammarCertificateSpend,
     ];
     const binding = {
       referenceScriptsByContract: Object.fromEntries(

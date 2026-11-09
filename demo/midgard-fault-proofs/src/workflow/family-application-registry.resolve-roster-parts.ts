@@ -141,12 +141,14 @@ export const requiredInfrastructureFields = (
 /**
  * A definition's roster resolved into the parts a config lays out: the chain
  * steps in step order, the witness roles, the certificate when the definition
- * binds it, and the declared auxiliary reference scripts.
+ * binds it, the field grammar certificate when a step reads through it, and
+ * the declared auxiliary reference scripts.
  */
 export type ResolvedRosterParts = Readonly<{
   steps: readonly UTxO[];
   witnesses: Readonly<Record<string, UTxO>>;
   fieldPreimageCertificateMint?: UTxO;
+  fieldGrammarCertificateSpend?: UTxO;
   auxiliary: Readonly<Record<string, UTxO>>;
 }>;
 
@@ -176,6 +178,14 @@ export const resolveRosterParts = (
           ),
         }
       : {}),
+    ...(definition.fieldGrammarCertificate === true
+      ? {
+          fieldGrammarCertificateSpend: requiredReference(
+            references,
+            "fieldGrammarCertificateSpend",
+          ),
+        }
+      : {}),
     auxiliary: Object.freeze(
       Object.fromEntries(
         Object.keys(definition.auxiliaryReferenceScripts ?? {}).map((role) => [
@@ -195,6 +205,7 @@ export const referenceScriptBundle = ({
   steps,
   witnesses,
   fieldPreimageCertificateMint,
+  fieldGrammarCertificateSpend,
 }: ResolvedRosterParts) =>
   Object.freeze({
     steps,
@@ -202,6 +213,9 @@ export const referenceScriptBundle = ({
     ...(fieldPreimageCertificateMint === undefined
       ? {}
       : { fieldPreimageCertificateMint }),
+    ...(fieldGrammarCertificateSpend === undefined
+      ? {}
+      : { fieldGrammarCertificateSpend }),
   });
 
 /**

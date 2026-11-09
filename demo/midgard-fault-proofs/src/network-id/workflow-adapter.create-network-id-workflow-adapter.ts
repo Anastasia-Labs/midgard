@@ -1022,6 +1022,11 @@ export const createNetworkIdWorkflowAdapter = (
               : { certificateUtxos: [certificate] }),
             referenceScriptUtxo: config.stepReferenceScripts[1],
             witnessReferenceScripts: config.witnessReferenceScripts,
+            // Submitted inline ahead of the captured step; it never takes the
+            // step's boundary.
+            ...(config.fieldGrammar === undefined
+              ? {}
+              : { fieldGrammar: config.fieldGrammar }),
             preSubmitBoundary: boundary,
             awaitConfirmation: false,
           });

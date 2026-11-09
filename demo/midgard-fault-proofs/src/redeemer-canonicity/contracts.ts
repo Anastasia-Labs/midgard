@@ -1,4 +1,5 @@
 import {
+  buildFieldGrammarCertificateValidator,
   buildRedeemerCanonicityChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
@@ -68,15 +69,21 @@ export const applyRedeemerCanonicityScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): RedeemerCanonicityContracts["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildRedeemerCanonicityChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      fieldGrammarCertificatePolicyId: buildFieldGrammarCertificateValidator({
+        blueprint: parsedBlueprint,
+        network,
+        fieldPreimageCertificatePolicyId,
+      }).policyId,
     }),
   );
   const titles = Object.values(REDEEMER_CANONICITY_BLUEPRINT_TITLES);

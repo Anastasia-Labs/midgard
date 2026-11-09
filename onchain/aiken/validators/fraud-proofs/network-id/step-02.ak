@@ -3,12 +3,14 @@
 use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/field_grammar_certificate_v1
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, opened_field_view, outputs_field_index,
+  BodyAnchor, opened_certified_field_item, outputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
@@ -24,13 +26,13 @@ use midgard/fraud_proofs/network_id/step_01.{
   ForcedNetworkIdMismatch, NetworkIdFaultV1, OutputNetwork, TransactionNetwork,
 }
 use midgard/fraud_proofs/network_id/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/native_tx_field_access_v1.{field_item_at}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -53,6 +55,7 @@ validator main(
         output_index,
         fraud_proof_mint_redeemer_index,
         outputs_opening,
+        grammar_ref_input_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -82,6 +85,7 @@ validator main(
             // V1 spells absence as 255; only an explicitly different id is a
             // TRANSACTION-NETWORK violation.
             expect None = outputs_opening
+            expect None = grammar_ref_input_index
             is_transaction_network_violation_v1(
               state.committed_tx_network_id,
               state.expected_network_id,
@@ -95,15 +99,17 @@ validator main(
               None -> 0
               Some(_) -> 1
             }
-            let outputs_view = opened_field_view(
-              opening,
-              BodyAnchor { tx_id: state.bad_tx_id, source_kind },
-              outputs_field_index,
-              reference_inputs,
-              field_preimage_certificate_policy_id,
-            )
             let bad_output = decode_midgard_tx_output_cbor(
-              field_item_at(outputs_view, bad_output_index),
+              opened_certified_field_item(
+                opening,
+                BodyAnchor { tx_id: state.bad_tx_id, source_kind },
+                outputs_field_index,
+                bad_output_index,
+                grammar_ref_input_index,
+                reference_inputs,
+                field_preimage_certificate_policy_id,
+                field_grammar_certificate_policy_id,
+              ),
             )
             is_output_network_violation_v1(
               bad_output.address.network_id,
@@ -122,6 +128,7 @@ validator main(
             // `forced_scan.State` at the scan's address — so there is no route
             // that reaches this arm with the scan unperformed.
             expect None = outputs_opening
+            expect None = grammar_ref_input_index
             expect Some(_) = state.forced_source_key
             True
           }
@@ -206,6 +213,7 @@ fn run_finalize(
     fixture.fraud_proof_token_address(),
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -218,6 +226,7 @@ fn run_finalize(
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         outputs_opening,
+        grammar_ref_input_index: None,
       },
     ),
     fixture.own_out_ref(),
@@ -353,6 +362,242 @@ test network_id_step_02_rejects_unused_output_evidence_for_tx_claim() fail {
   run_finalize(block, TransactionNetwork, Some(block.tx.body.outputs))
 }
 
+/// A grammar certificate is evidence only for the field this claim never
+/// opens.
+test network_id_step_02_rejects_a_grammar_index_for_a_tx_claim() fail {
+  let bad = with_tx_network_id(1)
+  let block = fixture.native_block_fixture_v1(bad)
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state_for(block, TransactionNetwork)),
+      },
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        outputs_opening: None,
+        grammar_ref_input_index: Some(0),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+  )
+}
+
+// ## OutputNetwork through the field grammar certificate
+//
+// 761 outputs fill field 2 under tier 3; the accused one sits at 751, fifteen
+// items past its waypoint, so the read pays the most header reads a
+// certified read can.
+
+const certified_count = 761
+
+const certified_index = 751
+
+type CertifiedCase {
+  datum: Option<Datum>,
+  redeemer: SpendRedeemer,
+  tx: Transaction,
+}
+
+/// The finalize step over field 2 holding `accused` at `certified_index`,
+/// claiming the output at `index`, read through the certificate
+/// `certificate(tx_id, preimage)` builds.
+fn certified_case(
+  accused: MidgardTxOutput,
+  index: Int,
+  certificate: fn(ByteArray, ByteArray) ->
+    field_grammar_certificate_v1.FieldGrammarCertificateV1,
+) -> CertifiedCase {
+  let preimage = grammar.field_preimage_with_item_v1(
+    fixture.repeated_bytes_v1(#"a1", 41),
+    certified_count,
+    certified_index,
+    encode_midgard_tx_output(accused),
+  )
+  tier3_case(
+    preimage,
+    index,
+    fn(tx_id) {
+      Pair(
+        Some(grammar.grammar_ref_input_index_v1(preimage)),
+        grammar.certified_grammar_reference_inputs_v1(
+          tx_id,
+          2,
+          preimage,
+          certificate(tx_id, preimage),
+        ),
+      )
+    },
+  )
+}
+
+/// The finalize step over field 2 committing `preimage` under tier 3,
+/// claiming the output at `index`, with the grammar certificate slot and
+/// reference inputs `route` gives the committing transaction's id.
+fn tier3_case(
+  preimage: ByteArray,
+  index: Int,
+  route: fn(ByteArray) -> Pair<Option<Int>, List<Input>>,
+) -> CertifiedCase {
+  let block = fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    2,
+    preimage,
+  )
+  let Pair(grammar_ref_input_index, reference_inputs) = route(block.tx_id)
+  CertifiedCase {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state_for(block, OutputNetwork { output_index: index })),
+      },
+    ),
+    redeemer: ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        outputs_opening: Some(
+          fixture.certified_body_opening(block.compact_cbor, preimage),
+        ),
+        grammar_ref_input_index,
+      },
+    ),
+    tx: fixture.finalize_step_l1_tx_with_reference_inputs_v1(
+      fixture.ct_token_asset_name(block),
+      reference_inputs,
+    ),
+  }
+}
+
+/// The dearest walk a submitter takes: `grammar.walked_item_limit` outputs
+/// under tier 3, the accused one last, walked.
+fn walked_limit_case() -> CertifiedCase {
+  let preimage = grammar.walked_limit_preimage_v1(
+    encode_midgard_tx_output(foreign_output()),
+  )
+  tier3_case(
+    preimage,
+    grammar.walked_item_limit - 1,
+    fn(tx_id) {
+      Pair(None, fixture.certified_reference_inputs_v1(tx_id, 2, preimage))
+    },
+  )
+}
+
+test network_id_step_02_walked_route_fixture_only_at_the_walked_limit() {
+  walked_limit_case().datum != None
+}
+
+test network_id_step_02_walked_route_at_the_walked_limit_cost() {
+  run_certified(walked_limit_case())
+}
+
+fn honest_certificate(
+  tx_id: ByteArray,
+  preimage: ByteArray,
+) -> field_grammar_certificate_v1.FieldGrammarCertificateV1 {
+  grammar.complete_field_grammar_certificate_v1(
+    tx_id,
+    2,
+    preimage,
+    certified_count,
+  )
+}
+
+fn foreign_output() -> MidgardTxOutput {
+  output_at_network(fixture.sample_native_output(), 1)
+}
+
+fn run_certified(case: CertifiedCase) -> Bool {
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+test network_id_step_02_certified_route_fixture_only_at_the_tier3_maximum() {
+  let case = certified_case(
+    foreign_output(),
+    certified_index,
+    honest_certificate,
+  )
+  case.datum != None
+}
+
+test network_id_step_02_certified_route_at_the_tier3_maximum_cost() {
+  run_certified(
+    certified_case(foreign_output(), certified_index, honest_certificate),
+  )
+}
+
+test network_id_step_02_certified_route_rejects_a_matching_output_network() fail {
+  run_certified(
+    certified_case(
+      fixture.sample_native_output(),
+      certified_index,
+      honest_certificate,
+    ),
+  )
+}
+
+test network_id_step_02_certified_route_rejects_an_index_past_the_count() fail {
+  run_certified(
+    certified_case(foreign_output(), certified_count, honest_certificate),
+  )
+}
+
+test network_id_step_02_certified_route_rejects_another_fields_certificate() fail {
+  run_certified(
+    certified_case(
+      foreign_output(),
+      certified_index,
+      fn(tx_id, preimage) {
+        grammar.complete_field_grammar_certificate_v1(
+          tx_id,
+          5,
+          preimage,
+          certified_count,
+        )
+      },
+    ),
+  )
+}
+
+test network_id_step_02_certified_route_rejects_an_in_progress_certificate() fail {
+  run_certified(
+    certified_case(
+      foreign_output(),
+      certified_index,
+      fn(tx_id, preimage) {
+        grammar.in_progress_field_grammar_certificate_v1(
+          tx_id,
+          2,
+          preimage,
+          certified_count,
+        )
+      },
+    ),
+  )
+}
+
 // ## Forced (wrongful-rejection) arm
 //
 // The forced polarity is the only one whose conviction is a *negation*: the
@@ -403,6 +648,7 @@ fn run_forced_finalize(
     fixture.fraud_proof_token_address(),
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -415,6 +661,7 @@ fn run_forced_finalize(
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         outputs_opening,
+        grammar_ref_input_index: None,
       },
     ),
     fixture.own_out_ref(),
@@ -497,6 +744,7 @@ fn run_accepted_forced_finalize(
     fixture.fraud_proof_token_address(),
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -509,6 +757,7 @@ fn run_accepted_forced_finalize(
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         outputs_opening,
+        grammar_ref_input_index: None,
       },
     ),
     fixture.own_out_ref(),

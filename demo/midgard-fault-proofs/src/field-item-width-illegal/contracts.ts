@@ -1,4 +1,5 @@
 import {
+  buildFieldGrammarCertificateValidator,
   buildFieldItemWidthIllegalChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
@@ -81,15 +82,21 @@ export const applyFieldItemWidthIllegalScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): FieldItemWidthIllegalContracts["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildFieldItemWidthIllegalChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      fieldGrammarCertificatePolicyId: buildFieldGrammarCertificateValidator({
+        blueprint: parsedBlueprint,
+        network,
+        fieldPreimageCertificatePolicyId,
+      }).policyId,
     }),
   );
   const titles = Object.values(FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES);

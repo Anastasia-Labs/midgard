@@ -1,4 +1,8 @@
 import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
+import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   releaseFinalityAuthorityFromDeploymentBinding,
@@ -102,6 +106,23 @@ export const bindManifestBoundFamilyWorkflow = async <
     binding,
     supplied: config.referenceScripts,
   });
+  // A family whose steps read through the field grammar certificate resolves
+  // its deployment here, at startup, so a deployment without the
+  // certificate's members never reaches a step.
+  let fieldGrammar: FaultProofFieldGrammarDeployment | undefined;
+  if (definition.fieldGrammarCertificate === true) {
+    if (certificate === null) {
+      throw new Error(
+        `${category} reads through the field grammar certificate but does not bind the field-preimage certificate`,
+      );
+    }
+    fieldGrammar = resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: config.referenceScripts.fieldGrammarCertificateSpend,
+      label: category,
+    });
+  }
   const auxiliaryReferences = Object.freeze(
     Object.fromEntries(
       Object.entries(definition.auxiliaryReferenceScripts ?? {}).map(
@@ -155,6 +176,7 @@ export const bindManifestBoundFamilyWorkflow = async <
       Certificate,
       StepCount
     >["certificate"],
+    ...(fieldGrammar === undefined ? {} : { fieldGrammar }),
     ...(config.replayContext === undefined
       ? {}
       : { replayContext: config.replayContext }),

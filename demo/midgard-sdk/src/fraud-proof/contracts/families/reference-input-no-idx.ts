@@ -67,6 +67,7 @@ export const buildReferenceInputNoIdxChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
+  fieldGrammarCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -75,6 +76,7 @@ export const buildReferenceInputNoIdxChain = ({
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly fieldGrammarCertificatePolicyId: string;
 }): Effect.Effect<
   ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"],
   Error
@@ -93,6 +95,7 @@ export const buildReferenceInputNoIdxChain = ({
               fraudProof.policyId,
               fraudProofTokenAddressData,
               fieldPreimageCertificatePolicyId,
+              fieldGrammarCertificatePolicyId,
             ],
           ),
         ),

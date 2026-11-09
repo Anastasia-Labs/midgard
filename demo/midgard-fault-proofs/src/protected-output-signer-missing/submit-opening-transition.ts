@@ -35,6 +35,7 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   openingFor,
   checkpointCbor,
   coordinateOutOfRange,
+  grammarRefInputIndex,
   referenceScriptUtxo,
   carriageReferenceInputs,
   redeemerSchema,
@@ -55,6 +56,10 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   readonly checkpointCbor?: string;
   /** Step 02 only: names the out-of-range direct arm in the redeemer. */
   readonly coordinateOutOfRange?: boolean;
+  /** Step 02 only: the field grammar certificate's slot, or null to walk. */
+  readonly grammarRefInputIndex?: (
+    referenceInputs: readonly UTxO[],
+  ) => bigint | null;
   readonly referenceScriptUtxo: UTxO;
   readonly carriageReferenceInputs: readonly UTxO[];
   readonly redeemerSchema: PlutusData;
@@ -108,7 +113,11 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
             // Step 02's redeemer names the out-of-range arm; the scan and
             // credential arms leave it unset.
             ...(stepIndex === 1
-              ? { coordinate_out_of_range: coordinateOutOfRange ?? false }
+              ? {
+                  coordinate_out_of_range: coordinateOutOfRange ?? false,
+                  grammar_ref_input_index:
+                    grammarRefInputIndex?.(ctx.referenceInputs) ?? null,
+                }
               : {}),
             ...(checkpointCbor === undefined
               ? {}

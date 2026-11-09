@@ -16,6 +16,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "../field-grammar-certificate.js";
+import {
   certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -63,6 +67,7 @@ export const submitRedeemerCanonicityStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -82,6 +87,8 @@ export const submitRedeemerCanonicityStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /** The field grammar certificate, for a field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -176,6 +183,26 @@ export const submitRedeemerCanonicityStep02 = async ({
           })
         ).certificateUtxo
       : undefined);
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "item",
+    itemCount: planned.itemCount,
+    source: {
+      sourceKind: planned.sourceKind,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor: witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...carriageUtxos,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: "redeemer-canonicity field opening",
+  });
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
@@ -233,7 +260,14 @@ export const submitRedeemerCanonicityStep02 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
+          },
         ],
       } as never,
       RedeemerCanonicityStep02RedeemerSchema as never,
@@ -251,8 +285,10 @@ export const submitRedeemerCanonicityStep02 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
+    extraReferenceInputs: [
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      ...grammar.referenceInputs,
+    ],
     preSubmitBoundary,
     awaitConfirmation,
   });

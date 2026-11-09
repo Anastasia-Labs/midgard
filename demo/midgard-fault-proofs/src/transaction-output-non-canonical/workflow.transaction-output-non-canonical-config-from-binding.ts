@@ -7,6 +7,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -44,6 +48,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS =
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
     fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+    fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
   } as const);
 
 export type TransactionOutputNonCanonicalReferenceScripts = Readonly<{
@@ -53,6 +58,7 @@ export type TransactionOutputNonCanonicalReferenceScripts = Readonly<{
   step03Datum: UTxO;
   step04: UTxO;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -67,6 +73,8 @@ export type ManifestBoundTransactionOutputNonCanonicalConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"transactionOutputNonCanonical">;
   contracts: TransactionOutputNonCanonicalContracts;
   referenceScripts: TransactionOutputNonCanonicalReferenceScripts;
+  /** Step 02 reads the accused output through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
 }>;
 
 export type LoadManifestBoundTransactionOutputNonCanonicalConfig = Readonly<{
@@ -128,6 +136,11 @@ export const bindTransactionOutputNonCanonicalReferenceScripts = ({
       binding,
       contractName: names.fieldPreimageCertificateMint,
       utxo: referenceScripts.fieldPreimageCertificateMint,
+    }),
+    fieldGrammarCertificateSpend: bindReference({
+      binding,
+      contractName: names.fieldGrammarCertificateSpend,
+      utxo: referenceScripts.fieldGrammarCertificateSpend,
     }),
     witnesses: Object.freeze({
       ...referenceScripts.witnesses,
@@ -242,6 +255,12 @@ export const transactionOutputNonCanonicalConfigFromBinding = (input: {
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    fieldGrammar: resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: referenceScripts.fieldGrammarCertificateSpend,
+      label: "transactionOutputNonCanonical",
+    }),
   });
 };
 

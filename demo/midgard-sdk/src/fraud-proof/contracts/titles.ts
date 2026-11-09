@@ -21,6 +21,8 @@ export const FAULT_PROOF_SHARED_TITLES = {
   fraudProofMint: deployedTitle("fraudProofMint"),
   fraudProofSpend: deployedTitle("fraudProofSpend"),
   fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
+  fieldGrammarCertificateMint: deployedTitle("fieldGrammarCertificateMint"),
+  fieldGrammarCertificateSpend: deployedTitle("fieldGrammarCertificateSpend"),
   scriptDecodeMint: deployedTitle("scriptDecodeMint"),
   scriptDecodeSpend: deployedTitle("scriptDecodeSpend"),
   scriptDecodeTermWithdraw: deployedTitle("scriptDecodeTermWithdraw"),

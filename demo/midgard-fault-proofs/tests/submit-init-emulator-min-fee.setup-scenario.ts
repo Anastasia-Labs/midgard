@@ -77,14 +77,17 @@ export const setupScenario = async ({
   fee,
   headerMinimum,
   spendInputs = [outRefCbor(0x31, 0n)],
+  outputs = [],
 }: {
   readonly harness: Harness;
   readonly fee: bigint;
   readonly headerMinimum: bigint;
   readonly spendInputs?: readonly Buffer[];
+  readonly outputs?: readonly Buffer[];
 }) => {
   const tx = buildFixtureTransaction({
     spendInputs,
+    outputs,
     fee,
   });
   // The header's normative transactions MPF commits

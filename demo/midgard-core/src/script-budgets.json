@@ -3538,6 +3538,206 @@
         "mem": 6387378,
         "cpu": 2331329250
       }
+    },
+    "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_certified_route_at_the_tier3_maximum_cost - step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2578326,
+        "cpu": 905819384
+      }
+    },
+    "fraud_proofs/output_reference_script_decoding/steps.test/step_02_certified_route_at_the_tier3_maximum_cost - step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2576050,
+        "cpu": 906666897
+      }
+    },
+    "fraud_proofs/output_reference_script_decoding/steps.test/step_04_certified_route_at_the_tier3_maximum_cost - step_04_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_04_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_04_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 3421686,
+        "cpu": 1229271555
+      }
+    },
+    "fraud_proofs/network_id/step_02/network_id_step_02_certified_route_at_the_tier3_maximum_cost - network_id_step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/network_id/step_02/network_id_step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "network_id_step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2481674,
+        "cpu": 894914586
+      }
+    },
+    "fraud_proofs/witness_script_decoding/steps.test/step_02_certified_route_at_the_tier3_maximum_cost - step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/witness_script_decoding/steps.test/step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2386074,
+        "cpu": 848324112
+      }
+    },
+    "fraud_proofs/redeemer_canonicity/steps.test/step_02_certified_route_at_the_tier3_maximum_cost - step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/redeemer_canonicity/steps.test/step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2058357,
+        "cpu": 689696384
+      }
+    },
+    "fraud_proofs/field_item_width_illegal/steps.test/fiwi_step_02_certified_route_at_the_tier3_maximum_cost - fiwi_step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/field_item_width_illegal/steps.test/fiwi_step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "fiwi_step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2495967,
+        "cpu": 872418309
+      }
+    },
+    "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_certified_route_at_the_tier3_maximum_cost - protected_output_step_02_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "protected_output_step_02_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 2503801,
+        "cpu": 903230902
+      }
+    },
+    "fraud_proofs/input_no_idx/step_04/input_no_idx_step_04_certified_route_at_the_tier3_maximum_cost - input_no_idx_step_04_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/input_no_idx/step_04/input_no_idx_step_04_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "input_no_idx_step_04_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 647454,
+        "cpu": 239431382
+      }
+    },
+    "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_certified_route_at_the_tier3_maximum_cost - reference_input_no_idx_step_04_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "reference_input_no_idx_step_04_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 647454,
+        "cpu": 239431382
+      }
+    },
+    "fraud_proofs/min_fee/step_02/min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_field_cost - min_fee_step_02_fixture_only_at_a_large_field": {
+      "test": "fraud_proofs/min_fee/step_02/min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_field_cost",
+      "minusControl": "min_fee_step_02_fixture_only_at_a_large_field",
+      "ceiling": {
+        "mem": 1074119,
+        "cpu": 388737855
+      }
+    },
+    "fraud_proofs/min_fee/step_02/min_fee_step_02_proves_wrongful_rejection_at_a_large_field_cost - min_fee_step_02_forced_fixture_only_at_a_large_field": {
+      "test": "fraud_proofs/min_fee/step_02/min_fee_step_02_proves_wrongful_rejection_at_a_large_field_cost",
+      "minusControl": "min_fee_step_02_forced_fixture_only_at_a_large_field",
+      "ceiling": {
+        "mem": 1138304,
+        "cpu": 413000836
+      }
+    },
+    "fraud_proofs/min_fee/step_02/min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_inline_field_cost - min_fee_step_02_fixture_only_at_a_large_inline_field": {
+      "test": "fraud_proofs/min_fee/step_02/min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_inline_field_cost",
+      "minusControl": "min_fee_step_02_fixture_only_at_a_large_inline_field",
+      "ceiling": {
+        "mem": 857780,
+        "cpu": 323259691
+      }
+    },
+    "fraud_proofs/min_fee/step_02/min_fee_step_02_proves_wrongful_rejection_at_a_large_inline_field_cost - min_fee_step_02_forced_fixture_only_at_a_large_inline_field": {
+      "test": "fraud_proofs/min_fee/step_02/min_fee_step_02_proves_wrongful_rejection_at_a_large_inline_field_cost",
+      "minusControl": "min_fee_step_02_forced_fixture_only_at_a_large_inline_field",
+      "ceiling": {
+        "mem": 921965,
+        "cpu": 347522672
+      }
+    },
+    "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_walked_route_at_the_walked_limit_cost - step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7172122,
+        "cpu": 4117464299
+      }
+    },
+    "fraud_proofs/output_reference_script_decoding/steps.test/step_02_walked_route_at_the_walked_limit_cost - step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7167411,
+        "cpu": 4112099142
+      }
+    },
+    "fraud_proofs/output_reference_script_decoding/steps.test/step_04_walked_route_at_the_walked_limit_cost - step_04_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_04_walked_route_at_the_walked_limit_cost",
+      "minusControl": "step_04_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7860132,
+        "cpu": 4410237385
+      }
+    },
+    "fraud_proofs/network_id/step_02/network_id_step_02_walked_route_at_the_walked_limit_cost - network_id_step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/network_id/step_02/network_id_step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "network_id_step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7224737,
+        "cpu": 4125716425
+      }
+    },
+    "fraud_proofs/witness_script_decoding/steps.test/step_02_walked_route_at_the_walked_limit_cost - step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/witness_script_decoding/steps.test/step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7627505,
+        "cpu": 4308284762
+      }
+    },
+    "fraud_proofs/redeemer_canonicity/steps.test/step_02_walked_route_at_the_walked_limit_cost - step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/redeemer_canonicity/steps.test/step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7299588,
+        "cpu": 4150798158
+      }
+    },
+    "fraud_proofs/field_item_width_illegal/steps.test/fiwi_step_02_walked_route_at_the_walked_limit_cost - fiwi_step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/field_item_width_illegal/steps.test/fiwi_step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "fiwi_step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 5016766,
+        "cpu": 1491791336
+      }
+    },
+    "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_walked_route_at_the_walked_limit_cost - protected_output_step_02_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_walked_route_at_the_walked_limit_cost",
+      "minusControl": "protected_output_step_02_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 7245044,
+        "cpu": 4133502379
+      }
+    },
+    "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_walked_count_at_the_walked_limit_cost - protected_output_step_02_walked_count_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/protected_output_signer_missing/step_02/protected_output_step_02_walked_count_at_the_walked_limit_cost",
+      "minusControl": "protected_output_step_02_walked_count_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 9839967,
+        "cpu": 2935470506
+      }
+    },
+    "fraud_proofs/input_no_idx/step_04/input_no_idx_step_04_walked_route_at_the_walked_limit_cost - input_no_idx_step_04_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/input_no_idx/step_04/input_no_idx_step_04_walked_route_at_the_walked_limit_cost",
+      "minusControl": "input_no_idx_step_04_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 9503164,
+        "cpu": 2825434893
+      }
+    },
+    "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_walked_route_at_the_walked_limit_cost - reference_input_no_idx_step_04_walked_route_fixture_only_at_the_walked_limit": {
+      "test": "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_walked_route_at_the_walked_limit_cost",
+      "minusControl": "reference_input_no_idx_step_04_walked_route_fixture_only_at_the_walked_limit",
+      "ceiling": {
+        "mem": 9503164,
+        "cpu": 2825434893
+      }
     }
   },
   "growth": {

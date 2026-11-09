@@ -678,30 +678,20 @@ describe("fault-proof ABI", () => {
         carriage: { RawUtxo: { ref_input_index: 2n } },
       },
     };
-    expect(
-      roundTrip(
-        {
-          Continue: [
-            {
-              input_index: 0n,
-              output_index: 0n,
-              fraud_proof_mint_redeemer_index: 1n,
-              outputs_opening: outputsOpening,
-            },
-          ],
-        },
-        SDK.InputNoIdxStep04SpendRedeemer,
-      ),
-    ).toEqual({
+    const step04Redeemer = {
       Continue: [
         {
           input_index: 0n,
           output_index: 0n,
           fraud_proof_mint_redeemer_index: 1n,
           outputs_opening: outputsOpening,
+          grammar_ref_input_index: null,
         },
       ],
-    });
+    };
+    expect(
+      roundTrip(step04Redeemer, SDK.InputNoIdxStep04SpendRedeemer),
+    ).toEqual(step04Redeemer);
   });
 
   it("round-trips reference-input-no-idx step datums and redeemers", () => {
@@ -817,6 +807,7 @@ describe("fault-proof ABI", () => {
                   carriage: { Inline: { preimage: "80" } },
                 },
               },
+              grammar_ref_input_index: 4n,
             },
           ],
         },
@@ -834,6 +825,7 @@ describe("fault-proof ABI", () => {
               carriage: { Inline: { preimage: "80" } },
             },
           },
+          grammar_ref_input_index: 4n,
         },
       ],
     });

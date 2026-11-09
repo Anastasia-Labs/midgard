@@ -166,6 +166,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
               referenceInputs: ctx.referenceInputs,
               label: "Raw reference-input-no-idx step 04 outputs",
             }),
+            grammar_ref_input_index: null,
           },
         ],
       },

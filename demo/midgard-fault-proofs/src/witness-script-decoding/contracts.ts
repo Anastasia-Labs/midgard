@@ -1,4 +1,5 @@
 import {
+  buildFieldGrammarCertificateValidator,
   buildScriptDecodeValidator,
   buildWitnessScriptDecodingChain,
   parseFaultProofBlueprint,
@@ -83,6 +84,11 @@ export const applyWitnessScriptDecodingScripts = ({
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      fieldGrammarCertificatePolicyId: buildFieldGrammarCertificateValidator({
+        blueprint: parsedBlueprint,
+        network,
+        fieldPreimageCertificatePolicyId,
+      }).policyId,
       scriptDecodePolicyId: buildScriptDecodeValidator(parsedBlueprint, network)
         .policyId,
     }),

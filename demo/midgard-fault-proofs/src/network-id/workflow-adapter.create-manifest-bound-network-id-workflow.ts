@@ -3,6 +3,7 @@ import {
   NetworkIdStep02Datum,
 } from "@al-ft/midgard-sdk";
 
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
@@ -59,6 +60,12 @@ export const createManifestBoundNetworkIdWorkflow = async (
       "network-id deployment omitted the field-preimage certificate policy",
     );
   }
+  const fieldGrammar = resolveFaultProofFieldGrammarDeployment({
+    binding,
+    fieldPreimageCertificatePolicyId: certificate.policyId,
+    referenceScriptUtxo: config.fieldGrammarCertificateReferenceScript,
+    label: "networkId",
+  });
   const sealedRuntime = sealManifestBoundNetworkIdRuntime({
     binding,
     signer: config.signer,
@@ -121,6 +128,7 @@ export const createManifestBoundNetworkIdWorkflow = async (
         }),
     fieldPreimageCertificateReferenceScript:
       sealedRuntime.fieldPreimageCertificateReferenceScript,
+    fieldGrammar,
     witnessReferenceScripts: sealedRuntime.witnessReferenceScripts,
     removal: {
       ...sealedRuntime.removal,

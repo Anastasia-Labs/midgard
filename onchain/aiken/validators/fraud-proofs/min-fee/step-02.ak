@@ -19,13 +19,12 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, BodyTxOpening, WitnessAnchor, WitnessTxOpening,
-  address_witnesses_field_index, anchored_field_view, anchored_native_tx,
-  mint_field_index, outputs_field_index, redeemers_field_index,
-  reference_inputs_field_index, required_observers_field_index,
-  required_signers_field_index, script_witnesses_field_index,
-  spend_inputs_field_index,
+  address_witnesses_field_index, mint_field_index, outputs_field_index,
+  redeemers_field_index, reference_inputs_field_index,
+  required_observers_field_index, required_signers_field_index,
+  script_witnesses_field_index, spend_inputs_field_index,
 }
 use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -40,7 +39,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, authenticated_committed_preimage, field_total_length,
+  FieldCarriageV1, Inline, authenticated_committed_preimage,
 }
 use midgard/rejection_reason_v1.{
   FeeBelowMinimum, NetworkIdMismatch, RejectionReasonV1,
@@ -122,13 +121,14 @@ validator main(
           None
         }
 
-        // 2. All nine field-preimage lengths are read through the §8.8 door,
-        //    one anchored handle per §2.5 half. The witness half's anchor is
-        //    the thread-carried `bad_tx.witness_set_hash` — §3's transaction
-        //    id commits the body alone, so without it a prover could pair the
-        //    genuine body with an invented witness set and inflate the three
-        //    witness-field lengths until any fee falls below the "minimum"
-        //    (the same forgery `missing-signature` step-04 documents).
+        // 2. All nine field-preimage lengths are read through the §8.8 door
+        //    as committed bytes, in both directions. The fee formula reads
+        //    each field's byte length only, never an item, so the step
+        //    authenticates the bytes against their commitment and does not
+        //    walk the field's grammar: its cost no longer grows with a
+        //    field's item count. The witness half is bound to the
+        //    thread-carried `bad_tx.witness_set_hash` before any witness
+        //    field is read (§3's transaction id commits the body alone).
         expect
             [
               spend_inputs_carriage, reference_inputs_carriage, outputs_carriage,
@@ -138,28 +138,13 @@ validator main(
             ]
           = field_carriages
 
-        let body_handle = anchored_native_tx(
-          BodyTxOpening { native_tx_compact_cbor },
-          BodyAnchor { tx_id: bad_tx_id, source_kind: subject.source_kind },
-        )
-        let witness_handle = anchored_native_tx(
-          WitnessTxOpening { native_tx_compact_cbor, witness_set },
-          WitnessAnchor {
-            tx_id: bad_tx_id,
-            witness_set_hash: bad_tx.witness_set_hash,
-            source_kind: subject.source_kind,
-          },
-        )
-        // The forced negation needs exact byte lengths, never an item count.
-        // Authenticate committed bytes directly so variable field grammar does
-        // not consume unbounded work merely to compute bytearray.length.
         let verified = verify_tx_compact_cbor_v1(
           validation_source_kind_v1(subject.source_kind),
           bad_tx_id,
           native_tx_compact_cbor,
         )
         expect verified.tx_compact.witness_set_hash == bad_tx.witness_set_hash
-        let raw_length = fn(field_index, carriage) {
+        let field_length = fn(field_index, carriage) {
           bytearray.length(
             authenticated_committed_preimage(
               verified,
@@ -171,67 +156,34 @@ validator main(
             ),
           )
         }
-        let body_field_length = fn(field_index: Int, carriage) {
-          if subject.direction == substrate.direction_wrongful_rejection {
-            raw_length(field_index, carriage)
-          } else {
-            field_total_length(
-              anchored_field_view(
-                body_handle,
-                field_index,
-                carriage,
-                reference_inputs,
-                field_preimage_certificate_policy_id,
-              ),
-            )
-          }
-        }
-        let witness_field_length = fn(field_index: Int, carriage) {
-          if subject.direction == substrate.direction_wrongful_rejection {
-            raw_length(field_index, carriage)
-          } else {
-            field_total_length(
-              anchored_field_view(
-                witness_handle,
-                field_index,
-                carriage,
-                reference_inputs,
-                field_preimage_certificate_policy_id,
-              ),
-            )
-          }
-        }
         let field_lengths = NativeTxFieldPreimageLengthsV1 {
-          spend_inputs: body_field_length(
+          spend_inputs: field_length(
             spend_inputs_field_index,
             spend_inputs_carriage,
           ),
-          reference_inputs: body_field_length(
+          reference_inputs: field_length(
             reference_inputs_field_index,
             reference_inputs_carriage,
           ),
-          outputs: body_field_length(outputs_field_index, outputs_carriage),
-          required_observers: body_field_length(
+          outputs: field_length(outputs_field_index, outputs_carriage),
+          required_observers: field_length(
             required_observers_field_index,
             required_observers_carriage,
           ),
-          required_signers: body_field_length(
+          required_signers: field_length(
             required_signers_field_index,
             required_signers_carriage,
           ),
-          mint: body_field_length(mint_field_index, mint_carriage),
-          address_witnesses: witness_field_length(
+          mint: field_length(mint_field_index, mint_carriage),
+          address_witnesses: field_length(
             address_witnesses_field_index,
             address_witnesses_carriage,
           ),
-          script_witnesses: witness_field_length(
+          script_witnesses: field_length(
             script_witnesses_field_index,
             script_witnesses_carriage,
           ),
-          redeemers: witness_field_length(
-            redeemers_field_index,
-            redeemers_carriage,
-          ),
+          redeemers: field_length(redeemers_field_index, redeemers_carriage),
         }
 
         // 3. The committed fee must fall below the header's declared minimum
@@ -517,4 +469,189 @@ test min_fee_step_02_refuses_honest_forced_rejection() fail {
 
 test min_fee_step_02_refuses_foreign_rejection_reason() fail {
   run_forced_boundary(fixture.valid_native_tx_v1().body.fee, NetworkIdMismatch)
+}
+
+// ## Both directions at a large field
+//
+// 761 outputs fill field 2 under tier 3. The fee formula reads the field's
+// byte length only, so neither direction's cost grows with its item count.
+
+const large_count = 761
+
+fn large_outputs_preimage() -> ByteArray {
+  grammar.field_preimage_with_item_v1(
+    fixture.repeated_bytes_v1(#"a1", 41),
+    large_count,
+    0,
+    fixture.repeated_bytes_v1(#"a1", 41),
+  )
+}
+
+fn large_block() -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    outputs_field_index,
+    large_outputs_preimage(),
+  )
+}
+
+/// The canonical size of the large block's transaction: the fixture's own
+/// lengths with field 2's replaced.
+fn large_tx_size(block: fixture.NativeBlockFixtureV1) -> Int {
+  ledger_tx_size_v1(
+    block.compact.body,
+    NativeTxFieldPreimageLengthsV1 {
+      ..fixture.field_preimage_lengths_v1(block.tx),
+      outputs: bytearray.length(large_outputs_preimage()),
+    },
+  )
+}
+
+type LargeCase {
+  datum: Option<Datum>,
+  redeemer: SpendRedeemer,
+  tx: Transaction,
+}
+
+/// Step 02 over the large block with the header's schedule at
+/// `min_fee_a = 1` and `min_fee_b = fee - size + offset`, so the minimum is
+/// the committed fee plus `offset`. `forced` disputes a forced rejection
+/// citing `FeeBelowMinimum`; otherwise an accepted transaction. `inline`
+/// carries field 2 in the redeemer (tier 1); otherwise it is certified in
+/// chunks (tier 3).
+fn large_case(forced: Bool, inline: Bool, offset: Int) -> LargeCase {
+  let block = large_block()
+  let preimage = large_outputs_preimage()
+  let base = state_for(
+    block,
+    1,
+    block.compact.body.fee - large_tx_size(block) + offset,
+  )
+  let state = if forced {
+    State {
+      ..base,
+      subject: substrate.VerdictSubjectV1 {
+        ..base.subject,
+        direction: substrate.direction_wrongful_rejection,
+        source_kind: substrate.source_kind_forced,
+        source_key: #"01",
+        rejection_reason: Some(FeeBelowMinimum),
+      },
+    }
+  } else {
+    base
+  }
+  expect [spend_inputs,
+        reference_inputs,
+        _, ..rest] = fixture.inline_field_carriages_v1(block.tx)
+  LargeCase {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    redeemer: ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        native_tx_compact_cbor: if forced {
+          forced_fixture.from_native_compact(block.compact_cbor)
+        } else {
+          block.compact_cbor
+        },
+        witness_set: block.witness_set_compact,
+        field_carriages: [
+          spend_inputs,
+          reference_inputs,
+          if inline {
+            Inline { preimage }
+          } else {
+            fixture.certified_carriage_v1(preimage)
+          },
+          ..rest
+        ],
+      },
+    ),
+    tx: Transaction {
+      ..fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+      reference_inputs: if inline {
+        []
+      } else {
+        fixture.certified_reference_inputs_v1(
+          block.tx_id,
+          outputs_field_index,
+          preimage,
+        )
+      },
+    },
+  }
+}
+
+fn run_large(case: LargeCase) -> Bool {
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+test min_fee_step_02_fixture_only_at_a_large_field() {
+  large_case(False, False, 1).datum != None
+}
+
+/// Wrongful acceptance at the large certified field: the minimum is one
+/// lovelace above the committed fee.
+test min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_field_cost() {
+  run_large(large_case(False, False, 1))
+}
+
+test min_fee_step_02_rejects_a_fee_at_the_minimum_at_a_large_field() fail {
+  run_large(large_case(False, False, 0))
+}
+
+test min_fee_step_02_forced_fixture_only_at_a_large_field() {
+  large_case(True, False, 0).datum != None
+}
+
+/// Wrongful rejection at the large certified field: the committed fee meets
+/// the minimum exactly.
+test min_fee_step_02_proves_wrongful_rejection_at_a_large_field_cost() {
+  run_large(large_case(True, False, 0))
+}
+
+test min_fee_step_02_refuses_honest_forced_rejection_at_a_large_field() fail {
+  run_large(large_case(True, False, 1))
+}
+
+test min_fee_step_02_fixture_only_at_a_large_inline_field() {
+  large_case(False, True, 1).datum != None
+}
+
+/// The same large field carried inline: the step reads its byte length
+/// only, so the cost no longer grows with the field's item count.
+test min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_inline_field_cost() {
+  run_large(large_case(False, True, 1))
+}
+
+test min_fee_step_02_rejects_a_fee_at_the_minimum_at_a_large_inline_field() fail {
+  run_large(large_case(False, True, 0))
+}
+
+test min_fee_step_02_forced_fixture_only_at_a_large_inline_field() {
+  large_case(True, True, 0).datum != None
+}
+
+test min_fee_step_02_proves_wrongful_rejection_at_a_large_inline_field_cost() {
+  run_large(large_case(True, True, 0))
+}
+
+test min_fee_step_02_refuses_honest_forced_rejection_at_a_large_inline_field() fail {
+  run_large(large_case(True, True, 1))
 }

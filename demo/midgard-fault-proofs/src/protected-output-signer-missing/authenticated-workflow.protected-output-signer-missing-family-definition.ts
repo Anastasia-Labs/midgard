@@ -182,6 +182,8 @@ export const createManifestBoundProtectedOutputSignerMissingWorkflow = async (
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:
           input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
       },
     },
   );
@@ -219,6 +221,7 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

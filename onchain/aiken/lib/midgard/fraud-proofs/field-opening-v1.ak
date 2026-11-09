@@ -81,13 +81,20 @@
 
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
+use midgard/field_grammar_certificate_v1.{
+  CertifiedFieldGrammarV1, certified_field_grammar_at, certified_field_item_at,
+  certified_field_item_count,
+}
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_compact_cbor_v1}
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_committed_preimage,
-  authenticated_field_view, authenticated_whole_field_view, field_item_count,
+  authenticated_field_view, authenticated_field_view_with_commitment_by,
+  authenticated_resumable_field_view_with_commitment,
+  authenticated_whole_field_view, field_item_at, field_item_count,
+  field_total_length,
 }
 use midgard/native_tx_machine_walk_v1.{
   FieldGrammarCheckpointV1, FieldWalkCheckpointV1,
@@ -590,6 +597,149 @@ pub fn opened_committed_preimage(
     reference_inputs,
     certificate_policy_id,
   )
+}
+
+/// Authenticate field `field_index` without walking it to its end and bind
+/// the field grammar certificate at reference input `grammar_ref_input_index`
+/// to it.
+///
+/// The anchor and the §2.5 pairing are checked exactly as `opened_field_view`
+/// checks them. The field is then opened through the resumable door, which
+/// hashes the bytes against the positional commitment but leaves a
+/// variable-width count provisional, so the cost does not grow with the
+/// field's item count. The certificate is bound to the transaction id this
+/// step anchored, `field_index`, the commitment the door extracted and the
+/// view's length; its count and waypoints are therefore facts about the bytes
+/// the view holds, and the certified count also serves a chunked field.
+pub fn opened_certified_field(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  grammar_ref_input_index: Int,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+  grammar_certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, CertifiedFieldGrammarV1> {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  let Pair(field_hash, view) = authenticated_resumable_field_view_with_commitment(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+  Pair(
+    view,
+    certified_field_grammar_at(
+      reference_inputs,
+      grammar_ref_input_index,
+      grammar_certificate_policy_id,
+      anchored.verified.tx_id,
+      field_index,
+      field_hash,
+      field_total_length(view),
+    ),
+  )
+}
+
+/// Item `item_index` of field `field_index`, with its byte-string wrapper
+/// stripped, by either route a step offers.
+///
+/// `None` is `field_item_at` over the view `opened_field_view` opens, with the
+/// same checks in the same order. `Some(i)` reads the item through the field
+/// grammar certificate at reference input `i`, bound as
+/// `opened_certified_field` binds it, so the step's cost no longer grows with
+/// the field's item count. Both routes open the field through
+/// `authenticated_field_view_with_commitment_by`, so a step carries the door
+/// once. Both return the same bytes for the same field and index, and both
+/// fail for an index past the count.
+pub fn opened_certified_field_item(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  item_index: Int,
+  grammar_ref_input_index: Option<Int>,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+  grammar_certificate_policy_id: PolicyId,
+) -> ByteArray {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  let Pair(field_hash, view) = authenticated_field_view_with_commitment_by(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+    grammar_ref_input_index != None,
+  )
+  when grammar_ref_input_index is {
+    None -> field_item_at(view, item_index)
+    Some(index) ->
+      certified_field_item_at(
+        view,
+        certified_field_grammar_at(
+          reference_inputs,
+          index,
+          grammar_certificate_policy_id,
+          anchored.verified.tx_id,
+          field_index,
+          field_hash,
+          field_total_length(view),
+        ),
+        item_index,
+      )
+  }
+}
+
+/// The item count of field `field_index`, by either route a step offers.
+///
+/// `None` is `field_item_count` over the view `opened_field_view` opens, with
+/// the same checks in the same order — which for a variable-width field under
+/// tier 3 refuses to answer. `Some(i)` is the count the field grammar
+/// certificate at reference input `i` records, bound as
+/// `opened_certified_field` binds it, so the certified count also serves a
+/// chunked field. Both routes open the field through
+/// `authenticated_field_view_with_commitment_by`, so a step carries the door
+/// once.
+pub fn opened_certified_field_item_count(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  grammar_ref_input_index: Option<Int>,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+  grammar_certificate_policy_id: PolicyId,
+) -> Int {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  let Pair(field_hash, view) = authenticated_field_view_with_commitment_by(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+    grammar_ref_input_index != None,
+  )
+  when grammar_ref_input_index is {
+    None -> field_item_count(view)
+    Some(index) ->
+      certified_field_item_count(
+        certified_field_grammar_at(
+          reference_inputs,
+          index,
+          grammar_certificate_policy_id,
+          anchored.verified.tx_id,
+          field_index,
+          field_hash,
+          field_total_length(view),
+        ),
+      )
+  }
 }
 
 /// Begin the provisional, bounded envelope certification required before a

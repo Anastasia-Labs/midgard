@@ -5,6 +5,7 @@ import {
   ReferenceInputNoIdxStep04Datum,
 } from "@al-ft/midgard-sdk";
 
+import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { defineLinearFamily } from "./family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
@@ -34,6 +35,7 @@ export const REFERENCE_INPUT_NO_IDX_FAMILY_DEFINITION = defineLinearFamily({
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "linear",
@@ -47,6 +49,10 @@ export const REFERENCE_INPUT_NO_IDX_FAMILY_DEFINITION = defineLinearFamily({
         headerHash: context.binding.definition.headerHash,
         referenceScripts: context.references,
         certificate: context.certificate,
+        fieldGrammar: requireFaultProofFieldGrammarDeployment(
+          context.fieldGrammar,
+          "referenceInputNoIdx",
+        ),
         stateQueueMutationLeaseCoordinator:
           context.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

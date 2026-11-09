@@ -4,13 +4,12 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
-  WitnessAnchor, opened_field_view, script_witnesses_field_index,
+  WitnessAnchor, opened_certified_field_item, script_witnesses_field_index,
 }
 use midgard/fraud_proofs/witness_script_decoding/rule.{authenticate_item_v1}
 use midgard/fraud_proofs/witness_script_decoding/step_02.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/native_tx_field_access_v1.{field_item_at}
 use midgard/script_decode_v1.{record_at_v1}
 
 validator main(
@@ -18,6 +17,7 @@ validator main(
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
   script_decode_policy_id: PolicyId,
+  field_grammar_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -40,6 +40,7 @@ validator main(
         output_index,
         opening,
         record_reference_input_index,
+        grammar_ref_input_index,
       }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -61,7 +62,7 @@ validator main(
           tx.extra_signatories,
         )
         expect Some(bound) = input_state
-        let view = opened_field_view(
+        let item = opened_certified_field_item(
           opening,
           WitnessAnchor {
             tx_id: bound.subject.transaction_id,
@@ -69,10 +70,12 @@ validator main(
             source_kind: bound.subject.source_kind,
           },
           script_witnesses_field_index,
+          bound.script_index,
+          grammar_ref_input_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
+          field_grammar_certificate_policy_id,
         )
-        let item = field_item_at(view, bound.script_index)
         let expected: Data = authenticate_item_v1(
           bound,
           item,

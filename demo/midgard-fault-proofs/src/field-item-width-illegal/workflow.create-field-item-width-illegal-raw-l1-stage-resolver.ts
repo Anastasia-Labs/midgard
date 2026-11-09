@@ -7,6 +7,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
@@ -34,6 +38,7 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS = Object.freeze({
   fraudProofMint: "fraudProofMint",
   phasMembershipWithdraw: "phasMembershipWithdraw",
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+  fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
 } as const);
 
 export type FieldItemWidthIllegalReferenceScripts = Readonly<{
@@ -41,6 +46,7 @@ export type FieldItemWidthIllegalReferenceScripts = Readonly<{
   step02: UTxO;
   step03: UTxO;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -55,6 +61,8 @@ export type ManifestBoundFieldItemWidthIllegalConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
   contracts: FieldItemWidthIllegalContracts;
   referenceScripts: FieldItemWidthIllegalReferenceScripts;
+  /** Step 02 reads the accused item through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
 }>;
 
 export type LoadManifestBoundFieldItemWidthIllegalConfig = Readonly<{
@@ -106,6 +114,11 @@ export const bindFieldItemWidthIllegalReferenceScripts = ({
       binding,
       contractName: names.fieldPreimageCertificateMint,
       utxo: referenceScripts.fieldPreimageCertificateMint,
+    }),
+    fieldGrammarCertificateSpend: bindReference({
+      binding,
+      contractName: names.fieldGrammarCertificateSpend,
+      utxo: referenceScripts.fieldGrammarCertificateSpend,
     }),
     witnesses: Object.freeze({
       ...referenceScripts.witnesses,
@@ -182,6 +195,12 @@ export const createFieldItemWidthIllegalBoundConfig = (
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    fieldGrammar: resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: referenceScripts.fieldGrammarCertificateSpend,
+      label: "fieldItemWidthIllegal",
+    }),
   });
 };
 

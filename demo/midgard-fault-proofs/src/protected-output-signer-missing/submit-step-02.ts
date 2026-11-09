@@ -1,6 +1,10 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "../field-grammar-certificate.js";
+import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
@@ -40,6 +44,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   publicationBoundary,
   certificateBoundary,
   onCarriageReady,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -57,6 +62,8 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   readonly publicationBoundary?: FraudProofPreSubmitBoundary;
   readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
+  /** The field grammar certificate, for an outputs field the walk cannot read. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -113,6 +120,31 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     label: "protected-output-signer-missing outputs",
     onReady: onCarriageReady,
   });
+  const coordinateOutOfRange = evidence.route === "coordinate_out_of_range";
+  // The out-of-range arm reads the field's item count; every other arm reads
+  // the bound output.
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: coordinateOutOfRange ? "count" : "item",
+    itemCount: planned.itemCount,
+    source: {
+      sourceKind: planned.sourceKind,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...actuated.carriageUtxos,
+      ...(actuated.certificateUtxo === undefined
+        ? []
+        : [actuated.certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: "protected-output-signer-missing outputs",
+  });
   // The witness-scan route hands the protected credential to step 03; every
   // direct route writes the terminal verdict step 02 derives on chain
   // (`direct_verdict_v1`) and continues at step 05.
@@ -154,9 +186,13 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     nextStepIndex: scan ? 2 : 4,
     nextDatum,
     openingFor: actuated.openingFor,
-    coordinateOutOfRange: evidence.route === "coordinate_out_of_range",
+    coordinateOutOfRange,
+    grammarRefInputIndex: grammar.grammarRefInputIndex,
     referenceScriptUtxo,
-    carriageReferenceInputs: actuated.referenceInputs,
+    carriageReferenceInputs: [
+      ...actuated.referenceInputs,
+      ...grammar.referenceInputs,
+    ],
     redeemerSchema: ProtectedOutputSignerStep02RedeemerSchema as never,
     preSubmitBoundary,
     awaitConfirmation,

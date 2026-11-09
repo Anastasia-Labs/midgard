@@ -29,7 +29,11 @@ import {
 export type FieldGrammarCertificateSource = Readonly<{
   sourceKind: 0n | 1n;
   compactCbor: string;
-  /** Fields 6–8 need it; it must hash to the compact `witness_set_hash`. */
+  /**
+   * The transaction's witness-set compact CBOR. Every open and advance decodes
+   * it, so it must always be well formed; for a witness field (6–8) it must
+   * also hash to the compact structure's `witness_set_hash`.
+   */
   witnessSetCompactCbor: string;
 }>;
 

@@ -19,6 +19,10 @@ import "./runtime.js";
 import "./workflow/transaction-boundary.js";
 import "./field-opening.publish-fault-proof-field-carriage.js";
 import "./field-grammar-certificate.certify-fault-proof-field-grammar.js";
+import "./field-grammar-certificate.route-fault-proof-field-grammar.js";
+import "./field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import "./inspect-contracts.js";
+import "./field-grammar-certificate.resolve-fault-proof-field-grammar-from-deployment-info.js";
 export {
   type CertifiedFaultProofFieldGrammar,
   certifyFaultProofFieldGrammar,
@@ -31,3 +35,23 @@ export {
   planFieldGrammarBatches,
   reuseOrCertifyFaultProofFieldGrammar,
 } from "./field-grammar-certificate.certify-fault-proof-field-grammar.js";
+export {
+  FIELD_GRAMMAR_CERTIFICATE_MINT,
+  FIELD_GRAMMAR_CERTIFICATE_SPEND,
+  journalFaultProofFieldGrammar,
+  journalFaultProofFieldGrammarAfterCarriage,
+  requireFaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "./field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+export { resolveFaultProofFieldGrammarFromDeploymentInfo } from "./field-grammar-certificate.resolve-fault-proof-field-grammar-from-deployment-info.js";
+export {
+  certifiedFieldGrammarRoute,
+  type FaultProofFieldGrammarDeployment,
+  type FaultProofFieldGrammarRoute,
+  FIELD_GRAMMAR_WALKED_COUNT_LIMIT,
+  FIELD_GRAMMAR_WALKED_ITEM_LIMIT,
+  type FieldGrammarRead,
+  fieldGrammarRoute,
+  routeFaultProofFieldGrammar,
+  WALKED_FIELD_GRAMMAR_ROUTE,
+} from "./field-grammar-certificate.route-fault-proof-field-grammar.js";

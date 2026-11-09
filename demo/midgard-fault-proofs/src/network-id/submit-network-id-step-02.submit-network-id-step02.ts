@@ -19,6 +19,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+  WALKED_FIELD_GRAMMAR_ROUTE,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
@@ -73,6 +78,8 @@ export const submitNetworkIdStep02 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
   certificateUtxos = [],
+  fieldGrammar,
+  witnessSetCompactCbor = "",
   preSubmitBoundary,
   awaitConfirmation = true,
   unsafeSkipLocalViolationCheckForTest = false,
@@ -91,6 +98,14 @@ export const submitNetworkIdStep02 = async ({
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   /** Existing §8.6 certificate UTxOs, required only for tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
+  /** The field grammar certificate, for an outputs field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
+  /**
+   * The anchored transaction's compact witness set, hashing to its compact
+   * `witness_set_hash`. The field grammar certificate authenticates the field
+   * against the whole compact transaction, so a certified read needs it.
+   */
+  readonly witnessSetCompactCbor?: string;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Test-only: make an honest body-network claim reach the validator. */
@@ -217,6 +232,26 @@ export const submitNetworkIdStep02 = async ({
           label: `${STEP_LABEL} outputs`,
           preSubmitBoundary,
         });
+  const grammar =
+    planned === undefined
+      ? WALKED_FIELD_GRAMMAR_ROUTE
+      : await routeFaultProofFieldGrammar({
+          lucid,
+          signer,
+          plan: planned.plan,
+          read: "item",
+          itemCount: planned.itemCount,
+          source: {
+            sourceKind: planned.sourceKind,
+            compactCbor: planned.nativeTxCompactCbor,
+            witnessSetCompactCbor,
+          },
+          carriageUtxos: [...published, ...certificateUtxos],
+          fieldPreimageCertificatePolicyId:
+            contracts.fieldPreimageCertificatePolicyId,
+          fieldGrammar,
+          label: `${STEP_LABEL} outputs`,
+        });
   const stepReference = requireNetworkIdReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
@@ -235,6 +270,7 @@ export const submitNetworkIdStep02 = async ({
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
+    ...grammar.referenceInputs,
     stepReference,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
@@ -302,6 +338,9 @@ export const submitNetworkIdStep02 = async ({
                       contracts.fieldPreimageCertificatePolicyId,
                     label: `${STEP_LABEL} outputs`,
                   }),
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
           },
         ],
       } as never,

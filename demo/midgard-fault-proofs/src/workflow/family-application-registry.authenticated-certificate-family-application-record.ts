@@ -180,6 +180,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
           references,
           stepConfigKeys,
           witnessRoles: definition.witnessRoles,
+          fieldGrammarCertificate: definition.fieldGrammarCertificate === true,
         }),
         ...(auxiliary
           ? {

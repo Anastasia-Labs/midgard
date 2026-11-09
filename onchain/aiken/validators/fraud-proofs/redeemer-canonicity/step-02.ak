@@ -3,20 +3,22 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/field_opening_v1.{WitnessAnchor, opened_field_view}
+use midgard/fraud_proofs/field_opening_v1.{
+  WitnessAnchor, opened_certified_field_item,
+}
 use midgard/fraud_proofs/redeemer_canonicity/rule.{
   ContinueData, FinishData, open_item_v1, redeemer_field_index,
 }
 use midgard/fraud_proofs/redeemer_canonicity/step_02.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/native_tx_field_access_v1.{field_item_at}
 
 validator main(
   step_02_data_hash: ScriptHash,
   step_03_hash: ScriptHash,
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
+  grammar_certificate_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -34,7 +36,12 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { input_index, output_index, opening }) -> {
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        opening,
+        grammar_ref_input_index,
+      }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
         let _, _, _, input_state, next_hash, next_state <- continue(
@@ -48,7 +55,7 @@ validator main(
           tx.extra_signatories,
         )
         expect Some(bound) = input_state
-        let view = opened_field_view(
+        let item = opened_certified_field_item(
           opening,
           WitnessAnchor {
             tx_id: bound.subject.transaction_id,
@@ -56,10 +63,13 @@ validator main(
             source_kind: bound.subject.source_kind,
           },
           redeemer_field_index,
+          bound.redeemer_index,
+          grammar_ref_input_index,
           reference_inputs,
           certificate_policy,
+          grammar_certificate_policy,
         )
-        when open_item_v1(bound, field_item_at(view, bound.redeemer_index)) is {
+        when open_item_v1(bound, item) is {
           ContinueData { scan } -> {
             let value: Data = scan
             and {

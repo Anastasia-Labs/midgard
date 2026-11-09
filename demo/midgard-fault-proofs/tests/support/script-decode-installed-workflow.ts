@@ -43,6 +43,7 @@ import {
 } from "../../src/workflow/runtime.js";
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
+import { deployHarnessFieldGrammarCertificate } from "./field-grammar-certificate-deployment-fixture.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
@@ -117,6 +118,11 @@ export const commitScriptDecodeBlock = async ({
       label: `${definition.category} field certificate`,
     })
   ).utxo;
+  // Both installed families read through the field grammar certificate.
+  const fieldGrammar = await deployHarnessFieldGrammarCertificate(
+    harness,
+    definition.category,
+  );
   const removal = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -154,6 +160,7 @@ export const commitScriptDecodeBlock = async ({
     headerHash: setup.headerHash,
     steps,
     certificate,
+    fieldGrammar,
     removal,
   } as const;
 };
@@ -216,6 +223,7 @@ export const installScriptDecodeApplication = async ({
       return [role, utxo];
     }),
     ["fieldPreimageCertificateMint", committed.certificate],
+    ...committed.fieldGrammar.roster,
     [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.reference],
     ...SDK.SCRIPT_DECODE_STAKER_CLASS_NAMES.map((name): [string, UTxO] => [
       SDK.SCRIPT_DECODE_STAKER_MEMBERS[name],
@@ -418,6 +426,7 @@ export const installScriptDecodeApplication = async ({
           "fieldPreimageCertificateSpend",
           contracts.fieldPreimageCertificate.policyId,
         ],
+        ["fieldGrammarCertificateSpend", committed.fieldGrammar.policyId],
       ]),
       referenceUtxos: [
         ...roster.values(),

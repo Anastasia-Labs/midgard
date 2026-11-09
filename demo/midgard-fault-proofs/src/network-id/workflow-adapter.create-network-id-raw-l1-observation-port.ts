@@ -4,6 +4,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import type {
   RemoveFraudulentBlockExplicitCategory,
   RemoveFraudulentBlockFraudCategory,
@@ -308,6 +309,12 @@ export type NetworkIdWorkflowAdapterConfig = {
    */
   readonly forcedScanReferenceScript?: UTxO;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
+  /**
+   * The field grammar certificate step 02 reads the outputs field through past
+   * the walked limit. The manifest-bound construction always resolves it;
+   * omit only in emulator/diagnostic construction.
+   */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly removal: {
     readonly deploymentInfo: unknown;

@@ -70,6 +70,7 @@ export const TransactionOutputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   opening: FieldOpeningSchema,
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 export const TransactionOutputStep02RedeemerSchema =
   faultProofStepRedeemerSchema(TransactionOutputStep02ArgsSchema);

@@ -134,6 +134,14 @@ const linearFamilyApplicationRecord = (
                 ),
               }
             : {}),
+          ...(definition.fieldGrammarCertificate === true
+            ? {
+                fieldGrammarCertificateSpend: requiredReference(
+                  references,
+                  "fieldGrammarCertificateSpend",
+                ),
+              }
+            : {}),
         }),
         // The step list is built from the same spec that fixes the family's
         // step arity, and every role resolves or throws above, so its length

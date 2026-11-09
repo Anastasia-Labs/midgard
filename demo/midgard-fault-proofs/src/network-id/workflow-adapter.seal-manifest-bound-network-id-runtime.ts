@@ -34,7 +34,10 @@ export type ManifestBoundNetworkIdWorkflowConfig = Omit<
   | "rawL1"
   | "terminalFacts"
   | "witnessReferenceScripts"
+  | "fieldGrammar"
 > & {
+  /** The published `fieldGrammarCertificateSpend` reference script. */
+  readonly fieldGrammarCertificateReferenceScript: UTxO;
   readonly manifest: unknown;
   readonly blueprintJson: string;
   readonly deploymentInfo: unknown;

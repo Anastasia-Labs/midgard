@@ -1,10 +1,12 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -159,6 +161,8 @@ export type ReferenceInputNoIdxBlockFixture = {
   readonly challengedReferenceInputIndex: number;
   readonly badTxInclusion: SubmitStep01TxInclusion;
   readonly producingTxInclusion: SubmitStep01TxInclusion;
+  /** The producer's compact witness set, for a certified field read. */
+  readonly producingWitnessSetCompactCbor: string;
 };
 
 /**
@@ -305,6 +309,9 @@ export const buildReferenceInputNoIdxBlockFixture = async ({
       producingProof.toCBOR().toString("hex"),
       producingTx.compact,
     ),
+    producingWitnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(producingTx.witnessSet),
+    ).toString("hex"),
   };
 };
 

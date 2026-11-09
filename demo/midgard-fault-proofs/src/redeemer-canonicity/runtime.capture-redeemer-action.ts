@@ -86,6 +86,7 @@ export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () => REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   adapter: {
@@ -334,6 +335,9 @@ const captureRedeemerAction = async (
           referenceScriptUtxo: workflow.referenceScripts.steps[1],
           certificateReferenceScriptUtxo:
             workflow.referenceScripts.fieldPreimageCertificateMint,
+          // Submitted inline ahead of the captured step; it never takes the
+          // step's capture boundary.
+          fieldGrammar: workflow.fieldGrammar,
         });
       } else if (input.stage === "step_03")
         await submitRedeemerCanonicityStep02Data({

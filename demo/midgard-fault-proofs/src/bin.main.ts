@@ -593,6 +593,7 @@ export const main = async (): Promise<void> => {
       threadOutRef: args.threadOutRef,
       outputsPreimagePath: args.outputsPreimagePath,
       nativeTxCompactPath: args.nativeTxCompactPath,
+      witnessSetCompactPath: args.witnessSetCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -876,6 +877,7 @@ export const main = async (): Promise<void> => {
       threadOutRef: args.threadOutRef,
       outputsPreimagePath: args.outputsPreimagePath,
       nativeTxCompactPath: args.nativeTxCompactPath,
+      witnessSetCompactPath: args.witnessSetCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 

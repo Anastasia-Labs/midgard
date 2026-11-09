@@ -82,6 +82,13 @@ export type SubmitReferenceInputNoIdxStep04CliConfig = SubmitProviderConfig & {
    * the `producing_tx_id` the thread anchored.
    */
   readonly nativeTxCompactPath: string;
+  /**
+   * JSON `{ "addrTxWitsHash", "scriptTxWitsHash", "redeemerTxWitsHash" }` —
+   * the producing transaction's compact witness set. A field past the walked
+   * count limit is counted through the field grammar certificate, which
+   * authenticates the field against the whole compact transaction.
+   */
+  readonly witnessSetCompactPath?: string;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -177,6 +184,7 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   fraudProofUnit,
   fraudProofDatum,
   outputsOpeningFor,
+  grammarRefInputIndex,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -186,6 +194,10 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   readonly fraudProofDatum: string;
   /** Resolves the opening's carriage against the built reference inputs. */
   readonly outputsOpeningFor: (ctx: RedeemerContext) => FieldOpening;
+  /** The field grammar certificate's slot in the built reference inputs. */
+  readonly grammarRefInputIndex: (
+    referenceInputs: readonly UTxO[],
+  ) => bigint | null;
   readonly onLayout: (layout: ReferenceInputNoIdxStep04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -220,6 +232,7 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
             outputs_opening: outputsOpeningFor(ctx),
+            grammar_ref_input_index: grammarRefInputIndex(ctx.referenceInputs),
           },
         ],
       },

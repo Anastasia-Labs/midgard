@@ -93,6 +93,13 @@ export type FamilyDefinition<
    * A port that only reads the policy id into a verdict leaves this false.
    */
   fieldPreimageCertificate: Certificate;
+  /**
+   * Whether a step reads a field through the field grammar certificate: the
+   * roster then carries `fieldGrammarCertificateSpend` and the assembly
+   * resolves the deployed certificate at startup, refusing a deployment
+   * without its members.
+   */
+  fieldGrammarCertificate?: true;
   /** The exact closed replay bundle `runOrResume` launches with. */
   replayer: (
     context: FamilyAssemblyContext<

@@ -1,4 +1,5 @@
 import {
+  buildFieldGrammarCertificateValidator,
   buildProtectedOutputSignerMissingChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
@@ -93,15 +94,21 @@ export const applyProtectedOutputSignerMissingScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): ProtectedOutputSignerManifest["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildProtectedOutputSignerMissingChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      fieldGrammarCertificatePolicyId: buildFieldGrammarCertificateValidator({
+        blueprint: parsedBlueprint,
+        network,
+        fieldPreimageCertificatePolicyId,
+      }).policyId,
     }),
   );
   const titles = Object.values(

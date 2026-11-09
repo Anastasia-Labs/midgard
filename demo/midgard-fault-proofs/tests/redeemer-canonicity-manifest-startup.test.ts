@@ -101,6 +101,9 @@ describe.skipIf(runDirectory === undefined)(
           fieldPreimageCertificateMint: reference(
             "fieldPreimageCertificateMint",
           ),
+          fieldGrammarCertificateSpend: reference(
+            "fieldGrammarCertificateSpend",
+          ),
           removal: {
             correctionLockSpend: reference("correctionLockSpend"),
             stateQueueSpend: reference("stateQueueSpend"),

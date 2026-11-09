@@ -39,7 +39,6 @@ import {
   outRefLabel,
 } from "@al-ft/midgard-core";
 import {
-  fieldPreimagePublicationDatumCbor,
   FraudProofTokenDatum,
   inputNoIdxOutputsCommitment,
   inputNoIdxSpendInputsCommitment,
@@ -70,7 +69,6 @@ import {
   HALF_CANONICAL_MATURITY_MS,
   inputCbor,
   makeEmulatorHarness,
-  TIER2_PRODUCING_OUTPUT_COUNT,
   TIER2_SPEND_INPUT_COUNT,
 } from "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
 import {
@@ -478,118 +476,6 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         ),
       );
     }
-  }, 240_000);
-
-  it("routes an oversized field-2 outputs preimage through tier-2 published carriage to the conviction", async () => {
-    // The spender claims an output index one past a producer that really has
-    // 340 outputs — still out of range, so the violation stands, and the
-    // outputs preimage step-04 must open is now genuinely large: past §8.4's
-    // tier-1 redeemer bound, inside the single-publication window. The ladder
-    // itself routes field 2 to `RawUtxo`; nothing forces the tier. Field 0
-    // stays a one-item preimage, so the same journey pins tier-1 and tier-2
-    // selection side by side, each decided by size alone.
-    const harness = await makeEmulatorHarness();
-    const fixture = await buildInputNoIdxBlockFixture({
-      producingOutputCount: TIER2_PRODUCING_OUTPUT_COUNT,
-      challengedOutputIndex: BigInt(TIER2_PRODUCING_OUTPUT_COUNT),
-    });
-    const producingOutputItems = fixture.producingOutputsCbor.map((item) =>
-      Buffer.from(item, "hex"),
-    );
-    const preimage = encodeMidgardFieldPreimage(producingOutputItems);
-    expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
-    );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
-    const producingOutputs = producingOutputItems.map(
-      midgardTxOutputFromCanonicalCbor,
-    );
-    expect(inputNoIdxOutputsCommitment(producingOutputs)).toBe(
-      fixture.producingTxOutputsHash,
-    );
-
-    const { deploymentInfo, initResult, secondStepUtxo, setup } =
-      await startInputNoIdxStep02Thread({ harness, fixture });
-    const step02Result = await submitInputNoIdxStep02({
-      lucid: harness.proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts
-          .fraudProofNonExistentInputNoIndexStep02!.utxo,
-      blueprint: harness.realBlueprint,
-      deploymentInfo,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: outRefLabel(secondStepUtxo),
-      inputsPreimage: {
-        inputsPreimage: fixture.badInputs,
-        badInputsIndex: fixture.badInputsIndex,
-      },
-      nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
-      awaitConfirmation: true,
-    });
-    expect(step02Result.carriageTier).toBe("Inline");
-    const thirdStepUtxo = await expectSingleUtxoWithUnit(
-      harness.proverLucid,
-      step02Result.thirdStepAddress,
-      initResult.computationThreadUnit,
-    );
-    const step03Result = await submitInputNoIdxStep03({
-      lucid: harness.proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts
-          .fraudProofNonExistentInputNoIndexStep03!.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: harness.realBlueprint,
-      deploymentInfo,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      awaitConfirmation: true,
-    });
-    const fourthStepUtxo = await expectSingleUtxoWithUnit(
-      harness.proverLucid,
-      step03Result.fourthStepAddress,
-      initResult.computationThreadUnit,
-    );
-    const step04Result = await submitInputNoIdxStep04({
-      lucid: harness.proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts
-          .fraudProofNonExistentInputNoIndexStep04!.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: harness.realBlueprint,
-      deploymentInfo,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: outRefLabel(fourthStepUtxo),
-      outputsPreimage: { outputsPreimage: producingOutputs },
-      nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
-      awaitConfirmation: true,
-    });
-    expect(step04Result.carriageTier).toBe("RawUtxo");
-    expect(step04Result.producingTxOutputCount).toBe(
-      TIER2_PRODUCING_OUTPUT_COUNT,
-    );
-
-    // The tier-2 publication really exists and survives its consumer: the
-    // whole §5.1 preimage sits at the prover's address as a bytes-only inline
-    // datum (§8.5), referenced rather than spent (§8.7).
-    const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
-    const publications = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
-    ).filter((utxo) => utxo.datum === expectedDatum);
-    expect(publications).toHaveLength(1);
-
-    const fraudProofUtxo = await expectSingleUtxoWithUnit(
-      harness.proverLucid,
-      step04Result.fraudProofAddress,
-      step04Result.fraudProofUnit,
-    );
-    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
-      fraud_prover: harness.proverSigner.paymentKeyHash,
-    });
   }, 240_000);
 
   it("opens a 20-input field in one transaction, where the fold took twenty", async () => {

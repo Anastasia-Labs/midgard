@@ -5,19 +5,22 @@
 //// native-V1 block fixture.
 
 use aiken/primitive/bytearray
+use cardano/transaction.{Input, Transaction}
 use fraud_proofs/transaction_output_non_canonical/step_02 as step_02_validator
 use fraud_proofs/transaction_output_non_canonical/step_03 as step_03_validator
 use fraud_proofs/transaction_output_non_canonical/step_03_datum as step_03_datum_validator
 use fraud_proofs/transaction_output_non_canonical/step_04 as step_04_validator
 use midgard/canonical_plutus_data_stream_v1 as stream
 use midgard/computation_thread as ct
+use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput, MidgardValue}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/transaction_output_non_canonical/rule
 use midgard/fraud_proofs/transaction_output_non_canonical/step_02.{
-  Args as Step02Args,
+  Args as Step02Args, Datum as Step02Datum, SpendRedeemer as Step02Redeemer,
 }
 use midgard/fraud_proofs/transaction_output_non_canonical/step_03.{
   Args as Step03Args,
@@ -97,6 +100,7 @@ fn run_step_02(
     successor,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -108,6 +112,7 @@ fn run_step_02(
         input_index: 0,
         output_index: 0,
         opening: fixture.inline_body_opening(block().compact_cbor, items),
+        grammar_ref_input_index: None,
       },
     ),
     fixture.own_out_ref(),
@@ -159,6 +164,277 @@ test step_02_wrong_successor_refuses() fail {
     rule.initial_scan_v1(bound(0), committed_output()),
     fixture.step_script_hash,
   )
+}
+
+// ## Step 02 through the field grammar certificate
+//
+// 761 outputs of 43 enveloped bytes fill field 2 to 32,726 bytes, under tier
+// 3. The bound item sits at 751, fifteen items past its waypoint, so the read
+// pays the most header reads a certified read can.
+
+const certified_count = 761
+
+const certified_index = 751
+
+fn certified_target() -> ByteArray {
+  fixture.repeated_bytes_v1(#"b2", 41)
+}
+
+fn certified_preimage() -> ByteArray {
+  grammar.field_preimage_with_item_v1(
+    fixture.repeated_bytes_v1(#"a1", 41),
+    certified_count,
+    certified_index,
+    certified_target(),
+  )
+}
+
+type Step02Case {
+  datum: Option<Step02Datum>,
+  redeemer: Step02Redeemer,
+  tx: Transaction,
+}
+
+/// Step 02 at output `index` of the certified field, with the certificate
+/// `certificate(tx_id, preimage)` builds and the scan opened on `item`.
+fn certified_step_02(
+  index: Int,
+  certificate: fn(ByteArray, ByteArray) -> FieldGrammarCertificateV1,
+  item: ByteArray,
+) -> Step02Case {
+  let preimage = certified_preimage()
+  tier3_step_02(
+    preimage,
+    index,
+    item,
+    fn(tx_id) {
+      Pair(
+        Some(grammar.grammar_ref_input_index_v1(preimage)),
+        grammar.certified_grammar_reference_inputs_v1(
+          tx_id,
+          2,
+          preimage,
+          certificate(tx_id, preimage),
+        ),
+      )
+    },
+  )
+}
+
+/// Step 02 at output `index` of `preimage` under tier 3, the scan opened on
+/// `item`, with the grammar certificate slot and reference inputs `route`
+/// gives the committing transaction's id.
+fn tier3_step_02(
+  preimage: ByteArray,
+  index: Int,
+  item: ByteArray,
+  route: fn(ByteArray) -> Pair<Option<Int>, List<Input>>,
+) -> Step02Case {
+  let committed = fixture.committed_field_preimage_block_fixture_v1(
+    block(),
+    2,
+    preimage,
+  )
+  let bound = rule.BoundOutputV1 {
+    subject: substrate.VerdictSubjectV1 {
+      ..accepted(),
+      transaction_id: committed.tx_id,
+    },
+    output_index: index,
+  }
+  let next_state: Data = rule.initial_scan_v1(bound, item)
+  let Pair(grammar_ref_input_index, reference_inputs) = route(committed.tx_id)
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      Step02Args {
+        input_index: 0,
+        output_index: 0,
+        opening: fixture.certified_body_opening(
+          committed.compact_cbor,
+          preimage,
+        ),
+        grammar_ref_input_index,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+      reference_inputs,
+    },
+  }
+}
+
+fn honest_certificate(
+  tx_id: ByteArray,
+  preimage: ByteArray,
+) -> FieldGrammarCertificateV1 {
+  grammar.complete_field_grammar_certificate_v1(
+    tx_id,
+    2,
+    preimage,
+    certified_count,
+  )
+}
+
+fn run_certified_step_02(case: Step02Case) -> Bool {
+  step_02_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+test step_02_certified_route_fixture_only_at_the_tier3_maximum() {
+  let case = certified_step_02(
+    certified_index,
+    honest_certificate,
+    certified_target(),
+  )
+  case.datum != None
+}
+
+test step_02_certified_route_at_the_tier3_maximum_cost() {
+  run_certified_step_02(
+    certified_step_02(certified_index, honest_certificate, certified_target()),
+  )
+}
+
+test step_02_certified_route_reads_the_last_output() {
+  run_certified_step_02(
+    certified_step_02(
+      certified_count - 1,
+      honest_certificate,
+      fixture.repeated_bytes_v1(#"a1", 41),
+    ),
+  )
+}
+
+test step_02_certified_route_binds_the_item_it_read() fail {
+  run_certified_step_02(
+    certified_step_02(
+      certified_index,
+      honest_certificate,
+      fixture.repeated_bytes_v1(#"a1", 41),
+    ),
+  )
+}
+
+test step_02_certified_route_index_past_the_count_refuses() fail {
+  run_certified_step_02(
+    certified_step_02(certified_count, honest_certificate, certified_target()),
+  )
+}
+
+test step_02_certified_route_refuses_another_fields_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      certified_index,
+      fn(tx_id, preimage) {
+        grammar.complete_field_grammar_certificate_v1(
+          tx_id,
+          5,
+          preimage,
+          certified_count,
+        )
+      },
+      certified_target(),
+    ),
+  )
+}
+
+test step_02_certified_route_refuses_another_transactions_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      certified_index,
+      fn(_tx_id, preimage) {
+        grammar.complete_field_grammar_certificate_v1(
+          block().tx_id,
+          2,
+          preimage,
+          certified_count,
+        )
+      },
+      certified_target(),
+    ),
+  )
+}
+
+test step_02_certified_route_refuses_another_preimages_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      certified_index,
+      fn(tx_id, _preimage) {
+        grammar.complete_field_grammar_certificate_v1(
+          tx_id,
+          2,
+          grammar.field_preimage_with_item_v1(
+            fixture.repeated_bytes_v1(#"a1", 41),
+            certified_count,
+            0,
+            certified_target(),
+          ),
+          certified_count,
+        )
+      },
+      certified_target(),
+    ),
+  )
+}
+
+test step_02_certified_route_refuses_an_in_progress_certificate() fail {
+  run_certified_step_02(
+    certified_step_02(
+      certified_index,
+      fn(tx_id, preimage) {
+        grammar.in_progress_field_grammar_certificate_v1(
+          tx_id,
+          2,
+          preimage,
+          certified_count,
+        )
+      },
+      certified_target(),
+    ),
+  )
+}
+
+// ### The walked route at its limit
+//
+// A submitter walks a field of at most `grammar.walked_item_limit` items. The
+// walk is dearest under tier 3, near the field maximum, to the last item.
+
+fn walked_limit_target() -> ByteArray {
+  fixture.repeated_bytes_v1(#"b2", 500)
+}
+
+fn walked_limit_step_02() -> Step02Case {
+  let preimage = grammar.walked_limit_preimage_v1(walked_limit_target())
+  tier3_step_02(
+    preimage,
+    grammar.walked_item_limit - 1,
+    walked_limit_target(),
+    fn(tx_id) {
+      Pair(None, fixture.certified_reference_inputs_v1(tx_id, 2, preimage))
+    },
+  )
+}
+
+test step_02_walked_route_fixture_only_at_the_walked_limit() {
+  walked_limit_step_02().datum != None
+}
+
+test step_02_walked_route_at_the_walked_limit_cost() {
+  run_certified_step_02(walked_limit_step_02())
 }
 
 // ## Step 03: resumable scan successor and checkpoint seams

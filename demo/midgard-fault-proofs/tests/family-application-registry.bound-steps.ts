@@ -19,6 +19,7 @@ type BoundReferenceScripts = Readonly<{
   witnesses?: Readonly<Record<string, unknown>>;
   witnessReferenceScripts?: Readonly<Record<string, unknown>>;
   fieldPreimageCertificateMint?: unknown;
+  fieldGrammarCertificateSpend?: unknown;
   removal?: Readonly<Record<string, unknown>>;
 }> &
   Readonly<Record<string, unknown>>;
@@ -51,6 +52,7 @@ export const WITNESS_ROLES = new Set([
 
 const FLAT_SHAPE_NON_STEP_ROLES = new Set([
   "fieldPreimageCertificateMint",
+  "fieldGrammarCertificateSpend",
   "witnesses",
   "removal",
 ]);
@@ -124,6 +126,7 @@ export const registry: Readonly<
         category: string;
         witnessRoles: readonly string[];
         fieldPreimageCertificate: boolean;
+        fieldGrammarCertificate?: boolean;
         auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
         adapter: Readonly<
           | { kind: "linear" }

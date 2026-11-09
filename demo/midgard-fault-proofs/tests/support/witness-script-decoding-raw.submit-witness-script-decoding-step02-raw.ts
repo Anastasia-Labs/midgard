@@ -309,6 +309,7 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} raw step 02 record`,
                   )),
+            grammar_ref_input_index: null,
           },
         ],
       } as never,

@@ -53,6 +53,7 @@ export const buildNetworkIdChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
+  fieldGrammarCertificatePolicyId,
 }: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
   NetworkIdFaultProofContracts["networkId"],
   Error
@@ -67,6 +68,7 @@ export const buildNetworkIdChain = ({
         fraudProofTokenAddressData,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        fieldGrammarCertificatePolicyId,
       ],
       "Failed to build network-id step 02",
     );

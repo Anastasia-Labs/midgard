@@ -109,7 +109,8 @@ export const MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD =
  * Network-id has no `FamilyDefinition` and lays its reference scripts at the
  * top of its config rather than in a bundle: the two-step accepted chain, the
  * forced door and the resumable forced outputs scan (optional in the config,
- * always resolved here), the certificate, and the five membership witnesses.
+ * always resolved here), the certificate, the field grammar certificate's
+ * reference script, and the five membership witnesses.
  * Its state-queue removal spends the removal set through the deployment
  * binding, so the roster carries no removal roles; the lease coordinator is
  * the one removal setting the config takes.
@@ -126,6 +127,7 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
     forcedScan: NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
     ...Object.fromEntries(MEMBERSHIP_WITNESS_ROLES.map((role) => [role, role])),
     fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+    fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
   }),
   requires: [],
   bindConfig: ({ infrastructure, references }) => {
@@ -139,6 +141,10 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
       fieldPreimageCertificateReferenceScript: requiredReference(
         references,
         "fieldPreimageCertificateMint",
+      ),
+      fieldGrammarCertificateReferenceScript: requiredReference(
+        references,
+        "fieldGrammarCertificateSpend",
       ),
       witnessReferenceScripts: resolvedRoles(
         references,

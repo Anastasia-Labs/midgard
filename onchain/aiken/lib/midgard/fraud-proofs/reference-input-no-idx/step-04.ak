@@ -21,6 +21,10 @@ pub type Args {
   /// preimage. Its authenticated item count is the output count the
   /// out-of-range verdict rests on (§5.2).
   outputs_opening: FieldOpeningV1,
+  /// `None` takes the output count from walking field 2; `Some(i)` takes it
+  /// from the field grammar certificate at reference input `i`, so the
+  /// certified count also serves a chunked field.
+  grammar_ref_input_index: Option<Int>,
 }
 
 pub type SpendRedeemer =

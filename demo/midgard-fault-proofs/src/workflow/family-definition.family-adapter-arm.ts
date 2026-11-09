@@ -1,6 +1,7 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Script, UTxO } from "@lucid-evolution/lucid";
 
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -131,6 +132,8 @@ export type FamilyReferenceScripts<
     witnesses: FaultProofWitnessReferenceScripts & {
       readonly [Role in Witness]: UTxO;
     };
+    /** Present when the definition reads through the field grammar certificate. */
+    fieldGrammarCertificateSpend?: UTxO;
   } & (Certificate extends true
     ? { fieldPreimageCertificateMint: UTxO }
     : unknown)
@@ -212,6 +215,11 @@ export type FamilyAssemblyContext<
   certificate: Certificate extends true
     ? FieldPreimageCertificateBinding
     : null;
+  /**
+   * The deployed field grammar certificate, resolved at startup when the
+   * definition reads through it.
+   */
+  fieldGrammar?: FaultProofFieldGrammarDeployment;
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;

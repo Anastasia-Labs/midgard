@@ -14,6 +14,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -64,6 +68,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   scriptDecodeRecordUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -88,6 +93,8 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   readonly scriptDecodeRecordUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /** The field grammar certificate, for a field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -178,9 +185,30 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "item",
+    itemCount: items.length,
+    source: {
+      sourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...carriageUtxos,
+      ...(resolvedCertificate === undefined ? [] : [resolvedCertificate]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: `${FAMILY} reference bind`,
+  });
   const extraReferenceInputs = [
     ...(resolvedCertificate === undefined ? [] : [resolvedCertificate]),
     ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
+    ...grammar.referenceInputs,
   ];
   const initialResult =
     evidence.initialControlCbor.length > 0
@@ -241,6 +269,9 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} step04 decode record`,
                   ),
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
           },
         ],
       } as never,

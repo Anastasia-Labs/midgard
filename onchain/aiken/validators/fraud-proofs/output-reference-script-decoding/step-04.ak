@@ -3,14 +3,15 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/field_opening_v1.{BodyAnchor, opened_field_view}
+use midgard/fraud_proofs/field_opening_v1.{
+  BodyAnchor, opened_certified_field_item,
+}
 use midgard/fraud_proofs/output_reference_script_decoding/rule.{
   bind_reference_script_v1, output_canonical, outputs_field_index,
 }
 use midgard/fraud_proofs/output_reference_script_decoding/step_04.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/native_tx_field_access_v1.{field_item_at}
 use midgard/script_decode_v1.{record_at_v1}
 
 validator main(
@@ -18,6 +19,7 @@ validator main(
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
   script_decode_policy: PolicyId,
+  grammar_certificate_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -40,6 +42,7 @@ validator main(
         output_index,
         opening,
         record_reference_input_index,
+        grammar_ref_input_index,
       }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -55,19 +58,21 @@ validator main(
         )
         expect Some(state) = input_state
         expect state.outcome == output_canonical
-        let view = opened_field_view(
-          opening,
-          BodyAnchor {
-            tx_id: state.bound.subject.transaction_id,
-            source_kind: state.bound.subject.source_kind,
-          },
-          outputs_field_index,
-          reference_inputs,
-          certificate_policy,
-        )
         let scan = bind_reference_script_v1(
           state,
-          field_item_at(view, state.bound.output_index),
+          opened_certified_field_item(
+            opening,
+            BodyAnchor {
+              tx_id: state.bound.subject.transaction_id,
+              source_kind: state.bound.subject.source_kind,
+            },
+            outputs_field_index,
+            state.bound.output_index,
+            grammar_ref_input_index,
+            reference_inputs,
+            certificate_policy,
+            grammar_certificate_policy,
+          ),
           step_05_hash,
           record_at_v1(
             reference_inputs,

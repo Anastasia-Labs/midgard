@@ -93,6 +93,8 @@ export const createManifestBoundFieldItemWidthIllegalWorkflow = async (
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:
           input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
       },
     },
   );

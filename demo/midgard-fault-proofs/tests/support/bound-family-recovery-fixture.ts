@@ -8,6 +8,10 @@ import * as observations from "../../src/workflow/family-l1-observation.js";
 import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
 import type { customWorkflowRecoveryFixture } from "./custom-workflow-recovery.js";
+import {
+  fieldGrammarCertificateValidatorFixture,
+  realFaultProofBlueprint,
+} from "./field-grammar-certificate-deployment-fixture.js";
 
 /**
  * Acquire a real assembly context for a saved-journal fixture. Manifest loading,
@@ -35,14 +39,56 @@ export const bindFamilyRecoveryFixture = async (
     assets: { lovelace: 2_000_000n },
     scriptRef: script,
   };
+  const certificatePolicyId = "55".repeat(28);
+  // A family that reads through the field grammar certificate resolves the
+  // real certificate at startup: its published script and minting policy are
+  // the blueprint's over this deployment's field-preimage certificate.
+  const grammar =
+    definition.fieldGrammarCertificate === true
+      ? (() => {
+          const validator = fieldGrammarCertificateValidatorFixture({
+            network: "Preprod",
+            fieldPreimageCertificatePolicyId: certificatePolicyId,
+          });
+          const outRef = `${"33".repeat(32)}#0`;
+          return {
+            blueprint: realFaultProofBlueprint(),
+            referenceScriptsByContract: {
+              fieldGrammarCertificateSpend: {
+                outRef,
+                scriptHash: validator.spendingScriptHash,
+              },
+              fieldGrammarCertificateMint: {
+                outRef,
+                scriptHash: validator.policyId,
+              },
+            },
+            reference: {
+              ...reference,
+              txHash: "33".repeat(32),
+              scriptRef: validator.spendingScript,
+            } satisfies UTxO,
+          };
+        })()
+      : undefined;
   const binding = {
     ...workflow.binding,
     network: "Preprod",
     fieldPreimageCertificate: {
-      policyId: "55".repeat(28),
+      policyId: certificatePolicyId,
       mintingScript: script,
     },
     cardanoProtocolParameters: { maxTxSize: 16384 },
+    ...(grammar === undefined
+      ? {}
+      : {
+          blueprint: grammar.blueprint,
+          referenceScriptsByContract: {
+            ...(workflow.binding as { referenceScriptsByContract?: object })
+              .referenceScriptsByContract,
+            ...grammar.referenceScriptsByContract,
+          },
+        }),
   };
   const l1 = {
     ...workflow.l1,
@@ -73,6 +119,9 @@ export const bindFamilyRecoveryFixture = async (
             definition.witnessRoles.map((role) => [role, reference]),
           ),
           fieldPreimageCertificateMint: reference,
+          ...(grammar === undefined
+            ? {}
+            : { fieldGrammarCertificateSpend: grammar.reference }),
         },
         auxiliaryReferenceScripts: Object.fromEntries(
           Object.keys(definition.auxiliaryReferenceScripts ?? {}).map(

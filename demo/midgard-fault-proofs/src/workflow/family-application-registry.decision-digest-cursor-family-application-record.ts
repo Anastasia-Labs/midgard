@@ -199,6 +199,7 @@ export type AuthenticatedCertificateFamilyConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: Readonly<{
     fieldPreimageCertificateMint: UTxO;
+    fieldGrammarCertificateSpend?: UTxO;
     witnesses: Readonly<Record<string, UTxO>>;
   }> &
     Readonly<Record<string, unknown>>;
@@ -215,6 +216,7 @@ export const bindAuthenticatedCertificateFamilyConfig = ({
   references,
   stepConfigKeys,
   witnessRoles,
+  fieldGrammarCertificate = false,
 }: {
   readonly category: FamilyCategory;
   readonly infrastructure: FamilyCommonInfrastructure;
@@ -222,6 +224,8 @@ export const bindAuthenticatedCertificateFamilyConfig = ({
   /** The family's config key for each step, in step order. */
   readonly stepConfigKeys: readonly string[];
   readonly witnessRoles: readonly string[];
+  /** Whether a step reads through the field grammar certificate. */
+  readonly fieldGrammarCertificate?: boolean;
 }): AuthenticatedCertificateFamilyConfig =>
   Object.freeze({
     ...commonBoundConfigFields(infrastructure),
@@ -237,6 +241,14 @@ export const bindAuthenticatedCertificateFamilyConfig = ({
         references,
         "fieldPreimageCertificateMint",
       ),
+      ...(fieldGrammarCertificate
+        ? {
+            fieldGrammarCertificateSpend: requiredReference(
+              references,
+              "fieldGrammarCertificateSpend",
+            ),
+          }
+        : {}),
       witnesses: Object.freeze(
         Object.fromEntries(
           witnessRoles.map((role) => [

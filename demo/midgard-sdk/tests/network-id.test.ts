@@ -67,6 +67,7 @@ describe("Q35 network-id wire codec", () => {
               carriage: { Inline: { preimage: "81" } },
             },
           },
+          grammar_ref_input_index: null,
         },
       ],
     } as const;

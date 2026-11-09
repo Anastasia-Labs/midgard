@@ -66,6 +66,7 @@ export const WitnessScriptDecodingStep02ArgsSchema = Data.Object({
   opening: FieldOpeningSchema,
   /** Reference input holding a Plutus item's script-decode record, or -1. */
   record_reference_input_index: Data.Integer(),
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 export const WitnessScriptDecodingStep02DatumSchema = faultProofStepDatumSchema(
   WitnessScriptDecodingBoundSchema,

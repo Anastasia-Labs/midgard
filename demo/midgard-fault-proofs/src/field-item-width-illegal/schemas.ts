@@ -42,6 +42,7 @@ export const FieldItemWidthStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   opening: Data.Nullable(FieldOpeningSchema),
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 export const FieldItemWidthStep02RedeemerSchema = faultProofStepRedeemerSchema(
   FieldItemWidthStep02ArgsSchema,

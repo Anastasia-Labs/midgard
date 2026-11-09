@@ -243,7 +243,12 @@ export const submitWidthStep02Raw = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: null,
+          },
         ],
       } as never,
       FieldItemWidthStep02RedeemerSchema as never,

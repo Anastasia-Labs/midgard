@@ -55,6 +55,8 @@ export const createManifestBoundWitnessScriptDecodingWorkflow = async (
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:
           input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
       },
     },
   );
@@ -70,6 +72,8 @@ export const createManifestBoundWitnessScriptDecodingWorkflow = async (
       witnesses: deployment.references.witnesses,
       fieldPreimageCertificateMint:
         deployment.references.fieldPreimageCertificateMint,
+      fieldGrammarCertificateSpend:
+        input.referenceScripts.fieldGrammarCertificateSpend,
     },
     scriptDecode: scriptDecodeDeploymentFromReferences({
       blueprint: deployment.binding.blueprint,
@@ -115,6 +119,7 @@ export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

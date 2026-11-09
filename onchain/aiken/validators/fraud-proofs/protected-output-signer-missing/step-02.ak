@@ -3,10 +3,13 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, FieldOpeningV1, opened_field_view,
+  BodyAnchor, BodyFieldOpening, FieldOpeningV1, opened_certified_field_item,
+  opened_certified_field_item_count,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
@@ -24,7 +27,7 @@ use midgard/fraud_proofs/protected_output_signer_missing/rule.{
 use midgard/fraud_proofs/protected_output_signer_missing/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
+use midgard/native_tx_field_access_v1.{Inline}
 use midgard/rejection_reason_v1.{ProtectedOutputSignerMissing}
 
 validator main(
@@ -32,6 +35,7 @@ validator main(
   step_05_hash: ScriptHash,
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
+  grammar_certificate_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -54,6 +58,7 @@ validator main(
         output_index,
         opening,
         coordinate_out_of_range,
+        grammar_ref_input_index,
       }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -68,22 +73,27 @@ validator main(
           tx.extra_signatories,
         )
         expect Some(State { bound, witness_set_hash }) = prior
-        let view = opened_field_view(
-          opening,
-          BodyAnchor {
-            tx_id: bound.subject.transaction_id,
-            source_kind: bound.subject.source_kind,
-          },
-          outputs_field_index,
-          reference_inputs,
-          certificate_policy,
-        )
+        let anchor = BodyAnchor {
+          tx_id: bound.subject.transaction_id,
+          source_kind: bound.subject.source_kind,
+        }
         if coordinate_out_of_range {
           // Canonical validation never evaluates a position at or past the
           // field's count, so a forced rejection citing one needs no signer.
-          // `field_item_count` answers only with an authenticated count and
-          // refuses the provisional count of a certified variable-width view.
-          expect bound.output_index >= field_item_count(view)
+          // Both routes answer only with an authenticated count: the walk
+          // refuses the provisional count of a certified variable-width
+          // view, and the certified count is the field grammar
+          // certificate's.
+          expect
+            bound.output_index >= opened_certified_field_item_count(
+              opening,
+              anchor,
+              outputs_field_index,
+              grammar_ref_input_index,
+              reference_inputs,
+              certificate_policy,
+              grammar_certificate_policy,
+            )
           let expected: Data = direct_verdict_v1(bound)
           and {
             next_hash == step_05_hash,
@@ -91,7 +101,16 @@ validator main(
           }
         } else {
           let output = decode_midgard_tx_output_cbor(
-            field_item_at(view, bound.output_index),
+            opened_certified_field_item(
+              opening,
+              anchor,
+              outputs_field_index,
+              bound.output_index,
+              grammar_ref_input_index,
+              reference_inputs,
+              certificate_policy,
+              grammar_certificate_policy,
+            ),
           )
           // `protected_output_authorization` consults the signer frontier
           // only for a protected pub-key output; every other output is
@@ -255,6 +274,26 @@ fn run_step_02_with(
   coordinate_out_of_range: Bool,
   tx: Transaction,
 ) -> Bool {
+  run_step_02_routed(
+    step_03_hash,
+    step_05_hash,
+    state,
+    opening,
+    coordinate_out_of_range,
+    None,
+    tx,
+  )
+}
+
+fn run_step_02_routed(
+  step_03_hash: ScriptHash,
+  step_05_hash: ScriptHash,
+  state: State,
+  opening: FieldOpeningV1,
+  coordinate_out_of_range: Bool,
+  grammar_ref_input_index: Option<Int>,
+  tx: Transaction,
+) -> Bool {
   let opening = if state.bound.subject.source_kind == 1 {
     forced_fixture.from_native_opening(opening)
   } else {
@@ -265,6 +304,7 @@ fn run_step_02_with(
     step_05_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -272,7 +312,13 @@ fn run_step_02_with(
       },
     ),
     ct.Continue(
-      Args { input_index: 0, output_index: 0, opening, coordinate_out_of_range },
+      Args {
+        input_index: 0,
+        output_index: 0,
+        opening,
+        coordinate_out_of_range,
+        grammar_ref_input_index,
+      },
     ),
     fixture.own_out_ref(),
     tx,
@@ -628,4 +674,391 @@ test protected_output_step_02_refuses_the_scan_hand_off_at_the_terminal_successo
     False,
     handoff_tx(block, expected_credential(state, credential_a)),
   )
+}
+
+// ### Field 2 through the field grammar certificate
+//
+// 761 items fill field 2 under tier 3, where walking it cannot answer the
+// item count. The protected pub-key output sits at 751, fifteen items past
+// its waypoint, so the item read pays the most header reads a certified read
+// can.
+
+const certified_count = 761
+
+const certified_index = 751
+
+fn certified_preimage() -> ByteArray {
+  grammar.field_preimage_with_item_v1(
+    fixture.repeated_bytes_v1(#"a1", 41),
+    certified_count,
+    certified_index,
+    encode_midgard_tx_output(protected_key_output(credential_a)),
+  )
+}
+
+fn certified_block() -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    outputs_field_index,
+    certified_preimage(),
+  )
+}
+
+fn honest_certificate(
+  tx_id: ByteArray,
+  preimage: ByteArray,
+) -> FieldGrammarCertificateV1 {
+  grammar.complete_field_grammar_certificate_v1(
+    tx_id,
+    outputs_field_index,
+    preimage,
+    certified_count,
+  )
+}
+
+/// One step-02 spend over the tier-3 field: `scan` names the step-03
+/// successor, otherwise the step-05 direct exit.
+type CertifiedCase {
+  scan: Bool,
+  state: State,
+  coordinate_out_of_range: Bool,
+  grammar_ref_input_index: Option<Int>,
+  next_data: Data,
+  certificate: FieldGrammarCertificateV1,
+}
+
+/// A case at coordinate `index` for `subject`, read through the honest
+/// certificate.
+fn certified_case(
+  subject: substrate.VerdictSubjectV1,
+  index: Int,
+  scan: Bool,
+  coordinate_out_of_range: Bool,
+) -> CertifiedCase {
+  let block = certified_block()
+  let state = bound_state(block, subject, index)
+  CertifiedCase {
+    scan,
+    state,
+    coordinate_out_of_range,
+    grammar_ref_input_index: Some(
+      grammar.grammar_ref_input_index_v1(certified_preimage()),
+    ),
+    next_data: if scan {
+      expected_credential(state, credential_a)
+    } else {
+      direct_verdict(subject)
+    },
+    certificate: honest_certificate(block.tx_id, certified_preimage()),
+  }
+}
+
+/// The opening and L1 transaction `case` spends with, built in full.
+fn prepared(case: CertifiedCase) -> Pair<FieldOpeningV1, Transaction> {
+  let block = certified_block()
+  let preimage = certified_preimage()
+  Pair(
+    fixture.certified_body_opening(block.compact_cbor, preimage),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        case.next_data,
+      ),
+      reference_inputs: grammar.certified_grammar_reference_inputs_v1(
+        block.tx_id,
+        outputs_field_index,
+        preimage,
+        case.certificate,
+      ),
+    },
+  )
+}
+
+fn run_certified(case: CertifiedCase) -> Bool {
+  let Pair(opening, tx) = prepared(case)
+  let Pair(step_03_hash, step_05_hash) = if case.scan {
+    Pair(fixture.next_step_script_hash, scan_successor)
+  } else {
+    Pair(scan_successor, fixture.next_step_script_hash)
+  }
+  run_step_02_routed(
+    step_03_hash,
+    step_05_hash,
+    case.state,
+    opening,
+    case.coordinate_out_of_range,
+    case.grammar_ref_input_index,
+    tx,
+  )
+}
+
+/// A forced rejection citing the coordinate one past the last output.
+fn forced_past_the_count() -> CertifiedCase {
+  let block = certified_block()
+  certified_case(
+    forced_subject(block, certified_count),
+    certified_count,
+    False,
+    True,
+  )
+}
+
+/// An accepted subject at the protected pub-key output.
+fn accepted_protected_key() -> CertifiedCase {
+  certified_case(
+    accepted_subject(certified_block()),
+    certified_index,
+    True,
+    False,
+  )
+}
+
+test protected_output_step_02_certified_route_fixture_only_at_the_tier3_maximum() {
+  let Pair(_, tx) = prepared(accepted_protected_key())
+  tx.reference_inputs != []
+}
+
+/// The item read: the bound output's credential, read through the
+/// certificate.
+test protected_output_step_02_certified_route_at_the_tier3_maximum_cost() {
+  run_certified(accepted_protected_key())
+}
+
+/// The certified count also serves a chunked field: a forced coordinate past
+/// it closes directly.
+test protected_output_step_02_certified_route_closes_a_coordinate_past_the_count() {
+  run_certified(forced_past_the_count())
+}
+
+/// The same claim by the walk: under tier 3 the walk cannot answer field
+/// 2's count, so only the certified route closes it.
+test protected_output_step_02_walked_route_cannot_count_a_chunked_field() fail {
+  run_certified(
+    CertifiedCase { ..forced_past_the_count(), grammar_ref_input_index: None },
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_an_in_range_out_of_range_claim() fail {
+  let block = certified_block()
+  run_certified(
+    certified_case(
+      forced_subject(block, certified_index),
+      certified_index,
+      False,
+      True,
+    ),
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_an_index_past_the_count() fail {
+  run_certified(
+    certified_case(
+      accepted_subject(certified_block()),
+      certified_count,
+      True,
+      False,
+    ),
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_another_fields_certificate() fail {
+  let block = certified_block()
+  run_certified(
+    CertifiedCase {
+      ..forced_past_the_count(),
+      certificate: grammar.complete_field_grammar_certificate_v1(
+        block.tx_id,
+        5,
+        certified_preimage(),
+        certified_count,
+      ),
+    },
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_another_transactions_certificate() fail {
+  run_certified(
+    CertifiedCase {
+      ..forced_past_the_count(),
+      certificate: honest_certificate(
+        #"9999999999999999999999999999999999999999999999999999999999999999",
+        certified_preimage(),
+      ),
+    },
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_another_preimages_certificate() fail {
+  let block = certified_block()
+  run_certified(
+    CertifiedCase {
+      ..forced_past_the_count(),
+      certificate: honest_certificate(
+        block.tx_id,
+        grammar.field_preimage_with_item_v1(
+          fixture.repeated_bytes_v1(#"a1", 41),
+          certified_count,
+          0,
+          encode_midgard_tx_output(protected_key_output(credential_a)),
+        ),
+      ),
+    },
+  )
+}
+
+test protected_output_step_02_certified_route_refuses_an_in_progress_certificate() fail {
+  let block = certified_block()
+  run_certified(
+    CertifiedCase {
+      ..forced_past_the_count(),
+      certificate: grammar.in_progress_field_grammar_certificate_v1(
+        block.tx_id,
+        outputs_field_index,
+        certified_preimage(),
+        certified_count,
+      ),
+    },
+  )
+}
+
+// ### The walked route at its limit
+//
+// A submitter reads an item by walking a field of at most
+// `grammar.walked_item_limit` outputs, the protected pub-key output last; the
+// item read is dearest under tier 3, near the field maximum. It counts a field
+// by walking it up to `grammar.walked_count_limit` outputs, and only for a
+// field carried inline or in one raw UTxO, so the count read's dearest case is
+// under tier 1, a forced coordinate one past the last output.
+
+/// A walked step-02 spend, built in full.
+type WalkedCase {
+  step_03_hash: ScriptHash,
+  step_05_hash: ScriptHash,
+  state: State,
+  opening: FieldOpeningV1,
+  coordinate_out_of_range: Bool,
+  tx: Transaction,
+}
+
+/// Step 02 over field 2 committing `preimage` of `count` outputs, walked: the
+/// item read at the last output when `scan`, otherwise the count read one
+/// past it. `tier3` carries the field chunked under its preimage
+/// certificate, otherwise inline.
+fn walked_limit_case(
+  preimage: ByteArray,
+  count: Int,
+  tier3: Bool,
+  scan: Bool,
+) -> WalkedCase {
+  let block = fixture.committed_field_preimage_block_fixture_v1(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    outputs_field_index,
+    preimage,
+  )
+  let index = if scan {
+    count - 1
+  } else {
+    count
+  }
+  let subject = if scan {
+    accepted_subject(block)
+  } else {
+    forced_subject(block, index)
+  }
+  let state = bound_state(block, subject, index)
+  let Pair(opening, reference_inputs) = if tier3 {
+    Pair(
+      fixture.certified_body_opening(block.compact_cbor, preimage),
+      fixture.certified_reference_inputs_v1(
+        block.tx_id,
+        outputs_field_index,
+        preimage,
+      ),
+    )
+  } else {
+    Pair(
+      BodyFieldOpening {
+        native_tx_compact_cbor: block.compact_cbor,
+        carriage: Inline { preimage },
+      },
+      [],
+    )
+  }
+  let next_data = if scan {
+    expected_credential(state, credential_a)
+  } else {
+    direct_verdict(subject)
+  }
+  let Pair(step_03_hash, step_05_hash) = if scan {
+    Pair(fixture.next_step_script_hash, scan_successor)
+  } else {
+    Pair(scan_successor, fixture.next_step_script_hash)
+  }
+  WalkedCase {
+    step_03_hash,
+    step_05_hash,
+    state,
+    opening,
+    coordinate_out_of_range: !scan,
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        next_data,
+      ),
+      reference_inputs,
+    },
+  }
+}
+
+fn run_walked(case: WalkedCase) -> Bool {
+  run_step_02_routed(
+    case.step_03_hash,
+    case.step_05_hash,
+    case.state,
+    case.opening,
+    case.coordinate_out_of_range,
+    None,
+    case.tx,
+  )
+}
+
+fn walked_limit_item_case() -> WalkedCase {
+  walked_limit_case(
+    grammar.walked_limit_preimage_v1(
+      encode_midgard_tx_output(protected_key_output(credential_a)),
+    ),
+    grammar.walked_item_limit,
+    True,
+    True,
+  )
+}
+
+fn walked_limit_count_case() -> WalkedCase {
+  walked_limit_case(
+    grammar.walked_count_limit_inline_preimage_v1(
+      encode_midgard_tx_output(protected_key_output(credential_a)),
+    ),
+    grammar.walked_count_limit,
+    False,
+    False,
+  )
+}
+
+test protected_output_step_02_walked_route_fixture_only_at_the_walked_limit() {
+  walked_limit_item_case().tx.outputs != []
+}
+
+/// The item read: the last output's credential, walked under tier 3.
+test protected_output_step_02_walked_route_at_the_walked_limit_cost() {
+  run_walked(walked_limit_item_case())
+}
+
+test protected_output_step_02_walked_count_fixture_only_at_the_walked_limit() {
+  walked_limit_count_case().tx.outputs != []
+}
+
+/// The count read: a forced coordinate one past the last output, walked
+/// under tier 1.
+test protected_output_step_02_walked_count_at_the_walked_limit_cost() {
+  run_walked(walked_limit_count_case())
 }

@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-core";
 import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
 
+import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
@@ -226,6 +227,15 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
             "step02",
             auxiliaryHashes,
           ),
+        fieldGrammar: journalFaultProofFieldGrammar(
+          config.fieldGrammar,
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
+        ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined

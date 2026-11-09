@@ -13,6 +13,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  type FaultProofFieldGrammarRoute,
+  routeFaultProofFieldGrammar,
+  WALKED_FIELD_GRAMMAR_ROUTE,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -63,6 +69,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   planned,
   carriageUtxos,
   certificateUtxo,
+  grammar = WALKED_FIELD_GRAMMAR_ROUTE,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -76,6 +83,8 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   readonly planned: ReturnType<typeof planFaultProofFieldOpening>;
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
+  /** How step 02 reads the field; walked by default. */
+  readonly grammar?: FaultProofFieldGrammarRoute;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
@@ -150,7 +159,14 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
+          },
         ],
       } as never,
       OutputReferenceStep02RedeemerSchema as never,
@@ -169,8 +185,10 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
+    extraReferenceInputs: [
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      ...grammar.referenceInputs,
+    ],
     preSubmitBoundary,
     awaitConfirmation,
   });
@@ -201,6 +219,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -220,6 +239,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /** The field grammar certificate, for a field past the walked limit. */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -272,6 +293,26 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "item",
+    itemCount: items.length,
+    source: {
+      sourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...carriageUtxos,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificatePolicyId,
+    fieldGrammar,
+    label: `${FAMILY} field 2`,
+  });
   return await submitOutputReferenceScriptDecodingStep02Raw({
     lucid,
     contracts,
@@ -282,6 +323,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     planned,
     carriageUtxos,
     certificateUtxo,
+    grammar,
     referenceScriptUtxo,
     preSubmitBoundary,
     awaitConfirmation,

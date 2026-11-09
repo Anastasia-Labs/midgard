@@ -72,6 +72,7 @@ export const ProtectedOutputSignerStep02RedeemerSchema =
       output_index: Data.Integer(),
       opening: FieldOpeningSchema,
       coordinate_out_of_range: Data.Boolean(),
+      grammar_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   );
 export const ProtectedOutputSignerStep03DatumSchema = faultProofStepDatumSchema(

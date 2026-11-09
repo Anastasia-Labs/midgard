@@ -187,23 +187,31 @@ export const certificatePolicyId = (blueprint: FaultProofBlueprint): string =>
   );
 
 /**
+ * The field grammar certificate policy id, derived the same way: the
+ * certificate takes the field-preimage certificate policy as its one
+ * parameter, and its mint and spend handlers share one script, so the script
+ * hash of the applied script is the policy id.
+ */
+export const grammarCertificatePolicyId = (
+  blueprint: FaultProofBlueprint,
+): string =>
+  spendingScriptHash(
+    applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        SDK.FAULT_PROOF_SHARED_TITLES.fieldGrammarCertificateMint,
+      ),
+      [certificatePolicyId(blueprint)],
+    ),
+  );
+
+/**
  * The bindings of the two certificate policies a stage that reads a field
- * takes, re-derived the same way: the field grammar certificate validator is
- * applied to the field-preimage certificate policy alone, and its mint and
- * spend are one script, so the script hash of the applied script is its
- * policy id.
+ * takes.
  */
 export const certificateParameterBindings = (
   blueprint: FaultProofBlueprint,
 ): Readonly<Record<string, string>> => ({
   field_preimage_certificate_policy_id: certificatePolicyId(blueprint),
-  field_grammar_certificate_policy_id: spendingScriptHash(
-    applyExpectedScriptParams(
-      compiledScript(
-        blueprint,
-        SDK.FIELD_GRAMMAR_CERTIFICATE_CONTRACT_TITLES.mint,
-      ),
-      [certificatePolicyId(blueprint)],
-    ),
-  ),
+  field_grammar_certificate_policy_id: grammarCertificatePolicyId(blueprint),
 });

@@ -64,6 +64,8 @@ export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:
           input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
       },
     },
   );
@@ -80,6 +82,8 @@ export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
       witnesses: deployment.references.witnesses,
       fieldPreimageCertificateMint:
         deployment.references.fieldPreimageCertificateMint,
+      fieldGrammarCertificateSpend:
+        input.referenceScripts.fieldGrammarCertificateSpend,
     },
   });
   return Object.freeze({
@@ -159,6 +163,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   replayer: () => TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

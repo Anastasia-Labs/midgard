@@ -14,6 +14,7 @@ import {
   buildComputationThreadValidator,
   buildFraudProofValidator,
 } from "../../protocol-contracts.js";
+import { buildFieldGrammarCertificateValidator } from "../field-grammar-certificate.build-field-grammar-certificate-validator.js";
 import {
   applyBlueprintParams,
   asAddressDataParam,
@@ -43,6 +44,14 @@ export type CertifiedFaultProofChainInputs = FaultProofChainInputs & {
   readonly fieldPreimageCertificatePolicyId: string;
 };
 
+/**
+ * A certified chain with a step that can also read a variable-width field's
+ * item or count through the field grammar certificate.
+ */
+export type FieldGrammarCertifiedChainInput = {
+  readonly fieldGrammarCertificatePolicyId: string;
+};
+
 /** A certified chain whose steps also read script-decode records. */
 export type ScriptDecodeFaultProofChainInputs =
   CertifiedFaultProofChainInputs & {
@@ -65,6 +74,15 @@ export type SharedFaultProofContracts = {
    * agree or be wrong.
    */
   readonly fieldPreimageCertificatePolicyId: string;
+  /**
+   * The field grammar certificate: one script for its mint and spend
+   * handlers, applied to the field-preimage certificate policy above, so its
+   * policy id is the spend credential and a pure function of the blueprint.
+   * Steps that read a variable-width field's item or count through a
+   * certificate take this policy id as a parameter.
+   */
+  readonly fieldGrammarCertificate: SpendingValidator & MintingValidator;
+  readonly fieldGrammarCertificatePolicyId: string;
   /**
    * The script-decode family: runs at its spending address, records minted
    * under its policy. The validator takes its class stakers' hashes and its
@@ -115,6 +133,16 @@ export const buildSharedFaultProofContracts = ({
         ),
     );
 
+    const fieldGrammarCertificate = yield* tryBuild(
+      "Failed to build field grammar certificate validator",
+      () =>
+        buildFieldGrammarCertificateValidator({
+          blueprint,
+          network,
+          fieldPreimageCertificatePolicyId: fieldPreimageCertificate.policyId,
+        }),
+    );
+
     const scriptDecode = yield* tryBuild(
       "Failed to build script-decode validator",
       () => buildScriptDecodeValidator(blueprint, network),
@@ -126,6 +154,8 @@ export const buildSharedFaultProofContracts = ({
       fraudProofTokenAddressData,
       fieldPreimageCertificate,
       fieldPreimageCertificatePolicyId: fieldPreimageCertificate.policyId,
+      fieldGrammarCertificate,
+      fieldGrammarCertificatePolicyId: fieldGrammarCertificate.policyId,
       scriptDecode,
       scriptDecodePolicyId: scriptDecode.policyId,
     };

@@ -7,6 +7,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -38,6 +42,7 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS = Object.freeze(
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
     fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+    fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
   } as const,
 );
 
@@ -48,6 +53,7 @@ export type ProtectedOutputSignerMissingReferenceScripts = Readonly<{
   step04: UTxO;
   step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -62,6 +68,8 @@ export type ManifestBoundProtectedOutputSignerMissingConfig = Readonly<{
   binding: ProtectedOutputSignerMissingDeploymentBinding;
   contracts: ProtectedOutputSignerMissingContracts;
   referenceScripts: ProtectedOutputSignerMissingReferenceScripts;
+  /** Step 02 reads the accused output through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
 }>;
 
 export type ProtectedOutputSignerMissingDeploymentBinding = Omit<
@@ -135,6 +143,11 @@ export const bindProtectedOutputSignerMissingReferenceScripts = ({
       binding,
       contractName: names.fieldPreimageCertificateMint,
       utxo: referenceScripts.fieldPreimageCertificateMint,
+    }),
+    fieldGrammarCertificateSpend: bindReference({
+      binding,
+      contractName: names.fieldGrammarCertificateSpend,
+      utxo: referenceScripts.fieldGrammarCertificateSpend,
     }),
     witnesses: Object.freeze({
       ...referenceScripts.witnesses,
@@ -222,6 +235,12 @@ export const createProtectedOutputSignerMissingBoundConfig = (
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    fieldGrammar: resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: referenceScripts.fieldGrammarCertificateSpend,
+      label: "protectedOutputSignerMissing",
+    }),
   });
 };
 

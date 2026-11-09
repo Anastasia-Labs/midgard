@@ -37,6 +37,7 @@ export const InputNoIdxStep04ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
   outputs_opening: FieldOpeningSchema,
+  grammar_ref_input_index: Data.Nullable(Data.Integer()),
 });
 
 export type InputNoIdxStep04Args = Data.Static<

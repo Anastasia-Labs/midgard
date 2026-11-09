@@ -42,6 +42,7 @@ import {
   collectTitles,
   compiledScript,
   filterBlueprint,
+  grammarCertificatePolicyId,
   h28,
   h28b,
   h28c,
@@ -52,6 +53,15 @@ import {
 } from "./fault-proof.publication-tx-overhead-bytes.js";
 
 const caseConfigNonce = { txHash: "ab".repeat(32), outputIndex: 0 };
+
+/** The fraud-proof token address, as the Data the steps take it as. */
+const fraudProofTokenAddressDataOf = async (spendingScriptAddress: string) =>
+  Data.from(
+    Data.to(
+      await Effect.runPromise(addressDataFromBech32(spendingScriptAddress)),
+      AddressData,
+    ),
+  );
 
 describe("fault-proof contract builder", () => {
   it("builds every implemented fault-proof chain from the Aiken blueprint", async () => {
@@ -285,13 +295,8 @@ describe("fault-proof contract builder", () => {
       ).size,
     ).toBe(2);
 
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
+    const fraudProofTokenAddressData = await fraudProofTokenAddressDataOf(
+      contracts.fraudProof.spendingScriptAddress,
     );
     const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, INVALID_RANGE_FAULT_PROOF_TITLES.step02),
@@ -348,13 +353,8 @@ describe("fault-proof contract builder", () => {
         .size,
     ).toBe(2);
 
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
+    const fraudProofTokenAddressData = await fraudProofTokenAddressDataOf(
+      contracts.fraudProof.spendingScriptAddress,
     );
     const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step02),
@@ -426,13 +426,8 @@ describe("fault-proof contract builder", () => {
       ).size,
     ).toBe(2);
 
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
+    const fraudProofTokenAddressData = await fraudProofTokenAddressDataOf(
+      contracts.fraudProof.spendingScriptAddress,
     );
     // Note the parameter order differs from zero-input/invalid-range: this
     // chain's final step takes the computation-thread policy first, matching
@@ -517,13 +512,8 @@ describe("fault-proof contract builder", () => {
       ).size,
     ).toBe(4);
 
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
+    const fraudProofTokenAddressData = await fraudProofTokenAddressDataOf(
+      contracts.fraudProof.spendingScriptAddress,
     );
     // Same applied-parameter order as input-no-idx, taken from the blueprint.
     const expectedStep04Cbor = applyExpectedScriptParams(
@@ -536,6 +526,7 @@ describe("fault-proof contract builder", () => {
         contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
         certificatePolicyId(blueprint),
+        grammarCertificatePolicyId(blueprint),
       ],
     );
     const expectedStep03Cbor = applyExpectedScriptParams(
@@ -636,13 +627,8 @@ describe("fault-proof contract builder", () => {
     );
     expect(contracts.transitionTrace.steps).toHaveLength(9);
 
-    const fraudProofTokenAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
+    const fraudProofTokenAddressData = await fraudProofTokenAddressDataOf(
+      contracts.fraudProof.spendingScriptAddress,
     );
     const historyRetentionData = await Promise.all(
       [
@@ -756,7 +742,6 @@ describe("fault-proof contract builder", () => {
       // allowlist. Only this family's titles (plus the shared ones) are
       // admitted, so the leg still shows the builder needs no other family.
       ...collectTitles(FAULT_PROOF_SHARED_TITLES),
-      ...collectTitles(SDK.FIELD_GRAMMAR_CERTIFICATE_CONTRACT_TITLES),
       ...collectTitles(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES),
       ...collectTitles(CEK_CORE_STAGE_TITLES),
       ...collectTitles(CEK_CONTEXT_STAGE_TITLES),

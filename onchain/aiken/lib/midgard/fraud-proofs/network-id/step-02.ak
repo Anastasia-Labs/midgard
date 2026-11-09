@@ -25,6 +25,11 @@ pub type Args {
   /// Present exactly for `OutputNetwork`; opens native-V1 field 2 through the
   /// complete §8.8 reference-input set supplied by the proof transaction.
   outputs_opening: Option<FieldOpeningV1>,
+  /// `OutputNetwork` only: `None` reads the output by walking field 2;
+  /// `Some(i)` reads it through the field grammar certificate at reference
+  /// input `i`, so the step's cost no longer grows with the field's item
+  /// count. Every other claim opens no field and carries `None`.
+  grammar_ref_input_index: Option<Int>,
 }
 
 pub type Datum =

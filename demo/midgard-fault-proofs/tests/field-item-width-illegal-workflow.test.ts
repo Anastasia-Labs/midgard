@@ -62,6 +62,7 @@ const references = (): FieldItemWidthIllegalReferenceScripts => ({
   step02: utxo("2", 1),
   step03: utxo("3", 2),
   fieldPreimageCertificateMint: utxo("4", 3),
+  fieldGrammarCertificateSpend: utxo("8", 7),
   witnesses: {
     computationThreadMint: utxo("5", 4),
     fraudProofMint: utxo("6", 5),
@@ -78,6 +79,7 @@ const bindingFor = (
     [names.step02, value.step02],
     [names.step03, value.step03],
     [names.fieldPreimageCertificateMint, value.fieldPreimageCertificateMint],
+    [names.fieldGrammarCertificateSpend, value.fieldGrammarCertificateSpend],
     [names.computationThreadMint, value.witnesses.computationThreadMint],
     [names.fraudProofMint, value.witnesses.fraudProofMint],
     [names.phasMembershipWithdraw, value.witnesses.phasMembershipWithdraw],
@@ -118,6 +120,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       "fraudProofMint",
       "phasMembershipWithdraw",
       "fieldPreimageCertificateMint",
+      "fieldGrammarCertificateSpend",
     ]);
     const supplied = references();
     expect(

@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
@@ -206,6 +207,12 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     }
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
+      const certificateBoundary = centralJournal?.auxiliaryBoundary(
+        "certificate",
+        familyIdentity,
+        "step02",
+        auxiliaryHashes,
+      );
       const result = await submitOutputReferenceScriptDecodingStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -233,14 +240,11 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
             "step02",
             auxiliaryHashes,
           ),
-        certificatePreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
+        certificatePreSubmitBoundary: preSubmitBoundary ?? certificateBoundary,
+        fieldGrammar: journalFaultProofFieldGrammar(
+          config.fieldGrammar,
+          certificateBoundary,
+        ),
         referenceScriptUtxo: config.referenceScripts.step02,
         preSubmitBoundary:
           preSubmitBoundary ??
@@ -287,6 +291,12 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     }
     if (action === "submitReferenceBind") {
       const auxiliaryHashes: string[] = [];
+      const certificateBoundary = centralJournal?.auxiliaryBoundary(
+        "certificate",
+        familyIdentity,
+        "referenceBind",
+        auxiliaryHashes,
+      );
       const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
         lucid: config.lucid,
         deployment: config.scriptDecode,
@@ -326,14 +336,11 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
             "referenceBind",
             auxiliaryHashes,
           ),
-        certificatePreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "referenceBind",
-            auxiliaryHashes,
-          ),
+        certificatePreSubmitBoundary: preSubmitBoundary ?? certificateBoundary,
+        fieldGrammar: journalFaultProofFieldGrammar(
+          config.fieldGrammar,
+          certificateBoundary,
+        ),
         referenceScriptUtxo: config.referenceScripts.step04,
         preSubmitBoundary:
           preSubmitBoundary ??

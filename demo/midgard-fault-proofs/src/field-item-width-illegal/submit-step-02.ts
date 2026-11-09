@@ -14,6 +14,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+  WALKED_FIELD_GRAMMAR_ROUTE,
+} from "../field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -62,6 +67,7 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
   onCarriageReady,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -82,6 +88,11 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
+  /**
+   * The field grammar certificate, for an outputs (2) or mint (5) field past
+   * the walked limit or under tier 3; every other field is walked.
+   */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -181,6 +192,31 @@ export const submitFieldItemWidthIllegalStep02 = async ({
               preSubmitBoundary: certificatePreSubmitBoundary,
             })
           : undefined));
+  const grammar =
+    planned === null || (planned.fieldIndex !== 2 && planned.fieldIndex !== 5)
+      ? WALKED_FIELD_GRAMMAR_ROUTE
+      : await routeFaultProofFieldGrammar({
+          lucid,
+          signer,
+          plan: planned.plan,
+          // The step reads the coordinate's item, whose domain is the
+          // field's count.
+          read: "itemAndCount",
+          itemCount: planned.itemCount,
+          source: {
+            sourceKind: planned.sourceKind,
+            compactCbor: nativeTxCompactCbor,
+            witnessSetCompactCbor,
+          },
+          carriageUtxos: [
+            ...carriageUtxos,
+            ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+          ],
+          fieldPreimageCertificatePolicyId:
+            contracts.fieldPreimageCertificatePolicyId,
+          fieldGrammar,
+          label: "field-item-width-illegal field opening",
+        });
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
@@ -225,7 +261,14 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
+          },
         ],
       } as never,
       FieldItemWidthStep02RedeemerSchema as never,
@@ -243,8 +286,10 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
+    extraReferenceInputs: [
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      ...grammar.referenceInputs,
+    ],
     preSubmitBoundary,
     awaitConfirmation,
   });

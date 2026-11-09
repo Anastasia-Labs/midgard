@@ -13,6 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "./field-grammar-certificate.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -63,11 +67,13 @@ export const submitReferenceInputNoIdxStep04 = async ({
   threadOutRef,
   outputsPreimage,
   nativeTxCompactCbor,
+  witnessSetCompactCbor = "",
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
   publicationPreSubmitBoundary,
+  fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -81,6 +87,12 @@ export const submitReferenceInputNoIdxStep04 = async ({
   readonly outputsPreimage: SubmitReferenceInputNoIdxOutputsPreimage;
   /** The **producing** transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /**
+   * The producing transaction's compact witness set, hashing to its compact
+   * `witness_set_hash`. The field grammar certificate authenticates the field
+   * against the whole compact transaction, so a certified count needs it.
+   */
+  readonly witnessSetCompactCbor?: string;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-04 reference script. */
@@ -88,6 +100,12 @@ export const submitReferenceInputNoIdxStep04 = async ({
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /**
+   * The field grammar certificate. The step counts field 2 through it past the
+   * walked count limit or under tier 3, since the certified count also serves a
+   * chunked field.
+   */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -150,6 +168,26 @@ export const submitReferenceInputNoIdxStep04 = async ({
       label: "Reference-input-no-idx step 04 outputs field",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "count",
+    itemCount: planned.itemCount,
+    source: {
+      sourceKind: 0n,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...published,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificate.policyId,
+    fieldGrammar,
+    label: "Reference-input-no-idx step 04 outputs",
+  });
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -170,6 +208,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   const referenceInputs = [
     ...published,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...grammar.referenceInputs,
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
@@ -229,6 +268,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
             certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
             label: "Reference-input-no-idx step 04 outputs",
           }),
+        grammarRefInputIndex: grammar.grammarRefInputIndex,
         onLayout: (layout) => {
           spendLayout = layout;
         },

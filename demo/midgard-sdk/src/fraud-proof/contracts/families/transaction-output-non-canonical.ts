@@ -6,7 +6,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type {
+  CertifiedFaultProofChainInputs,
+  FieldGrammarCertifiedChainInput,
+} from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -52,7 +55,9 @@ export const buildTransactionOutputNonCanonicalChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  fieldGrammarCertificatePolicyId,
+}: CertifiedFaultProofChainInputs &
+  FieldGrammarCertifiedChainInput): Effect.Effect<
   TransactionOutputNonCanonicalFaultProofContracts["transactionOutputNonCanonical"],
   Error
 > =>
@@ -91,6 +96,7 @@ export const buildTransactionOutputNonCanonicalChain = ({
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        fieldGrammarCertificatePolicyId,
       ],
       "Failed to build transaction-output-non-canonical step 02",
     );

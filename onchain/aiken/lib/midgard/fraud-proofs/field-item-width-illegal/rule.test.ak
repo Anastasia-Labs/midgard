@@ -333,8 +333,13 @@ test fiwi_item_abi_preserves_out_of_domain_observation() {
 
 test fiwi_step02_abi_preserves_absent_opening() {
   cbor.serialise(
-    step_02.Args { input_index: 0, output_index: 1, opening: None },
-  ) == #"d8799f0001d87a80ff"
+    step_02.Args {
+      input_index: 0,
+      output_index: 1,
+      opening: None,
+      grammar_ref_input_index: None,
+    },
+  ) == #"d8799f0001d87a80d87a80ff"
 }
 
 test fiwi_step02_abi_preserves_present_opening() {
@@ -348,6 +353,18 @@ test fiwi_step02_abi_preserves_present_opening() {
           carriage: Inline { preimage: #"80" },
         },
       ),
+      grammar_ref_input_index: None,
     },
-  ) == #"d8799f0001d8799fd8799f4101d8799f4180ffffffff"
+  ) == #"d8799f0001d8799fd8799f4101d8799f4180ffffffd87a80ff"
+}
+
+test fiwi_step02_abi_preserves_a_grammar_reference_input_index() {
+  cbor.serialise(
+    step_02.Args {
+      input_index: 0,
+      output_index: 1,
+      opening: None,
+      grammar_ref_input_index: Some(3),
+    },
+  ) == #"d8799f0001d87a80d8799f03ffff"
 }

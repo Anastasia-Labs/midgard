@@ -99,6 +99,8 @@ export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:
           input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
       },
     },
   );
@@ -150,6 +152,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
   auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
   // The record is made before Init, so no thread deadline runs meanwhile;
   // past step 04 the proof no longer reads it.

@@ -11,6 +11,10 @@ pub type Args {
   /// Reference input holding the script's decode record when the item is a
   /// Plutus script, or -1.
   record_reference_input_index: Int,
+  /// `None` reads the output by walking the field; `Some(i)` reads it through
+  /// the field grammar certificate at reference input `i`, so the step's cost
+  /// no longer grows with the field's item count.
+  grammar_ref_input_index: Option<Int>,
 }
 
 pub type Datum =

@@ -6,6 +6,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type FaultProofFieldGrammarDeployment,
+  resolveFaultProofFieldGrammarDeployment,
+} from "../field-grammar-certificate.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { PLUTUS_SCRIPT_REFUSED_RESULT_BASE } from "../script-decode/item-record.js";
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
@@ -63,6 +67,7 @@ export const WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS = Object.freeze({
   fraudProofMint: "fraudProofMint",
   phasMembershipWithdraw: "phasMembershipWithdraw",
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+  fieldGrammarCertificateSpend: "fieldGrammarCertificateSpend",
 } as const);
 
 export type WitnessScriptDecodingReferenceScripts = Readonly<{
@@ -71,6 +76,7 @@ export type WitnessScriptDecodingReferenceScripts = Readonly<{
   step03: UTxO;
   step04: UTxO;
   fieldPreimageCertificateMint: UTxO;
+  fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -85,6 +91,8 @@ export type ManifestBoundWitnessScriptDecodingConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
   contracts: WitnessScriptDecodingContracts;
   referenceScripts: WitnessScriptDecodingReferenceScripts;
+  /** Step 02 reads the accused witness through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
   /**
    * The script-decode deployment step 02 finds a Plutus item's record in;
    * without it a Plutus item cannot be proven.
@@ -159,6 +167,12 @@ export const witnessScriptDecodingConfigFromBinding = (input: {
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    fieldGrammar: resolveFaultProofFieldGrammarDeployment({
+      binding,
+      fieldPreimageCertificatePolicyId: certificate.policyId,
+      referenceScriptUtxo: referenceScripts.fieldGrammarCertificateSpend,
+      label: "witnessScriptDecoding",
+    }),
     ...(input.scriptDecode === undefined
       ? {}
       : { scriptDecode: input.scriptDecode }),

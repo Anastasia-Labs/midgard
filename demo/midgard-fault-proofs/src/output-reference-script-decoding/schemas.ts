@@ -94,6 +94,7 @@ export const OutputReferenceStep02RedeemerSchema = faultProofStepRedeemerSchema(
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     opening: FieldOpeningSchema,
+    grammar_ref_input_index: Data.Nullable(Data.Integer()),
   }),
 );
 export const OutputReferenceStep03DatumSchema = faultProofStepDatumSchema(
@@ -116,6 +117,7 @@ export const OutputReferenceStep04RedeemerSchema = faultProofStepRedeemerSchema(
     opening: FieldOpeningSchema,
     /** Reference input holding a Plutus script's decode record, or -1. */
     record_reference_input_index: Data.Integer(),
+    grammar_ref_input_index: Data.Nullable(Data.Integer()),
   }),
 );
 export const OutputReferenceStep05DatumSchema = faultProofStepDatumSchema(

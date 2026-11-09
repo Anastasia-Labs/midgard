@@ -1,5 +1,6 @@
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import {
   type FaultProofFieldOpeningPlan,
   resolveFaultProofFieldCarriagePublications,
@@ -53,6 +54,8 @@ type BoundConfig = Readonly<{
   headerHash: string;
   referenceScripts: ReferenceInputNoIdxWorkflowReferenceScripts;
   certificate: FieldPreimageCertificateBinding;
+  /** Step 04 counts the producer's outputs through it past the walked limit. */
+  fieldGrammar: FaultProofFieldGrammarDeployment;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
@@ -302,6 +305,7 @@ export const createTransactionPort = (
                 nativeTxCompactCbor:
                   admitted.artifact.producingTx.nativeTxCompactCbor,
                 witnessReferenceScripts: config.referenceScripts.witnesses,
+                fieldGrammar: config.fieldGrammar,
               });
             }
           },

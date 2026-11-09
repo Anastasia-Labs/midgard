@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
@@ -210,6 +211,15 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
             "step02",
             auxiliaryHashes,
           ),
+        fieldGrammar: journalFaultProofFieldGrammar(
+          config.fieldGrammar,
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
+        ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined

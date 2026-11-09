@@ -44,6 +44,7 @@ const references = (): TransactionOutputNonCanonicalReferenceScripts => ({
   step03Datum: utxo("a", 8),
   step04: utxo("4", 3),
   fieldPreimageCertificateMint: utxo("5", 4),
+  fieldGrammarCertificateSpend: utxo("b", 9),
   witnesses: {
     computationThreadMint: utxo("6", 5),
     fraudProofMint: utxo("7", 6),
@@ -95,6 +96,10 @@ const suppliedByName = (
     [
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.fieldPreimageCertificateMint,
       supplied.fieldPreimageCertificateMint,
+    ],
+    [
+      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.fieldGrammarCertificateSpend,
+      supplied.fieldGrammarCertificateSpend,
     ],
   ]);
 

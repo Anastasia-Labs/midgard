@@ -62,6 +62,7 @@ export const buildInputNoIdxChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
+  fieldGrammarCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -70,6 +71,7 @@ export const buildInputNoIdxChain = ({
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly fieldGrammarCertificatePolicyId: string;
 }): Effect.Effect<
   InputNoIdxFaultProofContracts["nonExistentInputNoIndex"],
   Error
@@ -86,6 +88,7 @@ export const buildInputNoIdxChain = ({
             fraudProof.policyId,
             fraudProofTokenAddressData,
             fieldPreimageCertificatePolicyId,
+            fieldGrammarCertificatePolicyId,
           ],
         ),
       ),

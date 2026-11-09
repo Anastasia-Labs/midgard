@@ -1,4 +1,5 @@
 import {
+  buildFieldGrammarCertificateValidator,
   buildTransactionOutputNonCanonicalChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
@@ -84,15 +85,21 @@ export const applyTransactionOutputNonCanonicalScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): TransactionOutputNonCanonicalContracts["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildTransactionOutputNonCanonicalChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      fieldGrammarCertificatePolicyId: buildFieldGrammarCertificateValidator({
+        blueprint: parsedBlueprint,
+        network,
+        fieldPreimageCertificatePolicyId,
+      }).policyId,
     }),
   );
   const titles = Object.values(
