@@ -384,33 +384,53 @@ export const certifyFaultProofFieldGrammar = async ({
   return { certificateUtxo, txHashes, batches };
 };
 
+/** The certificate datum's `owner`, or undefined when it has none. */
+const certificateOwner = (utxo: UTxO): string | undefined => {
+  if (utxo.datum == null) return undefined;
+  try {
+    const datum = Data.from(utxo.datum, FieldGrammarCertificate);
+    return "Complete" in datum ? datum.Complete.owner : datum.InProgress.owner;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
- * A live `Complete` certificate for this field, anyone's; undefined when
- * there is none. Two such certificates differ at most in `owner`.
+ * A live `Complete` certificate for this field whose datum `owner` is
+ * `ownerKeyHash`; undefined when there is none. The step relies only on a
+ * certificate the prover controls, so another key's certificate never serves.
  */
 export const findCompleteFaultProofFieldGrammarCertificate = async ({
   lucid,
   network,
   certificatePolicyId,
   plan,
+  ownerKeyHash,
 }: {
   readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly network: Network;
   readonly certificatePolicyId: string;
   readonly plan: MidgardFieldCarriagePlan;
+  /** The prover's payment key hash. */
+  readonly ownerKeyHash: string;
 }): Promise<UTxO | undefined> => {
   const identity = fieldIdentity(certificatePolicyId, plan);
   return (
     await lucid.utxosAt(
       fieldGrammarCertificateAddress({ network, certificatePolicyId }),
     )
-  ).find((utxo) => isCompleteFieldGrammarCertificate(utxo, identity));
+  ).find(
+    (utxo) =>
+      isCompleteFieldGrammarCertificate(utxo, identity) &&
+      certificateOwner(utxo) === ownerKeyHash,
+  );
 };
 
 /**
- * The `Complete` certificate a step references for this field: a live one
- * when there is one, and otherwise one this call certifies (resuming our own
- * `InProgress` certificate when one is live).
+ * The `Complete` certificate a step references for this field: the prover's
+ * own live one when there is one, and otherwise one this call certifies
+ * (resuming the prover's own `InProgress` certificate when one is live). The
+ * step relies only on a certificate the prover controls.
  */
 export const reuseOrCertifyFaultProofFieldGrammar = async (
   input: Parameters<typeof certifyFaultProofFieldGrammar>[0],
@@ -420,6 +440,7 @@ export const reuseOrCertifyFaultProofFieldGrammar = async (
     network: input.network,
     certificatePolicyId: input.certificateValidator.spendingScriptHash,
     plan: input.plan,
+    ownerKeyHash: input.signer.paymentKeyHash,
   });
   if (live !== undefined) {
     return { certificateUtxo: live, txHashes: [], batches: [] };

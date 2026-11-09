@@ -631,6 +631,42 @@ test fiwi_step_02_certified_route_refuses_an_in_progress_certificate() fail {
   )
 }
 
+/// A fixed-stride field (4, the required signers) has no certified route: its
+/// item's legality is the item's shape and order, which the certified width
+/// read does not decide. Two equal signers, each of a legal width, read
+/// through a `Complete` certificate of the field, are refused.
+test fiwi_step_02_certified_route_refuses_a_fixed_stride_field() fail {
+  let signer = fixture.repeated_bytes_v1(#"c3", 28)
+  let preimage = grammar.field_preimage_with_item_v1(signer, 2, 1, signer)
+  run_certified_step_02(
+    step_02_over(
+      4,
+      preimage,
+      1,
+      rule.ItemLegality { item_is_legal: True },
+      fn(block) {
+        Route {
+          opening: BodyFieldOpening {
+            native_tx_compact_cbor: block.compact_cbor,
+            carriage: Inline { preimage },
+          },
+          grammar_ref_input_index: Some(0),
+          reference_inputs: [
+            grammar.field_grammar_certificate_input_v1(
+              grammar.complete_field_grammar_certificate_v1(
+                block.tx_id,
+                4,
+                preimage,
+                2,
+              ),
+            ),
+          ],
+        }
+      },
+    ),
+  )
+}
+
 // ### The walked route at its limit
 //
 // The walk decides the coordinate's domain by counting the field, which it

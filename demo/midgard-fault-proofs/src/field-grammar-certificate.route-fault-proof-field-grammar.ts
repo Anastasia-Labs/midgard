@@ -117,9 +117,10 @@ export const certifiedFieldGrammarRoute = (
 
 /**
  * Applies the route rule to a step's field and, when it says certified,
- * reuses a live `Complete` certificate for the field or certifies it
- * (`reuseOrCertifyFaultProofFieldGrammar`). Certificate creation is the
- * prover's own transaction, funded from the prover wallet.
+ * reuses the prover's own live `Complete` certificate for the field or
+ * certifies it (`reuseOrCertifyFaultProofFieldGrammar`): the step relies only
+ * on a certificate the prover controls. Certificate creation is the prover's
+ * own transaction, funded from the prover wallet.
  *
  * A caller that deploys no field grammar certificate (`fieldGrammar`
  * absent) keeps the walked route at every count, as every step read its

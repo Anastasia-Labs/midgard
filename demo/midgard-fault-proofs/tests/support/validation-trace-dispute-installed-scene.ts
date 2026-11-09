@@ -9,6 +9,7 @@ import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
+import { FIELD_GRAMMAR_CERTIFICATE_MINT } from "../../src/field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import type {
   ValidationTraceFieldGrammarCertificate,
   ValidationTraceFieldPreimageCertificate,
@@ -177,6 +178,9 @@ export const sceneRoster = ({
     [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.reference],
     [FIELD_PREIMAGE_CERTIFICATE_MINT, certificate.reference],
     [FIELD_GRAMMAR_CERTIFICATE_SPEND, grammar.reference],
+    // The certificate's mint and spend are one script: the mint member names
+    // the same published reference.
+    [FIELD_GRAMMAR_CERTIFICATE_MINT, grammar.reference],
     ...SDK.SCRIPT_DECODE_STAKER_CLASS_NAMES.map((name): [string, UTxO] => [
       SDK.SCRIPT_DECODE_STAKER_MEMBERS[name],
       scriptDecode.stakerReferences[name],

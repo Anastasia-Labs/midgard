@@ -1,4 +1,3 @@
-import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type Network } from "@lucid-evolution/lucid";
 
 import type { MintingValidator, SpendingValidator } from "../common.js";
@@ -7,10 +6,12 @@ import {
   type FaultProofBlueprint,
   makeAuthenticatedValidator,
 } from "./contracts/blueprint.js";
+import { FAULT_PROOF_SHARED_TITLES } from "./contracts/titles.js";
 
+/** The certificate's titles, as the shared title registry names them. */
 export const FIELD_GRAMMAR_CERTIFICATE_CONTRACT_TITLES = Object.freeze({
-  mint: deployedTitle("fieldGrammarCertificateMint"),
-  spend: deployedTitle("fieldGrammarCertificateSpend"),
+  mint: FAULT_PROOF_SHARED_TITLES.fieldGrammarCertificateMint,
+  spend: FAULT_PROOF_SHARED_TITLES.fieldGrammarCertificateSpend,
 });
 
 /**

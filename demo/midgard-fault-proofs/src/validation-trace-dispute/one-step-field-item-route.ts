@@ -231,9 +231,10 @@ export const fieldItemRouteReferences = (
 ): readonly UTxO[] =>
   reads?.certificate === undefined ? [] : [reads.certificate];
 
-/** The `Complete` certificate of the disputed transaction's field
- * `fieldIndex` under `deployment`'s certificate policy; none while there is
- * none. */
+/** Our `Complete` certificate (datum `owner` is `owner`) of the disputed
+ * transaction's field `fieldIndex` under `deployment`'s certificate policy;
+ * none while there is none. The step relies only on a certificate the
+ * prover controls. */
 export const findValidationTraceFieldGrammarCertificate = async ({
   lucid,
   deployment,
@@ -257,6 +258,7 @@ export const findValidationTraceFieldGrammarCertificate = async ({
     network: deployment.network,
     certificatePolicyId: certificate.validator.spendingScriptHash,
     plan: validationTraceFieldGrammarPlan(material, fieldIndex, owner),
+    ownerKeyHash: owner,
   });
 };
 

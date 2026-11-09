@@ -184,7 +184,10 @@ pub type FieldViewV1 {
   /// Tiers 1–2: the whole preimage is present and hash-checked.
   Whole { bytes: ByteArray, count: Int, stride: Int }
   /// Tier 3: chunks are present but unhashed until touched; `chunk_digests`
-  /// and the item count come from the mint-verified certificate.
+  /// come from the mint-verified certificate. A fixed-stride field's count is
+  /// derived from the certificate's `total_length`; a variable-width field's
+  /// is the §5.1 header read out of chunk 0, provisional until the grammar
+  /// walk certifies it (`field_item_count` refuses it).
   Chunked {
     chunks: List<ByteArray>,
     chunk_digests: List<ByteArray>,

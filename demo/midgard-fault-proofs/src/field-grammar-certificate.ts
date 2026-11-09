@@ -7,7 +7,8 @@
  * `@al-ft/midgard-sdk`'s `fraud-proof/field-grammar-certificate.ts` owns the
  * wire shapes and the unsigned open/advance/reclaim programs. This module owns
  * the transactions: sizing each batch to the per-transaction budget, opening
- * and advancing a certificate to `Complete`, and reusing a live one.
+ * and advancing a certificate to `Complete`, and reusing the prover's own
+ * live one.
  */
 
 import "@al-ft/midgard-core";

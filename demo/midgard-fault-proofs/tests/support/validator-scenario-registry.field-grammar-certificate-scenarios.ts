@@ -16,7 +16,7 @@ export const FIELD_GRAMMAR_CERTIFICATE_SCENARIOS: Readonly<
     passing: [
       {
         file: FIELD_GRAMMAR_CERTIFICATE_EMULATOR,
-        test: "opens, advances and completes a certificate, then reuses it",
+        test: "opens, advances and completes a certificate, reuses its own, and builds its own past another key's",
       },
       {
         file: FIELD_GRAMMAR_CERTIFICATE_EMULATOR,

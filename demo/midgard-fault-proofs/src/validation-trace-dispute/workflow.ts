@@ -3,13 +3,9 @@
  * deployment the host loaded, and the run over retained DA that replays the
  * challenged block's scripts. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
-import {
-  type LucidEvolution,
-  type UTxO,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
 import {
   parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
@@ -160,32 +156,23 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       );
     return bound(contractName, utxo);
   };
-  // The field grammar certificate validator the stages are applied with,
-  // from the blueprint over the bound field-preimage certificate policy,
-  // and its published reference script, which must run exactly it.
+  // The field grammar certificate the stages are applied with, resolved at
+  // startup by the families' shared resolver: a deployment without both
+  // certificate members, or whose published script differs from the
+  // blueprint's, fails here.
   const fieldGrammarCertificateOf = (
     fieldPreimageCertificatePolicyId: string,
   ) => {
-    const validator = SDK.buildFieldGrammarCertificateValidator({
-      blueprint: SDK.parseFaultProofBlueprint(binding.blueprint),
-      network: binding.network,
+    const resolved = resolveFaultProofFieldGrammarDeployment({
+      binding,
       fieldPreimageCertificatePolicyId,
+      referenceScriptUtxo:
+        config.referenceScripts.oneStep[FIELD_GRAMMAR_CERTIFICATE_SPEND],
+      label: "validation-trace",
     });
-    const reference = member(FIELD_GRAMMAR_CERTIFICATE_SPEND);
-    if (
-      reference.scriptRef == null ||
-      validatorToScriptHash(reference.scriptRef) !==
-        validator.spendingScriptHash
-    )
-      throw new Error(
-        "validation-trace field grammar certificate reference script differs from the blueprint's",
-      );
     return Object.freeze({
-      validator: {
-        spendingScript: validator.spendingScript,
-        spendingScriptHash: validator.spendingScriptHash,
-      },
-      reference,
+      validator: resolved.certificateValidator,
+      reference: resolved.certificateReferenceScriptUtxo,
     });
   };
   const deployment: ValidationTraceDisputeDeployment = Object.freeze({

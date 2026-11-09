@@ -29,7 +29,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  certifyFaultProofFieldGrammar,
   FIELD_GRAMMAR_NARROW_BATCH,
   fieldGrammarCertificateAddress,
   fieldGrammarOfCarriagePlan,
@@ -223,7 +222,7 @@ const ownCertificateFixture = async (salt: number) => {
 };
 
 describe("field grammar certificate builder against the emulator", () => {
-  it("opens, advances and completes a certificate, then reuses it", async () => {
+  it("opens, advances and completes a certificate, reuses its own, and builds its own past another key's", async () => {
     const prover = proverAccount(5_000_000_000n);
     const consumer = proverAccount(1_000_000_000n);
     const emulator = new Emulator(
@@ -321,7 +320,8 @@ describe("field grammar certificate builder against the emulator", () => {
       ],
     ).toBe(1n);
 
-    // Reuse: anyone's live Complete certificate serves, and nothing is sent.
+    // Reuse: the prover's own live Complete certificate serves, and nothing
+    // is sent.
     const submit = emulator.submitTx.bind(emulator);
     let submissions = 0;
     emulator.submitTx = async (transaction) => {
@@ -329,10 +329,7 @@ describe("field grammar certificate builder against the emulator", () => {
       return submit(transaction);
     };
     try {
-      const reused = await reuseOrCertifyFaultProofFieldGrammar({
-        ...input,
-        signer: consumerSigner,
-      });
+      const reused = await reuseOrCertifyFaultProofFieldGrammar(input);
       expect(reused.txHashes).toEqual([]);
       expect(reused.certificateUtxo.txHash).toBe(
         certified.result.certificateUtxo.txHash,
@@ -344,6 +341,27 @@ describe("field grammar certificate builder against the emulator", () => {
       emulator.submitTx = submit;
     }
     expect(submissions).toBe(0);
+
+    // Another key's Complete certificate does not serve: the step relies only
+    // on a certificate the prover controls, so the consumer builds its own.
+    const own = await reuseOrCertifyFaultProofFieldGrammar({
+      ...input,
+      signer: consumerSigner,
+    });
+    expect(own.batches).toEqual([384, 224, 92]);
+    expect(own.certificateUtxo.txHash).not.toBe(
+      certified.result.certificateUtxo.txHash,
+    );
+    expect(own.certificateUtxo.datum).toBe(
+      fieldGrammarCertificateDatumCbor(
+        deriveMidgardFieldGrammarCertificate({
+          owner: Buffer.from(consumerSigner.paymentKeyHash, "hex"),
+          txId,
+          grammar,
+          next: grammar.itemCount,
+        }),
+      ),
+    );
 
     // The owner reclaims the deposit and the token is burnt.
     signer.selectWallet(lucid);
@@ -359,7 +377,9 @@ describe("field grammar certificate builder against the emulator", () => {
       await reclaim.sign.withWallet().complete()
     ).submit();
     await lucid.awaitTx(reclaimHash);
-    expect(await lucid.utxosAt(certificateAddress)).toEqual([]);
+    expect(
+      (await lucid.utxosAt(certificateAddress)).map(({ txHash }) => txHash),
+    ).toEqual([own.certificateUtxo.txHash]);
   }, 600_000);
 
   it("resumes its own InProgress certificate from the item it reached", async () => {
@@ -379,7 +399,7 @@ describe("field grammar certificate builder against the emulator", () => {
     // An interrupted run: only a 100-item open landed.
     await open(100, 100);
 
-    const resumed = await certifyFaultProofFieldGrammar({
+    const resumed = await reuseOrCertifyFaultProofFieldGrammar({
       lucid,
       network,
       signer,

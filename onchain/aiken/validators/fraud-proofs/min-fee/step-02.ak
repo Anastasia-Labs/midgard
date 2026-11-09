@@ -129,6 +129,16 @@ validator main(
         //    field's item count. The witness half is bound to the
         //    thread-carried `bad_tx.witness_set_hash` before any witness
         //    field is read (§3's transaction id commits the body alone).
+        //
+        //    The acceptance direction reads the same lengths and nothing
+        //    more: no grammar walk and no aggregate re-check over the
+        //    fields. `ledger_tx_size_v1` reads the nine lengths and the
+        //    compact body's scalars only; `authenticated_committed_preimage`
+        //    returns the committed preimage or fails on its §4 commitment,
+        //    so the commitment fixes each length; and each field's grammar
+        //    is the subject of its own families (`committed-field-shape`,
+        //    `canonical-decodability`, `field-item-width-illegal`), so this
+        //    step does not repeat it.
         expect
             [
               spend_inputs_carriage, reference_inputs_carriage, outputs_carriage,

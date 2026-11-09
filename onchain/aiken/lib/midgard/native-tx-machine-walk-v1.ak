@@ -299,6 +299,8 @@ pub fn certify_field_grammar_batch(
   }
 }
 
+/// Walks up to `stop`, which `certify_field_grammar_batch` caps at
+/// `min(next_item_index + budget, declared_count)`.
 fn certify_field_grammar_span(
   view: FieldViewV1,
   next_item_index: Int,
