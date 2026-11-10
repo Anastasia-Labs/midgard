@@ -76,15 +76,18 @@ describe("HTTP submission rate buckets", () => {
           accepted += node.submit(client(index)).accepted;
       return accepted;
     };
-    const slash56 = (index: number) =>
-      `2001:db8:5:${(index << 8).toString(16)}::1`;
+    const slash56In = (slash48: number) => (index: number) =>
+      `2001:db8:${slash48}:${(index << 8).toString(16)}::1`;
     // 256 /56s with 100 each would pass 2,560; the /48 bucket holds 1,000.
-    expect(spread(slash56)).toBe(1_000);
+    expect(spread(slash56In(5))).toBe(1_000);
     expect(spread((index) => `203.0.113.${index}`)).toBe(1_000);
-    // Another /48 keeps its own quota.
-    expect(node.submit("2001:db8:6::1", 100).accepted).toBe(100);
+    // Another /48 keeps its own quota. Spread over its clients, each takes a
+    // few tokens, so sharing a client cell with an earlier client never
+    // binds. One client asking for its whole burst needs both of its cells
+    // untouched, which a shared cell breaks in about 1 run in 100.
+    expect(spread(slash56In(6))).toBe(1_000);
     node.advance(1_000);
-    expect(spread(slash56)).toBe(200);
+    expect(spread(slash56In(5))).toBe(200);
   });
 
   it("refills correctly across 50 days of uptime, past where a millisecond Uint32 clock wraps", () => {
