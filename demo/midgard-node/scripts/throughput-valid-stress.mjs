@@ -9,11 +9,11 @@ import "node:util";
 import "node:perf_hooks";
 import "node:url";
 import "@lucid-evolution/lucid";
-import "undici";
 import "@al-ft/midgard-core/cek-proof";
 import "./throughput-benchmark-utils.mjs";
 import "./native-tx-workload-utils.mjs";
 import "./throughput-valid-stress-corpus.mjs";
+import "./lib/benchmark-http-client.mjs";
 import "./lib/deadline-batched-schedule.mjs";
 import "./phase3-architecture-g-soak-preflight.mjs";
 import "./phase3-architecture-g-load-generator-isolation.mjs";
@@ -31,8 +31,8 @@ import { promisify } from "node:util";
 
 import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { CML } from "@lucid-evolution/lucid";
-import { Pool } from "undici";
 
+import { BenchmarkHttpClient } from "./lib/benchmark-http-client.mjs";
 import { runDeadlineBatchedSchedule } from "./lib/deadline-batched-schedule.mjs";
 import {
   buildNativeSignedSplit,
@@ -145,6 +145,27 @@ const submitEndpoint = envValue(
   "STRESS_SUBMIT_ENDPOINT",
   "http://127.0.0.1:3000",
 );
+
+/**
+ * The node's Unix socket, for a node with no TCP listener (a public node).
+ * Requests to STRESS_SUBMIT_ENDPOINT's origin then go over it, each naming
+ * one of STRESS_CLIENT_IP_SPREAD synthetic clients, each its own /24, with at
+ * most STRESS_CLIENT_ACTIVE_MAX (the node's per-client cap) in flight. The
+ * node's rate limiter stays on: the spread only keeps one client's buckets
+ * from binding before the node's capacity does.
+ */
+const submitSocketPath =
+  String(envValue("STRESS_SUBMIT_SOCKET_PATH", "")).trim() || null;
+
+const clientIpSpread =
+  submitSocketPath === null
+    ? null
+    : Number(envValue("STRESS_CLIENT_IP_SPREAD", ""));
+
+const clientActiveMax =
+  submitSocketPath === null
+    ? null
+    : Number(envValue("STRESS_CLIENT_ACTIVE_MAX", ""));
 
 const metricsEndpoint = envValue(
   "STRESS_METRICS_ENDPOINT",
@@ -795,73 +816,27 @@ const writeEngineEvent = (event, payload = {}) => {
   });
 };
 
-class BenchmarkHttpClient {
-  constructor({ connections, pipelining, timeoutMs }) {
-    this.connections = connections;
-    this.pipelining = pipelining;
-    this.timeoutMs = timeoutMs;
-    this.pools = new Map();
-  }
+const benchmarkHttpClient = () =>
+  new BenchmarkHttpClient({
+    connections: httpConnections,
+    pipelining: httpPipelining,
+    timeoutMs: httpTimeoutMs,
+    ...(submitSocketPath === null
+      ? {}
+      : {
+          socketPath: submitSocketPath,
+          socketOrigin: submitEndpoint,
+          clientSpread: clientIpSpread,
+          clientActiveMax,
+        }),
+  });
 
-  poolFor(url) {
-    const parsed = new URL(url);
-    let pool = this.pools.get(parsed.origin);
-    if (pool === undefined) {
-      pool = new Pool(parsed.origin, {
-        connections: this.connections,
-        pipelining: this.pipelining,
-        headersTimeout: this.timeoutMs,
-        bodyTimeout: this.timeoutMs,
-      });
-      this.pools.set(parsed.origin, pool);
-    }
-    return pool;
-  }
-
-  async request(url, options = {}) {
-    const parsed = new URL(url);
-    const pool = this.poolFor(url);
-    const startedAt = performance.now();
-    const response = await pool.request({
-      method: options.method ?? "GET",
-      path: `${parsed.pathname}${parsed.search}`,
-      headers: options.headers,
-      body: options.body,
-      headersTimeout: this.timeoutMs,
-      bodyTimeout: this.timeoutMs,
-    });
-    const text = await response.body.text();
-    const latencyMs = performance.now() - startedAt;
-    return {
-      status: response.statusCode,
-      ok: response.statusCode >= 200 && response.statusCode < 300,
-      body: text,
-      latencyMs,
-      json() {
-        return text.length === 0 ? {} : JSON.parse(text);
-      },
-    };
-  }
-
-  async close() {
-    await Promise.all(Array.from(this.pools.values(), (pool) => pool.close()));
-  }
-}
-
-let httpClient = new BenchmarkHttpClient({
-  connections: httpConnections,
-  pipelining: httpPipelining,
-  timeoutMs: httpTimeoutMs,
-});
+let httpClient = benchmarkHttpClient();
 
 const rebuildHttpClient = async ({ connections }) => {
   await httpClient.close();
   httpConnections = connections;
-  httpClient = new BenchmarkHttpClient({
-    connections: httpConnections,
-    pipelining: httpPipelining,
-    timeoutMs: httpTimeoutMs,
-  });
+  httpClient = benchmarkHttpClient();
 };
 
 /**

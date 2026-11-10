@@ -1,5 +1,7 @@
 /** The installed HTTP surface and endpoint names. This module performs no provider reads or operator actions. */
 
+import type { HttpRateClass } from "../../services/http-rate-limits.js";
+
 export const OPERATOR_STATUS_ENDPOINT = "operator/status";
 
 export const TX_ENDPOINT: string = "tx";
@@ -65,3 +67,36 @@ export const HTTP_ROUTE_ACTIONS = [
   ["GET", "/operator/status", "admin"],
   ["GET", "/admin/session", "admin"],
 ] as const;
+
+/** Who may call a route: anyone, an active operator's signed peer, or the admin. */
+export type HttpRouteKind = (typeof HTTP_ROUTE_ACTIONS)[number][2];
+
+/** The kind of the installed route at `path`, or undefined when none is. */
+export const httpRouteKindOf = (path: string): HttpRouteKind | undefined =>
+  HTTP_ROUTE_ACTIONS.find((action) => action[1] === path)?.[2];
+
+/**
+ * The rate class the ingress charges a request to an installed route:
+ * `health` for `/healthz` and `/readyz`, `admin` and `peer` by route kind,
+ * `evaluate` for `/tx/evaluate`, `batch` for `POST /tx-status`, `write` for
+ * any other public POST except `POST /utxos`, and `read` otherwise. The node
+ * charges by it, and a client paces itself by it.
+ */
+export const httpRateClassOf = (
+  method: string,
+  path: string,
+  routeKind: HttpRouteKind,
+): HttpRateClass =>
+  path === "/healthz" || path === "/readyz"
+    ? "health"
+    : routeKind === "admin"
+      ? "admin"
+      : routeKind === "peer"
+        ? "peer"
+        : path === "/tx/evaluate"
+          ? "evaluate"
+          : method === "POST" && path === "/tx-status"
+            ? "batch"
+            : method === "POST" && path !== "/utxos"
+              ? "write"
+              : "read";

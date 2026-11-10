@@ -19,7 +19,7 @@ import {
   type HttpRateLimitPolicy,
 } from "../services/http-rate-limits.js";
 import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
-import { HTTP_ROUTE_ACTIONS } from "./http/routes.js";
+import { HTTP_ROUTE_ACTIONS, httpRateClassOf } from "./http/routes.js";
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "./http/submission-capacity.js";
 import { createHttpRateLimiter } from "./listen-http-rate-limit.js";
 export { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
@@ -350,20 +350,7 @@ export const admitHttpRequest = (
         allow: actions.map((action) => action[0]).join(", "),
       },
     );
-  const kind: HttpRateClass =
-    path === "/healthz" || path === "/readyz"
-      ? "health"
-      : actions[0]![2] === "admin"
-        ? "admin"
-        : actions[0]![2] === "peer"
-          ? "peer"
-          : path === "/tx/evaluate"
-            ? "evaluate"
-            : request.method === "POST" && path === "/tx-status"
-              ? "batch"
-              : request.method === "POST" && path !== "/utxos"
-                ? "write"
-                : "read";
+  const kind = httpRateClassOf(request.method, path, actions[0]![2]);
   // Binary bodies: one submission envelope for a submission or an
   // evaluation, up to the peer bound for a peer's CBOR list.
   const proofBody = path === "/submit" || path === "/tx/evaluate";
