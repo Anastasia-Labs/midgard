@@ -11,6 +11,7 @@ import {
   MAX_TIMER_MS,
   object,
   type ReadJourneyTimingOptions,
+  stackJourneyTimeoutMs,
 } from "./journey-timing.journey-timing-for-plan.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
@@ -79,6 +80,26 @@ export const readStackJourneyTiming = async (
     category,
     journeyCadence(genesisBytes, manifestBytes, options),
   );
+};
+
+/**
+ * A family's whole time limit on an attached stack (`stackJourneyTimeoutMs`):
+ * its stack timing and two of operator-2's shifts in the stack's deployment
+ * profile. Safe at Vitest module load, like `readJourneyCadence`.
+ */
+export const readStackJourneyTimeoutMs = async (
+  stack: Readonly<{ nodeConfigPath: string; manifestPath: string }>,
+  category: string,
+  options: ReadJourneyTimingOptions = {},
+) => {
+  const [timing, manifestBytes] = await Promise.all([
+    readStackJourneyTiming(stack, category, options),
+    readFile(stack.manifestPath, "utf8"),
+  ]);
+  const { deploymentProfile } = verifyFinalizedDeploymentManifest(
+    JSON.parse(manifestBytes),
+  );
+  return stackJourneyTimeoutMs(timing, deploymentProfile.timing);
 };
 
 /** The audited plan for transitionTrace; the finite generic plan for every other family. */

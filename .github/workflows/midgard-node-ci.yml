@@ -1324,6 +1324,7 @@ jobs:
             watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-runner.attached.test.ts \
             watcher-journeys/journey-session.test.ts \
+            watcher-journeys/journey-timing.stack-limit.test.ts \
             watcher-journeys/journey-timing.test.ts \
             watcher-journeys/kupo-consumption.test.ts \
             watcher-journeys/ledger-tip.test.ts \

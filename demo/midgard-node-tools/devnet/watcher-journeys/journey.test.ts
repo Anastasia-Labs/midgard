@@ -9,8 +9,12 @@ import {
   openAttachedJourneySession,
   openJourneySession,
 } from "./journey-session.js";
-import { readJourneyExecutionTiming } from "./journey-timing.js";
+import {
+  readJourneyExecutionTiming,
+  readStackJourneyTimeoutMs,
+} from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
+import { readStackJourneyTimingPaths } from "./stack-context.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
 // skips without it; stack mode attaches to a running e2e-stack.
@@ -20,6 +24,10 @@ const runDirectory =
 const fixtures = selectJourneyFixtures(
   process.env.MIDGARD_WATCHER_JOURNEY_CATEGORIES,
 );
+const stackTimingPaths =
+  source?.mode === "stack"
+    ? await readStackJourneyTimingPaths(source.configPath)
+    : undefined;
 
 let session: Promise<JourneySession | AttachedJourneySession> | undefined;
 afterAll(async () => {
@@ -32,14 +40,26 @@ afterAll(async () => {
 for (const fixture of fixtures) {
   // Every family is budgeted from the actual cadence and the depth its actions
   // wait for: the audited transitionTrace plan or the finite generic plan, plus
-  // the single release-finality window of the finalized evidence stamp.
-  const timing =
+  // the single release-finality window of the finalized evidence stamp. On a
+  // stack it also waits up to two of operator-2's shifts for its staging.
+  const options = { actionDepth: JOURNEY_ACTION_DEPTH };
+  const timeoutMs =
     runDirectory !== undefined
-      ? await readJourneyExecutionTiming(runDirectory, fixture.category, {
-          actionDepth: JOURNEY_ACTION_DEPTH,
-        })
-      : undefined;
-  const timeoutMs = timing?.journeyTimeoutMs ?? 7_200_000;
+      ? (
+          await readJourneyExecutionTiming(
+            runDirectory,
+            fixture.category,
+            options,
+          )
+        ).journeyTimeoutMs
+      : stackTimingPaths !== undefined
+        ? await readStackJourneyTimeoutMs(
+            stackTimingPaths,
+            fixture.category,
+            options,
+          )
+        : // No deployment selected: the case is skipped.
+          undefined;
   it.skipIf(source === undefined)(
     `automatically proves '${fixture.category}', corrects exact economics, and processes an honest successor`,
     async () => {

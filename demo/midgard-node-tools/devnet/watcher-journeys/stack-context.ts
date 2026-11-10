@@ -144,6 +144,25 @@ export const stackComposeProject = (
 };
 
 /**
+ * What a stack journey's timing reads: the node configuration that names the
+ * stack's Shelley genesis, and the stack's deployment manifest.
+ */
+const stackTimingPaths = (processes: StackProcesses) =>
+  Object.freeze({
+    nodeConfigPath: join(nativeLedgerPaths(processes).directory, "config.json"),
+    manifestPath: stackPaths(processes).manifest,
+  });
+
+/**
+ * A stack's timing paths (`stackTimingPaths`) from its configuration file.
+ * Safe at Vitest module load: it opens no provider.
+ */
+export const readStackJourneyTimingPaths = async (configPath: string) => {
+  const { config, env } = await loadStackConfig(configPath);
+  return stackTimingPaths(new StackProcesses(config, env));
+};
+
+/**
  * Where a stack-mode journey finds everything it reads, from the stack's own
  * configuration and environment: the files the e2e-stack writes, its L1
  * endpoints and local node, the watcher's Compose project, process
@@ -194,21 +213,19 @@ export const resolveStackJourneyLayout = (
     drillKeys.add(wallet.keyHash);
   }
   const node = hostL1Node(processes);
+  const timingPaths = stackTimingPaths(processes);
   const { kupoUrl, ogmiosUrl } = l1KupmiosEnvironment(env);
   return Object.freeze({
     runId,
     stackRunDirectory: config.runDirectory,
     directory: join(config.runDirectory, "fault-journeys", runId),
-    manifestPath: stackPaths(processes).manifest,
+    manifestPath: timingPaths.manifestPath,
     kupoUrl,
     ogmiosUrl,
     node: Object.freeze({
       socketPath: node.socketPath,
       binaryPath: node.binaryPath,
-      nodeConfigPath: join(
-        nativeLedgerPaths(processes).directory,
-        "config.json",
-      ),
+      nodeConfigPath: timingPaths.nodeConfigPath,
     }),
     watcher: Object.freeze({
       composeProject: stackComposeProject(config.nodeRoot, env),
