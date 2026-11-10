@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
+import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   readAdmittedWatcherRuntimeConfig,
@@ -72,9 +73,9 @@ export const classifyWatcherReplayedHeader = async ({
 }: ReplayApplication &
   Readonly<{
     request: Parameters<WatcherFaultProofApplication["classifyHeader"]>[0];
-    watcherConfig: unknown;
+    watcherConfig: WatcherConfig;
     loadClassifier(
-      config: unknown,
+      config: WatcherConfig,
       headerHash: string,
     ): ReturnType<typeof createHeaderClassifier>;
   }>) => {

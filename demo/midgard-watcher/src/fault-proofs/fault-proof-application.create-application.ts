@@ -29,7 +29,7 @@ import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { parseWatcherConfig } from "../runtime/config.js";
+import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
@@ -203,9 +203,8 @@ export function createApplication({
     })),
   });
   let classifierPromise: ReturnType<typeof createHeaderClassifier> | undefined;
-  const loadClassifier = (watcherConfigValue: unknown, headerHash: string) => {
+  const loadClassifier = (watcherConfig: WatcherConfig, headerHash: string) => {
     classifierPromise ??= (async () => {
-      const watcherConfig = parseWatcherConfig(watcherConfigValue);
       const [manifestJson, blueprintJson, deploymentInfoJson] =
         await Promise.all(
           [
@@ -348,12 +347,13 @@ export function createApplication({
         dependencies,
       );
       const watcherConfigJson = await dependencies.readText(runtimeConfigPath);
-      let watcherConfig: unknown;
+      let watcherConfigJsonValue: unknown;
       try {
-        watcherConfig = JSON.parse(watcherConfigJson) as unknown;
+        watcherConfigJsonValue = JSON.parse(watcherConfigJson) as unknown;
       } catch {
         throw new Error("watcher runtime configuration is not JSON");
       }
+      const watcherConfig = parseWatcherConfig(watcherConfigJsonValue);
       const completedDecision = await classifyWatcherReplayedHeader({
         request: input,
         watcherConfig,

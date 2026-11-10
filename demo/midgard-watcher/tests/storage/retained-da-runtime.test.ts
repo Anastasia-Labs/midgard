@@ -41,6 +41,7 @@ import {
 } from "../../src/storage/retained-da-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import {
+  admittedConfig,
   libp2pTransportFixture,
   PEER_ID,
   rawConfig,
@@ -350,39 +351,72 @@ describe("explicit Custom DA transport", () => {
     }
   });
 
-  it("carries the Custom admission through retained runtime requests", async () => {
+  it("carries the Custom admission, as parsed or rebound to another node socket, through fresh and owned runtimes", async () => {
     const identity = makeWatcherDeploymentAuthorityFixture({
       network: "Custom",
     }).result;
-    const watcherConfig = config();
-    const f = transportFixture(
-      encodeDaPayloadByHeaderResponseCbor({
-        status: "not_found",
-        headerHash: Buffer.from("ab".repeat(28), "hex"),
-        payloadHash: null,
-        payloadBytes: null,
-        chunkManifest: null,
-        reasonCode: null,
-      }),
-    );
-    await f.transport.start();
-    const runtime = await createWatcherRetainedDaRuntime({
-      watcherConfig,
+    const admitted = config();
+    const { chainSync } = admitted.l1.source;
+    // Parsed once, then rebound the way an attached stack journey points the
+    // stack watcher's config at the host's end of the node socket.
+    const socketPath = "/home/run/stack/node.socket";
+    const rebound = {
+      ...admitted,
+      l1: {
+        ...admitted.l1,
+        source: {
+          ...admitted.l1.source,
+          chainSync: { ...chainSync, socketPath },
+        },
+      },
+    };
+    const notFound = encodeDaPayloadByHeaderResponseCbor({
+      status: "not_found",
+      headerHash: Buffer.from("ab".repeat(28), "hex"),
+      payloadHash: null,
+      payloadBytes: null,
+      chunkManifest: null,
+      reasonCode: null,
+    });
+    const owned = transportFixture(notFound);
+    await owned.transport.start();
+    const owner = createWatcherRetainedDaRuntimeOwner({
       deploymentIdentity: identity,
-      unsafeTransportFactoryForTest: async () => f.transport,
+      unsafeTransportFactoryForTest: async () => owned.transport,
     });
     try {
-      const result = await runtime.sources[0]!.fetchPayloadByHeaderHash(
-        "ab".repeat(28),
-      );
-      expect(result.ok).toBe(false);
-      // The real transport delivers the peer's not-found response.
-      expect(
-        result.attempts.every((attempt) => attempt.status === "not_found"),
-      ).toBe(true);
-      expect(f.dialProtocol.mock.calls.length).toBeGreaterThan(0);
+      for (const watcherConfig of [admitted, rebound]) {
+        const fresh = transportFixture(notFound);
+        await fresh.transport.start();
+        for (const [runtime, f] of [
+          [
+            await createWatcherRetainedDaRuntime({
+              watcherConfig,
+              deploymentIdentity: identity,
+              unsafeTransportFactoryForTest: async () => fresh.transport,
+            }),
+            fresh,
+          ],
+          [await owner.createRuntime(watcherConfig), owned],
+        ] as const) {
+          try {
+            const dials = f.dialProtocol.mock.calls.length;
+            const result = await runtime.sources[0]!.fetchPayloadByHeaderHash(
+              "ab".repeat(28),
+            );
+            expect(result.ok).toBe(false);
+            // The real transport delivers the peer's not-found response.
+            expect(result.attempts.map(({ status }) => status)).toEqual(
+              result.attempts.map(() => "not_found"),
+            );
+            expect(f.dialProtocol.mock.calls.length).toBeGreaterThan(dials);
+          } finally {
+            await runtime.close();
+          }
+        }
+      }
     } finally {
-      await runtime.close();
+      await owner.close();
     }
   });
 });
@@ -437,7 +471,7 @@ describe("production retained-DA runtime V1", () => {
         sink: observability.sink,
       });
       const runtime = await createWatcherRetainedDaRuntime({
-        watcherConfig: rawConfig(),
+        watcherConfig: admittedConfig(),
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
       });
@@ -486,7 +520,7 @@ describe("production retained-DA runtime V1", () => {
       }) as unknown as WatcherOperationsSink,
     });
     const runtime = await createWatcherRetainedDaRuntime({
-      watcherConfig: rawConfig(),
+      watcherConfig: admittedConfig(),
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: fake.factory,
     });
@@ -518,31 +552,11 @@ describe("production retained-DA runtime V1", () => {
     expect(fake.stop).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    `/dns4/localhost/tcp/443/p2p/${PEER_ID}`,
-    `/dns4/da-a.local/tcp/443/p2p/${PEER_ID}`,
-    `/dns4/10.0.0.1/tcp/443/p2p/${PEER_ID}`,
-    `/ip4/203.0.113.1/tcp/443/p2p/${PEER_ID}`,
-  ])(
-    "rejects local/private/non-public source substitution: %s",
-    async (multiaddr) => {
-      const fake = transportFactory();
-      await expect(
-        createWatcherRetainedDaRuntime({
-          watcherConfig: rawConfig(multiaddr),
-          deploymentIdentity: deploymentIdentity(),
-          unsafeTransportFactoryForTest: fake.factory,
-        }),
-      ).rejects.toThrow();
-      expect(fake.factory).not.toHaveBeenCalled();
-    },
-  );
-
   it("rejects a foreign network or structurally forged deployment identity before transport startup", async () => {
     const wrongNetwork = transportFactory();
     await expect(
       createWatcherRetainedDaRuntime({
-        watcherConfig: { ...rawConfig(), targetNetwork: "Mainnet" },
+        watcherConfig: { ...admittedConfig(), targetNetwork: "Mainnet" },
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: wrongNetwork.factory,
       }),
@@ -552,7 +566,7 @@ describe("production retained-DA runtime V1", () => {
     const wrongMarker = transportFactory();
     await expect(
       createWatcherRetainedDaRuntime({
-        watcherConfig: rawConfig(),
+        watcherConfig: admittedConfig(),
         deploymentIdentity: {
           ...deploymentIdentity(),
           durableMarker: makeDeploymentMarker("ff".repeat(32)),
@@ -595,7 +609,7 @@ describe("production retained-DA runtime V1", () => {
     const fake = transportFactory();
     await expect(
       createWatcherRetainedDaRuntime({
-        watcherConfig: { ...rawConfig(), mode: "development" },
+        watcherConfig: { ...admittedConfig(), mode: "development" },
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
       }),
@@ -803,8 +817,8 @@ describe("retained-DA runtime owner", () => {
     try {
       for (let round = 0; round < 32; round += 1) {
         const [first, second] = await Promise.all([
-          owner.createRuntime(rawConfig()),
-          owner.createRuntime(rawConfig()),
+          owner.createRuntime(admittedConfig()),
+          owner.createRuntime(admittedConfig()),
         ]);
         await first.close();
         const calls = fake.request.mock.calls.length;
@@ -825,7 +839,7 @@ describe("retained-DA runtime owner", () => {
       }
       expect(fake.factory).toHaveBeenCalledTimes(1);
       expect(fake.request).toHaveBeenCalledTimes(32);
-      const active = await owner.createRuntime(rawConfig());
+      const active = await owner.createRuntime(admittedConfig());
       await owner.close();
       await owner.close();
       expect(fake.stop).toHaveBeenCalledTimes(1);
@@ -834,7 +848,7 @@ describe("retained-DA runtime owner", () => {
         await active.sources[0]!.fetchPayloadByHeaderHash(headerHash),
       ).toMatchObject({ ok: false });
       expect(fake.request).toHaveBeenCalledTimes(calls);
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "owner is closed",
       );
     } finally {
@@ -850,7 +864,7 @@ describe("retained-DA runtime owner", () => {
     });
     try {
       expect(owner.transportStatus()).toEqual({ state: "idle", failure: null });
-      const runtime = await owner.createRuntime(rawConfig());
+      const runtime = await owner.createRuntime(admittedConfig());
       expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
       await runtime.close();
       expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
@@ -869,14 +883,14 @@ describe("retained-DA runtime owner", () => {
       unsafeTransportFactoryForTest: factory,
     });
     try {
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "dial failed: connection refused",
       );
       expect(owner.transportStatus()).toEqual({
         state: "failed",
         failure: "dial failed: connection refused",
       });
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "dial failed: connection refused",
       );
       expect(factory).toHaveBeenCalledTimes(1);
@@ -893,9 +907,9 @@ describe("retained-DA runtime owner", () => {
       unsafeTransportFactoryForTest: fake.factory,
     });
     try {
-      const lease = await owner.createRuntime(rawConfig());
+      const lease = await owner.createRuntime(admittedConfig());
       await lease.close();
-      const config = rawConfig();
+      const config = admittedConfig();
       await expect(
         owner.createRuntime({
           ...config,
@@ -939,7 +953,7 @@ describe("retained-DA runtime owner", () => {
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: fake.factory,
     });
-    const config = rawConfig();
+    const config = admittedConfig();
     const limited = { ...config, da: { ...config.da, maxConcurrency: 1 } };
     try {
       const active = await owner.createRuntime(limited);
@@ -995,7 +1009,7 @@ describe("retained-DA runtime owner", () => {
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: fake.factory,
     });
-    const config = rawConfig();
+    const config = admittedConfig();
     try {
       const lease = await owner.createRuntime({
         ...config,
@@ -1035,7 +1049,7 @@ describe("retained-DA runtime owner", () => {
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: fake.factory,
     });
-    const config = rawConfig();
+    const config = admittedConfig();
     try {
       const lease = await owner.createRuntime({
         ...config,

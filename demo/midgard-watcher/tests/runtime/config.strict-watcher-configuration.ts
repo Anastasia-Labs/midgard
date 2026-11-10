@@ -348,7 +348,6 @@ describe("strict watcher configuration", () => {
     const empty = validConfig();
     empty.da.peers = [];
     rejected(() => parseWatcherConfig(empty), "out_of_bounds", "$.da.peers");
-
     const alias = validConfig();
     alias.da.peers.push({ identity: "da-peer-b", multiaddr: PEER_A });
     rejected(
@@ -361,6 +360,7 @@ describe("strict watcher configuration", () => {
       "/ip4/203.0.113.4/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
       "/dns4/localhost/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
       "/dns4/da-a.local/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+      "/dns4/10.0.0.1/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
       "/dns4/da-a.example/tcp/0/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
     ]) {
       const input = validConfig();

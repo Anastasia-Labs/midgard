@@ -14,8 +14,8 @@ import {
 } from "../fault-proofs/fault-decision-bridge.released-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import {
+  admittedConfig,
   PEER_ID,
-  rawConfig,
   transportFactory,
 } from "./retained-da-runtime.fixtures.js";
 
@@ -55,7 +55,7 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       monotonicNowMs: () => monotonic,
       warn,
       classifyOverride: async (fresh) => {
-        const runtime = await owner.createRuntime(rawConfig());
+        const runtime = await owner.createRuntime(admittedConfig());
         await runtime.close();
         return fresh;
       },
@@ -106,7 +106,7 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       deploymentIdentity: AUTHORITY.result,
       unsafeTransportFactoryForTest: fake.factory,
     });
-    await (await owner.createRuntime(rawConfig())).close();
+    await (await owner.createRuntime(admittedConfig())).close();
     const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
     const [header] = current.finalizedHeaders;
     const h = harness({
@@ -115,7 +115,7 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       nowMs: IN_WINDOW,
       classifyOverride: async (fresh) => {
         await owner.createRuntime(
-          rawConfig(`/dns4/da-b.example/tcp/443/p2p/${PEER_ID}`),
+          admittedConfig(`/dns4/da-b.example/tcp/443/p2p/${PEER_ID}`),
         );
         return fresh;
       },

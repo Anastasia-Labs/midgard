@@ -11,7 +11,6 @@ import { tcp } from "@libp2p/tcp";
 import { multiaddr } from "@multiformats/multiaddr";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
-import { parseWatcherConfig } from "../runtime/config.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type {
   WatcherPublicDaLibp2pTransportV1,
@@ -313,7 +312,7 @@ const parseExpectedPeer = (
   if (names[0] === "ip4" && request.admission !== undefined) {
     const { deploymentIdentity } = request.admission;
     assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
-    const config = parseWatcherConfig(request.admission.watcherConfig);
+    const config = request.admission.watcherConfig;
     admittedIp4 =
       config.targetNetwork === deploymentIdentity.network &&
       request.protocolId ===

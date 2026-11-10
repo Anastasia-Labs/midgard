@@ -1,6 +1,9 @@
 import { type Mock, vi } from "vitest";
 
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import {
+  parseWatcherConfig,
+  WATCHER_CONFIG_SCHEMA_VERSION,
+} from "../../src/runtime/config.js";
 import type { WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
 import {
   encodeWatcherPublicDaFrame,
@@ -57,6 +60,10 @@ export const rawConfig = (
       proofSubmitMs: 120_000,
     },
   }) as const;
+
+/** `rawConfig` admitted the way the watcher admits its config file. */
+export const admittedConfig = (multiaddr?: string) =>
+  parseWatcherConfig(rawConfig(multiaddr));
 
 export const transportFactory = () => {
   const request = vi.fn(

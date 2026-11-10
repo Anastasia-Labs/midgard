@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import { parseWatcherConfig } from "midgard-watcher";
+import type { WatcherConfig } from "midgard-watcher";
 
 import {
   exactRecord,
@@ -92,7 +92,7 @@ const parseBlockPoint = (value: unknown, label: string): NativeBlockPoint => {
 /** Owns one configured exact-point read; callers cannot supply acquired events. */
 export const openWatcherNativeExactPointQuery = async (input: {
   readonly binaryPath: string;
-  readonly watcherConfig: unknown;
+  readonly watcherConfig: WatcherConfig;
   readonly predecessor: NativeBlockPoint;
   readonly target: NativeBlockPoint;
   readonly timeoutMs: number;
@@ -125,7 +125,7 @@ export const openWatcherNativeExactPointQuery = async (input: {
     throw new Error("native exact-point query timeout is invalid");
   }
   signal?.throwIfAborted();
-  const watcherConfig = parseWatcherConfig(input.watcherConfig);
+  const { watcherConfig } = input;
   const predecessor = parseBlockPoint(
     input.predecessor,
     "native query predecessor",

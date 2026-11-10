@@ -10,7 +10,6 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import {
-  parseWatcherConfig,
   parseWatcherConfigJson,
   type WatcherConfig,
 } from "../runtime/config.js";
@@ -103,9 +102,8 @@ export const createWatcherRetainedDaRuntimeOwner = (
   };
   const owner: WatcherRetainedDaRuntimeOwner = Object.freeze({
     transportStatus: () => transportState,
-    createRuntime: async (watcherConfig: unknown) => {
+    createRuntime: async (config: WatcherConfig) => {
       controller.signal.throwIfAborted();
-      const config = parseWatcherConfig(watcherConfig);
       return await createRuntimeFromAdmittedConfig(admitted, config, {
         signal: controller.signal,
         open: async () => {
@@ -210,7 +208,7 @@ export const createWatcherRetainedDaRuntime = async (
   const { watcherConfig, ...runtimeOptions } = options;
   return await createRuntimeFromAdmittedConfig(
     admitRuntimeOptions(runtimeOptions),
-    parseWatcherConfig(watcherConfig),
+    watcherConfig,
   );
 };
 

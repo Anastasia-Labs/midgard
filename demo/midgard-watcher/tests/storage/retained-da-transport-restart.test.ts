@@ -5,8 +5,8 @@ import { watcherRetainedDaTransportRetryDelayMs } from "../../src/storage/retain
 import { createWatcherRetainedDaRuntimeOwner } from "../../src/storage/retained-da-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import {
+  admittedConfig,
   PEER_ID,
-  rawConfig,
   transportFactory,
 } from "./retained-da-runtime.fixtures.js";
 
@@ -36,36 +36,36 @@ describe("retained-DA runtime owner transport restart", () => {
       unsafeTransportFactoryForTest: factory,
     });
     try {
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "EADDRINUSE",
       );
       // 1 s after the first failure the start is tried again.
       monotonic += 999;
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "EADDRINUSE",
       );
       expect(factory).toHaveBeenCalledTimes(1);
       monotonic += 1;
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "EADDRINUSE",
       );
       expect(factory).toHaveBeenCalledTimes(2);
       // The second consecutive failure waits 2 s.
       monotonic += 1_999;
-      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+      await expect(owner.createRuntime(admittedConfig())).rejects.toThrow(
         "EADDRINUSE",
       );
       expect(factory).toHaveBeenCalledTimes(2);
       // A changed DA configuration is still refused, failure or not.
       await expect(
         owner.createRuntime(
-          rawConfig(`/dns4/da-b.example/tcp/443/p2p/${PEER_ID}`),
+          admittedConfig(`/dns4/da-b.example/tcp/443/p2p/${PEER_ID}`),
         ),
       ).rejects.toThrow("retained-DA owner configuration changed");
       monotonic += 1;
       const [first, second] = await Promise.all([
-        owner.createRuntime(rawConfig()),
-        owner.createRuntime(rawConfig()),
+        owner.createRuntime(admittedConfig()),
+        owner.createRuntime(admittedConfig()),
       ]);
       expect(factory).toHaveBeenCalledTimes(3);
       expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
@@ -73,7 +73,7 @@ describe("retained-DA runtime owner transport restart", () => {
       expect(fake.request).toHaveBeenCalledOnce();
       await first.close();
       await second.close();
-      await owner.createRuntime(rawConfig());
+      await owner.createRuntime(admittedConfig());
       expect(factory).toHaveBeenCalledTimes(3);
     } finally {
       clock.mockRestore();

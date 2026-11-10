@@ -100,8 +100,8 @@ export type WatcherRetainedDaRuntime = Readonly<{
 }>;
 
 export type WatcherRetainedDaRuntimeOptions = Readonly<{
-  /** Parsed again at this boundary so a caller cannot cast around config admission. */
-  watcherConfig: unknown;
+  /** Parsed once where the raw configuration entered the process. */
+  watcherConfig: WatcherConfig;
   /** Must already have passed the signed deployment-identity verifier. */
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   /** Unsafe test-only transport construction seam. Production omits it. */
@@ -127,7 +127,9 @@ export type WatcherRetainedDaTransportStatus = Readonly<{
 }>;
 
 export type WatcherRetainedDaRuntimeOwner = Readonly<{
-  createRuntime(watcherConfig: unknown): Promise<WatcherRetainedDaRuntime>;
+  createRuntime(
+    watcherConfig: WatcherConfig,
+  ): Promise<WatcherRetainedDaRuntime>;
   transportStatus(): WatcherRetainedDaTransportStatus;
   close(): Promise<void>;
 }>;

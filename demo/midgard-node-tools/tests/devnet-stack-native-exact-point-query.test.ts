@@ -47,7 +47,7 @@ const input = async (mode = "query_idle", timeoutMs = 2000) => {
   });
   return {
     binaryPath,
-    watcherConfig: config(nodeConfig),
+    watcherConfig: parseWatcherConfig(config(nodeConfig)),
     predecessor,
     target,
     timeoutMs,
@@ -55,13 +55,7 @@ const input = async (mode = "query_idle", timeoutMs = 2000) => {
 };
 const open = async (mode = "query_idle", timeoutMs = 2000) => {
   const args = await input(mode, timeoutMs);
-  const query = await openWatcherNativeExactPointQuery({
-    ...args,
-    watcherConfig:
-      mode === "query_ack"
-        ? parseWatcherConfig(args.watcherConfig)
-        : args.watcherConfig,
-  });
+  const query = await openWatcherNativeExactPointQuery(args);
   cleanup.push(query.close);
   return query;
 };
