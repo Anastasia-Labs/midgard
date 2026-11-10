@@ -359,20 +359,32 @@ describe("submit-ingress load cpu readings", () => {
     ).toEqual({ userTicks: 731, systemTicks: 92 });
   });
 
-  it("counts a busy main thread as about one core", () => {
+  it("reads the main thread's CPU time as the kernel counts it for that thread", () => {
     if (process.platform !== "linux") return;
+    const tick = 1 / clockTicks();
+    const threadSeconds = () => {
+      const { user, system } = process.threadCpuUsage();
+      return (user + system) / 1_000_000;
+    };
+    // The thread's own CPU time brackets each /proc reading, so the check
+    // holds however much of a core the runner gives this thread.
+    const startEarly = threadSeconds();
     const before = sampleProcessCpu(process.pid);
-    const until = Date.now() + 300;
+    const startLate = threadSeconds();
     let spin = 0;
-    while (Date.now() < until) spin += 1;
+    while (threadSeconds() - startLate < 0.3) spin += 1;
+    const endEarly = threadSeconds();
     const shares = cpuShares(before, sampleProcessCpu(process.pid));
+    const endLate = threadSeconds();
     expect(spin).toBeGreaterThan(0);
-    expect(shares.mainThreadCores).toBeGreaterThan(0.5);
+    const mainThreadSeconds = shares.mainThreadCores * shares.seconds;
+    // /proc floors user and system time to ticks separately at each reading.
+    expect(mainThreadSeconds).toBeGreaterThan(endEarly - startLate - 2 * tick);
+    expect(mainThreadSeconds).toBeLessThan(endLate - startEarly + 2 * tick);
     // The kernel rounds the thread and process totals to ticks separately,
     // so the process total can trail the main thread's by one tick.
-    const oneTick = 1 / clockTicks() / shares.seconds;
-    expect(shares.processCores).toBeGreaterThanOrEqual(
-      shares.mainThreadCores - oneTick,
+    expect(shares.processCores * shares.seconds).toBeGreaterThanOrEqual(
+      mainThreadSeconds - tick,
     );
   });
 });
