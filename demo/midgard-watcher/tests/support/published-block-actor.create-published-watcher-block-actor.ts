@@ -150,8 +150,8 @@ export const createPublishedWatcherBlockActor = async ({
   const bond = SDK.getProtocolParameters(
     SELECTED_DEPLOYMENT_PROFILE.network,
   ).required_bond;
+  // Funds; reference scripts are at the manifest's address, not this wallet's.
   const publisher = deployment.publisherLucid;
-  const publicationAddress = await publisher.wallet().address();
   const activeUnit = toUnit(
     contracts.activeOperators.policyId,
     SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorVkey,
@@ -181,7 +181,7 @@ export const createPublishedWatcherBlockActor = async ({
         contracts,
         bond,
         publisher,
-        publicationAddress,
+        deployment.manifest.referenceScriptDeployAddress,
       ),
       fund,
     );
@@ -238,7 +238,7 @@ export const createPublishedWatcherBlockActor = async ({
         contracts,
         bond,
         publisher,
-        publicationAddress,
+        deployment.manifest.referenceScriptDeployAddress,
       ),
       fund,
     );

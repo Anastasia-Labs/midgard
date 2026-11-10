@@ -121,6 +121,7 @@ const fixture = async () => {
   } as unknown as LucidEvolution;
   const contract = { policyId: policy, spendingScriptAddress: address };
   const deployment = {
+    manifest: { referenceScriptDeployAddress: address },
     publisherLucid: lucid,
     references: new Map(
       [

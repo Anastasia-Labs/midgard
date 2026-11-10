@@ -475,7 +475,7 @@ export const stagePublishedDepositTrace = async (
         SDK.getProtocolParameters("Preprod").required_bond,
         successorVkey,
         publisher,
-        await publisher.wallet().address(),
+        deployment.manifest.referenceScriptDeployAddress,
       ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     if (

@@ -68,6 +68,7 @@ const fixture = async (schedulerStart: number) => {
   const awaitLedgerTime = vi.fn(async (_targetMs: number) => {});
   const readHeaderConsumptions = vi.fn(async (_unit: string) => []);
   const deployment = {
+    manifest: { referenceScriptDeployAddress: address },
     publisherLucid: lucid,
     references: new Map(),
     chain: { now: () => 100_000, delaySlots, awaitLedgerTime },
