@@ -350,13 +350,17 @@ export async function attachedFixture(
 
 export type AttachedFixture = Awaited<ReturnType<typeof attachedFixture>>;
 
-/** The services and environment Docker would run for a recorded Compose call. */
-async function renderCompose(call: RecordedCall, projectDirectory: string) {
+/** `docker compose <args>` over a recorded Compose call's files and env file. */
+function dockerCompose(
+  call: RecordedCall,
+  projectDirectory: string,
+  args: string[],
+) {
   const files = call.args.flatMap((arg, index) =>
     arg === "-f" ? [call.args[index + 1]!] : [],
   );
   const envFile = call.args[call.args.indexOf("--env-file") + 1]!;
-  const { stdout } = await promisify(execFile)(
+  return promisify(execFile)(
     "docker",
     [
       "compose",
@@ -368,12 +372,19 @@ async function renderCompose(call: RecordedCall, projectDirectory: string) {
         "-f",
         isAbsolute(file) ? file : join(checkoutNodeRoot, file),
       ]),
-      "config",
-      "--format",
-      "json",
+      ...args,
     ],
     { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
   );
+}
+
+/** The services and environment Docker would run for a recorded Compose call. */
+async function renderCompose(call: RecordedCall, projectDirectory: string) {
+  const { stdout } = await dockerCompose(call, projectDirectory, [
+    "config",
+    "--format",
+    "json",
+  ]);
   return JSON.parse(stdout) as {
     services: Record<
       string,
@@ -382,8 +393,11 @@ async function renderCompose(call: RecordedCall, projectDirectory: string) {
         depends_on?: Record<string, unknown>;
         ports?: { host_ip?: string; target: number }[];
         volumes?: { source: string; target: string; read_only?: boolean }[];
+        environment?: Record<string, string>;
+        networks?: Record<string, { aliases?: string[] } | null>;
       }
     >;
+    networks?: Record<string, { name: string; external?: boolean }>;
   };
 }
 
@@ -393,28 +407,11 @@ export async function composeServiceHash(
   projectDirectory: string,
   service: string,
 ) {
-  const files = call.args.flatMap((arg, index) =>
-    arg === "-f" ? [call.args[index + 1]!] : [],
-  );
-  const envFile = call.args[call.args.indexOf("--env-file") + 1]!;
-  const { stdout } = await promisify(execFile)(
-    "docker",
-    [
-      "compose",
-      "--project-directory",
-      projectDirectory,
-      "--env-file",
-      envFile,
-      ...files.flatMap((file) => [
-        "-f",
-        isAbsolute(file) ? file : join(checkoutNodeRoot, file),
-      ]),
-      "config",
-      "--hash",
-      service,
-    ],
-    { env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
-  );
+  const { stdout } = await dockerCompose(call, projectDirectory, [
+    "config",
+    "--hash",
+    service,
+  ]);
   const [name, hash] = stdout.trim().split(/\s+/u);
   if (name !== service || hash === undefined)
     throw new Error(`Unexpected compose hash output ${stdout}`);

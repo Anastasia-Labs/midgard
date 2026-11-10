@@ -249,12 +249,26 @@ origin once the stack has initialized, registers and activates its operator,
 and runs the node on the stack's Cardano node socket, publishing to the stack's
 committee. It never runs wallet journeys. Rerun the same command to resume or confirm it.
 
-To let each operator commit the other's L2 transactions, set `L2_TX_PEERS` in
-both nodes' `.env` to the other node's API as its container reaches it, for
-example `L2_TX_PEERS=http://host.docker.internal:3020` in the stack's `.env`
-and `L2_TX_PEERS=http://host.docker.internal:3010` in the second instance's
-(the endpoints of the example configurations). Rerun each command to apply
-it. Empty, the default, leaves sharing off.
+To let each operator commit the other's L2 transactions on a `preprod-testing`
+stack, set `L2_TX_PEERS` in both nodes' `.env` to the other node's API as its
+container reaches it, for example `L2_TX_PEERS=http://host.docker.internal:3020`
+in the stack's `.env` and `L2_TX_PEERS=http://host.docker.internal:3010` in the
+second instance's (the endpoints of the example configurations). Rerun each
+command to apply it. Empty, the default, leaves sharing off.
+
+A public stack wires this itself. Its nodes have no HTTP port, and both TLS
+ingresses serve the stack's one certificate, so each node dials the other's
+ingress at the certificate's host name (the host of
+`MIDGARD_PUBLIC_API_ORIGIN`), `https://<host>:8443`, and trusts the stack's
+`public.tlsCaFile` through `NODE_EXTRA_CA_CERTS`. Two Docker networks carry it,
+one per direction, each holding one ingress under that name and the other
+instance's node. The stack sets this up when its `da.admittedProducers` names a
+producer on `/ip4/127.0.0.1/` (the second instance on its host), and refuses
+more than one such producer. Run the stack again after admitting the second
+instance, before attaching it: the stack's Compose project creates both
+networks, `midgard-l2-peers-<id>-to-stack` and `-to-attached`, and the second
+instance's project joins them. An `L2_TX_PEERS` already in either `.env` is
+kept beside the generated peer.
 
 A second instance of a public stack (`preprod-rehearsal` or `preprod-public`)
 runs from a linked worktree built for the stack's profile, with

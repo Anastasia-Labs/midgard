@@ -4,13 +4,16 @@ import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { StackConfig } from "../src/full-stack/config.js";
+import { writePrivateEnv } from "../src/full-stack/da-services.js";
 import { publicRolesPath } from "../src/full-stack/process.js";
 import {
   preparePublicImages,
+  publicNodeEnvironment,
   publicNodeServices,
   publicPostgresPasswordPath,
 } from "../src/full-stack/public-runtime.js";
@@ -68,9 +71,10 @@ async function renderedCompose(config: StackConfig, servicesFile?: string) {
         ports?: { host_ip?: string; target: number; published: string }[];
         environment?: Record<string, string>;
         volumes?: { source: string; target: string; read_only?: boolean }[];
-        networks?: Record<string, unknown>;
+        networks?: Record<string, { aliases?: string[] } | null>;
       }
     >;
+    networks?: Record<string, { name: string; external?: boolean }>;
   };
 }
 
@@ -312,5 +316,116 @@ describe("public node containers", () => {
     // A rotated admin key: the same mounts and image, a different node-config.json.
     processes.env.ADMIN_API_KEY = randomBytes(32).toString("hex");
     expect(await hash()).not.toBe(before);
+  });
+
+  it("shares L2 transactions with the instance attached on its host through that instance's TLS ingress, trusting the stack CA", async () => {
+    const stack = await publicStack("l2-peers", null);
+    const { processes } = stack;
+    const { config } = processes;
+    await preparePublicImages(processes);
+    const services = join(config.runDirectory, "services");
+    await mkdir(services, { recursive: true });
+    await writeFile(join(services, "producer.json"), "{}");
+    const compose = join(services, "compose.json");
+    /** The node's services and node.env as the configuration and services steps generate them, rendered. */
+    const generated = async () => {
+      const node = await publicNodeServices(processes, {
+        servicesDirectory: services,
+        envFile: [{ path: join(services, "node.env"), required: false }],
+        producer: join(services, "producer.json"),
+      });
+      await writeFile(
+        compose,
+        JSON.stringify({ services: node.services, networks: node.networks }),
+      );
+      await writePrivateEnv(
+        join(services, "node.env"),
+        await publicNodeEnvironment(processes, { L2_TX_PEERS: "" }),
+      );
+      return renderedCompose(config, compose);
+    };
+    // Alone on its host, the stack shares with no one.
+    const alone = await generated();
+    expect(alone.services["midgard-node"]!.environment).toMatchObject({
+      L2_TX_PEERS: "",
+    });
+    expect(alone.services["midgard-node"]!.environment).not.toHaveProperty(
+      "NODE_EXTRA_CA_CERTS",
+    );
+    expect(Object.keys(alone.networks!).sort()).toEqual([
+      "midgard_net",
+      "public_ingress",
+    ]);
+    // Operator-2 attaches on the host: the stack admits its producer on the loopback.
+    const { peerId } = await loadDaLibp2pIdentity(`seed:${"0b".repeat(32)}`);
+    config.da.admittedProducers = [`/ip4/127.0.0.1/tcp/39012/p2p/${peerId}`];
+    const model = await generated();
+    const node = model.services["midgard-node"]!;
+    const ingress = model.services["public-ingress"]!;
+    // The node dials the certificate's host name, which its peer's ingress
+    // serves, and trusts the stack CA for it.
+    const host = new URL(processes.env.MIDGARD_PUBLIC_API_ORIGIN!).hostname;
+    expect(node.environment).toMatchObject({
+      L2_TX_PEERS: `https://${host}:8443`,
+      NODE_EXTRA_CA_CERTS: "/run/public/tls-ca.pem",
+    });
+    expect(node.volumes).toContainEqual(
+      expect.objectContaining({
+        source: config.public!.tlsCaFile,
+        target: "/run/public/tls-ca.pem",
+        read_only: true,
+      }),
+    );
+    // One network per direction, each named for this stack so operator-2's
+    // Compose project joins it: the stack's ingress under the host name on
+    // one, the stack's node on the other, where operator-2's ingress takes
+    // the same name. The node keeps no route into its own ingress's network.
+    const peerNetworks = Object.keys(model.networks!).filter(
+      (key) => !["midgard_net", "public_ingress"].includes(key),
+    );
+    expect(peerNetworks).toHaveLength(2);
+    const ingressPeerNetworks = Object.entries(ingress.networks!).filter(
+      ([key]) => key !== "public_ingress",
+    );
+    expect(ingressPeerNetworks).toEqual([
+      [expect.any(String), expect.objectContaining({ aliases: [host] })],
+    ]);
+    const [ingressNetwork] = ingressPeerNetworks[0]!;
+    const nodeNetworks = Object.keys(node.networks!);
+    expect(nodeNetworks).toContain("midgard_net");
+    expect(nodeNetworks).not.toContain("public_ingress");
+    expect(nodeNetworks).not.toContain(ingressNetwork);
+    expect(nodeNetworks).toContain(
+      peerNetworks.find((key) => key !== ingressNetwork),
+    );
+    // The stack's project creates both.
+    for (const key of peerNetworks)
+      expect(model.networks![key]!.external).not.toBe(true);
+  });
+
+  it("refuses to share with more than one instance attached on its host, whose ingresses would serve one host name", async () => {
+    const stack = await publicStack("l2-peers-two", null);
+    const { processes } = stack;
+    const { config } = processes;
+    await preparePublicImages(processes);
+    const services = join(config.runDirectory, "services");
+    await mkdir(services, { recursive: true });
+    await writeFile(join(services, "producer.json"), "{}");
+    const peers = await Promise.all(
+      ["0b", "0c"].map((byte) =>
+        loadDaLibp2pIdentity(`seed:${byte.repeat(32)}`),
+      ),
+    );
+    config.da.admittedProducers = peers.map(
+      ({ peerId }, index) =>
+        `/ip4/127.0.0.1/tcp/${39012 + index}/p2p/${peerId}`,
+    );
+    await expect(
+      publicNodeServices(processes, {
+        servicesDirectory: services,
+        envFile: [{ path: join(services, "node.env"), required: false }],
+        producer: join(services, "producer.json"),
+      }),
+    ).rejects.toThrow("at most one instance attached on its host");
   });
 });

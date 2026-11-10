@@ -55,6 +55,18 @@ const FIELDS = [
   "producerTransportEnv",
 ];
 
+/**
+ * How a stack's committee admits the producer of an instance attached on its
+ * host: by its DA host port on the loopback.
+ */
+const ATTACHED_PRODUCER_PREFIX = "/ip4/127.0.0.1/tcp/";
+
+/** The stack's admitted producers that are instances attached on its host. */
+export const attachedProducers = (config: StackConfig) =>
+  (config.da.admittedProducers ?? []).filter((address) =>
+    address.startsWith(ATTACHED_PRODUCER_PREFIX),
+  );
+
 /** A second-instance configuration names the stack configuration it attaches to. */
 export const isAttachedStackConfig = (value: unknown) =>
   value !== null &&
@@ -309,7 +321,7 @@ export async function loadAttachedStackConfig(path: string) {
     );
   // The committee accepts payloads from the peers its configuration admits.
   const { peerId } = await loadDaLibp2pIdentity(transport);
-  const admittedProducer = `/ip4/127.0.0.1/tcp/${hostPort(config, env, "MIDGARD_NODE_DA_HOST_PORT")}/p2p/${peerId}`;
+  const admittedProducer = `${ATTACHED_PRODUCER_PREFIX}${hostPort(config, env, "MIDGARD_NODE_DA_HOST_PORT")}/p2p/${peerId}`;
   if (!(primary.da.admittedProducers ?? []).includes(admittedProducer))
     throw new Error(
       `The stack's committee does not admit this node: add ${admittedProducer} to da.admittedProducers in ${attachTo} and run that stack again`,

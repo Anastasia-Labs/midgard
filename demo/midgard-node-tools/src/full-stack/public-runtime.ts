@@ -31,6 +31,13 @@ import { readJsonIfPresent } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
 import {
+  l2PeerCaVolumes,
+  l2PeerEnvironment,
+  l2PeerIngressNetworks,
+  l2PeerNodeNetworks,
+  l2PeerRoute,
+} from "./public-l2-peers.js";
+import {
   completedProvenancePath,
   completePublicReleaseInput,
   proverFundingKeyHash,
@@ -44,6 +51,7 @@ const CONTAINER = {
   config: "/run/secrets/node-config.json",
   tlsCert: "/run/public/tls-cert.pem",
   tlsKey: "/run/secrets/tls-key.pem",
+  tlsCa: "/run/public/tls-ca.pem",
   httpSocketDirectory: "/run/midgard-http",
   httpSocket: "/run/midgard-http/node.sock",
   trustRoots: "/run/public/release-trust-roots.json",
@@ -339,6 +347,12 @@ export async function publicNodeEnvironment(
     MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
     // The release image carries its own pinned L1 transport.
     L1_NODE_TRANSPORT_BINARY_PATH: CONTAINER.transport,
+    ...l2PeerEnvironment(
+      processes.config,
+      processes.env,
+      env.L2_TX_PEERS,
+      CONTAINER.tlsCa,
+    ),
   };
 }
 
@@ -363,7 +377,9 @@ export const publicHttpSocketDirectory = (servicesDirectory: string) =>
  * and the TLS ingress in front of it. The ingress publishes the node API
  * host port (on every interface for a first instance without
  * public.ingressHostPort, on the loopback otherwise) and
- * public.ingressHostPort when set; the node has no TCP listener.
+ * public.ingressHostPort when set; the node has no TCP listener. With an
+ * instance attached on the host, each node also reaches the other's ingress
+ * (public-l2-peers.ts).
  */
 export async function publicNodeServices(
   processes: StackProcesses,
@@ -376,12 +392,15 @@ export async function publicNodeServices(
   await mkdir(socketDirectory, { recursive: true, mode: 0o700 });
   await chmod(socketDirectory, 0o700);
   const socketMount = `${socketDirectory}:${CONTAINER.httpSocketDirectory}`;
+  const peerRoute = l2PeerRoute(config);
   const volumes = [
     `${publicNodeConfigPath(input.servicesDirectory)}:${CONTAINER.config}:ro`,
     `${inputs.trustRootsFile}:${CONTAINER.trustRoots}:ro`,
     `${inputs.releaseDirectory}:${CONTAINER.release}:ro`,
     `${ledger.socketDirectory}:/ipc:ro`,
     `${ledger.directory}:/cardano-config:ro`,
+    // The CA its peer's ingress certificate chains to (publicNodeEnvironment).
+    ...l2PeerCaVolumes(peerRoute, `${inputs.tlsCaFile}:${CONTAINER.tlsCa}:ro`),
   ];
   // Written here so its digest labels the node: a changed secret or DA
   // identity recreates the container.
@@ -406,6 +425,7 @@ export async function publicNodeServices(
           `require('node:http').get({socketPath:'${CONTAINER.httpSocket}',path:'/readyz',headers:{'x-midgard-client-ip':'127.0.0.1'}},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))`,
         ],
       },
+      ...l2PeerNodeNetworks(peerRoute),
     },
     "midgard-node-migrate": { env_file: input.envFile, volumes },
   };
@@ -448,8 +468,9 @@ export async function publicNodeServices(
       socketMount,
     ],
     tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"],
-    // A network of its own: the ingress reaches the node only through the socket.
-    networks: { public_ingress: {} },
+    // A network of its own: the ingress reaches the node only through the
+    // socket; and the attached instance's node's (public-l2-peers.ts).
+    networks: { public_ingress: {}, ...l2PeerIngressNetworks(peerRoute, env) },
     // Up before the node is ready, answering 503 with Retry-After until the
     // node's socket serves, so readiness polls through it see the node start.
     depends_on: { "midgard-node": { condition: "service_started" } },
@@ -457,7 +478,7 @@ export async function publicNodeServices(
   };
   return {
     services,
-    networks: { public_ingress: {} },
+    networks: { public_ingress: {}, ...peerRoute?.networks },
     startServices: ["public-ingress"],
   };
 }
