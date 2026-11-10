@@ -27,6 +27,7 @@ import {
   restoreCapture,
   snapshotCapture,
 } from "./emulator-chain-capture.js";
+import { emulatorGenesisLucid } from "./emulator-genesis-lucid.js";
 import { bindNodeFollower } from "./follower-emulator.host.js";
 import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
@@ -287,8 +288,8 @@ export const initOperatorInactivityFixture = async (
     contracts: snapshot.contracts,
     network: "Custom",
   });
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
+  const lucid = await emulatorGenesisLucid(emulator);
+  const referenceScriptsLucid = await emulatorGenesisLucid(emulator);
   const primary = snapshot.operators[0];
   if (primary === undefined) {
     throw new Error("Deployment snapshot carries no operators");
@@ -312,7 +313,7 @@ export const initOperatorInactivityFixture = async (
       if (account === undefined) {
         throw new Error(`No fixture operator with key hash ${keyHash}`);
       }
-      const operatorLucid = await Lucid(emulator, "Custom");
+      const operatorLucid = await emulatorGenesisLucid(emulator);
       operatorLucid.selectWallet.fromSeed(account.seedPhrase);
       return operatorLucid;
     },

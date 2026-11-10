@@ -14,7 +14,6 @@ import "./operator-lifecycle-emulator.register-second-operator-behind-active-fir
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
-  Data,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -34,6 +33,7 @@ import {
 import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
 import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
+import { observeEmulatorTip } from "./helpers/emulator-observed-tip.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -49,6 +49,7 @@ import {
   churnOperatorWalletUtxos,
   describePosixTime,
   fetchRegisteredOperatorNodes,
+  registeredActivationTime,
   registerSecondOperatorBehindActiveFirst,
 } from "./operator-lifecycle-emulator.register-second-operator-behind-active-first.js";
 
@@ -82,30 +83,23 @@ describe("operator lifecycle emulator", () => {
         ),
       );
     }
-    const registeredNodes = await Promise.all(
-      (
-        await lucid.utxosAt(contracts.registeredOperators.spendingScriptAddress)
-      ).map((utxo) =>
-        Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
-      ),
+    const firstActivationTime = await registeredActivationTime(
+      lucid,
+      contracts,
+      operatorKeyHash,
     );
-    const registration = registeredNodes.find(
-      (node) =>
-        node.key !== "Empty" &&
-        Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
-          operatorKeyHash,
-    );
-    if (registration === undefined || registration.key === "Empty")
-      throw new Error("Missing first registration");
-    const firstActivationTime = BigInt(`0x${registration.key.Key.key}`);
     expect(BigInt(emulator.now())).toBeLessThan(firstActivationTime);
 
     // Force an early interval only in the adversarial builder: the deployed
     // validator must reject a newer registration while the earliest is pending.
-    // The program refuses an early activation locally before it builds, so the
-    // adversary also lies about the clock to reach the builder at all.
+    // The program refuses an early activation locally and waits for the L1 tip
+    // to reach the activation time before it builds, so the adversary also
+    // lies about the clock and the tip to reach the builder early at all.
+    let tipAheadSlots = 0;
+    observeEmulatorTip(secondLucid, emulator, (slot) => slot + tipAheadSlots);
     const originalBuild = SDK.buildActivateOperatorTx;
     const rejectForcedEarlyActivation = async (expectedEmpty: boolean) => {
+      tipAheadSlots = 365 * 24 * 60 * 60;
       const clock = vi
         .spyOn(LifecycleClock, "resolveL1NowMsOrRefuse")
         .mockImplementation((lucid) =>
@@ -142,6 +136,7 @@ describe("operator lifecycle emulator", () => {
         expect(build).toHaveBeenCalled();
         expect(clock).toHaveBeenCalled();
       } finally {
+        tipAheadSlots = 0;
         build.mockRestore();
         clock.mockRestore();
       }

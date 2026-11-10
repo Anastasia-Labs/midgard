@@ -1,17 +1,20 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
-import { type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 
 import { inFollowerSnapshot } from "../database/follower-schema.js";
 import { eventOrderOrPrunedByIdIn } from "../l1-events/event-by-id.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import { type IntentJournal, openPlan } from "../services/intent-journal.js";
+import { awaitLedgerTipAtLowerBound } from "../transactions/ledger-tip-lower-bound.js";
 import {
   fetchReferenceScriptUtxosProgram,
   type ReferenceScriptTarget,
 } from "../transactions/reference-scripts.js";
+import { alignUnixTimeMsToSlotBoundary } from "../transactions/register-active-operator/clock.js";
 import {
   type ReservePayoutReferenceScripts,
   ReservePayoutTransport,
@@ -19,6 +22,7 @@ import {
   submitInitializePayoutProgram,
 } from "../transactions/reserve-payout.js";
 import { outRefLabel } from "../tx-context.js";
+import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import { parseEventId } from "./command-utils.js";
 import {
   type EventSettlementProofResolution,
@@ -45,22 +49,26 @@ export type PayoutByWithdrawalEvent = {
   readonly payoutUnit: string;
 };
 
-/** Sleeps until the clock reads `wakeAtMs`. A timer can fire early against the
- * clock (the event loop's cached time), so it re-arms for what remains. */
-const sleepUntil = (wakeAtMs: number): Effect.Effect<void> =>
-  Effect.flatMap(Clock.currentTimeMillis, (nowMs) =>
-    nowMs >= wakeAtMs
-      ? Effect.void
-      : Effect.zipRight(
-          Effect.sleep(wakeAtMs - nowMs),
-          Effect.suspend(() => sleepUntil(wakeAtMs)),
-        ),
-  );
+/** The first slot boundary at or after `unixTimeMs`. */
+const slotBoundaryAtOrAfter = (
+  lucid: LucidEvolution,
+  unixTimeMs: bigint,
+): bigint => {
+  const aligned = alignUnixTimeMsToSlotBoundary(lucid, unixTimeMs);
+  return aligned >= unixTimeMs
+    ? aligned
+    : BigInt(alignedUnixTimeStrictlyAfter(lucid, Number(unixTimeMs)));
+};
 
-/** Rebuilds a retirement once after its protection bound passes. The wait is
- * bounded by the longest protection an honest mutation can set from now: a
- * full validity window plus the list's protection duration. */
+/** Rebuilds a retirement once after its protection bound passes. The
+ * builder judges protection at the observed L1 ledger tip, so the command
+ * waits for that tip to pass the bound by the submit margin, as other
+ * one-shot commands wait for their lower bounds; the wall clock may run far
+ * ahead of the tip between blocks. A bound beyond the longest protection an
+ * honest mutation can set from now (a full validity window plus the list's
+ * protection duration) is refused at once. */
 export const retryAfterRetirementProtection = <A, E, R>(
+  lucid: LucidEvolution,
   retirement: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | Error, R> => {
   const protection = (
@@ -87,17 +95,30 @@ export const retryAfterRetirementProtection = <A, E, R>(
           )
             return yield* Effect.fail(error);
           const { protectedUntilMs, protectionDurationMs } = protection(error)!;
-          const wakeAtMs = Number(protectedUntilMs) + SUBMIT_SLOT_LENGTH_MS;
-          const waitMs = wakeAtMs - (yield* Clock.currentTimeMillis);
+          const waitMs =
+            Number(protectedUntilMs) +
+            SUBMIT_SLOT_LENGTH_MS -
+            (yield* Clock.currentTimeMillis);
           const maxWaitMs =
             Number(SDK.MAX_VALIDITY_RANGE_LENGTH_MS + protectionDurationMs) +
             SUBMIT_SLOT_LENGTH_MS;
           if (waitMs > maxWaitMs)
             return yield* Effect.fail(stillProtected(protectedUntilMs, error));
           yield* Effect.logInfo(
-            `History retirement is protected until ${protectedUntilMs.toString()}; waiting ${waitMs.toString()}ms before rebuilding`,
+            `History retirement is protected until ${protectedUntilMs.toString()}; waiting for the L1 ledger tip to pass it before rebuilding`,
           );
-          yield* sleepUntil(wakeAtMs);
+          yield* Effect.mapError(
+            awaitLedgerTipAtLowerBound(
+              lucid,
+              slotBoundaryAtOrAfter(lucid, protectedUntilMs),
+              "history retirement",
+            ),
+            (cause) =>
+              new Error(
+                `History retirement needs the observed L1 ledger tip to pass protected_until=${protectedUntilMs.toString()}: ${formatUnknownError(cause)}`,
+                { cause },
+              ),
+          );
           return yield* retirement.pipe(
             Effect.catchIf(
               (retry) => protection(retry) !== undefined,
@@ -118,6 +139,7 @@ export const submitAbsorbAfterProtectionProgram = (
   ...submission: Parameters<typeof submitAbsorbConfirmedDepositToReserveProgram>
 ) =>
   retryAfterRetirementProtection(
+    submission[0],
     submitAbsorbConfirmedDepositToReserveProgram(...submission),
   );
 
@@ -126,7 +148,10 @@ export const submitAbsorbAfterProtectionProgram = (
 export const submitInitializePayoutAfterProtectionProgram = (
   ...submission: Parameters<typeof submitInitializePayoutProgram>
 ) =>
-  retryAfterRetirementProtection(submitInitializePayoutProgram(...submission));
+  retryAfterRetirementProtection(
+    submission[0],
+    submitInitializePayoutProgram(...submission),
+  );
 
 export const fetchReferenceScripts = (
   targets: readonly ReferenceScriptTarget[],

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  planSubmitTiming,
-  planSubmitTimingAfterInlineWait,
-} from "../src/transactions/submit-timing.js";
+import { planSubmitTiming } from "../src/transactions/submit-timing.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../src/transactions/submit-timing-due-work.js";
 
 const snapshot = (currentSlot: number) => ({
@@ -61,26 +58,6 @@ describe("submit timing planner", () => {
         slotSnapshot: snapshot(9),
       }),
     ).toMatchObject({ status: "window_too_narrow" });
-  });
-
-  it("marks a short inline wait as stalled when refreshed local slot evidence is still behind", () => {
-    const initial = planSubmitTiming({
-      callerLabel: "test",
-      invalidBeforeSlot: 10,
-      invalidHereafterSlot: 20,
-      slotSnapshot: snapshot(9),
-      maxInlineWaitMs: 3_000,
-    });
-    if (initial.status !== "wait") {
-      throw new Error("expected wait plan");
-    }
-
-    expect(
-      planSubmitTimingAfterInlineWait(initial, snapshot(10)),
-    ).toMatchObject({
-      status: "slot_source_stalled",
-      targetSlot: 12,
-    });
   });
 
   it("defers positive waits when the caller disallows inline sleeps", () => {
@@ -172,19 +149,6 @@ describe("submit timing planner", () => {
       currentSlot: 64_362,
       targetSlot: 64_362,
     });
-  });
-
-  it("keeps an inline wait stalled while the ledger tip trails, even once wall time passes the target", () => {
-    const initial = planSubmitTiming({
-      callerLabel: "test",
-      invalidBeforeSlot: 64_360,
-      slotSnapshot: trailingTip(64_359, 64_359),
-      maxInlineWaitMs: 3_000,
-    });
-    if (initial.status !== "wait") throw new Error("expected wait plan");
-    expect(
-      planSubmitTimingAfterInlineWait(initial, trailingTip(64_359, 64_368)),
-    ).toMatchObject({ status: "slot_source_stalled", currentSlot: 64_359 });
   });
 
   it("still judges expiry at the wall-clock slot, which is never behind the ledger tip", () => {

@@ -50,6 +50,7 @@ import {
   hubOracleWitnessAmong,
   initOutputOutRefs,
 } from "./initialization.fetch-hub-oracle-witness.js";
+import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
 import {
   ensureEventHistoryRewardAccountsRegisteredProgram,
@@ -286,6 +287,17 @@ const waitForAtomicInitializationVisibility = (
     ),
   );
 
+/** The observed L1 ledger tip a deployment transaction's window hangs from. */
+const observedDeploymentLedgerTip = (lucid: LucidEvolution) =>
+  Effect.mapError(
+    observedLedgerTip(lucid),
+    (cause) =>
+      new SDK.LucidError({
+        message: "Protocol initialization needs the observed L1 ledger tip",
+        cause,
+      }),
+  );
+
 export const buildAtomicProtocolInitTxProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -312,7 +324,13 @@ export const buildAtomicProtocolInitTxProgram = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
+    const validityRange = resolveDeploymentValidityBounds(
+      validTo ??
+        resolveDefaultDeploymentDeadline(
+          lucid,
+          yield* observedDeploymentLedgerTip(lucid),
+        ),
+    );
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
     const daParams = yield* deriveOperatorDaParams(nodeConfig);
     return yield* SDK.incompleteInitializationTxProgram(lucid, {
@@ -391,7 +409,10 @@ export const program = (
       lucidService.referenceScriptsApi,
       contracts,
     );
-    const initDeadline = resolveDefaultDeploymentDeadline(lucid);
+    const initDeadline = resolveDefaultDeploymentDeadline(
+      lucid,
+      yield* observedDeploymentLedgerTip(lucid),
+    );
     const txHash = yield* completeAndSubmit(
       lucid,
       yield* buildAtomicProtocolInitTxProgram(

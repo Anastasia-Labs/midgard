@@ -362,7 +362,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
           fixture.referenceScriptsAddress,
           ["scheduler", "active-operators", "retired-operators"],
         );
-        const { validFrom, validTo } = exitValidityWindow(middleLucid);
+        const { validFrom, validTo } = yield* exitValidityWindow(middleLucid);
         const witnesses = SDK.deriveRetireOperatorWitnesses({
           snapshot: directory,
           contracts: fixture.contracts,

@@ -8,6 +8,7 @@ import {
   journaledIntent,
 } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
+import { ledgerTipStartMs } from "../workers/utils/commit-end-time.js";
 import {
   type AttestStateQueueHeaderResult,
   completeWithLocalUplc,
@@ -24,6 +25,7 @@ import {
   daBondPoolBackingAttestationProgram,
   localDaSignatureWitnesses,
 } from "./da-attestation.fetch-unattested-headers.js";
+import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
 
 /** One step of a header's DA attestation, journaled against the header. */
@@ -225,9 +227,19 @@ export const attestHeader = ({
         availabilityParameters,
       ),
       apply: Effect.gen(function* () {
+        // The range backs off from the observed L1 ledger tip, so its lower
+        // bound is open there however long ago the last block landed.
+        const tip = yield* Effect.mapError(
+          observedLedgerTip(lucid),
+          (cause) =>
+            new SDK.LucidError({
+              message: "DA attestation apply needs the observed L1 ledger tip",
+              cause,
+            }),
+        );
         const validityRange = yield* SDK.daAttestationApplyValidityRangeProgram(
           {
-            currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
+            currentTime: BigInt(ledgerTipStartMs(lucid, tip)),
             blockTime: target.stateQueueNode.block_time,
           },
         );

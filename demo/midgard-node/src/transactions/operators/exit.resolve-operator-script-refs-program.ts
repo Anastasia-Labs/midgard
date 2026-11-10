@@ -1,3 +1,4 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -7,14 +8,17 @@ import {
   readFinalizedDeploymentIdentity,
   verifyConfiguredDeploymentManifestProgram,
 } from "../../commands/contract-deployment-info.js";
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "../../lucid-time.js";
 import { type NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
   type IntentPlan,
   openPlan,
 } from "../../services/intent-journal.js";
-import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import {
+  alignedUnixTimeStrictlyAfter,
+  ledgerTipBackdatedValidFromMs,
+} from "../../workers/utils/commit-end-time.js";
+import { observedLedgerTip } from "../ledger-tip-lower-bound.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptTargetsByCommand,
@@ -186,32 +190,40 @@ export const OPERATOR_TX_VALIDITY_WINDOW_MS = 120_000n;
 /**
  * A closed validity range short enough for the on-chain range-length check
  * and aligned to slot boundaries so Lucid does not widen it. The lower bound
- * is expressed in slots and clamped at the slot configuration's zero slot,
- * so a young emulator (or any chain younger than the lookback) never produces
- * a bound the evaluator rejects as too far in the past.
+ * looks back from the observed L1 ledger tip, not the wall clock, so it is
+ * open at the tip however long ago the last block landed; it is clamped at
+ * the chain's first slot, and never so early that the range outgrows the
+ * longest the validators accept. The upper bound runs from `nowMs`.
  */
 export const exitValidityWindow = (
   lucid: LucidEvolution,
   nowMs: bigint = currentTimeMsForLucidOrEmulatorFallback(lucid),
-): ExitValidityWindow => {
-  const firstSlot = lucid.config().slotConfig?.zeroSlot ?? 0;
-  const fromSlot = Math.max(
-    firstSlot,
-    lucid.currentSlot() - EXIT_VALIDITY_LOOKBACK_SLOTS,
-  );
-  return {
-    nowMs,
-    validFrom: BigInt(
-      slotToUnixTimeForLucidOrEmulatorFallback(lucid, fromSlot),
-    ),
-    validTo: BigInt(
-      alignedUnixTimeStrictlyAfter(
-        lucid,
-        Number(nowMs + OPERATOR_TX_VALIDITY_WINDOW_MS),
-      ),
-    ),
-  };
-};
+): Effect.Effect<ExitValidityWindow, Error> =>
+  Effect.gen(function* () {
+    const tip = yield* Effect.mapError(
+      observedLedgerTip(lucid),
+      (cause) =>
+        new Error(
+          `Operator transaction validity needs the observed L1 ledger tip: ${formatUnknownError(cause)}`,
+          { cause },
+        ),
+    );
+    const validTo = alignedUnixTimeStrictlyAfter(
+      lucid,
+      Number(nowMs + OPERATOR_TX_VALIDITY_WINDOW_MS),
+    );
+    const validFrom = ledgerTipBackdatedValidFromMs({
+      lucid,
+      submitSlotSnapshot: tip,
+      backdateMs: EXIT_VALIDITY_LOOKBACK_SLOTS * tip.slotLengthMs,
+      rangeFloorMs: validTo - Number(SDK.MAX_VALIDITY_RANGE_LENGTH_MS),
+    });
+    return {
+      nowMs,
+      validFrom: BigInt(validFrom),
+      validTo: BigInt(validTo),
+    };
+  });
 
 /** Lifts a throwing SDK witness derivation into the error channel. */
 export const deriveWitnesses = <A>(derive: () => A): Effect.Effect<A, Error> =>

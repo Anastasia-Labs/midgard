@@ -101,6 +101,33 @@ export const fetchRegisteredOperatorNodes = async (
   );
 };
 
+/** The activation time `operatorKeyHash`'s registration carries. */
+export const registeredActivationTime = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  contracts: SDK.MidgardValidators,
+  operatorKeyHash: string,
+): Promise<bigint> => {
+  const registeredNodes = await Promise.all(
+    (await fetchRegisteredOperatorNodes(lucid, contracts)).map((utxo) =>
+      Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+    ),
+  );
+  const registration = registeredNodes.find(
+    (node) =>
+      node.key !== "Empty" &&
+      Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
+        operatorKeyHash,
+  );
+  const activationTime =
+    registration === undefined
+      ? undefined
+      : SDK.registeredNodeKeyToPosixTime(registration.key);
+  if (activationTime === undefined) {
+    throw new Error(`Missing the registration of operator ${operatorKeyHash}`);
+  }
+  return activationTime;
+};
+
 export const advanceEmulatorPastRegistrationDelay = (
   emulator: Emulator,
 ): void => {
@@ -154,24 +181,11 @@ export const registerSecondOperatorBehindActiveFirst = async (
     ),
   );
 
-  const registeredNodes = await Promise.all(
-    (await fetchRegisteredOperatorNodes(lucid, contracts)).map((utxo) =>
-      Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
-    ),
+  const activationTime = await registeredActivationTime(
+    lucid,
+    contracts,
+    secondKeyHash,
   );
-  const registration = registeredNodes.find(
-    (node) =>
-      node.key !== "Empty" &&
-      Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
-        secondKeyHash,
-  );
-  const activationTime =
-    registration === undefined
-      ? undefined
-      : SDK.registeredNodeKeyToPosixTime(registration.key);
-  if (activationTime === undefined) {
-    throw new Error("Missing the second operator's registration");
-  }
   expect(BigInt(emulator.now())).toBeLessThan(activationTime);
 
   return {

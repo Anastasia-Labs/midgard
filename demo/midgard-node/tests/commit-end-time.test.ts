@@ -207,7 +207,7 @@ describe("commit end-time resolver", () => {
   });
 
   it("builds a backdated bounded validity interval and exposes its inclusive upper bound", async () => {
-    const lucid = await makeLucid();
+    const lucid = await makeLucid(120);
     const currentSlot = lucid.currentSlot();
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
     const validToMs = alignedUnixTimeStrictlyAfter(

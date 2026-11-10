@@ -11,6 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { L1_TIP_REFRESH_MS } from "../../l1-access.js";
 import { type L1SlotUnknownError } from "../../l1-heads.js";
 import {
   type IntentJournal,
@@ -19,6 +20,10 @@ import {
   openPlan,
 } from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import {
+  awaitLedgerTipAtLowerBound,
+  lowerBoundAtLedgerTip,
+} from "../ledger-tip-lower-bound.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
 import { readSelectedWalletViewInputs } from "../utils.wallet-view.js";
@@ -32,7 +37,40 @@ import {
   requireOperatorFundingProgram,
 } from "./funding-preflight.js";
 
-export type TakeoverError = OperatorExitError | SDK.SchedulerError;
+export type TakeoverError =
+  | OperatorExitError
+  | SDK.SchedulerError
+  | StrikeLowerBoundAheadOfTip;
+
+/**
+ * The strike's lower bound (the inactivity threshold, or the backoff from
+ * the L1 clock) is past the observed ledger tip, so submit would refuse the
+ * strike as built too early. A long-running caller defers until the tip can
+ * have reached `dueSlot`; the one-shot verb waits for it instead.
+ */
+export class StrikeLowerBoundAheadOfTip extends Error {
+  override readonly name = "StrikeLowerBoundAheadOfTip";
+  readonly tipSlot: number;
+  readonly dueSlot: number;
+  /**
+   * When to look again: the start of `dueSlot`, the earliest the tip can
+   * reach it, and no sooner than the tip is re-read.
+   */
+  readonly retryAtMs: number;
+
+  constructor(input: {
+    readonly tipSlot: number;
+    readonly dueSlot: number;
+    readonly retryAtMs: number;
+  }) {
+    super(
+      `The strike's lower bound is ahead of the observed L1 ledger tip (tip_slot=${input.tipSlot.toString()}, due_slot=${input.dueSlot.toString()})`,
+    );
+    this.tipSlot = input.tipSlot;
+    this.dueSlot = input.dueSlot;
+    this.retryAtMs = input.retryAtMs;
+  }
+}
 
 /**
  * The payment key hash of an operator wallet address. Callers pass the address
@@ -190,7 +228,11 @@ export const submitInactivityStrikeProgram = (
   contracts: SDK.MidgardValidators,
   referenceScriptsAddress: string,
   planning: TakeoverPlanning & { readonly plan: ReadyTakeoverPlan },
-  options: { readonly label?: string } = {},
+  options: {
+    readonly label?: string;
+    /** Wait for the observed tip to reach the lower bound (one-shot verbs). */
+    readonly awaitLowerBound?: boolean;
+  } = {},
 ): Effect.Effect<StrikeSubmission, TakeoverError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "strike-inactive-operator";
@@ -210,7 +252,42 @@ export const submitInactivityStrikeProgram = (
       yield* readSelectedWalletViewInputs(lucid, label),
     );
     // Every read is done: the window starts from the L1 time of the build.
-    const plan = yield* replanAtBuildTime(lucid, planning);
+    // Submit judges the lower bound at the observed ledger tip, which moves
+    // only when a block lands. The verb waits for the tip and plans again;
+    // the watchdog defers through its due work.
+    let plan = yield* replanAtBuildTime(lucid, planning);
+    for (;;) {
+      const atTip = yield* Effect.mapError(
+        lowerBoundAtLedgerTip(lucid, plan.validity.validFrom, label),
+        (cause) =>
+          new SDK.SchedulerError({
+            message: "The strike needs the observed L1 ledger tip",
+            cause,
+          }),
+      );
+      if (atTip.status === "ready") break;
+      if (options.awaitLowerBound !== true) {
+        return yield* Effect.fail(
+          new StrikeLowerBoundAheadOfTip({
+            tipSlot: atTip.currentSlot,
+            dueSlot: atTip.dueSlot,
+            retryAtMs: Math.max(
+              lucid.slotToUnixTime(atTip.dueSlot),
+              atTip.snapshot.observedAtMs + L1_TIP_REFRESH_MS,
+            ),
+          }),
+        );
+      }
+      yield* Effect.mapError(
+        awaitLedgerTipAtLowerBound(lucid, plan.validity.validFrom, label),
+        (cause) =>
+          new SDK.SchedulerError({
+            message: "The strike needs the observed L1 ledger tip",
+            cause,
+          }),
+      );
+      plan = yield* replanAtBuildTime(lucid, planning);
+    }
     const result = yield* SDK.buildStrikeInactiveOperatorTxProgram({
       lucid,
       scheduler: contracts.scheduler,

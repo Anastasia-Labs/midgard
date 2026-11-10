@@ -92,22 +92,13 @@ export type SubmitTimingSlotSourceUnavailablePlan = {
   readonly invalidationKey?: string;
 };
 
-export type SubmitTimingSlotSourceStalledPlan = Omit<
-  SubmitTimingWaitPlan,
-  "status"
-> & {
-  readonly status: "slot_source_stalled";
-  readonly reason: string;
-};
-
 export type SubmitTimingPlan =
   | SubmitTimingReadyPlan
   | SubmitTimingWaitPlan
   | SubmitTimingNotDuePlan
   | SubmitTimingExpiredPlan
   | SubmitTimingWindowTooNarrowPlan
-  | SubmitTimingSlotSourceUnavailablePlan
-  | SubmitTimingSlotSourceStalledPlan;
+  | SubmitTimingSlotSourceUnavailablePlan;
 
 /**
  * The slot a validity lower bound is judged at: the ledger's latest block.
@@ -272,36 +263,4 @@ export const planSubmitTiming = (
         status: "not_due",
         reason: `wait_ms=${waitMs.toString()},max_inline_wait_ms=${maxInlineWaitMs.toString()}`,
       };
-};
-
-export const planSubmitTimingAfterInlineWait = (
-  original: SubmitTimingWaitPlan,
-  refreshedSnapshot: SubmitSlotSnapshot | undefined,
-  refreshedError?: unknown,
-):
-  | SubmitTimingReadyPlan
-  | SubmitTimingSlotSourceStalledPlan
-  | SubmitTimingPlan => {
-  const refreshed = planSubmitTiming({
-    callerLabel: original.callerLabel,
-    invalidBeforeSlot: original.invalidBeforeSlot,
-    invalidHereafterSlot: original.invalidHereafterSlot,
-    slotSnapshot: refreshedSnapshot,
-    slotSnapshotError: refreshedError,
-    submitSlotBuffer: original.targetSlot - original.invalidBeforeSlot,
-    maxInlineWaitMs: 0,
-    dependencyKey: original.dependencyKey,
-    invalidationKey: original.invalidationKey,
-  });
-  if (refreshed.status === "ready") {
-    return refreshed;
-  }
-  if (refreshed.status === "wait" || refreshed.status === "not_due") {
-    return {
-      ...refreshed,
-      status: "slot_source_stalled",
-      reason: `slot source did not reach target after inline wait: observed_slot=${refreshed.currentSlot.toString()},target_slot=${refreshed.targetSlot.toString()}`,
-    };
-  }
-  return refreshed;
 };

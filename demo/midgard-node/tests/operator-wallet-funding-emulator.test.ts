@@ -25,7 +25,6 @@ import {
 import { Effect, Either } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { unfundedSkipReason } from "../src/fibers/operator-watchdog.js";
 import type { IntentJournal } from "../src/services/intent-journal.js";
 import { isOperatorCommandRefusal } from "../src/transactions/operators/commands.js";
 import {
@@ -33,6 +32,7 @@ import {
   OperatorWalletInputsEmpty,
   presetOperatorWalletInputs,
   requireOperatorFundingProgram,
+  unfundedSkipReason,
 } from "../src/transactions/operators/funding-preflight.js";
 import { ensureReferenceScriptWalletWorkingCapital } from "../src/transactions/reference-scripts.ensure-reference-script-wallet-working-capital.js";
 import {

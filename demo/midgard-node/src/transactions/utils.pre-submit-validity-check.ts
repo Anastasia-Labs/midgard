@@ -5,7 +5,6 @@ import { Effect } from "effect";
 import { planSubmitTiming, type SubmitTimingPlan } from "./submit-timing.js";
 import { inspectSignedTxValidityInterval } from "./utils.await-required-output-visibility.js";
 import {
-  DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
   EARLY_VALIDITY_RETRY_SLOT_BUFFER,
   type SignedTxValidityInterval,
 } from "./utils.parse-structured-outside-validity-interval-details.js";
@@ -63,8 +62,6 @@ export const preSubmitValidityCheck = (
           ? slotSnapshotResult.left
           : undefined,
       submitSlotBuffer: EARLY_VALIDITY_RETRY_SLOT_BUFFER,
-      maxInlineWaitMs:
-        options.maxPreSubmitWaitMs ?? DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
       inlineWaitPolicy: options.inlineWaitPolicy,
       dependencyKey: options.noInlineSubmitDefer?.dependencyKey,
       invalidationKey: options.noInlineSubmitDefer?.invalidationKey,
@@ -80,16 +77,13 @@ export const inspectSignedTxValidityIntervalIfAvailable = (
 
 export const submitTimingFailureError = (
   txHash: string,
-  plan: Exclude<SubmitTimingPlan, { readonly status: "ready" | "wait" }>,
+  plan: Exclude<SubmitTimingPlan, { readonly status: "ready" }>,
 ): Error => {
   switch (plan.status) {
+    case "wait":
     case "not_due":
       return new Error(
-        `Tx ${txHash} is not due for submit; currentSlot=${plan.currentSlot.toString()}, targetSlot=${plan.targetSlot.toString()}, waitMs=${plan.waitMs.toString()}, max inline wait exceeded. Rebuild or register due work instead of retrying the same signed body.`,
-      );
-    case "slot_source_stalled":
-      return new Error(
-        `Tx ${txHash} local submit slot source stalled after inline wait; currentSlot=${plan.currentSlot.toString()}, targetSlot=${plan.targetSlot.toString()}, waitMs=${plan.waitMs.toString()}, slotSource=${plan.slotSource}. Rebuild required.`,
+        `Tx ${txHash} was built before its lower bound: the L1 ledger tip (slot ${plan.currentSlot.toString()}, ${plan.slotSource}) has not reached invalidBefore=${plan.invalidBeforeSlot.toString()} plus the submit margin (slot ${plan.targetSlot.toString()}). Build it once the tip reaches the bound, or register due work.`,
       );
     case "expired":
       return new Error(

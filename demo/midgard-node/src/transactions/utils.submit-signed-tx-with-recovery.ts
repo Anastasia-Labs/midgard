@@ -10,10 +10,7 @@ import {
   type JournalInsert,
   type SubmissionIntent,
 } from "../services/intent-journal.js";
-import {
-  planSubmitTiming,
-  planSubmitTimingAfterInlineWait,
-} from "./submit-timing.js";
+import { planSubmitTiming } from "./submit-timing.js";
 import { BeforeSignedTransactionSubmission } from "./utils.await-required-output-visibility.js";
 import {
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
@@ -124,58 +121,17 @@ export const submitSignedTxWithRecovery = (
       if (preSubmitDefer !== undefined) {
         return yield* Effect.fail(preSubmitDefer);
       }
-      if (preSubmitValidity.status === "not_due") {
+      // A lower bound the observed tip has not reached by the submit margin:
+      // the transaction was built too early. A caller with a time-gated
+      // bound waits for the tip (a command) or defers (the node) before it
+      // builds; submit never sleeps on the wall clock for it.
+      if (
+        preSubmitValidity.status === "not_due" ||
+        preSubmitValidity.status === "wait"
+      ) {
         return yield* Effect.fail(
           submitTimingFailureError(txHash, preSubmitValidity),
         );
-      }
-      if (preSubmitValidity.status === "slot_source_stalled") {
-        return yield* Effect.fail(
-          submitTimingFailureError(txHash, preSubmitValidity),
-        );
-      }
-      if (preSubmitValidity.status === "wait") {
-        yield* Effect.logWarning(
-          [
-            `Tx ${txHash} has not reached its validity submit margin;`,
-            `currentSlot=${preSubmitValidity.currentSlot.toString()},`,
-            `slotSource=${preSubmitValidity.slotSource},`,
-            `invalidBefore=${preSubmitValidity.invalidBeforeSlot.toString()},`,
-            `invalidHereafter=${preSubmitValidity.invalidHereafterSlot?.toString() ?? "none"}.`,
-            `Waiting ${preSubmitValidity.waitMs.toString()}ms before submit`,
-            options.label === undefined ? "" : `label=${options.label}.`,
-          ].join(" "),
-        );
-        yield* sleep(preSubmitValidity.waitMs);
-        const refreshedSnapshot = yield* Effect.either(
-          resolvePreSubmitSlotSnapshot(lucid, options.slotSnapshot),
-        );
-        if (refreshedSnapshot._tag === "Left") {
-          return yield* Effect.fail(
-            new Error(
-              `Tx ${txHash} failed to refresh local submit slot evidence after inline wait: ${formatUnknownError(
-                refreshedSnapshot.left,
-                { includeCause: true },
-              )}`,
-            ),
-          );
-        }
-        const afterWait = planSubmitTimingAfterInlineWait(
-          preSubmitValidity,
-          refreshedSnapshot.right,
-        );
-        if (afterWait.status !== "ready") {
-          if (afterWait.status === "wait") {
-            return yield* Effect.fail(
-              new Error(
-                `Tx ${txHash} local submit slot evidence still requires another wait after inline wait: currentSlot=${afterWait.currentSlot.toString()}, targetSlot=${afterWait.targetSlot.toString()}; rebuild required`,
-              ),
-            );
-          }
-          return yield* Effect.fail(
-            submitTimingFailureError(txHash, afterWait),
-          );
-        }
       }
       // The pre-broadcast gate owns one outermost transaction and runs the
       // journal's insert inside it, so a refused gate leaves no journal row,

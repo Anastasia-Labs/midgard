@@ -16,6 +16,7 @@
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
 import {
   buildValidationTraceDefend,
   buildValidationTraceOperatorReveal,
@@ -23,7 +24,7 @@ import {
   completeValidationTraceDefend,
   completeValidationTraceMove,
   validationTraceDefendersProof,
-  validationTraceMoveWindow,
+  validationTraceThreadExpiresAfterMs,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { TxSignBuilder, UTxO } from "@lucid-evolution/lucid";
@@ -38,7 +39,9 @@ import {
   journaledIntent,
   readIntentStatus,
 } from "../services/intent-journal.js";
+import { observedLedgerTip } from "../transactions/ledger-tip-lower-bound.js";
 import { handleSignSubmitNoConfirmation } from "../transactions/utils.await-submitted-transaction-confirmation.js";
+import { ledgerTipBackdatedValidFromMs } from "../workers/utils/commit-end-time.js";
 import type { ValidationTraceDefenseWork } from "./decide.js";
 import {
   readDefenseAnchors,
@@ -56,7 +59,9 @@ export type PlayOutcome =
   | "commit_in_flight"
   | "busy"
   | "moved"
-  | "past_deadline";
+  | "past_deadline"
+  /** The observed L1 ledger tip has not reached the move's lower bound. */
+  | "not_due";
 
 type Work<K extends ValidationTraceDefenseWork["kind"]> = Extract<
   ValidationTraceDefenseWork,
@@ -78,6 +83,34 @@ export const liveUnder = (key: string) =>
   Effect.flatMap(IntentJournal, (journal) =>
     journal.liveIntents("dispute_defense", key),
   ).pipe(Effect.map((live) => live.length > 0));
+
+/**
+ * A move's validity window, hung from the observed L1 ledger tip: its lower
+ * bound is the submit margin behind the tip, so the move is admissible there
+ * however long ago the last block landed. A move is charged from its lower
+ * bound, so this never charges more than a bound read from the wall clock,
+ * and the next turn starts at the upper bound, after the move lands.
+ */
+const moveWindowAtTip = (port: ValidationTraceDefensePort) =>
+  Effect.gen(function* () {
+    const tip = yield* Effect.mapError(
+      observedLedgerTip(port.lucid),
+      (cause) =>
+        new Error(
+          `validation-trace defense: the observed L1 ledger tip could not be read: ${formatUnknownError(cause)}`,
+          { cause },
+        ),
+    );
+    const validFrom = ledgerTipBackdatedValidFromMs({
+      lucid: port.lucid,
+      submitSlotSnapshot: tip,
+      backdateMs: SUBMIT_SLOT_VALIDITY_BUFFER * tip.slotLengthMs,
+    });
+    return {
+      validFrom,
+      validTo: validFrom + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+    };
+  });
 
 /** Signs over the views, journals and submits; the hash once sent. */
 const send = (
@@ -169,7 +202,7 @@ const defendNow = (
       hubOracle === undefined
     )
       return "moved" as const;
-    const window = validationTraceMoveWindow(port.lucid);
+    const window = yield* moveWindowAtTip(port);
     if (window.validFrom > item.deadline) return "past_deadline" as const;
     const references = yield* port.references;
     const unsigned = yield* promise("the Defend build", async () => {
@@ -279,7 +312,7 @@ export const playReveal = (
       material.proofAt(Number(turn.AwaitingOperator.midpoint)),
     );
     const references = yield* port.references;
-    const window = validationTraceMoveWindow(port.lucid);
+    const window = yield* moveWindowAtTip(port);
     const unsigned = yield* promise("the reveal build", () =>
       completeValidationTraceMove({
         lucid: port.lucid,
@@ -316,7 +349,14 @@ export const playExpiry = (
     if (caseConfig === undefined) return "moved" as const;
     const references = yield* port.references;
     const holder = references[thread.at];
-    const window = validationTraceMoveWindow(port.lucid);
+    const window = yield* moveWindowAtTip(port);
+    // The thread expires on a lower bound past its expiry time; the tip
+    // reaches that a block at a time, and a later tick plays it then.
+    if (
+      window.validFrom <=
+      validationTraceThreadExpiresAfterMs(thread.thread.header)
+    )
+      return "not_due" as const;
     const unsigned = yield* promise("the expiry build", () =>
       completeValidationTraceMove({
         lucid: port.lucid,

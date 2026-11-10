@@ -174,7 +174,7 @@ export const slashDuplicateOperatorProgram = (
       referenceScriptsAddress,
       ["registered-operators"],
     );
-    const { validFrom, validTo } = exitValidityWindow(lucid);
+    const { validFrom, validTo } = yield* exitValidityWindow(lucid);
     const { tx } = yield* SDK.buildUnsignedSlashDuplicateOperatorTxProgram({
       lucid,
       contracts,

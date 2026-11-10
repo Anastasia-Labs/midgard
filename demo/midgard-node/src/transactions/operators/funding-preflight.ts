@@ -249,3 +249,16 @@ export const operatorWalletInputsProgram = (
         }),
     ),
   );
+
+/**
+ * The skip reason of a failure that says the operator wallet cannot fund the
+ * submission yet (a shortfall, or a view with no input to offer), or
+ * `undefined` for a failure that counts against the citation. An unfunded
+ * tick is skipped and retried; it says nothing about the citation.
+ */
+export const unfundedSkipReason = (error: unknown): string | undefined =>
+  error instanceof OperatorFundingShortfall
+    ? "insufficient_funds"
+    : error instanceof OperatorWalletInputsEmpty
+      ? "wallet_inputs_empty"
+      : undefined;

@@ -6,6 +6,8 @@
  * L1 control-plane holder: a merge selects the merge wallet under the permit
  * and signs with it later. The watchdog must neither select a wallet while a
  * merge holds the permit nor depend on the wallet a merge left selected.
+ * Nor may it strike before the observed L1 ledger tip reaches the strike's
+ * lower bound: it defers until the tip can have reached it.
  */
 import "./helpers/follower-emulator-installed.js";
 
@@ -29,6 +31,7 @@ import {
   withL1ControlPlane,
 } from "../src/services/index.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
+import { observeEmulatorTip } from "./helpers/emulator-observed-tip.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
@@ -88,6 +91,17 @@ describe("operator watchdog wallet selection", () => {
       ),
     } as unknown as Lucid;
     const selectedAddress = Effect.promise(() => shared.wallet().address());
+    // The observed ledger tip: at the wall clock unless no block has landed.
+    let tipBehindSlots = 0;
+    observeEmulatorTip(
+      shared,
+      fixture.emulator,
+      (slot) => slot - tipBehindSlots,
+    );
+    const watchdogDeferrals = () =>
+      listSlotAwareDueWork().filter(
+        (entry) => entry.kind === "operator_watchdog",
+      );
 
     const outcome = await runWithoutFollower(
       Effect.gen(function* () {
@@ -113,15 +127,28 @@ describe("operator watchdog wallet selection", () => {
           }),
         );
         const holderAfterBusyTick = yield* Effect.promise(shiftHolder);
-        const deferredAfterBusyTick = listSlotAwareDueWork().filter(
-          (entry) => entry.kind === "operator_watchdog",
+        const deferredAfterBusyTick = watchdogDeferrals();
+        // The merge released the permit and left its wallet selected. The
+        // wall clock is past the threshold, but no block has landed for a
+        // minute, so the observed tip is not.
+        tipBehindSlots = 60;
+        yield* operatorWatchdogTick;
+        const holderBehindTip = yield* Effect.promise(shiftHolder);
+        const deferredBehindTip = watchdogDeferrals();
+        // Blocks land again; the tick is due once the tip can have reached
+        // the lower bound.
+        tipBehindSlots = 0;
+        advanceEmulatorPastUnixTime(
+          fixture.emulator,
+          BigInt(deferredBehindTip[0]?.dueAtMs ?? 0),
         );
-        // The merge released the permit and left its wallet selected.
         yield* operatorWatchdogTick;
         return {
           selectedDuringMerge,
           holderAfterBusyTick,
           deferredAfterBusyTick,
+          holderBehindTip,
+          deferredBehindTip,
         };
       }).pipe(
         Effect.provide(
@@ -148,6 +175,12 @@ describe("operator watchdog wallet selection", () => {
     expect(outcome.selectedDuringMerge).toBe(mergeAddress);
     expect(outcome.holderAfterBusyTick).toBe(appointed.operatorKeyHash);
     expect(outcome.deferredAfterBusyTick).toEqual([]);
+
+    // Behind the tip it neither struck nor failed: it deferred.
+    expect(outcome.holderBehindTip).toBe(appointed.operatorKeyHash);
+    expect(outcome.deferredBehindTip.map(({ reason }) => reason)).toEqual([
+      "strike_not_due_at_tip",
+    ]);
 
     // Holding the permit, the tick selected the operator wallet itself and
     // struck the shift over to its own operator.

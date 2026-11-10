@@ -1,3 +1,4 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -7,6 +8,7 @@ import {
   journaledIntent,
 } from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import { awaitLedgerTipAtLowerBound } from "../ledger-tip-lower-bound.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
 import {
@@ -114,7 +116,7 @@ export const retireOperatorProgram = (
       referenceScriptsAddress,
       ["scheduler", "active-operators", "retired-operators"],
     );
-    const { validFrom, validTo } = exitValidityWindow(lucid);
+    const { validFrom, validTo } = yield* exitValidityWindow(lucid);
     const witnesses = yield* deriveWitnesses(() =>
       SDK.deriveRetireOperatorWitnesses({
         snapshot,
@@ -249,18 +251,39 @@ export const recoverOperatorBondProgram = (
         operatorKeyHash: input.operatorKeyHash,
       }),
     );
-    const { validFrom, validTo } = exitValidityWindow(lucid, nowMs);
-    const lowerBound =
+    // The validators read the bond unlock against the lower bound, so the
+    // range starts after it. A one-shot verb waits for the observed ledger
+    // tip to reach that bound before it builds; submit refuses a transaction
+    // the tip has not reached.
+    const unlockLowerBound =
       witnesses.bondUnlockTime === null
+        ? null
+        : BigInt(
+            alignedUnixTimeStrictlyAfter(
+              lucid,
+              Number(witnesses.bondUnlockTime),
+            ),
+          );
+    if (unlockLowerBound !== null) {
+      yield* Effect.mapError(
+        awaitLedgerTipAtLowerBound(lucid, unlockLowerBound, label),
+        (cause) =>
+          new Error(
+            `${label} needs the observed L1 ledger tip to reach the bond unlock: ${formatUnknownError(cause)}`,
+            { cause },
+          ),
+      );
+    }
+    // The upper bound runs from the L1 clock read after the wait, which may
+    // have outlasted a whole validity window.
+    const { validFrom, validTo } = yield* exitValidityWindow(
+      lucid,
+      yield* resolveL1NowMs(lucid),
+    );
+    const lowerBound =
+      unlockLowerBound === null || validFrom > unlockLowerBound
         ? validFrom
-        : validFrom > witnesses.bondUnlockTime
-          ? validFrom
-          : BigInt(
-              alignedUnixTimeStrictlyAfter(
-                lucid,
-                Number(witnesses.bondUnlockTime),
-              ),
-            );
+        : unlockLowerBound;
     const { tx } = yield* SDK.buildUnsignedRecoverOperatorBondTxProgram({
       lucid,
       contracts,

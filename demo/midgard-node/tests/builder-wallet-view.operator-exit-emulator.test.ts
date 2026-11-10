@@ -154,6 +154,7 @@ const exhaustStrikes = async (
       fixture.contracts,
       fixture.referenceScriptsAddress,
       { ...due, plan: due.plan },
+      { awaitLowerBound: true },
     ),
   );
   const exhausted = await strikeOperatorToMaxStrikes(fixture, struckKeyHash);

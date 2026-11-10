@@ -287,43 +287,52 @@ describe("sign/submit wrapper recovery options", () => {
     }
   });
 
-  it("forwards submit recovery options through signSubmitTransaction", async () => {
-    const slots = [7, 12];
-    const waits: number[] = [];
-    const submitProgram = vi.fn(() => Effect.void);
-    const signed = {
-      toCBOR: () =>
-        signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
-      submitProgram,
-    };
-    const signBuilder = fakeSignBuilder(signed);
+  // The forwarded slot source decides: short of the bound plus margin, refused.
+  it.each([
+    { tipSlot: 7, submitted: false },
+    { tipSlot: 12, submitted: true },
+  ])(
+    "forwards submit recovery options through signSubmitTransaction: tip slot $tipSlot",
+    async ({ tipSlot, submitted }) => {
+      const sleeps: number[] = [];
+      const submitProgram = vi.fn(() => Effect.void);
+      const signed = {
+        toCBOR: () =>
+          signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
+        submitProgram,
+      };
 
-    const result = await runWithoutFollower(
-      Effect.either(
-        signSubmitTransaction(
-          fakeWrapperLucid() as never,
-          signBuilder,
-          TEST_INTENT,
-          {
-            label: "operator registration",
-            slotSnapshot: () =>
-              Effect.succeed({
-                source: "test",
-                currentSlot: slots.shift() ?? 12,
-                observedAtMs: 1_779_150_000_000,
-                slotLengthMs: 1_000,
-              }),
-            sleep: (milliseconds) =>
-              Effect.sync(() => waits.push(milliseconds)),
-          },
+      const result = await runWithoutFollower(
+        Effect.either(
+          signSubmitTransaction(
+            fakeWrapperLucid() as never,
+            fakeSignBuilder(signed),
+            TEST_INTENT,
+            {
+              label: "operator registration",
+              slotSnapshot: () =>
+                Effect.succeed({
+                  source: "test",
+                  currentSlot: tipSlot,
+                  observedAtMs: 1_779_150_000_000,
+                  slotLengthMs: 1_000,
+                }),
+              sleep: (milliseconds) =>
+                Effect.sync(() => sleeps.push(milliseconds)),
+            },
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(result._tag).toBe("Right");
-    expect(submitProgram).toHaveBeenCalledTimes(1);
-    expect(waits).toEqual([5_000]);
-  });
+      expect(result._tag).toBe(submitted ? "Right" : "Left");
+      expect(submitProgram).toHaveBeenCalledTimes(submitted ? 1 : 0);
+      expect(sleeps).toEqual([]);
+      if (!submitted)
+        expect(String(result._tag === "Left" ? result.left : "")).toContain(
+          `was built before its lower bound: the L1 ledger tip (slot ${tipSlot.toString()}, test)`,
+        );
+    },
+  );
 
   it("forwards submit recovery options through no-confirmation wrapper", async () => {
     const submitProgram = vi.fn(() => Effect.void);

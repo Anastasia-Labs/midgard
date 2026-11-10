@@ -18,6 +18,7 @@
  * - with no L1 follower view the tick does nothing and names nothing.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
+import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
 import {
   commitSceneSuccessor,
   falseClaimMaterial,
@@ -296,7 +297,13 @@ describe("the validation-trace defender's tick", () => {
     const { emulator } = s.scene.h;
     const deadline =
       startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS;
-    emulator.awaitSlot(Math.ceil((deadline - emulator.now()) / 1000) + 1);
+    // Past it even for the earliest lower bound the tip admits: the Defend's
+    // bound sits the submit margin behind the observed tip.
+    emulator.awaitSlot(
+      Math.ceil((deadline - emulator.now()) / 1000) +
+        1 +
+        SUBMIT_SLOT_VALIDITY_BUFFER,
+    );
     const sentBefore = s.env.sent.length;
     expect(await s.tick()).toStrictEqual([
       { kind: "defend", subject: claim.caseUnit, outcome: "past_deadline" },

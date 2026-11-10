@@ -1,3 +1,4 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   LucidEvolution,
@@ -9,13 +10,16 @@ import {
 import { Effect } from "effect";
 
 import { type InitProtocolAttempt } from "../e2e/run-state.js";
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
 import {
   type IntentJournal,
   type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
+import {
+  alignedUnixTimeStrictlyAfter,
+  ledgerTipBackdatedValidFromMs,
+} from "../workers/utils/commit-end-time.js";
 import {
   DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
   DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
@@ -150,61 +154,31 @@ export const completeAndSubmit = (
   });
 
 /**
- * Produces a conservative default validity start time for deployment
- * transactions.
+ * The default deadline of a deployment transaction: its window runs from a
+ * minute before the observed L1 ledger tip, so the transaction is open there
+ * however long ago the last block landed.
  */
-const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
-  if (lucid === undefined) {
-    return BigInt(Date.now() - DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS);
-  }
-  const currentTime = slotToUnixTimeForLucidOrEmulatorFallback(
+export const resolveDefaultDeploymentDeadline = (
+  lucid: LucidEvolution,
+  ledgerTip: SubmitSlotSnapshot,
+): bigint => {
+  const startTime = ledgerTipBackdatedValidFromMs({
     lucid,
-    lucid.currentSlot(),
-  );
-  const firstSlotTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, 0);
+    submitSlotSnapshot: ledgerTip,
+    backdateMs: DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
+  });
   return BigInt(
-    Math.max(
-      firstSlotTime,
-      currentTime - DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
+    alignedUnixTimeStrictlyAfter(
+      lucid,
+      startTime + Number(DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS) - 1,
     ),
   );
 };
 
-export const resolveDefaultDeploymentDeadline = (
-  lucid?: LucidEvolution,
-): bigint => {
-  const targetTime = Number(
-    resolveDeploymentStartTime(lucid) + DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
-  );
-  if (lucid === undefined) {
-    return BigInt(targetTime);
-  }
-  const targetSlot = lucid.unixTimeToSlot(targetTime);
-  const alignedTime = slotToUnixTimeForLucidOrEmulatorFallback(
-    lucid,
-    targetSlot,
-  );
-  if (alignedTime >= targetTime) {
-    return BigInt(alignedTime);
-  }
-  return BigInt(
-    slotToUnixTimeForLucidOrEmulatorFallback(lucid, targetSlot + 1),
-  );
-};
-
+/** A deployment transaction's window, ending at `validTo`. */
 export const resolveDeploymentValidityBounds = (
-  lucid?: LucidEvolution,
-  validTo?: bigint,
-): { validFrom: bigint; validTo: bigint } => {
-  if (validTo !== undefined) {
-    return {
-      validFrom: validTo - DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
-      validTo,
-    };
-  }
-  const upperBound = resolveDefaultDeploymentDeadline(lucid);
-  return {
-    validFrom: resolveDeploymentStartTime(lucid),
-    validTo: upperBound,
-  };
-};
+  validTo: bigint,
+): { validFrom: bigint; validTo: bigint } => ({
+  validFrom: validTo - DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
+  validTo,
+});

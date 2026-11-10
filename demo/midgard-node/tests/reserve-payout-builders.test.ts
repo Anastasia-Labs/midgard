@@ -19,7 +19,6 @@ import "./reserve-payout-builders.expect-add-funds-redeemer-layout.js";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -33,11 +32,6 @@ import { Effect } from "effect";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  submitAbsorbAfterProtectionProgram,
-  submitInitializePayoutAfterProtectionProgram,
-} from "../src/commands/reserve-payout.js";
-import { openPlan } from "../src/services/intent-journal.js";
-import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
   buildAddReserveFundsToPayoutTxProgram,
@@ -45,7 +39,6 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "../src/transactions/reserve-payout.js";
-import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   expectAbsorbRedeemerLayout,
   expectAddFundsRedeemerLayout,
@@ -938,56 +931,6 @@ describe("reserve/payout transaction builder primitives", () => {
         .protectionDurationMs,
     ).toBe(protectedFixture.history.deposit.recipe.protectionDurationMs);
   });
-
-  it.each(["absorb", "initialize"] as const)(
-    "%s waits out a protected Order, then rebuilds and submits",
-    async (retirement) => {
-      // Far enough ahead to outlast a cold fixture build and the first build.
-      const protectedUntil = BigInt(Date.now() + 12_000);
-      const f = await makeReserveLifecycleBuilderFixture({ protectedUntil });
-      const common = {
-        hubOracleRefInput: f.hubOracleRefInput,
-        referenceScripts: f.referenceScripts,
-        referenceScriptsAddress: f.referenceScriptsAddress,
-        settlementRefInput: f.settlementRefInput,
-      };
-      // Without protection at the first build nothing here would wait.
-      expect(Number(protectedUntil) - Date.now()).toBeGreaterThan(4_000);
-      const txHash = await runWithoutFollower(
-        Effect.flatMap(openPlan, (plan) =>
-          retirement === "absorb"
-            ? submitAbsorbAfterProtectionProgram(
-                f.lucid,
-                f.contracts,
-                {
-                  ...common,
-                  deposit: f.deposit,
-                  membershipProof: f.depositMembershipProof,
-                },
-                plan,
-              )
-            : submitInitializePayoutAfterProtectionProgram(
-                f.lucid,
-                f.contracts,
-                {
-                  ...common,
-                  withdrawal: f.withdrawal,
-                  membershipProof: f.withdrawalMembershipProof,
-                },
-                plan,
-              ),
-        ),
-      );
-      expect(Date.now()).toBeGreaterThanOrEqual(
-        Number(protectedUntil) + SUBMIT_SLOT_LENGTH_MS,
-      );
-      const [retired] = await f.lucid.utxosByOutRef([
-        retirement === "absorb" ? f.deposit.utxo : f.withdrawal.utxo,
-      ]);
-      expect(retired).toBeUndefined();
-      expect(txHash).toMatch(/^[0-9a-f]{64}$/);
-    },
-  );
 
   it("rejects explicit fee inputs that overlap protected protocol inputs", async () => {
     const protocolInput = mkUtxo("10", 0);

@@ -108,12 +108,74 @@ export const alignedUnixTimeStrictlyAfter = (
 };
 
 /**
+ * The start of the observed ledger tip's slot, in ms: the time a lower bound
+ * that must already be open is measured from. A snapshot without a ledger tip
+ * (emulator, tests) has no block gaps: its current slot is the tip.
+ */
+export const ledgerTipStartMs = (
+  lucid: LucidEvolution,
+  submitSlotSnapshot: Pick<SubmitSlotSnapshot, "currentSlot" | "ledgerTipSlot">,
+): number => {
+  const startMs = lucid.slotToUnixTime(
+    submitSlotSnapshot.ledgerTipSlot ?? submitSlotSnapshot.currentSlot,
+  );
+  if (!Number.isSafeInteger(startMs)) {
+    throw new Error(`Ledger-tip slot start is invalid: ${String(startMs)}`);
+  }
+  return startMs;
+};
+
+/**
+ * A validity lower bound `backdateMs` before the observed ledger tip, on a
+ * slot boundary and never before the first slot the client's slot config
+ * expresses (its zeroSlot; an emulator client's is the slot it was created
+ * at). The ledger tip, not the wall clock: between blocks the wall clock
+ * runs ahead of the tip, and the mempool refuses a lower bound past the tip
+ * as outside its validity interval. With `rangeFloorMs` (the upper bound less the longest range the
+ * validator accepts) the bound is never before that floor either, so the
+ * range stays within the limit even when the tip trails far behind.
+ */
+export const ledgerTipBackdatedValidFromMs = ({
+  lucid,
+  submitSlotSnapshot,
+  backdateMs,
+  rangeFloorMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly submitSlotSnapshot: Pick<
+    SubmitSlotSnapshot,
+    "currentSlot" | "ledgerTipSlot"
+  >;
+  readonly backdateMs: number;
+  readonly rangeFloorMs?: number;
+}): number => {
+  // The first slot the client's slot config expresses (its zeroSlot): the
+  // evaluator refuses a bound before it as too far in the past.
+  const firstSlotStartMs =
+    (typeof lucid.config === "function"
+      ? lucid.config().slotConfig?.zeroTime
+      : undefined) ?? 0;
+  const backdatedMs = Math.max(
+    firstSlotStartMs,
+    ledgerTipStartMs(lucid, submitSlotSnapshot) - backdateMs,
+  );
+  if (rangeFloorMs === undefined) {
+    return alignUnixTimeToSlotBoundary(lucid, backdatedMs);
+  }
+  const validFromMs = alignUnixTimeToSlotBoundary(
+    lucid,
+    Math.max(backdatedMs, rangeFloorMs),
+  );
+  return validFromMs < rangeFloorMs
+    ? alignedUnixTimeStrictlyAfter(lucid, rangeFloorMs)
+    : validFromMs;
+};
+
+/**
  * The commit's validity interval for a fixed `validToMs`. On-chain only the
  * upper bound and the range width are checked; the signed lower bound is
  * backdated from the ledger tip rather than widened to the full range, so
- * the window in which the commit can land stays as narrow as it can be. The ledger tip, not the wall-clock submit slot:
- * between blocks the submit slot runs ahead, and a lower bound past the tip is
- * refused by the mempool as outside its validity interval.
+ * the window in which the commit can land stays as narrow as it can be.
  */
 export const resolveCommitValidityInterval = ({
   lucid,
@@ -127,30 +189,12 @@ export const resolveCommitValidityInterval = ({
   if (!Number.isSafeInteger(validToMs)) {
     throw new Error(`Commit validTo is invalid: ${String(validToMs)}`);
   }
-  const ledgerTipSlotStartMs = lucid.slotToUnixTime(
-    submitSlotSnapshot.ledgerTipSlot ?? submitSlotSnapshot.currentSlot,
-  );
-  if (!Number.isSafeInteger(ledgerTipSlotStartMs)) {
-    throw new Error(
-      `Commit ledger-tip slot start is invalid: ${String(ledgerTipSlotStartMs)}`,
-    );
-  }
-  const backdatedLedgerTipStartMs = Math.max(
-    0,
-    ledgerTipSlotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
-  );
-  const minimumRangeBoundedValidFromMs =
-    validToMs - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
-  let validFromMs = alignUnixTimeToSlotBoundary(
+  const validFromMs = ledgerTipBackdatedValidFromMs({
     lucid,
-    Math.max(backdatedLedgerTipStartMs, minimumRangeBoundedValidFromMs),
-  );
-  if (validToMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS) {
-    validFromMs = alignedUnixTimeStrictlyAfter(
-      lucid,
-      minimumRangeBoundedValidFromMs,
-    );
-  }
+    submitSlotSnapshot,
+    backdateMs: COMMIT_VALIDITY_BACKDATE_MS,
+    rangeFloorMs: validToMs - SDK.COMMIT_MAX_VALIDITY_RANGE_MS,
+  });
   const inclusiveUpperBoundMs = validToMs - 1;
   if (
     !Number.isSafeInteger(validFromMs) ||

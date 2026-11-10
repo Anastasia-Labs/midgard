@@ -195,7 +195,7 @@ export const resolvePreSubmitSlotSnapshot = (
 type SubmitTimingPositiveWaitPlan = Extract<
   SubmitTimingPlan,
   {
-    readonly status: "wait" | "not_due" | "slot_source_stalled";
+    readonly status: "wait" | "not_due";
   }
 >;
 

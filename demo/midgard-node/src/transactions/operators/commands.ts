@@ -275,7 +275,7 @@ export const strikeInactiveOperatorCommand = Effect.gen(function* () {
         contracts,
         lucid.referenceScriptsAddress,
         { ...planning, plan },
-        { label: "strike-inactive-operator" },
+        { label: "strike-inactive-operator", awaitLowerBound: true },
       );
   }
 });

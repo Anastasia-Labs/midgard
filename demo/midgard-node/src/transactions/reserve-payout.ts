@@ -1,3 +1,5 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
@@ -7,6 +9,8 @@ import {
   type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
+import { ledgerTipBackdatedValidFromMs } from "../workers/utils/commit-end-time.js";
+import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -114,6 +118,38 @@ const fundedFromView = <C extends { readonly walletInputs?: readonly UTxO[] }>(
     Effect.map((walletInputs) => ({ ...config, walletInputs })),
   );
 
+/**
+ * `config` with the history retirement's clock taken from the observed L1
+ * ledger tip: the latest lower bound already admissible there (the submit
+ * margin behind the tip's slot), through the shared helper. The builder
+ * judges the Order's protection against that clock and backdates its lower
+ * bound from it, so a retirement is never built ahead of the tip however far
+ * the wall clock has run since the last block. A caller's own `nowMs` wins.
+ */
+const retirementClockAtTip = <C extends { readonly nowMs?: number }>(
+  lucid: LucidEvolution,
+  config: C,
+): Effect.Effect<C, SDK.ReservePayoutTxError> =>
+  config.nowMs !== undefined
+    ? Effect.succeed(config)
+    : observedLedgerTip(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.ReservePayoutTxError({
+              message: `The history retirement needs the observed L1 ledger tip: ${formatUnknownError(cause)}`,
+              cause,
+            }),
+        ),
+        Effect.map((tip) => ({
+          ...config,
+          nowMs: ledgerTipBackdatedValidFromMs({
+            lucid,
+            submitSlotSnapshot: tip,
+            backdateMs: SUBMIT_SLOT_VALIDITY_BUFFER * tip.slotLengthMs,
+          }),
+        })),
+      );
+
 export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -124,7 +160,11 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
     const built = yield* SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
       lucid,
       contracts,
-      yield* fundedFromView(lucid, config, "absorb_deposit"),
+      yield* fundedFromView(
+        lucid,
+        yield* retirementClockAtTip(lucid, config),
+        "absorb_deposit",
+      ),
     );
     return yield* send(
       lucid,
@@ -146,7 +186,11 @@ export const submitInitializePayoutProgram = (
     const built = yield* SDK.buildInitializePayoutTxProgram(
       lucid,
       contracts,
-      yield* fundedFromView(lucid, config, "initialize"),
+      yield* fundedFromView(
+        lucid,
+        yield* retirementClockAtTip(lucid, config),
+        "initialize",
+      ),
     );
     return yield* send(
       lucid,

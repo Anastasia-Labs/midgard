@@ -19,12 +19,17 @@ import {
   journaledIntent,
   openPlan,
 } from "./services/intent-journal.js";
+import { observedLedgerTip } from "./transactions/ledger-tip-lower-bound.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
 } from "./transactions/utils.js";
 import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
+import { ledgerTipBackdatedValidFromMs } from "./workers/utils/commit-end-time.js";
+
+/** The deposit's lower bound looks back a minute from the observed tip. */
+const GENESIS_DEPOSIT_BACKDATE_MS = 60_000;
 
 export class GenesisDepositError extends Data.TaggedError(
   "GenesisDepositError",
@@ -132,6 +137,27 @@ export const submitGenesisDeposits: Effect.Effect<
         }),
     ),
   );
+  // The lower bound backs off from the observed L1 ledger tip, not the wall
+  // clock, so the deposit is open there however long ago the last block
+  // landed; it never reaches back past the longest event range.
+  const tip = yield* Effect.mapError(
+    observedLedgerTip(lucid.api),
+    (cause) =>
+      new GenesisDepositError({
+        message: "The genesis deposit needs the observed L1 ledger tip",
+        cause,
+      }),
+  );
+  const validTo = SDK.resolveUserEventValidTo(lucid.api);
+  const validity = {
+    validFrom: ledgerTipBackdatedValidFromMs({
+      lucid: lucid.api,
+      submitSlotSnapshot: tip,
+      backdateMs: GENESIS_DEPOSIT_BACKDATE_MS,
+      rangeFloorMs: validTo - Number(SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS),
+    }),
+    validTo,
+  };
   // Hard-coded 10 ADA deposit.
   const { tx, metadata } = yield* SDK.buildUnsignedDepositTxWithMetadataProgram(
     lucid.api,
@@ -142,6 +168,7 @@ export const submitGenesisDeposits: Effect.Effect<
       lovelace: 10_000_000n,
       additionalAssets: {},
       walletInputs,
+      validity,
     },
   ).pipe(
     Effect.catchTags({

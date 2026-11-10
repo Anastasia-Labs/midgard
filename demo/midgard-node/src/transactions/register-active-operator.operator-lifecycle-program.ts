@@ -13,7 +13,6 @@ import {
   journaledIntent,
   openPlan,
 } from "../services/intent-journal.js";
-import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   OperatorFundingShortfall,
   OperatorWalletInputsEmpty,
@@ -50,7 +49,10 @@ import {
   requireListedOperator,
   toLifecycleResult,
 } from "./register-active-operator.to-lifecycle-result.js";
-import { canActivateRegisteredOperatorImmediately } from "./register-active-operator/activation.js";
+import {
+  activationValidityWindowAtTip,
+  canActivateRegisteredOperatorImmediately,
+} from "./register-active-operator/activation.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
@@ -101,7 +103,6 @@ export const operatorLifecycleProgram = (
     // Only an allow-listed key may register; refused before any L1 read.
     if (mode === "register-and-activate" || mode === "register-only")
       yield* requireListedOperator(operatorKeyHash);
-    const usesWallClockTime = lucid.config().network === "Custom";
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
     const hubOracleDatum = yield* decodeHubOracleDatum(hubOracleRefInput);
     yield* Effect.logInfo(
@@ -754,56 +755,12 @@ export const operatorLifecycleProgram = (
           }),
         );
       }
-      // `register-and-activate` has just registered, so its activation time
-      // cannot have arrived yet: wait for it on networks whose clock the
-      // node can read exactly.
-      if (!usesWallClockTime) {
-        const waitMs = activationTime - initialNow + 1_000n;
-        yield* Effect.logInfo(
-          `Waiting ${waitMs.toString()}ms until operator activation time (ledger_now=${initialNow.toString()},activation_time=${activationTime.toString()})`,
-        );
-        yield* Effect.sleep(Number(waitMs));
-      }
     }
-    const resolveActivationValidityWindow = (): {
-      readonly validFrom: bigint;
-      readonly validTo?: bigint;
-    } => {
-      const currentTime = currentTimeMsForLucidOrEmulatorFallback(lucid);
-      const backdatedTime = currentTime - 60_000n;
-      const lowerBoundTarget = immediateActivation
-        ? backdatedTime > 0n
-          ? backdatedTime
-          : 0n
-        : activationTime;
-      // Ordinary activation remains bounded by the registration maturity time.
-      // The earliest registration may restore an authenticated empty active set
-      // immediately; backdate that lower bound to avoid provider slot races.
-      // On custom networks (emulator), avoid an upper bound because wall-clock
-      // slot estimation can drift from the emulator ledger tip during long
-      // candidate retries and cause false "slot range" submit failures.
-      const alignedActivationTime = alignUnixTimeMsToSlotBoundary(
-        lucid,
-        lowerBoundTarget,
-      );
-      const validFrom =
-        alignedActivationTime >= lowerBoundTarget
-          ? alignedActivationTime
-          : BigInt(
-              alignedUnixTimeStrictlyAfter(lucid, Number(lowerBoundTarget)),
-            );
-      if (usesWallClockTime) {
-        return { validFrom };
-      }
-      const upperBoundBase = currentTime + ACTIVATION_VALIDITY_WINDOW_MS;
-      const validTo = alignUnixTimeMsToSlotBoundary(
-        lucid,
-        upperBoundBase > validFrom
-          ? upperBoundBase
-          : validFrom + ACTIVATION_VALIDITY_WINDOW_MS,
-      );
-      return { validFrom, validTo };
-    };
+    const resolveActivationValidityWindow =
+      yield* activationValidityWindowAtTip(lucid, {
+        activationTime,
+        immediateActivation,
+      });
 
     const registeredNodeUnit = toUnit(
       contracts.registeredOperators.policyId,

@@ -328,6 +328,7 @@ describe("takeover planning, strike, and forced retirement", () => {
         fixture.contracts,
         fixture.referenceScriptsAddress,
         { ...due, plan: due.plan },
+        { awaitLowerBound: true },
       ),
     );
     expect(strike.skippedOperator).toBe(appointed.operatorKeyHash);

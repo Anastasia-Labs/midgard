@@ -366,9 +366,17 @@ describe("validity-window submit recovery", () => {
     expect(waits).toEqual([5_000]);
   });
 
-  it("waits until the signed transaction lower bound before first submit", async () => {
+  // The ledger tip a node observes moves in block-sized jumps: it stands at
+  // the last block's slot while the wall clock runs on. A transaction whose
+  // lower bound (slot 126544954) the tip has not passed by the submit margin
+  // was built too early; submit refuses it at once instead of sleeping on the
+  // wall clock, and submits it at once when the tip is there.
+  it.each([
+    { tipSlot: 126544938, refused: true, case: "the tip short of the bound" },
+    { tipSlot: 126544955, refused: true, case: "the tip inside the margin" },
+    { tipSlot: 126544956, refused: false, case: "the tip past the margin" },
+  ])("judges a lower bound at the observed tip: $case", async (row) => {
     const waits: number[] = [];
-    const slots = [126544938, 126544956];
     const submitProgram = vi.fn(() => Effect.void);
     const signed = {
       toCBOR: () =>
@@ -384,14 +392,16 @@ describe("validity-window submit recovery", () => {
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
-          "tx-pre-submit",
+          "tx-lower-bound",
           TEST_INTENT,
           {
+            // The wall clock is well past the lower bound in every row.
             slotSnapshot: () =>
               Effect.succeed({
-                source: "test",
-                currentSlot: slots.shift() ?? 126544956,
-                observedAtMs: 1_779_150_000_000,
+                source: "l1_node_tip" as const,
+                currentSlot: 126544970,
+                ledgerTipSlot: row.tipSlot,
+                observedAtMs: 126544970_000,
                 slotLengthMs: 1_000,
               }),
             sleep: (milliseconds) =>
@@ -401,49 +411,17 @@ describe("validity-window submit recovery", () => {
       ),
     );
 
-    expect(result._tag).toBe("Right");
-    expect(submitProgram).toHaveBeenCalledTimes(1);
-    expect(waits).toEqual([18_000]);
-  });
-
-  it("keeps the pre-submit margin after the lower bound has opened", async () => {
-    const waits: number[] = [];
-    const slots = [126544955, 126544956];
-    const submitProgram = vi.fn(() => Effect.void);
-    const signed = {
-      toCBOR: () =>
-        signedTxCbor({
-          invalidBeforeSlot: 126544954,
-          invalidHereafterSlot: 126545000,
-        }),
-      submitProgram,
-    };
-
-    const result = await runWithoutFollower(
-      Effect.either(
-        submitSignedTxWithRecovery(
-          { awaitTx: vi.fn() } as never,
-          signed as never,
-          "tx-pre-submit-margin",
-          TEST_INTENT,
-          {
-            slotSnapshot: () =>
-              Effect.succeed({
-                source: "test",
-                currentSlot: slots.shift() ?? 126544956,
-                observedAtMs: 1_779_150_000_000,
-                slotLengthMs: 1_000,
-              }),
-            sleep: (milliseconds) =>
-              Effect.sync(() => waits.push(milliseconds)),
-          },
-        ),
-      ),
-    );
-
-    expect(result._tag).toBe("Right");
-    expect(submitProgram).toHaveBeenCalledTimes(1);
-    expect(waits).toEqual([1_000]);
+    expect(waits).toEqual([]);
+    if (row.refused) {
+      expect(result._tag).toBe("Left");
+      expect(String(result._tag === "Left" ? result.left : "")).toMatch(
+        /built before its lower bound/,
+      );
+      expect(submitProgram).not.toHaveBeenCalled();
+    } else {
+      expect(result._tag).toBe("Right");
+      expect(submitProgram).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("defers pre-submit validity waits in no-inline mode without sleeping or submitting", async () => {
@@ -617,7 +595,7 @@ describe("validity-window submit recovery", () => {
     expect(waits).toEqual([]);
   });
 
-  it("advances emulator provider slots during default pre-submit waits", async () => {
+  it("refuses an early transaction on an emulator without advancing its slots", async () => {
     const provider = {
       slot: 7,
       time: 7_000,
@@ -652,10 +630,10 @@ describe("validity-window submit recovery", () => {
       ),
     );
 
-    expect(result._tag).toBe("Right");
-    expect(provider.awaitSlot).toHaveBeenCalledWith(5);
-    expect(provider.slot).toBe(12);
-    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(result._tag).toBe("Left");
+    expect(provider.awaitSlot).not.toHaveBeenCalled();
+    expect(provider.slot).toBe(7);
+    expect(submitProgram).not.toHaveBeenCalled();
   });
 
   it("does not retry an expired signed transaction", async () => {

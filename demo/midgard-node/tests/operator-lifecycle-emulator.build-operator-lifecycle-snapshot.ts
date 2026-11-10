@@ -22,6 +22,7 @@ import {
   restoreCapture,
   snapshotCapture,
 } from "./helpers/emulator-chain-capture.js";
+import { emulatorGenesisLucid } from "./helpers/emulator-genesis-lucid.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -238,8 +239,8 @@ const getOperatorLifecycleSnapshot = (): Promise<OperatorLifecycleSnapshot> => {
 export const initOperatorLifecycleFixture = async () => {
   const snapshot = await getOperatorLifecycleSnapshot();
   const emulator = cloneEmulator(snapshot.emulatorState);
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
+  const lucid = await emulatorGenesisLucid(emulator);
+  const referenceScriptsLucid = await emulatorGenesisLucid(emulator);
   lucid.selectWallet.fromSeed(snapshot.operatorSeedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(
     snapshot.referenceScriptsSeedPhrase,
