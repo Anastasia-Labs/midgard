@@ -119,6 +119,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/node-deployment-startup-emulator.test.ts
  *   tests/da-startup-follower-order.test.ts
  *   tests/listen-startup.validation-worker-readiness.test.ts   (connects; no tables)
+ *   tests/listen-startup.ledger-signature-verifier.fault.test.ts   (connects; no tables)
  */
 
 /**

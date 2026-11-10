@@ -2,13 +2,32 @@
  * The node's startup waits for the ledger signature verifier before any
  * durable work or the L1 follower
  * (`listen-startup.await-ledger-signature-verifier.ts`). Here libsodium's
- * initialisation fails: startup fails by step and reason and the process
- * exits non-zero for its supervisor to restart, instead of running and
- * holding. The instance lock is never taken and the follower never starts,
- * so no block is followed, processed or held.
+ * initialisation fails in the node's process: the node's real startup
+ * (`runNode` under its startup HTTP listener) fails by step and reason in
+ * its local preflight, and the process exits non-zero for its supervisor to
+ * restart, instead of running and holding. The instance lock, the step after
+ * it, is never reached.
+ *
+ * The node is configured with distinct fresh wallets and a pinned native
+ * owner, so every local preflight check before the verifier passes, and with
+ * an L1 database no one listens on, so a startup that went past the verifier
+ * would wait at the instance lock. Its validation workers are threads with
+ * their own libsodium and start; their runtime services use the shared test
+ * Postgres. The one seam is libsodium's initialisation in this process
+ * (`helpers/ledger-signature-verifier-fails.ts`, imported first).
  */
-import { Effect, Exit } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import "./helpers/ledger-signature-verifier-fails.js";
+
+import {
+  findLedgerSignatureVerifierUnavailable,
+  LEDGER_ED25519_READY_TIMEOUT_MS,
+} from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { HttpServer } from "@effect/platform";
+import { PgClient } from "@effect/sql-pg";
+import { generateSeedPhrase } from "@lucid-evolution/lucid";
+import { Deferred, Effect, Exit, Fiber, Logger, Redacted } from "effect";
+import { describe, expect, it } from "vitest";
 
 import { runNode } from "../src/commands/listen.run-node.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
@@ -17,124 +36,145 @@ import {
   LEDGER_SIGNATURE_VERIFIER_STEP,
   LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
 } from "../src/commands/listen-startup.await-ledger-signature-verifier.js";
+import { DEFAULT_IMPORT_CHECK_CONFIG } from "../src/services/config.import-check.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { findStartupStepFailure } from "../src/services/startup-waiting.js";
+import {
+  INJECTED_LIBSODIUM_FAILURE,
+  libsodiumReadyReads,
+} from "./helpers/ledger-signature-verifier-fails.js";
 
-const reached = vi.hoisted(() => ({ instanceLock: 0, follower: 0 }));
+// Every check in the local preflight before the verifier passes: one
+// validation worker that answers its readiness job within the verifier's own
+// bound, four distinct wallets and a pinned native owner. The node's own
+// database is a port no one listens on, so the instance lock, which connects
+// to it, waits.
+const startupConfig = {
+  PORT: 0,
+  VALIDATION_WORKER_POOL_SIZE: 1,
+  VALIDATION_WORKER_JOB_TIMEOUT_MS: LEDGER_ED25519_READY_TIMEOUT_MS,
+  NETWORK: "Preprod",
+  MIN_FEE_A: 0n,
+  MIN_FEE_B: 0n,
+  VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
+  IMPORT_CHECK: DEFAULT_IMPORT_CHECK_CONFIG,
+  L1_OPERATOR_SEED_PHRASE: generateSeedPhrase(),
+  L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: generateSeedPhrase(),
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: generateSeedPhrase(),
+  L1_SETTLEMENT_SEED_PHRASE: generateSeedPhrase(),
+  MPF_NATIVE_OWNER_BINARY_PATH: "/unused/midgard-native-owner",
+  MPF_NATIVE_OWNER_BINARY_SHA256: "0".repeat(64),
+  MPF_NATIVE_OWNER_SIDECAR_PATH: "/unused/midgard-native-owner.sidecar",
+  POSTGRES_HOST: "127.0.0.1",
+  POSTGRES_PORT: 1,
+  POSTGRES_USER: "midgard",
+  POSTGRES_PASSWORD: "midgard",
+  POSTGRES_DB: "midgard",
+} as unknown as NodeConfig["Type"];
 
-vi.mock(
-  "../../midgard-core/node_modules/libsodium-wrappers-sumo",
-  async (importOriginal) => {
-    const actual = (await importOriginal<{ default: object }>()).default;
-    const failed = Promise.reject(new Error("WebAssembly is unavailable"));
-    failed.catch(() => undefined);
-    return {
-      default: new Proxy(actual, {
-        get: (target, key, receiver) =>
-          key === "ready"
-            ? failed
-            : (Reflect.get(target, key, receiver) as unknown),
-      }),
-    };
-  },
+/** The shared test Postgres the node's runtime services connect to. */
+const testPostgres = PgClient.layer({
+  host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+  port: Number(process.env.POSTGRES_PORT ?? "5433"),
+  username: process.env.POSTGRES_USER ?? "postgres",
+  password: Redacted.make(process.env.POSTGRES_PASSWORD ?? "postgres"),
+  database: "postgres",
+  maxConnections: 1,
+});
+
+/** The startup listener's address, from inside its server's scope. */
+const listenerUrl = HttpServer.addressWith((address) =>
+  address._tag === "TcpAddress"
+    ? Effect.succeed(`http://127.0.0.1:${address.port}`)
+    : Effect.die("Expected a TCP listener"),
 );
-vi.mock("../src/services/index.js", async (importOriginal) => {
-  const { Layer } = await import("effect");
-  return {
-    ...(await importOriginal<typeof import("../src/services/index.js")>()),
-    validationPoolLayer: Layer.empty,
-    mempoolLedgerCacheLayer: Layer.empty,
-  };
-});
-vi.mock("../src/services/settlement.js", () => ({
-  settlementWalletAddress: () => "unused-in-local-preflight",
-}));
-vi.mock("../src/e2e/phase1-accept-crash-checkpoint.js", async () => {
-  const { Effect: E } = await import("effect");
-  return { assertPhase1AcceptCrashCheckpointConfiguration: E.void };
-});
-vi.mock("../src/services/native-mpf-startup.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/native-mpf-startup.js")
-    >()),
-    requirePinnedNativeOwnerBinary: () => E.void,
-  };
-});
-vi.mock("../src/services/node-instance-lock.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/node-instance-lock.js")
-    >()),
-    acquireNodeInstanceLock: () =>
-      E.sync(() => {
-        reached.instanceLock += 1;
-        return { followerWriterLease: () => Promise.resolve(null) };
-      }),
-  };
-});
-vi.mock("../src/da/startup.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<typeof import("../src/da/startup.js")>()),
-    runDaIdentityGatedStartupSequence: () => E.void,
-  };
-});
-vi.mock("../src/services/intent-journal.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/intent-journal.js")
-    >()),
-    makeIntentJournal: E.succeed({}),
-  };
-});
-vi.mock("../src/services/l1-follower.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  return {
-    ...(await importOriginal<
-      typeof import("../src/services/l1-follower.js")
-    >()),
-    startL1Follower: () =>
-      E.sync(() => {
-        reached.follower += 1;
-      }).pipe(E.zipRight(E.never)),
-  };
-});
+
+// The verifier's attempts and the delays between them, with room for the
+// validation workers to start first.
+const EXIT_WITHIN_MS = 30_000;
 
 describe("node startup when the ledger signature verifier fails to initialise", () => {
-  it("fails the startup by step and reason, exiting, and never starts the follower", async () => {
-    // The configuration a node is started with; the steps it reaches read
-    // only these fields.
-    const exit = await Effect.runPromiseExit(
-      withStartupHttpServer(0, (startup) =>
-        runNode(startup).pipe(
-          Effect.provideService(NodeConfig, {
-            PORT: 0,
-            POSTGRES_HOST: "127.0.0.1",
-            POSTGRES_PORT: 5432,
-            POSTGRES_USER: "midgard",
-            POSTGRES_PASSWORD: "midgard",
-            POSTGRES_DB: "midgard",
-          } as unknown as NodeConfig["Type"]),
-          Effect.provide(Globals.Default),
+  it("fails the startup by step and reason in its local preflight and exits non-zero, before the instance lock", async () => {
+    const messages: unknown[] = [];
+    const listening = Effect.runSync(Deferred.make<string>());
+    const fiber = Effect.runFork(
+      (
+        withStartupHttpServer(0, (startup) =>
+          listenerUrl.pipe(
+            Effect.flatMap((url) => Deferred.succeed(listening, url)),
+            Effect.zipRight(runNode(startup)),
+            Effect.provideService(NodeConfig, startupConfig),
+            Effect.provideService(
+              ContractDeploymentIdentity,
+              ContractDeploymentIdentity.make({
+                kind: "derived",
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              }),
+            ),
+            Effect.provide(Globals.Default),
+            Effect.provide(testPostgres),
+          ),
+        ) as Effect.Effect<void, unknown>
+      ).pipe(
+        Effect.provide(
+          Logger.replace(
+            Logger.defaultLogger,
+            Logger.make(({ message }) => {
+              messages.push(...[message].flat());
+            }),
+          ),
         ),
-      ) as Effect.Effect<void, unknown>,
+      ),
     );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    const step = Exit.isFailure(exit)
-      ? findStartupStepFailure(exit.cause)
-      : undefined;
-    expect(step).toMatchObject({
-      step: LEDGER_SIGNATURE_VERIFIER_STEP,
-      reason: LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
-      exhausted: true,
-      attempts: LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.maxAttempts,
-    });
-    expect(reached).toEqual({ instanceLock: 0, follower: 0 });
-  }, 30_000);
+    try {
+      const url = await Effect.runPromise(
+        Deferred.await(listening).pipe(Effect.timeout("10 seconds")),
+      );
+      const exit = await Effect.runPromise(
+        Fiber.await(fiber).pipe(
+          Effect.timeoutTo({
+            duration: `${EXIT_WITHIN_MS} millis`,
+            onSuccess: (done) => done,
+            onTimeout: () => undefined,
+          }),
+        ),
+      );
+      if (exit === undefined) {
+        const readyz: unknown = await (await fetch(`${url}/readyz`)).json();
+        throw new Error(
+          `Startup was still running after ${EXIT_WITHIN_MS.toString()} ms: /readyz=${JSON.stringify(readyz)}`,
+        );
+      }
+      // The failure reached the verifier in this process.
+      expect(libsodiumReadyReads()).toBeGreaterThan(0);
+      expect(Exit.isFailure(exit)).toBe(true);
+      const step = Exit.isFailure(exit)
+        ? findStartupStepFailure(exit.cause)
+        : undefined;
+      expect(step).toMatchObject({
+        step: LEDGER_SIGNATURE_VERIFIER_STEP,
+        reason: LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
+        exhausted: true,
+        attempts: LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.maxAttempts,
+      });
+      // The verifier's typed fault, libsodium's own failure kept.
+      const fault = findLedgerSignatureVerifierUnavailable(step?.cause);
+      expect(String((fault?.cause as Error | undefined)?.message)).toContain(
+        INJECTED_LIBSODIUM_FAILURE,
+      );
+      expect(messages).toContainEqual(
+        `node_startup_failed stage=local_preflight step=${LEDGER_SIGNATURE_VERIFIER_STEP} reason=${LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE}; a transient failure outlived its bound; the node exits non-zero`,
+      );
+      expect(
+        messages.filter(
+          (message) =>
+            typeof message === "string" && message.includes("instance_lock"),
+        ),
+      ).toEqual([]);
+    } finally {
+      await Effect.runPromise(Fiber.interrupt(fiber));
+    }
+  }, 60_000);
 });
