@@ -359,10 +359,12 @@ socket's directory is mode 0700, so run as the stack's user. A spread above
 
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker
-and leaves the operator's general configuration unchanged. Each cycle waits for automatic deposit absorption, transfers value to the
-recipient, retrieves the committed payload through public libp2p DA, waits for
-automatic merge/finality, submits the recipient's withdrawal and observes the
-node's automatic payment. Checks compare exact L2 balance changes including
+and leaves the operator's general configuration unchanged. Each cycle waits for
+the deposit's L2 credit, transfers value to the recipient and completes the
+transfer at commit after retrieving the committed payload through public libp2p
+DA, submits the recipient's withdrawal and observes the node's automatic
+payment. A settlement step then checks the deposit's settlement and the
+transfer's automatic merge and finality, so a cycle spans one maturity. Checks compare exact L2 balance changes including
 fees and the exact L1 payout destination and assets, using an independently
 admitted local Cardano observation. An already-spent payout remains verifiable
 through its historical transaction. A second cycle checks that activity

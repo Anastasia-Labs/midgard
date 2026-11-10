@@ -15,7 +15,7 @@
     },
     "reference": {
       "seedEnv": "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-      "minimumLovelace": "5000000000"
+      "minimumLovelace": "43000000000"
     },
     "settlement": {
       "seedEnv": "L1_SETTLEMENT_SEED_PHRASE",
