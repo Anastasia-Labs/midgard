@@ -1,7 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import type { AddressInfo, Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,6 +99,17 @@ export const STACK_GENESIS = Object.freeze({
 export const PROVER_MINIMUM_LOVELACE = 3_000_000_000n;
 
 /**
+ * A public stack's TLS: the CA its configuration names, and the certificate
+ * for the public origin's hostname that its HTTPS ports serve on loopback.
+ */
+export type StackTls = Readonly<{
+  caFile: string;
+  certFile: string;
+  keyFile: string;
+  servername: string;
+}>;
+
+/**
  * A running stack watcher: its operations endpoint and its mounted state.
  * Its prover holds `proverLovelace`, by default the configured minimum.
  */
@@ -101,7 +117,12 @@ export const runningStackWatcher = async (
   status: Record<string, unknown>,
   {
     proverLovelace = PROVER_MINIMUM_LOVELACE,
-  }: { proverLovelace?: bigint } = {},
+    tls,
+  }: {
+    proverLovelace?: bigint;
+    /** A public stack's TLS: our node then serves its API over HTTPS only. */
+    tls?: StackTls;
+  } = {},
 ) => {
   const root = await mkdtemp(join(tmpdir(), "attached-session-"));
   directories.push(root);
@@ -135,16 +156,26 @@ export const runningStackWatcher = async (
   const operationsEndpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   // Our node's /readyz, as `served.nodeReadyz` answers it.
   const nodeRequests: string[] = [];
-  const node = createServer((request, response) => {
+  const answerNode = (request: IncomingMessage, response: ServerResponse) => {
     nodeRequests.push(request.url ?? "");
     response.statusCode = request.url === "/readyz" ? 200 : 404;
     response.end(
       JSON.stringify(request.url === "/readyz" ? served.nodeReadyz : {}),
     );
-  });
+  };
+  const node =
+    tls === undefined
+      ? createServer(answerNode)
+      : createHttpsServer(
+          {
+            cert: await readFile(tls.certFile),
+            key: await readFile(tls.keyFile),
+          },
+          answerNode,
+        );
   await new Promise<void>((resolve) => node.listen(0, "127.0.0.1", resolve));
   servers.push(node);
-  const nodeEndpoint = `http://127.0.0.1:${(node.address() as AddressInfo).port}`;
+  const nodeEndpoint = `${tls === undefined ? "http" : "https"}://127.0.0.1:${(node.address() as AddressInfo).port}`;
   const runDirectory = join(root, "run/fault-journeys/drill-1");
   // The stack node's configuration, its genesis, and the deployment manifest.
   const nodeConfigPath = join(root, "node/config.json");
@@ -190,8 +221,13 @@ export const runningStackWatcher = async (
       blueprintPath: join(root, "plutus.json"),
       operatorLucid,
     },
+    // A public stack's host tools trust its CA for the public origin's name.
+    ...(tls === undefined
+      ? {}
+      : { nodeTls: { caFile: tls.caFile, servername: tls.servername } }),
     stackConfig: {
       endpoint: nodeEndpoint,
+      ...(tls === undefined ? {} : { public: { tlsCaFile: tls.caFile } }),
       wallets: {
         prover: {
           seedEnv: "STACK_PROVER_SEED",

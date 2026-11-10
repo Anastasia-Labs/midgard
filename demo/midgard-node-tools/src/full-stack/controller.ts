@@ -9,6 +9,7 @@ import {
   runUnderControllerLock,
 } from "./controller-lock.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
+import { stackNodeTls, trustNodeTls } from "./node-tls.js";
 import { StackProcesses } from "./process.js";
 import { runStackWorkflow } from "./workflow.js";
 
@@ -75,11 +76,8 @@ export async function runStackController(options: {
     );
   const processes = new StackProcesses(config, env);
   // The controller's own readiness and ledger reads reach a public node over HTTPS.
-  if (config.public !== undefined) {
-    const { trustNodeTls } = await import("./node-tls.js");
-    const { publicOriginHost } = await import("./public-node.js");
-    trustNodeTls(config.public.tlsCaFile, publicOriginHost(env));
-  }
+  const nodeTls = stackNodeTls(config, env);
+  if (nodeTls !== undefined) trustNodeTls(nodeTls.caFile, nodeTls.servername);
   const { prepareStackPrerequisites, prepareAttachedPrerequisites } =
     await import("./prerequisites.js");
   console.log("prerequisites: running");

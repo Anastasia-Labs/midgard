@@ -4,6 +4,7 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 
+import { trustNodeTls } from "../../src/full-stack/node-tls.js";
 import type { JourneyOperator2Node } from "./deployment-source.js";
 import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
@@ -98,6 +99,10 @@ export const openAttachedJourneySession = async (
   const { directory, onClose, isClosed, close, stage } =
     await openJourneySessionCore(context.runDirectory);
   try {
+    // On a public stack every node API this process reads, our node's and
+    // operator-2's, is HTTPS under the stack's certificate authority.
+    if (context.nodeTls !== undefined)
+      trustNodeTls(context.nodeTls.caFile, context.nodeTls.servername);
     // Pausing our own stack's node instead of operator-2's would stop the
     // honest successor; refuse a project or endpoint that is ours.
     if (options.operator2.composeProject === context.watcher.composeProject)
@@ -112,7 +117,13 @@ export const openAttachedJourneySession = async (
         "Operator-2's endpoint is this stack's own node endpoint; refusing to pause our node",
       );
     const operator2 = createOperatorPause(
-      options.operator2Control ?? composeOperatorNodeControl(options.operator2),
+      options.operator2Control ??
+        composeOperatorNodeControl({
+          ...options.operator2,
+          // Operator-2 shares the stack's public section, so its own
+          // ingress fronts its node too (attached-config.ts).
+          publicIngress: context.stackConfig.public !== undefined,
+        }),
     );
     // The drill's wallet and DA producer key are operator-2's: each
     // signature and each DA publication proves its node stopped first.

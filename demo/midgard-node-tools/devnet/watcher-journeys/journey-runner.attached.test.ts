@@ -3,8 +3,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  createPublicTls,
+  removePublicTls,
+  tls,
+} from "../../tests/full-stack-public-config.fixtures.js";
 import {
   closeStackWatchers,
   liveStatus,
@@ -20,10 +25,18 @@ import type {
 } from "./fixture.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
 import { openAttachedJourneySession } from "./journey-session.js";
+import {
+  composedPublicOperator2,
+  stopComposedServices,
+} from "./public-operator2.test-support.js";
 import type { StackDaRefused } from "./stack-da-publication.js";
 
 afterAll(removeStackDirectories);
-afterEach(closeStackWatchers);
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await stopComposedServices();
+  await closeStackWatchers();
+});
 
 const readJson = async (path: string) =>
   JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
@@ -169,6 +182,83 @@ describe("journey runner on an attached stack", () => {
       expect(new Set(stack.requests)).toEqual(new Set(["/v1/status"]));
       expect(stack.nodeRequests).toContain("/readyz");
     });
+
+    it("on a public stack, reads our node over HTTPS, and holds and resumes operator-2 behind its ingress", async () => {
+      await createPublicTls();
+      try {
+        const stackTls = {
+          caFile: join(tls.directory, "ca.pem"),
+          certFile: join(tls.directory, "node.pem"),
+          keyFile: join(tls.directory, "node.key"),
+          servername: tls.host,
+        };
+        // Operator-2's public instance, running: its ingress fronts its node.
+        const operator2 = await composedPublicOperator2(stackTls);
+        await operator2.up();
+        vi.stubEnv("PATH", operator2.path);
+        const stack = await runningStackWatcher(liveStatus(), {
+          tls: stackTls,
+        });
+        stack.served.nodeReadyz = awaitingDa;
+        // The journey's own Compose control of operator-2, not a stand-in.
+        const session = await openAttachedJourneySession(stack.context, {
+          exec: stack.exec,
+          operator2: {
+            composeProject: operator2.composeProject,
+            endpoint: operator2.endpoint,
+          },
+        });
+        try {
+          const before = (await operator2.invocations()).length;
+          await runAutonomousWatcherJourney(
+            stack.runDirectory,
+            { category: "canonicalDecodability", stage: stageRefused },
+            { session },
+          );
+          expect(
+            await readJson(
+              join(
+                stack.runDirectory,
+                "work/journeys/canonicalDecodability/result.json",
+              ),
+            ),
+          ).toMatchObject({
+            status: "passed",
+            refusal: { holdBinding: "header", holdObservations: 1 },
+          });
+          // Our node's hold was read over its HTTPS port.
+          expect(stack.nodeRequests).toContain("/readyz");
+          // Held: no service of operator-2's runs and nothing answers its
+          // endpoint, the ingress included.
+          await expect(session.operator2.assertStopped()).resolves.toEqual(
+            expect.objectContaining({
+              runningServices: ["postgres"],
+              readyz: "connection_refused",
+            }),
+          );
+          // Resumed: the ingress answers its own 503 until the node serves.
+          await expect(session.operator2.resume()).resolves.toEqual(
+            expect.objectContaining({
+              terminal: "ready",
+              observedReasons: [[]],
+            }),
+          );
+          const answers = await operator2.ingressAnswers();
+          expect(answers).toContain("503 unavailable");
+          expect(answers.at(-1)).toBe("200");
+          expect((await operator2.invocations()).slice(before)).toEqual(
+            expect.arrayContaining([
+              "stop midgard-node public-ingress",
+              "start midgard-node public-ingress",
+            ]),
+          );
+        } finally {
+          await session.close();
+        }
+      } finally {
+        await removePublicTls();
+      }
+    }, 60_000);
 
     it("fails when our node never held it awaiting its DA", async () => {
       const stack = await runningStackWatcher(liveStatus());

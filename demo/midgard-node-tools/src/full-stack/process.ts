@@ -10,7 +10,11 @@ import { deriveL1Origin } from "../l1-origin.js";
 import type { StackConfig } from "./config.js";
 import { writeDurableJson } from "./journal.js";
 import { hostL1Node } from "./native-ledger.js";
-import { NODE_TLS_CA_ENV, NODE_TLS_SERVERNAME_ENV } from "./node-tls.js";
+import {
+  NODE_TLS_CA_ENV,
+  NODE_TLS_SERVERNAME_ENV,
+  stackNodeTls,
+} from "./node-tls.js";
 
 /** Build tools see only the host toolchain; stack commands also see the stack environment. */
 export type CommandScope = "stack" | "host";
@@ -188,14 +192,13 @@ export class StackProcesses {
   }
   /** Host commands reach a preprod-public node over HTTPS on loopback. */
   private publicNodeTls(): Record<string, string> {
-    return this.config.public === undefined
+    const tls = stackNodeTls(this.config, this.env);
+    return tls === undefined
       ? {}
       : {
           NODE_OPTIONS: `--import=${new URL("./node-tls-preload.js", import.meta.url).href}`,
-          [NODE_TLS_CA_ENV]: this.config.public.tlsCaFile,
-          [NODE_TLS_SERVERNAME_ENV]: new URL(
-            this.env.MIDGARD_PUBLIC_API_ORIGIN!,
-          ).hostname,
+          [NODE_TLS_CA_ENV]: tls.caFile,
+          [NODE_TLS_SERVERNAME_ENV]: tls.servername,
         };
   }
   /** The recorded origin T, proven to precede the hub-oracle nonce tx's block. */

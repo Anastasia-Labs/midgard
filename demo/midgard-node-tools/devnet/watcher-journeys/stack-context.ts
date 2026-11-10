@@ -34,6 +34,7 @@ import {
   hostL1Node,
   nativeLedgerPaths,
 } from "../../src/full-stack/native-ledger.js";
+import { stackNodeTls } from "../../src/full-stack/node-tls.js";
 import { StackProcesses } from "../../src/full-stack/process.js";
 import {
   releasePaths,
@@ -442,6 +443,11 @@ export const openStackJourneyContext = async (
     runDirectory: layout.directory,
     layout,
     stackConfig: config,
+    /**
+     * The TLS this process trusts to reach the stack's nodes, ours and
+     * operator-2's, on a public stack, as the e2e-stack controller does.
+     */
+    nodeTls: stackNodeTls(config, env),
     release,
     /** The stack's own watcher, which the journey attaches to and never runs. */
     watcher: Object.freeze({ ...layout.watcher, operationsEndpoint }),

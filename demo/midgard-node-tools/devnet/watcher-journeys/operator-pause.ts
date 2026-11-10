@@ -11,6 +11,12 @@ import { projectOnlyEnvironment } from "./watcher-evidence-reader.js";
 
 /** The Compose service of an operator's node in its stack. */
 export const OPERATOR_NODE_SERVICE = "midgard-node";
+/**
+ * The TLS ingress in front of a public stack's node
+ * (`src/full-stack/public-runtime.ts`). Compose starts it with the node and
+ * keeps it running when only the node stops, answering 503 for it.
+ */
+export const OPERATOR_INGRESS_SERVICE = "public-ingress";
 
 /**
  * The node's own block disagrees with its journal (`landed-blocks/holds.ts`).
@@ -67,23 +73,31 @@ const compose = (project: string, args: readonly string[]) =>
  * Operator-2's node as `docker compose -p <project>` runs it, and its
  * `/readyz` at `endpoint`. Compose runs from `/` with no `COMPOSE_*`
  * variables, so no Compose file on the caller's path can redefine the
- * project. It only stops and starts the node's service.
+ * project. It only stops and starts the node's service and, on a public
+ * stack, the ingress in front of it: an ingress left running answers
+ * `/readyz` for a stopped node, so a refused `/readyz` would prove nothing.
  */
 export const composeOperatorNodeControl = ({
   composeProject,
   endpoint,
+  publicIngress = false,
 }: {
   composeProject: string;
-  /** The node's HTTP base URL, as its Compose host port publishes it. */
+  /** The node's base URL, as its Compose host port publishes it. */
   endpoint: string;
-}): OperatorNodeControl =>
-  Object.freeze({
+  /** Whether `public-ingress` fronts the node (a public stack). */
+  publicIngress?: boolean;
+}): OperatorNodeControl => {
+  const services = publicIngress
+    ? [OPERATOR_NODE_SERVICE, OPERATOR_INGRESS_SERVICE]
+    : [OPERATOR_NODE_SERVICE];
+  return Object.freeze({
     name: `${composeProject}/${OPERATOR_NODE_SERVICE}`,
     stop: async () => {
-      await compose(composeProject, ["stop", OPERATOR_NODE_SERVICE]);
+      await compose(composeProject, ["stop", ...services]);
     },
     start: async () => {
-      await compose(composeProject, ["start", OPERATOR_NODE_SERVICE]);
+      await compose(composeProject, ["start", ...services]);
     },
     runningServices: async () =>
       (
@@ -118,6 +132,7 @@ export const composeOperatorNodeControl = ({
       return { reachable: true, httpStatus: response.status, body };
     },
   });
+};
 
 /** Proof that operator-2's node could not sign when it was checked. */
 export type OperatorStoppedEvidence = Readonly<{
@@ -147,6 +162,18 @@ export type OperatorResumedEvidence = Readonly<{
   /** Every distinct set of `/readyz` reasons seen while it caught up. */
   observedReasons: readonly (readonly string[])[];
 }>;
+
+/**
+ * A refusal made in front of the node, not by it: the public ingress's 503
+ * while the node starts (or is busy), or a rate limit's 429. Each carries an
+ * error code and no readiness reasons.
+ */
+const refusedBeforeTheNode = (
+  readiness: Extract<OperatorNodeReadiness, { reachable: true }>,
+) =>
+  (readiness.httpStatus === 503 || readiness.httpStatus === 429) &&
+  typeof (readiness.body as { errorCode?: unknown } | null | undefined)
+    ?.errorCode === "string";
 
 /** Our node's own replay hold on a landed block it refuses. */
 const LANDED_BLOCK_INVALID = "landed_block_invalid";
@@ -267,12 +294,16 @@ export const createOperatorPause = (
         const readiness = await control
           .readReadiness()
           .catch((): OperatorNodeReadiness => ({ reachable: false }));
-        if (readiness.reachable) {
-          const reasons = readinessReasons(readiness.body);
-          if (reasons === undefined)
+        const reasons = readiness.reachable
+          ? readinessReasons(readiness.body)
+          : undefined;
+        if (readiness.reachable && reasons === undefined) {
+          // The ingress or a limiter answered for a node not serving yet.
+          if (!refusedBeforeTheNode(readiness))
             throw new Error(
               `Operator-2's node ${control.name} answered /readyz without its reasons`,
             );
+        } else if (readiness.reachable && reasons !== undefined) {
           if (
             !observedReasons.some(
               (seen) => JSON.stringify(seen) === JSON.stringify(reasons),

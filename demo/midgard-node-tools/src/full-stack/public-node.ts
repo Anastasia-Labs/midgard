@@ -23,6 +23,7 @@ import { resolveValidationWorkerPoolSize } from "midgard-node/services/config.no
 
 import { SIGNED_RELEASE_FILES } from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";
+import { publicOriginHost } from "./node-tls.js";
 import { PUBLIC_INPUT_KEYS } from "./public-inputs.js";
 import { readOperatorProvenance, stackRegistryPath } from "./release.js";
 
@@ -52,10 +53,6 @@ export const inside = (path: string, directory: string) => {
   const offset = relative(directory, path);
   return offset === "" || (!offset.startsWith("..") && offset !== path);
 };
-
-/** The public origin's hostname, which the node certificate must cover. */
-export const publicOriginHost = (env: Record<string, string>) =>
-  new URL(env.MIDGARD_PUBLIC_API_ORIGIN!).hostname;
 
 /** A private input: a regular file of this user's that only it can read. */
 async function assertPrivateFile(label: string, path: string) {
