@@ -12,6 +12,7 @@ import {
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import {
   handleSignSubmitNoConfirmation,
+  type IntendedStateProbe,
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   type TxSubmitError,
@@ -369,39 +370,6 @@ export const ensureSchedulerAlignedForCommit = (
       );
       const refreshTx = refreshTxResult.tx;
 
-      const submitRecoveryOptions: NoInlineSubmitRecoveryOptions = {
-        label: "scheduler-refresh",
-        slotSnapshot: submitSlotSnapshot,
-        requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
-        maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
-        inlineWaitPolicy: "defer_positive_wait",
-        noInlineSubmitDefer: {
-          key: "block_commitment",
-          dependencyKey: schedulerDependencyKey,
-          invalidationKey: schedulerDependencyKey,
-        },
-      };
-      const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
-        lucid,
-        refreshTx,
-        journaledIntent(
-          "scheduler_refresh",
-          `scheduler:${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
-          plan,
-        ),
-        submitRecoveryOptions,
-      );
-      if (refreshSubmitResult.status === "deferred") {
-        return schedulerRefreshDueWorkFromNoInlineSubmitDefer({
-          defer: refreshSubmitResult.defer,
-          localSubmitSlot: submitSlot,
-          nowMs: Date.now(),
-        });
-      }
-      const refreshTxHash = refreshSubmitResult.txHash;
-      yield* Effect.logInfo(
-        `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
-      );
       // The scheduler output that replaced the one this tx spends, whoever's
       // tx landed it: at a shift end the successor may take the same turn
       // itself, and then this tx never lands. The loop replans from it.
@@ -425,18 +393,76 @@ export const ensureSchedulerAlignedForCommit = (
             .find((utxo) => outRefLabel(utxo) !== spentInput),
         ),
       );
-      yield* Effect.raceFirst(
-        awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh"),
-        Effect.either(nextSchedulerUtxo).pipe(
-          Effect.repeat({
-            until: (next) => next._tag === "Right" && next.right !== undefined,
-            schedule: Schedule.spaced(
-              SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
-            ),
-          }),
-          Effect.asVoid,
+      // What this refresh is for: the scheduler input it spends replaced by
+      // one that gives the turn to the operator it appoints.
+      const appointedOnChain = nextSchedulerUtxo.pipe(
+        Effect.flatMap((next) =>
+          next === undefined
+            ? Effect.succeed(false)
+            : getSchedulerDatumFromUTxO(next).pipe(
+                Effect.map(
+                  (datum) =>
+                    activeSchedulerState(datum)?.operator === appointedOperator,
+                ),
+              ),
         ),
+        Effect.orElseSucceed(() => false),
       );
+
+      const submitRecoveryOptions: NoInlineSubmitRecoveryOptions &
+        IntendedStateProbe = {
+        label: "scheduler-refresh",
+        slotSnapshot: submitSlotSnapshot,
+        requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
+        maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
+        inlineWaitPolicy: "defer_positive_wait",
+        noInlineSubmitDefer: {
+          key: "block_commitment",
+          dependencyKey: schedulerDependencyKey,
+          invalidationKey: schedulerDependencyKey,
+        },
+        intendedStateOnChain: () => appointedOnChain,
+      };
+      const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
+        lucid,
+        refreshTx,
+        journaledIntent(
+          "scheduler_refresh",
+          `scheduler:${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
+          plan,
+        ),
+        submitRecoveryOptions,
+      );
+      if (refreshSubmitResult.status === "deferred") {
+        return schedulerRefreshDueWorkFromNoInlineSubmitDefer({
+          defer: refreshSubmitResult.defer,
+          localSubmitSlot: submitSlot,
+          nowMs: Date.now(),
+        });
+      }
+      const refreshTxHash = refreshSubmitResult.txHash;
+      if (refreshSubmitResult.status === "lost_race") {
+        yield* Effect.logInfo(
+          `🔹 Scheduler refresh ${refreshTxHash} lost the race to another refresh that already gave the turn to ${appointedOperator}; replanning from it.`,
+        );
+      } else {
+        yield* Effect.logInfo(
+          `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
+        );
+        yield* Effect.raceFirst(
+          awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh"),
+          Effect.either(nextSchedulerUtxo).pipe(
+            Effect.repeat({
+              until: (next) =>
+                next._tag === "Right" && next.right !== undefined,
+              schedule: Schedule.spaced(
+                SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
+              ),
+            }),
+            Effect.asVoid,
+          ),
+        );
+      }
 
       let refreshedSchedulerRefInput: UTxO | undefined;
       let pollCount = 0;

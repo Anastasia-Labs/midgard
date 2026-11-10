@@ -14,10 +14,7 @@ import {
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
 } from "./submit-timing.js";
-import {
-  awaitExactTransactionConfirmation,
-  BeforeSignedTransactionSubmission,
-} from "./utils.await-required-output-visibility.js";
+import { BeforeSignedTransactionSubmission } from "./utils.await-required-output-visibility.js";
 import {
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
   EARLY_VALIDITY_RETRY_SLOT_BUFFER,
@@ -26,8 +23,6 @@ import {
   resolveEarlyValidityRetry,
   RETRY_ATTEMPTS,
   SLOT_LENGTH_MS,
-  SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS,
-  SUBMIT_RECOVERY_POLL_INTERVAL_MS,
 } from "./utils.parse-structured-outside-validity-interval-details.js";
 import {
   inspectSignedTxValidityIntervalIfAvailable,
@@ -38,9 +33,15 @@ import {
   noInlineSubmitDeferFromTimingPlan,
   noInlineSubmitProviderSlotDefer,
   resolvePreSubmitSlotSnapshot,
+  type SubmitOutcome,
   type SubmitRecoveryOptions,
   submitRecoverySleep,
 } from "./utils.submit-recovery-options.js";
+import {
+  awaitExactTxOrIntendedState,
+  landedAfterOutcomeUnknown,
+  lostRace,
+} from "./utils.submit-settled-reads.js";
 
 /**
  * Submits signed bytes with recovery for provider races and early-validity
@@ -53,6 +54,11 @@ import {
  * outcome is unknown (the provider's `L1SubmitOutcomeUnknownError`) it first
  * reads the exact id's status and sends nothing once the transaction landed,
  * and that error, not a later retry's, is the one reported.
+ *
+ * A refusal because the inputs are already spent is a lost race, not an
+ * error, when the caller's `intendedStateOnChain` shows the state the
+ * transaction was for is on chain: checked at once, then alongside the
+ * bounded wait for the exact transaction, which it ends early.
  */
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
@@ -60,7 +66,7 @@ export const submitSignedTxWithRecovery = (
   txHash: string,
   intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<void, unknown, IntentJournal> =>
+): Effect.Effect<SubmitOutcome, unknown, IntentJournal> =>
   Effect.gen(function* () {
     const journal = yield* IntentJournal;
     const purpose = {
@@ -79,13 +85,17 @@ export const submitSignedTxWithRecovery = (
     );
 
     let outcomeUnknown: unknown;
+    const intendedStateOnChain =
+      options.inlineWaitPolicy === "defer_positive_wait"
+        ? options.intendedStateOnChain
+        : undefined;
 
     for (;;) {
       if (
         outcomeUnknown !== undefined &&
         (yield* landedAfterOutcomeUnknown(lucid, txHash, outcomeUnknown))
       ) {
-        return;
+        return "sent";
       }
       const preSubmitValidity = yield* preSubmitValidityCheck(
         lucid,
@@ -187,7 +197,7 @@ export const submitSignedTxWithRecovery = (
       yield* journal.record(intent, signed.toCBOR(), txHash, purpose, gate);
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
-        return;
+        return "sent";
       }
 
       const e = submitResult.left;
@@ -403,6 +413,14 @@ export const submitSignedTxWithRecovery = (
 
       if (
         isSpentInputSubmitRejection(e) &&
+        intendedStateOnChain !== undefined &&
+        (yield* intendedStateOnChain())
+      ) {
+        return yield* lostRace(lucid, txHash, submitError, options.label);
+      }
+
+      if (
+        isSpentInputSubmitRejection(e) &&
         options.inlineWaitPolicy === "defer_positive_wait" &&
         options.unknownInputsFailFast === true
       ) {
@@ -421,19 +439,19 @@ export const submitSignedTxWithRecovery = (
         yield* Effect.logWarning(
           `Tx submit reported unknown inputs for ${txHash}; verifying the exact transaction through provider-neutral status before failing: ${submitError}`,
         );
-        const confirmation = yield* Effect.either(
-          Effect.tryPromise(() =>
-            awaitExactTransactionConfirmation(lucid, txHash, {
-              timeout: SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS,
-              checkInterval: SUBMIT_RECOVERY_POLL_INTERVAL_MS,
-            }),
-          ),
+        const settled = yield* awaitExactTxOrIntendedState(
+          lucid,
+          txHash,
+          intendedStateOnChain,
         );
-        if (confirmation._tag === "Right") {
+        if (settled === "lost_race") {
+          return yield* lostRace(lucid, txHash, submitError, options.label);
+        }
+        if (settled === "confirmed") {
           yield* Effect.logInfo(
             `Tx ${txHash} confirmed after submit race; treating submission as successful.`,
           );
-          return;
+          return "sent";
         }
         return yield* Effect.fail(e);
       }
@@ -459,41 +477,4 @@ export const submitSignedTxWithRecovery = (
 
       return yield* Effect.fail(outcomeUnknown ?? e);
     }
-  });
-
-/**
- * Whether `txHash`, sent once with an unknown outcome, landed: its status on
- * the provider (the follower's view of the exact id). A transaction that
- * landed phase-2 invalid fails here: its collateral is gone and resending
- * cannot change that. An unreadable status resends the same bytes, which
- * cannot land twice.
- */
-const landedAfterOutcomeUnknown = (
-  lucid: Pick<LucidEvolution, "transactionStatus">,
-  txHash: string,
-  outcomeUnknown: unknown,
-): Effect.Effect<boolean, Error> =>
-  Effect.gen(function* () {
-    const read = yield* Effect.either(
-      Effect.tryPromise(() => lucid.transactionStatus(txHash)),
-    );
-    if (read._tag === "Left") {
-      yield* Effect.logWarning(
-        `Tx ${txHash} status unreadable after a submit with an unknown outcome; sending the same bytes again: ${formatUnknownError(read.left, { includeCause: true })}`,
-      );
-      return false;
-    }
-    if (read.right.status === "failed") {
-      return yield* Effect.fail(
-        new Error(
-          `Tx ${txHash} landed phase-2 invalid after a submit with an unknown outcome`,
-          { cause: outcomeUnknown },
-        ),
-      );
-    }
-    if (read.right.status !== "confirmed") return false;
-    yield* Effect.logInfo(
-      `Tx ${txHash} landed after a submit with an unknown outcome; not sending it again.`,
-    );
-    return true;
   });

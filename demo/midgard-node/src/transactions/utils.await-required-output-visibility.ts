@@ -48,6 +48,8 @@ const cmlBodySlotNumber = (
 export type SignSubmitContext = {
   readonly txHash: string;
   readonly signedTxCbor: string;
+  /** L1 refused it, but another transaction already reached its state. */
+  readonly lostRace?: true;
 };
 
 type AwaitTxConfirmationOptions = {

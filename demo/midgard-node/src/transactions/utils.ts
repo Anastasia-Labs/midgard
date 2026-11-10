@@ -41,10 +41,13 @@ export {
 } from "./utils.parse-structured-outside-validity-interval-details.js";
 export {
   type BlockTxPayload,
+  type IntendedStateProbe,
   isNoInlineSubmitDefer,
   type NoInlineSubmitDeferEvidence,
   type NoInlineSubmitRecoveryOptions,
+  type SignSubmitLostRace,
   type SignSubmitNoConfirmationResult,
+  type SubmitOutcome,
   type SubmitRecoveryInlineOptions,
   type SubmitRecoveryOptions,
 } from "./utils.submit-recovery-options.js";

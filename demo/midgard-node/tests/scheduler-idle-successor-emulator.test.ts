@@ -153,6 +153,60 @@ describe("an idle scheduler successor does not freeze block production", () => {
     await expectSelfAppointment(scenario, tail.keyHash);
   });
 
+  it("two operators at a shift end, both holding work: the push its L1 node refuses because the successor's takeover already spent its input is a lost race, not an error", async () => {
+    // The head's takeover of the same scheduler input lands just before the
+    // tail's push reaches the tail's L1 node, which refuses the push.
+    let takeOver: (() => Promise<void>) | undefined;
+    let refused: unknown;
+    const scenario = await initScenario(2, {
+      operator: 1,
+      submit: async (emulator, tx) => {
+        if (takeOver === undefined) return emulator.submitTx(tx);
+        const landFirst = takeOver;
+        takeOver = undefined;
+        await landFirst();
+        try {
+          return await emulator.submitTx(tx);
+        } catch (error) {
+          refused = error;
+          throw error;
+        }
+      },
+    });
+    const { fixture } = scenario;
+    const [head, tail] = fixture.operators;
+    if (head === undefined || tail === undefined) {
+      throw new Error("Expected two fixture operators");
+    }
+    await appointFirstSchedulerOperator(fixture);
+    await letShiftEnd(fixture);
+    const tailLovelace = await walletLovelace(scenario, tail.keyHash);
+    takeOver = () => expectSelfAppointment(scenario, head.keyHash);
+
+    // The successor's turn is on chain, which is all the push was for: the
+    // alignment goes on from it at once, without the exact-transaction wait
+    // a refusal with no such state gets.
+    const held = new Promise<"held">((resolve) =>
+      setTimeout(() => resolve("held"), 60_000).unref(),
+    );
+    const outcome = await Promise.race([
+      alignForCommit(scenario, tail.keyHash),
+      held,
+    ]);
+    expect(String(refused)).toMatch(/already spent/);
+    if (outcome === "held") {
+      throw new Error("The refused push held the commit tick for 60 s");
+    }
+    const taken = activeOperator(await fetchSchedulerDatum(fixture));
+    expect(taken.operator).toBe(head.keyHash);
+    expectWaitForShiftEnd(fixture, outcome.result, taken.startTime);
+    expect(await walletLovelace(scenario, tail.keyHash)).toBe(tailLovelace);
+
+    // The rotation continues: the tail takes the next turn.
+    await letShiftEnd(fixture);
+    await expectSelfAppointment(scenario, tail.keyHash);
+  });
+
   it("refuses to push from a current operator that is in no active-operators node", async () => {
     const { fixture } = await initScenario(2);
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);

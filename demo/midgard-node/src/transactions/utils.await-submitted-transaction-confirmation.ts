@@ -23,8 +23,10 @@ import {
   TX_OUTPUT_VISIBILITY_TIMEOUT_MS,
 } from "./utils.parse-structured-outside-validity-interval-details.js";
 import {
+  type IntendedStateProbe,
   isNoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
+  type SignSubmitLostRace,
   type SignSubmitNoConfirmationResult,
   type SubmitRecoveryInlineOptions,
   type SubmitRecoveryOptions,
@@ -38,7 +40,19 @@ import { signOverWalletView } from "./utils.wallet-view.js";
  * @param lucid - The LucidEvolution instance.
  * @param signBuilder - The transaction sign builder.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
+ * With `intendedStateOnChain`, a lost race resolves instead, unconfirmed.
  */
+export function handleSignSubmit(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
+  options: NoInlineSubmitRecoveryOptions & IntendedStateProbe,
+): Effect.Effect<
+  string | SignSubmitLostRace,
+  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer,
+  IntentJournal
+>;
+
 export function handleSignSubmit(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
@@ -67,7 +81,7 @@ export function handleSignSubmit(
   intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
-  string,
+  string | SignSubmitLostRace,
   TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer,
   IntentJournal
 > {
@@ -78,6 +92,12 @@ export function handleSignSubmit(
       intent,
       options,
     );
+    if (submission.lostRace === true) {
+      return {
+        status: "lost_race",
+        txHash: submission.txHash,
+      } satisfies SignSubmitLostRace;
+    }
     return yield* awaitSubmittedTransactionConfirmation(
       lucid,
       submission,
@@ -193,7 +213,19 @@ export const awaitSubmittedTransactionConfirmation = (
  * @param lucid - The LucidEvolution instance. Here it's only used for logging the signer's address.
  * @param signBuilder - The transaction sign builder.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
+ * With `intendedStateOnChain`, a lost race resolves too.
  */
+export function handleSignSubmitNoConfirmation(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
+  options: NoInlineSubmitRecoveryOptions & IntendedStateProbe,
+): Effect.Effect<
+  SignSubmitNoConfirmationResult | SignSubmitLostRace,
+  TxSignError | TxSubmitError,
+  IntentJournal
+>;
+
 export function handleSignSubmitNoConfirmation(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
@@ -218,7 +250,7 @@ export function handleSignSubmitNoConfirmation(
   intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
-  string | SignSubmitNoConfirmationResult,
+  string | SignSubmitNoConfirmationResult | SignSubmitLostRace,
   TxSignError | TxSubmitError | NoInlineSubmitDefer,
   IntentJournal
 > {
@@ -239,6 +271,12 @@ export function handleSignSubmitNoConfirmation(
       return yield* Effect.fail(error);
     }
     const submission = submissionResult.right;
+    if (submission.lostRace === true) {
+      return {
+        status: "lost_race",
+        txHash: submission.txHash,
+      } satisfies SignSubmitLostRace;
+    }
     if (returnNoInlineDefer) {
       return {
         status: "submitted",
@@ -325,7 +363,7 @@ const signSubmitTransactionWithDefer = (
       `✍  Signed tx prepared: txHash=${txHash}, cborBytes=${signedTxCbor.length / 2}`,
     );
     yield* Effect.logInfo("✉️  Submitting transaction...");
-    yield* submitSignedTxWithRecovery(
+    const outcome = yield* submitSignedTxWithRecovery(
       lucid,
       signed,
       txHash,
@@ -356,6 +394,9 @@ const signSubmitTransactionWithDefer = (
             }),
       ),
     );
+    if (outcome === "lost_race") {
+      return { txHash, signedTxCbor, lostRace: true } as const;
+    }
     yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
     return { txHash, signedTxCbor };
   });

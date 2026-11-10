@@ -60,6 +60,34 @@ export type NoInlineSubmitRecoveryOptions = Omit<
    * intent that its own reconciliation resolves (a commit block).
    */
   readonly unknownInputsFailFast?: boolean;
+  /**
+   * Whether the state this transaction was sent to reach is now on chain,
+   * whoever's transaction reached it. When L1 refuses the transaction
+   * because its inputs are already spent and this answers true, at once or
+   * while the exact transaction is awaited, the submission ends as a lost
+   * race (`SubmitOutcome` "lost_race"), logged at info, not an error. A read
+   * that fails answers false. Callers that pass it take the
+   * `IntendedStateProbe` overloads of `handleSignSubmit` and
+   * `handleSignSubmitNoConfirmation`, whose results name the lost race.
+   */
+  readonly intendedStateOnChain?: () => Effect.Effect<boolean>;
+};
+
+/** Options that name the state their transaction exists to reach. */
+export type IntendedStateProbe = {
+  readonly intendedStateOnChain: () => Effect.Effect<boolean>;
+};
+
+/**
+ * How a submission ended without error: sent, or refused because another
+ * transaction already spent its inputs and reached the state it was for.
+ */
+export type SubmitOutcome = "sent" | "lost_race";
+
+/** A submission that lost its L1 race to a transaction with the same effect. */
+export type SignSubmitLostRace = {
+  readonly status: "lost_race";
+  readonly txHash: string;
 };
 
 export type SubmitRecoveryOptions =
