@@ -45,12 +45,18 @@ export const schedulerRefreshDependencyKey = ({
   currentStartTime,
   targetOperator,
   selectionKind,
+  successorHoldsPending = false,
 }: {
   readonly schedulerOutRef: string;
   readonly currentOperator: string;
   readonly currentStartTime: bigint;
   readonly targetOperator: string;
   readonly selectionKind: SchedulerRefreshWitnessSelection["kind"];
+  /**
+   * Whether a push to `targetOperator` waits because it holds all this
+   * node's pending work: when that stops being true the wait is stale.
+   */
+  readonly successorHoldsPending?: boolean;
 }): string =>
   [
     `scheduler=${schedulerOutRef}`,
@@ -58,6 +64,7 @@ export const schedulerRefreshDependencyKey = ({
     `current_start=${currentStartTime.toString()}`,
     `target_operator=${targetOperator}`,
     `selection=${selectionKind}`,
+    ...(successorHoldsPending ? ["successor_holds_pending"] : []),
   ].join(",");
 
 export const schedulerRefreshDueWorkFromSubmitTiming = (input: {

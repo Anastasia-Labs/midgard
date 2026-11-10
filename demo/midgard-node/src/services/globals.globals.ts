@@ -187,6 +187,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Bumped after the tx-queue processor accepts transactions: the wake of
     // the forwarder that shares them with the other operators.
     const L2_PEER_FORWARD_GENERATION = yield* SubscriptionRef.make<number>(0);
+    // By peer operator key hash: the pending tx ids (hex) that peer's last
+    // signed inventory answer showed it holds. Written by the forwarder,
+    // read by the scheduler push at a shift end.
+    const L2_PEER_HELD_TXS = yield* Ref.make<
+      ReadonlyMap<string, ReadonlySet<string>>
+    >(new Map());
 
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
@@ -311,6 +317,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,
       L2_PEER_FORWARD_GENERATION,
+      L2_PEER_HELD_TXS,
       ADMISSION_BACKLOG_GAUGE,
       ADMISSION_INPUT_CLAIMS,
       LOCAL_FINALIZATION_PENDING,

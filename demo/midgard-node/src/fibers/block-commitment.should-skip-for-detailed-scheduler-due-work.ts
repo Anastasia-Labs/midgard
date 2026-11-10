@@ -7,6 +7,7 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { successorHoldsAllPendingHere } from "../l2-peer/successor-holds-pending.js";
 import { idleCommitBuildAlarms } from "../services/globals.commit-build-alarms.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
@@ -287,6 +288,7 @@ const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
     lucid.referenceScriptsAddress,
     lucid.submitSlotSnapshot,
     false,
+    yield* successorHoldsAllPendingHere,
   );
   if ("dueWork" in alignment) {
     return alignment.dueWork;
@@ -297,7 +299,7 @@ const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
 export const shouldSkipForDetailedSchedulerDueWork: Effect.Effect<
   boolean,
   never,
-  Globals | Lucid | MidgardContracts | IntentJournal
+  Globals | Lucid | MidgardContracts | IntentJournal | Database
 > = Effect.gen(function* () {
   const freshDueWork = yield* Effect.either(
     resolveFreshDetailedSchedulerDueWork,

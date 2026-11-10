@@ -63,6 +63,11 @@ export const ensureSchedulerAlignedForCommit = (
   schedulerSpendingScriptRef?: UTxO,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
   allowSchedulerRefresh: boolean = true,
+  /**
+   * Whether `successor` holds all of this node's pending work (see
+   * `l2-peer/successor-holds-pending.ts`). Omitted, it never does.
+   */
+  successorHoldsAllPending?: (successor: string) => Effect.Effect<boolean>,
 ): Effect.Effect<
   SchedulerAlignmentResult,
   SDK.StateQueueError | TxSignError | TxSubmitError,
@@ -154,6 +159,14 @@ export const ensureSchedulerAlignedForCommit = (
             cause,
           }),
       });
+      // A push to a successor that holds all this node's pending work waits
+      // the grace period in which that successor is expected to take the
+      // turn itself; a push it might need goes at once.
+      const successorHoldsPending =
+        selection.kind !== "AppointFirst" &&
+        appointedOperator !== operatorKeyHash &&
+        successorHoldsAllPending !== undefined &&
+        (yield* successorHoldsAllPending(appointedOperator));
       const { validFrom, validTo } =
         selection.kind === "AppointFirst"
           ? yield* Effect.try({
@@ -174,6 +187,9 @@ export const ensureSchedulerAlignedForCommit = (
               lucid,
               currentStartTime,
               schedulerSlotSnapshot,
+              successorHoldsPending
+                ? SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS
+                : 0n,
             );
       const submitTimingSnapshot: SubmitSlotSnapshot = submitSlot ?? {
         source: "test",
@@ -191,6 +207,7 @@ export const ensureSchedulerAlignedForCommit = (
         currentStartTime,
         targetOperator: appointedOperator,
         selectionKind: selection.kind,
+        successorHoldsPending,
       });
       const submitTiming = planSubmitTiming({
         callerLabel: "scheduler-refresh",
@@ -223,6 +240,10 @@ export const ensureSchedulerAlignedForCommit = (
           },
         });
         const entry = dueWorkOutput.dueWork;
+        if (successorHoldsPending)
+          yield* Effect.logInfo(
+            `🔹 Successor ${appointedOperator} holds all pending L2 txs; letting it take the turn first, pushing only after the new-shift grace period (due_slot=${entry.dueSlot.toString()}).`,
+          );
         yield* Effect.logInfo(
           `🔹 Scheduler refresh is not due yet; registering slot-aware due work discovery_stage=scheduler_refresh_deep (kind=${entry.kind},key=${entry.key},current_slot=${entry.observedSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()},slot_source=${entry.slotSource},dependency_key=${entry.dependencyKey}).`,
         );

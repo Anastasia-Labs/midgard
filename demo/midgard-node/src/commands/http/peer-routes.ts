@@ -14,6 +14,7 @@ import {
 } from "@effect/platform";
 import { Effect, Either, Option, Ref } from "effect";
 
+import { daLocalSigners } from "../../da/local-signers.js";
 import { L2PeerShareDB } from "../../database/index.js";
 import {
   decodePeerList,
@@ -25,6 +26,8 @@ import {
   PEER_MEDIA_TYPE,
   PEER_TXS_MAX_BODY_BYTES,
   PEER_TXS_PATH,
+  peerAnswerHeaders,
+  type PeerSigner,
   verifyPeerRequest,
 } from "../../l2-peer/protocol.js";
 import {
@@ -250,7 +253,24 @@ export const postPeerTxsHandler = <R>(
     return yield* HttpServerResponse.json({ admitted, duplicates, refused });
   }).pipe(Effect.catchIf(HttpServerResponse.isServerResponse, Effect.succeed));
 
-/** Answers which of the offered transaction ids this node has never seen. */
+/** This node's operator key, derived once per node config. */
+const answerSigners = new WeakMap<object, PeerSigner>();
+const answerSigner = (nodeConfig: NodeConfig["Type"]): PeerSigner => {
+  let signer = answerSigners.get(nodeConfig);
+  if (signer === undefined) {
+    signer = daLocalSigners(nodeConfig).find(
+      (local) => local.role === "operator",
+    )!;
+    answerSigners.set(nodeConfig, signer);
+  }
+  return signer;
+};
+
+/**
+ * Answers which of the offered transaction ids this node has never seen,
+ * signed by this node's operator key so the sender knows which operator
+ * holds the rest (`fibers/l2-tx-peer-forwarder.ts`).
+ */
 export const postPeerInventoryHandler = Effect.gen(function* () {
   const { bytes } = yield* withAuthorizedBody(
     PEER_INVENTORY_PATH,
@@ -268,8 +288,16 @@ export const postPeerInventoryHandler = Effect.gen(function* () {
       ? ids.filter((id) => writer.value.pendingSince(id) === undefined)
       : ids,
   );
-  return HttpServerResponse.uint8Array(encodePeerList(missing), {
+  const answer = encodePeerList(missing);
+  return HttpServerResponse.uint8Array(answer, {
     contentType: PEER_MEDIA_TYPE,
+    headers: peerAnswerHeaders(
+      answerSigner(yield* NodeConfig),
+      PEER_INVENTORY_PATH,
+      (yield* MidgardContracts).hubOracle.policyId,
+      bytes,
+      answer,
+    ),
   });
 }).pipe(
   Effect.catchIf(HttpServerResponse.isServerResponse, Effect.succeed),

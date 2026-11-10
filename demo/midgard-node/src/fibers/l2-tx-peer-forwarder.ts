@@ -9,6 +9,11 @@
  *   node offers every pending id and sends only those the peer has never
  *   seen. Restarts, outages and partitions repair themselves this way, with
  *   no durable outbox.
+ * - Each signed inventory answer names the operator that answered. After a
+ *   catch-up the ids that operator showed it holds go to
+ *   `Globals.L2_PEER_HELD_TXS`; a failed lane, or one with nothing pending,
+ *   drops its entry. A node that is not the successor at a shift end reads
+ *   it to let a successor that holds all its work act first.
  *
  * All state is in memory. Each peer has a lane of its own, a fiber with at
  * most one request in flight, so a down, slow or hung peer delays only its
@@ -40,7 +45,9 @@ import {
   PEER_TXS_MAX_BODY_BYTES,
   PEER_TXS_PATH,
   peerAuthHeaders,
+  verifyPeerAnswer,
 } from "../l2-peer/protocol.js";
+import { recordPeerHeldTxs } from "../l2-peer/successor-holds-pending.js";
 import { Globals, MidgardContracts, NodeConfig } from "../services/index.js";
 
 /**
@@ -66,6 +73,8 @@ type PeerLane = {
   retryAt: number;
   /** Whether the peer's last answer refused this node's key (403). */
   refused: boolean;
+  /** The operator key hash that signed the peer's last inventory answer. */
+  operator: string | undefined;
 };
 
 class PeerRequestError extends Error {
@@ -120,6 +129,7 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
     failures: 0,
     retryAt: 0,
     refused: false,
+    operator: undefined,
   }));
 
   const post = (lane: PeerLane, path: string, items: readonly Buffer[]) =>
@@ -145,7 +155,16 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
             response.status,
             1000 * Number(response.headers.get("retry-after") ?? "0") || 0,
           );
-        return answer;
+        return {
+          answer,
+          answeredBy: verifyPeerAnswer(
+            Object.fromEntries(response.headers),
+            path,
+            deployment,
+            body,
+            answer,
+          ),
+        };
       },
       catch: (cause) =>
         cause instanceof PeerRequestError
@@ -158,20 +177,46 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
       discard: true,
     });
 
+  /** Records which operator the lane reaches and what it holds, or nothing. */
+  const recordHeld = (
+    lane: PeerLane,
+    operator: string | undefined,
+    held: ReadonlySet<string> | undefined,
+  ) =>
+    Effect.gen(function* () {
+      const previous = lane.operator;
+      lane.operator = operator;
+      yield* recordPeerHeldTxs(globals, previous, undefined);
+      if (operator !== undefined && held !== undefined)
+        yield* recordPeerHeldTxs(globals, operator, held);
+    });
+
   const catchUp = (lane: PeerLane) =>
     Effect.gen(function* () {
       const mark = yield* L2PeerShareDB.catchUpMark;
       const ids = yield* L2PeerShareDB.pendingIds;
+      // The ids the answers showed the peer holds, kept only while one
+      // operator signed every page; any other answer leaves it unidentified.
+      const held = new Set<string>();
+      let operator: string | null | undefined;
       for (let start = 0; start < ids.length; start += pageSize) {
-        const answer = yield* post(
+        const page = ids.slice(start, start + pageSize);
+        const { answer, answeredBy } = yield* post(
           lane,
           PEER_INVENTORY_PATH,
-          ids.slice(start, start + pageSize),
+          page,
         );
         const missing = yield* Effect.try({
           try: () => decodePeerList(answer, PEER_INVENTORY_MAX_IDS),
           catch: () => new PeerRequestError("inventory answer is malformed"),
         });
+        operator =
+          operator === undefined || operator === answeredBy ? answeredBy : null;
+        const missingHex = new Set(missing.map((id) => id.toString("hex")));
+        for (const id of page) {
+          const hex = id.toString("hex");
+          if (!missingHex.has(hex)) held.add(hex);
+        }
         const bytes = yield* L2PeerShareDB.pendingBytes(missing);
         yield* sendTxs(
           lane,
@@ -180,6 +225,7 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
       }
       lane.needsCatchUp = false;
       if (mark !== null && mark > lane.afterSeq) lane.afterSeq = mark;
+      yield* recordHeld(lane, operator ?? undefined, held);
     });
 
   const delta = (lane: PeerLane) =>
@@ -205,6 +251,7 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
       if (!(yield* L2PeerShareDB.hasPending)) {
         lane.needsCatchUp = false;
         lane.failures = 0;
+        yield* recordHeld(lane, lane.operator, undefined);
         return;
       }
       if (lane.needsCatchUp) yield* catchUp(lane);
@@ -223,6 +270,8 @@ export const l2TxPeerForwarderFiber = Effect.gen(function* () {
           const refused = request?.status === 403;
           lane.failures++;
           lane.needsCatchUp = true;
+          // A peer that did not answer shows nothing about what it holds.
+          yield* recordHeld(lane, lane.operator, undefined);
           const backoff = refused
             ? nodeConfig.VALIDATION_RETRY_BACKOFF_MAX_MS
             : Math.min(

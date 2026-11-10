@@ -5,7 +5,9 @@
  * transaction bytes for `/peer/txs`, 32-byte transaction ids for
  * `/peer/inventory`. Each request carries the sender's operator verification
  * key and its Ed25519 signature over {@link peerRequestDigest}, which binds
- * the route, the deployment and the exact body.
+ * the route, the deployment and the exact body. An inventory answer carries
+ * the same two headers for the answering operator, signed over
+ * {@link peerAnswerDigest}: the sender learns which operator answered.
  */
 import {
   encodeCbor,
@@ -87,15 +89,10 @@ export const peerAuthHeaders = (
   ),
 });
 
-/**
- * The key hash of a correctly signed request, or null when either header is
- * missing or malformed or the signature does not verify.
- */
-export const verifyPeerRequest = (
+/** The key hash of the signer of `digest`, or null (see the callers). */
+const verifySignedDigest = (
   headers: Readonly<Record<string, string | undefined>>,
-  path: string,
-  deploymentPolicyIdHex: string,
-  body: Uint8Array,
+  digest: Buffer,
 ): string | null => {
   const keyHex = headers[PEER_KEY_HEADER] ?? "";
   const signatureHex = headers[PEER_SIGNATURE_HEADER] ?? "";
@@ -106,16 +103,81 @@ export const verifyPeerRequest = (
     const signature = CML.Ed25519Signature.from_raw_bytes(
       Buffer.from(signatureHex, "hex"),
     );
-    return key.verify(
-      peerRequestDigest(path, deploymentPolicyIdHex, body),
-      signature,
-    )
-      ? key.hash().to_hex()
-      : null;
+    return key.verify(digest, signature) ? key.hash().to_hex() : null;
   } catch {
     return null;
   }
 };
+
+/**
+ * The key hash of a correctly signed request, or null when either header is
+ * missing or malformed or the signature does not verify.
+ */
+export const verifyPeerRequest = (
+  headers: Readonly<Record<string, string | undefined>>,
+  path: string,
+  deploymentPolicyIdHex: string,
+  body: Uint8Array,
+): string | null =>
+  verifySignedDigest(
+    headers,
+    peerRequestDigest(path, deploymentPolicyIdHex, body),
+  );
+
+const ANSWER_DOMAIN = Buffer.from("midgard/l2-peer-answer/v1\0", "utf8");
+
+/**
+ * What the answering operator's key signs: SHA-256 over the answer domain
+ * tag, the route path, the deployment, the SHA-256 of the request body and
+ * the answer body. An answer is worthless for any other request, so an old
+ * answer cannot be replayed to a newer question.
+ */
+export const peerAnswerDigest = (
+  path: string,
+  deploymentPolicyIdHex: string,
+  requestBody: Uint8Array,
+  answerBody: Uint8Array,
+): Buffer =>
+  sha256(
+    Buffer.concat([
+      ANSWER_DOMAIN,
+      Buffer.from(`${path}\0`, "utf8"),
+      Buffer.from(deploymentPolicyIdHex, "hex"),
+      sha256(Buffer.from(requestBody)),
+      answerBody,
+    ]),
+  );
+
+/** The two authentication headers of an answer to `requestBody`. */
+export const peerAnswerHeaders = (
+  signer: PeerSigner,
+  path: string,
+  deploymentPolicyIdHex: string,
+  requestBody: Uint8Array,
+  answerBody: Uint8Array,
+): Record<string, string> => ({
+  [PEER_KEY_HEADER]: signer.verificationKeyHex,
+  [PEER_SIGNATURE_HEADER]: signer.sign(
+    peerAnswerDigest(path, deploymentPolicyIdHex, requestBody, answerBody),
+  ),
+});
+
+/**
+ * The key hash of the operator that signed an answer to `requestBody`, or
+ * null when the answer is unsigned (a node from before answers were signed)
+ * or its signature does not verify.
+ */
+export const verifyPeerAnswer = (
+  headers: Readonly<Record<string, string | undefined>>,
+  path: string,
+  deploymentPolicyIdHex: string,
+  requestBody: Uint8Array,
+  answerBody: Uint8Array,
+): string | null =>
+  verifySignedDigest(
+    headers,
+    peerAnswerDigest(path, deploymentPolicyIdHex, requestBody, answerBody),
+  );
 
 export const encodePeerList = (items: readonly Uint8Array[]): Buffer =>
   encodeCbor(items.map((item) => Buffer.from(item)));

@@ -38,6 +38,7 @@ export const fetchRealStateQueueWitnessContext = (
   referenceScriptsAddress?: string,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
   allowSchedulerRefresh: boolean = true,
+  successorHoldsAllPending?: (successor: string) => Effect.Effect<boolean>,
 ): Effect.Effect<
   RealStateQueueWitnessContext | CommitTimingDueWork,
   SDK.StateQueueError | TxSignError | TxSubmitError,
@@ -150,6 +151,7 @@ export const fetchRealStateQueueWitnessContext = (
       schedulerSpendingScriptRef,
       submitSlotSnapshot,
       allowSchedulerRefresh,
+      successorHoldsAllPending,
     );
     if ("dueWork" in schedulerRefInput) {
       return schedulerRefInput;

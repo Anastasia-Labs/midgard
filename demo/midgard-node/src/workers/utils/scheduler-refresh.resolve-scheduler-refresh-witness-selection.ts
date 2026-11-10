@@ -205,16 +205,22 @@ export const parseNodeSetUtxos = (
     ),
   );
 
+/**
+ * The validity window of a refresh that ends the shift started at
+ * `currentSchedulerStartTime`: it opens at the shift end, or `holdMs` after
+ * it, and never before the backdated current slot.
+ */
 export const resolveSchedulerRefreshValidityWindow = (
   lucid: LucidEvolution,
   currentSchedulerStartTime: bigint,
   slotSnapshot: SchedulerSlotSnapshot = captureSchedulerSlotSnapshot(lucid),
+  holdMs: bigint = 0n,
 ): {
   readonly validFrom: bigint;
   readonly validTo: bigint;
 } => {
   const minimumShiftStart = Number(
-    currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS,
+    currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS + holdMs,
   );
   const submitLedgerBackdatedStart =
     slotSnapshot.currentSlotStartMs - SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS;

@@ -1,5 +1,6 @@
 import { Effect, Ref } from "effect";
 
+import { successorHoldsAllPendingHere } from "../l2-peer/successor-holds-pending.js";
 import {
   type CommitPipelinePhase,
   Globals,
@@ -185,6 +186,7 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
       lucid.referenceScriptsAddress,
       lucid.submitSlotSnapshot,
       true,
+      yield* successorHoldsAllPendingHere,
     ),
   );
   if (alignment._tag === "Left") {

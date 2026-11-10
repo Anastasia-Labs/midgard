@@ -20,6 +20,11 @@ import { expect, vi } from "vitest";
 
 import * as MempoolDB from "../../src/database/mempool.js";
 import { blockCommitmentAction } from "../../src/fibers/block-commitment.block-commitment-action.js";
+import {
+  BLOCK_COMMITMENT_DUE_WORK_KEY,
+  BLOCK_COMMITMENT_DUE_WORK_KIND,
+} from "../../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import { peekSlotAwareDueWork } from "../../src/fibers/slot-aware-due-work.js";
 import { livenessReasonAgeGauge } from "../../src/services/globals.liveness-reasons.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../../src/services/history-commit-window.js";
 import {
@@ -181,6 +186,24 @@ export const letShiftEnd = async (fixture: OperatorInactivityFixture) => {
     fixture.emulator,
     startTime + SDK.SHIFT_DURATION_MS + 5_000n,
   );
+};
+
+/** The scheduler's current operator and the end of its shift. */
+export const currentShift = async (scenario: Scenario) => {
+  const { operator, startTime } = activeOperator(
+    await fetchSchedulerDatum(scenario.fixture),
+  );
+  return { operator, end: startTime + SDK.SHIFT_DURATION_MS };
+};
+
+/** When the registered commit wait ends, in POSIX ms. */
+export const registeredWaitEnd = (scenario: Scenario) => {
+  const entry = peekSlotAwareDueWork(
+    BLOCK_COMMITMENT_DUE_WORK_KIND,
+    BLOCK_COMMITMENT_DUE_WORK_KEY,
+  );
+  if (entry === undefined) throw new Error("Expected a registered wait");
+  return BigInt(scenario.fixture.lucid.slotToUnixTime(entry.dueSlot));
 };
 
 /**
