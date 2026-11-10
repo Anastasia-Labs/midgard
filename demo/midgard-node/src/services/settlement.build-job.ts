@@ -77,10 +77,13 @@ const buildJob = (
     // Another operator may have settled the event: the job completes once
     // that settlement is cd deep, as it does from its own attempts, and
     // waits, counting no failure, while it is shallower. A rollback that
-    // undoes it leaves nothing settled, and the job goes on below.
+    // undoes it leaves nothing settled, and the job goes on below. One more
+    // than k deep, whose facts the follower has pruned, is final (#869).
     const settled = yield* settledDepth(job.kind, job.event_id);
     if (settled !== null) {
-      const done = settlementLevelAtDepth(settled, parameters) !== "open";
+      const done =
+        settled === "pruned" ||
+        settlementLevelAtDepth(settled, parameters) !== "open";
       yield* Journal.updateJob(
         owner,
         job,
