@@ -25,6 +25,7 @@ import {
   type ValidationTraceHopHolder,
 } from "../../src/validation-trace-dispute/one-step-builders.js";
 import { integer } from "../../src/validation-trace-dispute/one-step-data.js";
+import { validationTraceFieldItemRouteAt } from "../../src/validation-trace-dispute/one-step-field-item-route.js";
 import {
   type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
@@ -175,6 +176,17 @@ export const resolutionDrive = <
     const lucid = scene.h.proverLucid;
     const prover = scene.h.proverSigner.paymentKeyHash;
     const reference = validationTraceOneStepHolder(deployment, at).reference!;
+    // The route of the step's item read, as the runner picks it
+    // (one-step-moves.ts), so a rewritten hop is well formed but for what
+    // `rewrite` changes.
+    const route = await validationTraceFieldItemRouteAt({
+      lucid,
+      deployment,
+      material: dispute.material,
+      plan,
+      holder: at,
+      owner: prover,
+    });
     const honest = validationTraceHop({
       plan,
       holder: at,
@@ -189,6 +201,7 @@ export const resolutionDrive = <
       ...(plan.kind === "phase"
         ? { redeemerChain: scriptSourcesRedeemerReads(deployment, undefined) }
         : {}),
+      route,
     });
     const rewritten = { ...honest, ...rewrite(honest, plan) };
     const window = validationTraceMoveWindow(lucid);

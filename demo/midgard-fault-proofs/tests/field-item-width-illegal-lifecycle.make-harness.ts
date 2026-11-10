@@ -39,6 +39,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import {
   compactCborHex,
   submitWidthStep02Raw,
@@ -119,7 +120,10 @@ export const makeHarness = async () => {
           label: `width-step-${(index + 1).toString()}`,
         }),
       );
-      if (!publicationsRecorded) {
+      // The traced-refusal run publishes its verbose-traced steps under a
+      // lifted envelope (withTracedPublicationEnvelope); the plain run is the
+      // one that proves each publication fits.
+      if (!publicationsRecorded && !TRACED_REFUSALS) {
         record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);

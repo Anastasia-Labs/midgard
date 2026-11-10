@@ -15,7 +15,14 @@ import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { reuseOrCertifyFaultProofFieldGrammar } from "../../src/field-grammar-certificate.js";
 import { NO_AUXILIARY_WITNESS_CBOR } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
+import {
+  validationTraceFieldGrammarPlan,
+  validationTraceFieldItemRead,
+  validationTraceFieldItemRoute,
+  validationTraceFieldItemRouteAt,
+} from "../../src/validation-trace-dispute/one-step-field-item-route.js";
 import {
   PHASE_CHALLENGER_SUCCESSOR_HASH,
   PHASE_RESOLUTIONS,
@@ -215,6 +222,43 @@ export const phaseDrive = ({
     },
   });
 
+  /** The route the runner picks for the item read of `plan` at its
+   * semantic resolver, our `Complete` certificate of the field certified
+   * first (as the runner certifies a field before the move that reads
+   * through it) where that route reads through one. */
+  const routeOf = async (plan: ValidationTracePhasePlan) => {
+    const { scene, deployment, material } = drive.dispute();
+    const lucid = scene.h.proverLucid;
+    const signer = scene.h.proverSigner;
+    const owner = signer.paymentKeyHash;
+    const read = validationTraceFieldItemRead(plan);
+    const certificate = deployment.fieldGrammarCertificate;
+    if (
+      read !== undefined &&
+      certificate !== undefined &&
+      validationTraceFieldItemRoute(
+        read,
+        material.fieldPreimage(read.fieldIndex),
+      ) === "certified"
+    ) {
+      const { sourceKind, compactCbor, witnessSetCompactCbor } =
+        material.fieldSource();
+      await reuseOrCertifyFaultProofFieldGrammar({
+        lucid,
+        network: deployment.network,
+        signer,
+        plan: validationTraceFieldGrammarPlan(material, read.fieldIndex, owner),
+        source: { sourceKind, compactCbor, witnessSetCompactCbor },
+        certificateValidator: certificate.validator,
+        certificateReferenceScriptUtxo: certificate.reference,
+      });
+    }
+    return await validationTraceFieldItemRouteAt({
+      ...{ lucid, deployment, material, plan, owner },
+      holder: plan.phase.semantic,
+    });
+  };
+
   return {
     dispute: drive.dispute,
     setUp: drive.setUp,
@@ -226,9 +270,17 @@ export const phaseDrive = ({
     otherTransition: drive.otherTransition,
 
     /** The semantic resolver's hop invoking, beside the item, the yield of
-     * the other kind, `other`, in place of the one its kind selects. */
-    otherYield: async (other: PhaseItemYield) =>
-      await drive.rewrittenHop((_, plan) => {
+     * the other kind, `other`, in place of the one its kind selects, on the
+     * route the runner picks for that yield: through the field's grammar
+     * certificate, which this certifies first, where that yield reads only
+     * through it. */
+    otherYield: async (other: PhaseItemYield) => {
+      const honest = await drive.plan();
+      const route = await routeOf({
+        ...honest,
+        phase: { ...honest.phase, itemYield: other },
+      });
+      return await drive.rewrittenHop((_, plan) => {
         const hop = phaseSemanticHop({
           prover: "",
           transitionCbor: plan.transitionCbor,
@@ -237,9 +289,11 @@ export const phaseDrive = ({
             ...plan.phase,
             itemYield: other,
           })!,
+          route,
         });
         return { redeemer: hop.redeemer, reads: hop.reads! };
-      }),
+      });
+    },
 
     /** The semantic resolver's hop invoking the yields `other` in place of
      * those its evidence names. */
