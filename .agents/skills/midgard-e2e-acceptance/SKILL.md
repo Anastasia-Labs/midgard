@@ -141,7 +141,8 @@ A wallet-journey run is complete only when:
 - the command exits 0 and `<runDirectory>/journey-summary.json` has
   `result: "wallet-journey-complete"` and the configured `cycles`;
 - every step in `stack-journal.json` is `complete`, including each
-  `cycle-N-deposit`, `cycle-N-transfer` and `cycle-N-withdrawal`;
+  `cycle-N-deposit`, `cycle-N-transfer`, `cycle-N-withdrawal` and
+  `cycle-N-settlement`;
 - each cycle's receipts show exact L2 credits and debits including fees, a
   committed transfer retrieved through public libp2p DA, confirmed-ledger
   finality, and the exact L1 payout destination and value; and

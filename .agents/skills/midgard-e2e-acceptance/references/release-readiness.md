@@ -61,10 +61,12 @@ the stack made before confirming each step:
 - `stack_run_identity`: `stack-journal.json` belongs to this configuration,
   records exactly the steps it runs, all `complete`, and
   `journey-summary.json` was written from that journal;
-- `stack_deposit_credit`: each `cycle-N-deposit` receipt's event, its complete
-  settlement job, and the exact configured L2 credit;
+- `stack_deposit_credit`: each `cycle-N-deposit` receipt's event and the exact
+  configured L2 credit, and the same event's complete settlement job in
+  `cycle-N-settlement`;
 - `stack_transfer_finality`: each saved signed transfer's identity and fee,
-  its commitment and confirmed-ledger finality, the unchanged public DA bytes,
+  its commitment, its confirmed-ledger finality in the same block (from
+  `cycle-N-settlement`), the unchanged public DA bytes,
   and the exact sender and recipient deltas;
 - `stack_withdrawal_payout`: each withdrawal of the transferred output, one
   payout included on Cardano with the exact destination and value, and the
