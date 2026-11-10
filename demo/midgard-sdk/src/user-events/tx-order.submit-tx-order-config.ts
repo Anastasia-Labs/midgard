@@ -211,6 +211,8 @@ export type SubmitTxOrderConfig = {
    * violate, only this transaction's own byte budget.
    */
   readonly inlineCarriageReserveBytes?: number;
+  /** The clock the order's L1 validity window is read from (default `Date.now`). */
+  readonly now?: () => number;
 };
 
 /**

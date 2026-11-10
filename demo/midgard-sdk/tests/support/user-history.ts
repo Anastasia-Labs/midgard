@@ -2,7 +2,8 @@
  * A deployed pair of event-history lists on the Lucid emulator, as a user's
  * deposit or withdrawal meets it: genuine applied list scripts sharing one
  * initialization nonce, a hub oracle under a native issuer, and the two list
- * minting scripts published as reference scripts. The user's wallet is
+ * minting scripts published as reference scripts, and the genuine tx-order
+ * contracts the hub oracle names. The user's wallet is
  * separate from the deployer's, so its UTxOs are exactly the ones the test
  * gives it.
  */
@@ -13,6 +14,7 @@ import {
   addressDataFromBech32,
   appendEventHistoryInitialization,
   buildEventHistoryDeployments,
+  buildTxOrderValidators,
   type EventHistoryContractPair,
   type EventHistoryPayloadBounds,
   type EventHistoryRecipe,
@@ -152,6 +154,11 @@ export const setupUserHistoryScene = async ({
     bounds,
   });
   const hubAddressData = Effect.runSync(addressDataFromBech32(hubAddress));
+  const { txOrder } = buildTxOrderValidators({
+    blueprint,
+    network: "Custom",
+    hubOraclePolicyId: hubPolicy,
+  });
   const hubDatum: HubOracleDatum = {
     registered_operators: hubPolicy,
     active_operators: hubPolicy,
@@ -162,7 +169,7 @@ export const setupUserHistoryScene = async ({
     fraud_proof: hubPolicy,
     deposit: pair.deposit.list.policyId,
     withdrawal: pair.withdrawal.list.policyId,
-    tx_order: hubPolicy,
+    tx_order: txOrder.policyId,
     settlement: hubPolicy,
     payout: hubPolicy,
     registered_operators_addr: hubAddressData,
@@ -178,7 +185,9 @@ export const setupUserHistoryScene = async ({
     withdrawal_addr: Effect.runSync(
       addressDataFromBech32(pair.withdrawal.list.spendingScriptAddress),
     ),
-    tx_order_addr: hubAddressData,
+    tx_order_addr: Effect.runSync(
+      addressDataFromBech32(txOrder.spendingScriptAddress),
+    ),
     settlement_addr: hubAddressData,
     reserve_addr: hubAddressData,
     payout_addr: hubAddressData,
@@ -297,6 +306,7 @@ export const setupUserHistoryScene = async ({
     view,
     clock,
     contracts,
+    txOrder,
     pair,
     referenceScripts,
     hubPolicy,
@@ -340,8 +350,8 @@ const manifestRecipe = (recipe: EventHistoryRecipe) => ({
 /**
  * The deployment-manifest sections a user's submission reads, describing
  * this scene exactly: the hub oracle and both lists' scripts with their
- * recipes, the shared initialization nonce, and the two minting reference
- * scripts. A test spreads them over the rest of a manifest.
+ * recipes, the shared initialization nonce, the two minting reference
+ * scripts, and the tx-order scripts. A test spreads them over the rest of a manifest.
  */
 export const userHistoryManifestSections = (scene: UserHistoryScene) => {
   const contracts: Record<string, ReturnType<typeof manifestEntry>> = {
@@ -386,6 +396,14 @@ export const userHistoryManifestSections = (scene: UserHistoryScene) => {
       outRef: `${published.txHash}#${String(published.outputIndex)}`,
     };
   }
+  contracts.txOrderMint = manifestEntry(
+    scene.txOrder.mintingScript,
+    scene.txOrder.policyId,
+  );
+  contracts.txOrderSpend = manifestEntry(
+    scene.txOrder.spendingScript,
+    scene.txOrder.spendingScriptHash,
+  );
   const nonce = scene.initializationNonce;
   return {
     network: "Custom" as const,

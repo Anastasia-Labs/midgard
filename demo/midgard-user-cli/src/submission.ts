@@ -53,7 +53,7 @@ export type SubmitOptions = CommonOptions & {
 };
 
 export const manifestPathOf = (
-  options: CommonOptions,
+  options: Pick<CommonOptions, "manifest">,
   deps: UserCliDeps,
 ): string =>
   options.manifest ??

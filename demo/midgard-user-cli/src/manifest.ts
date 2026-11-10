@@ -2,7 +2,8 @@
  * The deployment a submission targets: a manifest whose identity checks
  * (canonical profile, economics, network slot mapping, manifest id), whose
  * user-history contracts come from its own script CBOR, and whose network and
- * slot mapping pick the L1 the tool talks to.
+ * slot mapping pick the L1 the tool talks to. A forced order also reads the
+ * tx-order contract.
  */
 import { readFile } from "node:fs/promises";
 
@@ -15,6 +16,8 @@ import {
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
 import {
+  type AuthenticatedValidator,
+  authenticatedValidatorFromManifest,
   type UserHistoryContracts,
   userHistoryContractsFromDeploymentManifest,
   type UserHistoryReferenceScripts,
@@ -41,9 +44,15 @@ const NETWORKS: readonly Network[] = [
 const errorText = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
 
-export const loadUserDeployment = async (
+type VerifiedManifest = {
+  readonly value: unknown;
+  readonly manifest: DeploymentManifest;
+  readonly network: Network;
+};
+
+const readVerifiedManifest = async (
   path: string,
-): Promise<UserDeployment> => {
+): Promise<VerifiedManifest> => {
   let value: unknown;
   try {
     value = JSON.parse(await readFile(path, "utf8"));
@@ -52,13 +61,32 @@ export const loadUserDeployment = async (
       `Cannot read the deployment manifest ${path}: ${errorText(cause)}`,
     );
   }
-  try {
+  return usable(path, () => {
     const manifest = verifyDeploymentManifestIdentity(
       value,
     ) as DeploymentManifest;
     const network = manifest.network as Network;
     if (!NETWORKS.includes(network))
       throw new Error(`unknown network ${JSON.stringify(manifest.network)}`);
+    return { value, manifest, network };
+  });
+};
+
+const usable = <T>(path: string, read: () => T): T => {
+  try {
+    return read();
+  } catch (cause) {
+    return refuse(
+      `The deployment manifest ${path} is not usable: ${errorText(cause)}`,
+    );
+  }
+};
+
+const userDeploymentOf = (
+  path: string,
+  { value, manifest, network }: VerifiedManifest,
+): UserDeployment =>
+  usable(path, () => {
     const { contracts, referenceScripts } =
       userHistoryContractsFromDeploymentManifest(manifest, {
         sourcePath: path,
@@ -73,9 +101,33 @@ export const loadUserDeployment = async (
       contracts,
       referenceScripts,
     };
-  } catch (cause) {
-    return refuse(
-      `The deployment manifest ${path} is not usable: ${errorText(cause)}`,
-    );
-  }
+  });
+
+export const loadUserDeployment = async (
+  path: string,
+): Promise<UserDeployment> =>
+  userDeploymentOf(path, await readVerifiedManifest(path));
+
+/** A user deployment and its tx-order contract, for forced orders. */
+export type TxOrderDeployment = UserDeployment & {
+  readonly txOrder: AuthenticatedValidator;
+};
+
+export const loadTxOrderDeployment = async (
+  path: string,
+): Promise<TxOrderDeployment> => {
+  const verified = await readVerifiedManifest(path);
+  const deployment = userDeploymentOf(path, verified);
+  return {
+    ...deployment,
+    txOrder: usable(path, () =>
+      authenticatedValidatorFromManifest(
+        verified.network,
+        verified.manifest,
+        path,
+        "txOrderSpend",
+        "txOrderMint",
+      ),
+    ),
+  };
 };

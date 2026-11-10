@@ -57,9 +57,12 @@ export type TxOrderBuildMetadata = {
 
 export const DEFAULT_TX_ORDER_LOVELACE = 3_000_000n;
 
+/** What a tx order is built from: the hub oracle and the tx-order contract. */
+export type TxOrderContracts = Pick<MidgardValidators, "hubOracle" | "txOrder">;
+
 export const buildUnsignedTxOrderTxWithMetadataProgram = (
   lucid: LucidEvolution,
-  contracts: MidgardValidators,
+  contracts: TxOrderContracts,
   config: SubmitTxOrderConfig,
 ): Effect.Effect<
   {
@@ -110,9 +113,11 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
       contracts,
       label: "tx order",
       eventPolicyId: contracts.txOrder.policyId,
+      eventAddress: contracts.txOrder.spendingScriptAddress,
       hubOraclePolicyField: "tx_order",
       hubOracleAddressField: "tx_order_addr",
       nonceInput: config.nonceInput,
+      ...(config.now === undefined ? {} : { now: config.now }),
     });
     const {
       eventUnit: txOrderUnit,
@@ -291,7 +296,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
 
 export const unsignedTxOrderTxProgram = (
   lucid: LucidEvolution,
-  contracts: MidgardValidators,
+  contracts: TxOrderContracts,
   config: SubmitTxOrderConfig,
 ) =>
   buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, config).pipe(
@@ -300,7 +305,7 @@ export const unsignedTxOrderTxProgram = (
 
 export const unsignedTxOrderTx = (
   lucid: LucidEvolution,
-  contracts: MidgardValidators,
+  contracts: TxOrderContracts,
   txOrderParams: SubmitTxOrderConfig,
 ): Promise<TxSignBuilder> =>
   makeReturn(

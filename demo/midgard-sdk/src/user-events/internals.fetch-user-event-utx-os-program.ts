@@ -317,9 +317,12 @@ type HubOracleAddressField = Extract<
 
 export type PrepareUserEventMintContextParams = {
   readonly lucid: LucidEvolution;
-  readonly contracts: MidgardValidators;
+  /** Only the hub oracle: its datum must name this event's contract. */
+  readonly contracts: Pick<MidgardValidators, "hubOracle">;
   readonly label: "deposit" | "tx order" | "withdrawal";
   readonly eventPolicyId: PolicyId;
+  /** The event contract's spending address, as the hub oracle records it. */
+  readonly eventAddress: string;
   readonly hubOraclePolicyField: HubOraclePolicyField;
   readonly hubOracleAddressField: HubOracleAddressField;
   /**
@@ -327,4 +330,6 @@ export type PrepareUserEventMintContextParams = {
    * whose field fragments are published before the final event is minted.
    */
   readonly nonceInput?: UTxO;
+  /** The clock the L1 validity window is read from (default `Date.now`). */
+  readonly now?: () => number;
 };

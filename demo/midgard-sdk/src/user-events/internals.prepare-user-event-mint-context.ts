@@ -17,16 +17,13 @@ import { Effect } from "effect";
 
 import { scriptRewardAddress } from "../cardano-addresses.js";
 import {
+  addressDataFromBech32,
   Bech32DeserializationError,
   hashHexWithBlake2b,
   HashingError,
   LucidError,
 } from "../common.js";
-import {
-  fetchHubOracleUTxOProgram,
-  HubOracleError,
-  makeHubOracleDatum,
-} from "../hub-oracle.js";
+import { fetchHubOracleUTxOProgram, HubOracleError } from "../hub-oracle.js";
 import { getProtocolParameters } from "../protocol-parameters.js";
 import {
   requireInputIndex,
@@ -43,6 +40,7 @@ import {
   resolveUserEventValidFrom,
   resolveUserEventValidTo,
   selectWalletNonceInputProgram,
+  USER_EVENT_TX_TTL_MS,
   type UserEventAuthenticateMintRedeemerParams,
   UserEventBuildError,
 } from "./internals.fetch-user-event-utx-os-program.js";
@@ -67,9 +65,11 @@ export const prepareUserEventMintContext = ({
   contracts,
   label,
   eventPolicyId,
+  eventAddress,
   hubOraclePolicyField,
   hubOracleAddressField,
   nonceInput: requestedNonceInput,
+  now = Date.now,
 }: PrepareUserEventMintContextParams): Effect.Effect<
   UserEventMintContext,
   | HubOracleError
@@ -96,20 +96,21 @@ export const prepareUserEventMintContext = ({
       ),
       hubOraclePolicyId: contracts.hubOracle.policyId,
     });
-    const expectedDatum = yield* makeHubOracleDatum(contracts);
+    // The hub oracle names each event contract by policy id and address; only
+    // this event's pair is compared, so a caller needs no other contract.
+    const expectedAddress = yield* addressDataFromBech32(eventAddress);
     if (
-      actual.datum[hubOraclePolicyField] !==
-        expectedDatum[hubOraclePolicyField] ||
+      actual.datum[hubOraclePolicyField] !== eventPolicyId ||
       JSON.stringify(actual.datum[hubOracleAddressField]) !==
-        JSON.stringify(expectedDatum[hubOracleAddressField])
+        JSON.stringify(expectedAddress)
     ) {
       return yield* Effect.fail(
         new UserEventBuildError({
           message: `On-chain hub oracle deployment does not match the locally configured ${label} contract`,
           cause: {
-            expectedPolicyId: expectedDatum[hubOraclePolicyField],
+            expectedPolicyId: eventPolicyId,
             actualPolicyId: actual.datum[hubOraclePolicyField],
-            expectedAddress: expectedDatum[hubOracleAddressField],
+            expectedAddress,
             actualAddress: actual.datum[hubOracleAddressField],
           },
         }),
@@ -123,7 +124,7 @@ export const prepareUserEventMintContext = ({
     const nonceAssetName = yield* hashHexWithBlake2b(eventIdCbor, 32);
     const witnessScript =
       buildUserEventWitnessCertificateValidator(nonceAssetName);
-    const validTo = resolveUserEventValidTo(lucid);
+    const validTo = resolveUserEventValidTo(lucid, USER_EVENT_TX_TTL_MS, now);
 
     return {
       network,
@@ -133,7 +134,7 @@ export const prepareUserEventMintContext = ({
       eventUnit: toUnit(eventPolicyId, nonceAssetName),
       witnessScript,
       witnessScriptHash: validatorToScriptHash(witnessScript),
-      validFrom: resolveUserEventValidFrom(),
+      validFrom: resolveUserEventValidFrom(now),
       validTo,
       inclusionTime: resolveEventInclusionTime(validTo, network),
     };

@@ -37,6 +37,7 @@ const run = async (argv: readonly string[], env = { USER_SEED: SEED }) => {
     fetch: unreachable,
     openL1View: unreachable,
     connectNode: unreachable,
+    connectL2: unreachable,
   };
   const code = await runUserCli(argv, deps);
   return {

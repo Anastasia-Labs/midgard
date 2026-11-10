@@ -841,6 +841,9 @@ importers:
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17

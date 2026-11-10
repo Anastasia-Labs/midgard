@@ -289,6 +289,23 @@ limits, and a node directory, run directory or node configuration that would
 lie in the stack's release directory (or hold it). A run refuses to start its
 node before the stack has signed its public release.
 
+Forced orders and Plutus L2 transactions for the rehearsal journey are
+submitted by hand with `midgard-user forced-order --shape <shape>` and
+`midgard-user plutus-tx`, from a wallet holding L2 outputs on the stack's
+node; see [the midgard-user README](../../midgard-user-cli/README.md#operator-rehearsal-commands)
+for the shapes and their options. For example, after
+`node scripts/contrib.mjs build --package @al-ft/midgard-user-cli`:
+
+```sh
+node demo/midgard-user-cli/dist/cli.js forced-order --shape plain \
+  --node-endpoint https://<host>:8443 --manifest <stack manifest> \
+  --l1 kupmios --kupo-url <kupo> --ogmios-url <ogmios> \
+  --wallet-seed-phrase-file /abs/path/seed --json
+```
+
+When the stack's certificate is signed by its own CA, give the command that CA
+with `NODE_EXTRA_CA_CERTS=<public.tlsCaFile>`.
+
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker
 and leaves the operator's general configuration unchanged. Each cycle waits for automatic deposit absorption, transfers value to the

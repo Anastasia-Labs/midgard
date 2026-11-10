@@ -96,6 +96,53 @@ On the first run the tool checks, through the node, that:
 It then records the output's value. A rerun uses the recorded value and does
 not contact the node.
 
+## Operator rehearsal commands
+
+`forced-order` and `plutus-tx` produce the forced orders and Plutus L2
+transactions the Preprod rehearsal journey needs
+([public_testnet_readiness.md](../../docs/public_testnet_readiness.md),
+"Journey"). They spend the wallet's own L2 outputs, which the node at
+`--node-endpoint` must serve (deposit to the wallet's L2 address first). They
+keep no record: a rerun builds and submits a new transaction.
+
+```sh
+midgard-user forced-order --shape SHAPE --node-endpoint URL \
+                          --manifest PATH --l1 kupmios --kupo-url URL --ogmios-url URL \
+                          --wallet-seed-phrase-file PATH [--json]
+midgard-user plutus-tx    --node-endpoint URL --manifest PATH \
+                          --wallet-seed-phrase-file PATH [--json]
+```
+
+Both refuse a node that serves a different deployment from the manifest.
+
+`forced-order` builds one L2 transaction of the named shape, checks it with
+`screenMidgardForcedTxAdmission` (the same checks as the tx-order mint),
+mints a forced order carrying it on L1 and waits until the order is on chain.
+It prints the L2 transaction id, the forced bytes, the order's L1 hash, its
+event id and the time by which a block must include it. A refused shape stops
+at the screen: the command exits 1 naming the check, and nothing is
+submitted.
+
+| `--shape`                 | The L2 transaction                      | The mint                                 |
+| ------------------------- | --------------------------------------- | ---------------------------------------- |
+| `plain`                   | one spend input, outputs without data   | admits                                   |
+| `inline-datum`            | an output with an inline datum          | admits                                   |
+| `native-mint`             | a mint under the wallet's native policy | admits                                   |
+| `reference-input`         | a reference input (needs 2 L2 outputs)  | admits                                   |
+| `required-signer`         | the wallet's key as a required signer   | admits                                   |
+| `validity-upper-bound`    | an L2 validity upper bound              | refuses at `has_no_validity_upper_bound` |
+| `plutus-mint`             | a PlutusV3 mint (it has a redeemer)     | refuses at `has_no_redeemers`            |
+| `reference-script-output` | an output with a reference script       | refuses at `outputs_are_admissible`      |
+
+The mint's other refusals (no spend input, auxiliary data, observers on an
+untagged network, an oversized output value, the fixed item prefixes and the
+mint order) need bytes lucid-midgard never builds, so no shape produces them.
+Kupo must index the wallet, the tx-order address and the hub oracle address.
+
+`plutus-tx` mints one token under an always-succeeds PlutusV3 policy, has the
+node evaluate it, submits it and waits for the node's verdict. It exits 0 on
+`accepted` or `committed` and 1 on `rejected`, printing the node's code.
+
 ## Indexer requirements
 
 Kupo must index every address the submission reads or creates outputs at.

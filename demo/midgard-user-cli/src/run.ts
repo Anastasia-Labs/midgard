@@ -2,6 +2,8 @@
  * `runUserCli(argv, deps)`: the whole `midgard-user` command, returning its
  * exit code. 0: confirmed (or `status` printed). 75 (EX_TEMPFAIL): the
  * deadline passed; rerun with the same --submission-id. 1: refused or failed.
+ * `forced-order` and `plutus-tx` are operator rehearsal commands over the
+ * wallet's L2 outputs; they keep no submission record.
  */
 import {
   type UserSubmissionOutcome,
@@ -11,6 +13,17 @@ import { Command, CommanderError, Option } from "commander";
 
 import { type DepositOptions, runDeposit } from "./deposit.js";
 import { type UserCliDeps } from "./deps.js";
+import {
+  type ForcedOrderOptions,
+  formatForcedOrder,
+  runForcedOrder,
+} from "./forced-order.js";
+import { FORCED_ORDER_SHAPE_NAMES, FORCED_ORDER_SHAPES } from "./l2-shapes.js";
+import {
+  formatPlutusTx,
+  type PlutusTxOptions,
+  runPlutusTx,
+} from "./plutus-tx.js";
 import { formatStatusReport, runStatus, type StatusOptions } from "./status.js";
 import { runWithdraw, type WithdrawOptions } from "./withdraw.js";
 
@@ -23,13 +36,8 @@ const collect = (value: string, previous: readonly string[]) => [
   value,
 ];
 
-const commonOptions = (command: Command): Command =>
+const l1AccessOptions = (command: Command): Command =>
   command
-    .requiredOption("--submission-id <id>", "names this request; rerun with it")
-    .option(
-      "--manifest <path>",
-      "deployment manifest (env MIDGARD_DEPLOYMENT_MANIFEST)",
-    )
     .addOption(
       new Option("--l1 <access>", "the L1 indexer (env L1_ACCESS)").choices([
         "kupmios",
@@ -42,15 +50,16 @@ const commonOptions = (command: Command): Command =>
     .option(
       "--blockfrost-project-id <id>",
       "Blockfrost project id (env L1_BLOCKFROST_PROJECT_ID)",
-    )
-    .option(
-      "--record-dir <path>",
-      "submission records (env MIDGARD_USER_RECORD_DIR, default ~/.midgard/user-submissions)",
-    )
-    .option("--json", "print the result as JSON");
+    );
 
-const submitOptions = (command: Command): Command =>
-  commonOptions(command)
+const manifestOption = (command: Command): Command =>
+  command.option(
+    "--manifest <path>",
+    "deployment manifest (env MIDGARD_DEPLOYMENT_MANIFEST)",
+  );
+
+const seedOptions = (command: Command): Command =>
+  command
     .option(
       "--wallet-seed-phrase-env <name>",
       "environment variable holding the wallet seed phrase",
@@ -58,11 +67,41 @@ const submitOptions = (command: Command): Command =>
     .option(
       "--wallet-seed-phrase-file <path>",
       "absolute path of a mode-0600 file holding the wallet seed phrase",
-    )
-    .option(
-      "--timeout-ms <ms>",
-      "stop after this long; a transaction in flight stays recorded",
     );
+
+const commonOptions = (command: Command): Command =>
+  l1AccessOptions(
+    manifestOption(
+      command.requiredOption(
+        "--submission-id <id>",
+        "names this request; rerun with it",
+      ),
+    ),
+  )
+    .option(
+      "--record-dir <path>",
+      "submission records (env MIDGARD_USER_RECORD_DIR, default ~/.midgard/user-submissions)",
+    )
+    .option("--json", "print the result as JSON");
+
+const submitOptions = (command: Command): Command =>
+  seedOptions(commonOptions(command)).option(
+    "--timeout-ms <ms>",
+    "stop after this long; a transaction in flight stays recorded",
+  );
+
+const l2Options = (command: Command): Command =>
+  seedOptions(manifestOption(command))
+    .requiredOption(
+      "--node-endpoint <url>",
+      "a Midgard node's public HTTP API serving this deployment",
+    )
+    .option("--json", "print the result as JSON");
+
+const shapeHelp = FORCED_ORDER_SHAPE_NAMES.map(
+  (name) =>
+    `  ${name}: ${FORCED_ORDER_SHAPES[name].summary}${FORCED_ORDER_SHAPES[name].refusedAt === null ? "" : ` (refused at ${FORCED_ORDER_SHAPES[name].refusedAt})`}`,
+).join("\n");
 
 const printOutcome = (
   deps: UserCliDeps,
@@ -154,6 +193,47 @@ const program = (deps: UserCliDeps, setExit: (code: number) => void) => {
       );
       setExit(EXIT_CONFIRMED);
     });
+  l1AccessOptions(
+    l2Options(
+      root
+        .command("forced-order")
+        .description(
+          "Mint a forced order carrying an L2 transaction of one shape (operator rehearsal).",
+        )
+        .exitOverride(),
+    ),
+  )
+    .addOption(
+      new Option("--shape <shape>", "the L2 transaction's shape")
+        .choices(FORCED_ORDER_SHAPE_NAMES)
+        .makeOptionMandatory(),
+    )
+    .addHelpText("after", `\nShapes:\n${shapeHelp}\n`)
+    .action(async (options: ForcedOrderOptions) => {
+      const result = await runForcedOrder(options, deps);
+      deps.stdout(
+        options.json === true
+          ? `${JSON.stringify(result)}\n`
+          : formatForcedOrder(result),
+      );
+      setExit(EXIT_CONFIRMED);
+    });
+  l2Options(
+    root
+      .command("plutus-tx")
+      .description(
+        "Submit an L2 transaction that runs a PlutusV3 mint (operator rehearsal).",
+      )
+      .exitOverride(),
+  ).action(async (options: PlutusTxOptions) => {
+    const result = await runPlutusTx(options, deps);
+    deps.stdout(
+      options.json === true
+        ? `${JSON.stringify(result)}\n`
+        : formatPlutusTx(result),
+    );
+    setExit(EXIT_CONFIRMED);
+  });
   commonOptions(
     root
       .command("status")

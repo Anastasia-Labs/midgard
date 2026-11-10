@@ -22,6 +22,7 @@ import "./tx-order.build-unsigned-tx-order-tx-with-metadata-program.js";
 export {
   buildUnsignedTxOrderTxWithMetadataProgram,
   type TxOrderBuildMetadata,
+  type TxOrderContracts,
   unsignedTxOrderTx,
   unsignedTxOrderTxProgram,
 } from "./tx-order.build-unsigned-tx-order-tx-with-metadata-program.js";

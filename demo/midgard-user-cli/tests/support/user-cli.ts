@@ -195,15 +195,18 @@ export const setupUserCliHarness = async () => {
       fetch: async () => {
         throw new Error("This test reaches no HTTP endpoint");
       },
-      openL1View: async ({ seedPhrase }) => ({
-        lucid:
-          seedPhrase === undefined
-            ? await Lucid(scene.emulator, "Custom", { slotConfig })
-            : await scene.lucidFor(seedPhrase),
-        indexedSlot: async () => scene.emulator.slot,
-      }),
+      // As the real view: Lucid on the manifest's network, the emulator
+      // standing in for the indexer.
+      openL1View: async ({ network, seedPhrase }) => {
+        const lucid = await Lucid(scene.emulator, network, { slotConfig });
+        if (seedPhrase !== undefined) lucid.selectWallet.fromSeed(seedPhrase);
+        return { lucid, indexedSlot: async () => scene.emulator.slot };
+      },
       connectNode: async () => {
         throw new Error("This test reaches no node");
+      },
+      connectL2: async () => {
+        throw new Error("This test reaches no L2 node");
       },
       ...overrides,
     };
@@ -214,7 +217,8 @@ export const setupUserCliHarness = async () => {
   };
 
   /** Runs `midgard-user` with the scene's manifest, seed and a Blockfrost
-   * access the injected view stands in for. */
+   * access the injected view stands in for; a record directory only for the
+   * commands that keep records. */
   const run = async (
     argv: readonly string[],
     {
@@ -229,7 +233,7 @@ export const setupUserCliHarness = async () => {
         "unused",
       ],
     }: {
-      readonly recordDir: string;
+      readonly recordDir?: string;
       readonly overrides?: Partial<UserCliDeps>;
       readonly access?: readonly string[];
     },
@@ -242,8 +246,7 @@ export const setupUserCliHarness = async () => {
         ...rest,
         "--manifest",
         manifestPath,
-        "--record-dir",
-        recordDir,
+        ...(recordDir === undefined ? [] : ["--record-dir", recordDir]),
         ...access,
         ...(command === "status"
           ? []

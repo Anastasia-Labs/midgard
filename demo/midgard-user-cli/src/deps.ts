@@ -4,6 +4,10 @@
  */
 import { homedir } from "node:os";
 
+import {
+  MidgardNodeProvider,
+  type MidgardProvider,
+} from "@al-ft/lucid-midgard";
 import { type UserL1View } from "@al-ft/midgard-sdk";
 
 import { type OpenL1ViewRequest, openProviderL1View } from "./l1-view.js";
@@ -20,6 +24,8 @@ export type UserCliDeps = {
   readonly fetch: typeof fetch;
   readonly openL1View: (request: OpenL1ViewRequest) => Promise<UserL1View>;
   readonly connectNode: (endpoint: string) => Promise<UserNode>;
+  /** The node's L2 API as lucid-midgard builds and submits against it. */
+  readonly connectL2: (endpoint: string) => Promise<MidgardProvider>;
 };
 
 export const defaultUserCliDeps = (): UserCliDeps => ({
@@ -32,4 +38,5 @@ export const defaultUserCliDeps = (): UserCliDeps => ({
   fetch,
   openL1View: (request) => openProviderL1View(request, fetch),
   connectNode: (endpoint) => connectMidgardNode(endpoint, fetch),
+  connectL2: (endpoint) => MidgardNodeProvider.create({ endpoint, fetch }),
 });
