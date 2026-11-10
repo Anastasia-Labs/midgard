@@ -163,7 +163,8 @@ async function runtimeReadinessReader(processes: StackProcesses) {
     stackPaths(processes).manifest,
   )) as { manifestId: string };
   return async () => {
-    const node = (await getJson(`${processes.config.endpoint}/readyz`)) as
+    // An unready node answers 503 and still says why (see nodeIsReady).
+    const node = (await getReadiness(`${processes.config.endpoint}/readyz`)) as
       | {
           ready?: boolean;
           reasons?: unknown[];

@@ -33,6 +33,7 @@ import {
   removeConfigFixtures,
 } from "./full-stack-config.fixtures.js";
 import {
+  nodeReadyz,
   type RecordedCall,
   RecordingProcesses,
 } from "./full-stack-fixtures.js";
@@ -57,19 +58,20 @@ export async function removeAttachedFixtures() {
 /**
  * Operator-2's node API on loopback: unready until its container starts. A
  * public stack's second instance serves HTTPS with the stack's certificate.
+ * With `awaitingActivation` set, it answers as a node awaiting activation.
  */
 async function nodeApi(https: boolean, reserved: ReadonlySet<number>) {
-  const state = { started: false };
+  const state = { started: false, awaitingActivation: false };
   const handler = (
     request: { url?: string },
     response: { statusCode: number; end: (body: string) => void },
   ) => {
-    const ready =
-      request.url === "/readyz" && state.started
-        ? { ready: true, reasons: [], settlement: { state: "waiting" } }
-        : undefined;
-    response.statusCode = ready === undefined ? 503 : 200;
-    response.end(JSON.stringify(ready ?? { ready: false }));
+    const { status, body } = nodeReadyz(
+      request.url === "/readyz" && state.started,
+      state.awaitingActivation,
+    );
+    response.statusCode = status;
+    response.end(JSON.stringify(body));
   };
   const server = https
     ? createHttpsServer(

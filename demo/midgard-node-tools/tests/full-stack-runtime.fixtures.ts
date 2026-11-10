@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
 import {
+  AWAITING_ACTIVATION,
   RecordingProcesses,
   removeStackFixtures,
   stackEnvironment,
@@ -73,9 +74,12 @@ class FreshDaDatabase extends RecordingProcesses {
 export async function stack() {
   const state: {
     nodeStarted: boolean;
+    /** The started node answers 503, held only by its operator awaiting activation. */
+    nodeAwaitingActivation: boolean;
     committee: { status: number; body: unknown };
   } = {
     nodeStarted: false,
+    nodeAwaitingActivation: false,
     committee: { status: 200, body: committeeReady(0) },
   };
   const committee = createServer((_, response) => {
@@ -83,6 +87,15 @@ export async function stack() {
     response.end(JSON.stringify(state.committee.body));
   });
   const services = createServer((request, response) => {
+    if (
+      request.url === "/readyz" &&
+      state.nodeStarted &&
+      state.nodeAwaitingActivation
+    ) {
+      response.statusCode = 503;
+      response.end(JSON.stringify(AWAITING_ACTIVATION));
+      return;
+    }
     const body: Record<string, unknown> = {
       "/readyz": state.nodeStarted
         ? { ready: true, reasons: [], settlement: { state: "waiting" } }

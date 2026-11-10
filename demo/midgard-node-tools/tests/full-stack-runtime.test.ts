@@ -319,6 +319,19 @@ describe("runtime services step", () => {
     expect(result).toMatchObject({ status: "complete", data: { inputDigest } });
     expect(processes.calls).toEqual([]);
   });
+  it("confirms running services whose node waits only for its operator's activation", async () => {
+    const { processes, services, state } = await stack();
+    state.nodeStarted = true;
+    state.nodeAwaitingActivation = true;
+    const inputDigest = await runtimeInputDigest(processes);
+    const result = await services.reconcile({
+      status: "complete",
+      attempts: 1,
+      data: { inputDigest, buildId: processes.buildId },
+    });
+    expect(result).toMatchObject({ status: "complete", data: { inputDigest } });
+    expect(processes.calls).toEqual([]);
+  });
   it("builds services an earlier run built again, so changed source reaches their containers", async () => {
     const { processes, services, state } = await stack();
     state.nodeStarted = true;

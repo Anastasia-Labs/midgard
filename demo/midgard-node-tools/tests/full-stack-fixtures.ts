@@ -12,6 +12,24 @@ import {
 import { StackProcesses } from "../src/full-stack/process.js";
 import type { DerivedL1Origin } from "../src/l1-origin.js";
 
+/** A node's /readyz body (503) while its registered operator awaits activation. */
+export const AWAITING_ACTIVATION = {
+  ready: false,
+  reasons: ["operator_not_yet_active"],
+  settlement: { state: "running" },
+};
+
+/** A node's /readyz status and body: unready until started, then ready unless awaiting activation. */
+export const nodeReadyz = (started: boolean, awaitingActivation: boolean) =>
+  !started
+    ? { status: 503, body: { ready: false } }
+    : awaitingActivation
+      ? { status: 503, body: AWAITING_ACTIVATION }
+      : {
+          status: 200,
+          body: { ready: true, reasons: [], settlement: { state: "waiting" } },
+        };
+
 export type RecordedCall = {
   id: string;
   args: readonly string[];

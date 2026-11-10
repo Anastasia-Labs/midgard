@@ -21,6 +21,7 @@ import {
   removeAttachedFixtures,
   runAttached,
 } from "./full-stack-attached.fixtures.js";
+import type { RecordedCall } from "./full-stack-fixtures.js";
 import { nodeFollowerPlan } from "./node-follower-plan.js";
 
 afterEach(removeAttachedFixtures);
@@ -331,6 +332,24 @@ describe("second-instance workflow", () => {
     processes.responses["services-build"] = build;
     const journal = await run();
     expect(journal.steps.services?.status).toBe("complete");
+  });
+  it("resumes a run stopped between registering and activating its operator", async () => {
+    const { fixture, processes, run } = await attachedRun();
+    // The node it starts again answers 503, held only by its registered
+    // operator awaiting activation, until the operator step activates it.
+    fixture.api.state.awaitingActivation = true;
+    const register = processes.responses["operator-register-or-resume"] as (
+      call: RecordedCall,
+    ) => unknown;
+    processes.responses["operator-register-or-resume"] = (
+      call: RecordedCall,
+    ) => {
+      fixture.api.state.awaitingActivation = false;
+      return register(call);
+    };
+    const journal = await run();
+    expect(journal.steps.services?.status).toBe("complete");
+    expect(journal.steps.operator?.status).toBe("complete");
   });
   it("refuses to attach before the stack initialized its deployment", async () => {
     const { fixture, run } = await attachedRun();

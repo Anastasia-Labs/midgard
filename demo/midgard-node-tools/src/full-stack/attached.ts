@@ -23,7 +23,7 @@ import {
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { shareWithContainers } from "./native-ledger.js";
 import { pinNativeOwner, preflightProducerTransport } from "./node-start.js";
-import { getJson, poll, type StackProcesses } from "./process.js";
+import { getReadiness, poll, type StackProcesses } from "./process.js";
 import {
   publicNodeEnvironment,
   publicNodeServices,
@@ -356,8 +356,11 @@ async function readAttachedConfiguration(processes: StackProcesses) {
   return value as { inputDigest: string; compose: string };
 }
 
+// An unready node answers 503 and still says why; one held only by its
+// operator awaiting activation counts as up, since the operator step
+// activates it.
 const readNode = async (processes: StackProcesses) => {
-  const node = await getJson(`${processes.config.endpoint}/readyz`);
+  const node = await getReadiness(`${processes.config.endpoint}/readyz`);
   return nodeIsReady(node) ? node : undefined;
 };
 
