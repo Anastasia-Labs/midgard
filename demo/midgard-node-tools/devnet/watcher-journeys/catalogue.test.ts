@@ -46,7 +46,7 @@ describe("automatic journey catalogue", () => {
   it("selects the verified trace, direct, and event fixtures for the live gate", () => {
     expect(
       selectJourneyFixtures(
-        "transitionTrace,observersForbiddenOnUntaggedNetwork,fabricatedDeposit,fabricatedWithdrawal,withdrawalMistag",
+        "transitionTrace,observersForbiddenOnUntaggedNetwork,fabricatedDeposit,fabricatedWithdrawal,withdrawalMistag,doubleWithdraw",
       ).map(({ category }) => category),
     ).toEqual([
       "transitionTrace",
@@ -54,6 +54,7 @@ describe("automatic journey catalogue", () => {
       "fabricatedDeposit",
       "fabricatedWithdrawal",
       "withdrawalMistag",
+      "doubleWithdraw",
     ]);
   });
 
@@ -69,7 +70,6 @@ describe("automatic journey catalogue", () => {
     "unknown",
     "transitionTrace,",
     "zeroInput,zeroInput",
-    "doubleWithdraw",
   ])(
     "rejects unsupported or ambiguous selection %s before live work",
     (selection) => {

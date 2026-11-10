@@ -25,16 +25,46 @@ const classificationByViolationId = new Map<
   ResolvedClassificationRule
 >();
 
-// Same-event family precedence is the catalogue order: each rule's index is
-// its family priority.
-for (const [
-  familyPriority,
-  rule,
-] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
-  if (rule.category !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority]) {
+/**
+ * Same-event family precedence: the catalogue order with exactly the
+ * owner-ruled corners moved. The catalogue order itself stays append-only
+ * because deployment identity is derived from it.
+ *
+ * Decision 0009 (owner ruling 2026-11-10): `doubleWithdraw` ranks ahead of
+ * `withdrawalMistag`.
+ * Two payable leaves naming one L2 output make the later one also a "valid
+ * marked, output absent" `withdrawalMistag` finding at the same event; the
+ * watcher proves the pair (two steps) rather than the mistag (five). Both
+ * slash the same block. A mistagged leaf that is not the later half of such a
+ * pair has no `doubleWithdraw` finding at its event, so it stays
+ * `withdrawalMistag`.
+ */
+const FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE: readonly FraudProofCatalogueCategoryName[] =
+  (() => {
+    const order = [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER];
+    const promoted = order.indexOf("doubleWithdraw");
+    const before = order.indexOf("withdrawalMistag");
+    if (promoted < 0 || before < 0 || promoted < before) {
+      throw new Error(
+        "doubleWithdraw precedence does not match the catalogue order",
+      );
+    }
+    order.splice(promoted, 1);
+    order.splice(before, 0, "doubleWithdraw");
+    return Object.freeze(order);
+  })();
+
+for (const [ruleIndex, rule] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
+  if (rule.category !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[ruleIndex]) {
     throw new Error(
-      `classification rule ${familyPriority.toString()} must be ${String(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority])}, got ${rule.category}`,
+      `classification rule ${ruleIndex.toString()} must be ${String(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[ruleIndex])}, got ${rule.category}`,
     );
+  }
+  const familyPriority = FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE.indexOf(
+    rule.category,
+  );
+  if (familyPriority < 0) {
+    throw new Error(`classification precedence omits ${rule.category}`);
   }
   for (const [violationPriority, violationId] of rule.violationIds.entries()) {
     if (classificationByViolationId.has(violationId)) {

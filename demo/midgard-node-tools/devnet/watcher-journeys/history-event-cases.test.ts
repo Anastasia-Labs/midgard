@@ -298,39 +298,6 @@ it.each([
   1_800_000,
 );
 
-/**
- * The full installed catalogue proves the fault and clears the honest control,
- * while the family's own replay confirms the fixture is exactly its fault. The
- * installed selection between `winners` is an open owner decision recorded in
- * the case below; neither outcome is pinned here.
- */
-const selectWithinInstalledCatalogue = async (input: {
-  category: SDK.FraudProofCatalogueCategoryName;
-  winners: readonly SDK.FraudProofCatalogueCategoryName[];
-  replayer: CompleteCanonicalReplay;
-  block: VerifiableJourneyBlock;
-  predecessor: VerifiableJourneyBlock;
-  history: readonly VerifiableJourneyBlock[];
-  honest: boolean;
-}) => {
-  const { category, winners, replayer, ...blocks } = input;
-  const installed = await classifyLocalHistoryEventFixture({
-    stage,
-    block: blocks.block,
-    predecessor: blocks.predecessor,
-    history: blocks.history,
-  });
-  const summary = JSON.stringify(installed.decision, null, 2);
-  if (input.honest)
-    expect(installed.decision.decision, summary).toBe("healthy");
-  else {
-    expect(installed.decision.decision, summary).toBe("fault_detected");
-    if (installed.decision.decision === "fault_detected")
-      expect(winners, summary).toContain(installed.decision.category);
-  }
-  return await select({ ...blocks, category, replayer });
-};
-
 it("doubleWithdraw proves two real published withdrawals of one L2 output and its honest control passes", async () => {
   const { predecessor, history } = await openFamilyWindow(1);
   const body = journeyWithdrawalBody({
@@ -359,10 +326,9 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
       "WithdrawalIsValid",
       "NonExistentWithdrawalUtxo",
     ]);
-    // Owner decision: the second payable leaf is also a withdrawalMistag
-    // finding at the same leaf position, and the canonical rule order ranks
-    // withdrawalMistag ahead of doubleWithdraw, so the installed catalogue
-    // currently selects withdrawalMistag for this fault.
+    // The second payable leaf is also a withdrawalMistag finding at the same
+    // event. Owner ruling 2026-11-10: the classifier prefers doubleWithdraw
+    // there, so the installed catalogue must name doubleWithdraw.
     //
     // The honest control's second leaf carries the NonExistentWithdrawalUtxo
     // verdict it actually earned, which differs from the WithdrawalIsValid
@@ -371,9 +337,15 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
     // excludes the committed validity from the fabricated-withdrawal
     // comparison, so that leaf is not a fabrication and the honest control
     // runs through the whole installed catalogue like the fault block.
-    await selectWithinInstalledCatalogue({
+    await select({
       category: "doubleWithdraw",
-      winners: ["withdrawalMistag", "doubleWithdraw"],
+      block,
+      predecessor,
+      history,
+      honest,
+    });
+    await select({
+      category: "doubleWithdraw",
       replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
       block,
       predecessor,

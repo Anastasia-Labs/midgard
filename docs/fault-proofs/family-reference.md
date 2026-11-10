@@ -47,6 +47,15 @@ valid order drains the output, and the later one finds it absent and is tagged
 `NonExistentWithdrawalUtxo`. That is the honest tag; foreign-block replay and
 the withdrawal-mistag family derive the same verdict from the step's pre-state.
 
+A dishonest block that tags both leaves `WithdrawalIsValid` is therefore also a
+`withdrawalMistag` fault at the later leaf, the same event this family
+convicts. The watcher reports `doubleWithdraw` there (owner ruling 2026-11-10;
+`FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE` in
+[the classifier](../../demo/midgard-fault-proofs/src/workflow/classification.classify-canonical-block-violations.ts)).
+Both families slash the same block; this one proves it in two steps instead of
+five. A mistagged leaf that is not the later half of such a pair stays
+`withdrawalMistag`.
+
 The technical specification's [DOUBLE-WITHDRAW rule](../../technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex)
 still omits the two `WithdrawalIsValid` preconditions from its displayed formula.
 That is an outstanding specification reconciliation item; the implemented
@@ -225,7 +234,9 @@ reason label could also apply; all invalid labels select the same refund/no-op
 semantics.
 
 This is a standalone single-party family. Transition trace proves consistency
-with the committed tag, not the truth of the tag itself.
+with the committed tag, not the truth of the tag itself. When the mistagged
+leaf is the later of two payable leaves naming one L2 output, the watcher
+reports [`doubleWithdraw`](#double-withdraw-fault) instead.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/withdrawal-mistag).
 

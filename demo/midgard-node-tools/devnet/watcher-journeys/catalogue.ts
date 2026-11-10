@@ -1,10 +1,7 @@
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "@al-ft/midgard-fault-proofs";
 
 import type { JourneyCategory, JourneyFixture } from "./fixture.js";
-import {
-  JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES,
-  JOURNEY_HISTORY_FIXTURES,
-} from "./history-fixtures.js";
+import { JOURNEY_HISTORY_FIXTURES } from "./history-fixtures.js";
 import {
   JOURNEY_SCRIPT_FIXTURE_CANDIDATES,
   JOURNEY_SCRIPT_FIXTURES,
@@ -91,7 +88,6 @@ export const JOURNEY_FIXTURE_CANDIDATES: readonly JourneyFixture[] = [
   ...JOURNEY_SCRIPT_FIXTURES,
   ...JOURNEY_SCRIPT_FIXTURE_CANDIDATES,
   ...JOURNEY_HISTORY_FIXTURES,
-  ...JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES,
 ];
 
 /** Reject missing/duplicate selections before touching any chain or wallet. */

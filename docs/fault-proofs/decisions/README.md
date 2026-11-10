@@ -15,3 +15,4 @@ evidence, and the normal release gate.
 | [0005 — Canonical compressed-prefix MPF root mutation](0005-canonical-mpf-root-mutation.md)                | Accepted; implemented                                                      |
 | [0006 — DA attestation owns transaction-size admission](0006-da-attestation-transaction-size-admission.md) | Accepted; implemented                                                      |
 | [0007 — The operator owns committed user-event validity](0007-operator-owned-event-validity.md)            | Accepted; implemented in code; deployed on the 2026-09-12 devnet blueprint |
+| [0009 — doubleWithdraw owns a block's payable same-output pair](0009-double-withdraw-owns-payable-pair.md) | Accepted; implemented in the watcher                                       |

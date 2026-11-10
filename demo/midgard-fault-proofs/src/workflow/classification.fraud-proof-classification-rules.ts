@@ -38,7 +38,9 @@ export type FraudProofClassificationRule = {
 /**
  * Q55/W-O6's versioned violation-to-family authority.
  *
- * The outer order is deliberately the append-only catalogue order. The inner
+ * The outer order is deliberately the append-only catalogue order; same-event
+ * family precedence is that order with the owner-ruled corners moved
+ * (`FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE`). The inner
  * order is the stable specificity order within one family. A detector never
  * supplies a family name: it supplies only a violation identifier, and this
  * table selects the catalogue family. This is a taxonomy, not an executable

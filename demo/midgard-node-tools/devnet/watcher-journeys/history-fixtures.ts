@@ -178,9 +178,5 @@ export const JOURNEY_HISTORY_FIXTURES = [
   fabricatedDepositJourneyFixture,
   createWithdrawalJourneyFixture("fabricatedWithdrawal"),
   createWithdrawalJourneyFixture("withdrawalMistag"),
-];
-
-/** Existing fixtures whose faults are selected as an earlier family by the full catalogue. */
-export const JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES = [
   createWithdrawalJourneyFixture("doubleWithdraw"),
 ];

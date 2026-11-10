@@ -422,12 +422,15 @@ still say `terminal-included-awaiting-anchor` after its separate stamp is writte
 Keep `pending-evidence-stamp.json`, `completed-workflow.json`,
 `finalized-workflow.json`, `native-chain.ndjson`, and `timings.ndjson` together
 with the attempt logs. Registration or local verification is not live acceptance.
-The newly registered `fabricatedDeposit`, `fabricatedWithdrawal`, and
-`withdrawalMistag` fixtures have no completed live verdict on this deployment.
+The newly registered `fabricatedDeposit`, `fabricatedWithdrawal`,
+`withdrawalMistag` and `doubleWithdraw` fixtures have no completed live verdict
+on this deployment.
 
-One catalogue family remains genuinely blocked: `doubleWithdraw` is a
-candidate fixture whose current construction selects an earlier fault family in
-the full classifier.
+`doubleWithdraw` was blocked until the owner ruling of 2026-11-10: its pair's
+later leaf is also a `withdrawalMistag` finding at the same event, and the
+classifier used to rank `withdrawalMistag` first. The classifier now prefers
+`doubleWithdraw` there, so the full installed catalogue selects the fixture as
+its own family.
 
 ## Measured progression and recovery
 
