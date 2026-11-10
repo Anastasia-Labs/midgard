@@ -35,6 +35,7 @@ export const STEP_IDS = [
   "cycle-0-deposit",
   "cycle-0-transfer",
   "cycle-0-withdrawal",
+  "cycle-0-settlement",
 ] as const;
 
 export const wallets = () => ({
@@ -197,16 +198,15 @@ export async function honestRun(): Promise<HonestRun> {
   const data: Record<string, unknown> = {
     providers: { kupo: "http://127.0.0.1:1442" },
     services: { started: true },
-    "cycle-0-deposit": {
-      eventId: DEPOSIT_EVENT,
-      observed: { jobs: [{ phase: "complete" }], attempts: null },
-    },
+    // Complete once spendable on L2 and once committed; their settlement
+    // and merge are observed after the payout.
+    "cycle-0-deposit": { eventId: DEPOSIT_EVENT },
     "cycle-0-transfer": {
-      merged: {
+      committed: {
         txId,
         status: "committed",
         headerHash: HEADER_HASH,
-        confirmedLedgerFinalized: true,
+        confirmedLedgerFinalized: false,
       },
       da,
     },
@@ -216,6 +216,20 @@ export async function honestRun(): Promise<HonestRun> {
       outputIndex: 0,
       address: recipient.address,
       assets,
+    },
+    "cycle-0-settlement": {
+      deposit: {
+        eventId: DEPOSIT_EVENT,
+        observed: { jobs: [{ phase: "complete" }], attempts: null },
+      },
+      transfer: {
+        merged: {
+          txId,
+          status: "committed",
+          headerHash: HEADER_HASH,
+          confirmedLedgerFinalized: true,
+        },
+      },
     },
   };
   for (const [name, value] of Object.entries(records))

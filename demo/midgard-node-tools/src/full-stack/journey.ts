@@ -98,6 +98,8 @@ const lovelaceOf = (utxos: NodeUtxos) =>
 export function journeySteps(
   processes: StackProcesses,
   ledger: JourneyLedger = nodeLedger(processes.config.endpoint),
+  /** Checks a committed block's public DA bytes (`public-da.ts`). */
+  verifyDa: typeof verifyPublicDa = verifyPublicDa,
 ): StackStep[] {
   const { config, env } = processes;
   const user = walletFromSeed(env[config.wallets.user!.seedEnv]!, {
@@ -127,26 +129,21 @@ export function journeySteps(
         const eventId = receipt.eventId;
         if (!eventId || !/^[0-9a-f]+$/.test(eventId))
           throw new Error("Deposit receipt lacks its exact event identity");
-        const observed = await poll(
-          "automatic deposit absorption",
-          config.timeoutMs,
-          async () => {
-            const evidence = await settlementEvidence(
-              processes,
-              "deposit",
-              eventId,
-            );
-            return evidence.jobs?.length === 1 &&
-              evidence.jobs[0]!.phase === "complete"
-              ? evidence
-              : undefined;
-          },
-        );
+        // Done once the credit is spendable on L2: the node serves a
+        // deposit's output once the block holding it is on L1, long before
+        // the block merges. The settlement step checks its settlement.
         if ((await readJsonIfPresent(file("deposit-balance"))) === undefined) {
           const before = (await readJsonIfPresent(file("deposit-intent"))) as {
             balance: string;
           };
-          const after = await balance(user.address);
+          const after = await poll(
+            "L2 deposit credit",
+            config.timeoutMs,
+            async () => {
+              const value = await balance(user.address);
+              return value === BigInt(before.balance) ? undefined : value;
+            },
+          );
           assertDepositCredit(
             BigInt(before.balance),
             after,
@@ -158,7 +155,7 @@ export function journeySteps(
             credited: config.journey.depositLovelace,
           });
         }
-        return { status: "complete", data: { eventId, observed } };
+        return { status: "complete", data: { eventId } };
       },
       execute: async () => {
         if ((await readJsonIfPresent(file("deposit-intent"))) === undefined) {
@@ -229,20 +226,8 @@ export function journeySteps(
               : undefined;
           },
         );
-        const da = await verifyPublicDa(processes, committed.headerHash!);
-        const merged = await poll(
-          "automatic transfer merge",
-          config.timeoutMs,
-          async () => {
-            const value = (await getJson(
-              `${config.endpoint}/tx-status?tx_hash=${intent.txId}`,
-            )) as ResolvedTxStatus | undefined;
-            return value?.status === "committed" &&
-              value.confirmedLedgerFinalized === true
-              ? value
-              : undefined;
-          },
-        );
+        const da = await verifyDa(processes, committed.headerHash!);
+        // Done at commit: the settlement step checks the merge.
         if ((await readJsonIfPresent(file("transfer-balance"))) === undefined) {
           const actual = await balance(user.address);
           const recipientUtxos = await utxos(recipient.address);
@@ -265,7 +250,7 @@ export function journeySteps(
             received: config.journey.transferLovelace,
           });
         }
-        return { status: "complete", data: { merged, da } };
+        return { status: "complete", data: { committed, da } };
       },
       execute: async () => {
         let intent = (await readJsonIfPresent(file("transfer"))) as
@@ -404,6 +389,60 @@ export function journeySteps(
         await writeDurableJson(file("withdrawal"), receipt);
         return receipt;
       },
+    });
+    // The checks that wait for a block to mature, after the payout: on a
+    // long maturity the deposit's block and the transfer's block mature
+    // while the withdrawal's does, so a cycle waits about one maturity.
+    steps.push({
+      id: `${prefix}-settlement`,
+      reconcile: async () => {
+        const deposit = (await readJsonIfPresent(file("deposit"))) as {
+          eventId: string;
+        };
+        const transfer = (await readJsonIfPresent(
+          file("transfer"),
+        )) as TransferIntent;
+        const observed = await poll(
+          "automatic deposit settlement",
+          config.timeoutMs,
+          async () => {
+            const evidence = await settlementEvidence(
+              processes,
+              "deposit",
+              deposit.eventId,
+            );
+            return evidence.jobs?.length === 1 &&
+              evidence.jobs[0]!.phase === "complete"
+              ? evidence
+              : undefined;
+          },
+        );
+        const merged = await poll(
+          "automatic transfer merge",
+          config.timeoutMs,
+          async () => {
+            const value = (await getJson(
+              `${config.endpoint}/tx-status?tx_hash=${transfer.txId}`,
+            )) as ResolvedTxStatus | undefined;
+            return value?.status === "committed" &&
+              value.confirmedLedgerFinalized === true
+              ? value
+              : undefined;
+          },
+        );
+        return {
+          status: "complete",
+          data: {
+            deposit: { eventId: deposit.eventId, observed },
+            transfer: { merged },
+          },
+        };
+      },
+      // Settlement is observed, never sent: reconcile completes or throws.
+      execute: () =>
+        Promise.reject(
+          new Error("Settlement is observed on the stack, never sent"),
+        ),
     });
   }
   return steps;

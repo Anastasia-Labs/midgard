@@ -1,15 +1,9 @@
 import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
-import {
-  makeMidgardTxOutput,
-  makeOutRefCbor,
-} from "midgard-node/tests/midgard-output-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readJsonIfPresent } from "../src/full-stack/journal.js";
-import { type JourneyLedger, journeySteps } from "../src/full-stack/journey.js";
 import {
   assertDepositCredit,
   assertDepositFunding,
@@ -19,11 +13,17 @@ import {
 import { runStackWorkflow } from "../src/full-stack/workflow.js";
 import {
   type RecordedCall,
-  RecordingProcesses,
   removeStackFixtures,
-  stackEnvironment,
-  stackFixture,
 } from "./full-stack-fixtures.js";
+import {
+  committedTransfer,
+  DEPOSIT_EVENT,
+  HEADER_HASH,
+  journey,
+  savedDeposit,
+  savedTransfer,
+  TRANSFER_TX,
+} from "./full-stack-journey.fixtures.js";
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -77,71 +77,103 @@ describe("exact journey balances", () => {
   });
 });
 
-async function journey() {
-  const { config } = await stackFixture();
-  const env: Record<string, string> = {
-    ...stackEnvironment(config),
-    MIN_FEE_A: "44",
-    MIN_FEE_B: "155381",
-  };
-  const processes = new RecordingProcesses(config, env);
-  const user = walletFromSeed(env[config.wallets.user!.seedEnv]!, {
-    network: "Preprod",
-  }).address;
-  const reads: string[] = [];
-  const sent: { cbor: string; txId: string }[] = [];
-  let submit = async (): Promise<unknown> => {
-    throw new Error("response lost");
-  };
-  const ledger: JourneyLedger = {
-    utxos: async (address) => {
-      reads.push(address);
-      if (address !== user) return [];
-      const txHash = "44".repeat(32);
-      const assets = { lovelace: 50_000_000n };
-      return [
-        {
-          txHash,
-          outputIndex: 0,
-          outrefCbor: makeOutRefCbor(txHash, 0),
-          outputCbor: Buffer.from(
-            makeMidgardTxOutput(
-              CML.Address.from_bech32(address),
-              assetsToValue(assets),
-            ).to_cbor_bytes(),
-          ),
-          address,
-          assets,
-        },
-      ];
-    },
-    submitTransfer: async (cbor, txId) => {
-      sent.push({ cbor, txId });
-      return submit();
-    },
-  };
-  const steps = journeySteps(processes, ledger);
-  const byId = (id: string) => steps.find((step) => step.id === id)!;
-  const context = {
-    directory: config.runDirectory,
-    intentDigest: "a".repeat(64),
-  };
-  const transferFile = join(config.runDirectory, "cycle-0-transfer.json");
-  const txStatus = (body: unknown) =>
-    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(body)));
-  return {
-    byId,
-    config,
-    context,
-    processes,
-    reads,
-    sent,
-    setSubmit: (next: typeof submit) => (submit = next),
-    transferFile,
-    txStatus,
-    user,
-  };
-}
+describe("wallet journey order on a long maturity", () => {
+  it("finishes a deposit once its credit is spendable on L2, before its settlement completes", async () => {
+    const value = await journey();
+    // One read of each condition: a wait that does not hold at once fails.
+    value.config.timeoutMs = 1;
+    await value.writeManifest();
+    await savedDeposit(value);
+    value.processes.responses["settlement-deposit-observation"] = {
+      jobs: [{ phase: "absorbed" }],
+      attempts: null,
+    };
+    const deposit = value.byId("cycle-0-deposit");
+    // Not yet spendable: the step waits and records no credit.
+    await expect(deposit.reconcile(undefined)).rejects.toThrow(
+      "did not complete within 1ms",
+    );
+    expect(await readJsonIfPresent(value.file("deposit-balance"))).toBe(
+      undefined,
+    );
+    const credited = BigInt(value.config.journey.depositLovelace);
+    value.hold(value.user, [
+      { txHash: "44".repeat(32), lovelace: 50_000_000n },
+      { txHash: "45".repeat(32), lovelace: credited },
+    ]);
+    await expect(deposit.reconcile(undefined)).resolves.toMatchObject({
+      status: "complete",
+      data: { eventId: DEPOSIT_EVENT },
+    });
+    expect(await readJsonIfPresent(value.file("deposit-balance"))).toEqual({
+      before: "50000000",
+      after: String(50_000_000n + credited),
+      credited: value.config.journey.depositLovelace,
+    });
+  });
+  it("finishes a transfer at its commit and public DA, before it merges", async () => {
+    const value = await journey();
+    value.config.timeoutMs = 1;
+    await savedTransfer(value);
+    value.txStatus(committedTransfer(false));
+    await expect(
+      value.byId("cycle-0-transfer").reconcile(undefined),
+    ).resolves.toMatchObject({
+      status: "complete",
+      data: { committed: { txId: TRANSFER_TX, headerHash: HEADER_HASH } },
+    });
+    expect(value.verifiedDa).toEqual([HEADER_HASH]);
+    expect(await readJsonIfPresent(value.file("transfer-balance"))).toEqual({
+      senderBalance: String(
+        50_000_000n - BigInt(value.config.journey.transferLovelace) - 200_000n,
+      ),
+      recipientBalance: value.config.journey.transferLovelace,
+      fee: "200000",
+      received: value.config.journey.transferLovelace,
+    });
+  });
+  it("checks each cycle's deposit settlement and transfer merge after its payout", async () => {
+    const value = await journey();
+    value.config.timeoutMs = 1;
+    expect(
+      value.steps
+        .map((step) => step.id)
+        .filter((id) => id.startsWith("cycle-0-")),
+    ).toEqual([
+      "cycle-0-deposit",
+      "cycle-0-transfer",
+      "cycle-0-withdrawal",
+      "cycle-0-settlement",
+    ]);
+    await value.writeManifest();
+    await savedDeposit(value);
+    await savedTransfer(value);
+    const settlement = value.byId("cycle-0-settlement");
+    const observed = (phase: string) => ({ jobs: [{ phase }], attempts: null });
+    // The deposit's settlement job has not completed.
+    value.processes.responses["settlement-deposit-observation"] =
+      observed("absorbed");
+    value.txStatus(committedTransfer(true));
+    await expect(settlement.reconcile(undefined)).rejects.toThrow(
+      "deposit settlement did not complete within 1ms",
+    );
+    // The transfer's block has not merged into the confirmed ledger.
+    value.processes.responses["settlement-deposit-observation"] =
+      observed("complete");
+    value.txStatus(committedTransfer(false));
+    await expect(settlement.reconcile(undefined)).rejects.toThrow(
+      "transfer merge did not complete within 1ms",
+    );
+    value.txStatus(committedTransfer(true));
+    await expect(settlement.reconcile(undefined)).resolves.toEqual({
+      status: "complete",
+      data: {
+        deposit: { eventId: DEPOSIT_EVENT, observed: observed("complete") },
+        transfer: { merged: committedTransfer(true) },
+      },
+    });
+  });
+});
 
 describe("wallet journey resume", () => {
   it("resends the saved signed transfer after a lost response without rebuilding", async () => {

@@ -154,10 +154,22 @@ describe("e2e-finalize-summary stack-run reader", () => {
         "journal deposit event differs from its receipt",
       );
     });
+    it("refuses a settlement observed for another deposit", async () => {
+      const run = await honestRun();
+      await run.editStep("cycle-0-settlement", (data) => {
+        data.deposit.eventId = "0d".repeat(32);
+      });
+      expect(await refusal(run, "stack_deposit_credit")).toBe(
+        "journal deposit event differs from its receipt",
+      );
+    });
     it("refuses a deposit whose settlement was not observed complete", async () => {
       const run = await honestRun();
-      await run.editStep("cycle-0-deposit", (data) => {
-        data.observed.jobs = [{ phase: "complete" }, { phase: "complete" }];
+      await run.editStep("cycle-0-settlement", (data) => {
+        data.deposit.observed.jobs = [
+          { phase: "complete" },
+          { phase: "complete" },
+        ];
       });
       expect(await refusal(run, "stack_deposit_credit")).toBe(
         "deposit settlement was not observed complete",
@@ -177,8 +189,8 @@ describe("e2e-finalize-summary stack-run reader", () => {
     });
     it("refuses a transfer that did not reach confirmed-ledger finality", async () => {
       const run = await honestRun();
-      await run.editStep("cycle-0-transfer", (data) => {
-        data.merged.confirmedLedgerFinalized = false;
+      await run.editStep("cycle-0-settlement", (data) => {
+        data.transfer.merged.confirmedLedgerFinalized = false;
       });
       const { db } = await readStackRun(run.expectation, run.withdrawalOnL1);
       expect(gate(db, "stack_transfer_finality").details["cycle-0"]).toBe(
@@ -337,7 +349,15 @@ describe("e2e-finalize-summary stack-run reader", () => {
       "journal transfer status belongs to another transaction",
       (run) =>
         run.editStep("cycle-0-transfer", (data) => {
-          data.merged.txId = "00".repeat(32);
+          data.committed.txId = "00".repeat(32);
+        }),
+    ],
+    [
+      "stack_transfer_finality",
+      "journal transfer status belongs to another transaction",
+      (run) =>
+        run.editStep("cycle-0-settlement", (data) => {
+          data.transfer.merged.txId = "00".repeat(32);
         }),
     ],
     [
@@ -345,7 +365,15 @@ describe("e2e-finalize-summary stack-run reader", () => {
       "Transfer was not committed in a block",
       (run) =>
         run.editStep("cycle-0-transfer", (data) => {
-          data.merged.status = "pending";
+          data.committed.status = "pending";
+        }),
+    ],
+    [
+      "stack_transfer_finality",
+      "Transfer was not committed in a block",
+      (run) =>
+        run.editStep("cycle-0-settlement", (data) => {
+          data.transfer.merged.headerHash = "ab".repeat(28);
         }),
     ],
     [

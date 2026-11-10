@@ -135,7 +135,19 @@ async function checkRunIdentity(
       throw new Error(`journey-summary.json ${field} differs from the journal`);
 }
 
-/** journey.ts deposit step: exact event identity, one complete settlement job, exact L2 credit. */
+/**
+ * The cycle's settlement step (journey.ts), after its payout: the deposit's
+ * settlement job and the transfer's merge, each observed complete.
+ */
+function settlementData(journal: StackJournal, prefix: string) {
+  const data = completeData(journal, `${prefix}-settlement`);
+  return {
+    deposit: isFields(data.deposit) ? data.deposit : {},
+    transfer: isFields(data.transfer) ? data.transfer : {},
+  };
+}
+
+/** journey.ts deposit and settlement steps: exact event identity, exact L2 credit, one complete settlement job. */
 async function checkDeposit(
   expectation: StackRunExpectation,
   journal: StackJournal,
@@ -147,9 +159,10 @@ async function checkDeposit(
   if (typeof eventId !== "string" || !/^[0-9a-f]+$/.test(eventId))
     throw new Error("Deposit receipt lacks its exact event identity");
   const data = completeData(journal, `${prefix}-deposit`);
-  if (data.eventId !== eventId)
+  const settled = settlementData(journal, prefix).deposit;
+  if (data.eventId !== eventId || settled.eventId !== eventId)
     throw new Error("journal deposit event differs from its receipt");
-  const observed = data.observed as SettlementObservation | undefined;
+  const observed = settled.observed as SettlementObservation | undefined;
   if (observed?.jobs?.length !== 1 || observed.jobs[0]!.phase !== "complete")
     throw new Error("deposit settlement was not observed complete");
   const intent = await record(directory, `${prefix}-deposit-intent.json`);
@@ -165,7 +178,7 @@ async function checkDeposit(
   );
 }
 
-/** journey.ts transfer step and public-da.ts: exact signed transfer, confirmed-ledger finality, unchanged public DA bytes, exact deltas. */
+/** journey.ts transfer and settlement steps and public-da.ts: exact signed transfer, its commit, then confirmed-ledger finality in the same block, unchanged public DA bytes, exact deltas. */
 async function checkTransfer(
   expectation: StackRunExpectation,
   journal: StackJournal,
@@ -192,13 +205,17 @@ async function checkTransfer(
       "Saved transfer differs from its exact transaction identity or fee",
     );
   const data = completeData(journal, `${prefix}-transfer`);
-  const merged = isFields(data.merged) ? data.merged : {};
-  if (merged.txId !== txId)
+  const committed = isFields(data.committed) ? data.committed : {};
+  const settled = settlementData(journal, prefix).transfer;
+  const merged = isFields(settled.merged) ? settled.merged : {};
+  if (committed.txId !== txId || merged.txId !== txId)
     throw new Error("journal transfer status belongs to another transaction");
   if (
+    committed.status !== "committed" ||
+    typeof committed.headerHash !== "string" ||
+    committed.headerHash === "" ||
     merged.status !== "committed" ||
-    typeof merged.headerHash !== "string" ||
-    merged.headerHash === ""
+    merged.headerHash !== committed.headerHash
   )
     throw new Error("Transfer was not committed in a block");
   if (merged.confirmedLedgerFinalized !== true)
