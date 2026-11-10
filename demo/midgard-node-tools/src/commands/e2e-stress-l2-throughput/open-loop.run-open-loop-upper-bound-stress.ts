@@ -28,7 +28,7 @@ import {
   classifyOpenLoopRun,
   runAggregateObserverDuring,
 } from "./open-loop.run-aggregate-observer-during.js";
-import { measurementPolicyForConfig } from "./policy.js";
+import { measurementEvidenceForConfig } from "./policy.js";
 import { renderStressSummaryMarkdown } from "./report.js";
 import { abortReason, signalWasAborted } from "./runtime.js";
 import { parseE2EL2StressSummary } from "./summary-artifact.js";
@@ -339,7 +339,7 @@ export const runOpenLoopUpperBoundStress = async (
     rateSemantics: "offered_tps_uncalibrated",
     burstCycleRatePerSecond: null,
     mode: config.mode,
-    measurementPolicy: measurementPolicyForConfig(config),
+    ...measurementEvidenceForConfig(config),
     openLoop: {
       targetRateTps: config.targetRateTps,
       durationMs: config.openLoopDurationMs,

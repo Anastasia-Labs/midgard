@@ -1,6 +1,6 @@
 import { parseE2EL2StressConfigArtifact } from "./config-artifact.js";
 import { E2E_L2_STRESS_CONFIG_SCHEMA_VERSION } from "./constants.js";
-import { measurementPolicyForConfig } from "./policy.js";
+import { measurementEvidenceForConfig } from "./policy.js";
 import { type E2EL2StressConfig } from "./types.js";
 import { requirePrimaryWallet } from "./wallets.js";
 
@@ -11,7 +11,7 @@ const rawArtifactConfig = (config: E2EL2StressConfig) => ({
   workloadProfile: config.workloadProfile,
   corpusShape: config.corpusShape,
   mode: config.mode,
-  measurementPolicy: measurementPolicyForConfig(config),
+  ...measurementEvidenceForConfig(config),
   count: config.count,
   concurrency: config.concurrency,
   lovelace: config.lovelace.toString(10),

@@ -19,6 +19,11 @@ export const renderStressSummaryMarkdown = (
     ...(summary.interruptedReason === undefined
       ? []
       : [`- interruptedReason: ${summary.interruptedReason}`]),
+    ...(summary.route === undefined
+      ? []
+      : [
+          `- evidence: ${summary.route.label} (route ${summary.route.kind}, at most ${summary.route.clientActiveMax.toString()} requests in flight per client${summary.route.clientSpread === undefined ? "" : `, spread over ${summary.route.clientSpread.toString()} synthetic clients`})`,
+        ]),
     `- loadModel: ${summary.loadModel}`,
     `- workloadProfile: ${summary.workloadProfile}`,
     `- classification: ${summary.classification}`,

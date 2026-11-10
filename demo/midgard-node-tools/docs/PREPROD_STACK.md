@@ -306,6 +306,57 @@ node demo/midgard-user-cli/dist/cli.js forced-order --shape plain \
 When the stack's certificate is signed by its own CA, give the command that CA
 with `NODE_EXTRA_CA_CERTS=<public.tlsCaFile>`.
 
+The rehearsal's throughput drill is two runs of `e2e-stress-l2-throughput`,
+each labelled in its `summary.json` and `summary.md` with the one kind of
+evidence it gives. Both run from `demo/midgard-node` (the open-loop engine is
+`scripts/throughput-valid-stress.mjs` there) with the node's environment,
+including any `HTTP_RATE_LIMIT_*` setting: the drill reads the node's rate
+limits through the node's own configuration reader and refuses to run with
+`HTTP_RATE_LIMIT_ENABLED=false`. Neither raises nor disables a limit.
+
+The functional check goes through the public TLS ingress as one client:
+closed-loop, at most the node's per-client number of requests in flight, and
+each request class paced to half the slowest bucket the node charges one
+client for it. Its label is "Functional E2E through the public ingress from
+one client"; it is not a throughput figure.
+
+```sh
+cd demo/midgard-node
+MIDGARD_STACK_NODE_TLS_CA_FILE=<public.tlsCaFile> \
+MIDGARD_STACK_NODE_TLS_SERVERNAME=<host of MIDGARD_PUBLIC_API_ORIGIN> \
+node ../midgard-node-tools/dist/index.js e2e-stress-l2-throughput \
+  --route public-ingress --endpoint https://127.0.0.1:<ingress port> \
+  --load-model closed-loop-smoke --mode serial-chain --count 25 \
+  --wallet-seed-phrase-env <variable naming an independent, L2-funded wallet> \
+  --out-dir <directory beside runDirectory> --json
+```
+
+The capacity run goes straight at the node's Unix socket, open-loop, with the
+node's rate limiter on. The load generator spreads its requests over enough
+synthetic clients, each in its own /24 of the benchmarking range
+198.18.0.0/15 and named in `x-midgard-client-ip`, that no client carries more
+than half the write class's per-client or per-prefix rate or more requests at
+once than the node allows one client. The global buckets still apply. Its
+label is "Class A node capacity, load generator cohosted on the node socket":
+relative tracking of durable admission, not a production-capacity claim. Build
+the corpus first with `stress-corpus-generate` (see the
+[benchmark reference](../../../.agents/skills/midgard-e2e-acceptance/references/benchmark.md#bounded-e2e-stress)).
+
+```sh
+cd demo/midgard-node
+node ../midgard-node-tools/dist/index.js e2e-stress-l2-throughput \
+  --route node --endpoint http://localhost \
+  --node-socket <runDirectory>/services/http-socket/node.sock \
+  --load-model open-loop-upper-bound --tx-corpus <tx-corpus.ndjson> \
+  --corpus-slice-id <slice> --target-rate-tps <rate> \
+  --open-loop-max-in-flight <count> \
+  --out-dir <directory beside runDirectory> --json
+```
+
+`--endpoint` only names the socket; the node serves plain HTTP there. The
+socket's directory is mode 0700, so run as the stack's user. A spread above
+512 synthetic clients is refused when the engine starts.
+
 The generated node environment explicitly sets `MIN_QUEUE_LENGTH_FOR_MERGING=1`
 for these small Preprod journeys. This uses the existing automatic merge worker
 and leaves the operator's general configuration unchanged. Each cycle waits for automatic deposit absorption, transfers value to the

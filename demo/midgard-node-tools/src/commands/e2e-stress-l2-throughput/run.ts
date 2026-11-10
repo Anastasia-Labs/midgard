@@ -21,7 +21,7 @@ import { artifactConfig } from "./config.js";
 import { E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION } from "./constants.js";
 import { observeFinalityBounded } from "./finality.js";
 import { runOpenLoopUpperBoundStress } from "./open-loop.js";
-import { measurementPolicyForConfig } from "./policy.js";
+import { measurementEvidenceForConfig } from "./policy.js";
 import {
   type FinalityObserverResult,
   type PendingFinalityTransaction,
@@ -533,7 +533,7 @@ export const runE2EL2StressThroughput = async (
     rateSemantics: "burst_cycle_rate",
     burstCycleRatePerSecond: metrics.l2Admission.perSecond,
     mode: config.mode,
-    measurementPolicy: measurementPolicyForConfig(config),
+    ...measurementEvidenceForConfig(config),
     requestedCount: config.count,
     notStartedCount,
     submittedCount,

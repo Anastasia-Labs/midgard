@@ -1,3 +1,4 @@
+import { routeEvidence } from "./route.js";
 import {
   type E2EL2StressConfig,
   type E2EL2StressMeasurementPolicy,
@@ -26,4 +27,15 @@ export const measurementPolicyForConfig = (
       : "post-submit-bounded",
   submissionWindowExcludesCommitDrain: true,
   fullFinalityRequiresDrainProof: true,
+});
+
+/**
+ * The measurement evidence a run's config and summary artifacts carry: its
+ * measurement policy, and its route when the run is a rehearsal drill.
+ */
+export const measurementEvidenceForConfig = (
+  config: Pick<E2EL2StressConfig, "loadModel" | "workloadProfile" | "route">,
+) => ({
+  measurementPolicy: measurementPolicyForConfig(config),
+  ...(config.route === undefined ? {} : { route: routeEvidence(config.route) }),
 });

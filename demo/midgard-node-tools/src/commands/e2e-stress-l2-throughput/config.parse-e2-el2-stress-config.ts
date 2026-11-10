@@ -39,6 +39,7 @@ import {
   MAX_DEFAULT_CONCURRENCY,
   MAX_DEFAULT_COUNT,
 } from "./constants.js";
+import { parseE2EL2StressRoute } from "./route.js";
 import { timestampForPath } from "./runtime.js";
 import {
   type E2EL2StressConfig,
@@ -52,6 +53,8 @@ import {
 
 export const parseE2EL2StressConfig = ({
   endpoint,
+  route: rawRoute,
+  nodeSocket,
   loadModel: rawLoadModel,
   workloadProfile: rawWorkloadProfile,
   mode: rawMode,
@@ -194,6 +197,15 @@ export const parseE2EL2StressConfig = ({
   const normalizedEndpoint = parseNodeEndpoint(
     endpoint ?? defaultMidgardNodeEndpoint(env),
   );
+  const route = parseE2EL2StressRoute({
+    route: rawRoute,
+    nodeSocket,
+    loadModel,
+    endpoint: normalizedEndpoint,
+    targetRateTps,
+    openLoopMaxInFlight,
+    env,
+  });
   const resolvedRunId = runId?.trim() || `e2e-run-${timestampForPath()}`;
   const primaryWallet =
     loadModel === "closed-loop-smoke" && mode === "serial-chain"
@@ -277,6 +289,7 @@ export const parseE2EL2StressConfig = ({
     lovelace,
     feeHeadroomLovelace,
     nodeEndpoint: normalizedEndpoint,
+    ...(route === undefined ? {} : { route }),
     ...(corpusPath === undefined || corpusPath.trim().length === 0
       ? {}
       : { corpusPath: corpusPath.trim() }),

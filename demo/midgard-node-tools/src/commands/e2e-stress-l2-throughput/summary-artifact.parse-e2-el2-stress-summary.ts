@@ -13,7 +13,7 @@ import {
 } from "midgard-node/artifact-schema";
 
 import { roundMetric } from "../stress-stage-metrics.js";
-import { assertMeasurementPolicy } from "./config-artifact.js";
+import { assertMeasurementEvidence } from "./config-artifact.js";
 import { E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION } from "./constants.js";
 import { measurementPolicyForConfig } from "./policy.js";
 import {
@@ -69,6 +69,7 @@ export function parseE2EL2StressSummary(value: unknown): E2EL2StressSummary {
     [
       "interruptedReason",
       "corpusShape",
+      "route",
       "openLoop",
       "groundTruth",
       "fingerprint",
@@ -123,10 +124,7 @@ export function parseE2EL2StressSummary(value: unknown): E2EL2StressSummary {
     `${label}.burstCycleRatePerSecond`,
   );
   oneOf(input.mode, `${label}.mode`, ["serial-chain", "parallel-fanout"]);
-  assertMeasurementPolicy(
-    input.measurementPolicy,
-    `${label}.measurementPolicy`,
-  );
+  assertMeasurementEvidence(input, label);
   if (input.openLoop !== undefined) {
     assertOpenLoopSummary(input.openLoop, `${label}.openLoop`);
   }

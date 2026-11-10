@@ -7,6 +7,16 @@ export {
   E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
   E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
 } from "./constants.js";
+export {
+  clientPaceMs,
+  installRouteHttpClient,
+  publicIngressDispatcher,
+} from "./public-ingress-client.js";
+export {
+  E2E_L2_STRESS_ROUTE_LABELS,
+  nodeRateLimitsFromEnv,
+  nodeRouteClientSpread,
+} from "./route.js";
 export { runE2EL2StressThroughput } from "./run.js";
 export { parseE2EL2StressSummary } from "./summary-artifact.js";
 export {

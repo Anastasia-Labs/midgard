@@ -36,6 +36,14 @@ program
     defaultMidgardNodeEndpoint(),
   )
   .option(
+    "--route <route>",
+    "Rehearsal drill route: public-ingress (closed-loop functional check through the TLS ingress as one client inside its limits) or node (open-loop node capacity run over the node's socket, rate limits on, load spread over synthetic clients)",
+  )
+  .option(
+    "--node-socket <path>",
+    "With --route node: absolute host path of the node's HTTP Unix socket",
+  )
+  .option(
     "--mode <mode>",
     "Stress mode: serial-chain or parallel-fanout",
     "serial-chain",
@@ -199,6 +207,8 @@ program
     try {
       const stressConfig = E2EStressL2ThroughputCommand.parseE2EL2StressConfig({
         endpoint: options.endpoint,
+        route: options.route,
+        nodeSocket: options.nodeSocket,
         loadModel: options.loadModel,
         workloadProfile: options.workloadProfile,
         mode: options.mode,
@@ -239,6 +249,10 @@ program
         network: stressNetworkFromEnvironment(),
         allowUnsafeBounds: options.unsafeAllowLargeStress === true,
       });
+      E2EStressL2ThroughputCommand.installRouteHttpClient(
+        stressConfig,
+        process.env,
+      );
       const stressProgram = Effect.gen(function* () {
         const lucidService = yield* Services.Lucid;
         const sql = yield* SqlClient.SqlClient;

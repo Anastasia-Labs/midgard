@@ -33,12 +33,14 @@ const UNIX_SOCKET_PATH = /^\/[A-Za-z0-9._/-]{1,99}$/u;
 /**
  * Renders the nginx configuration. `socketPath` is the node's socket as
  * mounted in the ingress container; `submitBodyBytes` is the node's largest
- * `/submit` and `/tx/evaluate` body (one submission envelope).
+ * `/submit` and `/tx/evaluate` body (one submission envelope);
+ * `clientActiveMax` is the node's per-client cap on requests in flight
+ * (`CLIENT_ACTIVE_MAX`), which the caller passes from the node's source.
  *
  * The node's own limiter sets the request rates, so nginx refuses no submit
- * or read request for rate. nginx keeps a cap of 4 concurrent requests per
- * address (the node's own per-client cap) and a per-address rate on health,
- * readiness and admin routes, which no public flood can drain. The refusals
+ * or read request for rate. nginx caps concurrent requests per address at
+ * `clientActiveMax` and keeps a per-address rate on health, readiness and
+ * admin routes, which no public flood can drain. The refusals
  * nginx makes itself answer in the node's JSON shape with Retry-After;
  * responses from the node pass through untouched.
  *
@@ -49,7 +51,10 @@ const UNIX_SOCKET_PATH = /^\/[A-Za-z0-9._/-]{1,99}$/u;
  * Content-Length. A body over the route cap gets 413 from nginx and never
  * reaches the node.
  */
-export const renderPublicIngress = (env, { socketPath, submitBodyBytes }) => {
+export const renderPublicIngress = (
+  env,
+  { socketPath, submitBodyBytes, clientActiveMax },
+) => {
   const hostname = publicApiHostname(env);
   if (
     typeof socketPath !== "string" ||
@@ -59,6 +64,8 @@ export const renderPublicIngress = (env, { socketPath, submitBodyBytes }) => {
     throw new Error("E_PUBLIC_INGRESS_SOCKET");
   if (!Number.isSafeInteger(submitBodyBytes) || submitBodyBytes <= 0)
     throw new Error("E_PUBLIC_INGRESS_BODY");
+  if (!Number.isSafeInteger(clientActiveMax) || clientActiveMax <= 0)
+    throw new Error("E_PUBLIC_INGRESS_CLIENT_ACTIVE");
   const busy = JSON.stringify({
     error: "HTTP ingress capacity is full",
     errorCode: "E_HTTP_INGRESS_CAPACITY",
@@ -112,7 +119,7 @@ http {
     ssl_protocols TLSv1.3;
     ssl_session_cache shared:TLS:1m;
     client_max_body_size 64k;
-    limit_conn connections 4;
+    limit_conn connections ${clientActiveMax.toString()};
     limit_conn_status 503;
     limit_req_status 429;
     error_page 503 = @busy;

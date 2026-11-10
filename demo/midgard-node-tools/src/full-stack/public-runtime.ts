@@ -8,12 +8,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { SUBMIT_HTTP_BODY_MAX_BYTES } from "midgard-node/commands/http/submission-capacity";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_NODE_SECRET_NAMES,
@@ -30,6 +28,7 @@ import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
 import { publicRolesPath, type StackProcesses } from "./process.js";
+import { renderNodePublicIngress } from "./public-ingress-config.js";
 import {
   l2PeerCaVolumes,
   l2PeerEnvironment,
@@ -356,13 +355,6 @@ export async function publicNodeEnvironment(
   };
 }
 
-type PublicIngressModule = {
-  renderPublicIngress: (
-    env: Record<string, string | undefined>,
-    options: { socketPath: string; submitBodyBytes: number },
-  ) => string;
-};
-
 /**
  * The host directory holding the node's HTTP socket, mounted into the node
  * and the ingress, which both run as the host user. Mode 0700: no other
@@ -429,16 +421,10 @@ export async function publicNodeServices(
     },
     "midgard-node-migrate": { env_file: input.envFile, volumes },
   };
-  const { renderPublicIngress } = (await import(
-    pathToFileURL(join(config.nodeRoot, "scripts/public-ingress.mjs")).href
-  )) as PublicIngressModule;
   const ingressConfig = join(input.servicesDirectory, "public-ingress.conf");
   await writeFile(
     ingressConfig,
-    renderPublicIngress(env, {
-      socketPath: CONTAINER.httpSocket,
-      submitBodyBytes: SUBMIT_HTTP_BODY_MAX_BYTES,
-    }),
+    await renderNodePublicIngress(config.nodeRoot, env, CONTAINER.httpSocket),
     { mode: 0o644 },
   );
   // A second instance (attached-config.ts) has no public port of its own.

@@ -23,6 +23,10 @@ import { publicApiHostname, renderPublicIngress } from "./public-ingress.mjs";
 const HOST = "api.example.org";
 const ENV = { MIDGARD_PUBLIC_API_ORIGIN: `https://${HOST}` };
 const BODY_BYTES = 295_048;
+// The ingress caps each address at the cap it is given; the stack passes the
+// node's CLIENT_ACTIVE_MAX. A cap other than the node's 4 shows nginx takes
+// the argument, and stays above the four concurrent uploads a test below makes.
+const CLIENT_ACTIVE = 5;
 const SOCKET = "/run/midgard-http/node.sock";
 
 describe("public ingress inputs", () => {
@@ -56,15 +60,35 @@ describe("public ingress inputs", () => {
     ])
       assert.throws(
         () =>
-          renderPublicIngress(ENV, { socketPath, submitBodyBytes: BODY_BYTES }),
+          renderPublicIngress(ENV, {
+            socketPath,
+            submitBodyBytes: BODY_BYTES,
+            clientActiveMax: CLIENT_ACTIVE,
+          }),
         /E_PUBLIC_INGRESS_SOCKET/u,
         String(socketPath),
       );
     for (const submitBodyBytes of [undefined, 0, -1, 1.5, "295048", 2 ** 53])
       assert.throws(
-        () => renderPublicIngress(ENV, { socketPath: SOCKET, submitBodyBytes }),
+        () =>
+          renderPublicIngress(ENV, {
+            socketPath: SOCKET,
+            submitBodyBytes,
+            clientActiveMax: CLIENT_ACTIVE,
+          }),
         /E_PUBLIC_INGRESS_BODY/u,
         String(submitBodyBytes),
+      );
+    for (const clientActiveMax of [undefined, 0, -1, 1.5, "4", 2 ** 53])
+      assert.throws(
+        () =>
+          renderPublicIngress(ENV, {
+            socketPath: SOCKET,
+            submitBodyBytes: BODY_BYTES,
+            clientActiveMax,
+          }),
+        /E_PUBLIC_INGRESS_CLIENT_ACTIVE/u,
+        String(clientActiveMax),
       );
   });
 });
@@ -167,6 +191,7 @@ describe("public ingress served by nginx", { skip }, () => {
     const config = renderPublicIngress(ENV, {
       socketPath,
       submitBodyBytes: BODY_BYTES,
+      clientActiveMax: CLIENT_ACTIVE,
     })
       .replace("/run/public/tls-cert.pem", join(directory, "cert.pem"))
       .replace("/run/secrets/tls-key.pem", join(directory, "key.pem"))
@@ -390,12 +415,14 @@ describe("public ingress served by nginx", { skip }, () => {
     assert.deepEqual(seen.requests, []);
   });
 
-  test("refuses a fifth concurrent request from one address, and floods of health checks, in the node's JSON shape", async () => {
+  test("refuses a concurrent request past the client cap from one address, and floods of health checks, in the node's JSON shape", async () => {
     const fresh = new Agent({ keepAlive: false });
     const slow = await Promise.all(
-      Array.from({ length: 6 }, () => send("/slow", { via: fresh })),
+      Array.from({ length: CLIENT_ACTIVE + 2 }, () =>
+        send("/slow", { via: fresh }),
+      ),
     );
-    assert.deepEqual(count(slow), { 200: 4, 503: 2 });
+    assert.deepEqual(count(slow), { 200: CLIENT_ACTIVE, 503: 2 });
     const busy = slow.find(({ status }) => status === 503);
     assert.equal(busy.retryAfter, "5");
     assert.equal(JSON.parse(busy.body).errorCode, "E_HTTP_INGRESS_CAPACITY");

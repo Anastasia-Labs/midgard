@@ -19,6 +19,24 @@ export const canonicalEnginePaths = (
   stderrLog: join(outDir, "engine.stderr.log"),
 });
 
+/**
+ * The node route's engine settings: submissions go over the node's Unix
+ * socket, spread over the synthetic clients the route sized, each with at
+ * most the node's per-client requests in flight. The load generator shares
+ * the node's host.
+ */
+const nodeRouteEngineEnv = (
+  config: E2EL2StressConfig,
+): Record<string, string> =>
+  config.route?.kind !== "node"
+    ? {}
+    : {
+        STRESS_SUBMIT_SOCKET_PATH: config.route.socketPath,
+        STRESS_CLIENT_IP_SPREAD: config.route.clientSpread.toString(),
+        STRESS_CLIENT_ACTIVE_MAX: config.route.clientActiveMax.toString(),
+        STRESS_LOADGEN_COHOSTED: "true",
+      };
+
 export const runCanonicalEngineProcess = async ({
   config,
   paths,
@@ -61,6 +79,7 @@ export const runCanonicalEngineProcess = async ({
           ).toString(),
           STRESS_CLIENT_SELF_CHECK: "false",
           STRESS_REQUIRE_METRIC_PRESENCE: "false",
+          ...nodeRouteEngineEnv(config),
         },
       },
     );

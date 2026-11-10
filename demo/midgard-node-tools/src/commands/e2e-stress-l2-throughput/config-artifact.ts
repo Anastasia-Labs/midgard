@@ -13,11 +13,9 @@ import {
 
 import { type E2EL2StressConfigArtifact } from "./config.js";
 import { E2E_L2_STRESS_CONFIG_SCHEMA_VERSION } from "./constants.js";
+import { assertRouteEvidence } from "./route.js";
 
-export const assertMeasurementPolicy = (
-  value: unknown,
-  label: string,
-): void => {
+const assertMeasurementPolicy = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "loadModel",
     "workloadProfile",
@@ -62,6 +60,30 @@ export const assertMeasurementPolicy = (
     `${label}.fullFinalityRequiresDrainProof`,
     true,
   );
+};
+
+/**
+ * A run's measurement evidence in its config or summary artifact: the
+ * measurement policy, and a rehearsal drill's route, which must be one the
+ * run's load model gives (the one-client ingress check is closed-loop, the
+ * node capacity run open-loop).
+ */
+export const assertMeasurementEvidence = (
+  input: Record<string, unknown>,
+  label: string,
+): void => {
+  assertMeasurementPolicy(
+    input.measurementPolicy,
+    `${label}.measurementPolicy`,
+  );
+  if (input.route === undefined) return;
+  const route = assertRouteEvidence(input.route, `${label}.route`);
+  const routeLoadModel =
+    route.kind === "node" ? "open-loop-upper-bound" : "closed-loop-smoke";
+  if (input.loadModel !== routeLoadModel)
+    throw new Error(
+      `${label}.route ${route.kind} is evidence only for loadModel ${routeLoadModel}`,
+    );
 };
 
 const parseDecimalString = (value: unknown, label: string): string => {
@@ -121,7 +143,7 @@ export function parseE2EL2StressConfigArtifact(
       "allowUnsafeBounds",
       "wallets",
     ],
-    ["pollIntervalMs"],
+    ["pollIntervalMs", "route"],
   );
   if (input.schemaVersion !== E2E_L2_STRESS_CONFIG_SCHEMA_VERSION) {
     throw new Error(
@@ -143,10 +165,7 @@ export function parseE2EL2StressConfigArtifact(
     "mixed",
   ]);
   oneOf(input.mode, `${label}.mode`, ["serial-chain", "parallel-fanout"]);
-  assertMeasurementPolicy(
-    input.measurementPolicy,
-    `${label}.measurementPolicy`,
-  );
+  assertMeasurementEvidence(input, label);
   positiveInteger(input.count, `${label}.count`);
   positiveInteger(input.concurrency, `${label}.concurrency`);
   parseDecimalString(input.lovelace, `${label}.lovelace`);

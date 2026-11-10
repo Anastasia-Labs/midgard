@@ -6,6 +6,12 @@ import { Agent, setGlobalDispatcher } from "undici";
 export const NODE_TLS_CA_ENV = "MIDGARD_STACK_NODE_TLS_CA_FILE";
 export const NODE_TLS_SERVERNAME_ENV = "MIDGARD_STACK_NODE_TLS_SERVERNAME";
 
+/** The connection options that trust the public node's certificate authority. */
+export const nodeTlsConnect = (caFile: string, servername: string) => ({
+  ca: readFileSync(caFile),
+  servername,
+});
+
 /**
  * Makes this process's fetch trust the public node's certificate authority
  * and check the certificate against the public origin's hostname, so a host
@@ -13,9 +19,21 @@ export const NODE_TLS_SERVERNAME_ENV = "MIDGARD_STACK_NODE_TLS_SERVERNAME";
  */
 export function trustNodeTls(caFile: string, servername: string) {
   setGlobalDispatcher(
-    new Agent({ connect: { ca: readFileSync(caFile), servername } }),
+    new Agent({ connect: nodeTlsConnect(caFile, servername) }),
   );
 }
+
+/**
+ * The connection options the node-tls preload trusts, from its variables, or
+ * undefined when they are unset (a stack whose node serves plain HTTP).
+ */
+export const nodeTlsConnectFromEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+) => {
+  const caFile = env[NODE_TLS_CA_ENV];
+  const servername = env[NODE_TLS_SERVERNAME_ENV];
+  return caFile && servername ? nodeTlsConnect(caFile, servername) : undefined;
+};
 
 /** The public origin's hostname, which the node certificate must cover. */
 export const publicOriginHost = (

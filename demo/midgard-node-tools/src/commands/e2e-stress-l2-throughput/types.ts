@@ -24,6 +24,10 @@ import {
   type StressStageMetricDbSources,
 } from "../stress-stage-metrics.js";
 import { E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION } from "./constants.js";
+import {
+  type E2EL2StressRoute,
+  type E2EL2StressRouteEvidence,
+} from "./route.js";
 
 export type E2EL2StressMode = "serial-chain" | "parallel-fanout";
 export type E2EL2StressLoadModel =
@@ -124,6 +128,8 @@ export type E2EL2StressSummary = {
   readonly burstCycleRatePerSecond: number | null;
   readonly mode: E2EL2StressMode;
   readonly measurementPolicy: E2EL2StressMeasurementPolicy;
+  /** The rehearsal drill route and its evidence label, when one was named. */
+  readonly route?: E2EL2StressRouteEvidence;
   readonly openLoop?: {
     readonly targetRateTps: number;
     readonly durationMs: number;
@@ -213,6 +219,7 @@ export type E2EL2StressConfig = {
   readonly lovelace: bigint;
   readonly feeHeadroomLovelace: bigint;
   readonly nodeEndpoint: string;
+  readonly route?: E2EL2StressRoute;
   readonly corpusPath?: string;
   readonly corpusSliceId: string;
   readonly targetRateTps: number;
@@ -242,6 +249,8 @@ export type E2EL2StressConfig = {
 
 export type ParseE2EL2StressOptions = {
   readonly endpoint?: string;
+  readonly route?: string;
+  readonly nodeSocket?: string;
   readonly loadModel?: string;
   readonly workloadProfile?: string;
   readonly mode?: string;
