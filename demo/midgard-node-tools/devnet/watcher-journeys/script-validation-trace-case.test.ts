@@ -1,12 +1,18 @@
 /** The validation-trace journey's staged fault, classified by the installed
  * full-catalogue selector: a committed mint whose Plutus policy fails is a
- * validation-trace fault, and the same mint under a passing policy is
- * healthy. */
+ * validation-trace fault the watcher's own claim preparer opens a case on,
+ * and the same mint under a passing policy is healthy. */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import * as FP from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  createValidationTraceDisputeCompleteCanonicalReplay,
+  prepareValidationTraceArtifact,
+} from "@al-ft/midgard-fault-proofs/test-support/validation-trace-challenger-runner";
 import {
   CML,
   generateEmulatorAccount,
@@ -14,7 +20,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
+import {
+  classifyFullCatalogueTransactionFixture,
+  verifyJourneyFixture,
+} from "./journey-classification.test-support.js";
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 import {
   buildJourneyValidationTraceControl,
@@ -68,6 +77,46 @@ describe("validation-trace journey fault", () => {
       decision: "fault_detected",
       category: "validationTraceDispute",
     });
+  });
+
+  it("prepares the exact claim the watcher opens the case on, bound to the staged block", async () => {
+    const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+    const block = await buildJourneyValidationTraceFault(input);
+    const replayer =
+      createValidationTraceDisputeCompleteCanonicalReplay(l1SlotConfig);
+    const { decision, evidence } = await verifyJourneyFixture({
+      category: "validationTraceDispute",
+      replayer,
+      block,
+      predecessor: input.predecessor,
+    });
+    if (evidence === undefined)
+      throw new Error("Validation-trace fixture has no canonical evidence");
+    const context = FP.headerDecisionReplayContext(decision);
+    const classification = await FP.classifyCanonicalBlockViolations({
+      evidence,
+      detections: FP.requireCompleteCanonicalReplayDecision({
+        evidence,
+        replayer,
+        decision: await replayer.replay(evidence, context),
+        context,
+      }),
+      minimumConfirmationDepth: 30,
+    });
+    if (classification.decision !== "fault_detected")
+      throw new Error("Closing classification disappeared");
+    let stepCount: bigint | undefined;
+    const artifact = await prepareValidationTraceArtifact({
+      evidence,
+      context,
+      classification,
+      l1SlotConfig,
+      onMaterial: (material) => {
+        stepCount = material.stepCount;
+      },
+    });
+    expect(artifact).toMatchObject({ headerHash: block.headerHash });
+    expect(stepCount).toBeGreaterThan(0n);
   });
 
   it("leaves the same mint under a passing policy healthy", async () => {

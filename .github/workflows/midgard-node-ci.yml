@@ -1308,6 +1308,7 @@ jobs:
             watcher-journeys/catalogue.test.ts \
             watcher-journeys/committee-acceptance.test.ts \
             watcher-journeys/correction-recovery.test.ts \
+            watcher-journeys/correction.journey-progress-clock.test.ts \
             watcher-journeys/correction.test.ts \
             watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \

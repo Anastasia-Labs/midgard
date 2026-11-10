@@ -10,6 +10,7 @@ import { expect } from "vitest";
 import { writeJourneyArtifact } from "./artifacts.js";
 import {
   finalizePendingJourneyEvidence,
+  journeyProgressClock,
   readJourneyWorkflowEntries,
   verifyJourneyCorrection,
 } from "./correction.js";
@@ -214,7 +215,7 @@ export const runJourney = async (
       workflowBaseline,
       actionDepth: JOURNEY_ACTION_DEPTH,
       correctionTimeoutMs: timing.correctionTimeoutMs,
-      progressAllowanceMs: timing.transactionAllowanceMs,
+      ...journeyProgressClock({ timing, transactions: mode.transactions }),
       reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
       transactions: mode.transactions,

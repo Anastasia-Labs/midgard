@@ -44,6 +44,47 @@ describe("an attached stack's per-family time limit", () => {
     },
   );
 
+  // Operator-2's node is stopped through the fault phase, so nobody defends
+  // the case the watcher opens; the case validator lets it close Convicted
+  // only past its defense deadline, the side clock C plus the longest move
+  // validity range L_d after the case starts (validation-case-v1), and the
+  // watcher journals nothing while it waits.
+  it("gives validationTraceDispute its computed budget plus the undefended case's defense window at rehearsal cadence", () => {
+    const cadence = { ...preprod, actionDepth: 1 };
+    const generic = journeyTimingForCategory("zeroInput", cadence);
+    const timing = journeyTimingForCategory("validationTraceDispute", {
+      ...cadence,
+      disputeTiming: profile,
+    });
+    const defenseWindowMs =
+      profile.dispute_side_clock_ms + profile.dispute_max_validity_range_ms;
+    // One day and two minutes on the rehearsal profile.
+    expect(defenseWindowMs).toBe(86_520_000);
+    // The window the progress gate holds the journal's silence open for,
+    // from the case's start; the Close then gets one transaction allowance.
+    expect(timing.allowances.undefendedCaseMs).toBe(defenseWindowMs);
+    expect(timing.transactionAllowanceMs).toBe(generic.transactionAllowanceMs);
+    expect(timing.correctionTimeoutMs).toBe(
+      generic.correctionTimeoutMs + defenseWindowMs,
+    );
+    expect(stackJourneyTimeoutMs(timing, profile)).toBe(
+      generic.journeyTimeoutMs +
+        defenseWindowMs +
+        2 * profile.operator_shift_ms,
+    );
+    // Every other family has no such window.
+    expect(generic.allowances.undefendedCaseMs).toBe(0);
+  });
+
+  it("refuses validationTraceDispute's budget without the deployment's dispute clocks", () => {
+    expect(() =>
+      journeyTimingForCategory("validationTraceDispute", {
+        ...preprod,
+        actionDepth: 1,
+      }),
+    ).toThrow(/dispute clocks/u);
+  });
+
   it("refuses a limit no timer can hold", () => {
     expect(() =>
       stackJourneyTimeoutMs(

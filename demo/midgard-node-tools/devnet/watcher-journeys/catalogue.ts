@@ -2,10 +2,7 @@ import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "@al-ft/midgard-fault-proof
 
 import type { JourneyCategory, JourneyFixture } from "./fixture.js";
 import { JOURNEY_HISTORY_FIXTURES } from "./history-fixtures.js";
-import {
-  JOURNEY_SCRIPT_FIXTURE_CANDIDATES,
-  JOURNEY_SCRIPT_FIXTURES,
-} from "./script-fixtures.js";
+import { JOURNEY_SCRIPT_FIXTURES } from "./script-fixtures.js";
 import {
   JOURNEY_LOCALLY_VERIFIED_TRANSACTION_FIXTURES,
   JOURNEY_TRANSACTION_FIXTURES,
@@ -86,7 +83,6 @@ export const JOURNEY_FIXTURE_CANDIDATES: readonly JourneyFixture[] = [
   transitionTraceJourneyFixture,
   ...JOURNEY_TRANSACTION_FIXTURES,
   ...JOURNEY_SCRIPT_FIXTURES,
-  ...JOURNEY_SCRIPT_FIXTURE_CANDIDATES,
   ...JOURNEY_HISTORY_FIXTURES,
 ];
 

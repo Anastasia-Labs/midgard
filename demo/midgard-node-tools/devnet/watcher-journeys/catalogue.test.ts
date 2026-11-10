@@ -43,14 +43,15 @@ describe("automatic journey catalogue", () => {
     ).toHaveLength(12);
   });
 
-  it("selects the verified trace, direct, and event fixtures for the live gate", () => {
+  it("selects the verified trace, direct, dispute, and event fixtures for the live gate", () => {
     expect(
       selectJourneyFixtures(
-        "transitionTrace,observersForbiddenOnUntaggedNetwork,fabricatedDeposit,fabricatedWithdrawal,withdrawalMistag,doubleWithdraw",
+        "transitionTrace,observersForbiddenOnUntaggedNetwork,validationTraceDispute,fabricatedDeposit,fabricatedWithdrawal,withdrawalMistag,doubleWithdraw",
       ).map(({ category }) => category),
     ).toEqual([
       "transitionTrace",
       "observersForbiddenOnUntaggedNetwork",
+      "validationTraceDispute",
       "fabricatedDeposit",
       "fabricatedWithdrawal",
       "withdrawalMistag",
@@ -65,12 +66,7 @@ describe("automatic journey catalogue", () => {
       expect(JOURNEY_CATEGORIES).toContain(category);
   });
 
-  it.each([
-    "validationTraceDispute",
-    "unknown",
-    "transitionTrace,",
-    "zeroInput,zeroInput",
-  ])(
+  it.each(["unknown", "transitionTrace,", "zeroInput,zeroInput"])(
     "rejects unsupported or ambiguous selection %s before live work",
     (selection) => {
       expect(() => selectJourneyFixtures(selection)).toThrow();

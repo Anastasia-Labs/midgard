@@ -8,6 +8,7 @@ import "effect";
 import "midgard-watcher";
 import "vitest";
 import "./artifacts.js";
+import "./correction.journey-progress-clock.js";
 import "./correction.verify-journey-corrected-scheduler.js";
 import "./correction.verify-journey-computation-thread-absent.js";
 import "./correction.verify-journey-correction.js";
@@ -19,6 +20,10 @@ export {
   type JourneyFinalizedEvidenceStamp,
   type JourneyPendingEvidenceStamp,
 } from "./correction.finalize-pending-journey-evidence.js";
+export {
+  type JourneyCounterpartyWait,
+  journeyProgressClock,
+} from "./correction.journey-progress-clock.js";
 export {
   journeyLatestIntentsByAction,
   verifyJourneyComputationThreadAbsent,

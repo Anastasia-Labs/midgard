@@ -22,6 +22,7 @@ export {
   stackStagingShiftWorkMs,
   TRANSITION_TRACE_JOURNEY_PLAN,
   transitionTraceJourneyTiming,
+  VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN,
   verifyTransitionTraceJourneyOutputPlan,
 } from "./journey-timing.journey-timing-for-plan.js";
 export {

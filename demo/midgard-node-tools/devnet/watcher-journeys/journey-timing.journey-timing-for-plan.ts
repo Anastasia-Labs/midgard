@@ -43,9 +43,26 @@ export const GENERIC_JOURNEY_PLAN = Object.freeze({
   successorTransactions: 4,
 });
 
+/**
+ * validationTraceDispute: the generic transaction bound, plus the one wait no
+ * transaction of ours ends. Operator-2's node is stopped through the fault
+ * phase, so nobody defends the case the watcher opens. The case validator
+ * lets the watcher close it Convicted only past its defense deadline, the
+ * side clock C plus the longest move validity range L_d after the case
+ * starts (`validationTraceDefenseDeadlineMs`, validation-case-v1), and the
+ * watcher journals nothing while it waits.
+ */
+export const VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN = Object.freeze({
+  category: "validationTraceDispute",
+  dependentTransactions: GENERIC_JOURNEY_PLAN.dependentTransactions,
+  successorTransactions: GENERIC_JOURNEY_PLAN.successorTransactions,
+  awaitsUndefendedCase: true,
+});
+
 export type JourneyTimingPlan =
   | typeof TRANSITION_TRACE_JOURNEY_PLAN
-  | typeof GENERIC_JOURNEY_PLAN;
+  | typeof GENERIC_JOURNEY_PLAN
+  | typeof VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN;
 
 /** Refuse to reuse the audited plan if the actual projected output has drifted. */
 export const verifyTransitionTraceJourneyOutputPlan = (
@@ -85,7 +102,37 @@ export interface JourneyCadence {
   actionDepth?: number;
   /** Separate preparation budget; retained fixture retries need no fresh preparation. */
   fixtureStagingAllowanceMs?: number;
+  /**
+   * The deployment profile's dispute clocks; a plan that waits out an
+   * undefended case needs them.
+   */
+  disputeTiming?: Readonly<{
+    dispute_side_clock_ms: number;
+    dispute_max_validity_range_ms: number;
+  }>;
 }
+
+/** How long an undefended case stays open: its defense window, C + L_d. */
+const undefendedCaseWaitMs = (
+  plan: JourneyTimingPlan,
+  disputeTiming: JourneyCadence["disputeTiming"],
+) => {
+  if (!("awaitsUndefendedCase" in plan)) return 0;
+  if (disputeTiming === undefined)
+    throw new Error(
+      `${plan.category} journey timing needs the deployment's dispute clocks`,
+    );
+  const { dispute_side_clock_ms, dispute_max_validity_range_ms } =
+    disputeTiming;
+  if (
+    !Number.isSafeInteger(dispute_side_clock_ms) ||
+    dispute_side_clock_ms < 0 ||
+    !Number.isSafeInteger(dispute_max_validity_range_ms) ||
+    dispute_max_validity_range_ms < 0
+  )
+    throw new Error(`Invalid dispute clocks for ${plan.category}`);
+  return dispute_side_clock_ms + dispute_max_validity_range_ms;
+};
 
 export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 10_000;
 
@@ -185,6 +232,7 @@ export const journeyTimingForPlan = (
     confirmationDepth,
     actionDepth = confirmationDepth,
     fixtureStagingAllowanceMs = 0,
+    disputeTiming,
   }: JourneyCadence,
 ) => {
   if (
@@ -232,13 +280,20 @@ export const journeyTimingForPlan = (
      */
     finalizedEvidenceStampMs:
       Math.ceil(2 * idealDepthMs(confirmationDepth)) + 30_000,
+    /**
+     * An undefended case's defense window, C + L_d; zero for every other
+     * plan. The progress gate holds the journal's silence open from the
+     * case's start to that deadline (`journeyProgressClock`).
+     */
+    undefendedCaseMs: undefendedCaseWaitMs(plan, disputeTiming),
   });
   const transactionAllowanceMs =
     confirmationAllowancePerTransactionMs +
     allowances.transactionBuildMs +
     allowances.transactionRpcMs;
   const correctionTimeoutMs =
-    plan.dependentTransactions * transactionAllowanceMs;
+    plan.dependentTransactions * transactionAllowanceMs +
+    allowances.undefendedCaseMs;
   const journeyTimeoutMs =
     correctionTimeoutMs +
     plan.successorTransactions * transactionAllowanceMs +
@@ -370,7 +425,9 @@ export const journeyTimingForCategory = (
 ) =>
   category === TRANSITION_TRACE_JOURNEY_PLAN.category
     ? transitionTraceJourneyTiming(cadence)
-    : genericJourneyTiming(cadence);
+    : category === VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN.category
+      ? journeyTimingForPlan(VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN, cadence)
+      : genericJourneyTiming(cadence);
 
 /**
  * A family's whole time limit on an attached stack (`journey.test.ts`): its

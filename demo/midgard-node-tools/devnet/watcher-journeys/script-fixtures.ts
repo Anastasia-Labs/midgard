@@ -9,8 +9,8 @@ import { buildJourneyValidationTraceFault } from "./script-validation-trace-case
 import { createTransactionJourneyFixture } from "./staging.js";
 
 /** Staging adapters; scheduling additionally requires the full catalogue gate. */
-export const JOURNEY_SCRIPT_FIXTURES = JOURNEY_SCRIPT_FORCED_CATEGORIES.map(
-  (category) =>
+export const JOURNEY_SCRIPT_FIXTURES = [
+  ...JOURNEY_SCRIPT_FORCED_CATEGORIES.map((category) =>
     createForcedTransactionJourneyFixture(
       category,
       (input) => prepareJourneyScriptForcedTransaction({ ...input, category }),
@@ -21,13 +21,9 @@ export const JOURNEY_SCRIPT_FIXTURES = JOURNEY_SCRIPT_FORCED_CATEGORIES.map(
           buildJourneyScriptForcedSuccessor({ ...input, category }),
       },
     ),
-);
-
-/**
- * Script staging adapters not yet registered for a live journey: the
- * operator commits a transaction whose Plutus policy fails.
- */
-export const JOURNEY_SCRIPT_FIXTURE_CANDIDATES = [
+  ),
+  // The operator commits a transaction whose Plutus policy fails; nobody
+  // defends the case, so the watcher convicts once its defense window ends.
   createTransactionJourneyFixture("validationTraceDispute", (input) =>
     buildJourneyValidationTraceFault(input),
   ),

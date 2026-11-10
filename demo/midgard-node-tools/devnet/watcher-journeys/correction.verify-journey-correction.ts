@@ -15,6 +15,7 @@ import {
 import { expect } from "vitest";
 
 import { writeJourneyArtifact } from "./artifacts.js";
+import type { JourneyCounterpartyWait } from "./correction.journey-progress-clock.js";
 import {
   verifyJourneyComputationThreadAbsent,
   verifyJourneyWorkflowTransactions,
@@ -135,6 +136,7 @@ export const verifyJourneyCorrection = async ({
   actionDepth,
   correctionTimeoutMs = 1_800_000,
   progressAllowanceMs,
+  counterpartyWait,
   reconciliationAllowanceMs,
   stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
@@ -166,6 +168,13 @@ export const verifyJourneyCorrection = async ({
    * minutes) to re-observe its target before this transaction clock applies.
    */
   progressAllowanceMs?: number;
+  /**
+   * The family's legitimate silent wait on its counterparty, when its
+   * journal shows one: the journal may then stay silent until that wait's
+   * deadline plus `progressAllowanceMs` for the move the deadline enables.
+   * Before the wait begins and after it ends, the transaction clock applies.
+   */
+  counterpartyWait?: JourneyCounterpartyWait;
   /** Existing release-depth window for resolving an outstanding signed intent. */
   reconciliationAllowanceMs?: number;
   stallAllowanceMs?: number;
@@ -217,9 +226,18 @@ export const verifyJourneyCorrection = async ({
           ? Math.max(normalAllowanceMs ?? 0, reconciliationAllowanceMs)
           : normalAllowanceMs;
       if (allowanceMs !== undefined && Date.now() - progressAt > allowanceMs) {
-        throw new Error(
-          `Workflow made no durable progress for ${allowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
-        );
+        const waitDeadline =
+          progressAllowanceMs === undefined
+            ? undefined
+            : await counterpartyWait?.(records);
+        if (waitDeadline === undefined)
+          throw new Error(
+            `Workflow made no durable progress for ${allowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
+          );
+        if (Date.now() > waitDeadline + progressAllowanceMs!)
+          throw new Error(
+            `Workflow made no durable progress within ${progressAllowanceMs!.toString()} ms of its counterparty wait's deadline ${waitDeadline.toString()} (${progressCount.toString()} progress records)`,
+          );
       }
       for (const { sequence, event } of journeyWorkflowUpdates(
         records,

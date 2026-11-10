@@ -5,10 +5,8 @@ import { readJourneyReadiness } from "./readiness.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 
-// Every catalogue family has a journey except the interactive Plutus dispute.
-const catalogueFamilies = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-  (category) => category !== "validationTraceDispute",
-);
+// Every catalogue family has a journey.
+const catalogueFamilies = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER;
 
 // Read-only entrypoint through the package's existing source-aware runtime.
 it.skipIf(runDirectory === undefined)(
