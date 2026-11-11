@@ -5,29 +5,30 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeCustody,
   directPurposePaging,
   type DirectPurposeRole,
+  directPurposeStep01Datum,
+  submitDirectPurposeInit,
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+  submitDirectPurposeTransition,
+  submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
 import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
   EXECUTION_NATIVE_SCRIPT_INVALID_FIELDS,
   executionNativeScriptInvalidContractRoles,
-  type ExecutionNativeScriptInvalidCustody,
   type ExecutionNativeScriptInvalidEntry,
   type ExecutionNativeScriptInvalidProofPlan,
   type ExecutionNativeScriptInvalidRole,
-  executionNativeScriptInvalidStep01Datum,
   executionNativeScriptInvalidTransitionAt,
   type ExecutionNativeScriptInvalidWalkBatch,
   fitExecutionNativeScriptInvalidSourceTransition,
   fitExecutionNativeScriptInvalidWalkPage,
   isExecutionNativeScriptInvalidWalkRole,
   prepareExecutionNativeScriptInvalidProof,
-  submitExecutionNativeScriptInvalidInit,
-  submitExecutionNativeScriptInvalidStep01Accepted,
-  submitExecutionNativeScriptInvalidStep01Forced,
   submitExecutionNativeScriptInvalidTerminal,
-  submitExecutionNativeScriptInvalidTransition,
-  submitExecutionNativeScriptInvalidTransitions,
 } from "../../src/execution-native-script-invalid/index.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -83,12 +84,12 @@ export type RoleReference = {
  * which refuses any publication above 15,872 bytes. */
 export const publishExecutionNativeScriptInvalidRoles = async (
   harness: ExecutionNativeScriptInvalidHarness,
-): Promise<ReadonlyMap<ExecutionNativeScriptInvalidRole, RoleReference>> => {
+): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = executionNativeScriptInvalidContractRoles(
     harness.executionNativeScriptInvalid,
   );
   const byHash = new Map<string, RoleReference>();
-  const out = new Map<ExecutionNativeScriptInvalidRole, RoleReference>();
+  const out = new Map<DirectPurposeRole, RoleReference>();
   for (const role of SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER) {
     const validator = roles[role];
     let reference = byHash.get(validator.spendingScriptHash);
@@ -189,7 +190,7 @@ const publishCarriage = async ({
 
 /** A fitted page: its role, its first transition's label and its size. */
 export type PageSize = {
-  readonly role: ExecutionNativeScriptInvalidRole;
+  readonly role: DirectPurposeRole;
   readonly label: string;
   readonly size: number;
 };
@@ -203,13 +204,13 @@ export type StepMeasurement = {
  * workflow does: each page that opens MPF proofs, in the shared source walk
  * and in the all-purposes walk, is sized to the transaction budget. */
 const continueToTerminal = async (
-  custody: ExecutionNativeScriptInvalidCustody,
+  custody: DirectPurposeCustody,
   prepared: ExecutionNativeScriptInvalidProofPlan,
   start: UTxO,
   scenario: NativeScenario,
   pages: PageSize[],
 ): Promise<UTxO> => {
-  const step01Datum = executionNativeScriptInvalidStep01Datum(
+  const step01Datum = directPurposeStep01Datum(
     scenario.material,
     custody.signer.paymentKeyHash,
   );
@@ -219,9 +220,7 @@ const continueToTerminal = async (
     first: step01Datum,
   });
   const sourceRoles = new Set<string>(prepared.source.map(({ role }) => role));
-  const isSourceRole = (
-    role: ExecutionNativeScriptInvalidRole,
-  ): role is ExecutionNativeScriptInvalidRole & DirectPurposeRole =>
+  const isSourceRole = (role: DirectPurposeRole): boolean =>
     sourceRoles.has(role);
   const transitionAt = executionNativeScriptInvalidTransitionAt(
     prepared,
@@ -272,13 +271,8 @@ const continueToTerminal = async (
         : transitionAt(role, thread.datum!);
     if (fitted !== undefined)
       pages.push({ role, label: transition.label, size: fitted });
-    thread = (
-      await submitExecutionNativeScriptInvalidTransition(
-        custody,
-        thread,
-        transition,
-      )
-    ).thread;
+    thread = (await submitDirectPurposeTransition(custody, thread, transition))
+      .thread;
     role = transition.next;
   }
   return thread;
@@ -297,10 +291,7 @@ export const driveExecutionNativeScriptInvalidThread = async ({
 }: {
   readonly harness: ExecutionNativeScriptInvalidHarness;
   readonly scenario: NativeScenario;
-  readonly references: ReadonlyMap<
-    ExecutionNativeScriptInvalidRole,
-    RoleReference
-  >;
+  readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   /** The route to take; the first convicting one otherwise. */
   readonly entry?: ExecutionNativeScriptInvalidEntry;
   readonly batch?: ExecutionNativeScriptInvalidWalkBatch;
@@ -327,13 +318,14 @@ export const driveExecutionNativeScriptInvalidThread = async ({
   });
   const { carriage, measurements: carriageMeasurements } =
     await publishCarriage({ harness, scenario, plan: prepared.plan });
-  const reference = (role: ExecutionNativeScriptInvalidRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const found = references.get(role);
     if (found === undefined) throw new Error(`${role} reference absent`);
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitExecutionNativeScriptInvalidInit({
+    submitDirectPurposeInit({
+      family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -364,6 +356,7 @@ export const driveExecutionNativeScriptInvalidThread = async ({
     });
   }
   const common = {
+    family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
     lucid: proverLucid,
     contracts: executionNativeScriptInvalid,
     categoryId: harness.category.categoryId,
@@ -374,11 +367,11 @@ export const driveExecutionNativeScriptInvalidThread = async ({
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? submitExecutionNativeScriptInvalidStep01Forced({
+      ? submitDirectPurposeStep01Forced({
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : submitExecutionNativeScriptInvalidStep01Accepted({
+      : submitDirectPurposeStep01Accepted({
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -389,7 +382,8 @@ export const driveExecutionNativeScriptInvalidThread = async ({
   );
   steps.push({ label: "step01", measurement: step01.measurement });
   const unit = init.result.computationThreadUnit;
-  const custody: ExecutionNativeScriptInvalidCustody = {
+  const custody: DirectPurposeCustody = {
+    family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
     lucid: proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -416,7 +410,7 @@ export const driveExecutionNativeScriptInvalidThread = async ({
   const thread =
     transitions === undefined
       ? await continueToTerminal(custody, prepared, start, scenario, pages)
-      : await submitExecutionNativeScriptInvalidTransitions(
+      : await submitDirectPurposeTransitions(
           custody,
           start,
           transitions(prepared),

@@ -26,10 +26,11 @@ import {
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  buildExecutionNativeScriptInvalidTransition,
-  type ExecutionNativeScriptInvalidRole,
-  submitExecutionNativeScriptInvalidTransition,
-} from "../src/execution-native-script-invalid/index.js";
+  buildDirectPurposeTransition,
+  type DirectPurposeRole,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import type { ExecutionNativeScriptInvalidRole } from "../src/execution-native-script-invalid/index.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
@@ -230,20 +231,20 @@ const forgedTerminal = async (
 };
 
 /** Every role a scenario of this file refused a forgery at. */
-const covered = new Set<ExecutionNativeScriptInvalidRole>();
+const covered = new Set<DirectPurposeRole>();
 
 /** Forges then advances every role of the scenario's thread and convicts;
  * returns the roles that refused a forgery. */
 const forgeEveryRole = async (
   shape: NativeSubjectShape,
   source: NativeSource,
-): Promise<ReadonlySet<ExecutionNativeScriptInvalidRole>> => {
+): Promise<ReadonlySet<DirectPurposeRole>> => {
   const harness = await makeExecutionNativeScriptInvalidHarness();
   const references = await publishExecutionNativeScriptInvalidRoles(harness);
   const reference = (role: ExecutionNativeScriptInvalidRole) =>
     references.get(role)!.utxo;
   const scenario = await setupNativeScenario({ harness, shape, source });
-  const refused: ExecutionNativeScriptInvalidRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   const run = await driveExecutionNativeScriptInvalidThread({
     harness,
     scenario,
@@ -274,7 +275,7 @@ const forgeEveryRole = async (
       .find((datum) => datum !== transition.datum);
     if (forged === undefined)
       throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildExecutionNativeScriptInvalidTransition(
+    const built = await buildDirectPurposeTransition(
       run.custody,
       thread,
       transition,
@@ -298,11 +299,7 @@ const forgeEveryRole = async (
     );
     await expectOnchainRefusal(() => built.complete());
     thread = (
-      await submitExecutionNativeScriptInvalidTransition(
-        run.custody,
-        thread,
-        transition,
-      )
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
     refused.push(transition.role);
   }

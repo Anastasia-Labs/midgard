@@ -24,11 +24,12 @@ import {
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  executionNativeScriptInvalidContractRoles,
-  type ExecutionNativeScriptInvalidRole,
-  type ExecutionNativeScriptInvalidTransition,
-  submitExecutionNativeScriptInvalidTransition,
-} from "../src/execution-native-script-invalid/index.js";
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+  type DirectPurposeTransition,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY } from "../src/execution-native-script-invalid/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
@@ -63,7 +64,7 @@ import { network } from "./support/submit-init-emulator-shared.js";
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 
 /** Every role a scenario of this file refused a stranger at. */
-const covered = new Set<ExecutionNativeScriptInvalidRole>();
+const covered = new Set<DirectPurposeRole>();
 
 /** Runs the thread with a stranger attempting every planned transition
  * first; returns the roles that refused the stranger. */
@@ -101,9 +102,6 @@ const strangerAtEveryRole = async (
     harness.proverSigner.paymentKeyHash,
   );
 
-  const roles = executionNativeScriptInvalidContractRoles(
-    harness.executionNativeScriptInvalid,
-  );
   const phasScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(
@@ -116,9 +114,13 @@ const strangerAtEveryRole = async (
   /** The planned transition, built and signed by the stranger alone. */
   const strangerTransition = async (
     thread: UTxO,
-    transition: ExecutionNativeScriptInvalidTransition,
+    transition: DirectPurposeTransition,
   ) => {
-    const next = roles[transition.next];
+    const next = directPurposeRoleValidator(
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
+      harness.executionNativeScriptInvalid,
+      transition.next,
+    );
     const label = `stranger ${transition.label}`;
     const carriage = transition.fields.flatMap((field) =>
       run.custody.carriage(field),
@@ -177,16 +179,12 @@ const strangerAtEveryRole = async (
   };
 
   let thread = run.thread;
-  const refused: ExecutionNativeScriptInvalidRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   for (const transition of run.prepared.transitions) {
     await expectOnchainRefusal(() => strangerTransition(thread, transition));
     refused.push(transition.role);
     thread = (
-      await submitExecutionNativeScriptInvalidTransition(
-        run.custody,
-        thread,
-        transition,
-      )
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
   }
   const outcome = await run.terminal(true, thread);

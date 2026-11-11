@@ -22,7 +22,6 @@ import {
 import { directPurposeObservedSelection } from "../direct-purpose-family/purpose-routes.js";
 import { directPurposeAt } from "../direct-script-derivation/index.js";
 import { executionNativeScriptInvalidAbsentSelection } from "./absent-selection.js";
-import type { ExecutionNativeScriptInvalidTransition } from "./custody.js";
 import {
   type ExecutionNativeScriptInvalidWalk,
   executionNativeScriptInvalidWalk,
@@ -48,7 +47,7 @@ export type ExecutionNativeScriptInvalidRoute = Readonly<{
    * when the entry decides alone. */
   shared: readonly DirectPurposeTransition[];
   /** Family custody after `shared`, up to the walk or the terminal. */
-  local: readonly ExecutionNativeScriptInvalidTransition[];
+  local: readonly DirectPurposeTransition[];
   walk: ExecutionNativeScriptInvalidWalk | null;
   final: Final;
 }>;
@@ -210,7 +209,7 @@ const keySpend = async (
           ),
       },
       ...rank.transitions.map(
-        (transition): ExecutionNativeScriptInvalidTransition => ({
+        (transition): DirectPurposeTransition => ({
           label: transition.label,
           role: "spendRank",
           next: "spendRank",

@@ -9,11 +9,13 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { stepDatum } from "../direct-purpose-family/custody.js";
+import {
+  type DirectPurposeTransition,
+  stepDatum,
+} from "../direct-purpose-family/custody.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { DirectScriptSourceMaterial } from "../direct-script-derivation/sources.js";
 import type { FittedPage } from "../page-fit.js";
-import type { ExecutionNativeScriptInvalidTransition } from "./custody.js";
 import {
   INITIAL_NATIVE_EVALUATION_POSITION,
   type NativeEvaluationContext,
@@ -91,13 +93,13 @@ export type ExecutionNativeScriptInvalidWalk = Readonly<{
     role: ExecutionNativeScriptInvalidWalkRole,
     datum: string,
     size?: number,
-  ) => FittedPage<ExecutionNativeScriptInvalidTransition>;
+  ) => FittedPage<DirectPurposeTransition>;
   transitionAt: (
     role: ExecutionNativeScriptInvalidWalkRole,
     datum: string,
-  ) => ExecutionNativeScriptInvalidTransition;
+  ) => DirectPurposeTransition;
   /** The whole walk at the configured page sizes. */
-  transitions: readonly ExecutionNativeScriptInvalidTransition[];
+  transitions: readonly DirectPurposeTransition[];
   final: SDK.ExecutionNativeScriptInvalidFinalState;
 }>;
 
@@ -163,7 +165,7 @@ export const executionNativeScriptInvalidWalk = ({
       ...state,
       ...nativeSignerFrontier(context.signers, from + take),
     };
-    const transition: ExecutionNativeScriptInvalidTransition = {
+    const transition: DirectPurposeTransition = {
       label: `signers ${from.toString()}`,
       role: "signers",
       next: from + take === count ? "evaluate" : "signers",
@@ -201,7 +203,7 @@ export const executionNativeScriptInvalidWalk = ({
         },
         SDK.ExecutionNativeScriptInvalidFinalDatum,
       );
-    const transition: ExecutionNativeScriptInvalidTransition = {
+    const transition: DirectPurposeTransition = {
       label: `evaluate ${state.cursor.toString()}`,
       role: "evaluate",
       next: walked.satisfied === null ? "evaluate" : "terminal",
@@ -229,7 +231,7 @@ export const executionNativeScriptInvalidWalk = ({
       ? signersPage(datum, taken)
       : evaluatePage(datum, taken);
   };
-  const transitions: ExecutionNativeScriptInvalidTransition[] = [];
+  const transitions: DirectPurposeTransition[] = [];
   let role: ExecutionNativeScriptInvalidWalkRole = "signers";
   let datum = evalDatum(initialState);
   let satisfied: boolean | undefined;

@@ -4,10 +4,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
 import {
   type DirectPurposePaging,
   directPurposePaging,
 } from "../direct-purpose-family/paging.js";
+import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -21,22 +27,13 @@ import {
   admitExecutionNativeScriptInvalidWorkflowArtifact,
   type AdmittedExecutionNativeScriptInvalidArtifact,
 } from "./artifact.js";
-import type {
-  ExecutionNativeScriptInvalidContracts,
-  ExecutionNativeScriptInvalidRole,
-} from "./contracts.js";
-import {
-  executionNativeScriptInvalidSharedTransition,
-  type ExecutionNativeScriptInvalidTransition,
-} from "./custody.js";
 import {
   type ExecutionNativeScriptInvalidProofPlan,
   requireConvictingExecutionNativeScriptInvalidProof,
 } from "./prover.js";
-import { executionNativeScriptInvalidStep01Datum } from "./step01.js";
 import { isExecutionNativeScriptInvalidWalkRole } from "./walk.js";
 
-type Role = ExecutionNativeScriptInvalidRole;
+type Role = DirectPurposeRole;
 
 export type PlannedExecutionNativeScriptInvalidArtifact = Readonly<{
   admitted: AdmittedExecutionNativeScriptInvalidArtifact;
@@ -50,10 +47,7 @@ export type PlannedExecutionNativeScriptInvalidArtifact = Readonly<{
   fieldsOf: (role: Role) => readonly number[];
   /** The one planned transition spending `role` from a thread holding
    * `datum`. */
-  transitionAt: (
-    role: Role,
-    datum: string,
-  ) => ExecutionNativeScriptInvalidTransition;
+  transitionAt: (role: Role, datum: string) => DirectPurposeTransition;
 }>;
 
 /** The transition continuing a thread at `role` that holds `datum`: a
@@ -68,7 +62,7 @@ export const executionNativeScriptInvalidTransitionAt =
     paging: DirectPurposePaging,
     isSourceRole: (role: Role) => boolean,
   ) =>
-  (role: Role, datum: string): ExecutionNativeScriptInvalidTransition => {
+  (role: Role, datum: string): DirectPurposeTransition => {
     if (isExecutionNativeScriptInvalidWalkRole(role)) {
       if (proof.walk === null)
         throw new Error(
@@ -85,10 +79,7 @@ export const executionNativeScriptInvalidTransitionAt =
         ).toLowerCase() === datum.toLowerCase(),
     );
     if (matches.length === 1) return matches[0]!;
-    if (isSourceRole(role))
-      return executionNativeScriptInvalidSharedTransition(
-        paging.transitionAt(role, datum),
-      );
+    if (isSourceRole(role)) return paging.transitionAt(role, datum);
     throw new Error(
       `executionNativeScriptInvalid ${role} thread datum matches ${matches.length.toString()} planned transitions`,
     );
@@ -96,7 +87,7 @@ export const executionNativeScriptInvalidTransitionAt =
 
 const plan = async (
   artifact: JournalJsonObject,
-  contracts: ExecutionNativeScriptInvalidContracts,
+  contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<PlannedExecutionNativeScriptInvalidArtifact> => {
   const admitted =
@@ -113,10 +104,7 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = executionNativeScriptInvalidStep01Datum(
-    admitted.material,
-    prover,
-  );
+  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   const paging = directPurposePaging({
     label: "executionNativeScriptInvalid",
     transitions: proof.source,
@@ -153,7 +141,7 @@ export const planExecutionNativeScriptInvalidArtifact = ({
   prover,
 }: {
   readonly artifact: JournalJsonObject;
-  readonly contracts: ExecutionNativeScriptInvalidContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
 }): Promise<PlannedExecutionNativeScriptInvalidArtifact> => {
   const key = [

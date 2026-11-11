@@ -55,6 +55,9 @@ export type DirectPurposeFamily<State = SDK.DirectClaimFinalState> = {
     contracts: DirectPurposeContracts,
   ) => Readonly<Partial<Record<DirectPurposeRole, SDK.SpendingValidator>>>;
   readonly verdict: DirectPurposeVerdict<State>;
+  /** The step-01 spend redeemer's schema; the shared direct step-01 when
+   * absent. */
+  readonly step01Redeemer?: typeof SDK.DirectStep01Redeemer;
 };
 
 /** The shared claim terminal's verdict. */

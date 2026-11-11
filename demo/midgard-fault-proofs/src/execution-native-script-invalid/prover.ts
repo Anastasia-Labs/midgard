@@ -12,6 +12,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import type { RouteInputs } from "../direct-purpose-family/pointer-scan.js";
 import {
   directPurposeInputDescriptorsPresent,
@@ -32,13 +33,8 @@ import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisit
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,
   executionNativeScriptInvalidContractRoles,
-  type ExecutionNativeScriptInvalidContracts,
 } from "./contracts.js";
-import {
-  executionNativeScriptInvalidFieldPlans,
-  executionNativeScriptInvalidSharedTransition,
-  type ExecutionNativeScriptInvalidTransition,
-} from "./custody.js";
+import { executionNativeScriptInvalidFieldPlans } from "./custody.js";
 import { nativeEvaluationResult } from "./evaluate.js";
 import {
   type ExecutionNativeScriptInvalidEntry,
@@ -193,7 +189,7 @@ export type ExecutionNativeScriptInvalidProofPlan = {
    * paging. */
   readonly source: readonly DirectPurposeTransition[];
   /** Every custody transition from `bindEvent` to the terminal's input. */
-  readonly transitions: readonly ExecutionNativeScriptInvalidTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
   /** The paged evaluation, when the route evaluates a native source. */
   readonly walk: ExecutionNativeScriptInvalidWalk | null;
   readonly final: Final;
@@ -208,7 +204,7 @@ export const prepareExecutionNativeScriptInvalidProof = async ({
   batch,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly contracts: ExecutionNativeScriptInvalidContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
   /** The route to take; the first convicting one otherwise. */
   readonly entry?: ExecutionNativeScriptInvalidEntry;
@@ -248,7 +244,7 @@ export const prepareExecutionNativeScriptInvalidProof = async ({
     entry: chosen,
     source,
     transitions: [
-      ...source.map(executionNativeScriptInvalidSharedTransition),
+      ...source,
       ...route.local,
       ...(route.walk?.transitions ?? []),
     ],

@@ -10,6 +10,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -30,10 +31,7 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,
-  type ExecutionNativeScriptInvalidContracts,
-} from "./contracts.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL } from "./contracts.js";
 
 const TERMINAL_INDEX =
   SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.indexOf("terminal");
@@ -53,7 +51,7 @@ export const submitExecutionNativeScriptInvalidTerminal = async ({
   requireConviction = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ExecutionNativeScriptInvalidContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;

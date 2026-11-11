@@ -86,7 +86,6 @@ import { type CommittedFieldShapeContracts } from "../../../src/committed-field-
 import { type DirectPurposeContracts } from "../../../src/direct-purpose-family/family.js";
 import { type DistinctAssetAccumulationLimitContracts } from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
-import { type ExecutionNativeScriptInvalidContracts } from "../../../src/execution-native-script-invalid/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
@@ -293,7 +292,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly valueNotPreserved?: ValueNotPreservedContracts;
     readonly mintAuthorization?: MintAuthorizationContracts;
     readonly executionSourceScriptDecoding?: DirectPurposeContracts;
-    readonly executionNativeScriptInvalid?: ExecutionNativeScriptInvalidContracts;
+    readonly executionNativeScriptInvalid?: DirectPurposeContracts;
   }
 > => {
   // This integration test proves the real active-operators slashing and

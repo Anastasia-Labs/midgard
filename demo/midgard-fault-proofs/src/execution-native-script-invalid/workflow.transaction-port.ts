@@ -5,6 +5,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeContracts,
+  type DirectPurposeRole,
+  directPurposeRoleIndex,
+} from "../direct-purpose-family/family.js";
+import {
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+} from "../direct-purpose-family/step01.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
+import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -33,22 +46,14 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareExecutionNativeScriptInvalidWorkflowArtifact } from "./artifact.js";
-import type {
-  ExecutionNativeScriptInvalidContracts,
-  ExecutionNativeScriptInvalidRole,
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
+  type ExecutionNativeScriptInvalidRole,
 } from "./contracts.js";
 import {
   fitExecutionNativeScriptInvalidSourceTransition,
   fitExecutionNativeScriptInvalidWalkPage,
 } from "./fit.js";
-import {
-  submitExecutionNativeScriptInvalidStep01Accepted,
-  submitExecutionNativeScriptInvalidStep01Forced,
-} from "./step01.js";
-import {
-  type ExecutionNativeScriptInvalidCustody,
-  submitExecutionNativeScriptInvalidTransition,
-} from "./submit.js";
 import { submitExecutionNativeScriptInvalidTerminal } from "./terminal.js";
 import { isExecutionNativeScriptInvalidWalkRole } from "./walk.js";
 import {
@@ -85,7 +90,7 @@ export const executionNativeScriptInvalidRoleAt = (
 export const executionNativeScriptInvalidWorkflowContracts = (
   binding: FraudProofWorkflowDeploymentBinding<"executionNativeScriptInvalid">,
   certificate: FieldPreimageCertificateBinding,
-): ExecutionNativeScriptInvalidContracts => {
+): DirectPurposeContracts => {
   const resolved = binding.resolvedContracts;
   const chain = resolved.contracts.executionNativeScriptInvalid;
   if (chain === undefined || resolved.stateQueuePolicyId === undefined)
@@ -112,7 +117,7 @@ type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"executionNativeScriptInvalid">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ExecutionNativeScriptInvalidContracts;
+  contracts: DirectPurposeContracts;
   references: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -129,10 +134,10 @@ const threadAt = async (lucid: LucidEvolution, threadOutRef: string) => {
 export const createExecutionNativeScriptInvalidTransactionPort = (
   config: BoundConfig,
 ): CursorFamilyTransactionPort<"executionNativeScriptInvalid"> => {
-  const reference = (role: ExecutionNativeScriptInvalidRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const utxo =
       config.references.steps[
-        SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.indexOf(role)
+        directPurposeRoleIndex(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY, role)
       ];
     if (utxo === undefined)
       throw new Error(`executionNativeScriptInvalid ${role} reference absent`);
@@ -215,6 +220,7 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
             const role = executionNativeScriptInvalidRoleAt(step);
             const threadOutRef = cursorStringField(input, "threadOutRef");
             const common = {
+              family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -226,7 +232,7 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
             };
             if (role === "step01") {
               if (admitted.coordinate.sourceKind === 1) {
-                await submitExecutionNativeScriptInvalidStep01Forced({
+                await submitDirectPurposeStep01Forced({
                   ...common,
                   material: admitted.material,
                   reconstruction: admitted.current,
@@ -240,7 +246,7 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
                 address: config.signer.address,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
-              await submitExecutionNativeScriptInvalidStep01Accepted({
+              await submitDirectPurposeStep01Accepted({
                 ...common,
                 material: admitted.material,
                 blueprint: config.binding.blueprint,
@@ -300,7 +306,8 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            const custody: ExecutionNativeScriptInvalidCustody = {
+            const custody: DirectPurposeCustody = {
+              family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -332,11 +339,7 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
                     thread,
                   })
                 : continued;
-            await submitExecutionNativeScriptInvalidTransition(
-              custody,
-              thread,
-              transition,
-            );
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
@@ -345,10 +348,7 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
 };
 
 /** The thread's one computation-thread token. */
-const threadUnit = (
-  thread: UTxO,
-  contracts: ExecutionNativeScriptInvalidContracts,
-) => {
+const threadUnit = (thread: UTxO, contracts: DirectPurposeContracts) => {
   const units = Object.keys(thread.assets).filter((unit) =>
     unit.startsWith(contracts.computationThread.policyId),
   );
