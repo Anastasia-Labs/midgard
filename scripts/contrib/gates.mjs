@@ -11,7 +11,7 @@ export const GATES = {
     [
       "midgard-node",
       [
-        "tests/scratch-cg1-publication-fit.test.ts",
+        "tests/reference-script-publication-fit.test.ts",
         "tests/published-workflow-deployment.test.ts",
         "tests/reference-publication-chain.test.ts",
       ],

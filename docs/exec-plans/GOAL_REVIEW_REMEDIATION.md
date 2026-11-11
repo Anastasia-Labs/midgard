@@ -10,8 +10,8 @@ Two remaining verification requirements belong to the current
 
 - **Necessity revalidation (RF-055):** repeat the retained measured proof-fit
   checks against the frozen release source, compiler, blueprint, applied
-  parameters, and fixtures. Existing scanner pins and the CG1 exclusion do
-  not establish current acceptance. Resolve their actual discrepancies;
+  parameters, and fixtures. Existing scanner pins do not establish current
+  acceptance. Resolve their actual discrepancies;
   updating a digest or restoring removed bookkeeping is not verification.
 - **Manifest-bound candidate production (RF-079):** after the real release
   identity is available, exercise the production candidate emitter with a

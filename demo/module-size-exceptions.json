@@ -1288,10 +1288,5 @@
     "file": "scripts/deployment-profiles.test.mjs",
     "max": 1047,
     "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Operator economics: the entry imports dedicated all-profile cases, replacing two duplicate mutation callbacks."
-  },
-  {
-    "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
-    "max": 575,
-    "reason": "Ordered module-level registration/CLI execution (55 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary."
   }
 ]

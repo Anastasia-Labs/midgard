@@ -15,8 +15,8 @@ node scripts/contrib.mjs gate database-isolation --seed 17
 The registry is executable: every literal file exists and every wildcard
 collects a nonempty set. Deployment fit runs the real signed runtime roster,
 persisted deployment/binder checks and family publication suites. Its focused
-runner captures the existing CG1 and published-workflow measurement outputs
-inside the run directory. Recovery uses production workflow, storage and
+runner captures the published-workflow measurement output inside the run
+directory. Recovery uses production workflow, storage and
 funding suites, including the shared descendant/operator cleanup cases.
 Boundary gates include actual compiled workers; lifecycle gates exercise the
 existing process/network consumers. Policy gates retain ordinary, adopted and

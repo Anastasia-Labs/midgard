@@ -1,29 +1,20 @@
 /**
- * CG1 — aggregate control-publication fit driver.
+ * Every node-runtime reference script fits a real L1 publication transaction.
  *
- * This is the measurement driver behind
- * `docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json`.
- * The original run used a throwaway scratch file that was deleted afterwards,
- * so the artifact's own `measurement.reproductionCommand` pointed at a path
- * that did not exist and CG1 could not be re-measured after a blueprint
- * regeneration without re-deriving the driver from the artifact's prose. This
- * file is that driver, made reproducible and committed.
- *
- * What it measures, per CG1's acceptance clause ("every parameterized
- * hub/control validator fits a real 16,384-byte publication transaction;
- * evidence is bound to final validator hashes"):
+ * This is GOAL_SPEC §8.1 row CG1: "every parameterized hub/control validator
+ * fits a real 16,384-byte publication transaction".
  *
  *   - the roster is re-derived from `nodeRuntimeReferenceScriptTargets`, never
  *     hardcoded, so a validator added to or removed from the node's runtime
- *     reference-script set changes this measurement automatically;
+ *     reference-script set changes this check automatically;
  *   - the contracts are a genuinely real `MidgardValidators` bundle built from
  *     the working-tree blueprint (`loadRealMidgardContractsForTest`), not the
- *     AlwaysSucceeds stand-in, so every applied hash is the real one;
+ *     AlwaysSucceeds stand-in, so every applied script is the real one;
  *   - each target is published through
  *     `completeReferenceScriptPublicationTxProgram` — the same builder the
  *     node's production reference-script publication path calls — signed, and
  *     the COMPLETE SIGNED transaction is measured. Raw script size is not the
- *     bound CG1 claims; the signed publication envelope is;
+ *     bound; the signed publication envelope is;
  *   - the emulator's `maxTxSize` is pinned to the real L1 16,384-byte limit
  *     rather than the emulator's relaxed default, so a transaction that would
  *     be rejected on L1 is rejected here too;
@@ -31,17 +22,15 @@
  *     selection sees the previous one's confirmed wallet UTxOs.
  *
  * Blueprint independence: nothing here pins a hash, a byte count or a roster
- * name. It re-derives all of them, which is what makes it re-runnable against
- * any regenerated blueprint. Set `MIDGARD_CG1_EMIT=<path>` to write the
- * measured roster in the evidence artifact's own shape, ready to splice into
- * `canonical-v1-cg1-control-publication-fit-v1.json`.
+ * name. It re-derives all of them, so it re-runs against any regenerated
+ * blueprint.
  *
  * The one-shot outref is fixed to the all-zero reference rather than a live
- * wallet UTxO. The one-shot parameter feeds the applied hashes, so a wallet-
- * derived outref would make every hash in the artifact depend on the emulator
- * seed and the artifact would be unreproducible.
+ * wallet UTxO. The one-shot parameter feeds the applied scripts, so a wallet-
+ * derived outref would make every measured transaction depend on the emulator
+ * seed.
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,12 +41,7 @@ import {
   referenceScriptPublicationFundingTarget,
 } from "@al-ft/midgard-sdk";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
-import {
-  CML,
-  Emulator,
-  generateEmulatorAccount,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { Emulator, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -77,18 +61,17 @@ const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, "../../..");
 
 /**
- * `onchain/aiken/plutus.json` is gitignored, so a clean CI checkout has no
- * blueprint and cannot build a real contract bundle at all. CG1's committed
- * gate has the same structural hole and answers it with `--blueprint-optional`;
- * this driver answers it by skipping. A skipped measurement is honest — a
- * measurement against the AlwaysSucceeds stand-in would not be.
+ * `onchain/aiken/plutus.json` is gitignored. A checkout without it cannot
+ * build a real contract bundle at all, and this check skips there. A skipped
+ * measurement is honest — a measurement against the AlwaysSucceeds stand-in
+ * would not be.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   resolve(repositoryRoot, "onchain/aiken/plutus.json");
 const blueprintPresent = existsSync(blueprintPath);
 
-/** CG1's bound is the real L1 limit, not the emulator's relaxed default. */
+/** The bound is the real L1 limit, not the emulator's relaxed default. */
 const MAX_L1_TX_BYTES = 16_384;
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -99,41 +82,14 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
   maxCollateralInputs: 3,
 } as const;
 
-/**
- * The artifact's `nonceUtxo`. Fixed, not wallet-derived — see the header note.
- */
+/** Fixed, not wallet-derived — see the header note. */
 const ONE_SHOT_OUT_REF = {
   txHash: "0".repeat(64),
   outputIndex: 0,
 } as const;
 
-type RosterRow = {
-  readonly name: string;
-  readonly scriptType: string;
-  readonly appliedScriptHash: string;
-  readonly serializedScriptBytes: number;
-  readonly completeSignedTransactionBytes: number;
-  readonly l1ByteMarginBytes: number;
-  readonly feeLovelace: number;
-  readonly fits: boolean;
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
-
-const measureSignedTransaction = (
-  transactionCbor: string,
-): { readonly completeSignedBytes: number; readonly feeLovelace: number } => {
-  const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
-  return {
-    // CBOR hex is two characters per byte; the transaction as submitted is the
-    // thing the ledger's size rule applies to.
-    completeSignedBytes: transactionCbor.length / 2,
-    feeLovelace: Number(transaction.body().fee()),
-  };
-};
-
 describe.skipIf(!blueprintPresent)(
-  "CG1 — every node-runtime control validator fits a real 16,384-byte publication transaction",
+  "every node-runtime control validator fits a real 16,384-byte publication transaction",
   () => {
     it("publishes every roster target under the real L1 envelope", async () => {
       const operator = generateEmulatorAccount({ lovelace: 30_000_000_000n });
@@ -149,7 +105,7 @@ describe.skipIf(!blueprintPresent)(
 
       // A fresh deployer-chosen native timelock policy, exactly as a real
       // deployment would create. It is a Plutus parameter for da-attestation
-      // (both legs), so its identity is recorded in the artifact.
+      // (both legs), so it shapes that validator's applied script.
       const authPolicy = await createReferenceScriptAuthPolicy(
         lucid,
         emulator.now(),
@@ -164,9 +120,9 @@ describe.skipIf(!blueprintPresent)(
       // This argument MUST be passed. `loadRealMidgardContractsForTest`'s
       // second parameter is optional and silently falls back to the
       // AlwaysSucceeds placeholder's auth script when omitted, which binds
-      // da-attestation's applied hash to the placeholder policy instead of the
-      // deployer-chosen one the artifact records — a wrong hash out of a run
-      // that still reports green. Passing a `Script` instead of the policy
+      // da-attestation's applied script to the placeholder policy instead of
+      // the deployer-chosen one — a wrong script measured by a run that still
+      // reports green. Passing a `Script` instead of the policy
       // object fails loudly ("Could not serialize the data: Unsupported
       // type"); passing nothing fails silently. Only the latter is dangerous.
       const contracts = await loadRealMidgardContractsForTest(
@@ -180,7 +136,6 @@ describe.skipIf(!blueprintPresent)(
       );
 
       const referenceScriptsAddress = await lucid.wallet().address();
-      const roster: RosterRow[] = [];
 
       // Sequential on purpose: each publication's funding selection must see
       // the previous one's confirmed change, the way a real deployment run
@@ -212,13 +167,13 @@ describe.skipIf(!blueprintPresent)(
         ).toBeDefined();
 
         const signed = await tx.sign.withWallet().complete();
-        const { completeSignedBytes, feeLovelace } = measureSignedTransaction(
-          signed.toCBOR(),
-        );
+        // CBOR hex is two characters per byte; the transaction as submitted is
+        // the thing the ledger's size rule applies to.
+        const completeSignedBytes = signed.toCBOR().length / 2;
         const l1ByteMarginBytes = MAX_L1_TX_BYTES - completeSignedBytes;
 
         // The acceptance clause, asserted per target rather than in aggregate:
-        // a single oversize control validator fails CG1 outright.
+        // a single oversize control validator fails the check outright.
         expect(
           l1ByteMarginBytes,
           `${target.name} is ${completeSignedBytes.toString()} signed bytes and does not fit the ${MAX_L1_TX_BYTES.toString()}-byte L1 envelope`,
@@ -235,54 +190,6 @@ describe.skipIf(!blueprintPresent)(
           published.length,
           `expected exactly one live ${target.name} reference-script UTxO`,
         ).toEqual(1);
-
-        roster.push({
-          name: target.name,
-          scriptType: target.script.type,
-          appliedScriptHash: validatorToScriptHash(target.script),
-          serializedScriptBytes: target.script.script.length / 2,
-          completeSignedTransactionBytes: completeSignedBytes,
-          l1ByteMarginBytes,
-          feeLovelace,
-          fits: true,
-          txHash,
-          outputIndex: localOutput!.outputIndex,
-        });
-      }
-
-      expect(roster.length).toEqual(targets.length);
-      expect(roster.every(({ fits }) => fits)).toBe(true);
-
-      const emitPath = process.env.MIDGARD_CG1_EMIT;
-      if (emitPath !== undefined && emitPath !== "") {
-        const absolute = resolve(repositoryRoot, emitPath);
-        mkdirSync(dirname(absolute), { recursive: true });
-        writeFileSync(
-          absolute,
-          `${JSON.stringify(
-            {
-              referenceScriptAuthPolicy: {
-                policyId: authPolicy.policyId,
-                mintingScriptCBOR: authPolicy.mintingScriptCBOR,
-                expiresAtSlot: authPolicy.expiresAtSlot,
-                expiresAtUnixTime: authPolicy.expiresAtUnixTime,
-                timelockDurationMs: authPolicy.timelockDurationMs,
-              },
-              measurement: {
-                nodeVersion: process.version,
-                network: "Preprod",
-                emulatorProtocolParameters: { maxTxSize: MAX_L1_TX_BYTES },
-                nonceUtxo: ONE_SHOT_OUT_REF,
-              },
-              roster,
-              rosterCount: roster.length,
-              rosterAllFit: roster.every(({ fits }) => fits),
-            },
-            null,
-            2,
-          )}\n`,
-          "utf8",
-        );
       }
     });
   },

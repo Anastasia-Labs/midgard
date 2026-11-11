@@ -19,8 +19,8 @@ blueprint does not by itself invalidate the artifact's consistency check; it
 prevents using that measurement as current-build evidence without
 revalidation.
 
-Current consumers include live measurement producers, saved-ledger checks, the
-CG1 publication verifier, and machine-readable necessity pins parsed by
+Current consumers include live measurement producers, saved-ledger checks and
+machine-readable necessity pins parsed by
 `demo/midgard-validation/tests/validation-machine.test.ts`. Preserve those
 consumer distinctions before changing pins or schemas.
 
@@ -34,12 +34,7 @@ consumer distinctions before changing pins or schemas.
 3. Rerun producing measurements when their required identity changed. Never
    replace only the recorded digest, compiler, or cost values to make a check
    pass. Preserve a failed fit verdict and its stated resource limit.
-4. Review CG1's `--blueprint-optional` lane separately. The flag skips the
-   working-tree comparison only when the blueprint is absent; a present
-   blueprint is still compared. A current deployment acceptance lane must
-   build and require its exact blueprint. A source/index-only consistency lane
-   must describe that narrower result explicitly.
-5. Make required build prerequisites fail with an actionable message. Inspect
+4. Make required build prerequisites fail with an actionable message. Inspect
    each CI lane before assuming a gitignored artifact is absent: the node
    workflow builds Aiken before relevant checks.
 

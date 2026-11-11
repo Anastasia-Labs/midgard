@@ -315,11 +315,6 @@ export const runTests = async (
     POSTGRES_HOST: "127.0.0.1",
     POSTGRES_PORT: "5433",
   };
-  if (files.includes("tests/scratch-cg1-publication-fit.test.ts"))
-    overrides.MIDGARD_CG1_EMIT = resolve(
-      directory,
-      "signed-publication-fit.json",
-    );
   if (files.includes("tests/published-workflow-deployment.test.ts"))
     overrides.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH = resolve(
       directory,
@@ -496,10 +491,7 @@ export const runTests = async (
     removedWorktreeCleanup,
     sourceOnly,
     nativeArtifacts: native,
-    evidenceFiles: [
-      runEnv.MIDGARD_CG1_EMIT,
-      runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH,
-    ]
+    evidenceFiles: [runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH]
       .filter(Boolean)
       .map((path) => ({
         path,

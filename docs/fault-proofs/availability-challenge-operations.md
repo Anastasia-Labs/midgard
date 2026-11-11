@@ -260,7 +260,7 @@ MIDGARD_SKIP_DB_TESTS=1 NODE_ENV=emulator pnpm --dir demo/midgard-node exec vite
   tests/availability-challenge-readiness.test.ts \
   tests/mainnet-protocol-parameters.test.ts \
   tests/initialization-emulator.test.ts \
-  tests/scratch-cg1-publication-fit.test.ts
+  tests/reference-script-publication-fit.test.ts
 ```
 
 These local results establish implementation behavior, not acceptance of a live

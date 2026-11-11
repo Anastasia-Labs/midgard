@@ -330,11 +330,10 @@ NODE_ENV=emulator MIDGARD_REAL_BLUEPRINT_PATH="$PWD/onchain/aiken/plutus.json" \
   tests/availability-challenge-lifecycle.test.ts \
   tests/mainnet-protocol-parameters.test.ts \
   tests/initialization-emulator.test.ts \
-  tests/scratch-cg1-publication-fit.test.ts
+  tests/reference-script-publication-fit.test.ts
 pnpm --dir demo/midgard-node run typecheck
 ```
 
 Set `MIDGARD_AVAILABILITY_FIT_REPORT_DIR` to an existing output directory to retain
-all lifecycle transaction measurements, and `MIDGARD_CG1_EMIT` to an output file
-for the complete signed reference-publication roster. Saved summaries do not
-replace running these gates on the final release blueprint.
+all lifecycle transaction measurements. Saved summaries do not replace running
+these gates on the final release blueprint.
