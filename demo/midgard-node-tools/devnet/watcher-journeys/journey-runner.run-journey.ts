@@ -16,6 +16,10 @@ import {
 } from "./correction.js";
 import type { JourneySuccessorPort } from "./honest-successor.js";
 import { attachedJourneyMode } from "./journey-runner.attached-mode.js";
+import {
+  awaitHealthyWatcher,
+  type JourneyHealthyWatcherStatus,
+} from "./journey-runner.await-healthy-watcher.js";
 import { devnetJourneyMode } from "./journey-runner.devnet-mode.js";
 import type { JourneyExecution } from "./journey-runner.journey-execution.js";
 import type {
@@ -245,9 +249,9 @@ export const runJourney = async (
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
       );
     const successor = await successorPort.commit();
-    await pollWhileReplaying(
-      "healthy processing after correction",
-      async () => {
+    const healthy = await awaitHealthyWatcher({
+      name: "healthy processing after correction",
+      observe: async () => {
         requireLive();
         const decision = await verifiedHeaders.collectHealthy(
           staged.predecessor,
@@ -260,20 +264,14 @@ export const runJourney = async (
             headerUnit(successor.headerHash),
           ),
         ).toHaveLength(1);
-        const status = await operations("/v1/status");
-        if (status.readiness !== "ready") return undefined;
-        expect(status).toMatchObject({
-          liveness: "live",
-          readiness: "ready",
-          readinessReasons: [],
-          activeAlerts: [],
-          launchScope: { complete: true },
-        });
         return decision;
       },
-      watcherProgress,
-      timing.allowances.healthySuccessorObservationMs,
-    );
+      status: async () =>
+        (await operations("/v1/status")) as JourneyHealthyWatcherStatus,
+      polls: { pollWhileReplaying },
+      progress: watcherProgress,
+      stallTimeoutMs: timing.allowances.healthySuccessorObservationMs,
+    });
     await verifiedHeaders.retain();
     await writeJourneyArtifact(
       join(context.runDirectory, "work/journeys/head.json"),
@@ -325,7 +323,9 @@ export const runJourney = async (
       proverAddress: mode.proverAddress,
       completion,
       successor: successor.headerHash,
-      diagnostics: await running.diagnostics(),
+      // The status read that proved healthy processing, which the evidence
+      // verifier checks, not a later read that may carry a fresh alert.
+      diagnostics: { ...(await running.diagnostics()), status: healthy.status },
       nativeEvidencePath: mode.transactions.nativeEvidencePath,
     });
     const finalizeEvidence = () =>
