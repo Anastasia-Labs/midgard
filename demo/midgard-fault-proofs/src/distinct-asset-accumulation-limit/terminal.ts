@@ -10,6 +10,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
   requireLinearFaultReferenceScript,
@@ -31,10 +32,7 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL,
-  type DistinctAssetAccumulationLimitContracts,
-} from "./contracts.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL } from "./contracts.js";
 
 const TERMINAL_INDEX =
   SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.indexOf("terminal");
@@ -55,7 +53,7 @@ export const submitDistinctAssetAccumulationLimitTerminal = async ({
   requireConviction = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DistinctAssetAccumulationLimitContracts;
+  readonly contracts: DirectPurposeContracts;
   /** The bound source whose verdict the fold's crossing contradicts. */
   readonly material: DirectScriptMaterial;
   readonly categoryId: string;

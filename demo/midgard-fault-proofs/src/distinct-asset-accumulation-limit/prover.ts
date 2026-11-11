@@ -10,16 +10,16 @@
  * reason ranks after it. */
 import * as SDK from "@al-ft/midgard-sdk";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import { directPurposeBindTransitions } from "../direct-purpose-family/source-walk.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL,
   distinctAssetAccumulationLimitContractRoles,
-  type DistinctAssetAccumulationLimitContracts,
 } from "./contracts.js";
 import {
   distinctAssetAccumulationLimitFieldPlans,
-  type DistinctAssetAccumulationLimitTransition,
   sharedBindTransition,
 } from "./custody.js";
 import { distinctAssetUnits } from "./fold.js";
@@ -51,7 +51,7 @@ const verdict = (
 export type DistinctAssetAccumulationLimitProofPlan = {
   readonly plan: ReturnType<typeof distinctAssetAccumulationLimitFieldPlans>;
   /** Every custody transition from `bindEvent` to the terminal's input. */
-  readonly transitions: readonly DistinctAssetAccumulationLimitTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
   /** The terminal datum the fold writes. */
   readonly final: string;
   /** The fold, paged from any thread datum it holds. */
@@ -67,7 +67,7 @@ export const prepareDistinctAssetAccumulationLimitProof = async ({
   batch,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly contracts: DistinctAssetAccumulationLimitContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
   readonly batch?: DistinctAssetAccumulationLimitWalkBatch;
 }): Promise<DistinctAssetAccumulationLimitProofPlan> => {

@@ -20,11 +20,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDistinctAssetAccumulationLimitTransition,
-  distinctAssetAccumulationLimitContractRoles,
-  type DistinctAssetAccumulationLimitRole,
-  submitDistinctAssetAccumulationLimitTransition,
-} from "../src/distinct-asset-accumulation-limit/index.js";
+  buildDirectPurposeTransition,
+  type DirectPurposeRole,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import { distinctAssetAccumulationLimitContractRoles } from "../src/distinct-asset-accumulation-limit/index.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
@@ -219,17 +219,16 @@ const forgedTerminal = async (
 const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
-): Promise<readonly DistinctAssetAccumulationLimitRole[]> => {
+): Promise<readonly DirectPurposeRole[]> => {
   const harness = await makeDistinctAssetAccumulationLimitHarness();
   const references = await publishDistinctAssetAccumulationLimitRoles(harness);
-  const reference = (role: DistinctAssetAccumulationLimitRole) =>
-    references.get(role)!.utxo;
+  const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupDistinctAssetScenario({
     harness,
     shape,
     source,
   });
-  const refused: DistinctAssetAccumulationLimitRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   const run = await driveDistinctAssetAccumulationLimitThread({
     harness,
     scenario,
@@ -259,7 +258,7 @@ const forgeEveryRole = async (
       .find((datum) => datum !== transition.datum);
     if (forged === undefined)
       throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildDistinctAssetAccumulationLimitTransition(
+    const built = await buildDirectPurposeTransition(
       run.custody,
       thread,
       transition,
@@ -283,11 +282,7 @@ const forgeEveryRole = async (
     );
     await expectOnchainRefusal(() => built.complete());
     thread = (
-      await submitDistinctAssetAccumulationLimitTransition(
-        run.custody,
-        thread,
-        transition,
-      )
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
     refused.push(transition.role);
   }
@@ -300,7 +295,7 @@ const forgeEveryRole = async (
   return refused;
 };
 
-const EVERY_ROLE = new Set<DistinctAssetAccumulationLimitRole>(
+const EVERY_ROLE = new Set<DirectPurposeRole>(
   SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
 );
 
@@ -321,7 +316,7 @@ const MINT_CROSSING: DistinctAssetSubjectShape = {
   mint: [256, 256, 10],
 };
 
-const OUTPUT_AND_MINT_ROLES: readonly DistinctAssetAccumulationLimitRole[] = [
+const OUTPUT_AND_MINT_ROLES: readonly DirectPurposeRole[] = [
   "outputsGrammar",
   "outputs",
   "mintGrammar",

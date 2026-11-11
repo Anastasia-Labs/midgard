@@ -6,23 +6,26 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeCustody,
+  type DirectPurposeRole,
+  directPurposeStep01Datum,
+  submitDirectPurposeInit,
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+  submitDirectPurposeTransition,
+  submitDirectPurposeTransitions,
+} from "../../src/direct-purpose-family/index.js";
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FIELDS,
   distinctAssetAccumulationLimitContractRoles,
-  type DistinctAssetAccumulationLimitCustody,
   type DistinctAssetAccumulationLimitProofPlan,
-  type DistinctAssetAccumulationLimitRole,
-  distinctAssetAccumulationLimitStep01Datum,
   distinctAssetAccumulationLimitTransitionAt,
   type DistinctAssetAccumulationLimitWalkBatch,
   fitDistinctAssetAccumulationLimitPage,
   isDistinctAssetAccumulationLimitPagedRole,
   prepareDistinctAssetAccumulationLimitProof,
-  submitDistinctAssetAccumulationLimitInit,
-  submitDistinctAssetAccumulationLimitStep01Accepted,
-  submitDistinctAssetAccumulationLimitStep01Forced,
   submitDistinctAssetAccumulationLimitTerminal,
-  submitDistinctAssetAccumulationLimitTransition,
-  submitDistinctAssetAccumulationLimitTransitions,
 } from "../../src/distinct-asset-accumulation-limit/index.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -68,7 +71,7 @@ export type DistinctAssetAccumulationLimitHarness = Awaited<
 >;
 
 export type RoleReference = {
-  readonly role: DistinctAssetAccumulationLimitRole;
+  readonly role: DirectPurposeRole;
   readonly scriptHash: string;
   readonly utxo: UTxO;
   readonly publication: CompleteSignedTransactionMeasurement;
@@ -78,12 +81,12 @@ export type RoleReference = {
  * which refuses any publication above 15,872 bytes. */
 export const publishDistinctAssetAccumulationLimitRoles = async (
   harness: DistinctAssetAccumulationLimitHarness,
-): Promise<ReadonlyMap<DistinctAssetAccumulationLimitRole, RoleReference>> => {
+): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = distinctAssetAccumulationLimitContractRoles(
     harness.distinctAssetAccumulationLimit,
   );
   const byHash = new Map<string, RoleReference>();
-  const out = new Map<DistinctAssetAccumulationLimitRole, RoleReference>();
+  const out = new Map<DirectPurposeRole, RoleReference>();
   for (const role of SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER) {
     const validator = roles[role];
     let reference = byHash.get(validator.spendingScriptHash);
@@ -198,17 +201,14 @@ export type StepMeasurement = {
  * terminal's input, as the workflow does: each page that opens MPF proofs is
  * sized to the transaction budget. */
 const continueToTerminal = async (
-  custody: DistinctAssetAccumulationLimitCustody,
+  custody: DirectPurposeCustody,
   prepared: DistinctAssetAccumulationLimitProofPlan,
   start: UTxO,
   scenario: DistinctAssetScenario,
 ): Promise<UTxO> => {
   const transitionAt = distinctAssetAccumulationLimitTransitionAt(
     prepared,
-    distinctAssetAccumulationLimitStep01Datum(
-      scenario.material,
-      custody.signer.paymentKeyHash,
-    ),
+    directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   let thread = start;
   let role = prepared.transitions[0]!.role;
@@ -221,13 +221,8 @@ const continueToTerminal = async (
           thread,
         })
       : transitionAt(role, thread.datum!);
-    thread = (
-      await submitDistinctAssetAccumulationLimitTransition(
-        custody,
-        thread,
-        transition,
-      )
-    ).thread;
+    thread = (await submitDirectPurposeTransition(custody, thread, transition))
+      .thread;
     role = transition.next;
   }
   return thread;
@@ -245,10 +240,7 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
 }: {
   readonly harness: DistinctAssetAccumulationLimitHarness;
   readonly scenario: DistinctAssetScenario;
-  readonly references: ReadonlyMap<
-    DistinctAssetAccumulationLimitRole,
-    RoleReference
-  >;
+  readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   readonly batch?: DistinctAssetAccumulationLimitWalkBatch;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (
@@ -276,16 +268,17 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
       scenario,
       plan: prepared.plan,
     });
-  const reference = (role: DistinctAssetAccumulationLimitRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const found = references.get(role);
     if (found === undefined) throw new Error(`${role} reference absent`);
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitDistinctAssetAccumulationLimitInit({
+    submitDirectPurposeInit({
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       network,
+      family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
       contracts: distinctAssetAccumulationLimit,
       category: harness.category,
       catalogue: {
@@ -314,6 +307,7 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
   }
   const common = {
     lucid: proverLucid,
+    family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
     contracts: distinctAssetAccumulationLimit,
     categoryId: harness.category.categoryId,
     signer: proverSigner,
@@ -323,11 +317,11 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? submitDistinctAssetAccumulationLimitStep01Forced({
+      ? submitDirectPurposeStep01Forced({
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : submitDistinctAssetAccumulationLimitStep01Accepted({
+      : submitDirectPurposeStep01Accepted({
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -338,10 +332,11 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
   );
   steps.push({ label: "step01", measurement: step01.measurement });
   const unit = init.result.computationThreadUnit;
-  const custody: DistinctAssetAccumulationLimitCustody = {
+  const custody: DirectPurposeCustody = {
     lucid: proverLucid,
     blueprint: harness.realBlueprint,
     network,
+    family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
     contracts: distinctAssetAccumulationLimit,
     signer: proverSigner,
     unit,
@@ -365,7 +360,7 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
   const thread =
     transitions === undefined
       ? await continueToTerminal(custody, prepared, start, scenario)
-      : await submitDistinctAssetAccumulationLimitTransitions(
+      : await submitDirectPurposeTransitions(
           custody,
           start,
           transitions(prepared),

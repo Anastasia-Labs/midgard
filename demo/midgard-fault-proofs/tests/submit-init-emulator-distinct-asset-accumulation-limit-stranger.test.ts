@@ -20,11 +20,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  distinctAssetAccumulationLimitContractRoles,
-  type DistinctAssetAccumulationLimitRole,
-  type DistinctAssetAccumulationLimitTransition,
-  submitDistinctAssetAccumulationLimitTransition,
-} from "../src/distinct-asset-accumulation-limit/index.js";
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+  type DirectPurposeTransition,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY } from "../src/distinct-asset-accumulation-limit/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   getCompiledScript,
@@ -68,7 +69,7 @@ const MINT_CROSSING: DistinctAssetSubjectShape = {
  * then takes the prover's own step; returns the roles that refused. */
 const refuseStrangerAtEveryRole = async (
   shape: DistinctAssetSubjectShape,
-): Promise<readonly DistinctAssetAccumulationLimitRole[]> => {
+): Promise<readonly DirectPurposeRole[]> => {
   const harness = await makeDistinctAssetAccumulationLimitHarness();
   const references = await publishDistinctAssetAccumulationLimitRoles(harness);
   const scenario = await setupDistinctAssetScenario({
@@ -103,9 +104,6 @@ const refuseStrangerAtEveryRole = async (
     harness.proverSigner.paymentKeyHash,
   );
 
-  const roles = distinctAssetAccumulationLimitContractRoles(
-    harness.distinctAssetAccumulationLimit,
-  );
   const phasScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(
@@ -118,9 +116,13 @@ const refuseStrangerAtEveryRole = async (
   /** The planned transition, built and signed by the stranger alone. */
   const strangerTransition = async (
     thread: UTxO,
-    transition: DistinctAssetAccumulationLimitTransition,
+    transition: DirectPurposeTransition,
   ) => {
-    const next = roles[transition.next];
+    const next = directPurposeRoleValidator(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
+      harness.distinctAssetAccumulationLimit,
+      transition.next,
+    );
     const label = `stranger ${transition.label}`;
     const carriage = transition.fields.flatMap((field) =>
       run.custody.carriage(field),
@@ -179,16 +181,12 @@ const refuseStrangerAtEveryRole = async (
   };
 
   let thread = run.thread;
-  const refused: DistinctAssetAccumulationLimitRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   for (const transition of run.prepared.transitions) {
     await expectOnchainRefusal(() => strangerTransition(thread, transition));
     refused.push(transition.role);
     thread = (
-      await submitDistinctAssetAccumulationLimitTransition(
-        run.custody,
-        thread,
-        transition,
-      )
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
   }
   const outcome = await run.terminal(true, thread);

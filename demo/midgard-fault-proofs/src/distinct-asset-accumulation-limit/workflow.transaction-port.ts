@@ -5,6 +5,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeContracts,
+  type DirectPurposeRole,
+  directPurposeRoleIndex,
+} from "../direct-purpose-family/family.js";
+import {
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+} from "../direct-purpose-family/step01.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
+import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -33,19 +46,11 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareDistinctAssetAccumulationLimitWorkflowArtifact } from "./artifact.js";
-import type {
-  DistinctAssetAccumulationLimitContracts,
-  DistinctAssetAccumulationLimitRole,
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
+  type DistinctAssetAccumulationLimitRole,
 } from "./contracts.js";
 import { fitDistinctAssetAccumulationLimitPage } from "./fit.js";
-import {
-  submitDistinctAssetAccumulationLimitStep01Accepted,
-  submitDistinctAssetAccumulationLimitStep01Forced,
-} from "./step01.js";
-import {
-  type DistinctAssetAccumulationLimitCustody,
-  submitDistinctAssetAccumulationLimitTransition,
-} from "./submit.js";
 import { submitDistinctAssetAccumulationLimitTerminal } from "./terminal.js";
 import { isDistinctAssetAccumulationLimitPagedRole } from "./walk.js";
 import {
@@ -82,7 +87,7 @@ export const distinctAssetAccumulationLimitRoleAt = (
 export const distinctAssetAccumulationLimitWorkflowContracts = (
   binding: FraudProofWorkflowDeploymentBinding<"distinctAssetAccumulationLimit">,
   certificate: FieldPreimageCertificateBinding,
-): DistinctAssetAccumulationLimitContracts => {
+): DirectPurposeContracts => {
   const resolved = binding.resolvedContracts;
   const chain = resolved.contracts.distinctAssetAccumulationLimit;
   if (chain === undefined || resolved.stateQueuePolicyId === undefined)
@@ -109,7 +114,7 @@ type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"distinctAssetAccumulationLimit">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: DistinctAssetAccumulationLimitContracts;
+  contracts: DirectPurposeContracts;
   references: DistinctAssetAccumulationLimitWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -126,10 +131,10 @@ const threadAt = async (lucid: LucidEvolution, threadOutRef: string) => {
 export const createDistinctAssetAccumulationLimitTransactionPort = (
   config: BoundConfig,
 ): CursorFamilyTransactionPort<"distinctAssetAccumulationLimit"> => {
-  const reference = (role: DistinctAssetAccumulationLimitRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const utxo =
       config.references.steps[
-        SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.indexOf(role)
+        directPurposeRoleIndex(DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY, role)
       ];
     if (utxo === undefined)
       throw new Error(
@@ -214,6 +219,7 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
             const role = distinctAssetAccumulationLimitRoleAt(step);
             const threadOutRef = cursorStringField(input, "threadOutRef");
             const common = {
+              family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -225,7 +231,7 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
             };
             if (role === "step01") {
               if (admitted.coordinate.sourceKind === 1) {
-                await submitDistinctAssetAccumulationLimitStep01Forced({
+                await submitDirectPurposeStep01Forced({
                   ...common,
                   material: admitted.material,
                   reconstruction: admitted.current,
@@ -239,7 +245,7 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
                 address: config.signer.address,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
-              await submitDistinctAssetAccumulationLimitStep01Accepted({
+              await submitDirectPurposeStep01Accepted({
                 ...common,
                 material: admitted.material,
                 blueprint: config.binding.blueprint,
@@ -300,7 +306,8 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            const custody: DistinctAssetAccumulationLimitCustody = {
+            const custody: DirectPurposeCustody = {
+              family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -323,11 +330,7 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
                   thread,
                 })
               : continued;
-            await submitDistinctAssetAccumulationLimitTransition(
-              custody,
-              thread,
-              transition,
-            );
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
@@ -336,10 +339,7 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
 };
 
 /** The thread's one computation-thread token. */
-const threadUnit = (
-  thread: UTxO,
-  contracts: DistinctAssetAccumulationLimitContracts,
-) => {
+const threadUnit = (thread: UTxO, contracts: DirectPurposeContracts) => {
   const units = Object.keys(thread.assets).filter((unit) =>
     unit.startsWith(contracts.computationThread.policyId),
   );

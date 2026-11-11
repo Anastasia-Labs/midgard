@@ -3,6 +3,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
+import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -16,28 +22,22 @@ import {
   admitDistinctAssetAccumulationLimitWorkflowArtifact,
   type AdmittedDistinctAssetAccumulationLimitArtifact,
 } from "./artifact.js";
-import type {
-  DistinctAssetAccumulationLimitContracts,
-  DistinctAssetAccumulationLimitRole,
-} from "./contracts.js";
-import type { DistinctAssetAccumulationLimitTransition } from "./custody.js";
 import {
   type DistinctAssetAccumulationLimitProofPlan,
   requireConvictingDistinctAssetAccumulationLimitProof,
 } from "./prover.js";
-import { distinctAssetAccumulationLimitStep01Datum } from "./step01.js";
 import { isDistinctAssetAccumulationLimitPagedRole } from "./walk.js";
 
 export type PlannedDistinctAssetAccumulationLimitArtifact = Readonly<{
   admitted: AdmittedDistinctAssetAccumulationLimitArtifact;
   proof: DistinctAssetAccumulationLimitProofPlan;
   /** Every field a transition spending `role` opens. */
-  fieldsOf: (role: DistinctAssetAccumulationLimitRole) => readonly number[];
+  fieldsOf: (role: DirectPurposeRole) => readonly number[];
   /** The one planned transition spending `role` from a thread holding `datum`. */
   transitionAt: (
-    role: DistinctAssetAccumulationLimitRole,
+    role: DirectPurposeRole,
     datum: string,
-  ) => DistinctAssetAccumulationLimitTransition;
+  ) => DirectPurposeTransition;
 }>;
 
 /** The transition continuing a thread at `role` that holds `datum`: a paged
@@ -47,10 +47,7 @@ export type PlannedDistinctAssetAccumulationLimitArtifact = Readonly<{
  * changes. */
 export const distinctAssetAccumulationLimitTransitionAt =
   (proof: DistinctAssetAccumulationLimitProofPlan, step01Datum: string) =>
-  (
-    role: DistinctAssetAccumulationLimitRole,
-    datum: string,
-  ): DistinctAssetAccumulationLimitTransition => {
+  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
     if (
       isDistinctAssetAccumulationLimitPagedRole(role) ||
       role === "inputsResolve"
@@ -73,7 +70,7 @@ export const distinctAssetAccumulationLimitTransitionAt =
 
 const plan = async (
   artifact: JournalJsonObject,
-  contracts: DistinctAssetAccumulationLimitContracts,
+  contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<PlannedDistinctAssetAccumulationLimitArtifact> => {
   const admitted =
@@ -83,16 +80,13 @@ const plan = async (
     contracts,
     prover,
   });
-  const fields = new Map<DistinctAssetAccumulationLimitRole, Set<number>>();
+  const fields = new Map<DirectPurposeRole, Set<number>>();
   for (const transition of proof.transitions) {
     const opened = fields.get(transition.role) ?? new Set<number>();
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = distinctAssetAccumulationLimitStep01Datum(
-    admitted.material,
-    prover,
-  );
+  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   return Object.freeze({
     admitted,
     proof,
@@ -118,7 +112,7 @@ export const planDistinctAssetAccumulationLimitArtifact = ({
   prover,
 }: {
   readonly artifact: JournalJsonObject;
-  readonly contracts: DistinctAssetAccumulationLimitContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
 }): Promise<PlannedDistinctAssetAccumulationLimitArtifact> => {
   const key = [

@@ -3,18 +3,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { stepDatum } from "../direct-purpose-family/custody.js";
+import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeRedeemerArgs,
+  stepDatum,
+} from "../direct-purpose-family/custody.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
-import type {
-  DistinctAssetAccumulationLimitFieldPlan,
-  DistinctAssetAccumulationLimitRedeemerArgs,
-} from "./custody.js";
 import type { FoldPosition } from "./walk.steps.js";
 
-type Open = Pick<
-  DistinctAssetAccumulationLimitRedeemerArgs,
-  "indices" | "open"
->;
+type Open = Pick<DirectPurposeRedeemerArgs, "indices" | "open">;
 
 export const distinctAssetWire = ({
   material,
@@ -23,7 +20,7 @@ export const distinctAssetWire = ({
 }: {
   readonly material: DirectScriptMaterial;
   readonly prover: string;
-  readonly plan: (field: number) => DistinctAssetAccumulationLimitFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
 }) => {
   const count = (field: number) => plan(field).items.length;
   const walkState = (

@@ -5,14 +5,14 @@
  * fits. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import { directPurposeRoleValidator } from "../direct-purpose-family/family.js";
+import {
+  buildDirectPurposeTransition,
+  type DirectPurposeCustody,
+} from "../direct-purpose-family/submit.js";
 import { scriptDecodeLedgerLimits } from "../script-decode/record.js";
 import { transactionExUnits } from "../script-decode/submit.js";
-import { distinctAssetAccumulationLimitContractRoles } from "./contracts.js";
-import type { DistinctAssetAccumulationLimitTransition } from "./custody.js";
-import {
-  buildDistinctAssetAccumulationLimitTransition,
-  type DistinctAssetAccumulationLimitCustody,
-} from "./submit.js";
 import type {
   DistinctAssetAccumulationLimitPagedRole,
   DistinctAssetAccumulationLimitWalk,
@@ -20,10 +20,7 @@ import type {
 
 /** Whether a completed signed transaction is within the byte limit and keeps
  * the 20% execution reserve below the ledger's limits. */
-const withinBudget = (
-  custody: DistinctAssetAccumulationLimitCustody,
-  cbor: string,
-) => {
+const withinBudget = (custody: DirectPurposeCustody, cbor: string) => {
   const limits = scriptDecodeLedgerLimits(custody.lucid);
   const used = transactionExUnits(cbor);
   return (
@@ -36,14 +33,13 @@ const withinBudget = (
 /** Builds, evaluates and signs each transaction of a page without submitting
  * it, each spending the thread output the previous one would create. */
 const pageFits = async (
-  custody: DistinctAssetAccumulationLimitCustody,
+  custody: DirectPurposeCustody,
   thread: UTxO,
-  transitions: readonly DistinctAssetAccumulationLimitTransition[],
+  transitions: readonly DirectPurposeTransition[],
 ) => {
-  const roles = distinctAssetAccumulationLimitContractRoles(custody.contracts);
   let current = thread;
   for (const transition of transitions) {
-    const built = await buildDistinctAssetAccumulationLimitTransition(
+    const built = await buildDirectPurposeTransition(
       custody,
       current,
       transition,
@@ -55,7 +51,11 @@ const pageFits = async (
     current = {
       txHash: signed.toHash(),
       outputIndex: Number(outputIndex),
-      address: roles[transition.next].spendingScriptAddress,
+      address: directPurposeRoleValidator(
+        custody.family,
+        custody.contracts,
+        transition.next,
+      ).spendingScriptAddress,
       assets: thread.assets,
       datum: transition.datum,
     };
@@ -73,11 +73,11 @@ export const fitDistinctAssetAccumulationLimitPage = async ({
   role,
   thread,
 }: {
-  readonly custody: DistinctAssetAccumulationLimitCustody;
+  readonly custody: DirectPurposeCustody;
   readonly walk: DistinctAssetAccumulationLimitWalk;
   readonly role: DistinctAssetAccumulationLimitPagedRole;
   readonly thread: UTxO;
-}): Promise<DistinctAssetAccumulationLimitTransition> => {
+}): Promise<DirectPurposeTransition> => {
   const datum = thread.datum;
   if (typeof datum !== "string")
     throw new Error(

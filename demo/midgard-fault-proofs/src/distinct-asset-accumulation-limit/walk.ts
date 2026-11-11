@@ -5,14 +5,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { grammarPages } from "../direct-purpose-family/custody.js";
+import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
+  grammarPages,
+} from "../direct-purpose-family/custody.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL } from "./contracts.js";
-import type {
-  DistinctAssetAccumulationLimitFieldPlan,
-  DistinctAssetAccumulationLimitTransition,
-} from "./custody.js";
 import { countOutput, outputValueStart, spentDescriptor } from "./fold.js";
 import {
   type FoldPosition,
@@ -27,7 +27,7 @@ import { distinctAssetWire } from "./walk.wire.js";
 
 const LABEL = DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL;
 
-type Transition = DistinctAssetAccumulationLimitTransition;
+type Transition = DirectPurposeTransition;
 
 /** The most work one fold transaction takes: spent inputs per take, output
  * work units per output step, mint policies per mint step, and items per
@@ -172,7 +172,7 @@ export const distinctAssetAccumulationLimitWalkTransitions = async ({
 }: {
   readonly material: DirectScriptMaterial;
   readonly prover: string;
-  readonly plan: (field: number) => DistinctAssetAccumulationLimitFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   /** The take step's own hash, recorded as the resume hash of each take. */
   readonly inputsScriptHash: string;
   readonly batch?: DistinctAssetAccumulationLimitWalkBatch;

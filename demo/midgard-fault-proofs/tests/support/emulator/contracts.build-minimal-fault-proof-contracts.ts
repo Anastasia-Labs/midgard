@@ -84,7 +84,6 @@ import { expect } from "vitest";
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
 import { type DirectPurposeContracts } from "../../../src/direct-purpose-family/family.js";
-import { type DistinctAssetAccumulationLimitContracts } from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
@@ -275,7 +274,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly unusedRedeemer?: DirectPurposeContracts;
     readonly receivePurposeLanguage?: DirectPurposeContracts;
     readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
-    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationLimitContracts;
+    readonly distinctAssetAccumulationLimit?: DirectPurposeContracts;
     readonly unusedScriptWitness?: UnusedScriptWitnessContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
@@ -808,21 +807,10 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const distinctAssetAccumulationLimit:
-    | DistinctAssetAccumulationLimitContracts
-    | undefined =
-    distinctAssetAccumulationLimitContracts === undefined
-      ? undefined
-      : {
-          steps: distinctAssetAccumulationLimitContracts
-            .distinctAssetAccumulationLimit.steps as never,
-          computationThread:
-            distinctAssetAccumulationLimitContracts.computationThread,
-          fraudProof: distinctAssetAccumulationLimitContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
+  const distinctAssetAccumulationLimit = directRecord(
+    distinctAssetAccumulationLimitContracts?.distinctAssetAccumulationLimit,
+    distinctAssetAccumulationLimitContracts,
+  );
   const unusedScriptWitness: UnusedScriptWitnessContracts | undefined =
     unusedScriptWitnessContracts === undefined
       ? undefined
