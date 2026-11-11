@@ -5,7 +5,9 @@ import type { AddressInfo } from "node:net";
 /**
  * The /readyz and /healthz request the readiness route tests make: the real
  * listen router over the test database, with the settings, provider
- * evidence, L1 follower state and L1 access each test names.
+ * evidence, L1 follower state and L1 access each test names. Every line an
+ * answer puts in `reasons` or `details` must be a well-formed line of a
+ * readiness catalogue row of that kind.
  */
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -14,7 +16,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -31,6 +33,7 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
+import { parseReadinessLine } from "../src/services/readiness-catalogue.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
 import { seedCaughtUpL1Follower } from "./readiness-l1-follower.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
@@ -130,7 +133,9 @@ const lucidWith = (
 export const readyz = ({
   provider = SUCCESS_NOW,
   databaseDown = false,
+  onStatement,
   journal = Effect.void,
+  afterwards = Effect.void,
   globalsSetup = () => Effect.void,
   providerError,
   nativeDiagnosticsError,
@@ -144,7 +149,11 @@ export const readyz = ({
 }: {
   readonly provider?: readonly ProviderObservation[];
   readonly databaseDown?: boolean;
+  /** Called with the text of each statement the request sends. */
+  readonly onStatement?: (text: string) => void;
   readonly journal?: Effect.Effect<void, unknown, SqlClient.SqlClient>;
+  /** Run over the database after the answer, before the tables reset. */
+  readonly afterwards?: Effect.Effect<void, unknown, SqlClient.SqlClient>;
   readonly globalsSetup?: (globals: Globals) => Effect.Effect<void, unknown>;
   readonly providerError?: string;
   readonly nativeDiagnosticsError?: string;
@@ -228,18 +237,23 @@ export const readyz = ({
                   ).modify({ remoteAddress: "127.0.0.1" }),
                 ),
               );
-          const responseEffect = databaseDown
-            ? request.pipe(
-                Effect.provideService(
-                  SqlClient.SqlClient,
-                  withFailingStatements(sql, () => true),
-                ),
-                Effect.provideService(
-                  HttpReadSql,
-                  withFailingStatements(readSql, () => true),
-                ),
-              )
-            : request;
+          const observed = ({ text }: { readonly text: string }) => {
+            onStatement?.(text);
+            return databaseDown;
+          };
+          const responseEffect =
+            databaseDown || onStatement !== undefined
+              ? request.pipe(
+                  Effect.provideService(
+                    SqlClient.SqlClient,
+                    withFailingStatements(sql, observed),
+                  ),
+                  Effect.provideService(
+                    HttpReadSql,
+                    withFailingStatements(readSql, observed),
+                  ),
+                )
+              : request;
           const web = useHttpTransport
             ? yield* Effect.gen(function* () {
                 const handler =
@@ -269,6 +283,23 @@ export const readyz = ({
             Readyz,
             "status"
           >;
+          const uncatalogued = (
+            [
+              [body.reasons, ["reason", "both"]],
+              [body.details, ["detail", "both"]],
+            ] as const
+          ).flatMap(([lines, kinds]) =>
+            (lines ?? []).filter(
+              (line) =>
+                !(kinds as readonly string[]).includes(
+                  parseReadinessLine(line)?.kind ?? "",
+                ),
+            ),
+          );
+          expect(uncatalogued, "lines outside the readiness catalogue").toEqual(
+            [],
+          );
+          yield* afterwards;
           return { ...body, status: web.status };
         }).pipe(Effect.ensuring(Effect.orDie(clear)));
       }).pipe(

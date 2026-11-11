@@ -13,22 +13,21 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  CATALOGUE,
   DOC,
   DOC_SECTION,
   FOLLOWER_READINESS_TYPE,
   FOLLOWER_SRC,
   NODE_SRC,
-  PRESENTATION,
-  PRESENTATION_BRANCH,
   READINESS_ASSEMBLERS,
   READINESS_MODULES,
   ROOT,
+  cataloguedCodes,
   followerReadinessReasons,
   nodeReadinessReasons,
-  presentedReasons,
   reasonsSection,
+  uncataloguedReasons,
   undocumentedReasons,
-  unpresentedReasons,
 } from "./check-readiness-reasons-doc.mjs";
 
 const CHECKER = fileURLToPath(
@@ -176,17 +175,20 @@ test("the reasons section ends at the next level-two heading", () => {
   assert.equal(reasonsSection("# T\n"), undefined);
 });
 
-test("every node readiness reason has operator text in the doc and a presentation entry", () => {
+test("every node readiness reason is catalogued and every catalogued code documented", () => {
   const section = reasonsSection(readFileSync(join(ROOT, DOC), "utf8"));
   assert.notEqual(section, undefined, `${DOC} lacks "${DOC_SECTION}"`);
-  const presented = presentedReasons(
-    readFileSync(join(ROOT, PRESENTATION), "utf8"),
-  );
-  assert.notEqual(presented, undefined, `${PRESENTATION} lacks its branch`);
+  const catalogued = cataloguedCodes();
   const reasons = nodeReadinessReasons();
   assert.ok(reasons.size > 50, `only ${reasons.size} reasons derived`);
-  assert.deepEqual(undocumentedReasons(reasons.keys(), section), []);
-  assert.deepEqual(unpresentedReasons(reasons.keys(), presented), []);
+  assert.deepEqual(uncataloguedReasons(reasons.keys(), catalogued), []);
+  const lines = [...catalogued].flatMap(([code, kind]) =>
+    kind === "field" ? [] : [code],
+  );
+  assert.deepEqual(
+    undocumentedReasons(new Set([...reasons.keys(), ...lines]), section),
+    [],
+  );
 });
 
 test("the doc check fails once one reason's text is removed", () => {
@@ -210,34 +212,33 @@ test("the doc check fails once a follower-only reason's text is removed", () => 
 });
 
 // The checker run whole against a fixture tree: the node's source, the doc
-// and the presentation all come from it.
+// and the catalogue all come from it.
 const trees = [];
 after(() => {
   for (const root of trees) rmSync(root, { recursive: true, force: true });
 });
-const checkerTree = ({ modules = {}, documented = [], presentation }) => {
+const checkerTree = ({ modules = {}, documented = [], catalogue }) => {
   const root = fixtureRoot(modules);
   trees.push(root);
   write(
     join(root, DOC),
     `# T\n\n${DOC_SECTION}\n\n${documented.map((r) => `- \`${r}\`: text.`).join("\n")}\n\n## Logs\n`,
   );
-  write(join(root, PRESENTATION), presentation);
+  write(join(root, `${CATALOGUE}.rows.ts`), catalogue);
   return root;
 };
 
-const presentationNaming = (names, elsewhere = "") =>
+/** A catalogue module of `rows`, each a row call's source. */
+const catalogueOf = (rows, imports = "") =>
   [
-    `const shown: ReadonlySet<string> = new Set([${names.map((n) => `"${n}"`).join(", ")}]);`,
-    `const unrelated = new Set(["${elsewhere}"]);`,
-    "const render = (key: string, safe: string) => {",
-    `  if (${PRESENTATION_BRANCH} || key === "reason") {`,
-    '    return shown.has(safe) ? safe : "E_REDACTED";',
-    "  }",
-    "  return unrelated.has(safe) ? safe : null;",
-    "};",
+    imports,
+    'import { both, detail, field, reason } from "./readiness-catalogue.row.js";',
+    `export const ROWS = [${rows.join(", ")}];`,
     "",
   ].join("\n");
+
+const reasonsNamed = (names) =>
+  catalogueOf(names.map((name) => `reason("${name}")`));
 
 const runChecker = (root) =>
   spawnSync(process.execPath, [CHECKER, "--root", root], { encoding: "utf8" });
@@ -262,7 +263,10 @@ const buildHold = {
 test("a build-hold reason without operator text fails the check", () => {
   const root = checkerTree({
     modules: buildHold,
-    presentation: presentationNaming(["build_held"]),
+    catalogue: catalogueOf(
+      ["reason(BUILD_HELD)"],
+      'import { BUILD_HELD } from "./build-holds.js";',
+    ),
   });
   assert.deepEqual(nodeReadinessReasons(root).get("build_held"), [
     "services/build-holds.ts",
@@ -275,16 +279,22 @@ test("a build-hold reason without operator text fails the check", () => {
   );
 });
 
-test("a build-hold reason with operator text and a presentation entry passes", () => {
+test("a build-hold reason with operator text and a catalogue row passes", () => {
   const run = runChecker(
     checkerTree({
       modules: buildHold,
       documented: ["build_held"],
-      presentation: presentationNaming(["build_held"]),
+      catalogue: catalogueOf(
+        ["reason(BUILD_HELD)"],
+        'import { BUILD_HELD } from "./build-holds.js";',
+      ),
     }),
   );
   assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /^1 node readiness reasons, all documented/u);
+  assert.match(
+    run.stdout,
+    /^1 node readiness reasons, all in the 1-code catalogue/u,
+  );
 });
 
 test("a reason reached through a re-export and a for-of loop is found", () => {
@@ -304,57 +314,86 @@ test("a reason reached through a re-export and a for-of loop is found", () => {
   const run = runChecker(
     checkerTree({
       modules,
-      presentation: presentationNaming(["plane_wedged"]),
+      catalogue: reasonsNamed(["plane_wedged"]),
     }),
   );
   assert.equal(run.status, 1, run.stdout);
   assert.match(run.stderr, /^ {2}plane_wedged \(services\/plane\.ts\)$/mu);
 });
 
-test("a reason with operator text but no presentation entry fails the check", () => {
+test("a reason with operator text but no catalogue row fails the check", () => {
   const run = runChecker(
     checkerTree({
       modules: buildHold,
-      documented: ["build_held"],
-      // Named outside the branch that renders a reason: not an entry.
-      presentation: presentationNaming([], "build_held"),
+      documented: ["build_held", "other_reason"],
+      catalogue: reasonsNamed(["other_reason"]),
     }),
   );
   assert.equal(run.status, 1, run.stdout);
   assert.match(
     run.stderr,
-    new RegExp(`${PRESENTATION} has no entry for:\\n  build_held `, "u"),
+    new RegExp(`${CATALOGUE}\\*\\.ts has no row for:\\n  build_held `, "u"),
   );
   assert.doesNotMatch(run.stderr, /has no operator text/u);
 });
 
-test("a reason with a presentation entry but no operator text fails the check", () => {
+test("a catalogued code without operator text fails the check; a field row needs none", () => {
   const run = runChecker(
     checkerTree({
       modules: { [HANDLER]: 'reasons.push("plain_reason");\n' },
-      presentation: presentationNaming(["plain_reason"]),
+      documented: ["plain_reason"],
+      catalogue: catalogueOf([
+        'reason("plain_reason")',
+        'detail("plain_detail")',
+        'field("nested_reason")',
+      ]),
     }),
   );
   assert.equal(run.status, 1, run.stdout);
-  assert.match(run.stderr, /has no operator text for:\n {2}plain_reason /u);
-  assert.doesNotMatch(run.stderr, /has no entry/u);
+  assert.match(
+    run.stderr,
+    /has no operator text for:\n {2}plain_detail \(catalogued\)\n$/u,
+  );
+  assert.doesNotMatch(run.stderr, /has no row/u);
 });
 
-test("a bounded format in the presentation names each reason it spells", () => {
-  const presented = presentedReasons(
+test("catalogue rows resolve literals, imported constants and mapped lists", () => {
+  const root = checkerTree({
+    modules: {
+      "services/index.ts": 'export * from "./states.js";\n',
+      "services/states.ts": [
+        'export const HELD = "held_reason";',
+        'export const STATES = ["state-one", "state-two"] as const;',
+      ].join("\n"),
+    },
+    catalogue: catalogueOf(
+      [
+        'reason("plain_reason")',
+        "detail(HELD)",
+        "...STATES.map((state) => both(state, COUNT))",
+        "...NESTED.map((code) => field(code))",
+      ],
+      [
+        'import { HELD, STATES } from "./index.js";',
+        "// reason(NOT_A_ROW) in a comment is not read.",
+        "const NESTED = members<Nested>({ first_nested: null, second_nested: null });",
+      ].join("\n"),
+    ),
+  });
+  assert.deepEqual(
+    [...cataloguedCodes(root)],
     [
-      "const bounded = /^(?:(?:a_one|b_two)_floor:[0-9]+|c_(?:x|y):[0-9]+)$/u;",
-      `if (${PRESENTATION_BRANCH}) {`,
-      "  return bounded.test(safe);",
-      "}",
-      "",
-    ].join("\n"),
+      ["state-one", "both"],
+      ["state-two", "both"],
+      ["first_nested", "field"],
+      ["second_nested", "field"],
+      ["plain_reason", "reason"],
+      ["held_reason", "detail"],
+    ],
   );
-  assert.deepEqual([...presented].sort(), [
-    "a_one_floor",
-    "b_two_floor",
-    "c_x",
-    "c_y",
-  ]);
-  assert.equal(presentedReasons("const x = 1;\n"), undefined);
+  write(join(root, `${CATALOGUE}.rows.ts`), catalogueOf(["reason(MISSING)"]));
+  assert.throws(
+    () => cataloguedCodes(root),
+    /readiness-catalogue\.rows\.ts: row reason\(MISSING/u,
+  );
 });

@@ -145,20 +145,6 @@ describe("public readiness database diagnostics", () => {
     expect(presented.l1Follower).toMatchObject({
       refused: [{ reason: "l1_event_identity_conflict" }],
     });
-    for (const reason of [
-      "services_unavailable",
-      "queue_unavailable",
-      "queue_unhealthy",
-      "clock_unavailable",
-      "source_unavailable",
-      "source_timeout",
-    ])
-      expect(
-        publicReadinessPresentation(
-          { commitProgress: { kind: "unavailable", reason } },
-          "preprod-public",
-        ),
-      ).toEqual({ commitProgress: { kind: "unavailable", reason } });
     expect(presented.commitPlanningProgress).toEqual(
       body.commitPlanningProgress,
     );

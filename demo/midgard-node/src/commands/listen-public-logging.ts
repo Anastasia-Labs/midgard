@@ -1,5 +1,7 @@
 import { Cause, HashMap, List, Logger } from "effect";
 
+import { HaltSource } from "../services/liveness-halt.js";
+import { READINESS_CODES } from "../services/readiness-catalogue.js";
 import { PublicHttpConfigError } from "./listen-http-transport.js";
 
 const REDACTED = "[redacted]";
@@ -136,17 +138,10 @@ const knownFields: ReadonlySet<string> = new Set([
 ]);
 const diagnosticKey = (key: string): string =>
   knownFields.has(key) ? key : "[redacted-key]";
+/** The readiness codes, and the operator-membership liveness source. */
 const knownReasons: ReadonlySet<string> = new Set([
-  "database_unreachable",
-  "database_connection_failed",
-  "l1_follower_view_stale",
-  "l1_driver_recompute_pending",
-  "l1_follower_view_unapplied",
-  "operator_membership",
-  "local_finalization_pending",
-  "reset_in_progress",
-  "retained_da_payload_missing",
-  "validation_capacity_unavailable",
+  ...READINESS_CODES,
+  HaltSource.operatorMembership,
 ]);
 const safeDiagnostic = (input: unknown, key = "", depth = 0): unknown => {
   if (typeof input === "string") {

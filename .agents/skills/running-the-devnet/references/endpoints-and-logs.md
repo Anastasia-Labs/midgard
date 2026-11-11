@@ -78,7 +78,10 @@ the node logs `node_transient_budget_exhausted source=<source>
 reason=<reason>` and exits non-zero, its supervisor's restart being the
 backoff. An L1 node or sidecar outage is not bounded. A startup step that
 fails holds the node or exits it (next paragraph). Entries under `details`
-are degradations that leave the node ready.
+are degradations that leave the node ready. A public profile
+(`preprod-public`, `mainnet`, `preprod-rehearsal`) shows each entry as its
+name and the parameters the readiness catalogue bounds; an entry whose last
+parameter is free text (an error, a hash, a scope) shows as its name alone.
 
 Only a transient failure is retried on a timer: a connection failure or
 timeout, a retryable provider error, a database that is busy or restarting,
@@ -88,11 +91,13 @@ hold that a retry can clear (a wait, or a transient failure) runs again on
 the driver's backoff (500 ms doubling to 30 s). A hold no timer can clear (a
 verdict on the view, a failure not known to be transient, a missing schema)
 is read again on the next follower change, which is every new L1 block at
-the tip. The list is derived from
-`demo/midgard-node/src` and the follower readiness reasons of
-`demo/midgard-l1-follower/src` by
-`scripts/ci/check-readiness-reasons-doc.mjs`, which fails when a reason here
-has no text.
+the tip. Every name here is a row of the readiness catalogue
+(`demo/midgard-node/src/services/readiness-catalogue*.ts`), which holds where
+each appears and the format of each parameter.
+`scripts/ci/check-readiness-reasons-doc.mjs` fails when a catalogued name
+has no text here, or when a reason it derives from `demo/midgard-node/src`
+and the follower readiness reasons of `demo/midgard-l1-follower/src` has no
+row.
 
 Startup (`src/commands/listen.startup-http.ts`; the step reasons are in
 `src/services/startup-waiting.ts`). Until the node serves, `/readyz` answers
@@ -268,6 +273,15 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `settlement_worker_failing:<count>:<error>`: the settlement worker died
   `<count>` times in a row for over two minutes. Read the named error; a
   provider or Postgres outage reports its own reason first.
+- `settlement_jobs_stuck:<count>:<kind>:<event>:<phase>:<error>` (a
+  detail): that many settlement jobs have failed
+  `SETTLEMENT_JOB_FAILURE_CAP` times in a row; the earliest due is named
+  with its last error. Payouts wait; admission and
+  blocks do not. Read the named job's `last_error`.
+- `settlement_reconcile_stuck:<tx_hash>:<error>` (a detail): the reconcile
+  of the named settlement attempt has failed `SETTLEMENT_JOB_FAILURE_CAP`
+  times in a row, and no new
+  settlement work starts until it resolves. Read the named error.
 - `unfinished_local_mutation_jobs:<n>`: local mutation journals are not
   finished. Usually transient at start while recovery replays them; if it
   stays, read the mutation-job log lines.
@@ -280,6 +294,21 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `provider_query_unhealthy:l1-provider`: the node's L1 provider has
   answered no query within its bound (derived from `L1_NODE_BEHIND_MAX_MS`).
   Check the local cardano-node and its sync.
+- `provider_query_degraded:l1-provider:<failing_ms>` (a detail): the L1
+  provider has failed its queries for `<failing_ms>` since its last success,
+  within that bound. Past it the node reports `provider_query_unhealthy`.
+- `pending_finalization_age:<age_ms>:<bound_ms>` (a detail): the oldest
+  unfinished commit journal is older than the bound; an honest commit
+  finalizes, or its signed intent is replaced, well within it. Read the
+  block-commitment log lines naming the signed intent's header.
+- `operator_membership_unavailable` (a detail): the operator set has not
+  shown this operator in any state yet, or its key cannot be read. Duties
+  run. Removal is `operator_removed`.
+- `native_mpf_full_index_near_cap:<cap>:<observed>:<limit>` (a detail): the
+  live root's full index is past four fifths of the full-index cap `<cap>`
+  (`FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`). Promotions still
+  succeed; one over the cap is refused. Plan a node build whose caps cover
+  the ledger.
 - `l1_transport_unready:<reason>`: the local node transport is not ready;
   `<reason>` is one of the transport's reasons in
   `demo/l1-node-transport/README.md`. Check that cardano-node is up and its
@@ -337,6 +366,12 @@ Commitment and liveness (raised by fibers, cleared by them):
   reached the limit. Read the warning that reads
   `<stage> would reject more than 4 normal transactions in one build`, and
   the rejected transactions in `tx_rejections`.
+- `commit_da_frame_pressure:<kind>:<stage>` (a detail): the last build's
+  `<kind>` (`candidate`, `initial_candidate` or `required_work`) filled at
+  least `<stage>` percent (50, 75 or 90) of the DA frame's effective inner
+  limit. Blocks still commit. Read the `commit_da_frame_pressure` warning
+  for the byte counts; a stage that stays at 90 is worth raising with the
+  deployment owner.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the
@@ -384,6 +419,47 @@ Commitment and liveness (raised by fibers, cleared by them):
   any hold. `l1_control_plane_hold_timeouts:<scope>:<n>`: one scope's holds
   keep timing out. Read the named scope's log lines; restart the node if a
   holder never returns.
+
+Validation-trace defense (`src/validation-trace-defense/health.ts`). Each
+state reads `<state>:<subject unit>:<deadline_ms|none>[:<shortfall
+lovelace>]`, its deadline in L1 time. A state is a reason when it fails
+readiness and a detail otherwise:
+
+- `validation-trace-defense-awaiting` (a detail): the challenger's move on
+  our thread. Wait.
+- `validation-trace-defense-one-step` (a detail): the thread is in its
+  one-step resolution. Wait.
+- `validation-trace-defense-won-pending-expiry` (a detail): the challenger
+  ran out of clock; the thread is won once it expires. Wait.
+- `validation-trace-defense-thread-lost` (a detail): our clock ran out, the
+  thread is at its award, or it closed with a lost-defense receipt. Nothing
+  can repair it; read the defender's log for why it was not answered.
+- `validation-trace-defense-operator-fault` (a detail): the protocol itself
+  stops the operator on this case. Nothing to repair on this node.
+- `validation-trace-defense-history-pruned` (a detail): the case was
+  defended, and its history is past the follower's retention. Nothing to do.
+- `validation-trace-defense-funding-pending` (a detail): another live
+  defense transaction of ours holds what funds this move, until it lands or
+  dies. Wait.
+- `validation-trace-defense-trace-disagrees`,
+  `validation-trace-defense-material-unavailable`,
+  `validation-trace-defense-references-unresolved`: the node's trace does
+  not agree with the case, it has no defense material yet, or the published
+  references cannot be read to build the move. A detail until the deadline
+  is less than a quarter of the side clock away, then a reason. Read the
+  defender's log; check the follower and the published references.
+- `validation-trace-defense-underfunded` (a reason): the operator wallet and
+  the defense pocket lack the shortfall for the move. Fund the operator
+  wallet.
+- `validation-trace-defense-not-active` (a reason): a case is on our block
+  and no active-operator node of ours can defend it. Check the operator's
+  registration.
+- `validation-trace-defense-late` (a reason): a due Defend has not landed
+  and its deadline is less than a quarter of the side clock away. Read the
+  defender's and the L1 control plane's log lines.
+- `validation-trace-defense-stalled:<failures>` (a reason): the defender's
+  ticks have failed that many times in a row with no good tick for longer
+  than `VALIDATION_TRACE_DEFENSE_STALL_MS`. Read its last error in the log.
 
 Node instance lock (`src/services/node-instance-lock.ts`):
 
@@ -498,11 +574,22 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   the event validity range plus the unmerged span after the frontier; a lag
   of that size is expected and the node stays ready. Look into a lag that
   keeps growing past it.
+- `intent_journal_replay_prune_floor:<slots>`,
+  `operator_activity_record_prune_floor:<slots>` (details): the intent
+  journal's replay, or the operator-activity record, holds the follower's
+  prune boundary that many slots back, so the store keeps the facts it still
+  needs and grows until the floor moves. Look into a lag that keeps growing.
 - `l1_own_block_forced_order_orphaned:<count>` (a detail): that many forced
   rows of landed own blocks have an order that left the chain. The node
   follows the block and stays ready; the forced-order hook logs a warning
   naming each header and order once. It clears when the header leaves the
   landed queue.
+- `forced_admission_divergence:<order_id>:<refusal_code>` (a detail): a
+  forced order the chain admitted was refused by this node's admission
+  screen. The list holds the latest such orders for the process lifetime,
+  not an active set: an order leaving it is not resolved. Alert on the
+  `ForcedAdmissionDivergence` log event or the
+  `forced_admission_divergence_total` counter, and report the order.
 - `forced_order_carriage_pending`: a forced order's carriage resolved from
   no source yet; it is retried. If the detail leads with "no L1 tx content
   source is configured", set `L1_TX_CONTENT_SOURCES`.

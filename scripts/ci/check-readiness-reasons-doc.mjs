@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Every reason the node can put in `/readyz` must have operator text in the
-// reasons doc and an entry in the public presentation.
+// Every reason the node can put in `/readyz` must have a row in the readiness
+// catalogue (`services/readiness-catalogue*.ts`), and every code the
+// catalogue holds operator text in the reasons doc.
 //
 // The reasons are derived from the node's and the L1 follower package's
 // source rather than kept in a list here. A readiness module is one through
@@ -33,15 +34,19 @@
 // `typeof NAME` constant, a string literal or another string-literal union
 // (the interventions).
 // NOT_READINESS lists the names this finds that are not reasons.
-// A reason is documented when the reasons section of the doc names it in
-// backticks, alone or as the prefix of a parameterised form (`name:<n>`). It
-// is presented when the branch of the public presentation that renders a
-// reason names it, shown or redacted, there or in a constant the branch reads
-// (the shown set, the bounded formats).
+// The catalogue's codes are read from its row calls: `reason(`, `detail(`,
+// `both(` or `field(` of a string literal or of a constant, resolved where
+// the catalogue module imports it from, and each such call mapped over a
+// constant list (`...NAMES.map((name) => reason(name))`), whose members are
+// its string literals or the `name: null` keys of a `members` record. A row
+// this cannot resolve fails, by name. A code is documented when the reasons
+// section of the doc names it in backticks, alone or as the prefix of a
+// parameterised form (`name:<n>`); a `field` row, a code shown only inside a
+// nested report, needs no text of its own.
 //
 // Run from anywhere: `node scripts/ci/check-readiness-reasons-doc.mjs
-// [--root <tree>]`. Exit 0 when every reason is documented and presented, 1
-// otherwise.
+// [--root <tree>]`. Exit 0 when every reason is catalogued and every code
+// documented, 1 otherwise.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -56,9 +61,8 @@ const FOLLOWER_PACKAGE = /^@al-ft\/midgard-l1-follower(?:\/|$)/u;
 export const DOC =
   ".agents/skills/running-the-devnet/references/endpoints-and-logs.md";
 export const DOC_SECTION = "## Node `/readyz` reasons";
-export const PRESENTATION = `${NODE_SRC}/commands/listen-readiness-public-presentation.ts`;
-/** The guard of the presentation's branch that renders a reason. */
-export const PRESENTATION_BRANCH = 'key === "reasons"';
+/** The directory and file-name prefix of the catalogue's modules. */
+export const CATALOGUE = `${NODE_SRC}/services/readiness-catalogue`;
 
 /** The modules that answer `/readyz`: serving, and while the node starts. */
 export const READINESS_ASSEMBLERS = [
@@ -85,10 +89,6 @@ export const NOT_READINESS = new Map([
   [
     "manifest_mismatch",
     "the operator watchdog's strike-gate verdict; readiness carries operator_watchdog_manifest_mismatch",
-  ],
-  [
-    "commit_stage_breaker",
-    "a commit build alarm the node reports under details only; it leaves the node ready",
   ],
 ]);
 
@@ -340,38 +340,101 @@ export const undocumentedReasons = (reasons, section) =>
     .filter((reason) => !new RegExp(`\`${reason}(?:\`|:)`, "u").test(section))
     .sort();
 
-/** The snake_case names in `text`, a regex's `a_(?:b|c)` spelled out. */
-const snakeNames = (text) => {
-  const group = /([a-z0-9_]*)\(\?:([a-z0-9_|]+)\)([a-z0-9_]*)/u;
-  let spelled = text;
-  for (let match; (match = group.exec(spelled)) !== null; ) {
-    const [whole, before, alternatives, after] = match;
-    const each = alternatives.split("|").map((alt) => before + alt + after);
-    spelled = `${spelled.slice(0, match.index)}${each.join("|")}${spelled.slice(match.index + whole.length)}`;
-  }
-  return spelled.match(new RegExp(`(?<![\\w])${SNAKE}(?![\\w])`, "gu")) ?? [];
+const ROW_CALL = /\b(reason|detail|both|field)\(\s*(?:"([^"]+)"|([\w$]+))/gu;
+const ROW_MAP =
+  /\.\.\.([A-Z][A-Z0-9_]*)\.map\(\s*\(\s*([\w$]+)\s*\)\s*=>\s*(reason|detail|both|field)\(\s*\2\b/gu;
+
+/** The string value of `const name = "..."` in `text`, or undefined. */
+const stringConstant = (text, name) =>
+  new RegExp(
+    `\\bconst\\s+${name}\\s*(?::[^=\\n]+)?=\\s*\\n?\\s*"([^"]+)"`,
+    "u",
+  ).exec(text)?.[1];
+
+/** The members of the list `const name = [...]` or `members<...>({...})`. */
+const listMembers = (text, name) => {
+  const at = new RegExp(`\\bconst\\s+${name}\\b[^=]*=\\s*`, "u").exec(text);
+  if (at === null) return undefined;
+  const rest = text.slice(at.index + at[0].length);
+  if (rest.startsWith("["))
+    return [...bracketed(rest, 0).matchAll(/"([^"]+)"/gu)].map(([, v]) => v);
+  const record = rest.startsWith("members<") ? rest.indexOf(">({") : -1;
+  if (record < 0) return undefined;
+  return [
+    ...bracketed(rest, record + 2).matchAll(/([\w$]+)\s*:\s*null\b/gu),
+  ].map(([, key]) => key);
 };
 
 /**
- * The reasons the public presentation names, shown or redacted: those the
- * branch PRESENTATION_BRANCH guards names, and those of the constants it
- * reads. Undefined when the presentation has no such branch.
+ * The codes the readiness catalogue holds, each with its kind. A row whose
+ * code this cannot resolve to a string fails, by name.
  */
-export const presentedReasons = (text) => {
-  const guard = text.indexOf(PRESENTATION_BRANCH);
-  const open = guard < 0 ? -1 : text.indexOf("{", guard);
-  if (open < 0) return undefined;
-  const branch = bracketed(text, open);
-  const read = new Set(branch.match(IDENTIFIER));
-  const constants = [
-    ...text.matchAll(/\bconst\s+([\w$]+)[^=]*=([\s\S]*?);\n/gu),
-  ].flatMap(([, name, value]) => (read.has(name) ? [value] : []));
-  return new Set(snakeNames([branch, ...constants].join("\n")));
+export const cataloguedCodes = (root = ROOT) => {
+  const dir = dirname(join(root, CATALOGUE));
+  const prefix = `${CATALOGUE.split("/").at(-1)}.`;
+  const followerConstants = constantsUnder(join(root, FOLLOWER_SRC));
+  const codes = new Map();
+  for (const name of readdirSync(dir).filter(
+    (each) => each.startsWith(prefix) && each.endsWith(".ts"),
+  )) {
+    const path = join(dir, name);
+    const text = readFileSync(path, "utf8").replace(
+      /\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
+      "",
+    );
+    const imports = new Map(
+      importsOf(text).map((binding) => [binding.local, binding]),
+    );
+    /** Where `name` is declared: this module, or the one it imports it from. */
+    const resolved = (constant, read) => {
+      const local = read(text, constant);
+      if (local !== undefined) return local;
+      const binding = imports.get(constant);
+      if (binding === undefined) return undefined;
+      if (FOLLOWER_PACKAGE.test(binding.spec))
+        return read === stringConstant
+          ? followerConstants.get(binding.name)
+          : undefined;
+      const source = declaringModule(
+        moduleFile(path, binding.spec),
+        binding.name,
+      );
+      return source === undefined
+        ? undefined
+        : read(readFileSync(source, "utf8"), binding.name);
+    };
+    const add = (code, kind) => {
+      if (codes.has(code)) throw new Error(`${name}: ${code} catalogued twice`);
+      codes.set(code, kind);
+    };
+    const mapped = [...text.matchAll(ROW_MAP)];
+    for (const [, list, , kind] of mapped) {
+      const members = resolved(list, listMembers);
+      if (members === undefined || members.length === 0)
+        throw new Error(`${name}: no members for ${list}`);
+      for (const code of members) add(code, kind);
+    }
+    for (const call of text.matchAll(ROW_CALL)) {
+      const [whole, kind, literal, constant] = call;
+      if (
+        mapped.some(
+          ({ index, 0: spread }) =>
+            call.index > index && call.index < index + spread.length,
+        )
+      )
+        continue;
+      const code = literal ?? resolved(constant, stringConstant);
+      if (code === undefined) throw new Error(`${name}: row ${whole}`);
+      add(code, kind);
+    }
+  }
+  if (codes.size === 0) throw new Error(`${CATALOGUE}*.ts: no rows`);
+  return codes;
 };
 
-/** The reasons the presentation does not name. */
-export const unpresentedReasons = (reasons, presented) =>
-  [...reasons].filter((reason) => !presented.has(reason)).sort();
+/** The reasons the catalogue does not hold. */
+export const uncataloguedReasons = (reasons, catalogued) =>
+  [...reasons].filter((reason) => !catalogued.has(reason)).sort();
 
 const main = (root) => {
   const docText = readFileSync(join(root, DOC), "utf8");
@@ -380,36 +443,35 @@ const main = (root) => {
     console.error(`${DOC}: no "${DOC_SECTION}" section`);
     return 1;
   }
-  const presented = presentedReasons(
-    readFileSync(join(root, PRESENTATION), "utf8"),
-  );
-  if (presented === undefined) {
-    console.error(`${PRESENTATION}: no \`${PRESENTATION_BRANCH}\` branch`);
-    return 1;
-  }
+  const catalogued = cataloguedCodes(root);
   const reasons = nodeReadinessReasons(root);
+  const lines = [...catalogued].flatMap(([code, kind]) =>
+    kind === "field" ? [] : [code],
+  );
   const missing = [
+    [
+      `${CATALOGUE}*.ts`,
+      "has no row for",
+      uncataloguedReasons(reasons.keys(), catalogued),
+    ],
     [
       DOC,
       "has no operator text for",
-      undocumentedReasons(reasons.keys(), section),
-    ],
-    [
-      PRESENTATION,
-      "has no entry for",
-      unpresentedReasons(reasons.keys(), presented),
+      undocumentedReasons(new Set([...reasons.keys(), ...lines]), section),
     ],
   ].filter(([, , names]) => names.length > 0);
   if (missing.length === 0) {
     console.log(
-      `${reasons.size} node readiness reasons, all documented in ${DOC} and presented in ${PRESENTATION}`,
+      `${reasons.size} node readiness reasons, all in the ${catalogued.size}-code catalogue; every code documented in ${DOC}`,
     );
     return 0;
   }
   for (const [file, lacks, names] of missing) {
     console.error(`${file} ${lacks}:`);
     for (const reason of names)
-      console.error(`  ${reason} (${reasons.get(reason).join(", ")})`);
+      console.error(
+        `  ${reason} (${reasons.get(reason)?.join(", ") ?? "catalogued"})`,
+      );
   }
   return 1;
 };

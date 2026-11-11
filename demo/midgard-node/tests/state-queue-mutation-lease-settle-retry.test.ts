@@ -225,3 +225,58 @@ describe("state-queue mutation lease settlement", () => {
       ),
   );
 });
+
+describe("state-queue mutation lease inspection", () => {
+  /** A lease `holder` took whose expiry the database clock has passed. */
+  const expiredLease = (holder: string) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const taken = yield* Leases.tryAcquire({ holder });
+      expect(taken._tag).toBe("Acquired");
+      yield* sql`UPDATE state_queue_mutation_leases
+        SET expires_at = NOW() - INTERVAL '1 second' WHERE holder = ${holder}`;
+    });
+
+  it.live("reads an expired lease without writing; the writers expire it", () =>
+    isolatedLeases(
+      Effect.gen(function* () {
+        yield* expiredLease("inspected");
+        const sql = yield* SqlClient.SqlClient;
+        const statements: string[] = [];
+        const recording = withFailingStatements(sql, ({ text }) => {
+          statements.push(text.trimStart());
+          return false;
+        });
+
+        const inspection = yield* Effect.provideService(
+          Leases.inspect(),
+          SqlClient.SqlClient,
+          recording,
+        );
+
+        expect(inspection.activeLease).toBeUndefined();
+        expect(inspection.recentLeases[0]?.status).toBe(Leases.Status.Failed);
+        expect(
+          statements.filter((text) =>
+            /^(?:UPDATE|INSERT|DELETE)\b/iu.test(text),
+          ),
+        ).toEqual([]);
+        expect((yield* rowsOf("inspected"))[0]?.status).toBe(
+          Leases.Status.Active,
+        );
+        expect(yield* Leases.retrieveActive()).toBeUndefined();
+        expect((yield* rowsOf("inspected"))[0]?.status).toBe(
+          Leases.Status.Failed,
+        );
+
+        yield* expiredLease("acquired-over");
+        expect((yield* Leases.tryAcquire({ holder: "successor" }))._tag).toBe(
+          "Acquired",
+        );
+        expect((yield* rowsOf("acquired-over"))[0]?.status).toBe(
+          Leases.Status.Failed,
+        );
+      }),
+    ),
+  );
+});

@@ -4,7 +4,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ForcedTransactionsDB } from "../src/database/index.js";
+import {
+  ForcedTransactionsDB,
+  StateQueueMutationLeasesDB as Leases,
+} from "../src/database/index.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
@@ -99,6 +102,32 @@ describe("GET /readyz under internal transients", () => {
     expect(up.ready).toBe(true);
     expect(up.reasons).toEqual([]);
     expect(up.dbError).toBeUndefined();
+  });
+
+  it("reads an expired state-queue lease without writing", async () => {
+    const statements: string[] = [];
+    let storedStatus: string | undefined;
+    const response = await readyz({
+      journal: Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* Leases.tryAcquire({ holder: "expired" });
+        yield* sql`UPDATE state_queue_mutation_leases
+          SET expires_at = NOW() - INTERVAL '1 second'`;
+      }),
+      onStatement: (text) => statements.push(text.trimStart()),
+      afterwards: Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ readonly status: string }>`SELECT status
+          FROM state_queue_mutation_leases WHERE holder = 'expired'`;
+        storedStatus = rows[0]?.status;
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(statements.length).toBeGreaterThan(0);
+    expect(
+      statements.filter((text) => /^(?:UPDATE|INSERT|DELETE)\b/iu.test(text)),
+    ).toEqual([]);
+    expect(storedStatus).toBe(Leases.Status.Active);
   });
 
   it("keeps a provider failure shortly after a success as a detail and stays ready", async () => {

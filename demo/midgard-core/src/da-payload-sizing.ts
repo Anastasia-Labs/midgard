@@ -134,10 +134,15 @@ export const maxDaPayloadInnerBytes = (
   return low;
 };
 
-/** Frame-pressure stages, in percent of the effective inner limit. */
-export type DaPayloadFramePressureStage = 0 | 50 | 75 | 90;
+/** The frame-pressure stages reached, highest first, in percent of the
+ * effective inner limit. */
+export const DA_PAYLOAD_FRAME_PRESSURE_STAGES = [90, 75, 50] as const;
 
-const PRESSURE_STAGES_DESCENDING = [90, 75, 50] as const;
+/** Frame-pressure stages, in percent of the effective inner limit; 0 is none
+ * reached. */
+export type DaPayloadFramePressureStage =
+  | 0
+  | (typeof DA_PAYLOAD_FRAME_PRESSURE_STAGES)[number];
 
 /**
  * The highest pressure stage `innerBytes` has reached against
@@ -153,7 +158,7 @@ export const daPayloadFramePressureStage = (
     effectiveInnerLimit,
     "DA effective inner limit",
   );
-  for (const stage of PRESSURE_STAGES_DESCENDING) {
+  for (const stage of DA_PAYLOAD_FRAME_PRESSURE_STAGES) {
     if (bytes * 100 >= limit * stage) return stage;
   }
   return 0;

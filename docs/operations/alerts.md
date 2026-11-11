@@ -105,8 +105,9 @@ chain admitted (`forced_admission_divergence_total` increased, labelled
 order is still ingested and classified, and the node stays ready.
 
 **First checks.** `GET /readyz` lists the latest divergent orders as
-`forced_admission_divergence:<orderIdHex>:<refusalCode>` details, and the
-node logs one `ForcedAdmissionDivergence` error event per order.
+`forced_admission_divergence:<orderIdHex>:<refusalCode>` details (a public
+profile shows the code alone), and the node logs one
+`ForcedAdmissionDivergence` error event per order.
 
 **Action.** Record the order id, refusal code and log event. Do not change
 node state.

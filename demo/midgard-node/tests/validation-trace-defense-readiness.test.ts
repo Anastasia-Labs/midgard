@@ -171,14 +171,14 @@ describe("the validation-trace defender's readiness", () => {
         publicReadinessPresentation({ details: [line] }, "preprod-public"),
       ).toStrictEqual({ details: [line] });
     }
-    // A free-form line in the same place is not published.
+    // A free-form line in the same place shows as its state alone.
     expect(
       publicReadinessPresentation(
         { reasons: ["validation-trace-defense-not-active:not a unit:none"] },
         "preprod-public",
       ),
-    ).toStrictEqual({ reasons: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
-    // So is a named state and unit followed by free-form text.
+    ).toStrictEqual({ reasons: ["validation-trace-defense-not-active"] });
+    // So does a named state and unit followed by free-form text.
     expect(
       publicReadinessPresentation(
         {
@@ -188,7 +188,9 @@ describe("the validation-trace defender's readiness", () => {
         },
         "preprod-public",
       ),
-    ).toStrictEqual({ details: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
+    ).toStrictEqual({
+      details: ["validation-trace-defense-material-unavailable"],
+    });
   });
 
   it("makes /readyz unready on an underfunded move and on no active node, and keeps our own fault ready", async () => {

@@ -145,21 +145,27 @@ const expireTimedOutLeases = Effect.gen(function* () {
   ),
 );
 
+/** The active lease the database clock has not expired, read only: a lease
+ * past its expiry is not active, whether or not a writer has marked it. */
+const selectActive = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+    WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
+      AND ${sql(Columns.STATUS)} = ${Status.Active}
+      AND ${sql(Columns.EXPIRES_AT)} >= NOW()
+    ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
+    LIMIT 1`;
+  return rows[0];
+});
+
 export const retrieveActive = (): Effect.Effect<
   Entry | undefined,
   DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
     yield* expireTimedOutLeases;
-    const rows = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
-        AND ${sql(Columns.STATUS)} = ${Status.Active}
-        AND ${sql(Columns.EXPIRES_AT)} >= NOW()
-      ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
-      LIMIT 1`;
-    return rows[0];
+    return yield* selectActive;
   }).pipe(
     sqlErrorToDatabaseError(
       tableName,
@@ -188,6 +194,11 @@ const encodePendingFinalizationLeaseInspection = (
   updatedAt: row[PendingBlockFinalizationsDB.Columns.UPDATED_AT],
 });
 
+/** The leases as operator surfaces read them (`/readyz`, the pipeline
+ * status, reconcile evidence). It never writes: a lease past its expiry by
+ * `dbNow` is not `activeLease`, and `recentLeases` shows it `failed`, as a
+ * writer (`tryAcquire`, `retrieveActive`, `revalidate`, `renew`) will mark
+ * it; its row stays `active` until one does. */
 export const inspect = ({
   recentLimit = 10,
 }: {
@@ -195,17 +206,22 @@ export const inspect = ({
 } = {}): Effect.Effect<LeaseInspection, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* expireTimedOutLeases;
     const [{ now: dbNow }] = yield* sql<{ now: Date }>`SELECT NOW() AS now`;
-    const activeLease = yield* retrieveActive();
+    const activeLease = yield* selectActive;
     const limit = Math.max(
       1,
       Math.min(INSPECTABLE_LEASE_ROWS, Math.floor(recentLimit)),
     );
-    const recentLeases = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+    const recentLeases = (yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
       ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
-      LIMIT ${limit}`;
+      LIMIT ${limit}`).map(
+      (lease): Entry =>
+        lease[Columns.STATUS] === Status.Active &&
+        lease[Columns.EXPIRES_AT] < dbNow
+          ? { ...lease, [Columns.STATUS]: Status.Failed }
+          : lease,
+    );
     const pendingFinalizations =
       activeLease === undefined
         ? []
