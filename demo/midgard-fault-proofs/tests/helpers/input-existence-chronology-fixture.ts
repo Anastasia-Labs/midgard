@@ -66,6 +66,10 @@ export const inputChronologies = [
   "absent_input_rejection",
 ] as const;
 export type InputChronology = (typeof inputChronologies)[number];
+/** A chronology whose target event-ledger replay refuses: normal
+ * transactions, the second spending the input the first spent, and then the
+ * forced target, after them in step order. */
+export type RefusedInputChronology = "forced_after_failed_normal";
 /** A committed withdrawal: its event key, withdrawals-root entry and ledger
  * effect, each as block production derives it. */
 export type CommittedChronologyWithdrawal = Readonly<{
@@ -84,7 +88,7 @@ const PROVENANCE = {
 } as const;
 
 export const inputExistenceChronologyFixture = async (
-  scenario: InputChronology,
+  scenario: InputChronology | RefusedInputChronology,
   field: 0 | 1,
   executionHeader?: Readonly<{
     operatorVkey: string;
@@ -294,6 +298,18 @@ export const inputExistenceChronologyFixture = async (
   if (scenario === "forced_spend") await forcedTx(consumer, [seed], []);
   if (scenario === "normal_creator") await normal(creator, [seed], [output]);
   if (scenario === "normal_spend") await normal(consumer, [seed], []);
+  if (scenario === "forced_after_failed_normal") {
+    await normal(creator, [seed], [output]);
+    await normal(consumer, [seed], []);
+    await normal(
+      signedChronologyTransaction({
+        spendInputs: [created],
+        fee: CHRONOLOGY_SEED_VALUE,
+      }),
+      [created],
+      [],
+    );
+  }
   if (
     scenario === "withdrawal_consumed" ||
     scenario === "withdrawal_untouched"
@@ -323,7 +339,11 @@ export const inputExistenceChronologyFixture = async (
     await forcedTx(target, [], [], true, true, {
       InputNotFound: { source_kind: BigInt(field), input_index: 0n },
     });
-  else if (scenario === "forced_target" || scenario === "forced_prior_deposit")
+  else if (
+    scenario === "forced_target" ||
+    scenario === "forced_prior_deposit" ||
+    scenario === "forced_after_failed_normal"
+  )
     await forcedTx(
       target,
       field === 0 ? [selected] : [feeSeed],

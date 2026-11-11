@@ -274,6 +274,19 @@ export const createEventLedgerWalk = ({
   });
 };
 
+/** `createEventLedgerWalk`, created at its first request: a caller whose
+ * events may need no ledger meets the walk's evidence checks only when one
+ * does. */
+export const lazyEventLedgerWalk = (
+  input: Parameters<typeof createEventLedgerWalk>[0],
+): EventLedgerWalk => {
+  let walk: EventLedgerWalk | undefined;
+  return Object.freeze({
+    before: async (eventKey: SDK.EventKey, stepIndex: bigint) =>
+      await (walk ??= createEventLedgerWalk(input)).before(eventKey, stepIndex),
+  });
+};
+
 /** The checked ledger before one transaction event of `block`. */
 export const ledgerBeforeTransactionEvent = async ({
   block,

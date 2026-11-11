@@ -292,10 +292,11 @@ describe("complete replay proof prerequisites", () => {
     );
     let observed: CanonicalReplayPrerequisiteError | undefined;
     try {
-      await collectReplayFindings([
-        Promise.resolve(earlier),
-        Promise.reject(blocked),
-      ]);
+      await collectReplayFindings([earlier, blocked], async (candidate) => {
+        if (candidate instanceof CanonicalReplayPrerequisiteError)
+          throw candidate;
+        return await Promise.resolve(candidate);
+      });
     } catch (error) {
       if (!(error instanceof CanonicalReplayPrerequisiteError)) throw error;
       observed = error;
@@ -363,7 +364,71 @@ describe("complete replay proof prerequisites", () => {
     );
     const corruption = new Error("Malformed retained witness");
     await expect(
-      collectReplayFindings([Promise.reject(corruption)]),
+      collectReplayFindings([corruption], async (error) => {
+        throw await Promise.resolve(error);
+      }),
     ).rejects.toBe(corruption);
+  });
+
+  it("runs every candidate, one at a time, and settles them in candidate order", async () => {
+    const { evidence, event, finding } = await fixture();
+    const blocked = (at: number) =>
+      replayPrerequisiteFailure(
+        evidence.headerHash,
+        event(at),
+        "present_spend_input",
+      );
+    const [first, second] = [new Error("first"), new Error("second")];
+    const outcomes = [
+      finding("transition-trace", 0),
+      blocked(1),
+      null,
+      finding("non-existent-input", 1),
+      blocked(0),
+    ] as const;
+    const run = async (
+      candidates: readonly (CanonicalViolationDetection | Error | null)[],
+    ) => {
+      const started: number[] = [];
+      let running = 0;
+      let mostRunning = 0;
+      const settled = await collectReplayFindings(
+        candidates,
+        async (candidate, index) => {
+          started.push(index);
+          running += 1;
+          mostRunning = Math.max(mostRunning, running);
+          // Later candidates finish first if they run together.
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2 * (candidates.length - index)),
+          );
+          running -= 1;
+          if (candidate instanceof Error) throw candidate;
+          return candidate;
+        },
+      ).then(
+        (value) => ({ value }),
+        (reason: unknown) => ({ reason }),
+      );
+      return { settled, started, mostRunning };
+    };
+    const blockedRun = await run(outcomes);
+    expect(blockedRun.mostRunning).toBe(1);
+    expect(blockedRun.started).toStrictEqual([0, 1, 2, 3, 4]);
+    expect(blockedRun.settled).toMatchObject({
+      reason: {
+        failures: [...blocked(1).failures, ...blocked(0).failures],
+        detections: [outcomes[0], outcomes[3]],
+      },
+    });
+    // A fatal error outranks every prerequisite, and the earliest is thrown
+    // after every candidate has run.
+    const fatalRun = await run([...outcomes, second, first]);
+    expect(fatalRun.started).toStrictEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(fatalRun.settled).toStrictEqual({ reason: second });
+    expect(await run([outcomes[0], null, outcomes[3]])).toMatchObject({
+      settled: { value: [outcomes[0], outcomes[3]] },
+      mostRunning: 1,
+    });
   });
 });

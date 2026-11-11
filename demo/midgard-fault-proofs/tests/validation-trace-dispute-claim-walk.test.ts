@@ -3,17 +3,11 @@
  * preparing and validating a claim walks none of the block's steps again,
  * however large the predecessor ledger. Each claim still matches the one
  * built from its own one-off pre-state, for every failing event of the block.
- *
- * Work is counted as the leaves of every Merkle Patricia trie built, at the
- * trie library the replay uses: each step a walk applies re-checks the
- * ledger's root, a trie the size of the ledger. */
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+ * Work is counted as in `helpers/trie-leaves.ts`. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
 import { ledgerBeforeTransactionEvent } from "../src/input-existence/event-ledger.js";
-import type { LedgerEntry } from "../src/ledger-at.js";
 import { encodeValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import { buildValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
@@ -27,44 +21,11 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../src/workflow/complete-replay.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
+import { filler, trieLeaves } from "./helpers/trie-leaves.js";
 
 const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 
 type Block = Awaited<ReturnType<typeof plutusExecutionEventsBlockFixture>>;
-
-/** A plain output at a script address, holding no value. */
-const PLAIN_OUTPUT = Buffer.from(
-  "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
-  "hex",
-);
-
-/** `count` predecessor entries no event of the block touches. */
-const filler = (count: number): LedgerEntry[] =>
-  Array.from({ length: count }, (_, index) => {
-    const txId = Buffer.alloc(32, 0x5a);
-    txId.writeUInt32BE(index);
-    return {
-      outRef: encodeMidgardSpendInputItem({ txId, outputIndex: 0 }),
-      output: PLAIN_OUTPUT,
-    };
-  });
-
-/** Runs `run`, counting the leaves of every trie it builds. */
-const trieLeaves = async <T>(
-  run: () => Promise<T>,
-): Promise<{ result: T; leaves: number }> => {
-  const fromList = Trie.fromList.bind(Trie);
-  let leaves = 0;
-  Trie.fromList = (async (elements: readonly unknown[]) => {
-    leaves += elements.length;
-    return await fromList(elements as never);
-  }) as typeof Trie.fromList;
-  try {
-    return { result: await run(), leaves };
-  } finally {
-    Trie.fromList = fromList;
-  }
-};
 
 const detect = async (block: Block) => {
   const replayer =

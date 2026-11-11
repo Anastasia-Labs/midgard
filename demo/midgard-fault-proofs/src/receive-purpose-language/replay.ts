@@ -93,27 +93,25 @@ export const detectReceivePurposeLanguageReplay = async ({
   for (const [sourceIndex, entry] of current.forcedTransactions.entries())
     if (recordsReceiveLanguage(entry.value.verdict))
       candidates.push({ sourceKind: 1, sourceIndex });
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareReceivePurposeLanguageReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: RECEIVE_PURPOSE_LANGUAGE_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic:
-              prepared.observed === null
-                ? "the forced rejection records a receive-language outcome the transaction does not have"
-                : `receive purpose ${prepared.observed.index.toString()} executes a PlutusV3 source with a redeemer`,
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareReceivePurposeLanguageReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: RECEIVE_PURPOSE_LANGUAGE_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic:
+            prepared.observed === null
+              ? "the forced rejection records a receive-language outcome the transaction does not have"
+              : `receive purpose ${prepared.observed.index.toString()} executes a PlutusV3 source with a redeemer`,
+          prepared,
+        };
+  });
 };

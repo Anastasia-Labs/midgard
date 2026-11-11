@@ -121,24 +121,22 @@ export const detectUnusedRedeemerReplay = async ({
     )
       candidates.push({ sourceKind: 1, sourceIndex });
   }
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareUnusedRedeemerReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: UNUSED_REDEEMER_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic: `redeemer ${prepared.redeemerIndex.toString()} refutes the recorded verdict`,
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareUnusedRedeemerReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: UNUSED_REDEEMER_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic: `redeemer ${prepared.redeemerIndex.toString()} refutes the recorded verdict`,
+          prepared,
+        };
+  });
 };

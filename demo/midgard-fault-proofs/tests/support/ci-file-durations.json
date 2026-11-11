@@ -236,6 +236,7 @@
     "tests/own-outputs.test.ts": 0.9,
     "tests/phas-membership-batch.test.ts": 1.1,
     "tests/plain-wallet-inputs.test.ts": 0.8,
+    "tests/predecessor-ledger-replay-cost.test.ts": 5.4,
     "tests/predecessor-replay.test.ts": 1.6,
     "tests/prepare-da-hash-preimage.test.ts": 1.4,
     "tests/prepare-double-spend.test.ts": 1.5,

@@ -131,26 +131,24 @@ export const detectScriptIntegrityHashMismatchReplay = async ({
         : [],
     ),
   ];
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareScriptIntegrityHashMismatchReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic: prepared.mismatch
-              ? "the committed script integrity hash differs from the one the transaction's executions require"
-              : "the forced rejection claims a script integrity hash mismatch the transaction does not have",
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareScriptIntegrityHashMismatchReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic: prepared.mismatch
+            ? "the committed script integrity hash differs from the one the transaction's executions require"
+            : "the forced rejection claims a script integrity hash mismatch the transaction does not have",
+          prepared,
+        };
+  });
 };

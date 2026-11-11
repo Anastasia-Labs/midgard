@@ -135,7 +135,8 @@ export const detectWithdrawalMistagReplay = async ({
   predecessor?: CheckedLedger;
 }) => {
   return collectReplayFindings(
-    block.reconstruction.withdrawals.map(async (_, index) => {
+    block.reconstruction.withdrawals,
+    async (_, index) => {
       const prepared = await prepareWithdrawalMistagReplay({
         current: block.reconstruction,
         predecessor,
@@ -152,6 +153,6 @@ export const detectWithdrawalMistagReplay = async ({
             index,
             prepared,
           };
-    }),
+    },
   );
 };

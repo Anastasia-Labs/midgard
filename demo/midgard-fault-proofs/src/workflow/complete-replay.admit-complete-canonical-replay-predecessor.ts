@@ -7,7 +7,7 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   EventLedgerReplayRefusal,
-  ledgerBeforeTransactionEvent,
+  lazyEventLedgerWalk,
 } from "../input-existence/event-ledger.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
 import {
@@ -181,7 +181,11 @@ export const EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID =
   "authenticated-event-pre-state-unavailable" as const;
 
 /** Scan the selected transaction's authenticated event ledger, including
- * earlier forced effects and withdrawals. A later creator never backfills it. */
+ * earlier forced effects and withdrawals. A later creator never backfills it.
+ * One walk of the block's steps serves every event of a phase, so the events
+ * are scanned in step order; their findings, and the first error, keep the
+ * block's source order. A walk stops at a step that fails for its phase, which
+ * an event of an earlier phase may never reach, so each phase has its own. */
 export const detectLedgerRelativeMissingInputs = async ({
   evidence,
   context,
@@ -194,92 +198,117 @@ export const detectLedgerRelativeMissingInputs = async ({
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const field = kind === "spend" ? 0 : 1;
   const violationId = field === 0 ? "non-existent-input" : "no-reference-input";
-  const detections: CanonicalViolationDetection[] = [];
+  const walk = () =>
+    lazyEventLedgerWalk({
+      block: evidence,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+  const walks = { ForcedTransaction: walk(), L2Transaction: walk() };
+  const steps = evidence.reconstruction.eventToStepByFingerprint;
   const positions = { ForcedTransaction: 0, L2Transaction: 0 };
-  for (const event of evidence.reconstruction.sourceEvents) {
-    if (event.phase !== "ForcedTransaction" && event.phase !== "L2Transaction")
-      continue;
-    const position = positions[event.phase]++;
+  const events = evidence.reconstruction.sourceEvents.flatMap((event) =>
+    event.phase === "ForcedTransaction" || event.phase === "L2Transaction"
+      ? [{ event, position: positions[event.phase]++ }]
+      : [],
+  );
+  const scan = async ({
+    event,
+    position,
+  }: (typeof events)[number]): Promise<
+    readonly CanonicalViolationDetection[]
+  > => {
     if (
       event.phase === "ForcedTransaction"
         ? event.entry.value.verdict !== "ForcedTxValid"
         : event.entry.validity !== "TxIsValid"
     )
-      continue;
+      return [];
     const source = await openProofThreadSubjectFromCanonicalEvidence({
       block: evidence,
       eventKey: event.eventKey,
     });
     const items = decodeMidgardFieldPreimage(source.fieldPreimages[field]!);
-    if (items.length === 0) continue;
+    if (items.length === 0) return [];
     const subject = sourceEventSubject(event);
-    const gap = (id: string, diagnostic: string): void => {
-      detections.push({
+    const gap = (id: string, diagnostic: string) => [
+      {
         ...subject,
         detectionId: `${id}:${kind}:${position}:${source.subject.transaction_id}`,
         headerHash: evidence.headerHash,
         violationId: id,
         position: BigInt(position),
         diagnostic,
-      });
-    };
+      },
+    ];
     if (
       predecessor === undefined &&
       evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT
-    ) {
-      gap(
+    )
+      return gap(
         PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
         "input classification requires the authenticated predecessor ledger",
       );
-      continue;
-    }
-    const eventOpening = evidence.reconstruction.eventToStepByFingerprint.get(
-      event.fingerprint,
-    );
-    if (
-      eventOpening === undefined ||
-      eventOpening.value.phase !== event.phase
-    ) {
-      gap(
+    const eventOpening = steps.get(event.fingerprint);
+    if (eventOpening === undefined || eventOpening.value.phase !== event.phase)
+      return gap(
         EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
         "input classification requires the exact committed event-to-step opening",
       );
-      continue;
-    }
     let ledger: CheckedLedger;
     try {
-      ledger = await ledgerBeforeTransactionEvent({
-        block: evidence,
-        eventKey: event.eventKey,
-        stepIndex: eventOpening.value.step_index,
-        predecessor,
-      });
+      ledger = await walks[event.phase].before(
+        event.eventKey,
+        eventOpening.value.step_index,
+      );
     } catch (cause) {
       if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
-      gap(
+      return gap(
         EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
         `input classification event-pre-state hold: ${cause.reason}`,
       );
-      continue;
     }
-    for (const [inputIndex, item] of items.entries()) {
+    return items.flatMap((item, inputIndex) => {
       const decoded = decodeMidgardSpendInputItem(item);
       const inputKey = ledgerKeyBytesHex({
         tx_id: Buffer.from(decoded.txId).toString("hex"),
         output_index: BigInt(decoded.outputIndex),
       });
-      if (ledger.outputs.has(inputKey)) continue;
-      detections.push({
-        ...subject,
-        detectionId: `${violationId}:${position}:${inputIndex}:${source.subject.transaction_id}:${inputKey}`,
-        headerHash: evidence.headerHash,
-        violationId,
-        position: BigInt(position),
-        diagnostic: `accepted transaction ${source.subject.transaction_id} ${kind} input ${inputIndex} is absent at its authenticated event pre-state`,
-      });
-    }
-  }
-  return detections;
+      if (ledger.outputs.has(inputKey)) return [];
+      return [
+        {
+          ...subject,
+          detectionId: `${violationId}:${position}:${inputIndex}:${source.subject.transaction_id}:${inputKey}`,
+          headerHash: evidence.headerHash,
+          violationId,
+          position: BigInt(position),
+          diagnostic: `accepted transaction ${source.subject.transaction_id} ${kind} input ${inputIndex} is absent at its authenticated event pre-state`,
+        },
+      ];
+    });
+  };
+  const stepOf = ({ event }: (typeof events)[number]): bigint =>
+    steps.get(event.fingerprint)?.value.step_index ?? -1n;
+  const scanned = new Map<
+    (typeof events)[number],
+    | { readonly detections: readonly CanonicalViolationDetection[] }
+    | { readonly error: unknown }
+  >();
+  for (const scanning of [...events].sort((left, right) => {
+    const [a, b] = [stepOf(left), stepOf(right)];
+    return a < b ? -1 : a > b ? 1 : 0;
+  }))
+    scanned.set(
+      scanning,
+      await scan(scanning).then(
+        (detections) => ({ detections }),
+        (error: unknown) => ({ error }),
+      ),
+    );
+  return events.flatMap((event) => {
+    const outcome = scanned.get(event)!;
+    if ("error" in outcome) throw outcome.error;
+    return outcome.detections;
+  });
 };
 
 export const detectNetworkIds = (

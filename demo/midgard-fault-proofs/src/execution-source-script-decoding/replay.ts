@@ -91,25 +91,23 @@ export const detectExecutionSourceScriptDecodingReplay = async ({
   for (const [sourceIndex, entry] of current.forcedTransactions.entries())
     if (recordedArm(entry.value.verdict) !== null)
       candidates.push({ sourceKind: 1, sourceIndex });
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareExecutionSourceScriptDecodingReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: prepared.violationId,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic:
-              "the forced rejection records a native script decoding reason the protocol limits cannot produce",
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareExecutionSourceScriptDecodingReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: prepared.violationId,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic:
+            "the forced rejection records a native script decoding reason the protocol limits cannot produce",
+          prepared,
+        };
+  });
 };

@@ -98,27 +98,25 @@ export const detectMissingScriptSourceReplay = async ({
           purposePhaseRejection(entry.value.verdict)
     )
       candidates.push({ sourceKind: 1, sourceIndex });
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareMissingScriptSourceReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: MISSING_SCRIPT_SOURCE_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic:
-              prepared.observed === null
-                ? "the forced rejection claims a missing script source the transaction does not lack"
-                : `${DIRECT_PURPOSE_NAMES[Number(prepared.observed.kind)]!} purpose ${prepared.observed.index.toString()} has no script source`,
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareMissingScriptSourceReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: MISSING_SCRIPT_SOURCE_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic:
+            prepared.observed === null
+              ? "the forced rejection claims a missing script source the transaction does not lack"
+              : `${DIRECT_PURPOSE_NAMES[Number(prepared.observed.kind)]!} purpose ${prepared.observed.index.toString()} has no script source`,
+          prepared,
+        };
+  });
 };

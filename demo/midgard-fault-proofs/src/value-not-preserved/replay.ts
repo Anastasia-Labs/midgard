@@ -342,32 +342,30 @@ export const detectValueConservationFaults = async ({
     for (let index = 0; index < count; index++)
       candidates.push({ forced, index });
   }
-  return collectReplayFindings(
-    candidates.map(async ({ forced, index }) => {
-      const artifact = await prepareValueConservationArtifact({
-        block,
-        predecessor,
-        sourceIndex: index,
-        forced,
-      });
-      if (artifact === null) return null;
-      const violationId = forced
-        ? VALUE_NOT_PRESERVED_REJECTION_VIOLATION
-        : VALUE_NOT_PRESERVED_VIOLATION;
-      return {
-        ...(forced
-          ? forcedTransactionSubject(
-              block.reconstruction.forcedTransactions[index]!.key,
-            )
-          : acceptedTransactionSubject(
-              block.reconstruction.transactions[index]!.txId,
-            )),
-        detectionId: `${violationId}:${index}`,
-        headerHash: block.headerHash,
-        violationId,
-        position: BigInt((forced ? block.transactions.length : 0) + index),
-        diagnostic: `authenticated value conservation contradiction at ${forced ? "forced" : "accepted"} source ${index}`,
-      };
-    }),
-  );
+  return collectReplayFindings(candidates, async ({ forced, index }) => {
+    const artifact = await prepareValueConservationArtifact({
+      block,
+      predecessor,
+      sourceIndex: index,
+      forced,
+    });
+    if (artifact === null) return null;
+    const violationId = forced
+      ? VALUE_NOT_PRESERVED_REJECTION_VIOLATION
+      : VALUE_NOT_PRESERVED_VIOLATION;
+    return {
+      ...(forced
+        ? forcedTransactionSubject(
+            block.reconstruction.forcedTransactions[index]!.key,
+          )
+        : acceptedTransactionSubject(
+            block.reconstruction.transactions[index]!.txId,
+          )),
+      detectionId: `${violationId}:${index}`,
+      headerHash: block.headerHash,
+      violationId,
+      position: BigInt((forced ? block.transactions.length : 0) + index),
+      diagnostic: `authenticated value conservation contradiction at ${forced ? "forced" : "accepted"} source ${index}`,
+    };
+  });
 };

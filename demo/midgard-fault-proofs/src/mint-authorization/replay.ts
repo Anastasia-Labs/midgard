@@ -169,7 +169,8 @@ export const detectMintAuthorizationReplay = async ({
   predecessor?: CheckedLedger;
 }) => {
   return collectReplayFindingBatches(
-    block.reconstruction.transactions.map(async (source, sourceIndex) => {
+    block.reconstruction.transactions,
+    async (source, sourceIndex) => {
       // A mint item outside the field-5 grammar has no authorization
       // meaning; the direct mint-item proof owns that transaction.
       if (transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
@@ -192,6 +193,6 @@ export const detectMintAuthorizationReplay = async ({
         diagnostic: `accepted transaction ${item.txInclusion.nativeTxId} has unauthorized mint policy ${item.finding.policyIdHex}`,
         prepared: item,
       }));
-    }),
+    },
   );
 };

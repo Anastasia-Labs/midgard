@@ -80,23 +80,35 @@ export const completeReplayFindings = <T extends CanonicalViolationDetection>(
   return detections;
 };
 
-/** Collect every event, while keeping ordinary corruption/acquisition errors fatal. */
+/**
+ * Collect every candidate, while keeping ordinary corruption/acquisition
+ * errors fatal: every candidate runs, and the first fatal error in candidate
+ * order is the one thrown. Candidates run one at a time; each may hold copies
+ * of the block's ledger, and the work is CPU-bound, so running them together
+ * would multiply peak memory for no gain.
+ */
 export const collectReplayFindingBatches = async <
+  C,
   T extends CanonicalViolationDetection,
 >(
-  tasks: readonly Promise<readonly T[]>[],
+  candidates: readonly C[],
+  detect: (candidate: C, index: number) => Promise<readonly T[]>,
 ): Promise<readonly T[]> => {
   const detections: T[] = [];
   const partialDetections: CanonicalViolationDetection[] = [];
   const failures: ReplayPrerequisiteFailure[] = [];
-  for (const result of await Promise.allSettled(tasks)) {
-    if (result.status === "fulfilled") {
-      detections.push(...result.value);
-    } else if (result.reason instanceof CanonicalReplayPrerequisiteError) {
-      partialDetections.push(...result.reason.detections);
-      failures.push(...result.reason.failures);
-    } else throw result.reason;
+  let fatal: { readonly reason: unknown } | undefined;
+  for (const [index, candidate] of candidates.entries()) {
+    try {
+      detections.push(...(await detect(candidate, index)));
+    } catch (reason) {
+      if (reason instanceof CanonicalReplayPrerequisiteError) {
+        partialDetections.push(...reason.detections);
+        failures.push(...reason.failures);
+      } else fatal ??= { reason };
+    }
   }
+  if (fatal !== undefined) throw fatal.reason;
   if (failures.length > 0)
     throw new CanonicalReplayPrerequisiteError(failures, [
       ...detections,
@@ -105,15 +117,14 @@ export const collectReplayFindingBatches = async <
   return detections;
 };
 
-export const collectReplayFindings = <T extends CanonicalViolationDetection>(
-  tasks: readonly Promise<T | null>[],
+export const collectReplayFindings = <C, T extends CanonicalViolationDetection>(
+  candidates: readonly C[],
+  detect: (candidate: C, index: number) => Promise<T | null>,
 ): Promise<readonly T[]> =>
-  collectReplayFindingBatches(
-    tasks.map(async (task) => {
-      const finding = await task;
-      return finding === null ? [] : [finding];
-    }),
-  );
+  collectReplayFindingBatches(candidates, async (candidate, index) => {
+    const finding = await detect(candidate, index);
+    return finding === null ? [] : [finding];
+  });
 
 /** A payable withdrawal of an output the replayed ledger lacks is exactly what
  * the same-block withdrawal families prove: a mistagged leaf, or the second

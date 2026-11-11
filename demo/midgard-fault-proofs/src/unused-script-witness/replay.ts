@@ -131,26 +131,24 @@ export const detectUnusedScriptWitnessReplay = async ({
     )
       candidates.push({ sourceKind: 1, sourceIndex });
   }
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareUnusedScriptWitnessReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic: prepared.unused
-              ? `script witness ${prepared.scriptIndex.toString()} is unused`
-              : `the rejection claims script witness ${prepared.scriptIndex.toString()} is unused, but it is used or absent`,
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareUnusedScriptWitnessReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic: prepared.unused
+            ? `script witness ${prepared.scriptIndex.toString()} is unused`
+            : `the rejection claims script witness ${prepared.scriptIndex.toString()} is unused, but it is used or absent`,
+          prepared,
+        };
+  });
 };

@@ -8,13 +8,14 @@ import {
   acceptedVerdictSubject,
   EMPTY_MERKLE_TREE_ROOT,
   forcedVerdictSubject,
+  Proof,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
-import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,
@@ -75,26 +76,18 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
     const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
     if (outputCborHex === undefined)
       return fail("predecessor ledger omitted a live output preimage");
-    const proof = await keyValuePhasProof(
-      {
-        root: trie.root,
-        count: BigInt(descriptorEntries.length),
-        entries: descriptorEntries,
-      },
+    const membershipProofCborHex = requireProof(
+      trie,
       entry.key,
-      entry.value,
+      `resolved output ${key}`,
     );
     outputs.set(key, {
       transactionId,
       outputIndex,
       descriptorCborHex: entry.value.toString("hex"),
       outputCborHex,
-      membershipProofCborHex: requireProof(
-        trie,
-        entry.key,
-        `resolved output ${key}`,
-      ),
-      membershipProof: proof,
+      membershipProofCborHex,
+      membershipProof: Data.from(membershipProofCborHex, Proof),
     });
   }
   return Object.freeze({

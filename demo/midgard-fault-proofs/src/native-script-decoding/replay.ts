@@ -396,23 +396,21 @@ export const detectNativeScriptDecodingReplay = async ({
       }
     }
   }
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareNativeScriptDecodingReplay({
-        current: block.reconstruction,
-        predecessor,
-        coordinate,
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: nativeScriptDecodingDetectionId(coordinate),
-            headerHash: block.headerHash,
-            violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareNativeScriptDecodingReplay({
+      current: block.reconstruction,
+      predecessor,
+      coordinate,
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: nativeScriptDecodingDetectionId(coordinate),
+          headerHash: block.headerHash,
+          violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          prepared,
+        };
+  });
 };

@@ -131,27 +131,25 @@ export const detectDistinctAssetAccumulationLimitReplay = async ({
         : [],
     ),
   ];
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareDistinctAssetAccumulationLimitReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      return prepared === null
-        ? null
-        : {
-            ...eventSubject(prepared.eventKey),
-            detectionId: prepared.detectionId,
-            headerHash: block.headerHash,
-            violationId: DISTINCT_ASSET_ACCUMULATION_LIMIT_VIOLATION_ID,
-            position: BigInt(coordinate.sourceIndex),
-            diagnostic:
-              prepared.crossing !== null
-                ? "an asset entry of the transaction exceeds the distinct-asset accumulation limit"
-                : "the forced rejection claims an asset accumulation-limit crossing the transaction does not have",
-            prepared,
-          };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareDistinctAssetAccumulationLimitReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    return prepared === null
+      ? null
+      : {
+          ...eventSubject(prepared.eventKey),
+          detectionId: prepared.detectionId,
+          headerHash: block.headerHash,
+          violationId: DISTINCT_ASSET_ACCUMULATION_LIMIT_VIOLATION_ID,
+          position: BigInt(coordinate.sourceIndex),
+          diagnostic:
+            prepared.crossing !== null
+              ? "an asset entry of the transaction exceeds the distinct-asset accumulation limit"
+              : "the forced rejection claims an asset accumulation-limit crossing the transaction does not have",
+          prepared,
+        };
+  });
 };

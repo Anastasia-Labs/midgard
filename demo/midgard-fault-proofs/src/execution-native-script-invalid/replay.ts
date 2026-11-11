@@ -109,32 +109,30 @@ export const detectExecutionNativeScriptInvalidReplay = async ({
         : executionPhaseRejection(entry.value.verdict)
     )
       candidates.push({ sourceKind: 1, sourceIndex });
-  return collectReplayFindings(
-    candidates.map(async (coordinate) => {
-      const prepared = await prepareExecutionNativeScriptInvalidReplay({
-        current,
-        coordinate,
-        ...(predecessor === undefined ? {} : { predecessor }),
-      });
-      if (prepared === null) return null;
-      const purpose = SDK.executionNativeScriptInvalidFactCoordinate(
-        prepared.final.fact,
-      );
-      const name =
-        DIRECT_PURPOSE_NAMES[Number(purpose.kind)] ?? "invalid coordinate";
-      return {
-        ...eventSubject(prepared.eventKey),
-        detectionId: prepared.detectionId,
-        headerHash: block.headerHash,
-        violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,
-        position: BigInt(coordinate.sourceIndex),
-        diagnostic:
-          "Evaluated" in prepared.final.fact &&
-          !prepared.final.fact.Evaluated.satisfied
-            ? `the native script of ${name} purpose ${purpose.index.toString()} evaluates false`
-            : `the rejection claims the native script of ${name} purpose ${purpose.index.toString()} evaluates false, but it does not`,
-        prepared,
-      };
-    }),
-  );
+  return collectReplayFindings(candidates, async (coordinate) => {
+    const prepared = await prepareExecutionNativeScriptInvalidReplay({
+      current,
+      coordinate,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    if (prepared === null) return null;
+    const purpose = SDK.executionNativeScriptInvalidFactCoordinate(
+      prepared.final.fact,
+    );
+    const name =
+      DIRECT_PURPOSE_NAMES[Number(purpose.kind)] ?? "invalid coordinate";
+    return {
+      ...eventSubject(prepared.eventKey),
+      detectionId: prepared.detectionId,
+      headerHash: block.headerHash,
+      violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,
+      position: BigInt(coordinate.sourceIndex),
+      diagnostic:
+        "Evaluated" in prepared.final.fact &&
+        !prepared.final.fact.Evaluated.satisfied
+          ? `the native script of ${name} purpose ${purpose.index.toString()} evaluates false`
+          : `the rejection claims the native script of ${name} purpose ${purpose.index.toString()} evaluates false, but it does not`,
+      prepared,
+    };
+  });
 };

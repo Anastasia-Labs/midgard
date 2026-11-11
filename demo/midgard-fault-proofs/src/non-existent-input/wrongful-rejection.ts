@@ -9,7 +9,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { ledgerBeforeTransactionEvent } from "../input-existence/event-ledger.js";
+import {
+  type EventLedgerWalk,
+  lazyEventLedgerWalk,
+} from "../input-existence/event-ledger.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
@@ -95,10 +98,17 @@ export const prepareNonExistentInputWrongfulRejection = async ({
   block,
   forcedIndex,
   predecessor,
+  walk = lazyEventLedgerWalk({
+    block,
+    ...(predecessor === undefined ? {} : { predecessor }),
+  }),
 }: {
   block: CanonicalBlockEvidence;
   forcedIndex: number;
   predecessor?: CheckedLedger;
+  /** The block's ledger walk, when several of its rejections are prepared;
+   * it then stands for `predecessor`. */
+  walk?: EventLedgerWalk;
 }): Promise<PreparedNonExistentInputWrongfulRejection> => {
   const forced = block.reconstruction.forcedTransactions[forcedIndex];
   if (forced === undefined)
@@ -143,12 +153,7 @@ export const prepareNonExistentInputWrongfulRejection = async ({
     null;
   if (material.selectedInput !== null) {
     const ledger = (
-      await ledgerBeforeTransactionEvent({
-        block,
-        eventKey,
-        stepIndex: eventMembership.value.step_index,
-        predecessor,
-      })
+      await walk.before(eventKey, eventMembership.value.step_index)
     ).trie;
     if (ledger.root !== transitionMembership.value.pre_utxos_root)
       throw new Error(
@@ -184,6 +189,10 @@ export const detectNonExistentInputWrongfulRejections = async ({
   predecessor?: CheckedLedger;
 }) => {
   const detections = [];
+  const walk = lazyEventLedgerWalk({
+    block,
+    ...(predecessor === undefined ? {} : { predecessor }),
+  });
   for (const [
     forcedIndex,
     forced,
@@ -200,7 +209,7 @@ export const detectNonExistentInputWrongfulRejections = async ({
       const prepared = await prepareNonExistentInputWrongfulRejection({
         block,
         forcedIndex,
-        predecessor,
+        walk,
       });
       detections.push({
         ...forcedTransactionSubject(forced.key),
