@@ -15,7 +15,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildTraceAtStepCountV1,
   DirectValidationTraceUnavailable,
-  openValidationTraceStepsV1,
   openValidationTraceV1,
   type ValidationTraceSteps,
   ValidationTraceStopped,
@@ -136,9 +135,9 @@ export type ValidationTraceClaimMaterial = {
   readonly stateIndexOf: (stateHashHex: string) => number | undefined;
   /**
    * States `stateIndex` and `stateIndex + 1` of the same trace and their
-   * work witnesses, rebuilt from the same replay on first use: a one-step
-   * resolution reads its evidence from them. Only these are held, not the
-   * whole witnessed trace.
+   * work witnesses, rebuilt on first use by a replay that reuses the
+   * opening's script evaluations: a one-step resolution reads its evidence
+   * from them. Only these are held, not the whole witnessed trace.
    */
   readonly steps: (stateIndex: number) => Promise<ValidationTraceSteps>;
   /**
@@ -150,8 +149,8 @@ export type ValidationTraceClaimMaterial = {
     stateIndices: readonly number[],
   ) => Promise<readonly ValidationTraceSteps[]>;
   /** Every CEK script selection of the trace that rests on a decode record,
-   * in trace order (`recordedSelectionOf`), rebuilt on first use. */
-  readonly selections: () => Promise<readonly ValidationTraceSelection[]>;
+   * in trace order (`recordedSelectionOf`), kept by the opening replay. */
+  readonly selections: readonly ValidationTraceSelection[];
   /**
    * The versioned item of the script a CEK script selection of the trace
    * runs, from the disputed transaction or its resolved inputs; throws
@@ -257,7 +256,13 @@ export const buildValidationTraceClaimMaterial = async ({
     verdict: { verdict: "rejected" },
   });
   const opened = await Effect.runPromise(
-    Effect.either(openValidationTraceV1(input, { revealStates: [0] })),
+    Effect.either(
+      openValidationTraceV1(input, {
+        revealStates: [0],
+        keepWitnesses: (_, witness) =>
+          recordedSelectionOf(witness) !== undefined,
+      }),
+    ),
   ).catch((defect: unknown) => {
     throw validationTraceClaimBuildHeld(defect);
   });
@@ -297,7 +302,7 @@ export const buildValidationTraceClaimMaterial = async ({
     if (unread.length > 0) {
       const kept = new Set(unread.flatMap((index) => [index, index + 1]));
       const replay = Effect.runPromise(
-        openValidationTraceStepsV1(input, (index) => kept.has(index)),
+        leaves.steps((index) => kept.has(index)),
       );
       for (const index of unread)
         steps.set(
@@ -307,7 +312,6 @@ export const buildValidationTraceClaimMaterial = async ({
     }
     return stateIndices.map((index) => steps.get(index)!);
   };
-  let selections: Promise<readonly ValidationTraceSelection[]> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(
       "validation claim: trace root does not match its commitment",
@@ -334,18 +338,10 @@ export const buildValidationTraceClaimMaterial = async ({
     },
     steps: (stateIndex) => readSteps([stateIndex])[0]!,
     stepsAt: (stateIndices) => Promise.all(readSteps(stateIndices)),
-    selections: () =>
-      (selections ??= Effect.runPromise(
-        openValidationTraceStepsV1(
-          input,
-          (_, witness) => recordedSelectionOf(witness) !== undefined,
-        ),
-      ).then(({ witnesses }) =>
-        Object.values(witnesses).flatMap((witness) => {
-          const selection = recordedSelectionOf(witness);
-          return selection === undefined ? [] : [selection];
-        }),
-      )),
+    selections: [...leaves.witnesses.values()].flatMap((witness) => {
+      const selection = recordedSelectionOf(witness);
+      return selection === undefined ? [] : [selection];
+    }),
     scriptItem: selectedScriptItemReader({
       transactionCbor: event.entry.fullTransactionCbor,
       ledger,

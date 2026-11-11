@@ -8,11 +8,12 @@
  *   commit mode and returns its descriptor: no CEK step is verified or
  *   retained, and the trace is folded into an O(log n) frontier.
  * - `openValidationTraceV1` replays it the same way and keeps every state
- *   hash (32 bytes per state), plus the full states asked for, so a
- *   challenger can build proofs and reveal states without a proof build.
- * - `openValidationTraceStepsV1` replays it the same way and keeps the
- *   states and work witnesses it is asked for, as the proof build holds
- *   them, so a one-step resolution is built without the proof build.
+ *   hash (32 bytes per state), plus the full states and work witnesses
+ *   asked for, so a challenger can build proofs and reveal states without
+ *   a proof build. Its `steps` replays it again on the script evaluations
+ *   the opening ran and keeps the states and work witnesses it is asked
+ *   for, as the proof build holds them, so a one-step resolution is built
+ *   without the proof build.
  */
 import {
   decodeMidgardValidationTraceDescriptor,
@@ -85,7 +86,8 @@ export type ValidationTraceCommitmentV1 = {
   readonly ledgerOps: readonly ValidationMachineLedgerOp[];
 };
 
-/** Replays `input` in commit mode, handing each state to `observe`. */
+/** Replays `input` in commit mode, handing each state to `observe`; returns
+ * its commitment and the script evaluations it ran or reused, in run order. */
 const commitWith = (
   input: ValidationMachineReplayInput,
   observe: ValidationTraceStateObserver,
@@ -132,10 +134,13 @@ const commitWith = (
       }),
     );
     return {
-      descriptor,
-      rejectionCode: completed.rejectionCode,
-      ledgerOps: completed.ledgerOps,
-    } satisfies ValidationTraceCommitmentV1;
+      commitment: {
+        descriptor,
+        rejectionCode: completed.rejectionCode,
+        ledgerOps: completed.ledgerOps,
+      } satisfies ValidationTraceCommitmentV1,
+      scriptEvaluations: completed.scriptEvaluations,
+    };
   });
 
 /**
@@ -149,10 +154,38 @@ export const commitValidationTraceV1 = (
   input: ValidationMachineReplayInput,
 ): Effect.Effect<ValidationTraceCommitmentV1, Error> =>
   commitWith(input, () => undefined).pipe(
+    Effect.map(({ commitment }) => commitment),
     classifyValidationTraceFailure(input),
   );
 
-/** Every state hash of one honest trace, as a challenger replays it. */
+/** Picks the steps a replay keeps by program counter and work witness. */
+type ValidationTraceStepPick = (
+  programCounter: number,
+  witness: ValidationMachineWorkWitness,
+) => boolean;
+
+/** `witness` as a replay keeps it: a CEK step verified as the proof build
+ * verifies every step. */
+const keptWitness = (
+  witness: ValidationMachineWorkWitness,
+): ValidationMachineWorkWitness => {
+  const { auxiliary } = witness;
+  if (
+    auxiliary?.kind === "cekCoreStep" &&
+    !verifyMidgardCekCoreStep(
+      auxiliary.step.pre,
+      auxiliary.step.post,
+      auxiliary.step.witness,
+    )
+  )
+    throw new Error(
+      `generated CEK ${auxiliary.step.witness.kind} transition does not pass the consensus verifier`,
+    );
+  return witness;
+};
+
+/** Every state hash of one honest trace, as a challenger replays it, and a
+ * handle that replays it again for the steps a one-step resolution reads. */
 export type ValidationTraceLeavesV1 = ValidationTraceCommitmentV1 & {
   /** `T`: the trace has `T + 1` states. */
   readonly stepCount: number;
@@ -163,6 +196,20 @@ export type ValidationTraceLeavesV1 = ValidationTraceCommitmentV1 & {
   readonly sourceKind: "normal" | "forced";
   /** Rule R-DESC for the replayed transaction. */
   readonly requiresRealDescriptor: boolean;
+  /** Every work witness asked for, by program counter in trace order. */
+  readonly witnesses: ReadonlyMap<number, ValidationMachineWorkWitness>;
+  /**
+   * Replays the transaction again and keeps the states and work witnesses
+   * `keep` picks: each exactly as `buildDeterministicValidationMachineTrace`
+   * holds it at that program counter, a kept CEK step verified as the proof
+   * build verifies every step. What a one-step resolution reads of the
+   * trace, without the proof build's O(T) witnesses. The replay reuses the
+   * opening's script evaluations instead of running the evaluator again; it
+   * refuses an evaluation its own run does not match exactly.
+   */
+  readonly steps: (
+    keep: ValidationTraceStepPick,
+  ) => Effect.Effect<ValidationTraceSteps, Error>;
 };
 
 /** State hash `index` of an opened trace. */
@@ -177,33 +224,62 @@ export const validationTraceStateHashV1 = (
 };
 
 /**
+ * Replays `input`, reusing its `scriptEvaluations`, and keeps the states and
+ * work witnesses `keep` picks.
+ */
+const replaySteps = (
+  input: ValidationMachineReplayInput,
+  keep: ValidationTraceStepPick,
+): Effect.Effect<ValidationTraceSteps, Error> =>
+  Effect.gen(function* () {
+    const states: Record<number, MidgardValidationMachineState> = {};
+    const witnesses: Record<number, ValidationMachineWorkWitness> = {};
+    yield* commitWith(input, (index, _stateHash, state, witness) => {
+      if (!keep(index, witness)) return;
+      witnesses[index] = keptWitness(witness);
+      states[index] = state();
+    });
+    return { states, witnesses } satisfies ValidationTraceSteps;
+  }).pipe(classifyValidationTraceFailure(input));
+
+/**
  * Replays `input` in commit mode and keeps its state hashes: one replay per
  * (block, transaction), shared by every game on it. `revealStates` names
  * the program counters whose full states are kept as well; the terminal
  * state is always kept. A counter past the end is kept as the terminal
  * state, the state the honest trace holds there at any longer step count.
+ * `keepWitnesses` picks the work witnesses kept, each as `steps` keeps it.
  */
 export const openValidationTraceV1 = (
   input: ValidationMachineReplayInput,
-  options: { readonly revealStates?: readonly number[] } = {},
+  options: {
+    readonly revealStates?: readonly number[];
+    readonly keepWitnesses?: ValidationTraceStepPick;
+  } = {},
 ): Effect.Effect<ValidationTraceLeavesV1, Error> =>
   Effect.gen(function* () {
     const reveal = new Set(options.revealStates ?? []);
     let hashes = Buffer.alloc(32 * 1024);
     let count = 0;
     const kept = new Map<number, MidgardValidationMachineState>();
+    const witnesses = new Map<number, ValidationMachineWorkWitness>();
     let last: MidgardValidationMachineState | null = null;
-    const commitment = yield* commitWith(input, (index, stateHash, state) => {
-      if ((count + 1) * 32 > hashes.length) {
-        const grown = Buffer.alloc(hashes.length * 2);
-        hashes.copy(grown);
-        hashes = grown;
-      }
-      stateHash.copy(hashes, count * 32);
-      count += 1;
-      last = state();
-      if (reveal.has(index)) kept.set(index, last);
-    });
+    const { commitment, scriptEvaluations } = yield* commitWith(
+      input,
+      (index, stateHash, state, witness) => {
+        if ((count + 1) * 32 > hashes.length) {
+          const grown = Buffer.alloc(hashes.length * 2);
+          hashes.copy(grown);
+          hashes = grown;
+        }
+        stateHash.copy(hashes, count * 32);
+        count += 1;
+        last = state();
+        if (reveal.has(index)) kept.set(index, last);
+        if (options.keepWitnesses?.(index, witness) === true)
+          witnesses.set(index, keptWitness(witness));
+      },
+    );
     const stepCount = count - 1;
     kept.set(stepCount, last!);
     for (const index of reveal) {
@@ -225,42 +301,7 @@ export const openValidationTraceV1 = (
         input.canonicalTransactionCbor,
         input.sourceKind,
       ),
+      witnesses,
+      steps: (keep) => replaySteps({ ...input, scriptEvaluations }, keep),
     } satisfies ValidationTraceLeavesV1;
-  }).pipe(classifyValidationTraceFailure(input));
-
-/**
- * Replays `input` in commit mode and keeps the states and work witnesses
- * `keep` picks: each exactly as `buildDeterministicValidationMachineTrace`
- * holds it at that program counter, a kept CEK step verified as the proof
- * build verifies every step. What a one-step resolution reads of the trace,
- * without the proof build's O(T) witnesses.
- */
-export const openValidationTraceStepsV1 = (
-  input: ValidationMachineReplayInput,
-  keep: (
-    programCounter: number,
-    witness: ValidationMachineWorkWitness,
-  ) => boolean,
-): Effect.Effect<ValidationTraceSteps, Error> =>
-  Effect.gen(function* () {
-    const states: Record<number, MidgardValidationMachineState> = {};
-    const witnesses: Record<number, ValidationMachineWorkWitness> = {};
-    yield* commitWith(input, (index, _stateHash, state, witness) => {
-      if (!keep(index, witness)) return;
-      const { auxiliary } = witness;
-      if (
-        auxiliary?.kind === "cekCoreStep" &&
-        !verifyMidgardCekCoreStep(
-          auxiliary.step.pre,
-          auxiliary.step.post,
-          auxiliary.step.witness,
-        )
-      )
-        throw new Error(
-          `generated CEK ${auxiliary.step.witness.kind} transition does not pass the consensus verifier`,
-        );
-      states[index] = state();
-      witnesses[index] = witness;
-    });
-    return { states, witnesses } satisfies ValidationTraceSteps;
   }).pipe(classifyValidationTraceFailure(input));

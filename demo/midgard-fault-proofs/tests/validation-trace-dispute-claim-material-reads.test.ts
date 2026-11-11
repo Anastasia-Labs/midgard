@@ -38,7 +38,7 @@ describe("validation-trace claim material: reads over a three-script trace", () 
     });
     expect(selections).toHaveLength(3);
     const material = await claimMaterialOf(fixture);
-    expect(await material.selections()).toStrictEqual(selections);
+    expect(material.selections).toStrictEqual(selections);
   }, 600_000);
 
   it("batches several steps' reads into exactly the windows each step's own read yields", async () => {

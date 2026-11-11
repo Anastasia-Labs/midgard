@@ -21,14 +21,19 @@ export { ValidationTraceStopped } from "./trace-builder-stop.js";
 
 const ZERO_32 = Buffer.alloc(32);
 
-/** Replays `input` once, recording its states with `recording`. */
+/**
+ * Replays `input` once, recording its states with `recording`. Returns the
+ * completed replay and the script evaluations it ran or reused, in run
+ * order: a replay given them as `input.scriptEvaluations` runs no evaluator.
+ */
 export const replayValidationTrace = (
   input: ValidationMachineReplayInput,
   recording: ValidationTraceRecording,
 ) =>
   Effect.gen(function* () {
     const context = yield* prepareValidationTrace(input, recording);
-    return yield* completeValidationTrace(context);
+    const completed = yield* completeValidationTrace(context);
+    return { ...completed, scriptEvaluations: context.scriptEvaluations };
   });
 
 /**

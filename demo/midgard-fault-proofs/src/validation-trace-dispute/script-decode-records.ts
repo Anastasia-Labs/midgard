@@ -87,7 +87,7 @@ export const withValidationTraceScriptDecodeRecords = ({
             `validation-trace ${stage} has no claim material to find the scripts it selects`,
           );
         return await unrecordedSelectedScript({
-          selections: await material.selections(),
+          selections: material.selections,
           scriptItem: material.scriptItem,
           recorded: async (scriptHashHex) =>
             (await findScriptDecodeRecord({

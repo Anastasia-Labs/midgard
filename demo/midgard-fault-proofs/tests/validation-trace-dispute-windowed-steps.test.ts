@@ -10,7 +10,7 @@ import {
   buildDeterministicValidationMachineTrace,
   buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
-  openValidationTraceStepsV1,
+  openValidationTraceV1,
   type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
@@ -78,7 +78,9 @@ describe("validation-trace claim material: windowed one-step reads at a mid-size
       buildDeterministicValidationMachineTrace(input),
     );
     kept = await Effect.runPromise(
-      openValidationTraceStepsV1(input, () => true),
+      Effect.flatMap(openValidationTraceV1(input), (opened) =>
+        opened.steps(() => true),
+      ),
     );
   }, 600_000);
 
@@ -137,7 +139,7 @@ describe("validation-trace claim material: windowed one-step reads at a mid-size
       return selection === undefined ? [] : [selection];
     });
     expect(selections.length).toBeGreaterThan(0);
-    expect(await material.selections()).toStrictEqual(selections);
+    expect(material.selections).toStrictEqual(selections);
     for (const index of [0, 1, firstCek, Math.floor(stepCount / 2), stepCount])
       expect(
         material.stateIndexOf(
