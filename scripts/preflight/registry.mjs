@@ -5,9 +5,9 @@
 //   * CI's declared path filters determine the required hosted census.
 //     Preflight catches local failures; its selection cannot waive CI.
 //   * Selection favours recall over precision. When in doubt, add a trigger or
-//     a FULL_RUN entry; a check that runs needlessly costs minutes, a check
+//     a full-run path; a check that runs needlessly costs minutes, a check
 //     that was skipped because a glob was too tight costs a red CI run.
-//   * A shared file in FULL_RUN (apart from VERIFICATION_ONLY), a moved compiler pin, `--full`, or
+//   * A full-run path (apart from VERIFICATION_ONLY), a moved compiler pin, `--full`, or
 //     MIDGARD_PREFLIGHT_FULL=1 selects every check at full scope.
 //   * "Could not look" is never "passed": a check whose capability is missing
 //     is SKIPPED WITH A REASON and the run exits 3, not 0.
@@ -28,7 +28,6 @@ import "./registry.select-checks.mjs";
 export { IGNORED_PATHS } from "./derive.mjs";
 export {
   formatCommand,
-  FULL_RUN,
   FULL_RUN_ENV,
   VERIFICATION_ONLY,
 } from "./registry.demo-checks.mjs";

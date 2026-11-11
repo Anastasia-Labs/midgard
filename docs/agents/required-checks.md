@@ -104,17 +104,14 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 
 ## Full-run paths
 
+The list ends with the deployment-profile generator and every file it
+names, derived (`deploymentProfileInputs` in `scripts/preflight/derive.mjs`):
+a new profile module joins it by being imported.
+
 - `onchain/aiken/aiken.toml`
 - `onchain/aiken/aiken.lock`
 - `onchain/aiken/env/**`
 - `config/deployments/**`
-- `demo/scripts/deployment-profiles.mjs`
-- `demo/scripts/deployment-profile-aiken.mjs`
-- `demo/scripts/deployment-profile-identity.mjs`
-- `demo/scripts/deployment-profile-da.mjs`
-- `demo/scripts/deployment-profile-names.mjs`
-- `demo/scripts/deployment-profile-budgets.mjs`
-- `demo/scripts/deployment-profile-operator-economics.mjs`
 - `demo/flake.lock`
 - `demo/package.json`
 - `demo/pnpm-lock.yaml`
@@ -131,6 +128,16 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `scripts/contrib/**`
 - `scripts/pnpm.mjs`
 - `scripts/bin/**`
+- `demo/scripts/deployment-profiles.mjs`
+- `demo/midgard-core/src/generated-deployment-profiles.ts`
+- `demo/scripts/deployment-profile-aiken.mjs`
+- `demo/scripts/deployment-profile-budgets.mjs`
+- `demo/scripts/deployment-profile-da.mjs`
+- `demo/scripts/deployment-profile-identity.mjs`
+- `demo/scripts/deployment-profile-names.mjs`
+- `demo/scripts/deployment-profile-operator-economics.mjs`
+- `demo/scripts/lib/blueprint-stamp.mjs`
+- `scripts/lib/aiken.mjs`
 
 ### Verification-only exceptions
 

@@ -3,7 +3,7 @@
 // --write-docs` writes it; `--check-docs` (and its test) fails when the
 // committed file differs.
 
-import { FULL_RUN, FULL_RUN_ENV, VERIFICATION_ONLY } from "./registry.mjs";
+import { FULL_RUN_ENV, VERIFICATION_ONLY } from "./registry.mjs";
 import { RUNTIME_CHECKS } from "./runtime-owner.mjs";
 
 export const REQUIRED_CHECKS_DOC = "docs/agents/required-checks.md";
@@ -151,7 +151,11 @@ export const renderRequiredChecks = (registry) =>
     "",
     "## Full-run paths",
     "",
-    ...FULL_RUN.map((glob) => `- ${code(glob)}`),
+    "The list ends with the deployment-profile generator and every file it",
+    "names, derived (`deploymentProfileInputs` in `scripts/preflight/derive.mjs`):",
+    "a new profile module joins it by being imported.",
+    "",
+    ...registry.fullRun.map((glob) => `- ${code(glob)}`),
     "",
     "### Verification-only exceptions",
     "",

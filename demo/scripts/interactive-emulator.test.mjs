@@ -16,6 +16,8 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { deploymentProfileInputs } from "../../scripts/preflight/derive.mjs";
+
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const makeFixture = async (t) => {
@@ -30,16 +32,8 @@ const makeFixture = async (t) => {
     "demo/midgard-test-support/interactive-emulator.js",
     "demo/midgard-test-support/build-lock.js",
     "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
-    "demo/scripts/deployment-profiles.mjs",
-    "demo/scripts/deployment-profile-aiken.mjs",
-    "demo/scripts/deployment-profile-da.mjs",
-    "demo/scripts/deployment-profile-names.mjs",
-    "demo/scripts/deployment-profile-identity.mjs",
-    "demo/scripts/deployment-profile-budgets.mjs",
-    "demo/scripts/deployment-profile-operator-economics.mjs",
-    "demo/scripts/lib/blueprint-stamp.mjs",
-    "demo/flake.lock",
-    "scripts/lib/aiken.mjs",
+    // The profile generator and every file it names, derived.
+    ...deploymentProfileInputs(root),
     "onchain/aiken/aiken.toml",
     "onchain/aiken/aiken.lock",
     "onchain/aiken/lib/midgard/common/types.ak",

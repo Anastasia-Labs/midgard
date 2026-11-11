@@ -9,6 +9,8 @@ import {
   AIKEN_PROJECT,
   aikenImportClosure,
   DEMO,
+  deploymentProfileInputs,
+  matchesAny,
   packageNeedsPostgres,
   referencedFiles,
   SCRIPT_BUDGET_JUDGE,
@@ -21,7 +23,7 @@ import {
 // A change to any of these can move the result of every check, so it selects
 // all of them at full scope. Recall beats precision: add to this list when a
 // shared input is found.
-export const FULL_RUN = [
+const SHARED_INPUTS = [
   // Aiken project manifest and dependency lock.
   `${AIKEN_PROJECT}/aiken.toml`,
   `${AIKEN_PROJECT}/aiken.lock`,
@@ -29,13 +31,6 @@ export const FULL_RUN = [
   // environment modules and the deployment configuration that generates them.
   `${AIKEN_PROJECT}/env/**`,
   "config/deployments/**",
-  `${DEMO}/scripts/deployment-profiles.mjs`,
-  `${DEMO}/scripts/deployment-profile-aiken.mjs`,
-  `${DEMO}/scripts/deployment-profile-identity.mjs`,
-  `${DEMO}/scripts/deployment-profile-da.mjs`,
-  `${DEMO}/scripts/deployment-profile-names.mjs`,
-  `${DEMO}/scripts/deployment-profile-budgets.mjs`,
-  `${DEMO}/scripts/deployment-profile-operator-economics.mjs`,
   // The compiler: demo/flake.lock pins the aiken every check runs.
   `${DEMO}/flake.lock`,
   // Workspace manifests, lockfile, toolchain pin, patched and vendored
@@ -62,9 +57,18 @@ export const FULL_RUN = [
   "scripts/bin/**",
 ];
 
+// The shared inputs, then the deployment-profile generator's own files that
+// they do not already cover.
+export const fullRunPaths = (root) => [
+  ...SHARED_INPUTS,
+  ...deploymentProfileInputs(root).filter(
+    (path) => !matchesAny(path, SHARED_INPUTS),
+  ),
+];
+
 // These modules are consumed only by preflight, not package builds, artifacts
 // or protocol runtimes. Their tests run in Repo Tools CI on every PR;
-// derive/probes/shared execution helpers remain FULL_RUN inputs. Protocol CI
+// derive/probes/shared execution helpers remain full-run inputs. Protocol CI
 // keeps its existing source-path triggers, assertions and acceptance profile.
 export const VERIFICATION_ONLY = [
   "scripts/preflight.mjs",

@@ -172,6 +172,19 @@ export const referencedFiles = (rootPath, file) => {
 
 export const DEMO = "demo";
 
+// --- deployment profiles -----------------------------------------------------
+
+export const DEPLOYMENT_PROFILE_GENERATOR = `${DEMO}/scripts/deployment-profiles.mjs`;
+
+// The deployment-profile generator and every file it names: the profile
+// modules it imports, their helpers, the template and compiler they run, and
+// the environment modules and typed profile they write. A new profile module
+// joins this set by being imported, with no list to edit.
+export const deploymentProfileInputs = (root) => [
+  DEPLOYMENT_PROFILE_GENERATOR,
+  ...referencedFiles(root, DEPLOYMENT_PROFILE_GENERATOR),
+];
+
 // `pnpm-workspace.yaml` is a flat `packages:` list here; anything richer
 // (globs, negations) would have to be read by pnpm itself, so refuse it.
 export const workspacePackages = (root) => {

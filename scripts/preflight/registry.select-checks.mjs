@@ -8,7 +8,7 @@ import {
 import {
   aikenChecks,
   demoChecks,
-  FULL_RUN,
+  fullRunPaths,
   scriptBudgetCheck,
   validatorPublicationSizeCheck,
   VERIFICATION_ONLY,
@@ -75,6 +75,7 @@ export const buildRegistry = (root) => {
   }
   return {
     checks,
+    fullRun: fullRunPaths(root),
     packages,
     index,
     runtimeWorkflow,
@@ -95,9 +96,10 @@ export const selectChecks = (
     ...relevant
       .filter(
         (path) =>
-          matchesAny(path, FULL_RUN) && !matchesAny(path, VERIFICATION_ONLY),
+          matchesAny(path, registry.fullRun) &&
+          !matchesAny(path, VERIFICATION_ONLY),
       )
-      .map((path) => `${path} is in FULL_RUN`),
+      .map((path) => `${path} is a full-run path`),
   ];
   const isFull = full || reasons.length > 0;
   const selected = [];

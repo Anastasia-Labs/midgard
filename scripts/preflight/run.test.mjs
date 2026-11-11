@@ -34,7 +34,7 @@ test("interrupted preflight stops dispatching later checks and never reports a p
     capabilities: [],
     plan: () => [{ argv: ["node", "probe.mjs"], cwd: "." }],
   }));
-  const plan = planPreflight({ checks }, ["x"]);
+  const plan = planPreflight({ checks, fullRun: [] }, ["x"]);
   const dispatched = [];
   const report = await runPreflight({
     root: ".",
@@ -72,7 +72,7 @@ test("a contrib suite step that skipped tests passes as CI's does; any other exi
     ],
   });
   const plan = planPreflight(
-    { checks: [check("suites", true), check("other", false)] },
+    { checks: [check("suites", true), check("other", false)], fullRun: [] },
     ["x"],
   );
   const report = await runPreflight({
@@ -102,6 +102,7 @@ test("a step that exited 0 but failed its receipt reports the receipt's reason, 
           plan: () => [{ argv: ["node", "--test"], cwd: "." }],
         },
       ],
+      fullRun: [],
     },
     ["x"],
   );
@@ -282,7 +283,7 @@ const probes = (statuses) => ({
 
 const run = async (checks, { statuses = {}, outcomes = {}, exists } = {}) => {
   const seen = [];
-  const plan = planPreflight({ checks }, ["x"]);
+  const plan = planPreflight({ checks, fullRun: [] }, ["x"]);
   const report = await runPreflight({
     root: "/nonexistent",
     plan,
@@ -322,7 +323,7 @@ test("SDK lane credits only both completed full suites in this unchanged run", a
   const report = await runPreflight({
     root: "/nonexistent",
     base: "base",
-    plan: planPreflight({ checks }, ["x"]),
+    plan: planPreflight({ checks, fullRun: [] }, ["x"]),
     probes: probes({}),
     log() {},
     sdkContext: () => "frozen",
@@ -398,7 +399,10 @@ test("SDK dedup refuses missing, failed, skipped, stale or future evidence and o
       probes: probes({}),
       log() {},
       plan: planPreflight(
-        { checks: scenario === "future" ? [lane, full] : [full, lane] },
+        {
+          checks: scenario === "future" ? [lane, full] : [full, lane],
+          fullRun: [],
+        },
         ["x"],
       ),
       sdkContext: () => {
@@ -484,7 +488,7 @@ test("verified equivalent CI records coverage and avoids dispatch; changed comma
   const result = await runPreflight({
     root: "/nonexistent",
     base: "base",
-    plan: planPreflight({ checks }, ["x"]),
+    plan: planPreflight({ checks, fullRun: [] }, ["x"]),
     probes: probes({}),
     log() {},
     ciEvidence: new Map([
@@ -609,11 +613,14 @@ test("an input edited without its generated artifact earns a numbered regenerate
     artifacts: ["out.json"],
     fix: "pnpm run x:sync",
   });
-  const stale = planPreflight({ checks: [channel] }, ["gen.mjs"]);
+  const stale = planPreflight({ checks: [channel], fullRun: [] }, ["gen.mjs"]);
   assert.equal(stale.advisories.length, 1);
   assert.equal(stale.advisories[0].id, "regenerate:golden:x");
   assert.match(stale.advisories[0].steps.at(-1), /git add out\.json$/u);
-  const fresh = planPreflight({ checks: [channel] }, ["gen.mjs", "out.json"]);
+  const fresh = planPreflight({ checks: [channel], fullRun: [] }, [
+    "gen.mjs",
+    "out.json",
+  ]);
   assert.deepEqual(fresh.advisories, []);
 });
 
@@ -633,7 +640,7 @@ test("merge-tree predicts a conflict with the base as a warning", async () =>
       display: "git merge-tree --write-tree HEAD <base>",
       plan: () => [],
     };
-    const plan = planPreflight({ checks: [conflicts] }, []);
+    const plan = planPreflight({ checks: [conflicts], fullRun: [] }, []);
     const report = await runPreflight({
       root: repo,
       plan,

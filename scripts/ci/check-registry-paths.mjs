@@ -35,11 +35,7 @@ import { fileURLToPath } from "node:url";
 
 import { GATES } from "../contrib/gates.mjs";
 import { packageByName } from "../contrib/files.mjs";
-import {
-  buildRegistry,
-  FULL_RUN,
-  VERIFICATION_ONLY,
-} from "../preflight/registry.mjs";
+import { buildRegistry, VERIFICATION_ONLY } from "../preflight/registry.mjs";
 import { globToRegExp } from "../preflight/derive.mjs";
 import { tracedRefusalInputs } from "./traced-refusal-inputs.mjs";
 
@@ -101,17 +97,20 @@ export const REGISTRIES = [
   {
     name: "preflight triggers",
     source: "scripts/preflight/registry.mjs",
-    entries: (root) => [
-      ...buildRegistry(root).checks.flatMap((check) =>
-        (check.triggers ?? []).map((trigger) =>
-          entry(trigger, `${check.id}: ${trigger}`),
+    entries: (root) => {
+      const { checks, fullRun } = buildRegistry(root);
+      return [
+        ...checks.flatMap((check) =>
+          (check.triggers ?? []).map((trigger) =>
+            entry(trigger, `${check.id}: ${trigger}`),
+          ),
         ),
-      ),
-      ...FULL_RUN.map((path) => entry(path, `FULL_RUN: ${path}`)),
-      ...VERIFICATION_ONLY.map((path) =>
-        entry(path, `VERIFICATION_ONLY: ${path}`),
-      ),
-    ],
+        ...fullRun.map((path) => entry(path, `full run: ${path}`)),
+        ...VERIFICATION_ONLY.map((path) =>
+          entry(path, `VERIFICATION_ONLY: ${path}`),
+        ),
+      ];
+    },
   },
   {
     name: "traced-refusal inputs",

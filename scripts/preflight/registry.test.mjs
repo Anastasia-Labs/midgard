@@ -13,6 +13,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  deploymentProfileInputs,
   globToRegExp,
   matchesAny,
   referencedFiles,
@@ -22,7 +23,6 @@ import { goldenChecks } from "./registry.tooling-checks.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
-  FULL_RUN,
   IGNORED_PATHS,
   selectChecks,
   VERIFICATION_ONLY,
@@ -291,20 +291,16 @@ test("workflow, agent-doc and tooling edits select their owners' checks", () => 
   assert.ok(!helper.includes("repo-tooling-tests"));
 });
 
-test("a FULL_RUN path selects every check; the tracked blueprint selects nothing", () => {
+test("a full-run path selects every check; the tracked blueprint selects nothing", () => {
   for (const path of [
-    "demo/scripts/deployment-profile-aiken.mjs",
-    "demo/scripts/deployment-profile-da.mjs",
-    "demo/scripts/deployment-profile-names.mjs",
-    "demo/scripts/deployment-profile-budgets.mjs",
-    "demo/scripts/deployment-profile-operator-economics.mjs",
+    ...deploymentProfileInputs(root),
     "demo/scripts/package-tasks.mjs",
     "demo/scripts/package-test.mjs",
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",
   ]) {
-    assert.ok(matchesAny(path, FULL_RUN), path);
+    assert.ok(matchesAny(path, registry.fullRun), path);
     const selection = selectChecks(registry, [path]);
     assert.equal(selection.full, true);
     assert.equal(selection.selected.length, registry.checks.length);
@@ -550,7 +546,9 @@ test("golden selection follows private imports through typed fixture helpers", (
     );
     const checks = goldenChecks(root, [pkg], "fixtures:example:check");
     for (const path of ["tests/fixtures/values.ts", "package.json"]) {
-      const result = selectChecks({ checks }, [`${directory}/${path}`]);
+      const result = selectChecks({ checks, fullRun: [] }, [
+        `${directory}/${path}`,
+      ]);
       assert.deepEqual(
         result.selected.map(({ check }) => check.id),
         ["golden:example"],
@@ -558,7 +556,8 @@ test("golden selection follows private imports through typed fixture helpers", (
       assert.deepEqual(result.uncovered, []);
     }
     assert.deepEqual(
-      selectChecks({ checks }, [`${directory}/tests/unrelated.ts`]).selected,
+      selectChecks({ checks, fullRun: [] }, [`${directory}/tests/unrelated.ts`])
+        .selected,
       [],
     );
   } finally {
