@@ -19,7 +19,11 @@
  * - groups 7 to 10 and 12 (a semantic, BLS final, direct, type or BLS
  *   uncompress failure): two or three hops that write no facts; group 7's
  *   roots go on to the staged failure hop for a byte-string, string or
- *   integer builtin and to the material hop for the rest;
+ *   integer builtin other than writeBits over an input of at most 512
+ *   words, and to the material hop for the rest;
+ * - group 7's writeBits failure over such an input: the roots, writing no
+ *   facts, then the writeBits loop once per hop of its walk, each hop but
+ *   the last writing the loop's facts over none and the last none again;
  * - group 13 (a protocol version 11 builtin, tags 87 to 100): roots, then
  *   the protocol version 11 budget and semantics, with group 3's facts;
  * - group 14 (a protocol version 11 builtin's known failure): the protocol
@@ -32,18 +36,21 @@
  * facts. Its material names the staging outputs that hold its staged
  * operands; those are read as reference inputs, so the driver stages the
  * operands, waits for their confirmation depth and fills the output
- * references in before the plan commits the step's evidence. The tag also
- * picks how the material decodes (`decodeCekCoreSemanticMaterial`). A tag
- * with no stage leaves the step unresolved, with its reason.
- * `cekCoreStagedSemanticStage` names the staged stage of each staged
- * semantics group (7, 8 and 11).
+ * references in before the plan commits the step's evidence; a staged
+ * builtin failure's (group 7) staged operands are staged and read the same
+ * way. The tag also picks how the material decodes
+ * (`decodeCekCoreSemanticMaterial`). A tag with no stage leaves the step
+ * unresolved, with its reason. `cekCoreStagedSemanticStage` names the staged
+ * stage of each staged semantics group (7, 8 and 11).
  *
  * The staged product (group 9), serialise (10, serialiseData) and writeBits
  * (12) stages are loops (one-step-core-loops.ts): the chain visits the stage
  * once per hop of its loop, each visit but the last writing the loop's facts
- * and leaving the progress as it was. A serialiseData step reads R, its
- * result's bytes, from staging outputs the driver stages as it stages a
- * staged step's operands. */
+ * and leaving the progress as it was. The writeBits loop also walks a
+ * writeBits failure's indices after group 7's roots, to the hop that opens
+ * the index outside the input. A serialiseData step reads R, its result's
+ * bytes, from staging outputs the driver stages as it stages a staged step's
+ * operands. */
 import type { MidgardCekStagedOutRef } from "@al-ft/midgard-core";
 import { SemanticBuiltinWitness, StagedMaterialV1 } from "@al-ft/midgard-sdk";
 import {
@@ -61,6 +68,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   type CekCoreLoopHop,
   cekCoreLoopHops,
+  type CekCoreLoopStage,
   isCekCoreLoopStage,
 } from "./one-step-core-loops.js";
 
@@ -88,6 +96,10 @@ export const CEK_CORE_SEMANTIC_STAGES = Object.freeze([
  * string, signature, integer or bitwise builtin in place of the material
  * hop. */
 const STAGED_FAILURE_STAGE = "stagedFailure" as const;
+
+/** The writeBits loop, which group 7's roots take for writeBits over an
+ * input of at most 512 words in place of the staged failure hop. */
+const WRITE_BITS_LOOP_STAGE = "stagedWriteBitsLoop" satisfies CekCoreLoopStage;
 
 /** Whether group 7's roots route builtin `tag` to the staged failure hop:
  * all but the Data builtins. */
@@ -351,23 +363,66 @@ const semanticHops = (
       holders: Object.freeze([...CHAINS[5], semantic]),
       facts: Object.freeze([...before, cbor(inner)]),
     });
-  // Each hop but the last writes the loop's facts; the last restores the
-  // arm's own.
-  const loop = cekCoreLoopHops(semantic, witness, runs);
-  return Object.freeze({
-    holders: Object.freeze([
-      ...CHAINS[5],
-      ...loop.map((): ValidationTraceArmHolder => semantic),
-    ]),
+  return thenLoop(
+    CHAINS[5],
+    before,
+    semantic,
+    inner,
+    cekCoreLoopHops(semantic, witness, runs),
+  );
+};
+
+/** The chain of `holders`, which write `facts`, then the loop arm `stage`
+ * once per hop of `loop`, over the arm's facts `inner`: each hop but the
+ * last writes the loop's facts, and the last restores `inner`. */
+const thenLoop = (
+  holders: readonly ValidationTraceArmHolder[],
+  facts: readonly string[],
+  stage: ValidationTraceArmHolder,
+  inner: Data,
+  loop: readonly CekCoreLoopHop[],
+): CekCoreArmHops =>
+  Object.freeze({
+    holders: Object.freeze([...holders, ...loop.map(() => stage)]),
     facts: Object.freeze([
-      ...before,
+      ...facts,
       ...loop.map(({ end, state }) =>
         cbor(
           state === null ? inner : new Constr(1, [inner, BigInt(end), state]),
         ),
       ),
     ]),
-    loops: Object.freeze([...CHAINS[5].map(() => undefined), ...loop]),
+    loops: Object.freeze([...holders.map(() => undefined), ...loop]),
+  });
+
+/** Group 7's chain: the roots, then the material hop, the staged failure
+ * hop or, for writeBits over an input the roots route there, the writeBits
+ * loop once per hop of its walk. The roots, the material hop and the staged
+ * failure hop write no facts; each loop hop but the last writes the loop's
+ * facts over none, and the last restores none. */
+const semanticFailureHops = (
+  witness: MidgardCekCoreStepWitness,
+): CekCoreArmHops => {
+  const [roots, material] = CHAINS[7];
+  if (witness.kind === "executeBuiltinWriteBitsFailure")
+    return thenLoop(
+      [roots],
+      [cbor(NO_FACTS)],
+      WRITE_BITS_LOOP_STAGE,
+      NO_FACTS,
+      cekCoreLoopHops(WRITE_BITS_LOOP_STAGE, witness),
+    );
+  if (
+    witness.kind !== "executeBuiltinSemanticFailure" &&
+    witness.kind !== "executeBuiltinStagedFailure"
+  )
+    throw new Error("a semantic failure step has another witness");
+  return Object.freeze({
+    holders: Object.freeze([
+      roots,
+      stagedFailureTag(witness.tag) ? STAGED_FAILURE_STAGE : material,
+    ]),
+    facts: keptAfter(2, []),
   });
 };
 
@@ -385,26 +440,7 @@ export const cekCoreArmHops = (
   runs?: readonly MidgardCekStagedOutRef[],
 ): CekCoreArmHops => {
   if (group === 5) return semanticHops(witness, builtinRoot, runs);
-  if (group === 7) {
-    if (
-      witness.kind !== "executeBuiltinSemanticFailure" &&
-      witness.kind !== "executeBuiltinStagedFailure"
-    )
-      throw new Error("a semantic failure step has another witness");
-    if (
-      witness.kind === "executeBuiltinStagedFailure" &&
-      witness.stagedOperands.length > 0
-    )
-      throw new Error("a staged failure's staged operands are not driven");
-    const [roots, material] = CHAINS[7];
-    return Object.freeze({
-      holders: Object.freeze([
-        roots,
-        stagedFailureTag(witness.tag) ? STAGED_FAILURE_STAGE : material,
-      ]),
-      facts: keptAfter(2, []),
-    });
-  }
+  if (group === 7) return semanticFailureHops(witness);
   const holders = CHAINS[group];
   if (group === 3 || group === 4 || group === 13) {
     if (witness.kind !== "executeBuiltinDirect")

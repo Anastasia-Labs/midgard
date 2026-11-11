@@ -35,8 +35,8 @@ export const flatScript = (hex: string) =>
   plutusV3ScriptWitness(encodeCbor(Buffer.from(hex, "hex")));
 
 /**
- * The failing script whose trace takes a builtin step of each builtin core
- * group, `(program 1.1.0 (lam ctx BODY))` with BODY:
+ * The failing script, in Flat, whose trace takes a builtin step of each
+ * builtin core group, `(program 1.1.0 (lam ctx BODY))` with BODY:
  *
  * - 3: `[(lam _ (error)) [(builtin addInteger) 1 2]]`;
  * - 4: `[(lam _ (error)) [(force (builtin mkCons)) "a" ["b"]]]`;
@@ -49,16 +49,14 @@ export const flatScript = (hex: string) =>
  * - 10: `[(builtin addInteger) #00 1]`.
  */
 export const CEK_BUILTIN_STEP_SCRIPTS = Object.freeze({
-  3: flatScript("010100232633700900124009"),
-  4: flatScript("010100232633574092010161004bd64901620001"),
-  5: flatScript("01010023263750900501"),
-  6: flatScript("01010023263756980101a00001"),
-  7: flatScript("0101002375a9810241000001"),
-  8: flatScript(
-    "01010023263378c66f10ddda453097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800337886eed2213097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80001",
-  ),
-  9: flatScript("0101002337069001240001"),
-  10: flatScript("0101002337009101010000480081"),
+  3: "010100232633700900124009",
+  4: "010100232633574092010161004bd64901620001",
+  5: "01010023263750900501",
+  6: "01010023263756980101a00001",
+  7: "0101002375a9810241000001",
+  8: "01010023263378c66f10ddda453097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800337886eed2213097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80001",
+  9: "0101002337069001240001",
+  10: "0101002337009101010000480081",
 });
 
 export type CekBuiltinGroup = keyof typeof CEK_BUILTIN_STEP_SCRIPTS;
@@ -103,7 +101,7 @@ export const cekBuiltinDrive = ({
   group,
   arm,
   arms,
-  script = CEK_BUILTIN_STEP_SCRIPTS[group],
+  script = flatScript(CEK_BUILTIN_STEP_SCRIPTS[group]),
 }: {
   readonly group: CekBuiltinGroup;
   /** The CEK arm of the step's witness. */

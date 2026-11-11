@@ -1,10 +1,12 @@
 /** The validation-trace dispute runner at a step of a staged semantics group
  * of the CEK core (arm 31: the staged product loop, 9; the serialise loop,
- * 10; the staged conversion, 11; the writeBits loop, 12), on the emulator
+ * 10; the staged conversion, 11; the writeBits loop, 12), or at a builtin
+ * failure past group 7's roots (arm 36: the writeBits loop, or the staged
+ * failure hop), on the emulator
  * (validation-trace-dispute-one-step-staged-drive.ts): from Init, the runner
  * stages what the step reads (its operands, or a serialiseData step's
  * result) at our staging address, plays the thread through the binder, the
- * group's arm chain, a loop arm once per hop of its loop, and the settle to
+ * step's arm chain, a loop arm once per hop of its loop, and the settle to
  * the award, each move within the transaction limits, and spends the
  * staging outputs back by our key once the thread has settled. A wrong post
  * state at the step is convicted. The same transaction in a correct block,
@@ -17,7 +19,9 @@ import type { ValidationTraceArmHolder } from "../../src/validation-trace-disput
 import { honestBlock } from "./validation-trace-dispute-max-shape-case.js";
 import {
   armLabels,
+  lastFailureStep,
   lastStepOfGroup,
+  stagedBytesOf,
   stagedDrive,
 } from "./validation-trace-dispute-one-step-staged-drive.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
@@ -38,36 +42,66 @@ const STAGES = {
   12: "stagedWriteBitsLoop",
 } as const satisfies Readonly<Record<number, ValidationTraceArmHolder>>;
 
+/** The stage group 7's roots route each builtin failure this case drives
+ * to. */
+const FAILURE_STAGES = {
+  writeBits: "stagedWriteBitsLoop",
+  staged: "stagedFailure",
+} as const satisfies Readonly<Record<string, ValidationTraceArmHolder>>;
+
+/** The step a case drives: the last of a staged semantics group, or the
+ * builtin failure past group 7's roots. */
+export type LoopCaseStep =
+  | { readonly group: keyof typeof STAGES }
+  | { readonly failure: keyof typeof FAILURE_STAGES };
+
 export type LoopCaseDrive = ReturnType<typeof stagedDrive>;
 
+/** The arms before the stage of `step`'s chain, its stage, the step, and
+ * the chain's name. */
+const routeOf = (step: LoopCaseStep) =>
+  "group" in step
+    ? {
+        before: ROOTS_TO_BUDGET,
+        stage: STAGES[step.group],
+        from: lastStepOfGroup(step.group),
+        chain: `the group-${step.group.toString()} chain`,
+      }
+    : {
+        before: ["semanticFailureRoots"] as const,
+        stage: FAILURE_STAGES[step.failure],
+        from: lastFailureStep,
+        chain: "group 7's roots",
+      };
+
 /**
- * The rows of the last step of semantics group `group` in the run of the
- * failing script `hex`, run under `exUnits` when given: what the driver
- * stages for it is `stagedBytes` long, and its stage takes `hops` hops.
- * `more` adds rows over the convicting drive.
+ * The rows of the step `step` in the run of the failing script `hex`, run
+ * under `exUnits` when given: what the driver stages for it is
+ * `stagedBytes` long, and its stage takes `hops` hops. `more` adds rows
+ * over the convicting drive.
  */
 export const loopCase = ({
   hex,
   exUnits,
-  group,
   hops,
   stagedBytes,
   more,
-}: {
+  ...step
+}: LoopCaseStep & {
   readonly hex: string;
   readonly exUnits?: readonly [bigint, bigint];
-  readonly group: keyof typeof STAGES;
   readonly hops: number;
   readonly stagedBytes: readonly number[];
   readonly more?: (drive: LoopCaseDrive) => void;
 }) => {
+  const { before, stage, from, chain } = routeOf(step);
   const arms: readonly ValidationTraceArmHolder[] = [
-    ...ROOTS_TO_BUDGET,
-    ...Array<ValidationTraceArmHolder>(hops).fill(STAGES[group]),
+    ...before,
+    ...Array<ValidationTraceArmHolder>(hops).fill(stage),
   ];
   const drive = stagedDrive({
     hex,
-    from: lastStepOfGroup(group),
+    from,
     arms,
     ...(exUnits === undefined ? {} : { exUnits }),
     // The case may close before every staging output is spent back: the
@@ -88,14 +122,9 @@ export const loopCase = ({
     beforeAll(drive.setUp, 3_600_000);
     afterAll(() => drive.dispute()?.recorder?.restore());
 
-    it(`moves the thread from the PrepareSelected move through the binder, the group-${group.toString()} chain, its stage ${hops.toString()} times, and the settle to the award within the transaction limits, each hop through the last arm reading every staging output and the settle none, and closes it`, async () => {
-      const witness = await drive.stepWitness();
+    it(`moves the thread from the PrepareSelected move through the binder, ${chain}, its stage ${hops.toString()} times, and the settle to the award within the transaction limits, each hop through the last arm reading every staging output and the settle none, and closes it`, async () => {
       expect(
-        witness.kind === "executeBuiltinStaged"
-          ? witness.stagedOperands.map(({ length }) => length)
-          : witness.kind === "executeBuiltinSerialise"
-            ? [witness.serialised.length]
-            : [],
+        stagedBytesOf(await drive.stepWitness()).map(({ length }) => length),
       ).toEqual(stagedBytes);
       const runs = await drive.runs();
       expect(runs.length > 0).toBe(staging);

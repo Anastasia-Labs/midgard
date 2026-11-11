@@ -1,13 +1,14 @@
-/** A staged builtin step (arm 31, semantics groups 7 to 9 and 11) in our
- * plan and its hops. The step's material names the staging outputs that
- * hold its staged operands, and those names enter the step's evidence, so
- * our plan fills in the staging the driver made before it commits the
- * evidence: over a copy of our trace's window, the trace itself left as it
- * was. The hops from the PrepareSelected move through the arm chain read the
- * staging outputs as reference inputs, so the ledger takes the move that
- * commits the evidence only while the outputs it names are live; the settle
- * reads none. A step not staged yet is planned with its staged operands and
- * no outputs, and none of those hops is built for it.
+/** A staged builtin step (arm 31, semantics groups 7 to 9 and 11), or a
+ * staged builtin failure (arm 36) with staged operands, in our plan and its
+ * hops. The step's material names the staging outputs that hold its staged
+ * operands, and those names enter the step's evidence, so our plan fills in
+ * the staging the driver made before it commits the evidence: over a copy of
+ * our trace's window, the trace itself left as it was. The hops from the
+ * PrepareSelected move through the arm chain read the staging outputs as
+ * reference inputs, so the ledger takes the move that commits the evidence
+ * only while the outputs it names are live; the settle reads none. A step
+ * not staged yet is planned with its staged operands and no outputs, and
+ * none of those hops is built for it.
  *
  * A serialiseData step (semantics group 10) is staged and read the same way:
  * its one staged operand is R, its result's bytes, which its loop's hops
@@ -48,18 +49,21 @@ export type ValidationTraceStagedStep = Readonly<{
 }>;
 
 /** A step witness whose operands past the direct carriage bound are
- * staged: a staged builtin step's (arm 31). Any other witness that names
- * staged operands by `material` and carries them in `stagedOperands` (a
- * staged builtin failure's, arm 36) is staged and read the same way, and
- * joins here. */
+ * staged: a staged builtin step's (arm 31) and a staged builtin failure's
+ * (arm 36), each naming its staged operands by `material` and carrying them
+ * in `stagedOperands`. */
 type StagedOperandWitness = Extract<
   MidgardCekCoreStepWitness,
-  { readonly kind: "executeBuiltinStaged" }
+  {
+    readonly kind: "executeBuiltinStaged" | "executeBuiltinStagedFailure";
+  }
 >;
 
 const isStagedOperandWitness = (
   witness: MidgardCekCoreStepWitness,
-): witness is StagedOperandWitness => witness.kind === "executeBuiltinStaged";
+): witness is StagedOperandWitness =>
+  witness.kind === "executeBuiltinStaged" ||
+  witness.kind === "executeBuiltinStagedFailure";
 
 /** The staging outputs of `staging`, in ledger order, each once. */
 const distinctOutputs = (

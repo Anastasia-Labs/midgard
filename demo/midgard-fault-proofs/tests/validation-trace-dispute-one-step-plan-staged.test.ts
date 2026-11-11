@@ -10,7 +10,7 @@ import {
   stageMidgardCekStagedBuiltinMaterial,
   type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
-import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
@@ -28,15 +28,18 @@ import {
   stagedTraceOf,
   type ValidationTraceStagingLookup,
 } from "../src/validation-trace-dispute/one-step-staged.js";
-import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
-import { claimMaterialOf } from "./support/validation-trace-claim-material.js";
+import {
+  failingScriptMaterial,
+  planCoreStep,
+  PROVER,
+  stagingOn,
+  stagingOutput,
+  threadUtxo,
+} from "./support/validation-trace-dispute-one-step-core-plan.js";
 import {
   STAGED_SHA2_SCRIPT,
-  stagedScript,
   type StagedWitness,
 } from "./support/validation-trace-dispute-staged-scripts.js";
-
-const PROVER = "ab".repeat(28);
 
 /** The staged witness of the step from `index`, if it is one. */
 const stagedWitnessAt = (
@@ -59,23 +62,6 @@ const lastStagedStep = async (
       return index;
   throw new Error("our trace has no staged builtin step");
 };
-
-/** A staging of `operands` on outputs of the transactions `ids`, in turn,
- * one output a run. */
-const stagingOn =
-  (...ids: number[]) =>
-  (operands: readonly Uint8Array[]): MidgardCekStagingResult => {
-    let next = 0;
-    return operands.map((operand) =>
-      Array.from(
-        { length: Math.max(1, Math.ceil(operand.length / 12_285)) },
-        (_, run) => ({
-          transactionId: Buffer.alloc(32, ids[run % ids.length]!),
-          outputIndex: next++,
-        }),
-      ),
-    );
-  };
 
 /** A lookup that answers `staging` and records what it was asked. */
 const lookup = (
@@ -106,28 +92,6 @@ const offering =
     );
   };
 
-/** A thread whose datum has the shape every core holder's hop reads. */
-const threadUtxo: UTxO = {
-  txHash: "00".repeat(32),
-  outputIndex: 0,
-  address: "addr_test1wz",
-  assets: { lovelace: 5_000_000n },
-  datum: Data.to(
-    new Constr(0, [PROVER, new Constr(0, [new Constr(0, Array(8).fill(0n))])]),
-  ),
-};
-
-/** The staging output at `ref`. */
-const stagingOutput = (ref: {
-  transactionId: Uint8Array;
-  outputIndex: number;
-}): UTxO => ({
-  txHash: Buffer.from(ref.transactionId).toString("hex"),
-  outputIndex: ref.outputIndex,
-  address: "addr_test1wstaging",
-  assets: { lovelace: 2_000_000n },
-});
-
 describe("our plan of a staged builtin step", () => {
   let material: ValidationTraceClaimMaterial;
   let stateIndex: number;
@@ -136,11 +100,7 @@ describe("our plan of a staged builtin step", () => {
   let challengerHighHash: string;
 
   beforeAll(async () => {
-    material = await claimMaterialOf(
-      await plutusExecutionBlockFixture("failing", {
-        spend: { script: stagedScript(STAGED_SHA2_SCRIPT) },
-      }),
-    );
+    material = await failingScriptMaterial(STAGED_SHA2_SCRIPT);
     stateIndex = await lastStagedStep(material);
     trace = await material.steps(stateIndex);
     witness = stagedWitnessAt(trace, stateIndex)!;
@@ -149,23 +109,12 @@ describe("our plan of a staged builtin step", () => {
     ).toString("hex");
   });
 
-  const plan = async (
+  const plan = (
     staging: ValidationTraceStagingLookup | undefined,
     on: ValidationTraceClaimMaterial = material,
     committedEvidenceHash?: () => string,
-  ): Promise<ValidationTraceCoreStepPlan> => {
-    const planning = await planValidationTraceOneStep({
-      material: on,
-      stateIndex,
-      challengerHighHash,
-      builtins: true,
-      ...(staging === undefined ? {} : { staging }),
-      ...(committedEvidenceHash === undefined ? {} : { committedEvidenceHash }),
-    });
-    if (planning.kind !== "plan" || planning.plan.kind !== "core")
-      throw new Error(`the step is not planned as a core step`);
-    return planning.plan;
-  };
+  ): Promise<ValidationTraceCoreStepPlan> =>
+    planCoreStep(on, stateIndex, { staging, committedEvidenceHash });
 
   it("plans a step whose operands are not staged yet as unstaged: it names the staged operands and no staging outputs", async () => {
     expect(witness.stagedOperands.length).toBeGreaterThan(0);

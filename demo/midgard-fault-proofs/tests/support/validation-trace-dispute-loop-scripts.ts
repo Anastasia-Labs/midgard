@@ -1,8 +1,10 @@
 /** Failing PlutusV3 scripts, `(program 1.1.0 (lam ctx [(lam _ (error))
  * STEP]))` in Flat, whose run ends in a step of a staged semantics group of
  * the CEK core: the staged product loop (9), the serialise loop (10), the
- * staged conversion (11) and the writeBits loop (12). Large values are built
- * at run time, so each script stays well within the script field. */
+ * staged conversion (11) and the writeBits loop (12); or in a failing STEP
+ * that core group 7 proves through the writeBits loop or the staged failure
+ * hop. Large values are built at run time, so each script stays well within
+ * the script field. */
 import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation";
 
 /** A term as the Flat encoder reads it. */
@@ -33,6 +35,7 @@ const MOD = 6;
 const SUBTRACT = 1;
 const ADD = 0;
 const APPEND = 10;
+const DECODE_UTF8 = 25;
 const IF_THEN_ELSE = 26;
 const MK_CONS = 32;
 const EQUALS_INTEGER = 7;
@@ -184,6 +187,31 @@ export const WRITE_BITS_SCRIPT = failing(
     ints(Array.from({ length: 200 }, (_, index) => BigInt((index * 37) % 64))),
     bool(true),
   ),
+);
+
+/** STEP: `[(builtin writeBits) I L True]`, I eight bytes and L a list
+ * constant of 200 indices, past the 64 the direct route takes, the last of
+ * them, 64, outside I's 64 bits: writeBits fails, and group 7 proves it by
+ * the writeBits loop's walk to that index. */
+export const WRITE_BITS_FAILURE_SCRIPT = failing(
+  call(
+    WRITE_BITS,
+    WRITE_INPUT,
+    ints(
+      Array.from({ length: 200 }, (_, index) =>
+        index === 199 ? 64n : BigInt((index * 37) % 64),
+      ),
+    ),
+    bool(true),
+  ),
+);
+
+/** STEP: `[(builtin decodeUtf8) B]`, B the 16,384 bytes of the 64-byte
+ * pattern built at run time, whose 20th byte, 0x86, is no UTF-8: decodeUtf8
+ * fails, and group 7's staged failure hop proves it from B's bytes, a
+ * staged operand past the staging chunk. */
+export const DECODE_UTF8_FAILURE_SCRIPT = failing(
+  call(DECODE_UTF8, builtBytes(16_384)),
 );
 
 /** The strict fixpoint `\f. (\x. f (\y. x x y)) (\x. f (\y. x x y))`. */

@@ -50,10 +50,11 @@ export type StagedWitness = Extract<
   { readonly kind: "executeBuiltinStaged" }
 >;
 
-/** The staged step of builtin `tag` in the run of the failing script
- * `hex`. */
-export const stagedStep = (hex: string, tag: bigint): StagedWitness => {
-  const run = evaluateMidgardCekScript(
+/** The witness of each step of the run of the failing script `hex`. */
+export const runWitnesses = (
+  hex: string,
+): readonly MidgardCekCoreStepWitness[] =>
+  evaluateMidgardCekScript(
     {
       scriptBytes: encodeCbor(Buffer.from(hex, "hex")),
       scriptLanguage: "PlutusV3",
@@ -63,13 +64,15 @@ export const stagedStep = (hex: string, tag: bigint): StagedWitness => {
       executionBudget: { cpu: 10_000_000_000n, memory: 16_500_000n },
     },
     "proof",
+  ).execution?.steps.map((step) => step.witness) ?? [];
+
+/** The staged step of builtin `tag` in the run of the failing script
+ * `hex`. */
+export const stagedStep = (hex: string, tag: bigint): StagedWitness => {
+  const witness = runWitnesses(hex).find(
+    (candidate): candidate is StagedWitness =>
+      candidate.kind === "executeBuiltinStaged" && candidate.tag === tag,
   );
-  const witness = run.execution?.steps
-    .map((step) => step.witness)
-    .find(
-      (candidate): candidate is StagedWitness =>
-        candidate.kind === "executeBuiltinStaged" && candidate.tag === tag,
-    );
   if (witness === undefined)
     throw new Error(`the run has no staged step of ${tag.toString()}`);
   return witness;

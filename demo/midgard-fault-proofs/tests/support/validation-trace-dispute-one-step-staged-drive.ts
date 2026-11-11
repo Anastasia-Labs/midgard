@@ -1,10 +1,12 @@
 /** The validation-trace dispute runner at a staged builtin step (arm 31,
- * semantics groups 7 to 12), on the emulator: the failing transaction runs a
- * script whose trace takes one staged step, the successor's thread disputes
- * it, and the runner stages the step's operands (a serialiseData step's
- * result) at our staging address before the PrepareSelected move, plays the
- * thread through the binder, the group's arm chain (a loop arm once per hop)
- * and the settle to the award
+ * semantics groups 7 to 12), or at a builtin failure past group 7's roots
+ * (arm 36: a staged failure, or a writeBits failure the writeBits loop
+ * proves), on the emulator: the failing transaction runs a script whose
+ * trace takes one such step, the successor's thread disputes it, and the
+ * runner stages the step's operands (a serialiseData step's result) at our
+ * staging address before the PrepareSelected move, plays the thread through
+ * the binder, the step's arm chain (a loop arm once per hop) and the settle
+ * to the award
  * (validation-trace-dispute-one-step-resolution-drive.ts), and spends the
  * staging outputs back once no thread needs them. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
@@ -64,14 +66,18 @@ export const STAGED_INTEGER_ARMS = [
 ] as const;
 
 /** A step of a staged semantics group: a staged builtin step, or a
- * serialiseData or writeBits step its loop proves. */
+ * serialiseData or writeBits step its loop proves; or a builtin failure
+ * past group 7's roots: a staged failure, or a writeBits failure the
+ * writeBits loop proves. */
 export type CoreStagedWitness = Extract<
   MidgardCekCoreStepWitness,
   {
     readonly kind:
       | "executeBuiltinStaged"
       | "executeBuiltinSerialise"
-      | "executeBuiltinWriteBits";
+      | "executeBuiltinWriteBits"
+      | "executeBuiltinStagedFailure"
+      | "executeBuiltinWriteBitsFailure";
   }
 >;
 
@@ -80,10 +86,16 @@ const isCoreStaged = (
 ): witness is CoreStagedWitness =>
   witness?.kind === "executeBuiltinStaged" ||
   witness?.kind === "executeBuiltinSerialise" ||
-  witness?.kind === "executeBuiltinWriteBits";
+  witness?.kind === "executeBuiltinWriteBits" ||
+  witness?.kind === "executeBuiltinStagedFailure" ||
+  witness?.kind === "executeBuiltinWriteBitsFailure";
 
-/** The witness of the step from `index` of our trace, if it is a step of a
- * staged semantics group. */
+const isFailure = (witness: CoreStagedWitness) =>
+  witness.kind === "executeBuiltinStagedFailure" ||
+  witness.kind === "executeBuiltinWriteBitsFailure";
+
+/** The witness of the step from `index` of our trace, if it is one of
+ * those. */
 const coreStagedWitnessAt = async (
   material: ValidationTraceClaimMaterial,
   index: number,
@@ -94,33 +106,52 @@ const coreStagedWitnessAt = async (
   return isCoreStaged(witness) ? witness : undefined;
 };
 
-/** The semantics group of a staged semantics group's step. */
+/** The semantics group of a staged semantics group's step; none for a
+ * builtin failure. */
 const groupOf = (witness: CoreStagedWitness): number | null =>
-  midgardCekSemanticGroup(
-    witness.kind === "executeBuiltinSerialise"
-      ? 51n
-      : witness.kind === "executeBuiltinWriteBits"
-        ? 80n
-        : witness.tag,
-  );
+  isFailure(witness)
+    ? null
+    : midgardCekSemanticGroup(
+        witness.kind === "executeBuiltinSerialise"
+          ? 51n
+          : witness.kind === "executeBuiltinWriteBits"
+            ? 80n
+            : witness.tag,
+      );
 
-/** The last step of our trace in semantics group `group`. */
-export const lastStepOfGroup =
-  (group: number) =>
+/** The last step of our trace that `matches`, named `what`. */
+const lastStepWhere =
+  (what: string, matches: (witness: CoreStagedWitness) => boolean) =>
   async (material: ValidationTraceClaimMaterial): Promise<number> => {
     for (let index = Number(material.stepCount) - 1; index >= 0; index -= 1) {
       const witness = await coreStagedWitnessAt(material, index);
-      if (witness !== undefined && groupOf(witness) === group) return index;
+      if (witness !== undefined && matches(witness)) return index;
     }
-    throw new Error(
-      `our trace has no step of semantics group ${group.toString()}`,
-    );
+    throw new Error(`our trace has no ${what}`);
   };
 
-/** The bytes the driver stages for a step: a staged step's operands, a
- * serialiseData step's result, and none for a writeBits step. */
-const stagedBytesOf = (witness: CoreStagedWitness): readonly Uint8Array[] =>
-  witness.kind === "executeBuiltinStaged"
+/** The last step of our trace in semantics group `group`. */
+export const lastStepOfGroup = (group: number) =>
+  lastStepWhere(
+    `step of semantics group ${group.toString()}`,
+    (witness) => groupOf(witness) === group,
+  );
+
+/** The last step of our trace that is a builtin failure past group 7's
+ * roots. */
+export const lastFailureStep = lastStepWhere(
+  "builtin failure past group 7's roots",
+  isFailure,
+);
+
+/** The bytes the driver stages for a step: a staged step's or a staged
+ * failure's operands, a serialiseData step's result, and none for a
+ * writeBits step or failure. */
+export const stagedBytesOf = (
+  witness: CoreStagedWitness,
+): readonly Uint8Array[] =>
+  witness.kind === "executeBuiltinStaged" ||
+  witness.kind === "executeBuiltinStagedFailure"
     ? witness.stagedOperands
     : witness.kind === "executeBuiltinSerialise"
       ? [witness.serialised]

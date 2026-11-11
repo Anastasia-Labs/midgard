@@ -1,8 +1,10 @@
 /** The loop arms of group 5's semantic stages (cek-semantic-chain
  * `continue_loop`): the staged product loop (semantics group 9), the
  * serialise loop (10) and the writeBits loop (12) each prove their step over
- * several transactions. Every hop but the last re-outputs the thread to the
- * arm's own script with its progress unchanged and the loop's facts
+ * several transactions; the writeBits loop also proves a writeBits failure
+ * past group 7's roots, walking the indices to the first outside the input.
+ * Every hop but the last re-outputs the thread to the arm's own script with
+ * its progress unchanged and the loop's facts
  * `LoopFacts { inner, cursor, state }` (constructor 1): the arm's facts, the
  * end of the range the hop covered and the state the next hop starts from.
  * The last hop restores the arm's facts and goes on to the settle with the
@@ -32,6 +34,7 @@ import {
   midgardCekWriteBitsHopData,
   midgardCekWriteBitsLoopOfWitness,
   midgardCekWriteBitsStateData,
+  midgardCekWriteBitsWalkData,
   planMidgardCekSerialiseHops,
   planMidgardCekStagedProductHop,
   planMidgardCekWriteBitsHops,
@@ -127,23 +130,29 @@ const serialiseHops = (
   }));
 };
 
-/** The writeBits loop's hops over the step's indices. */
+/** The writeBits loop's hops over the step's indices: a success's, each
+ * handing on the bits written so far, or a failure's walk to the hop that
+ * opens an index outside the input, each handing on the rest of the list. */
 const writeBitsHops = (
   witness: MidgardCekCoreStepWitness,
 ): CekCoreLoopHop[] => {
-  if (witness.kind !== "executeBuiltinWriteBits")
+  if (
+    witness.kind !== "executeBuiltinWriteBits" &&
+    witness.kind !== "executeBuiltinWriteBitsFailure"
+  )
     throw new Error("a writeBits step has another witness");
   return planMidgardCekWriteBitsHops(
     midgardCekWriteBitsLoopOfWitness(witness),
-  ).map(({ end, hop, next }) => {
-    if (next !== null && !("out" in next))
-      throw new Error("a writeBits success hop hands on a failure's walk");
-    return {
-      end,
-      state: next === null ? null : midgardCekWriteBitsStateData(next),
-      hop: midgardCekWriteBitsHopData(hop),
-    };
-  });
+  ).map(({ end, hop, next }) => ({
+    end,
+    state:
+      next === null
+        ? null
+        : "out" in next
+          ? midgardCekWriteBitsStateData(next)
+          : midgardCekWriteBitsWalkData(next),
+    hop: midgardCekWriteBitsHopData(hop),
+  }));
 };
 
 /** The hops already planned for a witness, by the loop arm and the staging

@@ -1,7 +1,8 @@
-/** Group 7's arm chain: the roots hop goes on to the staged failure hop for
- * a byte-string, string, signature, integer or bitwise builtin and to the
- * material hop for the rest, as the on-chain roots route them by tag; and
- * the staged semantic stage the budget hop routes a staged builtin to. */
+/** Group 7's arm chain: the roots hop goes on to the writeBits loop for
+ * writeBits over an input of at most 512 words, to the staged failure hop
+ * for a byte-string, string, signature, integer or bitwise builtin and to
+ * the material hop for the rest, as the on-chain roots route them by tag;
+ * and the staged semantic stage the budget hop routes a staged builtin to. */
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -66,10 +67,11 @@ describe("group 7's arm chain", () => {
     },
   );
 
-  it("does not drive a staged failure whose material names staged operands", () => {
-    expect(() =>
-      cekCoreArmHops(7, stagedFailure(25n, [Buffer.alloc(5_000)]), ROOT),
-    ).toThrow(/staged operands/u);
+  it("takes a staged failure whose material names staged operands from the roots to the staged failure hop", () => {
+    expect(
+      cekCoreArmHops(7, stagedFailure(25n, [Buffer.alloc(5_000)]), ROOT)
+        .holders,
+    ).toEqual(["semanticFailureRoots", "stagedFailure"]);
   });
 
   it("refuses a witness of another arm", () => {

@@ -28,9 +28,11 @@ export {
 } from "./build.js";
 export * from "./cek-context.js";
 export {
+  buildCekCoreStages,
   CEK_CORE_ARM_HOP_COUNTS,
   CEK_CORE_STAGE_REFERENCES,
   CEK_CORE_STAGE_TITLES,
+  cekCoreEntryHashes,
   type CekCoreStages,
 } from "./cek-core.js";
 export {

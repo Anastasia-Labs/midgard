@@ -14,6 +14,7 @@ import {
   cekCoreArmHops,
   decodeCekCoreSemanticMaterial,
 } from "../src/validation-trace-dispute/one-step-core-chains.js";
+import { stagingOn } from "./support/validation-trace-dispute-one-step-core-plan.js";
 import {
   STAGED_ADD_SCRIPT,
   STAGED_SHA2_SCRIPT,
@@ -34,22 +35,12 @@ const SEMANTIC_MATERIAL = new Constr(0, [[], [], [], []]);
 
 /** The staged material with its operands staged on outputs of one
  * transaction. */
-const stagedMaterial = (witness: StagedWitness) => {
-  let next = 0;
-  return stageMidgardCekStagedBuiltinMaterial(
+const stagedMaterial = (witness: StagedWitness) =>
+  stageMidgardCekStagedBuiltinMaterial(
     witness.material,
     witness.stagedOperands,
-    witness.stagedOperands.map((operand) =>
-      Array.from(
-        { length: Math.max(1, Math.ceil(operand.length / 12_285)) },
-        () => ({
-          transactionId: Buffer.alloc(32, 0x5a),
-          outputIndex: next++,
-        }),
-      ),
-    ),
+    stagingOn(0x5a)(witness.stagedOperands),
   );
-};
 
 describe("the arm chain of a staged builtin step", () => {
   it("settles a staged byte-string step through the semantic roots, result and budget, then the staged bytes stage", () => {
