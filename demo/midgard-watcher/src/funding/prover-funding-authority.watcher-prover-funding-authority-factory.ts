@@ -26,10 +26,17 @@ export type WatcherProverFundingAuthority = Readonly<{
 
 export type WatcherProverFundingAuthorityFactory = Readonly<{
   schemaVersion: typeof WATCHER_PROVER_FUNDING_AUTHORITY;
-  /** Omit scope only before startup dispatch; finalizers supply their minted permit. */
-  releaseUnused(input?: {
-    readonly actuationPermit: WorkflowActuationPermit;
-  }): Promise<void>;
+  /** Finalizers supply their minted permit. Unscoped, it sweeps every idle
+   * reservation; only the sweep before startup dispatch passes `startup`,
+   * which also releases unsigned ones whose decision is missing. */
+  releaseUnused(
+    input?:
+      | {
+          readonly actuationPermit: WorkflowActuationPermit;
+          readonly startup?: never;
+        }
+      | { readonly startup: true; readonly actuationPermit?: never },
+  ): Promise<void>;
   /** Releases a superseded decision's unused reservations while its
    * decision is still recorded, leaving signed ones to the orphaned-funding
    * settle; false, releasing nothing, when one is bound to a run. */

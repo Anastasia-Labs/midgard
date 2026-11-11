@@ -55,7 +55,7 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly proofRetention: WatcherProofRetention;
   /** Funding reservations held because their recorded decision is missing. */
   readonly reservationDecisionHolds: () => readonly WatcherDecisionHold[];
-  /** The startup funding sweep and a decision-driver pass, around the
+  /** An idle funding sweep and a decision-driver pass, around the
    * in-process requeue after journal_busy; the runtime always passes it. */
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
   /** Settles the funding of signed attempts whose objective was forgotten. */

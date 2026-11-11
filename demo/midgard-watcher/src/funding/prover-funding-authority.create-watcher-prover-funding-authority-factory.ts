@@ -179,11 +179,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     schemaVersion: WATCHER_PROVER_FUNDING_AUTHORITY,
     releaseUnused: (scope) =>
       serialize(async () => {
+        const permit = scope?.actuationPermit;
         const reservation =
-          scope === undefined
-            ? undefined
-            : reservationByPermit.get(scope.actuationPermit);
-        if (scope !== undefined && reservation === undefined) return;
+          permit === undefined ? undefined : reservationByPermit.get(permit);
+        if (permit !== undefined && reservation === undefined) return;
         if (reservation !== undefined) live.delete(reservation.reservationId);
         recordHolds(
           reservation === undefined ? null : [reservation.reservationId],
@@ -191,6 +190,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             ...input,
             reservations:
               reservation === undefined ? await idle() : [reservation],
+            startup: scope?.startup === true,
             ...(orphans === undefined ? {} : { orphans }),
           }),
         );

@@ -26,10 +26,13 @@ const signedReservation = async (
 
 /**
  * Reclaim unsubmitted work after its runner exits, or before startup
- * dispatch. An unsigned reservation whose recorded decision is missing is
- * left as it is. With `orphans`, signed funding nothing drives (its decision
- * was superseded, no workflow journal names it, or its objective was
- * forgotten when its header left the queue)
+ * dispatch. A reservation whose recorded decision is missing (superseded,
+ * or dropped by a journal repair) is never run. With `startup`, which only
+ * the sweep before startup dispatch passes, an unsigned one is released: no
+ * run is left to sign it. Otherwise it is left as it is. With `orphans`,
+ * signed funding nothing drives (its decision is missing, no workflow
+ * journal names it, or its objective was forgotten when its header left the
+ * queue)
  * is settled once each of its attempts is retired past release finality,
  * read from its own bytes, and held until then
  * (prover_funding_orphaned_reservation); the holds are returned. The settle
@@ -53,6 +56,7 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
   readonly store: WatcherProverFundingReservationStore;
   readonly reservations?: readonly WatcherProverFundingReservationRecord[];
   readonly decisionMissingOnly?: boolean;
+  readonly startup?: boolean;
   readonly orphans?: WatcherOrphanedReservations;
 }): Promise<readonly ReservationHold[]> => {
   const unused = (record: WatcherProverFundingReservationRecord) =>
@@ -97,10 +101,12 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     const signed =
       input.orphans !== undefined &&
       (await signedReservation(input.store, record));
-    // A superseded decision's row is gone; no run continues its signed
-    // attempts.
-    if (matches.length === 0 && signed) {
-      orphaned.push(record);
+    // No run continues a reservation whose decision row is gone.
+    if (matches.length === 0) {
+      if (signed) orphaned.push(record);
+      // Without `orphans`, one with only signed history reads as unsigned;
+      // the store refuses to release it.
+      else if (input.startup === true) await input.store.releaseUnused(record);
       continue;
     }
     if (matches.length !== 1 || decision?.decision !== "fault_detected")
@@ -143,8 +149,8 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
 
 /**
  * Releases the unused reservations of one superseded decision, while its
- * decision row is still recorded (the release skips a reservation whose
- * decision is missing). A signed one is left to the orphaned-funding
+ * decision row is still recorded (once the row is gone, only the startup
+ * sweep releases them). A signed one is left to the orphaned-funding
  * settle, which returns its inputs once each of its attempts is retired.
  * False, releasing nothing, when any active reservation of it is bound to a
  * run (`live`): that work is in flight.
@@ -152,7 +158,7 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
 export const releaseUnusedDecisionReservations = async (
   input: Omit<
     Parameters<typeof releaseUnusedWatcherProverFundingReservations>[0],
-    "reservations" | "decisionMissingOnly" | "orphans"
+    "reservations" | "decisionMissingOnly" | "startup" | "orphans"
   > &
     Readonly<{ decisionDigest: string; live: ReadonlySet<string> }>,
 ): Promise<boolean> => {

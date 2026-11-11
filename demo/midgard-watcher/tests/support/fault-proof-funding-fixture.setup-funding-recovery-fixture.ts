@@ -578,7 +578,7 @@ export const setupFundingRecoveryFixture = async (
     walletUtxos,
     readWalletUtxos,
     resolveInputs,
-    releaseUnusedAtStartup: () => factory().releaseUnused(),
+    releaseUnusedAtStartup: () => factory().releaseUnused({ startup: true }),
     journalRoot,
     objective,
     objectiveJournal,

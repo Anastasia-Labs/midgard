@@ -183,12 +183,13 @@ reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
   queue: its proof, or another one, landed and is final, or the header merged.
   A fresh detection of the same fault does not restart it.
 - A funding reservation whose decision the new journals do not hold is never
-  run. An unused one stays reserved and its inputs stay leased; a signed one
-  is settled once each of its attempts is retired past release finality.
+  run. An unused one is released by the startup sweep before dispatch, which
+  returns its inputs to the wallet; a signed one is held, and settled once
+  each of its attempts is retired past release finality.
 
-Retention handles the rest. Workflow rows, follower pins of objectives
-that are never admitted again, and the leases of those reservations stay in
-place. The moved-aside file is never read again.
+Retention handles the rest. Workflow rows and follower pins of objectives
+that are never admitted again stay in place, including the workflow rows of
+released and settled reservations. The moved-aside file is never read again.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file

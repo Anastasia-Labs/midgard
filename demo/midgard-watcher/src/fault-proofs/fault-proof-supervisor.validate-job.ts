@@ -139,10 +139,11 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   journalBusy: string | null;
 }>;
 
-/** What the runtime does around the in-process requeue after journal_busy,
- * as a fresh process does at startup. */
+/** What the runtime does around the in-process requeue after journal_busy. */
 export type WatcherJournalBusyRequeue = Readonly<{
-  /** The startup funding sweep; runs while no supervisor job runs. */
+  /** Sweeps idle funding while no supervisor job runs. Unlike the startup
+   * sweep, it leaves an unsigned reservation whose decision is missing to
+   * the next startup. */
   releaseUnusedFunding(): Promise<void>;
   /** Asks the decision driver for a pass, which dispatches the work again. */
   wake(): void;

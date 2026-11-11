@@ -73,7 +73,7 @@ export const openWatcherProverFundingRuntime = async (input: {
     // A refused decision journal, or one that could not be opened, keeps them
     // reserved: the supervisor reports journal_integrity or
     // journal_unavailable once the operations server binds.
-    await factory.releaseUnused().catch((error: unknown) => {
+    await factory.releaseUnused({ startup: true }).catch((error: unknown) => {
       if (
         !isWatcherJournalIntegrityError(error) &&
         !isWatcherJournalUnavailableError(error)
