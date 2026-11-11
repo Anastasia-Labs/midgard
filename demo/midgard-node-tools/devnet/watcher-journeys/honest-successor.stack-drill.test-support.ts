@@ -97,6 +97,8 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
   let ledgerLags = false;
   const ledger: JourneyLedger = {
     utxos: (address) => {
+      // Like our node's /utxos, it matches the address text exactly.
+      if (address !== owner) return Promise.resolve([]);
       const txHash = ledgerLags ? "43".repeat(32) : ownerOutput;
       const assets = { lovelace: 50_000_000n };
       return Promise.resolve([

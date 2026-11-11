@@ -348,7 +348,10 @@ describe("a family on a stack whose ledger owner is unfunded", () => {
     } as unknown as JourneyLedgerPredecessor;
     let refusal: unknown;
     try {
-      requireStackLedgerOwnerFunded(tail, "03".repeat(28));
+      requireStackLedgerOwnerFunded(tail, {
+        keyHash: "03".repeat(28),
+        address: "addr_test1",
+      });
     } catch (error) {
       refusal = error;
     }

@@ -3,17 +3,20 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+import {
+  decodeMidgardTxOutput,
+  encodeMidgardAddressText,
+} from "@al-ft/midgard-core/codec";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  paymentCredentialOf,
-} from "@lucid-evolution/lucid";
+import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { nodeLedger } from "../../src/full-stack/journey.js";
+import {
+  type JourneyLedger,
+  nodeLedger,
+} from "../../src/full-stack/journey.js";
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
-import { ownedHistoryLedgerEntries } from "./history-cases.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 import { readStackJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
@@ -218,12 +221,44 @@ export class StackLedgerOwnerUnfundedRefusal extends Error {
   }
 }
 
+/** The drill's L2 ledger owner: its payment key hash and wallet address. */
+export type StackLedgerOwner = Readonly<{ keyHash: string; address: string }>;
+
+/**
+ * The L2 address the ledger owner's funding deposit pays: the owner's
+ * wallet address, the one the honest successor's transfer spends from.
+ * Our node's `/utxos` matches the address text exactly, so an output at the
+ * owner's key-only address is not one the transfer can spend.
+ */
+export const stackLedgerOwnerDepositAddress = (owner: StackLedgerOwner) =>
+  owner.address;
+
+/** Whether our node's ledger holds an output the owner's transfer spends. */
+export const ourLedgerHoldsLedgerOwnerOutput = async (
+  ledger: Pick<JourneyLedger, "utxos">,
+  owner: StackLedgerOwner,
+) => (await ledger.utxos(stackLedgerOwnerDepositAddress(owner))).length > 0;
+
+/**
+ * Whether an attested tail holds an output the owner's transfer spends: at
+ * the owner's wallet address exactly, as the successor reads its ledger.
+ */
+const tailHoldsLedgerOwnerOutput = (
+  tail: JourneyLedgerPredecessor,
+  owner: StackLedgerOwner,
+) =>
+  tail.ledger.entries.some(
+    ({ output }) =>
+      encodeMidgardAddressText(decodeMidgardTxOutput(output).address) ===
+      stackLedgerOwnerDepositAddress(owner),
+  );
+
 /** Refuses a family whose attested tail holds no output of the owner's. */
 export const requireStackLedgerOwnerFunded = (
   tail: JourneyLedgerPredecessor,
-  owner: string,
+  owner: StackLedgerOwner,
 ): void => {
-  if (ownedHistoryLedgerEntries(tail, owner).length === 0)
+  if (!tailHoldsLedgerOwnerOutput(tail, owner))
     throw new StackLedgerOwnerUnfundedRefusal(tail.headerHash);
 };
 
@@ -264,8 +299,9 @@ const LEDGER_OWNER_POLL_MS = 30_000;
  * deposit of the stack journey's deposit amount is paid by the drill's
  * funding wallet. Our node absorbs it in its own shift, which may follow
  * operator-2's whole shift, and its committee attests the block within its
- * timeout. Our node's ledger is read at the deposit's address and at the
- * owner's wallet address, which the run's honest transfers pay back to.
+ * timeout. The deposit pays the owner's wallet address, which the run's
+ * honest transfers spend from and pay back to, and only an output there
+ * counts as funded.
  */
 export const fundStackLedgerOwner = async (
   session: Readonly<{ context: StackJourneyContext; ledgerAt: LedgerAt }>,
@@ -279,11 +315,7 @@ export const fundStackLedgerOwner = async (
   const { context } = session;
   const { contracts, chain, references, publisherLucid, operatorLucid } =
     context.deployment;
-  const owner = context.layout.wallets.ledgerOwner.keyHash;
-  const ownerL2Address = credentialToAddress("Preprod", {
-    type: "Key",
-    hash: owner,
-  });
+  const owner = context.layout.wallets.ledgerOwner;
   const fingerprint = context.deployment.manifest.manifestId;
   const pendingPath = join(
     context.runDirectory,
@@ -307,22 +339,16 @@ export const fundStackLedgerOwner = async (
     onStage,
   });
   return fundStackLedgerOwnerBeforeRun({
-    ourLedgerHoldsOutput: async () => {
-      for (const address of new Set([
-        ownerL2Address,
-        context.accounts.ledgerOwner.address,
-      ]))
-        if ((await ourLedger.utxos(address)).length > 0) return true;
-      return false;
-    },
+    ourLedgerHoldsOutput: () =>
+      ourLedgerHoldsLedgerOwnerOutput(ourLedger, owner),
     ownerHoldsOutput: async () =>
-      ownedHistoryLedgerEntries(
+      tailHoldsLedgerOwnerOutput(
         await decodeJourneyRetainedBlock(
           await da.readAttestedTail(),
           session.ledgerAt,
         ),
         owner,
-      ).length > 0,
+      ),
     beforeDeposit: (notAfterMs) => gate.beforeFunding(operator2, notAfterMs),
     admitsDeposit: (inclusionTimeMs) =>
       gate.admitsFunding(operator2, inclusionTimeMs),
@@ -369,7 +395,7 @@ export const fundStackLedgerOwner = async (
           publisherLucid,
           contracts,
           {
-            l2Address: ownerL2Address,
+            l2Address: stackLedgerOwnerDepositAddress(owner),
             l2Datum: null,
             lovelace: BigInt(context.stackConfig.journey.depositLovelace),
             additionalAssets: {},

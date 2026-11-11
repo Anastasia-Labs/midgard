@@ -177,7 +177,7 @@ export const journeyDaPath = async (
         // before any L1 work when the attested tail holds none of its outputs.
         requireStackLedgerOwnerFunded(
           await decodeRetained(await da.readAttestedTail()),
-          context.layout.wallets.ledgerOwner.keyHash,
+          context.layout.wallets.ledgerOwner,
         );
         await stackActor!.onboardOperator();
         return da.readAttestedTail();
