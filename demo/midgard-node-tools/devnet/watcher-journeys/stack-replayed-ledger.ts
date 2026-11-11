@@ -1,6 +1,7 @@
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
 import type { WatcherConfig } from "midgard-watcher";
 
+import { openJourneyReplayStore } from "./journey-replay-store.js";
 import { readStackJourneyWatcherConfig } from "./public-da-preflight.js";
 import { openJourneyReplayedLedger } from "./replayed-ledger.js";
 import type { StackJourneyContext } from "./stack-context.js";
@@ -66,22 +67,49 @@ export const lazyReplayedLedger = (
  * An attached stack journey's independently replayed ledger: a read-only
  * follower of the host's stack node and the stack's public DA, replaying as
  * the stack's watcher does. The journey's staging reads its ledgers from it.
+ * It keeps its follower store in the run's replay store
+ * (`openJourneyReplayStore`), so a later family of the same run follows on
+ * from where the last stopped instead of from the stack's L1 origin; it
+ * holds the store from its first read until it closes.
  */
 export const openStackJourneyReplayedLedger = (
   context: StackJourneyContext,
-  directory: string,
 ): ReplayedLedger =>
-  lazyReplayedLedger(async () =>
-    openJourneyReplayedLedger({
-      authority: context.release,
-      blueprintPath: context.deployment.blueprintPath,
-      watcherConfig: stackJourneyReplayWatcherConfig(
-        await readStackJourneyWatcherConfig(context.watcher.processConfigPath),
-        context.layout.node.socketPath,
-      ),
-      binaryPath: context.layout.node.binaryPath,
-      directory,
-      checkpointDirectory: directory,
-      networkMagic: context.customNetwork.networkMagic,
-    }),
-  );
+  lazyReplayedLedger(async () => {
+    const watcherConfig = await readStackJourneyWatcherConfig(
+      context.watcher.processConfigPath,
+    );
+    const { deploymentIdentity } = context.release;
+    const store = await openJourneyReplayStore(context.runDirectory, {
+      deploymentManifestId: deploymentIdentity.manifestId,
+      blueprintHash: deploymentIdentity.blueprintHash,
+      origin: watcherConfig.l1.origin ?? null,
+    });
+    try {
+      const ledger = await openJourneyReplayedLedger({
+        authority: context.release,
+        blueprintPath: context.deployment.blueprintPath,
+        watcherConfig: stackJourneyReplayWatcherConfig(
+          watcherConfig,
+          context.layout.node.socketPath,
+        ),
+        binaryPath: context.layout.node.binaryPath,
+        directory: store.directory,
+        checkpointDirectory: store.directory,
+        networkMagic: context.customNetwork.networkMagic,
+      });
+      return {
+        ledgerAt: ledger.ledgerAt,
+        close: async () => {
+          try {
+            await ledger.close();
+          } finally {
+            store.release();
+          }
+        },
+      };
+    } catch (error) {
+      store.release();
+      throw error;
+    }
+  });

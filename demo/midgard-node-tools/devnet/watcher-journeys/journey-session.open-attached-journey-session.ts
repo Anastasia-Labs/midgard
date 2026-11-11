@@ -134,7 +134,7 @@ export const openAttachedJourneySession = async (
     onClose(operator2.release);
     // Closes run in reverse order and each runs even if a later one throws,
     // so operator-2 is started again whatever the ledger close does.
-    const replayedLedger = openStackJourneyReplayedLedger(context, directory);
+    const replayedLedger = openStackJourneyReplayedLedger(context);
     onClose(replayedLedger.close);
     const deploymentFingerprint = context.deployment.manifest.manifestId;
     const deploymentIdentity = context.release.deploymentIdentity;
