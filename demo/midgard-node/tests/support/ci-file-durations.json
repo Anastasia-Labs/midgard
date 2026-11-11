@@ -91,7 +91,6 @@
     "tests/database-startup-retry.test.ts": 12.8,
     "tests/database.test.ts": 164.9,
     "tests/deployable-scripts.test.ts": 10,
-    "tests/deployment-manifest.test.ts": 4.9,
     "tests/deployment-run-state.test.ts": 6.3,
     "tests/deposit-flow-emulator-commit-selection.test.ts": 49,
     "tests/deposit-flow-emulator-confirmation-journal.test.ts": 42.7,

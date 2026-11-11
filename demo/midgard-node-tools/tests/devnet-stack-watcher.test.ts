@@ -17,6 +17,13 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -30,13 +37,6 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifest,
 } from "midgard-node/commands/contract-deployment-info";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue,
-  parseDeploymentManifestValue,
-} from "midgard-node/deployment-manifest";
 import { TEST_AVAILABILITY_CHALLENGE } from "midgard-node/tests/helpers/availability-challenge";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "midgard-node/tests/helpers/cardano-protocol-parameters";
 import { loadRealMidgardContractsForTest } from "midgard-node/tests/helpers/real-midgard-contracts";
@@ -118,7 +118,7 @@ const makeDevnetManifest = async (
     ),
   );
   const daVkey = "44".repeat(32);
-  return parseDeploymentManifestValue(
+  return verifyFinalizedDeploymentManifest(
     buildDeploymentManifest(
       buildContractDeploymentInfoFromContracts(
         contracts,

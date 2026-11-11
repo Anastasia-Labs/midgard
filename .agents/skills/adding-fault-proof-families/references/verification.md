@@ -72,7 +72,7 @@ a changed contract set needs no regeneration step. Check that the input still
 names every contract and that the manifest restores:
 
 ```bash
-node scripts/contrib.mjs test --package midgard-node --file tests/deployment-manifest.test.ts
+node scripts/contrib.mjs test --package midgard-core --file tests/deployment-manifest-identity.test.ts
 node scripts/contrib.mjs test --package da-committee-node --file tests/deployment-fixture.test.ts
 ```
 

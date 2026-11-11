@@ -11,7 +11,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../deployable-scripts.js";
-import "../deployment-manifest.js";
 import "../e2e/run-state.js";
 import "../environment.js";
 import "./always-succeeds.js";

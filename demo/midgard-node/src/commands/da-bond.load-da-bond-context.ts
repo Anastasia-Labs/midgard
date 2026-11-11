@@ -1,4 +1,3 @@
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -127,14 +126,8 @@ export const assertDaBondPayerIsDedicated = (input: {
   });
 };
 
-const readVerifiedManifest = (path: string) => {
-  const manifest = readDeploymentManifestFile(path);
-  verifyFinalizedDeploymentManifest(manifest);
-  return manifest;
-};
-
 const daBondContextFrom = async (
-  manifest: ReturnType<typeof readVerifiedManifest>,
+  manifest: ReturnType<typeof readDeploymentManifestFile>,
   access: DaBondL1Access,
 ): Promise<DaBondContext> => {
   const lucid = await daBondLucid({
@@ -201,7 +194,7 @@ export const loadDaBondContext = (
   options: DaBondChainOptions,
   access: DaBondL1Access,
 ): Promise<DaBondContext> =>
-  daBondContextFrom(readVerifiedManifest(options.manifest), access);
+  daBondContextFrom(readDeploymentManifestFile(options.manifest), access);
 
 /**
  * Runs `use` with the production context over the tool L1 access `--l1`
@@ -215,7 +208,7 @@ const withDaBondContext = async <T>(
   use: (ctx: DaBondContext) => Promise<T>,
   /** A refusal checked on the verified manifest, before any L1 read. */
   guard?: (
-    manifest: ReturnType<typeof readVerifiedManifest>,
+    manifest: ReturnType<typeof readDeploymentManifestFile>,
     network: Network,
   ) => void,
 ): Promise<T> => {
@@ -223,7 +216,7 @@ const withDaBondContext = async <T>(
     throw new Error(
       "da-bond reads the DA bond pool and wallets the node does not track: pass --l1 kupmios|blockfrost",
     );
-  const manifest = readVerifiedManifest(options.manifest);
+  const manifest = readDeploymentManifestFile(options.manifest);
   const network = daBondNetwork(manifest.network);
   guard?.(manifest, network);
   return withCommandL1Access({ network, env }, async (access) =>

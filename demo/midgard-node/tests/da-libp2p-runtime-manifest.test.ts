@@ -12,7 +12,6 @@ import "vitest";
 import "../src/commands/contract-deployment-info.js";
 import "../src/da/libp2p-producer.js";
 import "../src/da/libp2p-runtime-manifest.js";
-import "../src/deployment-manifest.js";
 import "../src/services/always-succeeds.js";
 import "../src/transactions/initialization.js";
 import "./helpers/availability-challenge.js";

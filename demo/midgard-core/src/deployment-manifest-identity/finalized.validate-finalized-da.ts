@@ -26,6 +26,14 @@ import {
   requireRecord,
 } from "./primitives.js";
 
+/** The DA committee's signer-set hash: blake2b-256 of its concatenated vkeys. */
+export const computeDeploymentManifestDaCommitteeSignersHash = (
+  committeeVkeys: readonly string[],
+): string =>
+  bytesToHex(
+    midgardBlake2b(hexToBytes(committeeVkeys.join("")), { dkLen: 32 }),
+  );
+
 export const validateFinalizedDa = (value: unknown): void => {
   const da = requireRecord(value, "Deployment manifest da");
   requireExactKeys(
@@ -50,9 +58,8 @@ export const validateFinalizedDa = (value: unknown): void => {
     32,
     "da.committeeSignersHash",
   );
-  const expectedCommitteeSignersHash = bytesToHex(
-    midgardBlake2b(hexToBytes(committeeVkeys.join("")), { dkLen: 32 }),
-  );
+  const expectedCommitteeSignersHash =
+    computeDeploymentManifestDaCommitteeSignersHash(committeeVkeys);
   if (committeeSignersHash !== expectedCommitteeSignersHash) {
     throw new Error(
       `Deployment manifest da.committeeSignersHash mismatch: expected ${expectedCommitteeSignersHash}`,
@@ -100,7 +107,16 @@ export const validateFinalizedDa = (value: unknown): void => {
       "Deployment manifest da.transportProfile.envelopeEncoding is unsupported",
     );
   }
-  requireInteger(transport.zstdLevel, "da.transportProfile.zstdLevel", 1);
+  const zstdLevel = requireInteger(
+    transport.zstdLevel,
+    "da.transportProfile.zstdLevel",
+    1,
+  );
+  if (zstdLevel > 19) {
+    throw new Error(
+      "Deployment manifest da.transportProfile.zstdLevel must not exceed 19",
+    );
+  }
   if (
     stableJson(
       normalizeDeploymentManifestJsonValueInternal(

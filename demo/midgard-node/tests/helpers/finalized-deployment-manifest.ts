@@ -4,7 +4,14 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type MidgardValidators,
@@ -20,13 +27,6 @@ import {
   buildDeploymentManifest,
   type DeploymentManifestIdentityContext,
 } from "../../src/commands/contract-deployment-info.js";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue,
-  parseDeploymentManifestValue,
-} from "../../src/deployment-manifest.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
@@ -121,7 +121,7 @@ export const makeFinalizedDeploymentManifestFixture = async (
       fraudProofsToIndexedValidators(contracts.fraudProofs),
     ),
   );
-  return parseDeploymentManifestValue(
+  return verifyFinalizedDeploymentManifest(
     buildDeploymentManifest(
       buildContractDeploymentInfoFromContracts(
         contracts,

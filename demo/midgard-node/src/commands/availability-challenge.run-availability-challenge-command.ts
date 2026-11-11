@@ -1,7 +1,6 @@
 import { isAbsolute, normalize } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -70,7 +69,6 @@ export const runAvailabilityChallengeCommand = async (
   // opened, built or submitted.
   assertAvailabilityAccessServed({ kind: selectToolL1Access(env) });
   const manifest = readDeploymentManifestFile(options.manifest);
-  verifyFinalizedDeploymentManifest(manifest);
   const network = resolveNetwork({ network: manifest.network, env });
   // The node's operational wallets never pay for an availability action.
   assertCommandPayerIsDedicated({

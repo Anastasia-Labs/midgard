@@ -293,7 +293,10 @@ export const verifyFinalizedDeploymentManifest = (
     const field = `steps.${stepName}`;
     const step = requireRecord(steps[stepName], field);
     requireExactKeys(step, ["status"], ["txHash"], field);
-    if (!supportedStepStatuses.has(String(step.status))) {
+    if (
+      typeof step.status !== "string" ||
+      !supportedStepStatuses.has(step.status)
+    ) {
       throw new Error(`Deployment manifest ${field}.status is unsupported`);
     }
     if (step.txHash !== undefined) {
@@ -324,6 +327,11 @@ export const verifyFinalizedDeploymentManifest = (
     [],
     "validationDispute",
   );
+  // Equality with the compiled maturity is the whole per-manifest rule.
+  // Whether that maturity fits the dispute schedule is a property of the
+  // compiled profile, asserted for every profile at module load
+  // (assertValidationDisputeFitsProfile in deployment-profile.ts), so it is
+  // not re-checked here.
   const expectedDispute = {
     version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
     maxBisectionRounds:

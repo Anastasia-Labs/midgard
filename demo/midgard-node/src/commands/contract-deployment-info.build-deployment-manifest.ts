@@ -5,11 +5,14 @@ import { resolve as resolvePath } from "node:path";
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
+  computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   type DeploymentManifest,
   type DeploymentManifestEconomicsProfile,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   SELECTED_DEPLOYMENT_PROFILE,
@@ -17,11 +20,6 @@ import {
 } from "@al-ft/midgard-core/deployment-profile";
 import { Effect } from "effect";
 
-import {
-  computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  parseDeploymentManifestValue,
-} from "../deployment-manifest.js";
 import { contractDeploymentInfoPathOverride } from "../environment.js";
 import { NodeConfig } from "../services/index.js";
 import {
@@ -81,7 +79,7 @@ export const buildDeploymentManifest = (
       ? context.l1Origin
       : context.existingManifest.l1Origin;
   const manifest = withManifestId({
-    schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: context.network,
@@ -116,11 +114,11 @@ export const buildDeploymentManifest = (
     l1SlotConfig: context.l1SlotConfig,
     ...(l1Origin === undefined ? {} : { l1Origin }),
   });
-  return parseDeploymentManifestValue(manifest);
+  return verifyFinalizedDeploymentManifest(manifest);
 };
 
 export const parseDeploymentManifest = (value: unknown): DeploymentManifest =>
-  parseDeploymentManifestValue(value);
+  verifyFinalizedDeploymentManifest(value);
 
 export const readDeploymentManifestFile = (
   outputPath: string,

@@ -30,9 +30,8 @@ canonical JSON is hashed into `MIDGARD_CONSENSUS_PROFILE_DIGEST`.
 - Every finalized manifest records `consensusProfile` and
   `consensusProfileDigest`. Parsing refuses one that differs from the compiled
   profile: "Deployment manifest consensusProfileDigest must exactly match
-  canonical V1" [runtime: `parseDeploymentManifest` in
-  `demo/midgard-core/src/deployment-manifest-identity.ts`; the same check in
-  `demo/midgard-node/src/deployment-manifest.ts`].
+  canonical V1" [runtime: `verifyFinalizedDeploymentManifest` in
+  `demo/midgard-core/src/deployment-manifest-identity.ts`].
 - `lucid-midgard` (builder, provider payload), `midgard-validation`
   (phase A, event replay) and the watcher rule bundle also reject a foreign
   profile [runtime: `isMidgardConsensusProfile`].

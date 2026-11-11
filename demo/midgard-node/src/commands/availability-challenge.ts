@@ -1,7 +1,6 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/availability-operation-journal";
-import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";

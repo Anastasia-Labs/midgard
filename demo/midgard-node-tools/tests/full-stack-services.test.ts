@@ -13,10 +13,10 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import { computeDeploymentManifestDaCommitteeSignersHash } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { entropyToMnemonic } from "bip39";
 import { loadCommitteeConfig } from "da-committee-node/config";
 import { parse } from "dotenv";
-import { computeDeploymentManifestDaCommitteeSignersHash } from "midgard-node/deployment-manifest";
 import { parseNativeLedgerSettings } from "midgard-node/services/native-ledger";
 import { writeFinalizedDeploymentInfo } from "midgard-node/tests/da-libp2p-runtime-manifest.write-finalized-deployment-info";
 import { afterEach, expect, it } from "vitest";

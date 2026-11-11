@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { SpendingValidator } from "@lucid-evolution/lucid";
 import { validatorToAddress } from "@lucid-evolution/lucid";
-import { parseDeploymentManifestValue } from "midgard-node/deployment-manifest";
 
 import { parseReleaseL1FinalityPolicy } from "./e2e-release-finality-policy.js";
 import { requireManifestContract } from "./e2e-state-correction-local-authority.create-local-kupmios-state-correction-authority.js";
@@ -14,7 +14,7 @@ import {
 export const loadLocalAuthorityDeployment = async (
   manifestPath: string,
 ): Promise<LocalAuthorityDeployment> => {
-  const manifest = parseDeploymentManifestValue(
+  const manifest = verifyFinalizedDeploymentManifest(
     JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
   );
   if (manifest.network !== "Preprod") {

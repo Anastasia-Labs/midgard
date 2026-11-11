@@ -15,7 +15,6 @@
  * reference scripts and the DA params governor.
  */
 
-import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";

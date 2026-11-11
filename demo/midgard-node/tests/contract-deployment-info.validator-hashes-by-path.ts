@@ -3,7 +3,13 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type {
   MidgardValidators,
@@ -18,12 +24,6 @@ import {
   type DeploymentManifestBuildContext,
   type DeploymentManifestIdentityContext,
 } from "../src/commands/contract-deployment-info.js";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,

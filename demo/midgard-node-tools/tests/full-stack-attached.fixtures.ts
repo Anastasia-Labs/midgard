@@ -9,14 +9,14 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
 import { entropyToMnemonic } from "bip39";
 import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
-} from "midgard-node/deployment-manifest";
 import { writeFinalizedDeploymentInfo } from "midgard-node/tests/da-libp2p-runtime-manifest.write-finalized-deployment-info";
 
 import { attachedSteps } from "../src/full-stack/attached.js";

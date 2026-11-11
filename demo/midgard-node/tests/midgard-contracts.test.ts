@@ -8,7 +8,13 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
@@ -28,12 +34,6 @@ import {
   buildDeploymentManifest,
   type DeploymentManifestIdentityContext,
 } from "../src/commands/contract-deployment-info.js";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   assertDeploymentManifestMatchesConfig,

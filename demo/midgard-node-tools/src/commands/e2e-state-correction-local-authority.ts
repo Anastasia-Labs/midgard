@@ -1,7 +1,7 @@
 import "node:crypto";
 import "node:fs/promises";
 import "@lucid-evolution/lucid";
-import "midgard-node/deployment-manifest";
+import "@al-ft/midgard-core/deployment-manifest-identity";
 import "midgard-node/l1-external/kupmios-history";
 import "@al-ft/midgard-core/ogmios-slot";
 import "./e2e-release-finality-policy.js";

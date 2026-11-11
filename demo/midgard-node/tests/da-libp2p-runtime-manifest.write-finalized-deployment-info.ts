@@ -9,7 +9,14 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -25,13 +32,6 @@ import {
   buildDeploymentManifest,
   type DeploymentManifestIdentityContext,
 } from "../src/commands/contract-deployment-info.js";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,

@@ -11,7 +11,6 @@ import "effect";
 import "vitest";
 import "../src/commands/contract-deployment-info.js";
 import "../src/deployable-scripts.js";
-import "../src/deployment-manifest.js";
 import "../src/services/always-succeeds.js";
 import "../src/services/midgard-contracts.js";
 import "../src/transactions/initialization.js";

@@ -10,6 +10,7 @@ import {
   type DeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEventHistoryBounds,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   SELECTED_DEPLOYMENT_PROFILE,
@@ -33,7 +34,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { parseDeploymentManifestValue } from "../deployment-manifest.js";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
@@ -365,7 +365,7 @@ export const loadReferenceScriptAuthValidator = (): Effect.Effect<
 
 export const parseRuntimeDeploymentManifest = (
   raw: unknown,
-): DeploymentManifest => parseDeploymentManifestValue(raw);
+): DeploymentManifest => verifyFinalizedDeploymentManifest(raw);
 
 export const readRuntimeDeploymentManifestFile = (
   deploymentInfoPath: string,

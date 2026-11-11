@@ -1,6 +1,7 @@
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -9,8 +10,14 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   deploymentFraudProofCatalogueCategories,
@@ -31,16 +38,6 @@ import {
 import { Effect } from "effect";
 import { beforeAll } from "vitest";
 
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest.js";
 import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 
@@ -194,24 +191,26 @@ export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
     fraudProofCatalogue: CANONICAL_FRAUD_PROOF_CATALOGUE,
   };
   const referenceScripts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES.map((role) => {
-      const contractName =
-        DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-          role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+    Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (role) => {
+        const contractName =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+          ];
+        return [
+          role,
+          {
+            status: "confirmed" as const,
+            roleUnit: referenceScriptAuthUnit(
+              NATIVE_SCRIPT_HASH,
+              role as keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+            ),
+            scriptHash: contracts[contractName].scriptHash,
+            outRef: `${referenceOutRefByContract.get(contractName)!.txHash}#${referenceOutRefByContract.get(contractName)!.outputIndex.toString()}`,
+          },
         ];
-      return [
-        role,
-        {
-          status: "confirmed" as const,
-          roleUnit: referenceScriptAuthUnit(
-            NATIVE_SCRIPT_HASH,
-            role as keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
-          ),
-          scriptHash: contracts[contractName].scriptHash,
-          outRef: `${referenceOutRefByContract.get(contractName)!.txHash}#${referenceOutRefByContract.get(contractName)!.outputIndex.toString()}`,
-        },
-      ];
-    }),
+      },
+    ),
   );
   const steps: DeploymentManifest["steps"] = {
     prepareHubOracleNonce: { status: "complete" },
@@ -224,7 +223,7 @@ export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
   };
   return {
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,

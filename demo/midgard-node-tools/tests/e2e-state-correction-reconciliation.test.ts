@@ -16,10 +16,10 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("midgard-node/deployment-manifest", () => ({
-  parseDeploymentManifestValue: (value: unknown) => value,
+vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({
+  ...(await load<object>()),
+  verifyFinalizedDeploymentManifest: (value: unknown) => value,
 }));
-
 import type { E2EStateCorrectionAcceptance } from "../src/commands/e2e-state-correction-acceptance.js";
 import {
   E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION,

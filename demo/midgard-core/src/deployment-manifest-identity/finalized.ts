@@ -18,6 +18,7 @@ import "./finalized.validate-finalized-contracts.js";
 import "./finalized.validate-finalized-da.js";
 import "./finalized.verify-finalized-deployment-manifest.js";
 export {
+  computeDeploymentManifestDaCommitteeSignersHash,
   type ReferenceScriptPublicationAuthority,
   verifyReferenceScriptPublicationAuthority,
 } from "./finalized.validate-finalized-da.js";

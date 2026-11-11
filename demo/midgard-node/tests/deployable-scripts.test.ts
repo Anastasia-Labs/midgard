@@ -1,12 +1,12 @@
 import "./utils.js";
 
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.js";
 import { REFERENCE_SCRIPT_COMMAND_NAMES } from "../src/deployable-scripts.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {} from "../src/transactions/reference-scripts.js";
 import {

@@ -4,7 +4,7 @@ import "node:path";
 import "node:util";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-fault-proofs";
-import "midgard-node/deployment-manifest";
+import "@al-ft/midgard-core/deployment-manifest-identity";
 import "./e2e-state-correction-acceptance.js";
 import "./e2e-state-correction-reconciliation.final-snapshot.js";
 import "./e2e-state-correction-reconciliation.parse-kupo-matches.js";

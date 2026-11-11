@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 
 import { type CborInput, CborTag, encodeCbor } from "@al-ft/l1-node-transport";
 import { MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
+import {
+  computeDeploymentManifestId,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -21,15 +25,10 @@ import {
   cardanoProtocolParametersIdentity,
   cardanoProtocolParametersIdentityFromLedger,
   defaultContractDeploymentInfoOutputPath,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   ledgerProtocolParametersReader,
   parseDeploymentManifest,
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
-import {
-  computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   midgardContractsFromDeploymentManifest,
@@ -523,7 +522,9 @@ describe("contract deployment info", () => {
           existingManifest: first,
         });
 
-        expect(first.schemaVersion).toEqual(DEPLOYMENT_MANIFEST_SCHEMA_VERSION);
+        expect(first.schemaVersion).toEqual(
+          MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+        );
         expect(first.manifestId).toEqual(second.manifestId);
         expect(second.createdAt).toEqual(first.createdAt);
         expect(second.updatedAt).toEqual(first.updatedAt);

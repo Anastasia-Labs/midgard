@@ -71,7 +71,6 @@ own correctness. [script: .agents/skills/adding-fault-proof-families/scripts/fam
 | Surface | Enforced by |
 | ------- | ----------- |
 | `src/deployable-scripts.publication-order.ts` | Uses core order and SDK recipes; nothing to edit |
-| `src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts`, `src/deployment-manifest.validate-fraud-proof-catalogue.ts` | Core projections; nothing to edit |
 | `src/services/always-succeeds.ts` | The `SDK.FaultProofContractChains` record requires the family (`repeatedFaultProofChain(validator, "<category>")` sizes the chain from core); these scripts do not prove real validator wiring |
 | `src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts` | Family loader; the total `SDK.FaultProofContractChains` record and node manifest roundtrip tests check restoration |
 | `tests/deployment-members.test.ts` | Real blueprint/application binding, auxiliary-yield omissions and swapped real step bytes |

@@ -43,7 +43,7 @@ import {
 /**
  * `loadDaBondContext` on a Custom manifest: a finalized Custom manifest cannot
  * pass this suite's compiled (Preprod) profile check, so while `custom.active`
- * is set the manifest read and verification and the first reference
+ * is set the manifest read (which verifies) and the first reference
  * authentication (the stage right after Lucid is built) are stubbed, the L1
  * access is a fake (`fakeAccess`),
  * and the Lucid instance that reaches that stage is captured. With
@@ -89,25 +89,6 @@ vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
         : actual.readDeploymentManifestFile(path),
   };
 });
-
-vi.mock(
-  "@al-ft/midgard-core/deployment-manifest-identity",
-  async (original) => {
-    const actual =
-      await original<
-        typeof import("@al-ft/midgard-core/deployment-manifest-identity")
-      >();
-    return {
-      ...actual,
-      verifyFinalizedDeploymentManifest: (
-        ...args: Parameters<typeof actual.verifyFinalizedDeploymentManifest>
-      ) =>
-        custom.active
-          ? args[0]
-          : actual.verifyFinalizedDeploymentManifest(...args),
-    };
-  },
-);
 
 vi.mock(
   "../src/commands/availability-challenge-deployment.js",

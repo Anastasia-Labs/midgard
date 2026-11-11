@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs";
-import { parseDeploymentManifestValue } from "midgard-node/deployment-manifest";
 
 import type { DbEvidence, RawEvidenceRef } from "../e2e/summary.js";
 import type { E2EStateCorrectionAcceptance } from "./e2e-state-correction-acceptance.js";
@@ -70,7 +70,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     readJson(paths.finalSnapshotPath),
   ]);
 
-  const manifest = parseDeploymentManifestValue(manifestValue);
+  const manifest = verifyFinalizedDeploymentManifest(manifestValue);
   if (manifest.network !== "Preprod") {
     throw new Error(
       `deployment manifest network must be Preprod, found ${manifest.network}`,

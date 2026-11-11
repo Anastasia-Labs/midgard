@@ -24,6 +24,7 @@ export {
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "./deployment-manifest-identity/event-history.js";
 export {
+  computeDeploymentManifestDaCommitteeSignersHash,
   type ReferenceScriptPublicationAuthority,
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,

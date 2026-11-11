@@ -110,8 +110,8 @@ and cannot establish completion.
 
 ## Node and DA integration
 
-- `demo/midgard-node/src/deployment-manifest.ts` binds the complete contract
-  and catalogue identity.
+- `demo/midgard-core/src/deployment-manifest-identity.ts` binds the complete
+  contract and catalogue identity.
 - `demo/midgard-node/src/transactions/reference-scripts.ts` publishes the
   required family step scripts.
 - `demo/da-committee-node` serves and attests retained `DaPayload` data.

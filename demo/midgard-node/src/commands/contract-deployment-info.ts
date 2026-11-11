@@ -21,7 +21,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../deployable-scripts.js";
-import "../deployment-manifest.js";
 import "../e2e/run-state.js";
 import "../environment.js";
 import "@al-ft/midgard-core/atomic-write";
@@ -37,10 +36,6 @@ import "./contract-deployment-info.build-deployment-manifest.js";
 import "./contract-deployment-info.build-contract-deployment-info-from-contracts.js";
 import "./contract-deployment-info.build-live-deployment-manifest-program.js";
 
-import {
-  computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-} from "../deployment-manifest.js";
 export {
   buildContractDeploymentInfoFromContracts,
   buildContractDeploymentInfoProgram,
@@ -82,9 +77,6 @@ export {
   deploymentDaTransportProfile,
   ledgerProtocolParametersReader,
 } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
-
-export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_SCHEMA_VERSION };
-
 export type {
   DeploymentManifest,
   DeploymentManifestStepStatus,
