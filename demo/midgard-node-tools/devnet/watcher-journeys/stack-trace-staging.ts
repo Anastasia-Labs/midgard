@@ -3,7 +3,9 @@ import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/histor
 import {
   EMPTY_PREDECESSOR_INTERVAL_MS,
   type PublishedDepositTraceAttachedStack,
+  stagePublishedDepositTrace,
 } from "midgard-watcher/tests/support/published-deposit-trace";
+import { publishedDepositTraceQueue } from "midgard-watcher/tests/support/published-deposit-trace.queue-tail";
 
 import type { JourneyFixtureStage } from "./fixture.js";
 import { lateShiftMinimumLeadMs } from "./honest-successor.observables.js";
@@ -104,4 +106,27 @@ export const stackTraceAttachedStack = async (
     shiftWorkMs,
     beforeFaultCommit,
   };
+};
+
+/**
+ * The transition trace staged on an attached stack's live tail. The trace
+ * reads the tail's ledger inside operator-2's shift, after onboarding it.
+ * The replay is brought to that tail first, outside the shift, so the read
+ * inside it only follows the blocks the stack appended since. A fresh trace
+ * reads the queue's current tail; a resumed one the tail it extended, which
+ * the drill's own blocks may now follow. A tail without a replayed ledger is
+ * refused before operator-2 is onboarded.
+ */
+export const stageAttachedTransitionTrace = async (
+  deployment: Parameters<typeof stagePublishedDepositTrace>[0],
+  options: Parameters<typeof stagePublishedDepositTrace>[1],
+) => {
+  const { readBase, ledgerPairs } = publishedDepositTraceQueue({
+    contracts: deployment.contracts,
+    lucid: () => deployment.operatorLucid,
+    liveTail: options.liveTail,
+  });
+  if (options.resume === undefined) await readBase();
+  else await ledgerPairs(options.resume.predecessor.header.prevHeaderHash);
+  return stagePublishedDepositTrace(deployment, options);
 };

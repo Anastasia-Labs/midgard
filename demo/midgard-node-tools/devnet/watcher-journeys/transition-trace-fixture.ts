@@ -19,6 +19,7 @@ import { isStackJourneyContext } from "./stack-da-publication.js";
 import {
   stackTraceAttachedStack,
   stackTraceShiftWorkMs,
+  stageAttachedTransitionTrace,
 } from "./stack-trace-staging.js";
 
 /**
@@ -66,7 +67,12 @@ export const createTransitionTraceJourneyFixture = ({
           checkpointPath,
         })
       : undefined;
-    const staged = await stagePublishedDepositTrace(context.deployment, {
+    // On a stack the replay is brought to the tail before operator-2's shift.
+    const stage =
+      stack === undefined
+        ? stagePublishedDepositTrace
+        : stageAttachedTransitionTrace;
+    const staged = await stage(context.deployment, {
       ...(isStackJourneyContext(context)
         ? { attachedStack: stack! }
         : { daSignerConfig: journeyDaSignerConfig(context.accounts) }),
