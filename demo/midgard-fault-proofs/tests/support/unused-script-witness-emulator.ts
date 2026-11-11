@@ -6,12 +6,13 @@ import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
   type DirectPurposeCustody,
-  directPurposePaging,
   type DirectPurposeRole,
   directPurposeStep01Datum,
+  fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
+  submitDirectPurposeTerminal,
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
@@ -20,16 +21,13 @@ import {
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
-  fitUnusedScriptWitnessPage,
-  fitUnusedScriptWitnessSourceTransition,
-  isUnusedScriptWitnessPagedRole,
   prepareUnusedScriptWitnessProof,
-  submitUnusedScriptWitnessTerminal,
   UNUSED_SCRIPT_WITNESS_FAMILY,
   UNUSED_SCRIPT_WITNESS_FIELDS,
   unusedScriptWitnessContractRoles,
+  unusedScriptWitnessPaging,
   type UnusedScriptWitnessProofPlan,
-  unusedScriptWitnessTransitionAt,
+  unusedScriptWitnessTerminalFamily,
   type UnusedScriptWitnessWalkBatch,
 } from "../../src/unused-script-witness/index.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
@@ -197,42 +195,19 @@ const continueToTerminal = async (
   start: UTxO,
   scenario: IntegrityScenario,
 ): Promise<UTxO> => {
-  const step01Datum = directPurposeStep01Datum(
-    scenario.material,
-    custody.signer.paymentKeyHash,
-  );
-  const paging = directPurposePaging({
-    label: "unusedScriptWitness",
-    transitions: prepared.source,
-    first: step01Datum,
-  });
-  const sourceRoles = new Set<string>(prepared.source.map(({ role }) => role));
-  const isSourceRole = (role: DirectPurposeRole): boolean =>
-    sourceRoles.has(role);
-  const transitionAt = unusedScriptWitnessTransitionAt(
+  const paging = unusedScriptWitnessPaging(
     prepared,
-    step01Datum,
-    paging,
-    isSourceRole,
+    directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   let thread = start;
   let role = prepared.transitions[0]!.role;
   while (role !== "terminal") {
-    const transition = isSourceRole(role)
-      ? await fitUnusedScriptWitnessSourceTransition({
-          custody,
-          paging,
-          role,
-          thread,
-        })
-      : isUnusedScriptWitnessPagedRole(role)
-        ? await fitUnusedScriptWitnessPage({
-            custody,
-            walk: prepared.walk,
-            role,
-            thread,
-          })
-        : transitionAt(role, thread.datum!);
+    const transition = await fitDirectPurposeTransition({
+      custody,
+      paging,
+      role,
+      thread,
+    });
     thread = (await submitDirectPurposeTransition(custody, thread, transition))
       .thread;
     role = transition.next;
@@ -379,10 +354,10 @@ export const driveUnusedScriptWitnessThread = async ({
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitUnusedScriptWitnessTerminal({
+      submitDirectPurposeTerminal({
+        family: unusedScriptWitnessTerminalFamily(prepared.selection),
         lucid: proverLucid,
         contracts: unusedScriptWitness,
-        selection: prepared.selection,
         categoryId: harness.category.categoryId,
         signer: proverSigner,
         threadOutRef: `${at.txHash}#${at.outputIndex.toString()}`,

@@ -11,6 +11,7 @@ import {
   grammarPages,
 } from "../direct-purpose-family/custody.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import type { FittedPage } from "../page-fit.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL } from "./contracts.js";
 import { countOutput, outputValueStart, spentDescriptor } from "./fold.js";
@@ -32,7 +33,7 @@ type Transition = DirectPurposeTransition;
 /** The most work one fold transaction takes: spent inputs per take, output
  * work units per output step, mint policies per mint step, and items per
  * grammar batch. A paged step that exceeds one transaction's budget is taken
- * smaller (`fitDistinctAssetAccumulationLimitPage`). */
+ * smaller (`fitDirectPurposeTransition`). */
 export type DistinctAssetAccumulationLimitWalkBatch = Readonly<{
   inputs: number;
   outputs: number;
@@ -57,13 +58,6 @@ export const isDistinctAssetAccumulationLimitPagedRole = (
 ): role is DistinctAssetAccumulationLimitPagedRole =>
   Object.hasOwn(PAGED_FIELD, role);
 
-/** One page of a paged role at the size taken: the take and its resolve for
- * spent inputs, one fold transaction otherwise. */
-export type DistinctAssetAccumulationLimitPage = Readonly<{
-  size: number;
-  transitions: readonly Transition[];
-}>;
-
 export type DistinctAssetAccumulationLimitWalk = Readonly<{
   /** The fold at the configured batch sizes. */
   transitions: readonly Transition[];
@@ -77,7 +71,7 @@ export type DistinctAssetAccumulationLimitWalk = Readonly<{
     role: DistinctAssetAccumulationLimitPagedRole,
     datum: string,
     size?: number,
-  ) => DistinctAssetAccumulationLimitPage;
+  ) => FittedPage<Transition>;
   /** The transition continuing a thread that holds `datum` at a paged role,
    * at the configured maximum, or the resolve of the take that wrote
    * `datum`. */
@@ -301,7 +295,7 @@ export const distinctAssetAccumulationLimitWalkTransitions = async ({
     role: DistinctAssetAccumulationLimitPagedRole,
     from: FoldPosition,
     size: number,
-  ): DistinctAssetAccumulationLimitPage => {
+  ): FittedPage<Transition> => {
     if (role === "inputs") {
       const taken = Math.min(size, count(0) - from.index);
       return {

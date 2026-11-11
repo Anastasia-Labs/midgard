@@ -1,8 +1,9 @@
 /** A direct purpose family: a fault-proof category whose thread binds the
  * leaf's source and walks the shared direct derivation custody. Every direct
- * family names its roles, and the kit plans and submits its custody; a family
- * whose terminal decides conviction from its final state alone also names
- * its verdict, and the kit submits its terminal too. */
+ * family names its roles, and the kit plans and submits its custody; its
+ * terminal names a verdict, fixed when the final state alone convicts and
+ * built per proof from what else the terminal reads otherwise, and the kit
+ * submits its terminal too. */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { Script } from "@lucid-evolution/lucid";
 
@@ -62,8 +63,8 @@ export type DirectPurposeCustodyFamily = {
   readonly step01Redeemer?: typeof SDK.DirectStep01Redeemer;
 };
 
-/** A family whose terminal decides conviction from its final state alone:
- * the shared custody and the verdict the kit's terminal reads. */
+/** A family as the kit's terminal reads it: the shared custody and the
+ * verdict its final state is judged by. */
 export type DirectPurposeFamily<State = SDK.DirectClaimFinalState> =
   DirectPurposeCustodyFamily & {
     readonly verdict: DirectPurposeVerdict<State>;

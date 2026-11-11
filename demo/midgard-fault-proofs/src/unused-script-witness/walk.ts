@@ -18,6 +18,7 @@ import {
   directOutputAddress,
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
+import type { FittedPage } from "../page-fit.js";
 import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL } from "./contracts.js";
 import {
   type Execution,
@@ -29,7 +30,7 @@ const LABEL = UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL;
 
 /** The most items one walk transaction takes, per purpose kind and for
  * grammar certification. A purpose page that exceeds one transaction's budget
- * is taken smaller (`fitUnusedScriptWitnessPage`). */
+ * is taken smaller (`fitDirectPurposeTransition`). */
 export type UnusedScriptWitnessWalkBatch = Readonly<{
   spend: number;
   mint: number;
@@ -60,13 +61,6 @@ export const isUnusedScriptWitnessPagedRole = (
   role: string,
 ): role is UnusedScriptWitnessPagedRole => Object.hasOwn(PAGED, role);
 
-/** One page of a paged role at the size taken: the take and its resolve for
- * spends, one walk transaction otherwise. */
-export type UnusedScriptWitnessPage = Readonly<{
-  size: number;
-  transitions: readonly DirectPurposeTransition[];
-}>;
-
 /** The probe facts of a whole walk, as the terminal reads them. */
 export type UnusedScriptWitnessWalk = Readonly<{
   /** The walk at the configured page sizes. */
@@ -78,7 +72,7 @@ export type UnusedScriptWitnessWalk = Readonly<{
     role: UnusedScriptWitnessPagedRole,
     datum: string,
     size?: number,
-  ) => UnusedScriptWitnessPage;
+  ) => FittedPage<DirectPurposeTransition>;
   /** The transition continuing a thread that holds `datum` at a paged role,
    * at the configured maximum, or the resolve of the take that wrote
    * `datum`. */
@@ -294,7 +288,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
     role: UnusedScriptWitnessPagedRole,
     start: number,
     size: number,
-  ): UnusedScriptWitnessPage => ({
+  ): FittedPage<DirectPurposeTransition> => ({
     size,
     transitions:
       role === "allPurposesSpend"

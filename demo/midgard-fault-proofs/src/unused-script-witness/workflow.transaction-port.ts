@@ -9,6 +9,7 @@ import {
   type DirectPurposeRole,
   directPurposeRoleIndex,
 } from "../direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../direct-purpose-family/fit.js";
 import {
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
@@ -17,6 +18,7 @@ import {
   type DirectPurposeCustody,
   submitDirectPurposeTransition,
 } from "../direct-purpose-family/submit.js";
+import { submitDirectPurposeTerminal } from "../direct-purpose-family/terminal.js";
 import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -49,13 +51,8 @@ import { prepareUnusedScriptWitnessWorkflowArtifact } from "./artifact.js";
 import {
   UNUSED_SCRIPT_WITNESS_FAMILY,
   type UnusedScriptWitnessRole,
+  unusedScriptWitnessTerminalFamily,
 } from "./contracts.js";
-import {
-  fitUnusedScriptWitnessPage,
-  fitUnusedScriptWitnessSourceTransition,
-} from "./fit.js";
-import { submitUnusedScriptWitnessTerminal } from "./terminal.js";
-import { isUnusedScriptWitnessPagedRole } from "./walk.js";
 import {
   planUnusedScriptWitnessArtifact,
   unusedScriptWitnessSourceInclusion,
@@ -260,15 +257,15 @@ export const createUnusedScriptWitnessTransactionPort = (
               return;
             }
             if (role === "terminal") {
-              await submitUnusedScriptWitnessTerminal({
+              await submitDirectPurposeTerminal({
                 ...common,
-                selection: plan.proof.selection,
+                family: unusedScriptWitnessTerminalFamily(plan.proof.selection),
                 witnessReferenceScripts: config.references.witnesses,
               });
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const continued = plan.transitionAt(role, thread.datum);
+            const continued = plan.paging.transitionAt(role, thread.datum);
             const carriage = new Map<number, readonly UTxO[]>();
             for (const field of continued.fields) {
               const opening = plan.proof.plan(field).openingPlan;
@@ -319,21 +316,12 @@ export const createUnusedScriptWitnessTransactionPort = (
               awaitConfirmation: false,
             };
             // A page that opens MPF proofs is sized to the transaction budget.
-            const transition = plan.isSourceRole(role)
-              ? await fitUnusedScriptWitnessSourceTransition({
-                  custody,
-                  paging: plan.paging,
-                  role,
-                  thread,
-                })
-              : isUnusedScriptWitnessPagedRole(role)
-                ? await fitUnusedScriptWitnessPage({
-                    custody,
-                    walk: plan.proof.walk,
-                    role,
-                    thread,
-                  })
-                : continued;
+            const transition = await fitDirectPurposeTransition({
+              custody,
+              paging: plan.paging,
+              role,
+              thread,
+            });
             await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),

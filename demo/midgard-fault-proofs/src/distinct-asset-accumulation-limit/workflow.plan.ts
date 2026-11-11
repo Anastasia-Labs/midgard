@@ -8,6 +8,10 @@ import type {
   DirectPurposeContracts,
   DirectPurposeRole,
 } from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  withDirectPurposeWalkPages,
+} from "../direct-purpose-family/paging.js";
 import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
@@ -31,23 +35,25 @@ import { isDistinctAssetAccumulationLimitPagedRole } from "./walk.js";
 export type PlannedDistinctAssetAccumulationLimitArtifact = Readonly<{
   admitted: AdmittedDistinctAssetAccumulationLimitArtifact;
   proof: DistinctAssetAccumulationLimitProofPlan;
+  /** The custody, each paged fold role re-pageable at any page size. */
+  paging: DirectPurposePaging;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: DirectPurposeRole) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding `datum`. */
-  transitionAt: (
-    role: DirectPurposeRole,
-    datum: string,
-  ) => DirectPurposeTransition;
 }>;
 
-/** The transition continuing a thread at `role` that holds `datum`: a paged
- * fold role continues from the fold state its datum holds, at the configured
- * page size; every other role continues as planned after the transition that
- * wrote `datum` (`step01Datum` before the first), which no page size
- * changes. */
-export const distinctAssetAccumulationLimitTransitionAt =
-  (proof: DistinctAssetAccumulationLimitProofPlan, step01Datum: string) =>
-  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
+/** The custody as the kit fits it. A paged fold role starts a page at every
+ * transition and continues from the fold state its datum holds, at the
+ * configured page size; every other role continues as planned after the
+ * transition that wrote `datum` (`step01Datum` before the first), which no
+ * page size changes. */
+export const distinctAssetAccumulationLimitPaging = (
+  proof: DistinctAssetAccumulationLimitProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
     if (
       isDistinctAssetAccumulationLimitPagedRole(role) ||
       role === "inputsResolve"
@@ -67,6 +73,15 @@ export const distinctAssetAccumulationLimitTransitionAt =
       );
     return matches[0]!;
   };
+  return withDirectPurposeWalkPages({
+    source: null,
+    walk: {
+      isPaged: isDistinctAssetAccumulationLimitPagedRole,
+      page: proof.walk.page,
+    },
+    transitionAt,
+  });
+};
 
 const plan = async (
   artifact: JournalJsonObject,
@@ -86,15 +101,14 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   return Object.freeze({
     admitted,
     proof,
-    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: distinctAssetAccumulationLimitTransitionAt(
+    paging: distinctAssetAccumulationLimitPaging(
       proof,
-      step01Datum,
+      directPurposeStep01Datum(admitted.material, prover),
     ),
+    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
   });
 };
 

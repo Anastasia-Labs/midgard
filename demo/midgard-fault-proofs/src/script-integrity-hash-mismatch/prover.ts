@@ -16,9 +16,13 @@ import {
   decodeMidgardVersionedScriptEnvelope,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
-import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeFamily,
+} from "../direct-purpose-family/family.js";
 import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
@@ -32,6 +36,7 @@ import {
 } from "../direct-script-derivation/index.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
   scriptIntegrityHashMismatchContractRoles,
 } from "./contracts.js";
 import { scriptIntegrityHashMismatchFieldPlans } from "./custody.js";
@@ -76,6 +81,36 @@ export const scriptIntegrityHashMismatchVerdict = (
     ),
   };
 };
+
+/** The family as the kit's terminal submits it for `material`: the completed
+ * walk's language set convicts against the committed hash, and the finalize
+ * carries the witness set the bound compact commits to. */
+export const scriptIntegrityHashMismatchTerminalFamily = (
+  material: DirectScriptMaterial,
+): DirectPurposeFamily<SDK.DirectAllPurposesState> => ({
+  ...SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
+  verdict: {
+    schema: SDK.DirectAllPurposesDatum,
+    convicts: (state) =>
+      scriptIntegrityHashMismatchVerdict(material, state.facts.language_bitmap)
+        .convicts,
+    finalize: (indices) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              ...indices,
+              witness_set_compact_cbor:
+                material.material.proofSource.witnessSetCompactCbor.toString(
+                  "hex",
+                ),
+            },
+          ],
+        },
+        SDK.ScriptIntegrityHashMismatchFinalizeRedeemer,
+      ),
+  },
+});
 
 /** A spent ledger value, mint item or output not in the shape the walk
  * reads; a decoding or canonicality phase refuses it first. */

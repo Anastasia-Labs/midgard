@@ -11,6 +11,7 @@ import type {
 import {
   type DirectPurposePaging,
   directPurposePaging,
+  withDirectPurposeWalkPages,
 } from "../direct-purpose-family/paging.js";
 import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
@@ -35,33 +36,33 @@ import { isUnusedScriptWitnessPagedRole } from "./walk.js";
 export type PlannedUnusedScriptWitnessArtifact = Readonly<{
   admitted: AdmittedUnusedScriptWitnessArtifact;
   proof: UnusedScriptWitnessProofPlan;
-  /** The shared source custody, re-pageable at any page size. */
+  /** The custody, its shared source runs and paged walk roles re-pageable
+   * at any page size. */
   paging: DirectPurposePaging;
-  /** Whether `role` is a role of the shared bind and source custody. */
-  isSourceRole: (role: DirectPurposeRole) => boolean;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: DirectPurposeRole) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding `datum`. */
-  transitionAt: (
-    role: DirectPurposeRole,
-    datum: string,
-  ) => DirectPurposeTransition;
 }>;
 
-/** The transition continuing a thread at `role` that holds `datum`: a
- * shared source role continues through the kit's paging; a paged walk role
+/** The custody as the kit fits it. A shared source role continues through
+ * the kit's paging; a paged walk role starts a page at every transition and
  * continues from the walk checkpoint its datum holds, at the configured page
  * size; every other role continues as planned after the transition that
  * wrote `datum` (`step01Datum` before the first). */
-export const unusedScriptWitnessTransitionAt =
-  (
-    proof: UnusedScriptWitnessProofPlan,
-    step01Datum: string,
-    paging: DirectPurposePaging,
-    isSourceRole: (role: DirectPurposeRole) => boolean,
-  ) =>
-  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
-    if (isSourceRole(role)) return paging.transitionAt(role, datum);
+export const unusedScriptWitnessPaging = (
+  proof: UnusedScriptWitnessProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const source = directPurposePaging({
+    label: "unusedScriptWitness",
+    transitions: proof.source,
+    first: step01Datum,
+  });
+  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
+    if (sourceRoles.has(role)) return source.transitionAt(role, datum);
     if (
       isUnusedScriptWitnessPagedRole(role) ||
       role === "allPurposesSpendResolve"
@@ -81,6 +82,12 @@ export const unusedScriptWitnessTransitionAt =
       );
     return matches[0]!;
   };
+  return withDirectPurposeWalkPages({
+    source,
+    walk: { isPaged: isUnusedScriptWitnessPagedRole, page: proof.walk.page },
+    transitionAt,
+  });
+};
 
 const plan = async (
   artifact: JournalJsonObject,
@@ -100,27 +107,14 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
-  const paging = directPurposePaging({
-    label: "unusedScriptWitness",
-    transitions: proof.source,
-    first: step01Datum,
-  });
-  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
-  const isSourceRole = (role: DirectPurposeRole): boolean =>
-    sourceRoles.has(role);
   return Object.freeze({
     admitted,
     proof,
-    paging,
-    isSourceRole,
-    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: unusedScriptWitnessTransitionAt(
+    paging: unusedScriptWitnessPaging(
       proof,
-      step01Datum,
-      paging,
-      isSourceRole,
+      directPurposeStep01Datum(admitted.material, prover),
     ),
+    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
   });
 };
 

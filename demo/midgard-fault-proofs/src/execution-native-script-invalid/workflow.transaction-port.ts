@@ -9,6 +9,7 @@ import {
   type DirectPurposeRole,
   directPurposeRoleIndex,
 } from "../direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../direct-purpose-family/fit.js";
 import {
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
@@ -17,6 +18,7 @@ import {
   type DirectPurposeCustody,
   submitDirectPurposeTransition,
 } from "../direct-purpose-family/submit.js";
+import { submitDirectPurposeTerminal } from "../direct-purpose-family/terminal.js";
 import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -50,12 +52,6 @@ import {
   EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
   type ExecutionNativeScriptInvalidRole,
 } from "./contracts.js";
-import {
-  fitExecutionNativeScriptInvalidSourceTransition,
-  fitExecutionNativeScriptInvalidWalkPage,
-} from "./fit.js";
-import { submitExecutionNativeScriptInvalidTerminal } from "./terminal.js";
-import { isExecutionNativeScriptInvalidWalkRole } from "./walk.js";
 import {
   executionNativeScriptInvalidSourceInclusion,
   planExecutionNativeScriptInvalidArtifact,
@@ -264,14 +260,14 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
               return;
             }
             if (role === "terminal") {
-              await submitExecutionNativeScriptInvalidTerminal({
+              await submitDirectPurposeTerminal({
                 ...common,
                 witnessReferenceScripts: config.references.witnesses,
               });
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const continued = plan.transitionAt(role, thread.datum);
+            const continued = plan.paging.transitionAt(role, thread.datum);
             const carriage = new Map<number, readonly UTxO[]>();
             for (const field of continued.fields) {
               const opening = plan.proof.plan(field).openingPlan;
@@ -323,22 +319,12 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
             };
             // A page that opens MPF proofs or walks the native source is sized to
             // the transaction budget.
-            const transition = plan.isSourceRole(role)
-              ? await fitExecutionNativeScriptInvalidSourceTransition({
-                  custody,
-                  paging: plan.paging,
-                  role,
-                  thread,
-                })
-              : isExecutionNativeScriptInvalidWalkRole(role) &&
-                  plan.proof.walk !== null
-                ? await fitExecutionNativeScriptInvalidWalkPage({
-                    custody,
-                    walk: plan.proof.walk,
-                    role,
-                    thread,
-                  })
-                : continued;
+            const transition = await fitDirectPurposeTransition({
+              custody,
+              paging: plan.paging,
+              role,
+              thread,
+            });
             await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),

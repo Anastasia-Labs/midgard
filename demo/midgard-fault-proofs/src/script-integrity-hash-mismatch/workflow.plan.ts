@@ -8,6 +8,10 @@ import type {
   DirectPurposeContracts,
   DirectPurposeRole,
 } from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  withDirectPurposeWalkPages,
+} from "../direct-purpose-family/paging.js";
 import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
@@ -31,22 +35,24 @@ import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
 export type PlannedScriptIntegrityHashMismatchArtifact = Readonly<{
   admitted: AdmittedScriptIntegrityHashMismatchArtifact;
   proof: ScriptIntegrityHashMismatchProofPlan;
+  /** The custody, each paged walk role re-pageable at any page size. */
+  paging: DirectPurposePaging;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: DirectPurposeRole) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding `datum`. */
-  transitionAt: (
-    role: DirectPurposeRole,
-    datum: string,
-  ) => DirectPurposeTransition;
 }>;
 
-/** The transition continuing a thread at `role` that holds `datum`: a paged
- * walk role continues from the walk checkpoint its datum holds, at the
+/** The custody as the kit fits it. A paged walk role starts a page at every
+ * transition and continues from the walk checkpoint its datum holds, at the
  * configured page size; every other role continues as planned after the
  * transition that wrote `datum` (`step01Datum` before the first). */
-export const scriptIntegrityHashMismatchTransitionAt =
-  (proof: ScriptIntegrityHashMismatchProofPlan, step01Datum: string) =>
-  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
+export const scriptIntegrityHashMismatchPaging = (
+  proof: ScriptIntegrityHashMismatchProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
     if (
       isScriptIntegrityHashMismatchPagedRole(role) ||
       role === "allPurposesSpendResolve"
@@ -66,6 +72,15 @@ export const scriptIntegrityHashMismatchTransitionAt =
       );
     return matches[0]!;
   };
+  return withDirectPurposeWalkPages({
+    source: null,
+    walk: {
+      isPaged: isScriptIntegrityHashMismatchPagedRole,
+      page: proof.walk.page,
+    },
+    transitionAt,
+  });
+};
 
 const plan = async (
   artifact: JournalJsonObject,
@@ -85,12 +100,14 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   return Object.freeze({
     admitted,
     proof,
+    paging: scriptIntegrityHashMismatchPaging(
+      proof,
+      directPurposeStep01Datum(admitted.material, prover),
+    ),
     fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: scriptIntegrityHashMismatchTransitionAt(proof, step01Datum),
   });
 };
 

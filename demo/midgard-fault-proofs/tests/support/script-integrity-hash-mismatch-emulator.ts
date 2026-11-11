@@ -8,9 +8,11 @@ import {
   type DirectPurposeCustody,
   type DirectPurposeRole,
   directPurposeStep01Datum,
+  fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
+  submitDirectPurposeTerminal,
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
@@ -19,16 +21,14 @@ import {
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
-  fitScriptIntegrityHashMismatchPage,
-  isScriptIntegrityHashMismatchPagedRole,
   prepareScriptIntegrityHashMismatchProof,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FIELDS,
   scriptIntegrityHashMismatchContractRoles,
+  scriptIntegrityHashMismatchPaging,
   type ScriptIntegrityHashMismatchProofPlan,
-  scriptIntegrityHashMismatchTransitionAt,
+  scriptIntegrityHashMismatchTerminalFamily,
   type ScriptIntegrityHashMismatchWalkBatch,
-  submitScriptIntegrityHashMismatchTerminal,
 } from "../../src/script-integrity-hash-mismatch/index.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import type { IntegrityScenario } from "./script-integrity-hash-mismatch-emulator.subject.js";
@@ -196,8 +196,6 @@ export type StepMeasurement = {
   readonly measurement: CompleteSignedTransactionMeasurement;
 };
 
-/** Genuine Init, the source-appropriate step-01, and the planned custody up
- * to the terminal's input. Every thread transaction is measured. */
 /** Continues the thread role by role from the thread datum to the
  * terminal's input, as the workflow does: each page that opens MPF proofs is
  * sized to the transaction budget. */
@@ -207,21 +205,19 @@ const continueToTerminal = async (
   start: UTxO,
   scenario: IntegrityScenario,
 ): Promise<UTxO> => {
-  const transitionAt = scriptIntegrityHashMismatchTransitionAt(
+  const paging = scriptIntegrityHashMismatchPaging(
     prepared,
     directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   let thread = start;
   let role = prepared.transitions[0]!.role;
   while (role !== "terminal") {
-    const transition = isScriptIntegrityHashMismatchPagedRole(role)
-      ? await fitScriptIntegrityHashMismatchPage({
-          custody,
-          walk: prepared.walk,
-          role,
-          thread,
-        })
-      : transitionAt(role, thread.datum!);
+    const transition = await fitDirectPurposeTransition({
+      custody,
+      paging,
+      role,
+      thread,
+    });
     thread = (await submitDirectPurposeTransition(custody, thread, transition))
       .thread;
     role = transition.next;
@@ -229,6 +225,8 @@ const continueToTerminal = async (
   return thread;
 };
 
+/** Genuine Init, the source-appropriate step-01, and the planned custody up
+ * to the terminal's input. Every thread transaction is measured. */
 export const driveScriptIntegrityHashMismatchThread = async ({
   harness,
   scenario,
@@ -367,10 +365,10 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitScriptIntegrityHashMismatchTerminal({
+      submitDirectPurposeTerminal({
+        family: scriptIntegrityHashMismatchTerminalFamily(scenario.material),
         lucid: proverLucid,
         contracts: scriptIntegrityHashMismatch,
-        material: scenario.material,
         categoryId: harness.category.categoryId,
         signer: proverSigner,
         threadOutRef: `${at.txHash}#${at.outputIndex.toString()}`,

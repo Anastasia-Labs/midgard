@@ -18,6 +18,7 @@ import {
   directOutputAddress,
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
+import type { FittedPage } from "../page-fit.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 import {
   type Execution,
@@ -29,7 +30,7 @@ const LABEL = SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL;
 
 /** The most items one walk transaction takes, per purpose kind and for
  * grammar certification. A purpose page that exceeds one transaction's budget
- * is taken smaller (`fitScriptIntegrityHashMismatchPage`). */
+ * is taken smaller (`fitDirectPurposeTransition`). */
 export type ScriptIntegrityHashMismatchWalkBatch = Readonly<{
   spend: number;
   mint: number;
@@ -60,13 +61,6 @@ export const isScriptIntegrityHashMismatchPagedRole = (
   role: string,
 ): role is ScriptIntegrityHashMismatchPagedRole => Object.hasOwn(PAGED, role);
 
-/** One page of a paged role at the size taken: the take and its resolve for
- * spends, one walk transaction otherwise. */
-export type ScriptIntegrityHashMismatchPage = Readonly<{
-  size: number;
-  transitions: readonly DirectPurposeTransition[];
-}>;
-
 /** The language and probe facts of a whole walk, as the terminal reads them;
  * native executions add no language. */
 export type ScriptIntegrityHashMismatchWalk = Readonly<{
@@ -79,7 +73,7 @@ export type ScriptIntegrityHashMismatchWalk = Readonly<{
     role: ScriptIntegrityHashMismatchPagedRole,
     datum: string,
     size?: number,
-  ) => ScriptIntegrityHashMismatchPage;
+  ) => FittedPage<DirectPurposeTransition>;
   /** The transition continuing a thread that holds `datum` at a paged role,
    * at the configured maximum, or the resolve of the take that wrote
    * `datum`. */
@@ -291,7 +285,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
     role: ScriptIntegrityHashMismatchPagedRole,
     start: number,
     size: number,
-  ): ScriptIntegrityHashMismatchPage => ({
+  ): FittedPage<DirectPurposeTransition> => ({
     size,
     transitions:
       role === "allPurposesSpend"

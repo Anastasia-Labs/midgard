@@ -12,6 +12,7 @@ import type {
 import {
   type DirectPurposePaging,
   directPurposePaging,
+  withDirectPurposeWalkPages,
 } from "../direct-purpose-family/paging.js";
 import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
@@ -38,31 +39,29 @@ type Role = DirectPurposeRole;
 export type PlannedExecutionNativeScriptInvalidArtifact = Readonly<{
   admitted: AdmittedExecutionNativeScriptInvalidArtifact;
   proof: ExecutionNativeScriptInvalidProofPlan;
-  /** The shared source and purpose custody, re-pageable at any page size. */
+  /** The custody, its shared source and purpose runs and its signer and
+   * evaluation pages re-pageable at any page size. */
   paging: DirectPurposePaging;
-  /** Whether `role` is a role of the shared bind, source and purpose
-   * custody. */
-  isSourceRole: (role: Role) => boolean;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: Role) => readonly number[];
-  /** The one planned transition spending `role` from a thread holding
-   * `datum`. */
-  transitionAt: (role: Role, datum: string) => DirectPurposeTransition;
 }>;
 
-/** The transition continuing a thread at `role` that holds `datum`: a
- * shared role continues through the kit's paging; a signer or evaluation
- * role continues from the walk state its datum holds, at the configured page
- * size; every other role continues as planned after the transition that
- * wrote `datum` (`step01Datum` before the first). */
-export const executionNativeScriptInvalidTransitionAt =
-  (
-    proof: ExecutionNativeScriptInvalidProofPlan,
-    step01Datum: string,
-    paging: DirectPurposePaging,
-    isSourceRole: (role: Role) => boolean,
-  ) =>
-  (role: Role, datum: string): DirectPurposeTransition => {
+/** The custody as the kit fits it. A shared role continues through the
+ * kit's paging; a signer or evaluation role starts a page at every
+ * transition and continues from the walk state its datum holds, at the
+ * configured page size; every other role continues as planned after the
+ * transition that wrote `datum` (`step01Datum` before the first). */
+export const executionNativeScriptInvalidPaging = (
+  proof: ExecutionNativeScriptInvalidProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const source = directPurposePaging({
+    label: "executionNativeScriptInvalid",
+    transitions: proof.source,
+    first: step01Datum,
+  });
+  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
+  const transitionAt = (role: Role, datum: string): DirectPurposeTransition => {
     if (isExecutionNativeScriptInvalidWalkRole(role)) {
       if (proof.walk === null)
         throw new Error(
@@ -79,11 +78,23 @@ export const executionNativeScriptInvalidTransitionAt =
         ).toLowerCase() === datum.toLowerCase(),
     );
     if (matches.length === 1) return matches[0]!;
-    if (isSourceRole(role)) return paging.transitionAt(role, datum);
+    if (sourceRoles.has(role)) return source.transitionAt(role, datum);
     throw new Error(
       `executionNativeScriptInvalid ${role} thread datum matches ${matches.length.toString()} planned transitions`,
     );
   };
+  return withDirectPurposeWalkPages({
+    source,
+    walk:
+      proof.walk === null
+        ? null
+        : {
+            isPaged: isExecutionNativeScriptInvalidWalkRole,
+            page: proof.walk.page,
+          },
+    transitionAt,
+  });
+};
 
 const plan = async (
   artifact: JournalJsonObject,
@@ -104,26 +115,14 @@ const plan = async (
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
-  const paging = directPurposePaging({
-    label: "executionNativeScriptInvalid",
-    transitions: proof.source,
-    first: step01Datum,
-  });
-  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
-  const isSourceRole = (role: Role): boolean => sourceRoles.has(role);
   return Object.freeze({
     admitted,
     proof,
-    paging,
-    isSourceRole,
-    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
-    transitionAt: executionNativeScriptInvalidTransitionAt(
+    paging: executionNativeScriptInvalidPaging(
       proof,
-      step01Datum,
-      paging,
-      isSourceRole,
+      directPurposeStep01Datum(admitted.material, prover),
     ),
+    fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
   });
 };
 

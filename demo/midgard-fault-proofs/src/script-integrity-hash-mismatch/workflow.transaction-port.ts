@@ -9,6 +9,7 @@ import {
   type DirectPurposeRole,
   directPurposeRoleIndex,
 } from "../direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../direct-purpose-family/fit.js";
 import {
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
@@ -17,6 +18,7 @@ import {
   type DirectPurposeCustody,
   submitDirectPurposeTransition,
 } from "../direct-purpose-family/submit.js";
+import { submitDirectPurposeTerminal } from "../direct-purpose-family/terminal.js";
 import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -50,9 +52,7 @@ import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
   type ScriptIntegrityHashMismatchRole,
 } from "./contracts.js";
-import { fitScriptIntegrityHashMismatchPage } from "./fit.js";
-import { submitScriptIntegrityHashMismatchTerminal } from "./terminal.js";
-import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
+import { scriptIntegrityHashMismatchTerminalFamily } from "./prover.js";
 import {
   planScriptIntegrityHashMismatchArtifact,
   scriptIntegrityHashMismatchSourceInclusion,
@@ -261,15 +261,17 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
               return;
             }
             if (role === "terminal") {
-              await submitScriptIntegrityHashMismatchTerminal({
+              await submitDirectPurposeTerminal({
                 ...common,
-                material: admitted.material,
+                family: scriptIntegrityHashMismatchTerminalFamily(
+                  admitted.material,
+                ),
                 witnessReferenceScripts: config.references.witnesses,
               });
               return;
             }
             const thread = await threadAt(config.lucid, threadOutRef);
-            const continued = plan.transitionAt(role, thread.datum);
+            const continued = plan.paging.transitionAt(role, thread.datum);
             const carriage = new Map<number, readonly UTxO[]>();
             for (const field of continued.fields) {
               const opening = plan.proof.plan(field).openingPlan;
@@ -320,14 +322,12 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
               awaitConfirmation: false,
             };
             // A page that opens MPF proofs is sized to the transaction budget.
-            const transition = isScriptIntegrityHashMismatchPagedRole(role)
-              ? await fitScriptIntegrityHashMismatchPage({
-                  custody,
-                  walk: plan.proof.walk,
-                  role,
-                  thread,
-                })
-              : continued;
+            const transition = await fitDirectPurposeTransition({
+              custody,
+              paging: plan.paging,
+              role,
+              thread,
+            });
             await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),

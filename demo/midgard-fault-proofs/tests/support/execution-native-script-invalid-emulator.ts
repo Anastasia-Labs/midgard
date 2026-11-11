@@ -6,12 +6,14 @@ import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
   type DirectPurposeCustody,
-  directPurposePaging,
+  type DirectPurposePaging,
   type DirectPurposeRole,
   directPurposeStep01Datum,
+  fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
+  submitDirectPurposeTerminal,
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
@@ -20,15 +22,11 @@ import {
   EXECUTION_NATIVE_SCRIPT_INVALID_FIELDS,
   executionNativeScriptInvalidContractRoles,
   type ExecutionNativeScriptInvalidEntry,
+  executionNativeScriptInvalidPaging,
   type ExecutionNativeScriptInvalidProofPlan,
   type ExecutionNativeScriptInvalidRole,
-  executionNativeScriptInvalidTransitionAt,
   type ExecutionNativeScriptInvalidWalkBatch,
-  fitExecutionNativeScriptInvalidSourceTransition,
-  fitExecutionNativeScriptInvalidWalkPage,
-  isExecutionNativeScriptInvalidWalkRole,
   prepareExecutionNativeScriptInvalidProof,
-  submitExecutionNativeScriptInvalidTerminal,
 } from "../../src/execution-native-script-invalid/index.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -210,65 +208,30 @@ const continueToTerminal = async (
   scenario: NativeScenario,
   pages: PageSize[],
 ): Promise<UTxO> => {
-  const step01Datum = directPurposeStep01Datum(
-    scenario.material,
-    custody.signer.paymentKeyHash,
-  );
-  const paging = directPurposePaging({
-    label: "executionNativeScriptInvalid",
-    transitions: prepared.source,
-    first: step01Datum,
-  });
-  const sourceRoles = new Set<string>(prepared.source.map(({ role }) => role));
-  const isSourceRole = (role: DirectPurposeRole): boolean =>
-    sourceRoles.has(role);
-  const transitionAt = executionNativeScriptInvalidTransitionAt(
+  const paging = executionNativeScriptInvalidPaging(
     prepared,
-    step01Datum,
-    paging,
-    isSourceRole,
+    directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   // The size of the last page each fit built: the page it submits.
   let fitted: number | undefined;
-  const sizedPaging = {
+  const sizedPaging: DirectPurposePaging = {
     ...paging,
-    page: (...args: Parameters<typeof paging.page>) => {
+    page: (...args) => {
       const page = paging.page(...args);
       fitted = page.size;
       return page;
     },
   };
-  const walk = prepared.walk;
-  const sizedWalk =
-    walk === null
-      ? null
-      : {
-          ...walk,
-          page: (...args: Parameters<typeof walk.page>) => {
-            const page = walk.page(...args);
-            fitted = page.size;
-            return page;
-          },
-        };
   let thread = start;
   let role = prepared.transitions[0]!.role;
   while (role !== "terminal") {
     fitted = undefined;
-    const transition = isSourceRole(role)
-      ? await fitExecutionNativeScriptInvalidSourceTransition({
-          custody,
-          paging: sizedPaging,
-          role,
-          thread,
-        })
-      : isExecutionNativeScriptInvalidWalkRole(role) && sizedWalk !== null
-        ? await fitExecutionNativeScriptInvalidWalkPage({
-            custody,
-            walk: sizedWalk,
-            role,
-            thread,
-          })
-        : transitionAt(role, thread.datum!);
+    const transition = await fitDirectPurposeTransition({
+      custody,
+      paging: sizedPaging,
+      role,
+      thread,
+    });
     if (fitted !== undefined)
       pages.push({ role, label: transition.label, size: fitted });
     thread = (await submitDirectPurposeTransition(custody, thread, transition))
@@ -418,7 +381,8 @@ export const driveExecutionNativeScriptInvalidThread = async ({
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitExecutionNativeScriptInvalidTerminal({
+      submitDirectPurposeTerminal({
+        family: EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
         lucid: proverLucid,
         contracts: executionNativeScriptInvalid,
         categoryId: harness.category.categoryId,

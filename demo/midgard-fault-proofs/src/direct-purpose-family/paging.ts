@@ -133,3 +133,42 @@ export const directPurposePaging = ({
     },
   });
 };
+
+/** A family walk's proof-opening roles: every transition at one starts a
+ * page. */
+export type DirectPurposeWalkPages<Role extends DirectPurposeRole> = Readonly<{
+  isPaged: (role: DirectPurposeRole) => role is Role;
+  /** The page continuing a thread holding `datum` at `role`, of `size` items
+   * (the configured maximum by default), never more than remain. */
+  page: (
+    role: Role,
+    datum: string,
+    size?: number,
+  ) => FittedPage<DirectPurposeTransition>;
+}>;
+
+/** The paging of a thread whose shared source runs page through `source`
+ * (null when the family fits none) and whose walk roles page through `walk`
+ * (null when the proof has no walk); every other transition is the plan's
+ * `transitionAt`. */
+export const withDirectPurposeWalkPages = <Role extends DirectPurposeRole>({
+  source,
+  walk,
+  transitionAt,
+}: {
+  readonly source: DirectPurposePaging | null;
+  readonly walk: DirectPurposeWalkPages<Role> | null;
+  readonly transitionAt: DirectPurposePaging["transitionAt"];
+}): DirectPurposePaging =>
+  Object.freeze({
+    isPageStart: (role, datum) =>
+      (walk?.isPaged(role) ?? false) ||
+      (source?.isPageStart(role, datum) ?? false),
+    page: (role, datum, size) => {
+      if (walk?.isPaged(role)) return walk.page(role, datum, size);
+      if (source === null)
+        throw new Error(`a ${role} thread is not at a page boundary`);
+      return source.page(role, datum, size);
+    },
+    transitionAt,
+  });

@@ -9,9 +9,11 @@ import {
   type DirectPurposeCustody,
   type DirectPurposeRole,
   directPurposeStep01Datum,
+  fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
   submitDirectPurposeStep01Forced,
+  submitDirectPurposeTerminal,
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
@@ -19,13 +21,10 @@ import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FIELDS,
   distinctAssetAccumulationLimitContractRoles,
+  distinctAssetAccumulationLimitPaging,
   type DistinctAssetAccumulationLimitProofPlan,
-  distinctAssetAccumulationLimitTransitionAt,
   type DistinctAssetAccumulationLimitWalkBatch,
-  fitDistinctAssetAccumulationLimitPage,
-  isDistinctAssetAccumulationLimitPagedRole,
   prepareDistinctAssetAccumulationLimitProof,
-  submitDistinctAssetAccumulationLimitTerminal,
 } from "../../src/distinct-asset-accumulation-limit/index.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -206,21 +205,19 @@ const continueToTerminal = async (
   start: UTxO,
   scenario: DistinctAssetScenario,
 ): Promise<UTxO> => {
-  const transitionAt = distinctAssetAccumulationLimitTransitionAt(
+  const paging = distinctAssetAccumulationLimitPaging(
     prepared,
     directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   let thread = start;
   let role = prepared.transitions[0]!.role;
   while (role !== "terminal") {
-    const transition = isDistinctAssetAccumulationLimitPagedRole(role)
-      ? await fitDistinctAssetAccumulationLimitPage({
-          custody,
-          walk: prepared.walk,
-          role,
-          thread,
-        })
-      : transitionAt(role, thread.datum!);
+    const transition = await fitDirectPurposeTransition({
+      custody,
+      paging,
+      role,
+      thread,
+    });
     thread = (await submitDirectPurposeTransition(custody, thread, transition))
       .thread;
     role = transition.next;
@@ -368,10 +365,10 @@ export const driveDistinctAssetAccumulationLimitThread = async ({
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitDistinctAssetAccumulationLimitTerminal({
+      submitDirectPurposeTerminal({
+        family: DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
         lucid: proverLucid,
         contracts: distinctAssetAccumulationLimit,
-        material: scenario.material,
         categoryId: harness.category.categoryId,
         signer: proverSigner,
         threadOutRef: `${at.txHash}#${at.outputIndex.toString()}`,
