@@ -1,20 +1,14 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   applyFamilyApplicationRecord,
   type CompleteCanonicalReplayContext,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
+  type FraudProofL1Source,
   type HeaderDecision,
   MemoryFraudProofWorkflowJournalStore,
-  type ResolvedProverSigner,
-  type StateQueueMutationLeaseCoordinator,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -26,12 +20,12 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   Data,
-  type LucidEvolution,
-  type UTxO,
+  type Provider,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { watcherFaultProofSourceId } from "../../src/fault-proofs/fault-proof-application.build-common-infrastructure.js";
 import {
   unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -43,13 +37,20 @@ import type {
   WatcherAuthenticatedStateQueueObservation,
   WatcherStateQueueHeaderObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
-import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
+import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
+import { WATCHER_HISTORY_FIXTURE_BOUNDS } from "../support/deployment-authority-fixture.js";
 import {
-  makeWatcherDeploymentAuthorityFixture,
-  WATCHER_HISTORY_FIXTURE_BOUNDS,
-} from "../support/deployment-authority-fixture.js";
-import { testFaultProofL1 } from "./fault-proof-application.raw-config.js";
+  admittedWatcherConfig,
+  AUTHORITY,
+  dependencies,
+  DEPLOYMENT,
+  FORWARDED_RUNTIME_CONFIG_PATH,
+  infrastructure,
+  rawConfig,
+  testFaultProofL1,
+  transportFactory,
+} from "./fault-proof-application.raw-config.js";
 
 /**
  * The classifier module is the double here; everything watcher-side runs for
@@ -72,6 +73,7 @@ const classifier = vi.hoisted(() => ({
   contexts: new WeakMap<object, CompleteCanonicalReplayContext>(),
   respond: undefined as undefined | (() => HeaderDecision),
   calls: 0,
+  releaseFinality: undefined as unknown,
 }));
 
 vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
@@ -112,6 +114,10 @@ vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
     // synthetic deployment fixture has none, so the bindings are tokens that
     // carry its deployment identity and the explicit history configuration.
     bindFraudProofWorkflowDeployment: async () => bound(),
+    bindFraudProofTerminalDeployment: async () => ({
+      deploymentFingerprint: classifier.deploymentFingerprint,
+      releaseFinality: classifier.releaseFinality,
+    }),
     createTransitionTraceEventAuthority: () => bound(),
     createHeaderClassifier: async (
       input: Parameters<typeof actual.createHeaderClassifier>[0],
@@ -165,18 +171,12 @@ vi.mock(
   },
 );
 
-const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
-const DEPLOYMENT = AUTHORITY.result.manifestId;
 classifier.deploymentFingerprint = DEPLOYMENT;
 const SOURCE_ID = "watcher-test-local-node";
 const OBSERVED_SLOT = 900n;
 const OBSERVED_BLOCK_HASH = "19".repeat(32);
 const CONFIRMATION_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 const OBSERVATION_DIGEST = "11".repeat(32);
-const MANIFEST_PATH = "/etc/midgard/deployment-manifest-v1.json";
-const BLUEPRINT_PATH = "/etc/midgard/plutus.json";
-const DEPLOYMENT_INFO_PATH = "/etc/midgard/contract-deployment-info.json";
-const PEER_ID = "12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
 
 /** A challenged block with a predecessor: non-empty previous UTxO set. */
 const header: HeaderType = {
@@ -354,127 +354,6 @@ const CONTEXT_WITHOUT_PREDECESSOR = Object.freeze(
   {},
 ) as CompleteCanonicalReplayContext;
 
-const rawConfig = () => ({
-  schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-  mode: "acceptance",
-  targetNetwork: "Preprod",
-  l1: {
-    source: {
-      sourceMode: "local_node",
-      authorityNodeId: "watcher-node",
-      chainSync: {
-        kind: "cardano_node_socket",
-        socketPath: "/run/cardano/node.socket",
-        nodeConfigPath: "/etc/cardano/node-config.json",
-        genesisIdentitySha256: "33".repeat(32),
-      },
-    },
-    requestTimeoutMs: 10_000,
-    maxConcurrency: 8,
-    finality: {
-      depth: CONFIRMATION_DEPTH,
-    },
-  },
-  da: {
-    peers: [
-      {
-        identity: "da-peer-a",
-        multiaddr: `/dns4/da-a.example/tcp/443/p2p/${PEER_ID}`,
-      },
-    ],
-    requestTimeoutMs: 10_000,
-    maxConcurrency: 8,
-  },
-  storage: {
-    driver: "sqlite",
-    path: "/var/lib/midgard-watcher/watcher.sqlite",
-    rollbackAuthorityKeySource: {
-      kind: "environment",
-      variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
-    },
-  },
-  proverWallet: {
-    keySource: {
-      kind: "environment",
-      variable: "MIDGARD_WATCHER_PROVER_KEY",
-    },
-  },
-  deadlines: {
-    daFetchMs: 60_000,
-    daPublishMs: 60_000,
-    proofConstructMs: 300_000,
-    proofSubmitMs: 120_000,
-  },
-});
-
-const dependencies = (): WatcherFaultProofApplicationDependencies => {
-  const signer: ResolvedProverSigner = {
-    source: "test",
-    address: "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
-    paymentKeyHash: "01".repeat(28),
-    selectWallet: vi.fn(),
-  };
-  const lease: StateQueueMutationLeaseCoordinator = {
-    acquire: vi.fn(async () => {
-      throw new Error("classification must not acquire a mutation lease");
-    }),
-  };
-  return {
-    readText: vi.fn(async (path: string) => {
-      if (path === MANIFEST_PATH) {
-        return JSON.stringify(AUTHORITY.signedIdentity.manifest);
-      }
-      if (path === BLUEPRINT_PATH) return "{}";
-      if (path.endsWith("/watcher.json")) return JSON.stringify(rawConfig());
-      if (path === DEPLOYMENT_INFO_PATH) {
-        return JSON.stringify({
-          referenceScriptAuthPolicy: "02".repeat(28),
-          contracts: AUTHORITY.contracts,
-        });
-      }
-      throw new Error(`unexpected read ${path}`);
-    }),
-    canonicalPath: vi.fn(async (path: string) => path),
-    // The fixture deployment is on Preprod, and the watcher refuses a Lucid
-    // whose L1 slot mapping differs from the manifest's.
-    makeLucid: vi.fn(
-      async () =>
-        ({
-          config: () => ({
-            slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
-          }),
-        }) as unknown as LucidEvolution,
-    ),
-    resolveSigner: vi.fn(() => signer),
-    resolveReferenceScript: vi.fn(async ({ contractName }) => {
-      const referenceIndex = Object.keys(AUTHORITY.contracts).indexOf(
-        contractName,
-      );
-      if (referenceIndex < 0) {
-        throw new Error(`unknown deployment contract ${contractName}`);
-      }
-      return {
-        txHash: (referenceIndex + 1).toString(16).padStart(64, "0"),
-        outputIndex: referenceIndex,
-        address: "addr_test1vq44",
-        assets: { lovelace: 2_000_000n },
-      } as UTxO;
-    }),
-    createLeaseCoordinator: vi.fn(() => lease),
-  };
-};
-
-const transportFactory = () => {
-  const transport = Object.create(
-    WatcherPublicDaLibp2pTransport.prototype,
-  ) as WatcherPublicDaLibp2pTransport;
-  Object.defineProperties(transport, {
-    request: { value: vi.fn(async () => new Uint8Array([0xf6])) },
-    stop: { value: vi.fn(async () => undefined) },
-  });
-  return vi.fn(async () => transport);
-};
-
 const PREDECESSOR_FAMILIES = WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES;
 const REPLAY_CONTEXT_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
   (category) =>
@@ -489,28 +368,20 @@ const OTHER_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
 );
 
 describe("watcher decision-time predecessor ledger", () => {
-  let directory: string;
-  let configPath: string;
   let deps: WatcherFaultProofApplicationDependencies;
   let application: ReturnType<
     typeof unsafeCreateWatcherFaultProofApplicationForTest
   >;
 
-  beforeAll(async () => {
-    directory = await mkdtemp(join(tmpdir(), "midgard-decision-time-"));
-    configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
+  beforeAll(() => {
     deps = dependencies();
     application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
         l1: testFaultProofL1(),
+        watcherConfig: admittedWatcherConfig(),
         deploymentIdentity: AUTHORITY.result,
-        infrastructure: {
-          manifestPath: MANIFEST_PATH,
-          blueprintPath: BLUEPRINT_PATH,
-          deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-        },
-        unsafeTransportFactoryForTest: transportFactory(),
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transportFactory().factory,
       },
       deps,
       {
@@ -521,7 +392,6 @@ describe("watcher decision-time predecessor ledger", () => {
 
   afterAll(async () => {
     await application?.close();
-    await rm(directory, { recursive: true, force: true });
   });
 
   const classify = async (
@@ -534,7 +404,6 @@ describe("watcher decision-time predecessor ledger", () => {
     classifier.respond = () => decision;
     try {
       return await application.classifyHeader({
-        runtimeConfigPath: configPath,
         observation: subject.observation,
         stateQueueObservation: queueObservation,
         header: subject.header,
@@ -561,14 +430,14 @@ describe("watcher decision-time predecessor ledger", () => {
       deploymentFingerprint: DEPLOYMENT,
       headerHash: HEADER_HASH,
       journal: new MemoryFraudProofWorkflowJournalStore(),
-      runtimeConfigPath: configPath,
+      runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
       decisionDigest: decisionDigestFor(category),
       actuationPermit: Object.freeze({
         permitVersion: "midgard-production-workflow-actuation-permit-v1",
       }),
     } as unknown as WorkflowAdapterRunnerInput;
     const loaded = await application.unsafeLoadRuntimeForTest({
-      runtimeConfigPath: configPath,
+      runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
       invocation: execution,
     });
     const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
@@ -702,6 +571,82 @@ describe("watcher decision-time predecessor ledger", () => {
     for (const category of OTHER_FAMILIES) {
       const decision = issue(category, undefined);
       await expect(classify(decision)).resolves.toBe(decision);
+    }
+  });
+});
+
+describe("watcher admitted runtime configuration", () => {
+  it("uses the injected config for classify and verifyCompleted", async () => {
+    const admittedConfig = rawConfig();
+    const deps = dependencies();
+    const sourceIds: string[] = [];
+    const proverPhrase = "word ".repeat(24).trim();
+    const application = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        l1: {
+          provider: {} as Provider,
+          source: (sourceId) => {
+            sourceIds.push(sourceId);
+            return {
+              sourceId,
+              snapshotAuthority: () => {
+                throw new Error("completion verification reached L1");
+              },
+            } as unknown as FraudProofL1Source;
+          },
+        },
+        watcherConfig: admittedWatcherConfig(),
+        deploymentIdentity: AUTHORITY.result,
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transportFactory().factory,
+      },
+      deps,
+      { MIDGARD_WATCHER_PROVER_KEY: proverPhrase },
+    );
+    classifier.releaseFinality =
+      await watcherDeploymentReleaseFinalityAuthority(
+        AUTHORITY.result,
+      ).verifyForWorkflow({ deploymentFingerprint: DEPLOYMENT });
+    try {
+      const category = OTHER_FAMILIES[0]!;
+      const decision = issue(category, undefined);
+      classifier.respond = () => decision;
+      await expect(
+        application.classifyHeader({
+          observation,
+          stateQueueObservation: queueObservation,
+          header: queueHeader,
+          authenticatedObservationDigest: OBSERVATION_DIGEST,
+        }),
+      ).resolves.toBe(decision);
+      expect(deps.resolveSigner).toHaveBeenCalledWith({
+        network: "Preprod",
+        secret: proverPhrase,
+      });
+
+      await expect(
+        application.verifyCompleted({
+          category: "doubleSpend",
+          headerHash: HEADER_HASH,
+          decisionDigest: decisionDigestFor("doubleSpend"),
+          entries: [],
+          terminal: fundingTerminal(
+            HEADER_HASH,
+            "aa".repeat(32),
+            "bb".repeat(32),
+          ),
+        }),
+      ).rejects.toThrow("completion verification reached L1");
+      expect(sourceIds).toContain(
+        watcherFaultProofSourceId({
+          category: "doubleSpend",
+          manifestId: DEPLOYMENT,
+          localL1Source: admittedConfig.l1.source,
+        }),
+      );
+    } finally {
+      classifier.respond = undefined;
+      await application.close();
     }
   });
 });

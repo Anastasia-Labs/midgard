@@ -230,6 +230,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
   readonly provider: WatcherProverFundingUtxoProvider;
   /** The per-proof workflow journal in watcher.sqlite. */
   readonly workflowJournal: WatcherWorkflowJournal;
+  /** Forwarded to the shared workflow runner, whose contract carries it; the
+   * watcher's loader runs on the configuration startup admitted. */
   readonly runtimeConfigPath: string;
   readonly deploymentFingerprint: string;
   readonly operationsSink: () => Pick<
@@ -290,7 +292,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
         );
       try {
         const verification = await dependencies.application.verifyCompleted({
-          runtimeConfigPath: dependencies.runtimeConfigPath,
           category: job.category,
           headerHash: job.headerHash,
           decisionDigest: executionIdentity.decisionDigest,

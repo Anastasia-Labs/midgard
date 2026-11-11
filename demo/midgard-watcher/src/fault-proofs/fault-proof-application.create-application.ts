@@ -26,7 +26,7 @@ import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
+import { parseWatcherConfig } from "../runtime/config.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
@@ -36,7 +36,6 @@ import { verifyCompletedWatcherReplayTranscriptWorkflow } from "../storage/repla
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
-  readAdmittedWatcherRuntimeConfig,
 } from "../storage/retained-da-runtime.js";
 import {
   admitInfrastructure,
@@ -91,6 +90,7 @@ export function createApplication({
   }
   const deploymentIdentity = options.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const watcherConfig = parseWatcherConfig(options.watcherConfig);
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
@@ -139,6 +139,7 @@ export function createApplication({
   /** One loader for all installed families; the record does the rest. */
   const loadRuntime = createWatcherWorkflowRuntimeLoader({
     ...loaderOptions,
+    watcherConfig,
     buildInfrastructure: async ({ watcherConfig, invocation }) =>
       await buildCommonInfrastructure({
         watcherConfig,
@@ -179,7 +180,7 @@ export function createApplication({
     })),
   });
   let classifierPromise: ReturnType<typeof createHeaderClassifier> | undefined;
-  const loadClassifier = (watcherConfig: WatcherConfig, headerHash: string) => {
+  const loadClassifier = (headerHash: string) => {
     classifierPromise ??= (async () => {
       const [manifestJson, blueprintJson, deploymentInfoJson] =
         await Promise.all(
@@ -261,9 +262,9 @@ export function createApplication({
   };
   const methods: WatcherFaultProofApplication = {
     advanceReplayedLedger: watcherReplayCheckpointAdvance({
+      watcherConfig,
       replayedLedger,
       retainedDaOwner,
-      deploymentIdentity,
       isAdmitted: () => admittedApplications.has(application),
     }),
     close: async () => {
@@ -318,18 +319,6 @@ export function createApplication({
           "watcher fault-proof production application is not admitted",
         );
       }
-      const runtimeConfigPath = await requireCanonicalFile(
-        input.runtimeConfigPath,
-        dependencies,
-      );
-      const watcherConfigJson = await dependencies.readText(runtimeConfigPath);
-      let watcherConfigJsonValue: unknown;
-      try {
-        watcherConfigJsonValue = JSON.parse(watcherConfigJson) as unknown;
-      } catch {
-        throw new Error("watcher runtime configuration is not JSON");
-      }
-      const watcherConfig = parseWatcherConfig(watcherConfigJsonValue);
       const completedDecision = await classifyWatcherReplayedHeader({
         request: input,
         watcherConfig,
@@ -363,16 +352,16 @@ export function createApplication({
         );
       }
       const category = invocation.category as WatcherInstalledWorkflowCategory;
+      if (invocation.deploymentFingerprint !== deploymentIdentity.manifestId) {
+        throw new Error(
+          "production workflow invocation deployment differs from verified watcher authority",
+        );
+      }
       // Readiness binds the deployment and resolves the family's whole roster,
       // then stops: it binds no config, constructs no workflow and reads no
       // secret, so it can neither act nor need the optional infrastructure an
       // acting invocation must hold. Runtime startup resolves the prover
       // wallet's secret before the operations server binds, not here.
-      const watcherConfig = await readAdmittedWatcherRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        deploymentIdentity,
-      });
       const { resolveReferenceScript } = await bindWatcherDeploymentAuthority({
         watcherConfig,
         infrastructure,
@@ -398,20 +387,15 @@ export function createApplication({
         throw new Error("watcher fault-proof application is not admitted");
       if (!WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(input.category))
         throw new Error("completed workflow category is not installed");
-      const [runtimeJson, manifestJson, blueprintJson, deploymentJson] =
-        await Promise.all(
-          [
-            input.runtimeConfigPath,
-            infrastructure.manifestPath,
-            infrastructure.blueprintPath,
-            infrastructure.deploymentInfoPath,
-          ].map(async (path) =>
-            dependencies.readText(
-              await requireCanonicalFile(path, dependencies),
-            ),
-          ),
-        );
-      const config = parseWatcherConfig(JSON.parse(runtimeJson!));
+      const [manifestJson, blueprintJson, deploymentJson] = await Promise.all(
+        [
+          infrastructure.manifestPath,
+          infrastructure.blueprintPath,
+          infrastructure.deploymentInfoPath,
+        ].map(async (path) =>
+          dependencies.readText(await requireCanonicalFile(path, dependencies)),
+        ),
+      );
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
@@ -438,7 +422,7 @@ export function createApplication({
           watcherFaultProofSourceId({
             category: input.category,
             manifestId: deploymentIdentity.manifestId,
-            localL1Source: config.l1.source,
+            localL1Source: watcherConfig.l1.source,
           }),
         )
         .snapshotAuthority({
@@ -465,6 +449,7 @@ export function createApplication({
     driveProvenCorrection: driveProvenCorrectionFrom({
       isExecutable: () =>
         allowExecution && admittedApplications.has(application),
+      watcherConfig,
       infrastructure,
       deploymentIdentity,
       l1,

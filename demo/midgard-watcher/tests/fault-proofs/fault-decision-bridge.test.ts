@@ -115,7 +115,6 @@ describe("production fault decision bridge", () => {
     "predecessor",
     "deadline",
     "lock",
-    "configuration",
     "fork",
     "backward",
   ])(
@@ -136,8 +135,6 @@ describe("production fault decision bridge", () => {
             ? { ...fresh, decision: "healthy" }
             : fresh,
         deadlineOffset: () => (changed && change === "deadline" ? 1 : 0),
-        classificationContextIdentity: async () =>
-          changed && change === "configuration" ? "changed" : "original",
         resolvePredecessorOverride: async () =>
           changed && change === "predecessor"
             ? { ...healthy!, observedBlockHash: "ee".repeat(32) }
@@ -200,57 +197,47 @@ describe("production fault decision bridge", () => {
     },
   );
 
-  it.each(["configuration", "permit"])(
-    "rejects reuse when %s changes while a healthy sibling is classifying",
-    async (change) => {
-      const current = observation([headerFixture("01"), headerFixture("02")]);
-      const [healthy, faulty] = current.finalizedHeaders;
-      let resumed = false;
-      let changed = false;
-      let release!: () => void;
-      const gate = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const h = harness({
-        current,
-        categoryByHeader: {
-          [healthy!.headerHash]: "doubleSpend",
-          [faulty!.headerHash]: "transitionTrace",
-        },
-        pendingAvailabilityHeaders: () => new Set(),
-        classificationContextIdentity: async () =>
-          changed && change === "configuration" ? "changed" : "original",
-        permitAuthority: () =>
-          changed && change === "permit" ? "reconciliation" : "submission",
-        classifyOverride: async (fresh) => {
-          if (fresh.headerHash === healthy!.headerHash) {
-            if (resumed) await gate;
-            return { ...fresh, decision: "healthy" };
-          }
-          return fresh;
-        },
-      });
-      await h.bridge.prepareForRecovery(current);
-      resumed = true;
-      const pending = h.bridge.prepareForRecovery(current);
-      await vi.waitFor(() =>
-        expect(h.application.classifyHeader).toHaveBeenCalledTimes(3),
-      );
-      changed = true;
-      release();
-      await expect(pending).rejects.toThrow(
-        change === "configuration"
-          ? "configuration changed"
-          : "cannot replace or revive",
-      );
-      expect(h.controllerGenerations).toEqual(["1"]);
-      expect(
-        h.application.classifyHeader.mock.calls.filter(
-          ([input]) => input.observation.headerHash === faulty!.headerHash,
-        ),
-      ).toHaveLength(1);
-    },
-  );
+  it("rejects reuse when the permit changes while a healthy sibling is classifying", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [healthy, faulty] = current.finalizedHeaders;
+    let resumed = false;
+    let changed = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [healthy!.headerHash]: "doubleSpend",
+        [faulty!.headerHash]: "transitionTrace",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      permitAuthority: () => (changed ? "reconciliation" : "submission"),
+      classifyOverride: async (fresh) => {
+        if (fresh.headerHash === healthy!.headerHash) {
+          if (resumed) await gate;
+          return { ...fresh, decision: "healthy" };
+        }
+        return fresh;
+      },
+    });
+    await h.bridge.prepareForRecovery(current);
+    resumed = true;
+    const pending = h.bridge.prepareForRecovery(current);
+    await vi.waitFor(() =>
+      expect(h.application.classifyHeader).toHaveBeenCalledTimes(3),
+    );
+    changed = true;
+    release();
+    await expect(pending).rejects.toThrow("cannot replace or revive");
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(
+      h.application.classifyHeader.mock.calls.filter(
+        ([input]) => input.observation.headerHash === faulty!.headerHash,
+      ),
+    ).toHaveLength(1);
+  });
 
   it("admits a newly detected earlier fault from fresh healthy-header replay", async () => {
     const current = observation([headerFixture("01"), headerFixture("02")]);

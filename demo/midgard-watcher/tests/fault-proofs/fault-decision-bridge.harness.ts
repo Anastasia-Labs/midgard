@@ -40,7 +40,6 @@ export const harness = (input: {
   readonly resolvePredecessorOverride?: (
     header: WatcherStateQueueHeaderObservation,
   ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
-  readonly classificationContextIdentity?: () => Promise<string>;
   readonly permitAuthority?:
     | "submission"
     | "reconciliation"
@@ -99,7 +98,6 @@ export const harness = (input: {
   };
   const bridge = unsafeCreateWatcherFaultDecisionBridgeForTest({
     application,
-    runtimeConfigPath: "/var/lib/midgard/watcher.json",
     maximumClassificationConcurrency: 2,
     dependencies: Object.freeze({
       ...(input.operationsSink === undefined
@@ -134,8 +132,6 @@ export const harness = (input: {
       ...(input.resolvePredecessorOverride === undefined
         ? {}
         : { resolvePredecessorHeader: input.resolvePredecessorOverride }),
-      classificationContextIdentity:
-        input.classificationContextIdentity ?? (async () => "test-context"),
       readRecords: async () => input.records ?? Object.freeze([]),
       append: async (fresh) => {
         requireClassified(fresh);

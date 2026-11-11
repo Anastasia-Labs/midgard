@@ -1,6 +1,4 @@
 import "node:crypto";
-import "node:fs/promises";
-import "node:path";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-fault-proofs";
 import "../availability/published-payload.js";
@@ -14,7 +12,6 @@ export {
   createWatcherRetainedDaRuntime,
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
-  readAdmittedWatcherRuntimeConfig,
   type WatcherWorkflowInfrastructure,
   type WatcherWorkflowInfrastructureBuilder,
 } from "./retained-da-runtime.create-watcher-retained-da-runtime-owner.js";

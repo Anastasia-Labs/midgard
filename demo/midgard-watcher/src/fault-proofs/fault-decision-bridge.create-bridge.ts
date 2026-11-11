@@ -34,7 +34,6 @@ import { type WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
 
 export const createBridge = (input: {
   readonly application: BridgeApplication;
-  readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
   readonly dependencies: BridgeDependencies;
 }): WatcherFaultDecisionBridge => {
@@ -59,7 +58,6 @@ export const createBridge = (input: {
   let preparedResult: WatcherFaultDecisionBridgeResult | null = null;
   let serial: Promise<void> = Promise.resolve();
   type ClassificationBinding = Readonly<{
-    contextIdentity: string;
     predecessor: WatcherStateQueueHeaderObservation | undefined;
     deadline: WatcherFaultProofDeadline;
   }>;
@@ -136,8 +134,6 @@ export const createBridge = (input: {
       targetDeadline = null;
       preparedResult = null;
     }
-    const contextIdentity =
-      await input.dependencies.classificationContextIdentity?.();
     const sameQueueEvidence =
       observation !== null &&
       preservesObservationAuthority(observation, candidate) &&
@@ -257,14 +253,12 @@ export const createBridge = (input: {
           if (
             pendingAvailability.size === 0 &&
             sameQueueEvidence &&
-            contextIdentity !== undefined &&
             target !== null &&
             targetDecision !== null &&
             targetClassification !== null &&
             header.headerHash === target.headerHash &&
             targetDecision.authenticatedObservationDigest ===
               authenticatedObservationDigest &&
-            targetClassification.contextIdentity === contextIdentity &&
             watcherSameCanonicalJson(
               targetClassification.predecessor ?? null,
               predecessor ?? null,
@@ -280,7 +274,6 @@ export const createBridge = (input: {
           }
           misses.assertDue(header.headerHash, token);
           const decision = await input.application.classifyHeader({
-            runtimeConfigPath: input.runtimeConfigPath,
             observation: admitted,
             stateQueueObservation: candidate,
             header,
@@ -307,13 +300,7 @@ export const createBridge = (input: {
             );
           }
           verification.recordDecision(authenticatedObservationDigest, decision);
-          if (contextIdentity !== undefined) {
-            classifiedBindings.set(header.headerHash, {
-              contextIdentity,
-              predecessor,
-              deadline,
-            });
-          }
+          classifiedBindings.set(header.headerHash, { predecessor, deadline });
           classifications[index] = decision;
           misses.classified(header.headerHash);
         } catch (error) {
@@ -376,23 +363,6 @@ export const createBridge = (input: {
     if (token !== classificationEpoch) {
       throw new WatcherFaultDecisionRetired(
         "state-queue authority changed during decision append",
-      );
-    }
-    input.dependencies.assertObservation(candidate);
-    if (retainedPendingDecision !== null || reusedTargetDecision !== null)
-      assertRetainedTargetAuthority();
-    if (
-      contextIdentity !== undefined &&
-      (await input.dependencies.classificationContextIdentity?.()) !==
-        contextIdentity
-    ) {
-      throw new Error(
-        "classifier configuration changed during decision preparation",
-      );
-    }
-    if (token !== classificationEpoch) {
-      throw new WatcherFaultDecisionRetired(
-        "state-queue authority changed during context validation",
       );
     }
     input.dependencies.assertObservation(candidate);

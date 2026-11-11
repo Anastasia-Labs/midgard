@@ -1,6 +1,3 @@
-import { readFile, realpath } from "node:fs/promises";
-import { isAbsolute } from "node:path";
-
 import {
   type FamilyCommonInfrastructure,
   type FamilyReferenceScriptResolver,
@@ -9,14 +6,7 @@ import {
   type WorkflowRuntimeLoader,
 } from "@al-ft/midgard-fault-proofs";
 
-import {
-  parseWatcherConfigJson,
-  type WatcherConfig,
-} from "../runtime/config.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
 import {
   createWatcherPublicDaLibp2pTransport,
   WatcherPublicDaLibp2pTransport,
@@ -151,46 +141,6 @@ export const createWatcherRetainedDaRuntimeOwner = (
   return owner;
 };
 
-/**
- * Reads the watcher runtime configuration an invocation names. The path must
- * be canonical and absolute and the invocation must name the verified
- * deployment; the workflow loader and the startup-readiness path both admit
- * their configuration through here, so they refuse in the same words.
- */
-export const readAdmittedWatcherRuntimeConfig = async ({
-  runtimeConfigPath,
-  deploymentFingerprint,
-  deploymentIdentity,
-}: {
-  readonly runtimeConfigPath: string;
-  readonly deploymentFingerprint: string;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-}): Promise<WatcherConfig> => {
-  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
-  if (
-    !isAbsolute(runtimeConfigPath) ||
-    runtimeConfigPath.trim() !== runtimeConfigPath
-  ) {
-    throw new Error(
-      "production workflow runtime config path must be canonical and absolute",
-    );
-  }
-  const canonicalRuntimeConfigPath = await realpath(runtimeConfigPath);
-  if (canonicalRuntimeConfigPath !== runtimeConfigPath) {
-    throw new Error(
-      "production workflow runtime config path must not traverse a symlink or non-canonical segment",
-    );
-  }
-  if (deploymentFingerprint !== deploymentIdentity.manifestId) {
-    throw new Error(
-      "production workflow invocation deployment differs from verified watcher authority",
-    );
-  }
-  return parseWatcherConfigJson(
-    await readFile(canonicalRuntimeConfigPath, "utf8"),
-  );
-};
-
 /** What the watcher builds for one invocation and every family draws from. */
 export type WatcherWorkflowInfrastructure = Readonly<{
   infrastructure: FamilyCommonInfrastructure;
@@ -215,9 +165,11 @@ export const createWatcherRetainedDaRuntime = async (
 /**
  * The watcher's one shared-workflow loader, the same for every family.
  *
- * `runtimeConfigPath` is the strict watcher configuration file. It may name
- * public network infrastructure and secret *sources*, never prepared proof
- * evidence. The common infrastructure (Lucid, signer, mutation lease
+ * `watcherConfig` is the configuration startup admitted. It may name public
+ * network infrastructure and secret *sources*, never prepared proof evidence.
+ * The loader never reads the runtime configuration path the shared runner
+ * forwards: startup proved that file equal to this value and the watcher does
+ * not open it again. The common infrastructure (Lucid, signer, mutation lease
  * coordinator, the optional parts a family may require) and the reference
  * resolver are constructed by the application callback after this loader has
  * independently bound public DA to the verified deployment; each family's
@@ -225,7 +177,7 @@ export const createWatcherRetainedDaRuntime = async (
  * shared runner owns and always invokes `close`.
  */
 export const createWatcherWorkflowRuntimeLoader = (
-  options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig"> & {
+  options: WatcherRetainedDaRuntimeOptions & {
     readonly buildInfrastructure: WatcherWorkflowInfrastructureBuilder;
     readonly runtimeOwner?: WatcherRetainedDaRuntimeOwner;
   },
@@ -242,6 +194,7 @@ export const createWatcherWorkflowRuntimeLoader = (
       "production workflow runtime omitted its infrastructure builder",
     );
   }
+  const watcherConfig = parseWatcherConfig(options.watcherConfig);
   const admittedRuntimeOptions = admitRuntimeOptions({
     deploymentIdentity,
     ...(unsafeTransportOptionsForTest === undefined
@@ -257,12 +210,15 @@ export const createWatcherWorkflowRuntimeLoader = (
   ) {
     throw new Error("retained-DA owner belongs to another deployment identity");
   }
-  return async ({ runtimeConfigPath, invocation }) => {
-    const watcherConfig = await readAdmittedWatcherRuntimeConfig({
-      runtimeConfigPath,
-      deploymentFingerprint: invocation.deploymentFingerprint,
-      deploymentIdentity: admittedRuntimeOptions.deploymentIdentity,
-    });
+  return async ({ invocation }) => {
+    if (
+      invocation.deploymentFingerprint !==
+      admittedRuntimeOptions.deploymentIdentity.manifestId
+    ) {
+      throw new Error(
+        "production workflow invocation deployment differs from verified watcher authority",
+      );
+    }
     const retainedDa =
       runtimeOwner === undefined
         ? await createRuntimeFromAdmittedConfig(

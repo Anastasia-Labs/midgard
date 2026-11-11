@@ -8,10 +8,7 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import {
-  readAdmittedWatcherRuntimeConfig,
-  type WatcherRetainedDaRuntimeOwner,
-} from "../storage/retained-da-runtime.js";
+import { type WatcherRetainedDaRuntimeOwner } from "../storage/retained-da-runtime.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
   WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
@@ -20,6 +17,7 @@ import {
 import type { WatcherReplayedLedger } from "./replayed-ledger.js";
 
 type ReplayApplication = Readonly<{
+  watcherConfig: WatcherConfig;
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   retainedDaOwner: WatcherRetainedDaRuntimeOwner;
   replayedLedger: WatcherReplayedLedger | undefined;
@@ -27,22 +25,17 @@ type ReplayApplication = Readonly<{
 
 /** The checkpoint and classifier share this application's owned DA runtime. */
 export const watcherReplayCheckpointAdvance = ({
+  watcherConfig,
   replayedLedger,
   retainedDaOwner,
-  deploymentIdentity,
   isAdmitted,
-}: ReplayApplication &
+}: Omit<ReplayApplication, "deploymentIdentity"> &
   Readonly<{
     isAdmitted(): boolean;
   }>): WatcherFaultProofApplication["advanceReplayedLedger"] => {
-  return async ({ runtimeConfigPath, observation }) => {
+  return async (observation) => {
     if (replayedLedger === undefined)
       throw new Error("the watcher has no replay ledger");
-    const watcherConfig = await readAdmittedWatcherRuntimeConfig({
-      runtimeConfigPath,
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      deploymentIdentity,
-    });
     if (!isAdmitted()) throw new Error("watcher replay application is closed");
     try {
       const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
@@ -73,9 +66,7 @@ export const classifyWatcherReplayedHeader = async ({
 }: ReplayApplication &
   Readonly<{
     request: Parameters<WatcherFaultProofApplication["classifyHeader"]>[0];
-    watcherConfig: WatcherConfig;
     loadClassifier(
-      config: WatcherConfig,
       headerHash: string,
     ): ReturnType<typeof createHeaderClassifier>;
   }>) => {
@@ -109,10 +100,7 @@ export const classifyWatcherReplayedHeader = async ({
             }
           };
     const decision = await classifyProductionHeaderV1({
-      classifier: await loadClassifier(
-        watcherConfig,
-        input.observation.headerHash,
-      ),
+      classifier: await loadClassifier(input.observation.headerHash),
       observation: input.observation,
       authenticatedObservationDigest: input.authenticatedObservationDigest,
       ...(predecessorLedgerAt === undefined ? {} : { predecessorLedgerAt }),

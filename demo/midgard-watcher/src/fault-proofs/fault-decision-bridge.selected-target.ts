@@ -135,8 +135,6 @@ export type BridgeDependencies = Readonly<{
   observationDigest(
     observation: AuthenticatedStateQueueHeaderObservation,
   ): Promise<string>;
-  /** Pins classifier configuration; omitted dependencies disable decision reuse. */
-  classificationContextIdentity?(): Promise<string>;
   readRecords(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
   /**
    * Replaces a durable fault the fresh classification no longer reproduces,

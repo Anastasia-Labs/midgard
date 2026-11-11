@@ -9,7 +9,7 @@ import {
 import { type WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
-import { parseWatcherConfigJson } from "./config.js";
+import { parseWatcherConfigJson, type WatcherConfig } from "./config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "./deployment-authority.js";
 import { type WatcherOperationsObservability } from "./operations-observability.js";
 import { type WatcherProcessConfig } from "./process-config.js";
@@ -71,17 +71,26 @@ export const assertWatcherFaultProofLaunchScope = (
   }
 };
 
+/**
+ * Reads and parses the watcher runtime configuration file, refusing a path
+ * that is not already its own real path (a symlink, a relative path or a
+ * non-canonical segment). The path is checked once, just before the read.
+ */
+export const readWatcherRuntimeConfigFile = async (
+  path: string,
+): Promise<WatcherConfig> => {
+  if ((await realpath(path)) !== path) {
+    throw new Error("watcher workflow runtime config traverses a symlink");
+  }
+  return parseWatcherConfigJson(await readFile(path, "utf8"));
+};
+
 export const requireWatcherRuntimeConfig = async (
   config: WatcherProcessConfig,
 ): Promise<void> => {
-  if (
-    (await realpath(config.watcherRuntimeConfigPath)) !==
-    config.watcherRuntimeConfigPath
-  ) {
-    throw new Error("watcher workflow runtime config traverses a symlink");
-  }
-  const raw = await readFile(config.watcherRuntimeConfigPath, "utf8");
-  const parsed = parseWatcherConfigJson(raw);
+  const parsed = await readWatcherRuntimeConfigFile(
+    config.watcherRuntimeConfigPath,
+  );
   if (
     watcherCanonicalJson(parsed) !== watcherCanonicalJson(config.watcherConfig)
   ) {

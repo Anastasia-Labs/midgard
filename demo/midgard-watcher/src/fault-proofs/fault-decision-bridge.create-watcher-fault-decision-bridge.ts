@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFile, realpath } from "node:fs/promises";
-
 import {
   assertWorkflowActuationPermitIdentity,
   authenticatedStateQueueObservationDigest,
@@ -46,7 +43,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly journalDirectory: string;
   /** The 32-byte key the fault-proof journals' rows are authenticated with. */
   readonly authenticationKey: Uint8Array;
-  readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
   /** The wallet out-refs prover funding reservations hold right now. */
   readonly reservedFundingOutRefs: () => Promise<readonly string[]>;
@@ -70,7 +66,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
     }));
   return createBridge({
     application: input.application,
-    runtimeConfigPath: input.runtimeConfigPath,
     maximumClassificationConcurrency: input.maximumClassificationConcurrency,
     dependencies: Object.freeze({
       ...(input.pendingAvailabilityHeaders === undefined
@@ -83,15 +78,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
           observation: candidate,
           minimumConfirmationDepth: ACTION_CONFIRMATION_DEPTH,
         }),
-      classificationContextIdentity: async () => {
-        const path = await realpath(input.runtimeConfigPath);
-        const contents = await readFile(path);
-        return createHash("sha256")
-          .update(path)
-          .update("\0")
-          .update(contents)
-          .digest("hex");
-      },
       readRecords: async () => await (await decisions()).readAll(),
       append: async (decision) =>
         await (await decisions()).appendLiveDecision(decision),
@@ -119,7 +105,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
       supersede: input.supervisor.supersedeDecision,
       driveProvenRemoval: async ({ headerHash, fraudProofAssetName }) =>
         await input.application.driveProvenCorrection({
-          runtimeConfigPath: input.runtimeConfigPath,
           correction: { targetHeaderHash: headerHash, fraudProofAssetName },
           reservedOutRefs: input.reservedFundingOutRefs,
         }),
@@ -135,7 +120,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
 export const unsafeCreateWatcherFaultDecisionBridgeForTest = (
   input: Readonly<{
     application: BridgeApplication;
-    runtimeConfigPath: string;
     maximumClassificationConcurrency: number;
     dependencies: BridgeDependencies;
   }>,

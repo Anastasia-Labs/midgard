@@ -151,6 +151,9 @@ export type WatcherFaultProofL1 = Readonly<{
 }>;
 
 export type WatcherFaultProofApplicationOptions = Readonly<{
+  /** The runtime configuration startup admitted. The application holds it
+   * for its lifetime and never reads the configuration file. */
+  watcherConfig: WatcherConfig;
   l1: WatcherFaultProofL1;
   replayedLedger: WatcherReplayedLedger;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
@@ -188,8 +191,13 @@ export type WatcherFaultProofStartupReadiness = Readonly<{
   referenceScriptOutRefs: Readonly<Record<string, string>>;
 }>;
 
+/** A readiness invocation; the application's configuration is its own. */
+export type WatcherFaultProofStartupInvocation = Omit<
+  WorkflowAdapterReadinessInput,
+  "runtimeConfigPath"
+>;
+
 export type WatcherFaultProofHeaderClassificationInput = Readonly<{
-  runtimeConfigPath: string;
   observation: AuthenticatedStateQueueHeaderObservation;
   stateQueueObservation: WatcherAuthenticatedStateQueueObservation;
   header: WatcherStateQueueHeaderObservation;
@@ -200,7 +208,6 @@ export type WatcherFaultProofHeaderClassificationInput = Readonly<{
 }>;
 
 export type WatcherCompletedFaultProofInput = Readonly<{
-  runtimeConfigPath: string;
   category: WatcherInstalledWorkflowCategory;
   headerHash: string;
   decisionDigest: string;
@@ -223,15 +230,12 @@ export type WatcherFaultProofApplication = Readonly<{
     input: WatcherFaultProofHeaderClassificationInput,
   ): Promise<HeaderDecision>;
   advanceReplayedLedger(
-    input: Readonly<{
-      runtimeConfigPath: string;
-      observation: WatcherAuthenticatedStateQueueObservation;
-    }>,
+    observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<readonly WatcherDecisionReadiness[]>;
   /** Retire private replay authority after target selection or invalidation. */
   retainDecisionAuthorities(decisionDigest: string | null): void;
   assertStartupReady(
-    invocation: WorkflowAdapterReadinessInput,
+    invocation: WatcherFaultProofStartupInvocation,
   ): Promise<WatcherFaultProofStartupReadiness>;
   /** Live state of the shared retained-DA transport, for operations status. */
   retainedDaTransportStatus(): WatcherRetainedDaTransportStatus;
@@ -247,7 +251,6 @@ export type WatcherFaultProofApplication = Readonly<{
    */
   driveProvenCorrection(
     input: Readonly<{
-      runtimeConfigPath: string;
       correction: ProvenFraudProofCorrection;
       reservedOutRefs: () => Promise<readonly string[]>;
     }>,

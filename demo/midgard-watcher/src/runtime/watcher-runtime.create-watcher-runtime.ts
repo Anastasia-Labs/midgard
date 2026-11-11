@@ -366,7 +366,6 @@ export const startWatcherRuntime = async (
       stateQueueSource: headerSource,
       journalDirectory: input.config.workflowJournalDirectory,
       authenticationKey: rollbackAuthenticationKey,
-      runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
       reservedFundingOutRefs: async () =>
         await fundingRuntime.store.store.readReservedOutRefs({}),
@@ -391,11 +390,7 @@ export const startWatcherRuntime = async (
         availability: activeAvailability,
         replayedLedger: {
           depth: releaseFinality.automaticRecoveryMaxDepth + 2,
-          advance: (observation) =>
-            faultProofApplication.advanceReplayedLedger({
-              runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-              observation,
-            }),
+          advance: faultProofApplication.advanceReplayedLedger,
           checkpointPrecedesInit: (depth) =>
             watcherReplayCheckpointPrecedesInit(store, {
               hubOracleOneShotOutRef: authority.hubOracleOneShotOutRef,

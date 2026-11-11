@@ -74,6 +74,7 @@ export const prepareWatcherRuntimeWorkflows = async (
   await untilFollowerReady(follower, startup);
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
     const faultProofApplication = createWatcherFaultProofApplication({
+      watcherConfig: input.config.watcherConfig,
       l1,
       replayedLedger,
       deploymentAuthority,
@@ -105,7 +106,6 @@ export const prepareWatcherRuntimeWorkflows = async (
             category,
             deploymentFingerprint: deploymentIdentity.manifestId,
             headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
-            runtimeConfigPath: input.config.watcherRuntimeConfigPath,
           }),
         ),
       );

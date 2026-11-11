@@ -44,15 +44,18 @@ import {
   createWatcherWorkflowFundingProfileBundle,
   loadWatcherWorkflowFundingProfileOverlay,
 } from "../../src/funding/workflow-funding-profile-overlay.js";
+import { parseWatcherConfig } from "../../src/runtime/config.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import {
+  admittedWatcherConfig,
   AUTHORITY,
   BLUEPRINT_PATH,
   contractNameForOutRef,
   dependencies,
   DEPLOYMENT,
   DEPLOYMENT_INFO_PATH,
+  FORWARDED_RUNTIME_CONFIG_PATH,
   HEADER,
   hostileStructuralExecutionInvocation,
   infrastructure,
@@ -94,6 +97,7 @@ describe("watcher production fault-proof application V1", () => {
       const application = unsafeCreateWatcherFaultProofApplicationForTest(
         {
           l1: testFaultProofL1(),
+          watcherConfig: admittedWatcherConfig(),
           deploymentIdentity: authority.result,
           infrastructure: infrastructure(),
           unsafeTransportFactoryForTest: transportFactory().factory,
@@ -121,236 +125,224 @@ describe("watcher production fault-proof application V1", () => {
   });
 
   it("installs every compiled manifest-bound runner and preflights every reference roster read-only", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "midgard-proof-app-"));
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
     const transport = transportFactory();
     const deps = dependencies();
-    try {
-      const application = unsafeCreateWatcherFaultProofApplicationForTest(
-        {
-          l1: testFaultProofL1(),
-          deploymentIdentity: AUTHORITY.result,
-          infrastructure: infrastructure(),
-          unsafeTransportFactoryForTest: transport.factory,
-        },
-        deps,
-        {
-          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-        },
-      );
+    const application = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        l1: testFaultProofL1(),
+        watcherConfig: admittedWatcherConfig(),
+        deploymentIdentity: AUTHORITY.result,
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transport.factory,
+      },
+      deps,
+      {
+        MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+      },
+    );
 
-      expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
-      // The SDK catalogue less the categories with no off-chain workflow is
-      // the authority on which families a watcher proves, and in what order.
-      expect(application.installedCategories).toEqual([
-        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
-      ]);
-      expect(WATCHER_INSTALLED_WORKFLOW_CATEGORIES).toEqual([
-        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
-      ]);
-      expect([...WATCHER_MISSING_WORKFLOW_CATEGORIES].sort()).toEqual(
-        [...UNINSTALLED_FRAUD_PROOF_CATEGORIES].sort(),
-      );
-      expect(
-        workflowReadinessReport(
-          WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-          application.applicationRegistry,
-        ),
-      ).toMatchObject({
-        deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
-        requestedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
-        readyCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
-        missingCategoryCount: 0,
-      });
+    expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
+    // The SDK catalogue less the categories with no off-chain workflow is
+    // the authority on which families a watcher proves, and in what order.
+    expect(application.installedCategories).toEqual([
+      ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    ]);
+    expect(WATCHER_INSTALLED_WORKFLOW_CATEGORIES).toEqual([
+      ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    ]);
+    expect([...WATCHER_MISSING_WORKFLOW_CATEGORIES].sort()).toEqual(
+      [...UNINSTALLED_FRAUD_PROOF_CATEGORIES].sort(),
+    );
+    expect(
+      workflowReadinessReport(
+        WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+        application.applicationRegistry,
+      ),
+    ).toMatchObject({
+      deploymentFingerprint: DEPLOYMENT,
+      installedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+      requestedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+      readyCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+      missingCategoryCount: 0,
+    });
 
-      for (const category of INSTALLED_FRAUD_PROOF_CATEGORY_ORDER) {
-        const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
-          .length;
-        const readiness = await application.assertStartupReady(
-          invocation(configPath, category),
-        );
-        const resolvedContractNames = vi
-          .mocked(deps.resolveReferenceScript)
-          .mock.calls.slice(resolvedBefore)
-          .map(([input]) => input.contractName);
-
-        const { referenceScriptOutRefs, ...envelope } = readiness;
-        expect(envelope).toEqual({
-          schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
-          ready: true,
-          category,
-          deploymentFingerprint: DEPLOYMENT,
-          headerHash: HEADER,
-        });
-
-        const rosterKeys = Object.keys(referenceScriptOutRefs);
-        const rosterOutRefs = Object.values(referenceScriptOutRefs);
-        // Every rostered entry is a real resolved reference UTxO, not a
-        // placeholder left behind by a reference script the workflow failed to
-        // bind (which surfaces as `undefined#undefined`).
-        for (const rosterOutRef of rosterOutRefs) {
-          expect(rosterOutRef).toMatch(/^[0-9a-f]{64}#\d+$/u);
-        }
-        // One distinct deployment contract per rostered role, and the roster
-        // accounts for exactly the reference scripts this workflow resolved:
-        // nothing loaded but unreported, nothing reported but never resolved.
-        expect(new Set(rosterOutRefs).size).toBe(rosterOutRefs.length);
-        expect(rosterOutRefs.map(contractNameForOutRef).sort()).toEqual(
-          [...resolvedContractNames].sort(),
-        );
-        // Readiness reports one out-ref per role of the family's registry
-        // roster, and the resolver was asked for exactly that roster's
-        // contracts: the registry record is the single source of truth.
-        const { roster } = FAMILY_APPLICATION_REGISTRY[category];
-        expect(rosterKeys).toEqual(Object.keys(roster));
-        expect([...resolvedContractNames].sort()).toEqual(
-          Object.values(roster).sort(),
-        );
-        // Every family authenticates catalogue membership during init, including
-        // the fabricated-event families whose later evidence comes from L1.
-        expect(rosterKeys).toEqual(
-          expect.arrayContaining([...SHARED_THREAD_REFERENCE_KEYS]),
-        );
-        expect(rosterKeys).toContain("phasMembershipWithdraw");
-        expect(rosterKeys.length).toBeGreaterThan(
-          SHARED_THREAD_REFERENCE_KEYS.length,
-        );
-
-        // A physical step may appear once, or once per committed polarity
-        // (`step02Accepted` / `step02Forced`); either way its ordinal is bound.
-        const stepOrdinals = [
-          ...new Set(
-            rosterKeys
-              .map((key) => /^step(\d{2})(?:[A-Z]\w*)?$/u.exec(key)?.[1])
-              .filter((ordinal): ordinal is string => ordinal !== undefined)
-              .map(Number),
-          ),
-        ].sort((left, right) => left - right);
-        if (category === "transitionTrace") {
-          // The workflow module exports its own reference roster, an authority
-          // independent of the registry: the contracts readiness resolved are
-          // exactly the ones that module names.
-          expect([...resolvedContractNames].sort()).toEqual(
-            [...TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES].sort(),
-          );
-        }
-        // The physical steps of a thread are contiguous from step01 (the
-        // dispute walks named stages): a dropped step leaves a gap here.
-        if (category !== "validationTraceDispute")
-          expect(stepOrdinals.length).toBeGreaterThan(0);
-        expect(stepOrdinals).toEqual(
-          Array.from(
-            { length: stepOrdinals.length },
-            (_unused, index) => index + 1,
-          ),
-        );
-      }
-      // A category with no off-chain workflow fails closed at startup.
-      for (const category of WATCHER_MISSING_WORKFLOW_CATEGORIES) {
-        await expect(
-          application.assertStartupReady(invocation(configPath, category)),
-        ).rejects.toThrow(
-          `watcher has no installed production workflow for ${String(category)}`,
-        );
-      }
-
-      // Each readiness preflight keeps an isolated Lucid instance. Readiness
-      // binds the deployment and resolves the roster only: it opens no
-      // retained-DA transport, reads no secret and acquires no lease.
-      expect(deps.makeLucid).toHaveBeenCalledTimes(
-        INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
-      );
-      expect(transport.factory).not.toHaveBeenCalled();
-      expect(application.retainedDaTransportStatus()).toEqual({
-        state: "idle",
-        failure: null,
-      });
-      expect(deps.resolveSigner).not.toHaveBeenCalled();
-      expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
-      await expect(
-        application.runOrResume(
-          hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
-        ),
-      ).rejects.toThrow(
-        "unsafe watcher fault-proof test application cannot execute transactions",
-      );
-      await application.close();
-      await application.close();
-      expect(transport.stop).not.toHaveBeenCalled();
-      expect(application.retainedDaTransportStatus()).toEqual({
-        state: "closed",
-        failure: null,
-      });
-      await expect(
-        application.assertStartupReady(invocation(configPath, "doubleSpend")),
-      ).rejects.toThrow("watcher fault-proof application is closed");
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("installs nativeScriptDecoding with all six manifest-bound physical steps", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "native-decoding-app-"));
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
-    const transport = transportFactory();
-    const deps = dependencies();
-    try {
-      const application = unsafeCreateWatcherFaultProofApplicationForTest(
-        {
-          l1: testFaultProofL1(),
-          deploymentIdentity: AUTHORITY.result,
-          infrastructure: infrastructure(),
-          unsafeTransportFactoryForTest: transport.factory,
-        },
-        deps,
-        {
-          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-        },
-      );
-      expect(application.installedCategories).toContain("nativeScriptDecoding");
-      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
-        "nativeScriptDecoding",
-      );
-      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
-        "valueNotPreserved",
-      );
+    for (const category of INSTALLED_FRAUD_PROOF_CATEGORY_ORDER) {
+      const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
+        .length;
       const readiness = await application.assertStartupReady(
-        invocation(configPath, "nativeScriptDecoding"),
+        invocation(category),
       );
-      expect(readiness).toMatchObject({
+      const resolvedContractNames = vi
+        .mocked(deps.resolveReferenceScript)
+        .mock.calls.slice(resolvedBefore)
+        .map(([input]) => input.contractName);
+
+      const { referenceScriptOutRefs, ...envelope } = readiness;
+      expect(envelope).toEqual({
+        schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
         ready: true,
-        category: "nativeScriptDecoding",
+        category,
         deploymentFingerprint: DEPLOYMENT,
         headerHash: HEADER,
       });
-      // Six physical steps, each bound to a distinct deployment contract of
-      // this family — a roster entry pointing at another family's script, or
-      // two steps sharing one script, fails here.
-      const stepEntries = Object.entries(
-        readiness.referenceScriptOutRefs,
-      ).filter(([key]) => /^step\d{2}$/u.test(key));
-      expect(stepEntries.map(([key]) => key)).toEqual([
-        "step01",
-        "step02",
-        "step03",
-        "step04",
-        "step05",
-        "step06",
-      ]);
-      const stepContractNames = stepEntries.map(([, rosterOutRef]) =>
-        contractNameForOutRef(rosterOutRef),
-      );
-      expect(new Set(stepContractNames).size).toBe(6);
-      for (const contractName of stepContractNames) {
-        expect(contractName).toMatch(/^fraudProofNativeScriptDecoding/u);
+
+      const rosterKeys = Object.keys(referenceScriptOutRefs);
+      const rosterOutRefs = Object.values(referenceScriptOutRefs);
+      // Every rostered entry is a real resolved reference UTxO, not a
+      // placeholder left behind by a reference script the workflow failed to
+      // bind (which surfaces as `undefined#undefined`).
+      for (const rosterOutRef of rosterOutRefs) {
+        expect(rosterOutRef).toMatch(/^[0-9a-f]{64}#\d+$/u);
       }
-      await application.close();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+      // One distinct deployment contract per rostered role, and the roster
+      // accounts for exactly the reference scripts this workflow resolved:
+      // nothing loaded but unreported, nothing reported but never resolved.
+      expect(new Set(rosterOutRefs).size).toBe(rosterOutRefs.length);
+      expect(rosterOutRefs.map(contractNameForOutRef).sort()).toEqual(
+        [...resolvedContractNames].sort(),
+      );
+      // Readiness reports one out-ref per role of the family's registry
+      // roster, and the resolver was asked for exactly that roster's
+      // contracts: the registry record is the single source of truth.
+      const { roster } = FAMILY_APPLICATION_REGISTRY[category];
+      expect(rosterKeys).toEqual(Object.keys(roster));
+      expect([...resolvedContractNames].sort()).toEqual(
+        Object.values(roster).sort(),
+      );
+      // Every family authenticates catalogue membership during init, including
+      // the fabricated-event families whose later evidence comes from L1.
+      expect(rosterKeys).toEqual(
+        expect.arrayContaining([...SHARED_THREAD_REFERENCE_KEYS]),
+      );
+      expect(rosterKeys).toContain("phasMembershipWithdraw");
+      expect(rosterKeys.length).toBeGreaterThan(
+        SHARED_THREAD_REFERENCE_KEYS.length,
+      );
+
+      // A physical step may appear once, or once per committed polarity
+      // (`step02Accepted` / `step02Forced`); either way its ordinal is bound.
+      const stepOrdinals = [
+        ...new Set(
+          rosterKeys
+            .map((key) => /^step(\d{2})(?:[A-Z]\w*)?$/u.exec(key)?.[1])
+            .filter((ordinal): ordinal is string => ordinal !== undefined)
+            .map(Number),
+        ),
+      ].sort((left, right) => left - right);
+      if (category === "transitionTrace") {
+        // The workflow module exports its own reference roster, an authority
+        // independent of the registry: the contracts readiness resolved are
+        // exactly the ones that module names.
+        expect([...resolvedContractNames].sort()).toEqual(
+          [...TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES].sort(),
+        );
+      }
+      // The physical steps of a thread are contiguous from step01 (the
+      // dispute walks named stages): a dropped step leaves a gap here.
+      if (category !== "validationTraceDispute")
+        expect(stepOrdinals.length).toBeGreaterThan(0);
+      expect(stepOrdinals).toEqual(
+        Array.from(
+          { length: stepOrdinals.length },
+          (_unused, index) => index + 1,
+        ),
+      );
     }
+    // A category with no off-chain workflow fails closed at startup.
+    for (const category of WATCHER_MISSING_WORKFLOW_CATEGORIES) {
+      await expect(
+        application.assertStartupReady(invocation(category)),
+      ).rejects.toThrow(
+        `watcher has no installed production workflow for ${String(category)}`,
+      );
+    }
+
+    // Each readiness preflight keeps an isolated Lucid instance. Readiness
+    // binds the deployment and resolves the roster only: it opens no
+    // retained-DA transport, reads no secret and acquires no lease.
+    expect(deps.makeLucid).toHaveBeenCalledTimes(
+      INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+    );
+    expect(transport.factory).not.toHaveBeenCalled();
+    expect(application.retainedDaTransportStatus()).toEqual({
+      state: "idle",
+      failure: null,
+    });
+    expect(deps.resolveSigner).not.toHaveBeenCalled();
+    expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
+    await expect(
+      application.runOrResume(
+        hostileStructuralExecutionInvocation("doubleSpend"),
+      ),
+    ).rejects.toThrow(
+      "unsafe watcher fault-proof test application cannot execute transactions",
+    );
+    await application.close();
+    await application.close();
+    expect(transport.stop).not.toHaveBeenCalled();
+    expect(application.retainedDaTransportStatus()).toEqual({
+      state: "closed",
+      failure: null,
+    });
+    await expect(
+      application.assertStartupReady(invocation("doubleSpend")),
+    ).rejects.toThrow("watcher fault-proof application is closed");
+  });
+
+  it("installs nativeScriptDecoding with all six manifest-bound physical steps", async () => {
+    const transport = transportFactory();
+    const deps = dependencies();
+    const application = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        l1: testFaultProofL1(),
+        watcherConfig: admittedWatcherConfig(),
+        deploymentIdentity: AUTHORITY.result,
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transport.factory,
+      },
+      deps,
+      {
+        MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+      },
+    );
+    expect(application.installedCategories).toContain("nativeScriptDecoding");
+    expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
+      "nativeScriptDecoding",
+    );
+    expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
+      "valueNotPreserved",
+    );
+    const readiness = await application.assertStartupReady(
+      invocation("nativeScriptDecoding"),
+    );
+    expect(readiness).toMatchObject({
+      ready: true,
+      category: "nativeScriptDecoding",
+      deploymentFingerprint: DEPLOYMENT,
+      headerHash: HEADER,
+    });
+    // Six physical steps, each bound to a distinct deployment contract of
+    // this family — a roster entry pointing at another family's script, or
+    // two steps sharing one script, fails here.
+    const stepEntries = Object.entries(readiness.referenceScriptOutRefs).filter(
+      ([key]) => /^step\d{2}$/u.test(key),
+    );
+    expect(stepEntries.map(([key]) => key)).toEqual([
+      "step01",
+      "step02",
+      "step03",
+      "step04",
+      "step05",
+      "step06",
+    ]);
+    const stepContractNames = stepEntries.map(([, rosterOutRef]) =>
+      contractNameForOutRef(rosterOutRef),
+    );
+    expect(new Set(stepContractNames).size).toBe(6);
+    for (const contractName of stepContractNames) {
+      expect(contractName).toMatch(/^fraudProofNativeScriptDecoding/u);
+    }
+    await application.close();
   });
 
   it("fails closed on application/category, deployment, authority, and secret substitution", async () => {
@@ -358,6 +350,7 @@ describe("watcher production fault-proof application V1", () => {
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
           l1: testFaultProofL1(),
+          watcherConfig: admittedWatcherConfig(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: {
             ...infrastructure(),
@@ -384,6 +377,7 @@ describe("watcher production fault-proof application V1", () => {
         unsafeCreateWatcherFaultProofApplicationForTest(
           {
             l1: testFaultProofL1(),
+            watcherConfig: admittedWatcherConfig(),
             deploymentIdentity: AUTHORITY.result,
             infrastructure: { ...infrastructure(), ...deleted } as never,
           },
@@ -398,6 +392,7 @@ describe("watcher production fault-proof application V1", () => {
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
           l1: testFaultProofL1(),
+          watcherConfig: admittedWatcherConfig(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: {
             ...infrastructure(),
@@ -412,44 +407,36 @@ describe("watcher production fault-proof application V1", () => {
       ),
     ).toThrow("unknown or missing fields");
 
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-proof-app-hostile-"),
+    const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        l1: testFaultProofL1(),
+        watcherConfig: admittedWatcherConfig(),
+        deploymentIdentity: AUTHORITY.result,
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transportFactory().factory,
+      },
+      dependencies(),
+      {
+        MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+      },
     );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
-    try {
-      const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
-        {
-          l1: testFaultProofL1(),
-          deploymentIdentity: AUTHORITY.result,
-          infrastructure: infrastructure(),
-          unsafeTransportFactoryForTest: transportFactory().factory,
-        },
-        dependencies(),
-        {
-          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-        },
-      );
-      // The missing-workflow guard also refuses a forged non-catalogue
-      // category string.
-      await expect(
-        admitted.assertStartupReady(
-          invocation(configPath, "doubleSpend", {
-            category:
-              "forgedUninstalledCategory" as WorkflowAdapterReadinessInput["category"],
-          }),
-        ),
-      ).rejects.toThrow("no installed production workflow");
-      await expect(
-        admitted.assertStartupReady(
-          invocation(configPath, "doubleSpend", {
-            deploymentFingerprint: "ff".repeat(32),
-          }),
-        ),
-      ).rejects.toThrow("differs from verified watcher authority");
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    // The missing-workflow guard also refuses a forged non-catalogue
+    // category string.
+    await expect(
+      admitted.assertStartupReady(
+        invocation("doubleSpend", {
+          category:
+            "forgedUninstalledCategory" as WorkflowAdapterReadinessInput["category"],
+        }),
+      ),
+    ).rejects.toThrow("no installed production workflow");
+    await expect(
+      admitted.assertStartupReady(
+        invocation("doubleSpend", {
+          deploymentFingerprint: "ff".repeat(32),
+        }),
+      ),
+    ).rejects.toThrow("differs from verified watcher authority");
   });
 
   it("derives the predecessor-ledger set from the classifier's replay requirement", () => {
@@ -470,19 +457,12 @@ describe("watcher production fault-proof application V1", () => {
   });
 
   it("reads no secret on the readiness path, and refuses secret substitution only when acting", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-readiness-secrets-"),
-    );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        ...rawConfig(),
-        proverWallet: {
-          keySource: { kind: "file", path: "/etc/midgard/prover.key" },
-        },
-      }),
-    );
+    const fileKeyConfig = parseWatcherConfig({
+      ...rawConfig(),
+      proverWallet: {
+        keySource: { kind: "file", path: "/etc/midgard/prover.key" },
+      },
+    });
     const deps = dependencies();
     const readText = vi.mocked(deps.readText).getMockImplementation()!;
     vi.mocked(deps.readText).mockImplementation(async (path) => {
@@ -493,6 +473,7 @@ describe("watcher production fault-proof application V1", () => {
     const application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
         l1: testFaultProofL1(),
+        watcherConfig: fileKeyConfig,
         deploymentIdentity: AUTHORITY.result,
         infrastructure: infrastructure(),
         unsafeTransportFactoryForTest: transportFactory().factory,
@@ -502,7 +483,7 @@ describe("watcher production fault-proof application V1", () => {
     );
     try {
       const readiness = await application.assertStartupReady(
-        invocation(configPath, "doubleSpend"),
+        invocation("doubleSpend"),
       );
       expect(readiness.ready).toBe(true);
       expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
@@ -521,27 +502,21 @@ describe("watcher production fault-proof application V1", () => {
       // missing.
       await expect(
         application.unsafeLoadRuntimeForTest({
-          runtimeConfigPath: configPath,
-          invocation: hostileStructuralExecutionInvocation(
-            configPath,
-            "doubleSpend",
-          ),
+          runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
+          invocation: hostileStructuralExecutionInvocation("doubleSpend"),
         }),
       ).rejects.toThrow("secret /etc/midgard/prover.key was read");
     } finally {
       await application.close();
-      await rm(directory, { recursive: true, force: true });
     }
   });
 
   it("supplies a family exactly the common infrastructure the watcher holds, so a record requiring a replay context the classifier never captured refuses with the shared error", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "midgard-requires-"));
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
     const deps = dependencies();
     const application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
         l1: testFaultProofL1(),
+        watcherConfig: admittedWatcherConfig(),
         deploymentIdentity: AUTHORITY.result,
         infrastructure: infrastructure(),
         unsafeTransportFactoryForTest: transportFactory().factory,
@@ -557,12 +532,9 @@ describe("watcher production fault-proof application V1", () => {
       category: Category,
       stubConstruction = false,
     ) => {
-      const execution = hostileStructuralExecutionInvocation(
-        configPath,
-        category,
-      );
+      const execution = hostileStructuralExecutionInvocation(category);
       const loaded = await application.unsafeLoadRuntimeForTest({
-        runtimeConfigPath: configPath,
+        runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
         invocation: execution,
       });
       const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
@@ -648,7 +620,6 @@ describe("watcher production fault-proof application V1", () => {
       ).toEqual([]);
     } finally {
       await application.close();
-      await rm(directory, { recursive: true, force: true });
     }
   });
 });
@@ -656,8 +627,6 @@ describe("watcher production fault-proof application V1", () => {
 it("verifies completion deployment metadata without resolving wallet secrets", async () => {
   const deps = dependencies();
   vi.mocked(deps.readText).mockImplementation(async (path) => {
-    if (path === "/etc/midgard/watcher.json")
-      return JSON.stringify(rawConfig());
     if (path === BLUEPRINT_PATH) return "tampered-blueprint";
     if (path === MANIFEST_PATH)
       return JSON.stringify(AUTHORITY.signedIdentity.manifest);
@@ -671,6 +640,7 @@ it("verifies completion deployment metadata without resolving wallet secrets", a
   const application = unsafeCreateWatcherFaultProofApplicationForTest(
     {
       l1: testFaultProofL1(),
+      watcherConfig: admittedWatcherConfig(),
       deploymentIdentity: AUTHORITY.result,
       infrastructure: infrastructure(),
     },
@@ -680,7 +650,6 @@ it("verifies completion deployment metadata without resolving wallet secrets", a
   try {
     await expect(
       application.verifyCompleted({
-        runtimeConfigPath: "/etc/midgard/watcher.json",
         category: "doubleSpend",
         headerHash: HEADER,
         decisionDigest: "cd".repeat(32),

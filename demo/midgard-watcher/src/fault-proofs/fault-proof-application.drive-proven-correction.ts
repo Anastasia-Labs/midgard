@@ -5,8 +5,8 @@ import {
   excludeReservedFunding,
 } from "@al-ft/midgard-fault-proofs";
 
+import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { readAdmittedWatcherRuntimeConfig } from "../storage/retained-da-runtime.js";
 import {
   bindWatcherDeploymentAuthority,
   readSecret,
@@ -30,6 +30,7 @@ import {
 export const driveProvenCorrectionFrom =
   ({
     isExecutable,
+    watcherConfig,
     infrastructure,
     deploymentIdentity,
     l1,
@@ -37,19 +38,15 @@ export const driveProvenCorrectionFrom =
     environment,
   }: {
     readonly isExecutable: () => boolean;
+    readonly watcherConfig: WatcherConfig;
     readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
     readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     readonly l1: WatcherFaultProofL1;
     readonly dependencies: WatcherFaultProofApplicationDependencies;
     readonly environment: NodeJS.ProcessEnv;
   }): WatcherFaultProofApplication["driveProvenCorrection"] =>
-  async ({ runtimeConfigPath, correction, reservedOutRefs }) => {
+  async ({ correction, reservedOutRefs }) => {
     if (!isExecutable()) return Object.freeze({ kind: "observing" });
-    const watcherConfig = await readAdmittedWatcherRuntimeConfig({
-      runtimeConfigPath,
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      deploymentIdentity,
-    });
     const [binding, secret] = await Promise.all([
       bindWatcherDeploymentAuthority({
         watcherConfig,

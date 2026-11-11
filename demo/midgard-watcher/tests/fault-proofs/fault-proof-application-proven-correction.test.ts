@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 
 import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.js";
 import {
+  admittedWatcherConfig,
   AUTHORITY,
   dependencies,
   HEADER,
@@ -21,6 +22,7 @@ it("starts no correction removal from an application that only observes", async 
       l1: testFaultProofL1(),
       deploymentIdentity: AUTHORITY.result,
       infrastructure: infrastructure(),
+      watcherConfig: admittedWatcherConfig(),
     },
     deps,
     {},
@@ -28,7 +30,6 @@ it("starts no correction removal from an application that only observes", async 
   try {
     await expect(
       application.driveProvenCorrection({
-        runtimeConfigPath: "/etc/midgard/watcher.json",
         correction: {
           targetHeaderHash: HEADER,
           fraudProofAssetName: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend}${HEADER}`,

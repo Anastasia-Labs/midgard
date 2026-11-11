@@ -4,7 +4,6 @@ import {
   type FraudProofL1Source,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
-  type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import type { LucidEvolution, Provider, UTxO } from "@lucid-evolution/lucid";
@@ -14,8 +13,14 @@ import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/fault-proof-application.js";
-import type { WatcherFaultProofL1 } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import type {
+  WatcherFaultProofL1,
+  WatcherFaultProofStartupInvocation,
+} from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import {
+  parseWatcherConfig,
+  WATCHER_CONFIG_SCHEMA_VERSION,
+} from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
@@ -130,31 +135,39 @@ export const rawConfig = () => ({
   },
 });
 
+/** The configuration watcher startup admits from {@link rawConfig}. */
+export const admittedWatcherConfig = () => parseWatcherConfig(rawConfig());
+
 export const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
   manifestPath: MANIFEST_PATH,
   blueprintPath: BLUEPRINT_PATH,
   deploymentInfoPath: DEPLOYMENT_INFO_PATH,
 });
 
+/**
+ * The configuration path the shared workflow runner forwards to the watcher's
+ * loader. The loader runs on the configuration startup admitted and never reads
+ * it; the fixture reader refuses it like any other unexpected path.
+ */
+export const FORWARDED_RUNTIME_CONFIG_PATH = "/etc/midgard/watcher.json";
+
 export const invocation = (
-  configPath: string,
-  category: WorkflowAdapterReadinessInput["category"],
-  overrides: Partial<WorkflowAdapterReadinessInput> = {},
-): WorkflowAdapterReadinessInput => ({
+  category: WatcherFaultProofStartupInvocation["category"],
+  overrides: Partial<WatcherFaultProofStartupInvocation> = {},
+): WatcherFaultProofStartupInvocation => ({
   mode: "run",
   category,
   deploymentFingerprint: DEPLOYMENT,
   headerHash: HEADER,
-  runtimeConfigPath: configPath,
   ...overrides,
 });
 
 export const hostileStructuralExecutionInvocation = (
-  configPath: string,
   category: WorkflowAdapterRunnerInput["category"],
 ): WorkflowAdapterRunnerInput =>
   ({
-    ...invocation(configPath, category),
+    ...invocation(category),
+    runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
     decisionDigest: "cd".repeat(32),
     actuationPermit: Object.freeze({
       permitVersion: "midgard-production-workflow-actuation-permit-v1",

@@ -1,7 +1,3 @@
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   DaRequestResponseProtocol,
   encodeDaPayloadByHeaderResponseCbor,
@@ -577,34 +573,6 @@ describe("production retained-DA runtime V1", () => {
     expect(wrongMarker.factory).not.toHaveBeenCalled();
   });
 
-  it("rejects a symlinked runtime config path before transport startup", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-public-da-runtime-path-"),
-    );
-    const canonicalPath = join(directory, "watcher.json");
-    const symlinkPath = join(directory, "watcher-link.json");
-    const fake = transportFactory();
-    try {
-      await writeFile(canonicalPath, JSON.stringify(rawConfig()));
-      await symlink(canonicalPath, symlinkPath);
-      const loader = createWatcherWorkflowRuntimeLoader({
-        deploymentIdentity: deploymentIdentity(),
-        unsafeTransportFactoryForTest: fake.factory,
-        buildInfrastructure: async ({ invocation: call }) =>
-          builtInfrastructure(call),
-      });
-      await expect(
-        loader({
-          runtimeConfigPath: symlinkPath,
-          invocation: invocation({ runtimeConfigPath: symlinkPath }),
-        }),
-      ).rejects.toThrow("must not traverse a symlink");
-      expect(fake.factory).not.toHaveBeenCalled();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
   it("rejects development mode before transport startup", async () => {
     const fake = transportFactory();
     await expect(
@@ -617,50 +585,39 @@ describe("production retained-DA runtime V1", () => {
     expect(fake.factory).not.toHaveBeenCalled();
   });
 
-  it("loads the shared runner shape from strict config and transfers close ownership", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-public-da-runtime-"),
-    );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
+  it("loads the shared runner shape from the admitted config and transfers close ownership", async () => {
     const fake = transportFactory();
-    const built = builtInfrastructure(
-      invocation({ runtimeConfigPath: configPath }),
-    );
+    const call = invocation();
+    const built = builtInfrastructure(call);
     const buildInfrastructure = vi.fn(async () => built);
-    try {
-      const loader = createWatcherWorkflowRuntimeLoader({
-        deploymentIdentity: deploymentIdentity(),
-        unsafeTransportFactoryForTest: fake.factory,
-        buildInfrastructure,
-      });
-      const call = invocation({ runtimeConfigPath: configPath });
-      const loaded = await loader({
-        runtimeConfigPath: configPath,
-        invocation: call,
-      });
-      expect(loaded.schemaVersion).toBe(WORKFLOW_RUNTIME_CONFIG);
-      expect(loaded.retainedDaSources).toHaveLength(1);
-      // Exactly what the builder built; nothing family-shaped.
-      expect(loaded.infrastructure).toBe(built.infrastructure);
-      expect(loaded.resolveReferenceScript).toBe(built.resolveReferenceScript);
-      expect(loaded).not.toHaveProperty("config");
-      expect(buildInfrastructure).toHaveBeenCalledWith(
-        expect.objectContaining({ invocation: call }),
-      );
-      await loaded.close();
-      expect(fake.stop).toHaveBeenCalledTimes(1);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    const watcherConfig = admittedConfig();
+    const loader = createWatcherWorkflowRuntimeLoader({
+      watcherConfig,
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+      buildInfrastructure,
+    });
+    // The forwarded path names no file: the loader runs on the configuration
+    // startup admitted and never reads it.
+    const loaded = await loader({
+      runtimeConfigPath: call.runtimeConfigPath,
+      invocation: call,
+    });
+    expect(loaded.schemaVersion).toBe(WORKFLOW_RUNTIME_CONFIG);
+    expect(loaded.retainedDaSources).toHaveLength(1);
+    // Exactly what the builder built; nothing family-shaped.
+    expect(loaded.infrastructure).toBe(built.infrastructure);
+    expect(loaded.resolveReferenceScript).toBe(built.resolveReferenceScript);
+    expect(loaded).not.toHaveProperty("config");
+    expect(buildInfrastructure).toHaveBeenCalledWith({
+      watcherConfig,
+      invocation: call,
+    });
+    await loaded.close();
+    expect(fake.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("snapshots verified authority and builders before asynchronous config I/O", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-public-da-runtime-authority-snapshot-"),
-    );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
+  it("snapshots verified authority and builders before asynchronous transport startup", async () => {
     const originalTransport = transportFactory();
     const substitutedTransport = transportFactory();
     const originalBuilder = vi.fn(
@@ -682,126 +639,109 @@ describe("production retained-DA runtime V1", () => {
       blueprintHash: "33".repeat(32),
     });
     const mutableOptions = {
+      watcherConfig: admittedConfig(),
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: originalTransport.factory,
       buildInfrastructure: originalBuilder,
     };
-    try {
-      const loader = createWatcherWorkflowRuntimeLoader(mutableOptions);
-      const pending = loader({
-        runtimeConfigPath: configPath,
-        invocation: invocation({ runtimeConfigPath: configPath }),
-      });
-      mutableOptions.deploymentIdentity = substituteAuthority.result;
-      mutableOptions.unsafeTransportFactoryForTest =
-        substitutedTransport.factory;
-      mutableOptions.buildInfrastructure = substitutedBuilder;
+    const loader = createWatcherWorkflowRuntimeLoader(mutableOptions);
+    const execution = invocation();
+    const pending = loader({
+      runtimeConfigPath: execution.runtimeConfigPath,
+      invocation: execution,
+    });
+    mutableOptions.deploymentIdentity = substituteAuthority.result;
+    mutableOptions.unsafeTransportFactoryForTest = substitutedTransport.factory;
+    mutableOptions.buildInfrastructure = substitutedBuilder;
 
-      const loaded = await pending;
-      expect(loaded.infrastructure.manifest).toEqual({ authority: "original" });
-      expect(originalBuilder).toHaveBeenCalledTimes(1);
-      expect(substitutedBuilder).not.toHaveBeenCalled();
-      expect(originalTransport.factory).toHaveBeenCalledTimes(1);
-      expect(substitutedTransport.factory).not.toHaveBeenCalled();
-      await loaded.close();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    const loaded = await pending;
+    expect(loaded.infrastructure.manifest).toEqual({ authority: "original" });
+    expect(originalBuilder).toHaveBeenCalledTimes(1);
+    expect(substitutedBuilder).not.toHaveBeenCalled();
+    expect(originalTransport.factory).toHaveBeenCalledTimes(1);
+    expect(substitutedTransport.factory).not.toHaveBeenCalled();
+    await loaded.close();
   });
 
   it("rejects invocation substitution before I/O and closes transport when infrastructure construction fails", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-public-da-runtime-"),
-    );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
-    try {
-      const substituted = transportFactory();
-      const loader = createWatcherWorkflowRuntimeLoader({
-        deploymentIdentity: deploymentIdentity(),
-        unsafeTransportFactoryForTest: substituted.factory,
-        buildInfrastructure: async ({ invocation: call }) =>
-          builtInfrastructure(call),
-      });
-      await expect(
-        loader({
-          runtimeConfigPath: configPath,
-          invocation: invocation({ deploymentFingerprint: "ff".repeat(32) }),
-        }),
-      ).rejects.toThrow("invocation deployment differs");
-      expect(substituted.factory).not.toHaveBeenCalled();
+    const execution = invocation();
+    const substituted = transportFactory();
+    const loader = createWatcherWorkflowRuntimeLoader({
+      watcherConfig: admittedConfig(),
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: substituted.factory,
+      buildInfrastructure: async ({ invocation: call }) =>
+        builtInfrastructure(call),
+    });
+    await expect(
+      loader({
+        runtimeConfigPath: execution.runtimeConfigPath,
+        invocation: invocation({ deploymentFingerprint: "ff".repeat(32) }),
+      }),
+    ).rejects.toThrow("invocation deployment differs");
+    expect(substituted.factory).not.toHaveBeenCalled();
 
-      const failed = transportFactory();
-      const failingLoader = createWatcherWorkflowRuntimeLoader({
-        deploymentIdentity: deploymentIdentity(),
-        unsafeTransportFactoryForTest: failed.factory,
-        buildInfrastructure: async () => {
-          throw new Error("infrastructure refused");
-        },
-      });
-      await expect(
-        failingLoader({
-          runtimeConfigPath: configPath,
-          invocation: invocation({ runtimeConfigPath: configPath }),
-        }),
-      ).rejects.toThrow("infrastructure refused");
-      expect(failed.stop).toHaveBeenCalledTimes(1);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    const failed = transportFactory();
+    const failingLoader = createWatcherWorkflowRuntimeLoader({
+      watcherConfig: admittedConfig(),
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: failed.factory,
+      buildInfrastructure: async () => {
+        throw new Error("infrastructure refused");
+      },
+    });
+    await expect(
+      failingLoader({
+        runtimeConfigPath: execution.runtimeConfigPath,
+        invocation: execution,
+      }),
+    ).rejects.toThrow("infrastructure refused");
+    expect(failed.stop).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a structural actuation permit before the watcher loader allocates transport", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "midgard-public-da-runtime-runner-"),
+    const call = invocation();
+    const transport = transportFactory();
+    const builder = vi.fn(
+      async ({
+        invocation: exactInvocation,
+      }: {
+        invocation: WorkflowAdapterReadinessInput;
+      }) => builtInfrastructure(exactInvocation),
     );
-    const configPath = join(directory, "watcher.json");
-    await writeFile(configPath, JSON.stringify(rawConfig()));
-    const call = invocation({ runtimeConfigPath: configPath });
-    try {
-      const transport = transportFactory();
-      const builder = vi.fn(
-        async ({
-          invocation: exactInvocation,
-        }: {
-          invocation: WorkflowAdapterReadinessInput;
-        }) => builtInfrastructure(exactInvocation),
-      );
-      const runner = createManifestBoundWorkflowRunner({
-        record: defineFamilyApplication({
-          category: "doubleSpend" as const,
-          roster: {},
-          requires: [],
-          bindConfig: ({ infrastructure }): TestDoubleSpendWorkflow => ({
-            binding: {
-              deploymentFingerprint: DEPLOYMENT,
-              definition: {
-                category: "doubleSpend",
-                headerHash: infrastructure.headerHash,
-              },
+    const runner = createManifestBoundWorkflowRunner({
+      record: defineFamilyApplication({
+        category: "doubleSpend" as const,
+        roster: {},
+        requires: [],
+        bindConfig: ({ infrastructure }): TestDoubleSpendWorkflow => ({
+          binding: {
+            deploymentFingerprint: DEPLOYMENT,
+            definition: {
+              category: "doubleSpend",
+              headerHash: infrastructure.headerHash,
             },
-          }),
-          constructWorkflow: async (config) => config,
-          execute: async () => {
-            throw new Error("structural permit reached execution");
           },
-          bindsDecisionDigest: false,
         }),
-        loadRuntime: createWatcherWorkflowRuntimeLoader({
-          deploymentIdentity: deploymentIdentity(),
-          unsafeTransportFactoryForTest: transport.factory,
-          buildInfrastructure: builder,
-        }),
-      });
-      await expect(runner.runOrResume(call)).rejects.toThrow(
-        "actuation permit was not admitted",
-      );
-      expect(builder).not.toHaveBeenCalled();
-      expect(transport.factory).not.toHaveBeenCalled();
-      expect(transport.stop).not.toHaveBeenCalled();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+        constructWorkflow: async (config) => config,
+        execute: async () => {
+          throw new Error("structural permit reached execution");
+        },
+        bindsDecisionDigest: false,
+      }),
+      loadRuntime: createWatcherWorkflowRuntimeLoader({
+        watcherConfig: admittedConfig(),
+        deploymentIdentity: deploymentIdentity(),
+        unsafeTransportFactoryForTest: transport.factory,
+        buildInfrastructure: builder,
+      }),
+    });
+    await expect(runner.runOrResume(call)).rejects.toThrow(
+      "actuation permit was not admitted",
+    );
+    expect(builder).not.toHaveBeenCalled();
+    expect(transport.factory).not.toHaveBeenCalled();
+    expect(transport.stop).not.toHaveBeenCalled();
   });
 });
 
@@ -921,6 +861,7 @@ describe("retained-DA runtime owner", () => {
       ).rejects.toThrow("network differs");
       expect(() =>
         createWatcherWorkflowRuntimeLoader({
+          watcherConfig: config,
           deploymentIdentity: makeWatcherDeploymentAuthorityFixture({
             network: "Custom",
           }).result,

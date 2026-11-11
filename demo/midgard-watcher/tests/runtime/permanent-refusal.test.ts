@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
@@ -156,6 +156,20 @@ describe("permanent refusals: held after the server binds, exit 78 before", () =
     expect(failure.message).toContain(
       "watcher process and workflow runtime configurations differ",
     );
+  });
+
+  it("refuses a runtime config path that traverses a symlink permanently", async () => {
+    const config = await processConfig();
+    const link = `${config.watcherRuntimeConfigPath}.link`;
+    await symlink(config.watcherRuntimeConfigPath, link);
+    const failure = await heldRefusal({
+      ...config,
+      watcherRuntimeConfigPath: link,
+    });
+    expect(failure.message).toContain(
+      "watcher workflow runtime config traverses a symlink",
+    );
+    expect(isWatcherPermanentRefusal(failure)).toBe(true);
   });
 
   it("refuses a finality policy that differs from the verified release permanently", async () => {
