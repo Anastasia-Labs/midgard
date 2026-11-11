@@ -155,6 +155,12 @@ its own database prefix (`midgard_tools_test_w<N>`), so it never shares a
 database with a concurrently running node suite. `pnpm test` also runs the
 offline summary-verifier tests and the Phase 4 devnet asset tests.
 
+`pnpm run journey-replay:warm-up` fills a stack fault drill's replay store
+before the drill. It runs from source through
+`devnet/watcher-journeys/run-journey-source.mjs`, because the replay code it
+shares with the drill imports the watcher's test support, which exists only as
+source and is not in any build.
+
 ## Devnet wallet fee runway
 
 Fresh `devnet-stack` runs fund all fourteen roles once from the generated
