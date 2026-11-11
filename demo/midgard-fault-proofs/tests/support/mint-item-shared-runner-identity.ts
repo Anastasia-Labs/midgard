@@ -384,14 +384,7 @@ export const mintItemSharedRunnerIdentity = async () => {
   const ownOutputs = createOwnOutputJournal();
   const bespoke = async (stage: unknown) =>
     await captureLocallyEvaluatedTransaction(
-      async (boundary: FraudProofPreSubmitBoundary) => {
-        const centralJournal = {
-          begin: async () => undefined,
-          reconcile: async () => undefined,
-          confirmAuxiliary: async () => undefined,
-          boundary: () => boundary,
-          auxiliaryBoundary: () => boundary,
-        };
+      async (preSubmitBoundary: FraudProofPreSubmitBoundary) => {
         await createManifestBoundMintItemNonCanonicalSubmission({
           config,
           observe: unexpected,
@@ -400,9 +393,9 @@ export const mintItemSharedRunnerIdentity = async () => {
             l1: l1 as never,
             source,
           }),
-          centralJournal: centralJournal as never,
           stateQueueMutationLeaseCoordinator,
           ownOutputs,
+          preSubmitBoundary,
         }).submit(bespokeAction(stage), evidence);
       },
     );

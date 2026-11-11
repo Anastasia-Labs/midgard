@@ -17,6 +17,14 @@ import {
 } from "../field-preimage-length-mismatch/authenticated-workflow.js";
 import { FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS } from "../field-preimage-length-mismatch/config.js";
 import {
+  createManifestBoundMintItemNonCanonicalWorkflow,
+  executeManifestBoundMintItemNonCanonicalWorkflow,
+  type ManifestBoundMintItemNonCanonicalWorkflow,
+  type ManifestBoundMintItemNonCanonicalWorkflowConfig,
+  MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION,
+  MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
+} from "../mint-item-non-canonical/workflow.js";
+import {
   createManifestBoundOutputReferenceScriptDecodingWorkflow,
   executeManifestBoundOutputReferenceScriptDecodingWorkflow,
   type ManifestBoundOutputReferenceScriptDecodingWorkflow,
@@ -200,7 +208,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
 };
 
 /**
- * The six decision-digest families on the authenticated certificate shape
+ * The seven decision-digest families on the authenticated certificate shape
  * that derive from a definition. Each row names its exact config and workflow
  * types so the record's `bindConfig` result is what its `constructWorkflow`
  * consumes.
@@ -225,6 +233,17 @@ export const FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD =
     contracts: FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
     constructWorkflow: createManifestBoundFieldPreimageLengthWorkflow,
     execute: executeManifestBoundFieldPreimageLengthWorkflow,
+  });
+
+export const MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "mintItemNonCanonical",
+    ManifestBoundMintItemNonCanonicalWorkflowConfig,
+    ManifestBoundMintItemNonCanonicalWorkflow
+  >(MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION, {
+    contracts: MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundMintItemNonCanonicalWorkflow,
+    execute: executeManifestBoundMintItemNonCanonicalWorkflow,
   });
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =

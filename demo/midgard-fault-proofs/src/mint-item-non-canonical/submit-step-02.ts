@@ -60,9 +60,7 @@ export const submitMintItemNonCanonicalStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
-  onCarriageReady,
   preSubmitBoundary,
-  onTransitionReady,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
@@ -81,9 +79,7 @@ export const submitMintItemNonCanonicalStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onTransitionReady?: (terminal: boolean) => Promise<void>;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -113,7 +109,6 @@ export const submitMintItemNonCanonicalStep02 = async ({
       "mint-item-non-canonical: opening coordinate differs from thread",
     );
   const next = nextMintFieldCursor(evidence, state.field_cursor);
-  await onTransitionReady?.(next.terminal);
   const nextStepIndex = next.terminal ? 2 : 1;
   const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
@@ -161,7 +156,6 @@ export const submitMintItemNonCanonicalStep02 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,

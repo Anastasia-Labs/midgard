@@ -217,6 +217,21 @@ proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.
 
+Mint-item-non-canonical proofs started by an earlier release keep a
+family-specific prepared artifact, which this release does not import. At
+start, such an objective is held as `fault_proof_objective_unreadable`, its
+detail naming the workflow id, in `/readyz` and `/v1/status`. It is never run,
+resubmitted, superseded or reclaimed, and other objectives continue. An
+unsigned reservation with no submission intent is returned to the wallet at
+start, as for any unreadable objective. Once its header leaves the finalized
+queue, it follows the unreadable-objective lifecycle: workflow rows are
+deleted only if its row was marked final, and a signed attempt's funding goes
+to the orphaned-reservation settle. Remedy: finish open mint-item proofs on
+the previous release before upgrading, or perform an authorised fresh
+deployment under [state reset rules](../../docs/agents/state-reset.md).
+Returning to the previous release after this one has started is not a
+supported path.
+
 ## Configuration and trust boundaries
 
 CLI configuration uses `midgard-watcher-production-process-config-v1`.

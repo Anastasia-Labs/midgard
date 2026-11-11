@@ -39,7 +39,6 @@ export const submitMintItemNonCanonicalStep03 = async ({
   evidence,
   referenceScriptUtxo,
   preSubmitBoundary,
-  onTransitionReady,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -48,18 +47,8 @@ export const submitMintItemNonCanonicalStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: MintItemEvidence;
-  readonly nativeTxCompactCbor: string;
-  readonly witnessSetCompactCbor: string;
-  readonly publishCarriage?: boolean;
-  readonly publishedCarriageUtxos?: readonly UTxO[];
-  readonly certificateUtxo?: UTxO;
-  readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onTransitionReady?: (terminal: boolean) => Promise<void>;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
@@ -149,7 +138,6 @@ export const submitMintItemNonCanonicalStep03 = async ({
     MintItemStep03DatumSchema as never,
   );
   const nextStepIndex = outcome === 0n ? 2 : 3;
-  await onTransitionReady?.(outcome !== 0n);
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,

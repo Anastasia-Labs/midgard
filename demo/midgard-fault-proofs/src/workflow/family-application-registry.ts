@@ -15,8 +15,8 @@
  * derives its record from its definition too, declaring beside its roster the
  * optional infrastructure it requires — the predecessor replay context or the
  * public retained-DA sources — and the config fields it reads from it. A family whose config shape is its own writes a short record by hand:
- * `doubleSpend`, `transitionTrace`, `mintItemNonCanonical`, `missingSignature`,
- * `networkId`, `valueNotPreserved` and `validationTraceDispute`.
+ * `doubleSpend`, `transitionTrace`, `missingSignature`, `networkId`,
+ * `valueNotPreserved` and `validationTraceDispute`.
  *
  * The registry's type requires exactly one record per installed category
  * (`installed-categories.ts`), with the record's own category as its key, so
@@ -71,6 +71,7 @@ import "./family-application-registry.family-application-registry.js";
 export {
   FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
   FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
@@ -79,7 +80,6 @@ export {
 export {
   MIN_ADA_FAMILY_APPLICATION_RECORD,
   MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
-  MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,

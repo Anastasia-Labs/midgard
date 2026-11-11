@@ -11,10 +11,6 @@ import {
   submitMintItemNonCanonicalStep02,
   submitMintItemNonCanonicalStep04,
 } from "../src/mint-item-non-canonical/index.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
 import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -243,14 +239,6 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
       }
       const open = async () => {
         let openingRef = bound.nextThreadOutRef;
-        const journalEntries: FraudProofWorkflowJournalEntry[] = [];
-        const store: FraudProofWorkflowJournalStore = {
-          load: async () => journalEntries,
-          append: async (entry, expected) => {
-            expect(journalEntries.length).toBe(expected);
-            journalEntries.push(entry);
-          },
-        };
         let carriage:
           | Awaited<ReturnType<typeof submitMintItemNonCanonicalStep02>>
           | undefined;
@@ -264,7 +252,6 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
                 witnessSetCompactCbor: witnessSetCborOf(tx),
                 certificateReference,
                 carriage,
-                store,
                 action: "submitStep02",
                 fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
               }),
@@ -387,14 +374,6 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
           }),
         );
       const scan = async () => {
-        const journalEntries: FraudProofWorkflowJournalEntry[] = [];
-        const store: FraudProofWorkflowJournalStore = {
-          load: async () => journalEntries,
-          append: async (entry, expected) => {
-            expect(journalEntries.length).toBe(expected);
-            journalEntries.push(entry);
-          },
-        };
         let scans = 0;
         for (;;) {
           const fresh = evidenceOf(
@@ -409,7 +388,6 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
               nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
               witnessSetCompactCbor: witnessSetCborOf(tx),
               certificateReference,
-              store,
               action: "submitStep03",
               fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
             }),

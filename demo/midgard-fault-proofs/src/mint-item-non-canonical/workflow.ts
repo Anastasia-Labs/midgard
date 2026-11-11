@@ -10,7 +10,6 @@ import "../prepare-double-spend.js";
 import "../remove-fraudulent-block.js";
 import "../step-support.js";
 import "../transition-trace/witnesses.js";
-import "../workflow/actuation-permit.js";
 import "../workflow/complete-replay.js";
 import "../workflow/cursor-family-adapter.js";
 import "../workflow/cursor-family-runtime.js";
@@ -20,7 +19,6 @@ import "../workflow/family-l1-observation.js";
 import "../workflow/manifest-bound-family-assembly.js";
 import "../workflow/manifest-bound-family-recovery.js";
 import "../workflow/transaction-boundary.js";
-import "./central-journal.js";
 import "./mint-item-non-canonical.js";
 import "./replay.js";
 import "./schemas.js";
@@ -48,6 +46,7 @@ export {
 export {
   createManifestBoundMintItemNonCanonicalRuntime,
   createManifestBoundMintItemNonCanonicalWorkflow,
+  createMintItemNonCanonicalRecoveryAdapter,
   executeManifestBoundMintItemNonCanonicalWorkflow,
   loadMintItemNonCanonicalRuntime,
   type ManifestBoundMintItemNonCanonicalWorkflow,

@@ -20,16 +20,13 @@ import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/s
 import {
   applyMintItemNonCanonicalScripts,
   createManifestBoundMintItemNonCanonicalSubmission,
-  createMintItemNonCanonicalCentralJournalAdapter,
   MINT_ITEM_NON_CANONICAL_BLUEPRINT_TITLES,
-  mintItemEvidenceIdentity,
   type MintItemNonCanonicalContracts,
   prepareMintItemEvidence,
   submitMintItemNonCanonicalCancel,
 } from "../../src/mint-item-non-canonical/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
@@ -260,8 +257,8 @@ export const committedInclusions = async (nativeTxs: readonly NativeTx[]) => {
   return { transactionsRoot, inclusions };
 };
 
-/** Exercise the production submission adapter and durable bridge on real Lucid
- * continuations. Recreate both after every submission to cover crash recovery. */
+/** Exercise the production submission adapter on real Lucid continuations,
+ * recreating it for every submission as a restarted process would. */
 export const journaledMintContinuation = async ({
   common,
   evidence,
@@ -269,7 +266,6 @@ export const journaledMintContinuation = async ({
   witnessSetCompactCbor,
   certificateReference,
   carriage,
-  store,
   action,
   fraudulentBlockOutRef,
 }: {
@@ -283,18 +279,8 @@ export const journaledMintContinuation = async ({
     publishedCarriageUtxos: readonly UTxO[];
     certificateUtxo?: UTxO;
   };
-  store: FraudProofWorkflowJournalStore;
   action: "submitStep02" | "submitStep03";
 }) => {
-  const bridge = () =>
-    createMintItemNonCanonicalCentralJournalAdapter({
-      store,
-      deploymentFingerprint: "11".repeat(32),
-      headerHash: "22".repeat(28),
-      decisionDigest: "33".repeat(32),
-      transactionConfirmed: async () => true,
-    });
-  const centralJournal = bridge();
   const submission = createManifestBoundMintItemNonCanonicalSubmission({
     config: {
       lucid: common.lucid,
@@ -317,19 +303,8 @@ export const journaledMintContinuation = async ({
       witnessSetCompactCbor,
       ...carriage,
     }),
-    centralJournal,
   });
   const result = await submission.submit(action, evidence);
-  // A process can stop immediately after the submitted transaction confirms.
-  // The new adapter must reconcile its exact intent even for a self-loop.
-  const restarted = bridge();
-  await restarted.reconcile(result.stage);
-  const identity = mintItemEvidenceIdentity(evidence);
-  const records = await restarted.familyJournal.load(identity);
-  expect(records.at(-1)).toMatchObject({
-    stage: result.stage,
-    txHash: result.txHash,
-  });
   expect(result.outputReference).not.toBeNull();
   return {
     nextThreadOutRef: result.outputReference!,

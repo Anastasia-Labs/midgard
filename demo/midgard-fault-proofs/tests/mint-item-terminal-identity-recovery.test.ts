@@ -1,13 +1,8 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
 import {
   executeManifestBoundMintItemNonCanonicalWorkflow,
-  type ManifestBoundMintItemNonCanonicalWorkflow,
+  MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
 } from "../src/mint-item-non-canonical/workflow.js";
 import {
   bindWorkflowActuationJournal,
@@ -15,35 +10,25 @@ import {
   createWorkflowReconciliationPermitController,
 } from "../src/workflow/actuation-permit.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
-import type { HeaderFaultDecision } from "../src/workflow/header-classifier.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
+  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
+import { runBoundFamilyRecovery } from "./support/bound-family-recovery-fixture.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-} from "../src/workflow/release-finality-policy.js";
+  customWorkflowRecoveryFixture,
+  verifyTerminalRecoveryFinality,
+} from "./support/custom-workflow-recovery.js";
 
 it("continues the retained terminal journal under refreshed authority without changing execution identity", async () => {
-  const entries: FraudProofWorkflowJournalEntry[] = JSON.parse(
-    await readFile(
-      new URL(
-        "./fixtures/mint-terminal-included-retained.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
+  const f = await customWorkflowRecoveryFixture(
+    MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
+    true,
   );
-  const { decision: original }: { decision: HeaderFaultDecision } = JSON.parse(
-    await readFile(
-      new URL("./fixtures/mint-reconciliation-retained.json", import.meta.url),
-      "utf8",
-    ),
-  );
+  const original = f.decision;
+  const entries = await f.store.load(f.workflowId);
   const { decisionDigest: _, ...originalFields } = original;
   const refreshedFields = {
     ...originalFields,
@@ -53,8 +38,8 @@ it("continues the retained terminal journal under refreshed authority without ch
     ...refreshedFields,
     decisionDigest: journalJsonDigest(normalizeJournalJson(refreshedFields)),
   };
-  // Create real read-only authority with a distinct current decision, then bind
-  // the original sealed execution through the production recovery check.
+  // Real read-only authority over a distinct current decision, bound to the
+  // original sealed execution through the production recovery check.
   const freshEntries = entries.map((entry) => {
     const identity = {
       ...entry.identity,
@@ -78,90 +63,42 @@ it("continues the retained terminal journal under refreshed authority without ch
     rollbackGeneration: "1",
     originalDecision: original,
   });
-  const root = await mkdtemp(join(tmpdir(), "mint-terminal-identity-"));
+  // The retained journal, as a restarted process finds it.
+  const store = new MemoryFraudProofWorkflowJournalStore();
+  for (const entry of entries) await store.append(entry, entry.sequence);
+  const load = vi.spyOn(store, "load");
+  const prepare = vi.spyOn(
+    funding,
+    "prepareWorkflowFundingReservationTransaction",
+  );
   try {
-    const store = new DirectoryFraudProofWorkflowJournalStore(root);
-    for (const entry of entries) await store.append(entry, entry.sequence);
-    const load = vi.spyOn(store, "load");
-    const journal = bindWorkflowActuationJournal({
-      journal: store,
-      permit: controller.permit,
-      decisionDigest: refreshed.decisionDigest,
-      deploymentFingerprint: original.deploymentFingerprint,
-      category: original.category,
-      headerHash: original.headerHash,
-    });
-    const retainedTerminal = entries.at(-1)!.event;
-    if (retainedTerminal.kind !== "terminal_included")
-      throw new Error("fixture must retain terminal inclusion");
-    const terminal = structuredClone(retainedTerminal.terminal);
-    const observeHeader = vi.fn(async () => {
-      throw new Error("must not rebuild removed proof");
-    });
-    const transactionConfirmed = vi.fn(async () => true);
-    const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
-    const workflow = {
-      binding: {
+    const recovery = {
+      ...f,
+      journal: bindWorkflowActuationJournal({
+        journal: store,
+        permit: controller.permit,
+        decisionDigest: refreshed.decisionDigest,
         deploymentFingerprint: original.deploymentFingerprint,
-        definition: {
-          category: original.category,
-          headerHash: original.headerHash,
-        },
-        releaseFinality: {
-          schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-          deploymentIdentityDigest: original.deploymentFingerprint,
-          blueprintHash: "cc".repeat(32),
-          policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-          policy,
-        },
-      },
-      decisionDigest: refreshed.decisionDigest,
-      l1: {
         category: original.category,
-        observe: async () => ({ stage: { kind: "removed", terminal } }),
-        observeHeader,
-        transactionConfirmed,
-      },
-    } as unknown as ManifestBoundMintItemNonCanonicalWorkflow;
-    const release = vi.spyOn(funding, "releaseWorkflowFundingReservation");
-    const prepare = vi.spyOn(
-      funding,
-      "prepareWorkflowFundingReservationTransaction",
+        headerHash: original.headerHash,
+      }),
+      workflow: { ...f.workflow, decisionDigest: refreshed.decisionDigest },
+    };
+    await verifyTerminalRecoveryFinality(
+      recovery,
+      async (input) =>
+        await runBoundFamilyRecovery(
+          executeManifestBoundMintItemNonCanonicalWorkflow,
+          input,
+        ),
     );
-    const execute = () =>
-      executeManifestBoundMintItemNonCanonicalWorkflow({
-        workflow,
-        journal,
-        sources: [],
-      });
-    await expect(execute()).resolves.toMatchObject({ kind: "pending" });
-    expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
-    expect(release).not.toHaveBeenCalled();
-    for (const confirmationDepth of [30, 2161]) {
-      Object.assign(terminal.observedAt, { confirmationDepth });
-      await expect(execute()).resolves.toMatchObject({ kind: "pending" });
-      expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
-      expect(release).not.toHaveBeenCalled();
-    }
-    Object.assign(terminal.observedAt, { confirmationDepth: 2162 });
-    transactionConfirmed.mockResolvedValue(false);
-    await expect(execute()).rejects.toThrow("not authenticated on L1");
-    expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
-    expect(release).not.toHaveBeenCalled();
-    transactionConfirmed.mockResolvedValue(true);
-    await expect(execute()).resolves.toMatchObject({ kind: "completed" });
-    const completed = await store.load(entries[0]!.workflowId);
+    const completed = await store.load(f.workflowId);
     expect(completed.slice(0, entries.length)).toEqual(entries);
-    expect(completed.at(-1)?.event.kind).toBe("completed");
-    expect(release).toHaveBeenCalledOnce();
     expect(prepare).not.toHaveBeenCalled();
-    expect(observeHeader).not.toHaveBeenCalled();
-    expect(load.mock.calls.every(([id]) => id === entries[0]!.workflowId)).toBe(
-      true,
-    );
-    expect(await readdir(root)).toEqual([entries[0]!.workflowId]);
+    expect(load).toHaveBeenCalled();
+    expect(load.mock.calls.every(([id]) => id === f.workflowId)).toBe(true);
+    expect(await store.load(freshEntries[0]!.workflowId)).toEqual([]);
   } finally {
     vi.restoreAllMocks();
-    await rm(root, { recursive: true, force: true });
   }
 });

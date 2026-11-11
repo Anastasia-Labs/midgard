@@ -36,7 +36,7 @@ describe("mint-item: our thread on a header another record removed", () => {
           : f.resolution;
       await expect(f.execute(port)).resolves.toMatchObject({
         kind: "pending",
-        reason: expect.stringContaining(RECLAIM_TX),
+        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
       });
       expect(port.preflight).toHaveBeenCalledWith(
         expect.objectContaining({ threadOutRef: OUR_THREAD, step: 2 }),
@@ -69,7 +69,7 @@ describe("mint-item: our thread on a header another record removed", () => {
       const port = f.port();
       await expect(f.execute(port)).resolves.toMatchObject({
         kind: "pending",
-        reason: expect.stringContaining(RECLAIM_TX),
+        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
       });
       f.land(FINAL_DEPTH - 1);
       await expect(f.execute(port)).resolves.toMatchObject({
@@ -95,9 +95,8 @@ describe("mint-item: our thread on a header another record removed", () => {
         f.removalAt.depth = depth;
         await expect(f.execute(port)).resolves.toMatchObject({
           kind: "pending",
-          resumeOnObservation: true,
           reason: expect.stringContaining(
-            `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
+            `mintItemNonCanonical header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
           ),
         });
       }
@@ -106,7 +105,7 @@ describe("mint-item: our thread on a header another record removed", () => {
       f.removalAt.depth = FINAL_DEPTH;
       await expect(f.execute(port)).resolves.toMatchObject({
         kind: "pending",
-        reason: expect.stringContaining(RECLAIM_TX),
+        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
       });
       expect(port.submit).toHaveBeenCalledTimes(1);
     },
@@ -145,7 +144,7 @@ describe("mint-item: our thread on a header another record removed", () => {
       ).toBe(false);
       await expect(f.execute(port)).resolves.toMatchObject({
         kind: "pending",
-        reason: expect.stringContaining(RECLAIM_TX),
+        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
       });
       expect(prepare).toHaveBeenCalledTimes(3);
       expect(port.submit).toHaveBeenCalledTimes(1);
@@ -187,32 +186,36 @@ describe("mint-item: our thread on a header another record removed", () => {
     }
   });
 
-  it("holds under the named alarm, never resolving, while our threads on the removed header cannot be listed", async () => {
+  it("never resolves while our threads on the removed header cannot be listed", async () => {
     const f = fixture({ stepsTaken: 0 });
     f.removedBy.kind = "other";
+    // No list of our threads at all: held under the named alarm.
+    for (let pass = 0; pass < 2; pass += 1)
+      await expect(f.execute(undefined)).resolves.toMatchObject({
+        kind: "pending",
+        resumeOnObservation: true,
+        namedState: {
+          name: "fraud-proof-own-threads-unobservable",
+          alarm: true,
+        },
+        reason: expect.stringContaining(
+          "cannot list our threads on the removed header, so none of them can be shown to be spent: this family's workflow has no view of our threads",
+        ),
+      });
+    // A list that cannot be read fails the run with its cause, as for every
+    // family on the shared runner; nothing is resolved.
     const unreadable = {
       ...f.port(),
       observe: vi.fn(async () => {
         throw new Error("our threads' L1 view is unreachable");
       }),
     };
-    // No list of our threads at all, or one that cannot be read: nothing
-    // shows that none of ours stands on the header.
-    for (const [reclaim, detail] of [
-      [undefined, "this deployment's L1 view has no list of our threads"],
-      [unreadable, "our threads' L1 view is unreachable"],
-    ] as const)
-      for (let pass = 0; pass < 2; pass += 1)
-        await expect(f.execute(reclaim)).resolves.toMatchObject({
-          kind: "pending",
-          resumeOnObservation: true,
-          namedState: {
-            name: "fraud-proof-own-threads-unobservable",
-            alarm: true,
-          },
-          reason: expect.stringContaining(
-            `cannot list our threads on the removed header, so none of them can be shown to be spent: ${detail}`,
-          ),
-        });
+    for (let pass = 0; pass < 2; pass += 1)
+      await expect(f.execute(unreadable)).rejects.toThrow(
+        "our threads' L1 view is unreachable",
+      );
+    expect(f.entries.some(({ event }) => event.kind === "completed")).toBe(
+      false,
+    );
   });
 });

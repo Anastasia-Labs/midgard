@@ -201,6 +201,48 @@ export const persistedArtifact = ({
     familyArtifact,
   }) as PersistedArtifactEnvelope;
 
+/** A journal whose prepared artifact is not the generic envelope, as a
+ * family-specific artifact from an earlier release is; it is not imported. */
+export class FraudProofWorkflowArtifactEnvelopeError extends Error {
+  constructor(readonly workflowId: string) {
+    super(
+      `workflow ${workflowId} prepared artifact is not in the generic artifact envelope`,
+    );
+    this.name = "FraudProofWorkflowArtifactEnvelopeError";
+  }
+}
+
+const ENVELOPE_FIELDS = [
+  "evidenceBinding",
+  "familyArtifact",
+  "releaseFinality",
+];
+
+const isJournalRecord = (value: unknown): boolean =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Refuses a journal whose prepared artifact has any shape other than the
+ * envelope `persistedArtifact` writes; a journal not yet prepared passes. */
+export const requireFraudProofWorkflowArtifactEnvelope = ({
+  workflowId,
+  entries,
+}: {
+  readonly workflowId: string;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+}): void => {
+  for (const { event } of entries) {
+    if (event.kind !== "prepared") continue;
+    const artifact: Readonly<Record<string, unknown>> = event.artifact;
+    const keys = Object.keys(artifact).sort();
+    if (
+      keys.length !== ENVELOPE_FIELDS.length ||
+      keys.some((key, index) => key !== ENVELOPE_FIELDS[index]) ||
+      !ENVELOPE_FIELDS.every((key) => isJournalRecord(artifact[key]))
+    )
+      throw new FraudProofWorkflowArtifactEnvelopeError(workflowId);
+  }
+};
+
 // Inclusion may move when the same commitment is re-included after rollback.
 // Keep the original locator in the journal for provenance; reuse proof material
 // only when every content/commitment field still matches fresh admitted evidence.

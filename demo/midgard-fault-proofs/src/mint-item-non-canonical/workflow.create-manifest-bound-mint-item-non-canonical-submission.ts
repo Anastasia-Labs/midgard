@@ -12,10 +12,8 @@ import {
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { createMintItemNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
   type MintItemEvidence,
-  mintItemEvidenceIdentity,
   type MintItemStage,
 } from "./mint-item-non-canonical.js";
 import { submitMintItemNonCanonicalCancel } from "./submit-cancel.js";
@@ -28,16 +26,12 @@ import {
   type MintItemNonCanonicalRuntimeLoader,
   required,
 } from "./workflow.derive-mint-item-non-canonical-authenticated-source.js";
-import {
-  type ManifestBoundMintItemNonCanonicalConfig,
-  type MintItemNonCanonicalStage,
-} from "./workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { type ManifestBoundMintItemNonCanonicalConfig } from "./workflow.load-manifest-bound-mint-item-non-canonical-config.js";
 
 export const createManifestBoundMintItemNonCanonicalSubmission = ({
   config,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
   preSubmitBoundary,
@@ -45,13 +39,10 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
   readonly config: ManifestBoundMintItemNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<MintItemStage>;
   readonly resolveStage: MintItemNonCanonicalRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createMintItemNonCanonicalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-  /** Admits every proof-step transaction when no central journal is given. */
+  /** Admits each transaction, proof step or removal, before it is submitted. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }) => ({
   observe,
@@ -69,34 +60,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       throw new Error(
         "mintItemNonCanonical evidence transaction id is not canonical",
       );
-    const familyIdentity = mintItemEvidenceIdentity(evidence);
-    const boundary = (from: MintItemStage, to: MintItemStage) =>
-      centralJournal === undefined
-        ? preSubmitBoundary
-        : centralJournal.boundary(action, familyIdentity, from, to);
-    let transition: readonly [MintItemStage, MintItemStage] =
-      action === "submitInit"
-        ? (["none", "step01"] as const)
-        : action === "submitStep01"
-          ? (["step01", "step02"] as const)
-          : action === "submitStep02"
-            ? (["step02", "step03"] as const)
-            : action === "submitStep03"
-              ? (["step03", "step04"] as const)
-              : action === "submitStep04"
-                ? (["step04", "proven"] as const)
-                : (["proven", "removed"] as const);
-    if (
-      action !== "submitStep02" &&
-      action !== "submitStep03" &&
-      action !== "removeDescendants"
-    )
-      await centralJournal?.begin(
-        action,
-        familyIdentity,
-        transition[0],
-        transition[1],
-      );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
       const result = await submitCommittedFieldShapeInit({
@@ -110,7 +73,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: boundary(transition[0], transition[1]),
+        preSubmitBoundary,
       });
       return {
         stage: "step01" as const,
@@ -136,7 +99,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary: boundary(transition[0], transition[1]),
+          preSubmitBoundary,
         });
         return {
           stage: "step02" as const,
@@ -158,7 +121,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary: boundary(transition[0], transition[1]),
+        preSubmitBoundary,
       });
       return {
         stage: "step02" as const,
@@ -167,7 +130,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       };
     }
     if (action === "submitStep02") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitMintItemNonCanonicalStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -176,15 +138,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step02 thread out-ref"),
         evidence,
-        onTransitionReady: async (terminal) => {
-          transition = ["step02", terminal ? "step03" : "step02"];
-          await centralJournal?.begin(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          );
-        },
         nativeTxCompactCbor: required(
           stage.nativeTxCompactCbor,
           "native transaction compact CBOR",
@@ -198,39 +151,10 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ) ?? preSubmitBoundary,
-        certificatePreSubmitBoundary:
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ) ?? preSubmitBoundary,
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes) {
-                  await centralJournal.confirmAuxiliary(txHash);
-                }
-              },
+        publicationPreSubmitBoundary: preSubmitBoundary,
+        certificatePreSubmitBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          centralJournal === undefined
-            ? preSubmitBoundary
-            : (transaction) =>
-                centralJournal.boundary(
-                  action,
-                  familyIdentity,
-                  transition[0],
-                  transition[1],
-                )(transaction),
+        preSubmitBoundary,
       });
       return {
         stage: result.terminal ? ("step03" as const) : ("step02" as const),
@@ -239,7 +163,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       };
     }
     if (action === "submitStep03") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitMintItemNonCanonicalStep03({
         lucid: config.lucid,
         contracts: config.contracts,
@@ -247,60 +170,8 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step03 thread out-ref"),
         evidence,
-        onTransitionReady: async (terminal) => {
-          transition = ["step03", terminal ? "step04" : "step03"];
-          await centralJournal?.begin(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          );
-        },
-        nativeTxCompactCbor: required(
-          stage.nativeTxCompactCbor,
-          "native transaction compact CBOR",
-        ),
-        witnessSetCompactCbor: required(
-          stage.witnessSetCompactCbor,
-          "witness-set compact CBOR",
-        ),
-        publishCarriage: evidence.carriage === "RawUtxo",
-        publishedCarriageUtxos: stage.publishedCarriageUtxos,
-        certificateUtxo: stage.certificateUtxo,
-        certificateReferenceScriptUtxo:
-          config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ) ?? preSubmitBoundary,
-        certificatePreSubmitBoundary:
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ) ?? preSubmitBoundary,
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes)
-                  await centralJournal.confirmAuxiliary(txHash);
-              },
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary:
-          centralJournal === undefined
-            ? preSubmitBoundary
-            : (transaction) =>
-                centralJournal.boundary(
-                  action,
-                  familyIdentity,
-                  transition[0],
-                  transition[1],
-                )(transaction),
+        preSubmitBoundary,
       });
       return {
         stage: result.terminal ? ("step04" as const) : ("step03" as const),
@@ -318,7 +189,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step04,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: boundary(transition[0], transition[1]),
+        preSubmitBoundary,
       });
       return {
         stage: "proven" as const,
@@ -326,30 +197,6 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         outputReference: null,
       };
     }
-    const removalIdentity = (resolved: MintItemNonCanonicalStage) => ({
-      nextRemovalOutRef: required(
-        resolved.nextRemovalOutRef,
-        "authenticated next removal out-ref",
-      ),
-      fraudProofOutRef: required(
-        resolved.fraudProofOutRef,
-        "authenticated fraud proof out-ref",
-      ),
-    });
-    const removalTargetStage = (
-      resolved: MintItemNonCanonicalStage,
-    ): MintItemStage =>
-      resolved.nextRemovalOutRef === resolved.fraudulentBlockOutRef
-        ? "removed"
-        : "proven";
-    await centralJournal?.begin(
-      action,
-      familyIdentity,
-      "proven",
-      removalTargetStage(stage),
-      removalIdentity(stage),
-    );
-    let removalsPrepared = 0;
     const result = await submitRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
@@ -358,7 +205,10 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       signer: config.signer,
       fraudCategory: "mintItemNonCanonical" as FraudProofCatalogueCategoryName,
       fraudulentHeaderHash: config.binding.definition.headerHash,
-      fraudProofOutRef: removalIdentity(stage).fraudProofOutRef,
+      fraudProofOutRef: required(
+        stage.fraudProofOutRef,
+        "authenticated fraud proof out-ref",
+      ),
       requireReferenceScripts: true,
       stateQueueMutationLeaseCoordinator:
         stateQueueMutationLeaseCoordinator ??
@@ -370,27 +220,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary:
-        centralJournal === undefined
-          ? undefined
-          : async (transaction) => {
-              // The removal builder may consume several descendants. Each physical
-              // transaction gets its own authenticated action and durable intent.
-              const current =
-                removalsPrepared === 0
-                  ? stage
-                  : await resolveStage({ action, evidence });
-              if (removalsPrepared > 0)
-                await centralJournal.reconcile("proven");
-              await centralJournal.boundary(
-                action,
-                familyIdentity,
-                "proven",
-                removalTargetStage(current),
-                removalIdentity(current),
-              )(transaction);
-              removalsPrepared += 1;
-            },
+      preSubmitBoundary,
     });
     return {
       stage: "removed" as const,

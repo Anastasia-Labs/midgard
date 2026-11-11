@@ -1,5 +1,4 @@
 import {
-  assertMintWorkflowPreparedEvidence,
   assertWorkflowActuationPermitIdentity,
   bindWorkflowActuationRecoveryIdentity,
   journalJsonDigest,
@@ -113,14 +112,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     ).verifyForWorkflow({
       deploymentFingerprint: authority.deploymentFingerprint,
     });
-    // Mint's immutable prepared artifact predates the generic envelope. Its
-    // exact family evidence is bound to the sealed decision and signed attempts.
-    // The verified manifest identity pins release finality, and the reservation
-    // below must carry that same deployment and decision. The funding factory
-    // separately revalidates its exact policy and reservation basis before use.
-    if (input.category === "mintItemNonCanonical") {
-      assertMintWorkflowPreparedEvidence(originalDecision, entries);
-    } else if (
+    if (
       binding === null ||
       typeof binding !== "object" ||
       Array.isArray(binding) ||

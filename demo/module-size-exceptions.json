@@ -180,11 +180,6 @@
     "reason": "inspectContracts is the dominant indivisible declaration (549 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
-    "max": 700,
-    "reason": "createMintItemNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (656 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-fault-proofs/src/native-script-decoding/prover.run-native-script-decoding-prover.ts",
     "max": 647,
     "reason": "runNativeScriptDecodingProver is the dominant indivisible declaration (598 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."

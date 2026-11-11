@@ -128,6 +128,11 @@ export const writeExecution = async (
       headerHash: decision.headerHash,
       payloadSha256: decision.payloadSha256,
     },
+    releaseFinality: await watcherDeploymentReleaseFinalityAuthority(
+      deploymentIdentity,
+    ).verifyForWorkflow({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+    }),
     familyArtifact: { test: true },
   };
   const terminal = fundingTerminal(decision.headerHash, PROOF_TX, REMOVAL_TX);

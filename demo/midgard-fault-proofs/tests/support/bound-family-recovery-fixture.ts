@@ -6,6 +6,7 @@ import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-applicati
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
 import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
+import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
 import type { customWorkflowRecoveryFixture } from "./custom-workflow-recovery.js";
 import {
@@ -139,3 +140,30 @@ export const bindFamilyRecoveryFixture = async (
     observe.mockRestore();
   }
 };
+
+/** Runs a family's shared executor over a saved-journal fixture as read-only
+ * recovery, under a real assembly context. */
+export const runBoundFamilyRecovery = async (
+  execute: unknown,
+  input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
+): Promise<FraudProofWorkflowRunResult> =>
+  await (execute as (value: unknown) => Promise<FraudProofWorkflowRunResult>)({
+    ...input,
+    workflow: {
+      ...input.workflow,
+      deployment: await bindFamilyRecoveryFixture(input.workflow),
+      config: {
+        binding: input.workflow.binding,
+        // Read-only recovery must never use a provider or these builder-only inputs.
+        lucid: {},
+        signer: {
+          paymentKeyHash: "aa".repeat(28),
+          address: "unused-readonly-address",
+        },
+        contracts: {},
+        referenceScripts: {},
+      },
+    },
+    decisionDigest: input.workflow.decisionDigest,
+    sources: [],
+  });

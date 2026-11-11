@@ -13,7 +13,6 @@ export {
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 export {
-  assertMintWorkflowPreparedEvidence,
   createWorkflowActuationPermitController,
   createWorkflowReconciliationPermitController,
   isWorkflowActuationRevokedError,

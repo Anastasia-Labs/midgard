@@ -177,8 +177,6 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
   const scanned = await submitMintItemNonCanonicalStep03({
     ...registered.common(threadOutRef, 2),
     evidence,
-    nativeTxCompactCbor: source.compactCbor.toString("hex"),
-    witnessSetCompactCbor: witnessSetCborOf(tx),
   });
   expect(scanned.terminal).toBe(true);
   const finalized = await submitMintItemNonCanonicalStep04({

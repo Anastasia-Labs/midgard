@@ -360,6 +360,8 @@ export const customWorkflowRecoveryFixture = async (
   return {
     workflow,
     journal,
+    store,
+    decision,
     controller,
     workflowId,
     built,

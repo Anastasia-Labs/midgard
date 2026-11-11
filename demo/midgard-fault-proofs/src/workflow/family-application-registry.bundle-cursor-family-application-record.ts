@@ -13,13 +13,6 @@ import {
   runOrResumeManifestBoundMintAuthorizationWorkflow,
 } from "../mint-authorization/workflow.js";
 import {
-  createManifestBoundMintItemNonCanonicalWorkflow,
-  executeManifestBoundMintItemNonCanonicalWorkflow,
-  type ManifestBoundMintItemNonCanonicalWorkflow,
-  type ManifestBoundMintItemNonCanonicalWorkflowConfig,
-  MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
-} from "../mint-item-non-canonical/workflow.js";
-import {
   createManifestBoundMissingRedeemerWorkflow,
   type ManifestBoundMissingRedeemerWorkflow,
   MISSING_REDEEMER_FAMILY_DEFINITION,
@@ -93,7 +86,6 @@ import {
   runOrResumeManifestBoundCommittedFieldShapeWorkflow,
 } from "./committed-field-shape.js";
 import {
-  defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
   type FamilyRosterDefinition,
@@ -103,7 +95,6 @@ import {
   type BundleCursorFamilyConfig,
   cursorFamilyApplicationRecord,
 } from "./family-application-registry.authenticated-certificate-family-application-record.js";
-import { bindAuthenticatedCertificateFamilyConfig } from "./family-application-registry.decision-digest-cursor-family-application-record.js";
 import {
   type CursorFamilyRequirements,
   referenceScriptBundle,
@@ -330,57 +321,4 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD =
     requires: ["replayContext"],
     constructWorkflow: createManifestBoundSpendInputSignerMissingWorkflow,
     execute: executeManifestBoundSpendInputSignerMissingWorkflow,
-  });
-
-/**
- * The second hand-written record. Mint-item-non-canonical has no
- * `FamilyDefinition`: it binds its four-step chain through its own loader.
- * Its manifest-contracts map is already role to contract, so it is the roster
- * as declared, and its config is the authenticated certificate shape.
- */
-/**
- * mintItemNonCanonical has no family definition, so its roster is its
- * manifest-contracts map and its config keys are read from the same map:
- * the `stepNN` keys in step order, and every other key but the certificate
- * as a witness role. Nothing about the family is restated here.
- */
-const MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS = Object.freeze(
-  Object.keys(MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS)
-    .filter((key) => /^step\d{2}$/u.test(key))
-    .sort(),
-);
-
-const MINT_ITEM_NON_CANONICAL_WITNESS_ROLES = Object.freeze(
-  Object.keys(MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS).filter(
-    (key) =>
-      !MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS.includes(key) &&
-      key !== "fieldPreimageCertificateMint",
-  ),
-);
-
-export const MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
-  defineFamilyApplication<
-    "mintItemNonCanonical",
-    ManifestBoundMintItemNonCanonicalWorkflowConfig,
-    ManifestBoundMintItemNonCanonicalWorkflow
-  >({
-    category: "mintItemNonCanonical",
-    roster: MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
-    requires: [],
-    bindConfig: ({ infrastructure, references }) =>
-      bindAuthenticatedCertificateFamilyConfig({
-        category: "mintItemNonCanonical",
-        infrastructure,
-        references,
-        stepConfigKeys: MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS,
-        witnessRoles: MINT_ITEM_NON_CANONICAL_WITNESS_ROLES,
-      }) as ManifestBoundMintItemNonCanonicalWorkflowConfig,
-    constructWorkflow: createManifestBoundMintItemNonCanonicalWorkflow,
-    execute: async ({ workflow, sources, journal }) =>
-      await executeManifestBoundMintItemNonCanonicalWorkflow({
-        workflow,
-        sources,
-        journal,
-      }),
-    bindsDecisionDigest: true,
   });

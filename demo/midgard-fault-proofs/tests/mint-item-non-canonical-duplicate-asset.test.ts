@@ -252,10 +252,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
         const scanned = await measured(() =>
           submitMintItemNonCanonicalStep03({
             ...common(threadOutRef, 2),
-            ...source,
-            publishedCarriageUtxos: carriage.publishedCarriageUtxos,
-            certificateUtxo: carriage.certificateUtxo,
-            certificateReferenceScriptUtxo: certificateReference,
+            evidence,
           }),
         );
         threadOutRef = scanned.nextThreadOutRef;

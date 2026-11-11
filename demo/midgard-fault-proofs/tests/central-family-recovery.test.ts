@@ -2,6 +2,10 @@ import { expect, it } from "vitest";
 
 import { executeManifestBoundFieldItemWidthIllegalWorkflow } from "../src/field-item-width-illegal/workflow.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC } from "../src/field-item-width-illegal/workflow-spec.js";
+import {
+  executeManifestBoundMintItemNonCanonicalWorkflow,
+  MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
+} from "../src/mint-item-non-canonical/workflow.js";
 import { executeManifestBoundOutputReferenceScriptDecodingWorkflow } from "../src/output-reference-script-decoding/authenticated-workflow.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC } from "../src/output-reference-script-decoding/workflow-spec.js";
 import { executeManifestBoundProtectedOutputSignerMissingWorkflow } from "../src/protected-output-signer-missing/authenticated-workflow.js";
@@ -14,9 +18,8 @@ import { executeManifestBoundTransactionOutputNonCanonicalWorkflow } from "../sr
 import { TRANSACTION_OUTPUT_NON_CANONICAL_CURSOR_SPEC } from "../src/transaction-output-non-canonical/workflow-spec.js";
 import { executeManifestBoundWitnessScriptDecodingWorkflow } from "../src/witness-script-decoding/workflow.js";
 import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "../src/witness-script-decoding/workflow-spec.js";
-import { type FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { bindFamilyRecoveryFixture } from "./support/bound-family-recovery-fixture.js";
+import { runBoundFamilyRecovery } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyTerminalRecoveryFinality,
@@ -50,33 +53,14 @@ const cases = [
     WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
     executeManifestBoundWitnessScriptDecodingWorkflow,
   ],
+  [
+    MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
+    executeManifestBoundMintItemNonCanonicalWorkflow,
+  ],
 ] as const;
 for (const [spec, execute] of cases) {
   const run = async (input: Awaited<ReturnType<typeof fixture>>) =>
-    (
-      execute as unknown as (
-        value: unknown,
-      ) => Promise<FraudProofWorkflowRunResult>
-    )({
-      ...input,
-      workflow: {
-        ...input.workflow,
-        deployment: await bindFamilyRecoveryFixture(input.workflow),
-        config: {
-          binding: input.workflow.binding,
-          // Read-only recovery must never use a provider or these builder-only inputs.
-          lucid: {},
-          signer: {
-            paymentKeyHash: "aa".repeat(28),
-            address: "unused-readonly-address",
-          },
-          contracts: {},
-          referenceScripts: {},
-        },
-      },
-      decisionDigest: input.workflow.decisionDigest,
-      sources: [],
-    });
+    await runBoundFamilyRecovery(execute, input);
   it(`${spec.category}: resumes an acknowledged-lost intent without constructing the next action`, async () => {
     const f = await fixture(spec);
     f.advance();

@@ -165,46 +165,6 @@ export const createWorkflowActuationPermitController = (input: {
   readonly rollbackGeneration: string;
 }): WorkflowActuationPermitController => createController(input);
 
-/** Mint's central journal records its exact family evidence identity rather
- * than the generic orchestrator envelope. The sealed decision pins the header
- * and payload; its detection coordinate and every durable attempt must agree
- * with this recorded identity. Callers must validate the full journal and its
- * identity against the sealed decision first. This never grants classification. */
-export const assertMintWorkflowPreparedEvidence = (
-  decision: HeaderFaultDecision,
-  entries: readonly FraudProofWorkflowJournalEntry[],
-): void => {
-  const prepared = entries[1];
-  if (prepared?.event.kind !== "prepared")
-    throw new Error("mint reconciliation requires prepared evidence");
-  const artifact = prepared.event.artifact;
-  const familyIdentity = artifact.familyIdentity;
-  const coordinate =
-    typeof familyIdentity === "string"
-      ? /^([0-9a-f]{64}):[01]:(0|[1-9][0-9]*):[0-9a-f]{64}:[0-9a-f]{64}$/u.exec(
-          familyIdentity,
-        )
-      : null;
-  if (
-    Object.keys(artifact).length !== 2 ||
-    artifact.category !== "mintItemNonCanonical" ||
-    coordinate === null ||
-    !CANONICAL_NATURAL.test(decision.position) ||
-    decision.violationId !== "mint-item-non-canonical" ||
-    decision.detectionId !==
-      `mint-item-non-canonical:${decision.position}:${coordinate[1]}:${coordinate[2]}` ||
-    entries.some(
-      ({ event }) =>
-        event.kind === "submission_intent" &&
-        (event.durableRecovery?.familyIdentity !== familyIdentity ||
-          event.actionInput.familyIdentity !== familyIdentity),
-    )
-  )
-    throw new Error(
-      "reconciliation authority changed its prepared mint fault evidence",
-    );
-};
-
 /** Historical classification grants only observation of an already signed
  * execution. It never regains runnable classification or submission authority. */
 export const createWorkflowReconciliationPermitController = (input: {
@@ -237,23 +197,19 @@ export const createWorkflowReconciliationPermitController = (input: {
     entries: input.entries,
     expectedIdentity: first.identity,
   });
-  if (input.decision.category === "mintItemNonCanonical") {
-    assertMintWorkflowPreparedEvidence(input.decision, input.entries);
-  } else {
-    const binding = prepared.event.artifact.evidenceBinding;
-    if (
-      typeof binding !== "object" ||
-      binding === null ||
-      Array.isArray(binding) ||
-      !("headerHash" in binding) ||
-      !("payloadSha256" in binding) ||
-      binding.headerHash !== input.decision.headerHash ||
-      binding.payloadSha256 !== input.decision.payloadSha256
-    )
-      throw new Error(
-        "reconciliation authority changed its prepared fault evidence",
-      );
-  }
+  const binding = prepared.event.artifact.evidenceBinding;
+  if (
+    typeof binding !== "object" ||
+    binding === null ||
+    Array.isArray(binding) ||
+    !("headerHash" in binding) ||
+    !("payloadSha256" in binding) ||
+    binding.headerHash !== input.decision.headerHash ||
+    binding.payloadSha256 !== input.decision.payloadSha256
+  )
+    throw new Error(
+      "reconciliation authority changed its prepared fault evidence",
+    );
   return createController({
     ...input,
     reconciliationReason: "existing_signed_workflow_only",

@@ -39,7 +39,11 @@ export {
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
-export { createFraudProofWorkflowRegistry } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
+export {
+  createFraudProofWorkflowRegistry,
+  FraudProofWorkflowArtifactEnvelopeError,
+  requireFraudProofWorkflowArtifactEnvelope,
+} from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 export { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
 export { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
 export {

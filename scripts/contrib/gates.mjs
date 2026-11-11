@@ -27,7 +27,7 @@ export const GATES = {
       [
         "tests/workflow-terminal-recovery.test.ts",
         "tests/central-family-recovery.test.ts",
-        "tests/mint-item-terminal-recovery.test.ts",
+        "tests/mint-item-terminal-identity-recovery.test.ts",
       ],
     ],
     [

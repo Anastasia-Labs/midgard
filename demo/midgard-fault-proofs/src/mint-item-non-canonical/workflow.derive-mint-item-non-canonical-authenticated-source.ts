@@ -233,7 +233,6 @@ export const createMintItemNonCanonicalRawL1StageResolver =
       }
       return {
         fraudulentBlockOutRef: stage.stateQueueBlockOutRef,
-        nextRemovalOutRef: stage.nextRemovalOutRef,
         fraudProofOutRef: stage.fraudProofOutRef,
       };
     }

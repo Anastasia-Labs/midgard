@@ -1,108 +1,57 @@
 /** The mint-item run of the own-thread reclaim rows: its journal, the
- * chain its thread stands on, and how L1 shows the header's removal. */
+ * chain its thread stands on, and how L1 shows the header's removal. The run
+ * is the shared runner over mint's assembled family adapter, which reclaims
+ * through the deployment's cancel port. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, vi } from "vitest";
 
-import {
-  executeManifestBoundMintItemNonCanonicalWorkflow,
-  type ManifestBoundMintItemNonCanonicalWorkflow,
-} from "../../src/mint-item-non-canonical/workflow.js";
+import { createMintItemNonCanonicalRecoveryAdapter } from "../../src/mint-item-non-canonical/workflow.js";
+import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../../src/workflow/family-l1-observation.js";
 import * as funding from "../../src/workflow/funding-reservation-permit.js";
 import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
   type FraudProofWorkflowTerminal,
-  journalJsonDigest,
   validateFraudProofWorkflowJournal,
 } from "../../src/workflow/journal.js";
+import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.js";
+import { runAdmittedFraudProofWorkflow } from "../../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
+import * as cancel from "../../src/workflow/own-thread-reclaim.linear-cancel-port.js";
 import type { OwnThreadReclaimPort } from "../../src/workflow/own-thread-reclaim.with-own-thread-reclaim.js";
+import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../../src/workflow/release-finality-policy.js";
 import { FraudProofResolvedByAnotherRecordError } from "../../src/workflow/resolved-by-another-record.js";
+import { bindFamilyRecoveryFixture } from "./bound-family-recovery-fixture.js";
+import { noSignedRead } from "./terminal-verifier.js";
 
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 export const FINAL_DEPTH = policy.automaticRecoveryMaxDepth + 2;
-const STEP_ONE = "41".repeat(32);
-const STEP_TWO = "42".repeat(32);
-export const OUR_THREAD = `${STEP_TWO}#0`;
+export const OUR_THREAD = `${"42".repeat(32)}#0`;
 export const RECLAIM_TX = "43".repeat(32);
 export const SIBLING_PROOF = "44".repeat(32);
 export const REMOVAL = "55".repeat(32);
 const THREAD_LOVELACE = "9000000";
+const category = "mintItemNonCanonical" as const;
 
-/** Our run on a mint-item header: two steps confirmed, so our thread
- * stands at step two, unless `stepsTaken` is zero. */
+/** Our run on a mint-item header: our thread stands at step two, unless
+ * `stepsTaken` is zero. */
 export const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
   const headerHash = "22".repeat(28);
   const fingerprint = "11".repeat(32);
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: fingerprint,
-    category: "mintItemNonCanonical" as const,
-    target: { kind: "state_queue_header" as const, headerHash },
-    decisionDigest: "33".repeat(32),
+  const releaseFinality = {
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+    deploymentIdentityDigest: fingerprint,
+    blueprintHash: "cc".repeat(32),
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
+    policy,
   };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  const entries: FraudProofWorkflowJournalEntry[] = [];
-  const push = (event: FraudProofWorkflowJournalEntry["event"]) =>
-    entries.push({
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence: entries.length,
-      recordedAt: "2026-09-16T12:00:00.000Z",
-      event,
-    });
-  push({ kind: "started" });
-  const artifact = {
-    category: "mintItemNonCanonical",
-    familyIdentity: "retained-evidence",
-  };
-  push({
-    kind: "prepared",
-    artifact,
-    artifactDigest: journalJsonDigest(artifact),
-  });
-  const steps = [
-    ["mintItemNonCanonical:submitStep01", STEP_ONE, "none", "step01"],
-    ["mintItemNonCanonical:submitStep02", STEP_TWO, "step01", "step02"],
-  ] as const;
-  for (const [actionId, txHash, sourceStage, targetStage] of steps.slice(
-    0,
-    stepsTaken,
-  )) {
-    push({
-      kind: "preflight_passed",
-      actionId,
-      txHash,
-      localEvaluator: "lucid",
-      referenceScripts: [],
-    });
-    push({
-      kind: "submission_intent",
-      actionId,
-      txHash,
-      attempt: 1,
-      actionInput: {},
-      durableRecovery: {
-        familyIdentity: "retained-evidence",
-        sourceStage,
-        targetStage,
-      },
-    });
-    push({ kind: "submitted", actionId, txHash, attempt: 1 });
-    push({ kind: "reconciled", actionId, txHash, outcome: "confirmed" });
-    push({ kind: "confirmed", actionId, txHash });
-  }
   const terminal: FraudProofWorkflowTerminal = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-    category: identity.category,
+    category,
     headerHash,
     proofToken: {
       unit: "66".repeat(28),
@@ -174,9 +123,15 @@ export const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
   const removedBy = { kind: "sibling" as "sibling" | "other" };
   /** The removal's depth, as either record shows it. */
   const removalAt = { depth: FINAL_DEPTH };
+  const provenance = {
+    trustClass: "authenticated_cardano_l1",
+    sourceId: "local-transport-test",
+    grade: "security",
+  } as const;
   const observe = vi.fn(async () => {
     if (removedBy.kind === "sibling")
       return {
+        provenance,
         stage: {
           kind: "removed" as const,
           terminal: {
@@ -210,59 +165,108 @@ export const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
       txHash: RECLAIM_TX,
       scriptExecution: "reference_scripts" as const,
       localUplcEvaluation: { status: "passed" as const, evaluator: "uplc-v1" },
-      referenceScripts: [],
+      referenceScripts: [
+        {
+          role: "family-step-cancel",
+          outRef: `${"b2".repeat(32)}#0`,
+          scriptHash: "c3".repeat(28),
+        },
+      ],
     })),
     submit: vi.fn(
       async ({ preflight }: { preflight: { txHash: string } }) =>
         preflight.txHash,
     ),
   });
-  const workflow = (reclaim: OwnThreadReclaimPort | undefined) =>
-    ({
-      binding: {
-        deploymentFingerprint: fingerprint,
-        definition: { category: identity.category, headerHash },
-        releaseFinality: {
-          schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-          deploymentIdentityDigest: fingerprint,
-          blueprintHash: "cc".repeat(32),
-          policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-          policy,
-        },
+  const forbidden = async (): Promise<never> => {
+    throw new Error("must not refetch the removed header or its DA");
+  };
+  /** Mint's shared assembly over this deployment: its cancel port is
+   * `reclaim`, or, with none, an L1 view that cannot list our threads. */
+  const assemble = async (reclaim: OwnThreadReclaimPort | undefined) => {
+    const binding = {
+      deploymentFingerprint: fingerprint,
+      definition: { category, headerHash },
+      releaseFinality,
+    };
+    const l1 = {
+      portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+      category,
+      observe,
+      observeHeader: forbidden,
+      transactionConfirmed,
+      publications: {
+        observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+        observeExact: forbidden,
       },
-      decisionDigest: identity.decisionDigest,
-      l1: {
-        category: identity.category,
-        observe,
-        observeHeader: async () => {
-          throw new Error("must not refetch the removed header or its DA");
-        },
-        transactionConfirmed,
-      },
-      ...(reclaim === undefined ? {} : { reclaim }),
-    }) as unknown as ManifestBoundMintItemNonCanonicalWorkflow;
+      observeSignedTransaction: noSignedRead,
+      ...(reclaim === undefined
+        ? {}
+        : {
+            observeOwnThreads: async () =>
+              await reclaim.observe({ headerHash }),
+          }),
+    };
+    const workflow = {
+      binding,
+      l1,
+      stateQueueMutationLeaseCoordinator: { acquire: forbidden },
+    };
+    const linearCancel = vi
+      .spyOn(cancel, "createLinearCancelReclaimPort")
+      .mockReturnValue(reclaim!);
+    try {
+      return createMintItemNonCanonicalRecoveryAdapter({
+        ...workflow,
+        deployment: await bindFamilyRecoveryFixture(workflow as never),
+        config: { binding },
+      } as never);
+    } finally {
+      linearCancel.mockRestore();
+    }
+  };
+  const entries: FraudProofWorkflowJournalEntry[] = [];
   const journal: FraudProofWorkflowJournalStore = {
     load: async (id) => {
-      expect(id).toBe(workflowId);
+      if (entries.length > 0) expect(id).toBe(entries[0]!.workflowId);
       return [...entries];
     },
     append: async (entry, sequence) => {
       expect(sequence).toBe(entries.length);
       validateFraudProofWorkflowJournal({
-        workflowId,
+        workflowId: entry.workflowId,
         entries: [...entries, entry],
-        expectedIdentity: identity,
+        expectedIdentity: entry.identity,
       });
       entries.push(structuredClone(entry));
     },
   };
   const release = vi.spyOn(funding, "releaseWorkflowFundingReservation");
-  const execute = (reclaim: OwnThreadReclaimPort | undefined) =>
-    executeManifestBoundMintItemNonCanonicalWorkflow({
-      workflow: workflow(reclaim),
-      sources: [],
+  /** One run of the shared runner, as a restarted process starts it. */
+  const execute = async (reclaim: OwnThreadReclaimPort | undefined) => {
+    const assembled = await assemble(reclaim);
+    return await runAdmittedFraudProofWorkflow({
+      deploymentFingerprint: fingerprint,
+      category,
+      headerHash,
+      evidenceBinding: {
+        route: "canonical_block",
+        headerHash,
+        payloadEnvelopeSha256: "77".repeat(32),
+        payloadSha256: "78".repeat(32),
+        l1BlockHash: "79".repeat(32),
+        l1Slot: "1",
+      },
+      prepareFamilyArtifact: async () => ({ retained: "evidence" }),
+      registry: createFraudProofWorkflowRegistry({
+        adapters: [assembled.adapter],
+        launchScope: [category],
+      }),
       journal,
+      terminalVerifier: assembled.terminalVerifier,
+      releaseFinality,
     });
+  };
   return {
     entries,
     land,

@@ -238,7 +238,6 @@ export const createMintItemNonCanonicalBoundConfig = (
 
 export type MintItemNonCanonicalStage = Readonly<{
   fraudulentBlockOutRef: string;
-  nextRemovalOutRef?: string;
   fraudProofOutRef?: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;

@@ -1,5 +1,6 @@
 import {
   type FraudProofWorkflowJournalEntry,
+  requireFraudProofWorkflowArtifactEnvelope,
   validateFraudProofWorkflowJournal,
 } from "@al-ft/midgard-fault-proofs";
 
@@ -48,6 +49,7 @@ export const readWatcherProofExecution = (input: {
     entries: selected.entries,
     expectedIdentity: first.identity,
   });
+  requireFraudProofWorkflowArtifactEnvelope(selected);
   if (first.identity.deploymentFingerprint !== input.deploymentFingerprint)
     throw new Error("proof objective contains a foreign execution");
   if (
