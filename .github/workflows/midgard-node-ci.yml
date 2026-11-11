@@ -568,6 +568,22 @@ jobs:
       - name: Check validation-auxiliary-witness ABI golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:validation-auxiliary-witness-v1
+      # The validation one-step cross-language channel: one-step evidence the
+      # TypeScript builders produce, replayed by the generated Aiken module
+      # `validation-one-step-cross-language.test.ak`. Without this step an
+      # edited builder plus a `make validation-one-step-cross-language`
+      # re-greens the Aiken suite with nothing to notice.
+      - name: Check validation one-step cross-language vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-one-step-cross-language
+      # The validation trace transcript: the whole trace the builder emits for
+      # every traceable emission-order row, published by the emission-order
+      # on-chain suite after its own checks pass. It is the only golden that
+      # pins every byte of a trace, so a builder change that moves one names
+      # the row and phase here.
+      - name: Check validation trace transcript
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-trace-transcript-v1
       # The transition-trace ABI golden channel. The midgard-node job's test
       # step already holds tests/fixtures/transition-trace-abi.json against the
       # SDK encoder, and `aiken check` decodes every one of those fixtures into

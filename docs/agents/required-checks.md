@@ -1206,6 +1206,56 @@ Golden channel known-builtin-failure-conformance (@al-ft/midgard-validation).
   - `demo/midgard-user-cli/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:validation-trace-transcript-v1`
+
+Golden channel validation-trace-transcript-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:validation-trace-transcript-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:validation-trace-transcript-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-validation-trace-transcript-v1-fixture.mjs`
+  - `demo/midgard-validation/tests/emission-order.aiken-rows.test.ts`
+  - `demo/midgard-validation/tests/fixtures/validation-trace-transcript-v1.json`
+  - `onchain/aiken/lib/midgard/validation-machine-tests/emission-order-rows.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:validation-one-step-cross-language`
+
+Golden channel validation-one-step-cross-language (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:validation-one-step-cross-language:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:validation-one-step-cross-language:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs`
+  - `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-user-cli/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:transition-trace-abi`
 
 Golden channel transition-trace-abi (midgard-node).

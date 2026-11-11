@@ -1021,6 +1021,10 @@
       "generators": [
         "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs"
       ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:validation-one-step-cross-language:sync",
+        "demo/midgard-validation:fixtures:validation-one-step-cross-language:check"
+      ],
       "producers": ["demo/midgard-validation"],
       "inputs": [],
       "outputs": [
@@ -1031,10 +1035,11 @@
         "run": "make validation-one-step-cross-language"
       },
       "check": {
-        "run": "pnpm --dir demo/midgard-validation run build && node demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs --check"
+        "run": "pnpm --dir demo/midgard-validation run fixtures:validation-one-step-cross-language:check"
       },
       "ci": {
-        "none": "No workflow step runs this generator's --check."
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check validation one-step cross-language vectors"
       }
     },
     {
@@ -1068,6 +1073,40 @@
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Build, typecheck, and test Midgard validation",
         "via": "demo/midgard-validation/tests/emission-order.aiken-rows.test.ts"
+      }
+    },
+    {
+      "id": "validation-trace-transcript-v1",
+      "kind": "golden",
+      "summary": "The whole trace the builder emits for every traceable emission-order row: verdict, phase runs, trace root, a digest of every work and auxiliary witness, the context digest and the ledger operations. The emission-order on-chain suite publishes it on the Aiken vector channel after its own checks pass; no Aiken output.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-validation-trace-transcript-v1-fixture.mjs"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_AIKEN_VECTOR"],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:validation-trace-transcript-v1:sync",
+        "demo/midgard-validation:fixtures:validation-trace-transcript-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/emission-order.*.ts",
+        "demo/midgard-validation/tests/helpers/aiken-vector-channel.ts",
+        "demo/midgard-validation/tests/reject-subject.support.ts",
+        "demo/midgard-validation/tests/validation-fixtures.ts"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/validation-trace-transcript-v1.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:validation-trace-transcript-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:validation-trace-transcript-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check validation trace transcript"
       }
     },
     {

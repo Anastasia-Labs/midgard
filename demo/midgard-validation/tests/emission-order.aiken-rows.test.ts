@@ -26,6 +26,8 @@ import {
   type Row,
   stoppingStepVector,
 } from "./emission-order.support.js";
+import { transcriptRow } from "./emission-order.transcript.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 
 /**
  * The on-chain verdict of every emission-order row. Each row's trace is built
@@ -46,6 +48,13 @@ import {
  *
  * Set `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` to rewrite that file; otherwise
  * this suite fails when the checked-in vectors are stale.
+ *
+ * Each row's whole trace also goes into the validation trace transcript
+ * (`tests/fixtures/validation-trace-transcript-v1.json`). Once every check
+ * here passes, the suite publishes the transcript on the
+ * `MIDGARD_WRITE_AIKEN_VECTOR` channel, and
+ * `scripts/generate-validation-trace-transcript-v1-fixture.mjs` writes or
+ * checks the fixture from it.
  *
  * Each on-chain test asserts the row's expected reason, from its table. Where
  * the row leaves `input_index` out (case (a), pending X-N2C2), that coordinate
@@ -317,12 +326,14 @@ const renderAikenRows = (rows: readonly Exported[]) => {
 
 describe("emission order on chain: the one-step verdict at each row's stopping step", () => {
   const exported: Exported[] = [];
+  const transcript: ReturnType<typeof transcriptRow>[] = [];
 
   it.each(ROWS)(
     "$name",
     async (row) => {
       const trace = await machineTrace(row);
       expectTraceVerdict(row, trace);
+      transcript.push(transcriptRow(row.name, trace));
       exported.push({
         name: row.name,
         reason: rowReason(row, trace),
@@ -345,5 +356,10 @@ describe("emission order on chain: the one-step verdict at each row's stopping s
     if (process.env.MIDGARD_WRITE_EMISSION_ORDER_ROWS === "1")
       writeFileSync(AIKEN_ROWS_PATH, rendered);
     expect(readFileSync(AIKEN_ROWS_PATH, "utf8")).toBe(rendered);
+    publishAikenVector("validation-trace-transcript-v1", {
+      schema: "midgard-validation-trace-transcript-v1",
+      version: 1,
+      rows: transcript,
+    });
   });
 });
