@@ -59,6 +59,12 @@ export const buildBlockConfirmationAction = (
       globals.AVAILABLE_CONFIRMED_BLOCK,
     );
     const pending = yield* PendingBlockFinalizationsDB.retrieveActive();
+    // Every submission's journal is durable and active before its broadcast,
+    // so a submission no active journal holds is resolved.
+    if (Option.isNone(pending)) {
+      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+    }
     // A provably idle node refreshes its snapshot with growing gaps instead of
     // spawning a worker every tick; the heartbeat above stays fresh.
     if (yield* skipIdleConfirmationTick(globals, pending)) return;
@@ -236,6 +242,8 @@ export const buildBlockConfirmationAction = (
             globals.LOCAL_FINALIZATION_PENDING,
             localFinalizationRecoveryPending,
           );
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
           yield* Ref.set(
             globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
             localFinalizationRecoveryPending
@@ -286,10 +294,6 @@ export const buildBlockConfirmationAction = (
               recoveryBlock,
             );
           }
-        }
-        if (Option.isSome(pending)) {
-          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
         }
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,

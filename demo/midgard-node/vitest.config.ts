@@ -38,6 +38,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/signed-intent-response-loss-emulator.test.ts
  *   tests/signed-intent-restart-emulator.test.ts
  *   tests/signed-intent-continuation-emulator.test.ts
+ *   tests/observed-restart-emulator.test.ts
+ *   tests/unresolved-block-submission-restart.test.ts
  *   tests/commit-replacement-state-queue-emulator.test.ts
  *   tests/orphan-funded-transfer-repair-emulator.test.ts
  *   tests/working-ledger-rebuild-order.test.ts

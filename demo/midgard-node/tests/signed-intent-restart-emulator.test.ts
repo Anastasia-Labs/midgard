@@ -4,7 +4,7 @@ import { inspect } from "node:util";
 
 import { SqlClient } from "@effect/sql";
 import { coreToTxOutput } from "@lucid-evolution/lucid";
-import { Effect, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
@@ -159,6 +159,14 @@ it("recreates production services after accepted response loss, preserves intent
         Pending.Status.PendingSubmission,
       );
       const headerHash = row[Pending.Columns.HEADER_HASH].toString("hex");
+      // The confirmation clears any submission no active journal holds: the
+      // journal is active before its commit reaches the provider.
+      const active = await Effect.runPromise(
+        Pending.retrieveActive().pipe(Effect.provide(Database.layer)),
+      );
+      expect(
+        Option.getOrThrow(active)[Pending.Columns.HEADER_HASH].toString("hex"),
+      ).toBe(headerHash);
       const unit =
         fixture.contracts.stateQueue.policyId +
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
