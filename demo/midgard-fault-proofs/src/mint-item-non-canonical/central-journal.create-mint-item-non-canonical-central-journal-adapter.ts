@@ -10,6 +10,7 @@ import {
   releaseWorkflowFundingReservation,
 } from "../workflow/funding-reservation-permit.js";
 import {
+  computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
@@ -48,7 +49,6 @@ import { createMintItemCanonicalReconciliation } from "./central-journal.reconci
 import {
   actionId,
   type DurableRecovery,
-  familyWorkflowId,
   type MintItemRemovalAction,
   now,
   recoveryFrom,
@@ -92,9 +92,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     target: { kind: "state_queue_header", headerHash },
     decisionDigest,
   };
-  // Byte-for-byte the central workflow-id preimage, kept family-local until
-  // the frozen category is admitted to the SDK union.
-  const workflowId = familyWorkflowId(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
   const writer = createStoredWorkflowJournalWriter({
     store,

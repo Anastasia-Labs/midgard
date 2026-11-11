@@ -11,6 +11,7 @@ import {
 } from "../src/mint-item-non-canonical/central-journal.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
 import {
+  computeFraudProofWorkflowId,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
@@ -68,6 +69,32 @@ const bridge = (
   });
 
 describe("mintItemNonCanonical durable journal", () => {
+  it("keys existing journals by the shared workflow id over the same preimage", () => {
+    const { workflowId } = bridge(memoryStore().store);
+    expect(workflowId).toBe(
+      createHash("sha256")
+        .update(
+          [
+            "midgard-fraud-proof-workflow-identity-v1",
+            "1".repeat(64),
+            "mintItemNonCanonical",
+            `header:${"2".repeat(56)}`,
+            `decision:${"3".repeat(64)}`,
+          ].join("\u0000"),
+        )
+        .digest("hex"),
+    );
+    expect(workflowId).toBe(
+      computeFraudProofWorkflowId({
+        schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
+        deploymentFingerprint: "1".repeat(64),
+        category: "mintItemNonCanonical",
+        target: { kind: "state_queue_header", headerHash: "2".repeat(56) },
+        decisionDigest: "3".repeat(64),
+      }),
+    );
+  });
+
   it("keeps a depth-zero mempool intent reserved and reopens its same receipt after a canonical rollback", async () => {
     const fixture = await signedWorkflowTransactionFixture({ ttl: null });
     // Present in the mempool at depth zero: canonical recovery reports pending.

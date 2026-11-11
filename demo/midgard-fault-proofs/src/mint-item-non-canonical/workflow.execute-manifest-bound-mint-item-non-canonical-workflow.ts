@@ -1,5 +1,3 @@
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
@@ -8,11 +6,8 @@ import {
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+import { type FamilyDeploymentContext } from "../workflow/family-definition.js";
+import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
   asWorkflowFundingShortfall,
@@ -21,10 +16,8 @@ import {
   WorkflowFundingReservationUnavailableError,
 } from "../workflow/funding-reservation-permit.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type {
-  FraudProofL1Source,
-  FraudProofSignedTransactionRecovery,
-} from "../workflow/l1-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import { createLinearCancelReclaimPort } from "../workflow/own-thread-reclaim.linear-cancel-port.js";
 import type { OwnThreadReclaimPort } from "../workflow/own-thread-reclaim.with-own-thread-reclaim.js";
 import {
@@ -46,14 +39,17 @@ import {
   createMintItemNonCanonicalRawL1StageResolver,
   deriveMintItemNonCanonicalAuthenticatedSource,
   type MintItemNonCanonicalRuntimeLoader,
+  mintItemStageFromL1,
 } from "./workflow.derive-mint-item-non-canonical-authenticated-source.js";
 import {
+  createMintItemNonCanonicalBoundConfig,
   deriveMintItemNonCanonicalEvidenceFromCanonicalBlock,
   type LoadManifestBoundMintItemNonCanonicalConfig,
   loadManifestBoundMintItemNonCanonicalConfig,
   type ManifestBoundMintItemNonCanonicalConfig,
   MINT_ITEM_NON_CANONICAL_WORKFLOW,
 } from "./workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION } from "./workflow.mint-item-non-canonical-family-definition.js";
 import { resolveMintItemByAnotherRecord } from "./workflow.resolve-mint-item-by-another-record.js";
 
 export const loadMintItemNonCanonicalRuntime = async (
@@ -118,12 +114,18 @@ export type ManifestBoundMintItemNonCanonicalWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
+type MintItemNonCanonicalDeployment = FamilyDeploymentContext<
+  "mintItemNonCanonical",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  true,
+  4
+>;
+
 export type ManifestBoundMintItemNonCanonicalWorkflow = Readonly<{
   workflowVersion: typeof MINT_ITEM_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundMintItemNonCanonicalConfig;
   binding: FraudProofWorkflowDeploymentBinding<"mintItemNonCanonical">;
-  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName> &
-    FraudProofSignedTransactionRecovery;
+  l1: MintItemNonCanonicalDeployment["l1"];
   /** The cancel of one of our threads, to reclaim it from a header another
    * record removed. Absent, such a thread holds under the operator's alarm. */
   reclaim?: OwnThreadReclaimPort;
@@ -135,13 +137,28 @@ export type ManifestBoundMintItemNonCanonicalWorkflow = Readonly<{
 export const createManifestBoundMintItemNonCanonicalWorkflow = async (
   input: ManifestBoundMintItemNonCanonicalWorkflowConfig,
 ): Promise<ManifestBoundMintItemNonCanonicalWorkflow> => {
-  const config = await loadManifestBoundMintItemNonCanonicalConfig(input);
-  const l1 = createFraudProofFamilyL1ObservationPort({
-    l1: input.l1Source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition,
-  });
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = createMintItemNonCanonicalBoundConfig(
+    input,
+    deployment.binding,
+  );
+  const l1 = deployment.l1;
   const { observeOwnThreads } = l1;
   const reclaim =
     observeOwnThreads === undefined
@@ -175,31 +192,6 @@ export const createManifestBoundMintItemNonCanonicalWorkflow = async (
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
   });
-};
-
-const mintItemStageFromL1 = (
-  stage: Awaited<
-    ReturnType<
-      FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>["observe"]
-    >
-  >["stage"],
-): MintItemStage => {
-  switch (stage.kind) {
-    case "not_started":
-      return "none";
-    case "step":
-      if (stage.step === 1) return "step01";
-      if (stage.step === 2) return "step02";
-      if (stage.step === 3) return "step03";
-      if (stage.step === 4) return "step04";
-      throw new Error(
-        "mintItemNonCanonical L1 stage exceeds four-step topology",
-      );
-    case "proof_token":
-      return "proven";
-    case "removed":
-      return "removed";
-  }
 };
 
 /**

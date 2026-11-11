@@ -33,6 +33,7 @@ import {
   registeredContracts,
   witnessSetCborOf,
 } from "./support/mint-item-non-canonical-lifecycle.js";
+import { mintItemSharedRunnerIdentity } from "./support/mint-item-shared-runner-identity.js";
 import {
   canonicalMintItems,
   lateMalformedMintItems,
@@ -463,5 +464,11 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
     console.info(
       `mintItemNonCanonical: ${vectors.length} vectors, ${transactions} measured transactions; maximum field and cancellation/resume verified; maxima ${maxBytes} bytes, ${maxMemory} memory, ${maxSteps} CPU`,
     );
+  }, 900_000);
+
+  it("builds every proof step and removal byte for byte as the bespoke runner does", async () => {
+    const rows = await mintItemSharedRunnerIdentity();
+    console.table(rows);
+    expect(rows.filter(({ equal }) => !equal)).toEqual([]);
   }, 900_000);
 });

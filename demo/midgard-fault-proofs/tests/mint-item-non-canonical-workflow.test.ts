@@ -232,13 +232,21 @@ describe("mintItemNonCanonical production workflow", () => {
     ).toThrow(/contains no finding/u);
 
     const pair = blockWithOutputs([malformed, malformed]);
-    expect(
-      detectMintItemNonCanonicalCompleteReplay(pair.block as never),
-    ).toHaveLength(2);
+    const pairDetections = detectMintItemNonCanonicalCompleteReplay(
+      pair.block as never,
+    );
+    expect(pairDetections).toHaveLength(2);
     expect(
       deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(pair.block as never)
         .itemIndex,
     ).toBe(0);
+    // The shared runner proves the finding its classifier selected.
+    expect(
+      deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(
+        pair.block as never,
+        pairDetections[1]!.detectionId,
+      ).itemIndex,
+    ).toBe(1);
   });
 
   it("resolves each physical checkpoint against the authenticated raw-L1 stage", async () => {

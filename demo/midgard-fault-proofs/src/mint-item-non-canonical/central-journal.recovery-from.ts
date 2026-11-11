@@ -1,40 +1,9 @@
-import { createHash } from "node:crypto";
-
 import { workflowJournalHasFundingReservation } from "../workflow/funding-reservation-permit.js";
-import {
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalEntry } from "../workflow/journal.js";
 import type {
   MintItemAction,
   MintItemStage,
 } from "./mint-item-non-canonical.js";
-
-export const familyWorkflowId = (
-  identity: FraudProofWorkflowIdentity,
-): string => {
-  if (!/^[0-9a-f]{64}$/u.test(identity.deploymentFingerprint))
-    throw new Error("mintItemNonCanonical deployment fingerprint is invalid");
-  if (
-    identity.target.kind !== "state_queue_header" ||
-    !/^[0-9a-f]{56}$/u.test(identity.target.headerHash)
-  )
-    throw new Error("mintItemNonCanonical target header hash is invalid");
-  return createHash("sha256")
-    .update(
-      [
-        FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-        identity.deploymentFingerprint,
-        "mintItemNonCanonical",
-        `header:${identity.target.headerHash}`,
-        ...(identity.decisionDigest === undefined
-          ? []
-          : [`decision:${identity.decisionDigest}`]),
-      ].join("\u0000"),
-    )
-    .digest("hex");
-};
 
 export type SubmitAction = Exclude<MintItemAction, "done">;
 

@@ -19,12 +19,14 @@ import {
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { type createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
   type MintItemEvidence,
   type MintItemJournal,
   type MintItemStage,
 } from "./mint-item-non-canonical.js";
 import {
+  deriveMintItemNonCanonicalEvidenceFromCanonicalBlock,
   type LoadManifestBoundMintItemNonCanonicalConfig,
   type ManifestBoundMintItemNonCanonicalConfig,
   type MintItemNonCanonicalAuthenticatedSource,
@@ -126,6 +128,62 @@ export const deriveMintItemNonCanonicalAuthenticatedSource = async ({
     forcedDirection: 0n,
   });
 };
+
+export const mintItemStageFromL1 = (
+  stage: Awaited<
+    ReturnType<
+      FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>["observe"]
+    >
+  >["stage"],
+): MintItemStage => {
+  switch (stage.kind) {
+    case "not_started":
+      return "none";
+    case "step":
+      if (stage.step === 1) return "step01";
+      if (stage.step === 2) return "step02";
+      if (stage.step === 3) return "step03";
+      if (stage.step === 4) return "step04";
+      throw new Error(
+        "mintItemNonCanonical L1 stage exceeds four-step topology",
+      );
+    case "proof_token":
+      return "proven";
+    case "removed":
+      return "removed";
+  }
+};
+
+/** Material re-derived from admitted canonical evidence before durable encoding. */
+export const prepareMintItemNonCanonicalRecoveryMaterial = async (
+  canonical: CanonicalBlockEvidence,
+  detectionId: string,
+) => {
+  const evidence = deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(
+    canonical,
+    detectionId,
+  );
+  const source = await deriveMintItemNonCanonicalAuthenticatedSource({
+    block: canonical,
+    evidence,
+  });
+  return {
+    category: "mintItemNonCanonical" as const,
+    headerHash: canonical.headerHash,
+    detectionId,
+    evidence,
+    source,
+  };
+};
+
+export type MintItemNonCanonicalAssemblyRuntime = Readonly<{
+  config: ManifestBoundMintItemNonCanonicalConfig;
+  material: ReturnType<
+    typeof createCanonicalFamilyArtifactPort<
+      Awaited<ReturnType<typeof prepareMintItemNonCanonicalRecoveryMaterial>>
+    >
+  >;
+}>;
 
 export type MintItemNonCanonicalRuntimeLoader = Readonly<{
   config: LoadManifestBoundMintItemNonCanonicalConfig;

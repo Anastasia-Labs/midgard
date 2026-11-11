@@ -19,7 +19,10 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import { type MintItemEvidence } from "./mint-item-non-canonical.js";
-import { findMintItemNonCanonicalBlockEvidence } from "./replay.js";
+import {
+  findMintItemNonCanonicalBlockEvidence,
+  mintItemNonCanonicalDetectionId,
+} from "./replay.js";
 import {
   MintItemStep02DatumSchema,
   MintItemStep03DatumSchema,
@@ -163,6 +166,17 @@ export const loadManifestBoundMintItemNonCanonicalConfig = async (
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+  return createMintItemNonCanonicalBoundConfig(input, binding);
+};
+
+/** The family configuration over a deployment binding already admitted. */
+export const createMintItemNonCanonicalBoundConfig = (
+  input: Pick<
+    LoadManifestBoundMintItemNonCanonicalConfig,
+    "lucid" | "signer" | "referenceScripts"
+  >,
+  binding: FraudProofWorkflowDeploymentBinding<"mintItemNonCanonical">,
+): ManifestBoundMintItemNonCanonicalConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
     readonly mintItemNonCanonical?: MintItemNonCanonicalContracts;
   };
@@ -242,14 +256,26 @@ export type MintItemNonCanonicalStage = Readonly<{
   validTo?: bigint;
 }>;
 
-/** Derives the only admissible family evidence from L1-bound public retained DA. */
+/**
+ * Derives family evidence from L1-bound public retained DA: the finding the
+ * classifier selected when its detection id is given, else the first.
+ */
 export const deriveMintItemNonCanonicalEvidenceFromCanonicalBlock = (
   block: CanonicalBlockEvidence,
+  detectionId?: string,
 ): MintItemEvidence => {
   const findings = findMintItemNonCanonicalBlockEvidence(block);
   if (findings.length === 0)
     throw new Error("mintItemNonCanonical retained DA contains no finding");
-  return findings[0]!.evidence;
+  if (detectionId === undefined) return findings[0]!.evidence;
+  const selected = findings.filter(
+    (finding) => mintItemNonCanonicalDetectionId(finding) === detectionId,
+  );
+  if (selected.length !== 1)
+    throw new Error(
+      "mintItemNonCanonical retained DA lacks the selected detection",
+    );
+  return selected[0]!.evidence;
 };
 
 export type MintItemNonCanonicalAuthenticatedSource = Readonly<{

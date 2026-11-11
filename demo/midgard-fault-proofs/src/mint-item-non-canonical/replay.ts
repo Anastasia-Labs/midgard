@@ -125,13 +125,26 @@ export const findMintItemNonCanonicalBlockEvidence = (
     }),
   ]);
 
+/** The classifier's identity for one finding of this block. */
+export const mintItemNonCanonicalDetectionId = ({
+  transactionIndex,
+  evidence,
+}: {
+  readonly transactionIndex: number;
+  readonly evidence: MintItemEvidence;
+}): string =>
+  `mint-item-non-canonical:${transactionIndex}:${evidence.subject.transaction_id}:${evidence.itemIndex}`;
+
 export const detectMintItemNonCanonicalCompleteReplay = (
   block: CanonicalBlockEvidence,
 ): readonly CanonicalViolationDetection[] =>
   findMintItemNonCanonicalBlockEvidence(block).map(
     ({ transactionIndex, evidence }) => ({
       ...verdictDetectionSubject(evidence.subject),
-      detectionId: `mint-item-non-canonical:${transactionIndex}:${evidence.subject.transaction_id}:${evidence.itemIndex}`,
+      detectionId: mintItemNonCanonicalDetectionId({
+        transactionIndex,
+        evidence,
+      }),
       headerHash: block.headerHash,
       violationId: "mint-item-non-canonical",
       position: BigInt(transactionIndex),

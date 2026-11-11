@@ -11,6 +11,7 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { createMintItemNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
   type MintItemEvidence,
@@ -39,6 +40,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
   centralJournal,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
+  preSubmitBoundary,
 }: {
   readonly config: ManifestBoundMintItemNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<MintItemStage>;
@@ -49,6 +51,8 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
+  /** Admits every proof-step transaction when no central journal is given. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }) => ({
   observe,
   submit: async (
@@ -66,6 +70,10 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         "mintItemNonCanonical evidence transaction id is not canonical",
       );
     const familyIdentity = mintItemEvidenceIdentity(evidence);
+    const boundary = (from: MintItemStage, to: MintItemStage) =>
+      centralJournal === undefined
+        ? preSubmitBoundary
+        : centralJournal.boundary(action, familyIdentity, from, to);
     let transition: readonly [MintItemStage, MintItemStage] =
       action === "submitInit"
         ? (["none", "step01"] as const)
@@ -102,12 +110,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary: boundary(transition[0], transition[1]),
       });
       return {
         stage: "step01" as const,
@@ -133,12 +136,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary: centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+          preSubmitBoundary: boundary(transition[0], transition[1]),
         });
         return {
           stage: "step02" as const,
@@ -160,12 +158,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary: boundary(transition[0], transition[1]),
       });
       return {
         stage: "step02" as const,
@@ -205,18 +198,20 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
-        certificatePreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
+        publicationPreSubmitBoundary:
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ) ?? preSubmitBoundary,
+        certificatePreSubmitBoundary:
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ) ?? preSubmitBoundary,
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -228,7 +223,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         referenceScriptUtxo: config.referenceScripts.step02,
         preSubmitBoundary:
           centralJournal === undefined
-            ? undefined
+            ? preSubmitBoundary
             : (transaction) =>
                 centralJournal.boundary(
                   action,
@@ -274,18 +269,20 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "step03",
-          auxiliaryHashes,
-        ),
-        certificatePreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "step03",
-          auxiliaryHashes,
-        ),
+        publicationPreSubmitBoundary:
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "step03",
+            auxiliaryHashes,
+          ) ?? preSubmitBoundary,
+        certificatePreSubmitBoundary:
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step03",
+            auxiliaryHashes,
+          ) ?? preSubmitBoundary,
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -296,7 +293,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         referenceScriptUtxo: config.referenceScripts.step03,
         preSubmitBoundary:
           centralJournal === undefined
-            ? undefined
+            ? preSubmitBoundary
             : (transaction) =>
                 centralJournal.boundary(
                   action,
@@ -321,12 +318,7 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step04,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary: boundary(transition[0], transition[1]),
       });
       return {
         stage: "proven" as const,
