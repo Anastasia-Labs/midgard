@@ -60,6 +60,122 @@ export const archiveAgedOutCheckpoints = (
 /** Polls L1 and DA no faster than this while the committee works. */
 const STACK_DA_POLL_MS = 10_000;
 
+/** A block of the stack's state queue as one poll reads it. */
+export type StackQueueNode = Readonly<{
+  headerHash: string;
+  /** The block's time on L1 (POSIX ms), its attestation timeout's start. */
+  blockTime: bigint;
+  attested: boolean;
+}>;
+
+/** A queue tail neither attested nor removed within its attestation bound. */
+export class StackQueueTailUnattestedError extends Error {
+  constructor(readonly headerHash: string) {
+    super(
+      `Stack queue tail ${headerHash} was neither attested nor removed after its DA attestation timeout`,
+    );
+    this.name = "StackQueueTailUnattestedError";
+  }
+}
+
+/** The stack kept appending unattested tails past the first one's bound. */
+export class StackQueueTailsOutpaceAttestationError extends Error {
+  constructor(
+    readonly firstHeaderHash: string,
+    readonly latestHeaderHash: string,
+  ) {
+    super(
+      `The stack kept appending unattested queue tails for longer than the DA attestation window: none was attested from ${firstHeaderHash}, the first this read saw, to ${latestHeaderHash}, the latest`,
+    );
+    this.name = "StackQueueTailsOutpaceAttestationError";
+  }
+}
+
+/** A queue block awaited for its attestation left the queue instead. */
+export class StackQueueNodeRemovedError extends Error {
+  constructor(readonly headerHash: string) {
+    super(
+      `Stack queue block ${headerHash} left the state queue before its DA attestation`,
+    );
+    this.name = "StackQueueNodeRemovedError";
+  }
+}
+
+/** What a wait for an attested queue block reads and does. */
+export type StackQueuePorts<Node extends StackQueueNode> = Readonly<{
+  /** The queue's last block. */
+  readTail(): Promise<Node>;
+  /** The queue's blocks from `headerHash` to its tail, absent once removed. */
+  readFrom(headerHash: string): Promise<readonly Node[] | undefined>;
+  now(): number;
+  pause(): Promise<void>;
+  attestationTimeoutMs: bigint;
+  onStage(name: string): void;
+}>;
+
+/** Whether `node`, unattested, is past the bound its attestation holds to. */
+const pastAttestationBound = (
+  ports: Pick<StackQueuePorts<StackQueueNode>, "now" | "attestationTimeoutMs">,
+  node: StackQueueNode,
+) => ports.now() > Number(node.blockTime + 2n * ports.attestationTimeoutMs);
+
+/**
+ * The stack's current queue tail once it is attested. An unattested tail is
+ * attested or removed within twice its DA attestation timeout; one that is
+ * neither fails the wait. The contract lets blocks be appended to an
+ * unattested tail, so a newer tail can replace it at every poll: the wait
+ * keeps the bound of the first unattested tail it saw, whatever arrives.
+ */
+export const awaitAttestedStackQueueTail = async <Node extends StackQueueNode>(
+  ports: StackQueuePorts<Node>,
+): Promise<Node> => {
+  let first: Node | undefined;
+  for (;;) {
+    const tail = await ports.readTail();
+    if (tail.attested) return tail;
+    first ??= tail;
+    if (pastAttestationBound(ports, tail))
+      throw new StackQueueTailUnattestedError(tail.headerHash);
+    if (pastAttestationBound(ports, first))
+      throw new StackQueueTailsOutpaceAttestationError(
+        first.headerHash,
+        tail.headerHash,
+      );
+    ports.onStage(
+      `stack queue tail ${tail.headerHash} awaits its DA attestation`,
+    );
+    await ports.pause();
+  }
+};
+
+/**
+ * The newest attested block at or after the queue's tail as first read: the
+ * state the stack has committed to by then, however many newer unattested
+ * tails arrive meanwhile. The first tail is attested or removed within its
+ * own bound; one that is removed, or neither by then with nothing after it
+ * attested, fails the wait.
+ */
+export const awaitAttestedAtOrAfterStackQueueTail = async <
+  Node extends StackQueueNode,
+>(
+  ports: StackQueuePorts<Node>,
+): Promise<Node> => {
+  const pinned = await ports.readTail();
+  for (let from: readonly Node[] | undefined = [pinned]; ; ) {
+    if (from === undefined)
+      throw new StackQueueNodeRemovedError(pinned.headerHash);
+    const attested = [...from].reverse().find((node) => node.attested);
+    if (attested !== undefined) return attested;
+    if (pastAttestationBound(ports, pinned))
+      throw new StackQueueTailUnattestedError(pinned.headerHash);
+    ports.onStage(
+      `stack queue block ${pinned.headerHash} awaits its DA attestation`,
+    );
+    await ports.pause();
+    from = await ports.readFrom(pinned.headerHash);
+  }
+};
+
 /**
  * A stack journey's producer-path DA: its blocks' payloads published as
  * operator-2's node would, followed through the stack's own committee and
@@ -124,6 +240,74 @@ export const stackJourneyDa = (
       attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
     });
   };
+  /** The stack's state queue's blocks, root excluded, root first. */
+  const readQueueBlocks = async () => {
+    const sorted = await Effect.runPromise(
+      SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      }),
+    );
+    if (sorted.length === 0) throw new Error("State queue has no root");
+    const blocks = sorted.flatMap((entry) =>
+      entry.datum.key === "Empty"
+        ? []
+        : [{ headerHash: entry.datum.key.Key.key, utxo: entry.utxo }],
+    );
+    if (blocks.length === 0)
+      throw new Error(
+        "The stack's state queue holds no committed block to extend",
+      );
+    return blocks;
+  };
+  const decodeQueueBlock = async (
+    block: Readonly<{ headerHash: string; utxo: UTxO }>,
+  ) => {
+    const node = await decodeStateQueueNode(
+      block.utxo,
+      contracts.stateQueue.policyId,
+    );
+    return {
+      headerHash: block.headerHash,
+      blockTime: node.block_time,
+      attested: node.da_attestation !== SDK.NO_DA_ATTESTATION,
+      header: node.header,
+      // The transaction whose output now holds the block: its commit or its
+      // DA apply. Either carries the committed header on L1.
+      commitTxHash: block.utxo.txHash,
+    };
+  };
+  const queuePorts = () => ({
+    readTail: async () => decodeQueueBlock((await readQueueBlocks()).at(-1)!),
+    readFrom: async (headerHash: string) => {
+      const blocks = await readQueueBlocks();
+      const index = blocks.findIndex(
+        (block) => block.headerHash === headerHash,
+      );
+      return index === -1
+        ? undefined
+        : Promise.all(blocks.slice(index).map(decodeQueueBlock));
+    },
+    now: () => chain.now(),
+    pause,
+    attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+    onStage: input.onStage,
+  });
+  const withPublicPayload = async (
+    headerHash: string,
+    header: SDK.Header,
+    commitTxHash: string,
+  ): Promise<JourneySuccessor> => {
+    const { payloadEnvelopeCbor } = await fetchJourneyPublicDaPayload({
+      watcherConfig: await readStackJourneyWatcherConfig(
+        context.watcher.processConfigPath,
+      ),
+      deploymentIdentity: context.release.deploymentIdentity,
+      headerHash,
+      availability: { waitMs: STACK_PUBLIC_DA_TRAIL_MS },
+    });
+    return { header, headerHash, payloadEnvelopeCbor, commitTxHash };
+  };
   const followPorts = (headerHash: string) => ({
     readTarget: () => readTarget(headerHash),
     readRemoval: () => readRemoval(headerHash),
@@ -178,54 +362,20 @@ export const stackJourneyDa = (
      * is replaced by the next tail.
      */
     readAttestedTail: async (): Promise<JourneySuccessor> => {
-      const watcherConfig = await readStackJourneyWatcherConfig(
-        context.watcher.processConfigPath,
-      );
-      const queue = SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-        stateQueuePolicyId: contracts.stateQueue.policyId,
-      });
-      for (;;) {
-        const last = (await Effect.runPromise(queue)).at(-1);
-        if (last === undefined) throw new Error("State queue has no root");
-        if (last.datum.key === "Empty")
-          throw new Error(
-            "The stack's state queue holds no committed block to extend",
-          );
-        const headerHash = last.datum.key.Key.key;
-        const node = await decodeStateQueueNode(
-          last.utxo,
-          contracts.stateQueue.policyId,
-        );
-        if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
-          const { payloadEnvelopeCbor } = await fetchJourneyPublicDaPayload({
-            watcherConfig,
-            deploymentIdentity: context.release.deploymentIdentity,
-            headerHash,
-            availability: { waitMs: STACK_PUBLIC_DA_TRAIL_MS },
-          });
-          return {
-            header: node.header,
-            headerHash,
-            payloadEnvelopeCbor,
-            // The transaction whose output now holds the tail: its commit or
-            // its DA apply. Either carries the committed header on L1.
-            commitTxHash: last.utxo.txHash,
-          };
-        }
-        // An unattested tail is attested or removed within its timeout.
-        if (
-          chain.now() >
-          Number(node.block_time + 2n * SDK.DA_ATTESTATION_TIMEOUT_MS)
-        )
-          throw new Error(
-            `Stack queue tail ${headerHash} was neither attested nor removed after its DA attestation timeout`,
-          );
-        input.onStage(
-          `stack queue tail ${headerHash} awaits its DA attestation`,
-        );
-        await pause();
-      }
+      const { headerHash, header, commitTxHash } =
+        await awaitAttestedStackQueueTail(queuePorts());
+      return withPublicPayload(headerHash, header, commitTxHash);
+    },
+    /**
+     * The newest attested block at or after the stack's queue tail as this
+     * call first reads it, with its payload from public DA: the state the
+     * stack has committed to by then, however many newer unattested tails
+     * arrive meanwhile. That first tail must be attested within its bound.
+     */
+    readAttestedAtOrAfterTail: async (): Promise<JourneySuccessor> => {
+      const { headerHash, header, commitTxHash } =
+        await awaitAttestedAtOrAfterStackQueueTail(queuePorts());
+      return withPublicPayload(headerHash, header, commitTxHash);
     },
   };
 };

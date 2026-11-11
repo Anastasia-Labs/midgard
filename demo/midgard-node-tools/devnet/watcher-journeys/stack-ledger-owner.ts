@@ -358,7 +358,7 @@ export const fundStackLedgerOwner = async (
     ownerHoldsOutput: async () =>
       tailHoldsLedgerOwnerOutput(
         await decodeJourneyRetainedBlock(
-          await da.readAttestedTail(),
+          await da.readAttestedAtOrAfterTail(),
           session.ledgerAt,
         ),
         owner,

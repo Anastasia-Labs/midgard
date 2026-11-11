@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { lateShiftMinimumLeadMs } from "./honest-successor.observables.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
+import { StackQueueTailUnattestedError } from "./stack-journey-da.js";
 import {
   fundStackLedgerOwnerBeforeRun,
   requireStackLedgerOwnerFunded,
@@ -66,6 +67,7 @@ const ourShiftFrom = (timeMs: number) =>
  * landed when `pendingLanded`. A `stuckScheduler` never leaves our node's
  * first shift. A `stalledKupo` keeps answering while its checkpoint never
  * reaches a deposit's validity end, so every deposit stays pending.
+ * `attestedTailFails` is how every read of the attested tail fails.
  */
 const stack = (input: {
   startMs: number;
@@ -77,6 +79,7 @@ const stack = (input: {
   buildTakesMs?: number;
   stuckScheduler?: boolean;
   stalledKupo?: boolean;
+  attestedTailFails?: Error;
 }) => {
   let clock = input.startMs;
   let pending = input.pending;
@@ -126,7 +129,11 @@ const stack = (input: {
     fund: () =>
       fundStackLedgerOwnerBeforeRun({
         ourLedgerHoldsOutput: async () => clock >= ourLedgerFromMs,
-        ownerHoldsOutput: async () => clock >= attestedFromMs,
+        ownerHoldsOutput: async () => {
+          if (input.attestedTailFails !== undefined)
+            throw input.attestedTailFails;
+          return clock >= attestedFromMs;
+        },
         readPendingDeposit: async () => pending,
         depositStatus: async (deposit) => {
           // A wait that never stops polling would otherwise hang the test.
@@ -236,6 +243,21 @@ describe("funding the drill's ledger owner before any family starts", () => {
     await run.fund();
     expect(run.builds).toEqual([]);
     expect(run.now()).toBeGreaterThanOrEqual(startMs + 90_000);
+  });
+
+  it("refuses the run, by name, when the stack's attested tail cannot be read within its bound", async () => {
+    const unattested = new StackQueueTailUnattestedError("ab".repeat(32));
+    const run = stack({
+      startMs: OPERATOR_2_START_MS + 1_000,
+      ourLedgerFromMs: 0,
+      attestedTailFails: unattested,
+    });
+    const refusal = await run.fund().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(StackLedgerOwnerFundingRefusal);
+    expect((refusal as Error).cause).toBe(unattested);
   });
 
   it("resumes an earlier run's landed deposit without depositing again", async () => {

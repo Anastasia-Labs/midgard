@@ -26,7 +26,13 @@ import { describe, expect, it } from "vitest";
 
 import { readStackDaProducerManifest } from "./stack-da-producer.js";
 import { classifyStackDaRemoval } from "./stack-da-publication.js";
-import { archiveAgedOutCheckpoints } from "./stack-journey-da.js";
+import {
+  archiveAgedOutCheckpoints,
+  awaitAttestedAtOrAfterStackQueueTail,
+  awaitAttestedStackQueueTail,
+  type StackQueueNode,
+  type StackQueuePorts,
+} from "./stack-journey-da.js";
 
 const TIMEOUT_MS = SDK.DA_ATTESTATION_TIMEOUT_MS;
 
@@ -230,4 +236,160 @@ it("keeps an aged-out block's checkpoints aside instead of discarding them", asy
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+/** How often a tail wait polls the fake queue. */
+const POLL_MS = 10_000;
+/** A tail's attestation bound: twice the DA attestation timeout. */
+const TAIL_BOUND_MS = 2 * Number(TIMEOUT_MS);
+
+/**
+ * The stack's state queue on a clock that moves only while a wait pauses.
+ * Before each poll after the first, `beforePoll` may append a block, at the
+ * clock's time, attest one, or remove one, as the stack does meanwhile.
+ */
+const stateQueue = (
+  initial: readonly { attested: boolean }[],
+  beforePoll: (queue: { blocks: StackQueueNode[]; append(): void }) => void,
+) => {
+  let clock = 1_000_000_000;
+  let reads = 0;
+  const blocks: StackQueueNode[] = [];
+  const append = (attested = false) => {
+    blocks.push({
+      headerHash: (blocks.length + 1).toString(16).padStart(64, "0"),
+      blockTime: BigInt(clock),
+      attested,
+    });
+  };
+  for (const { attested } of initial) append(attested);
+  const read = () => {
+    // A wait that never stops polling would otherwise hang the test.
+    if (++reads > 100_000)
+      throw new Error("The wait read the queue without bound");
+  };
+  const ports: StackQueuePorts<StackQueueNode> = {
+    readTail: async () => {
+      read();
+      return blocks.at(-1)!;
+    },
+    readFrom: async (headerHash) => {
+      read();
+      const index = blocks.findIndex(
+        (block) => block.headerHash === headerHash,
+      );
+      return index === -1 ? undefined : blocks.slice(index);
+    },
+    now: () => clock,
+    pause: async () => {
+      clock += POLL_MS;
+      beforePoll({ blocks, append: () => append() });
+    },
+    attestationTimeoutMs: TIMEOUT_MS,
+    onStage: () => undefined,
+  };
+  return { blocks, ports, now: () => clock };
+};
+
+const attest = (blocks: StackQueueNode[], index: number) => {
+  blocks[index] = { ...blocks[index]!, attested: true };
+};
+
+const failure = (wait: Promise<unknown>) =>
+  wait.then(
+    () => undefined,
+    (error: unknown) => error as Error,
+  );
+
+describe("the fault's predecessor: the stack's current queue tail, attested", () => {
+  it("refuses by name, naming the first and latest tails, once the stack has appended unattested tails past the first one's bound", async () => {
+    const queue = stateQueue([{ attested: false }], ({ append }) => append());
+    const [first] = queue.blocks;
+    const error = await failure(awaitAttestedStackQueueTail(queue.ports));
+    expect(error?.name).toBe("StackQueueTailsOutpaceAttestationError");
+    expect(error?.message).toContain(first!.headerHash);
+    expect(error?.message).toContain(queue.blocks.at(-1)!.headerHash);
+    expect(queue.now()).toBeGreaterThan(
+      Number(first!.blockTime) + TAIL_BOUND_MS,
+    );
+    expect(queue.now()).toBeLessThanOrEqual(
+      Number(first!.blockTime) + TAIL_BOUND_MS + POLL_MS,
+    );
+  });
+
+  it("returns the tail once the stack pauses appending and the tail is attested", async () => {
+    const queue = stateQueue([{ attested: false }], ({ blocks, append }) => {
+      if (blocks.length < 4) append();
+      else attest(blocks, 3);
+    });
+    const tail = await awaitAttestedStackQueueTail(queue.ports);
+    expect(tail.headerHash).toBe(queue.blocks[3]!.headerHash);
+  });
+
+  it("still refuses a lone tail that ages out unattested, as before", async () => {
+    const queue = stateQueue([{ attested: false }], () => undefined);
+    const [tail] = queue.blocks;
+    const error = await failure(awaitAttestedStackQueueTail(queue.ports));
+    expect(error?.message).toBe(
+      `Stack queue tail ${tail!.headerHash} was neither attested nor removed after its DA attestation timeout`,
+    );
+    expect(queue.now()).toBeGreaterThan(
+      Number(tail!.blockTime) + TAIL_BOUND_MS,
+    );
+    expect(queue.now()).toBeLessThanOrEqual(
+      Number(tail!.blockTime) + TAIL_BOUND_MS + POLL_MS,
+    );
+  });
+});
+
+describe("a funded check: the newest attested block at or after the tail first read", () => {
+  it("returns the first tail once attested, while newer unattested tails keep arriving", async () => {
+    const queue = stateQueue([{ attested: false }], ({ blocks, append }) => {
+      append();
+      if (blocks.length === 6) attest(blocks, 0);
+    });
+    const block = await awaitAttestedAtOrAfterStackQueueTail(queue.ports);
+    expect(block.headerHash).toBe(queue.blocks[0]!.headerHash);
+  });
+
+  it("returns a newer block attested after the first tail", async () => {
+    const queue = stateQueue([{ attested: false }], ({ blocks, append }) => {
+      append();
+      if (blocks.length === 6) attest(blocks, 2);
+    });
+    const block = await awaitAttestedAtOrAfterStackQueueTail(queue.ports);
+    expect(block.headerHash).toBe(queue.blocks[2]!.headerHash);
+  });
+
+  it("refuses by name at the first tail's bound when nothing at or after it is attested", async () => {
+    const queue = stateQueue([{ attested: false }], ({ append }) => append());
+    const [first] = queue.blocks;
+    const error = await failure(
+      awaitAttestedAtOrAfterStackQueueTail(queue.ports),
+    );
+    expect(error?.name).toBe("StackQueueTailUnattestedError");
+    expect(error?.message).toContain(first!.headerHash);
+    expect(queue.now()).toBeGreaterThan(
+      Number(first!.blockTime) + TAIL_BOUND_MS,
+    );
+    expect(queue.now()).toBeLessThanOrEqual(
+      Number(first!.blockTime) + TAIL_BOUND_MS + POLL_MS,
+    );
+  });
+
+  it("refuses by name when the first tail leaves the queue unattested", async () => {
+    // Its attested parent becomes the tail again.
+    const queue = stateQueue(
+      [{ attested: true }, { attested: false }],
+      ({ blocks }) => {
+        blocks.splice(1);
+      },
+    );
+    const removed = queue.blocks[1]!;
+    const error = await failure(
+      awaitAttestedAtOrAfterStackQueueTail(queue.ports),
+    );
+    expect(error?.name).toBe("StackQueueNodeRemovedError");
+    expect(error?.message).toContain(removed.headerHash);
+  });
 });

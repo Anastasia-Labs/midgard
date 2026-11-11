@@ -176,7 +176,7 @@ export const journeyDaPath = async (
         // (`fundStackLedgerOwner`); a family never funds it, and refuses
         // before any L1 work when the attested tail holds none of its outputs.
         requireStackLedgerOwnerFunded(
-          await decodeRetained(await da.readAttestedTail()),
+          await decodeRetained(await da.readAttestedAtOrAfterTail()),
           context.layout.wallets.ledgerOwner,
         );
         await stackActor!.onboardOperator();
