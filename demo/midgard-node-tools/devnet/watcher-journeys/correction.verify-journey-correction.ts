@@ -136,6 +136,7 @@ export const verifyJourneyCorrection = async ({
   actionDepth,
   correctionTimeoutMs = 1_800_000,
   progressAllowanceMs,
+  resumeAllowanceMs,
   counterpartyWait,
   reconciliationAllowanceMs,
   stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
@@ -164,10 +165,14 @@ export const verifyJourneyCorrection = async ({
    * progress for this long; one transaction's build, submit, and confirmation
    * allowance. A multi-step family legitimately runs past any fixed wall
    * clock, so progress, not elapsed time, is the health signal.
-   * A retained workflow first gets the automatic-decision allowance (15
-   * minutes) to re-observe its target before this transaction clock applies.
    */
   progressAllowanceMs?: number;
+  /**
+   * A retained workflow's allowance to re-observe its target before the
+   * transaction clock applies: the journey's automatic-decision allowance.
+   * Without it, the transaction clock applies from the start.
+   */
+  resumeAllowanceMs?: number;
   /**
    * The family's legitimate silent wait on its counterparty, when its
    * journal shows one: the journal may then stay silent until that wait's
@@ -216,7 +221,7 @@ export const verifyJourneyCorrection = async ({
         awaitingResumeProgress = false;
       }
       const normalAllowanceMs = awaitingResumeProgress
-        ? 900_000
+        ? (resumeAllowanceMs ?? progressAllowanceMs)
         : progressAllowanceMs;
       const pendingIntent = [...recovery.latest.values()].some(
         ({ outcome }) => outcome === "pending",

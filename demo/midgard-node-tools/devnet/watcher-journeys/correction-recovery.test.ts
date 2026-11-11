@@ -26,35 +26,7 @@ import {
   verifyJourneyCorrection,
   verifyJourneyWorkflowTransactions,
 } from "./correction.js";
-
-/**
- * A watcher store whose workflow rows each test sets, read through the same
- * port an attached watcher's evidence reader serves; counts its reads.
- */
-const workflowLoad = () => {
-  let answer: () => readonly FraudProofWorkflowJournalEntry[] = () => [];
-  let reads = 0;
-  return {
-    store: {
-      readWorkflowRows: async (
-        _category: SDK.FraudProofCatalogueCategoryName,
-        headerHash?: string,
-      ) => {
-        reads += 1;
-        return new Map([[headerHash!, answer()]]);
-      },
-    },
-    serve: (records: readonly FraudProofWorkflowJournalEntry[]) => {
-      answer = () => records;
-    },
-    refuse: (error: Error) => {
-      answer = () => {
-        throw error;
-      };
-    },
-    reads: () => reads,
-  };
-};
+import { workflowLoad } from "./correction-recovery.test-support.js";
 
 const computationThreadFixture = () => {
   const policy = "ab".repeat(28);
@@ -284,6 +256,8 @@ const pollCorrectionProgress = async (
     records: readonly FraudProofWorkflowJournalEntry[];
   }[],
   reconciliationAllowanceMs?: number,
+  // The journey's automatic-decision allowance on Preprod.
+  resumeAllowanceMs = 900_000,
 ) => {
   const directory = await mkdtemp(join(tmpdir(), "journey-progress-"));
   const load = workflowLoad();
@@ -307,6 +281,7 @@ const pollCorrectionProgress = async (
       actionDepth: 1,
       correctionTimeoutMs: 4_560_000,
       progressAllowanceMs: 190_000,
+      resumeAllowanceMs,
       reconciliationAllowanceMs,
       operatorVkey: "90".repeat(28),
       requireLive: () => undefined,
@@ -393,6 +368,30 @@ it("bounds retained catch-up at fifteen minutes despite reconciled observations"
       { at: 900_001, records: observed },
     ]),
   ).rejects.toThrow("no durable progress for 900000 ms");
+});
+
+it("bounds retained catch-up by the journey's own decision allowance", async () => {
+  const retained = [entry(0, { kind: "started" })];
+  const observed = [
+    ...retained,
+    entry(1, {
+      kind: "reconciled",
+      actionId: "init",
+      txHash: "ab".repeat(32),
+      outcome: "pending",
+    }),
+  ];
+  await expect(
+    pollCorrectionProgress(
+      retained,
+      [
+        { at: 900_001, records: observed },
+        { at: 1_200_001, records: observed },
+      ],
+      undefined,
+      1_200_000,
+    ),
+  ).rejects.toThrow("no durable progress for 1200000 ms");
 });
 
 it("keeps the initial transaction progress allowance for a fresh workflow", async () => {

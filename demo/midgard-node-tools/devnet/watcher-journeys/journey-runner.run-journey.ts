@@ -216,6 +216,7 @@ export const runJourney = async (
       actionDepth: JOURNEY_ACTION_DEPTH,
       correctionTimeoutMs: timing.correctionTimeoutMs,
       ...journeyProgressClock({ timing, transactions: mode.transactions }),
+      resumeAllowanceMs: timing.allowances.automaticDecisionMs,
       reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
       transactions: mode.transactions,
