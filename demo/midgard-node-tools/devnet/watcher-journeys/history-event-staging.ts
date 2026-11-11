@@ -14,7 +14,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
+import {
+  buildPastProtectedPredecessor,
+  ledgerClock,
+} from "midgard-watcher/tests/support/history-predecessor-hold";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { StagedHistoryEvent } from "./history-events.js";
@@ -147,8 +150,10 @@ const confirmEvent = async (
     if (funding.length === 0)
       throw new Error("No ordinary funding inputs for event publication");
     lucid.overrideUTxOs(funding);
-    const built = await buildPastProtectedPredecessor(() =>
-      request.build(),
+    // On the ledger clock: a live tip trails the wall clock.
+    const built = await buildPastProtectedPredecessor(
+      () => request.build(),
+      ledgerClock(deployment.chain),
     ).finally(() => lucid.clearUTxOOverride());
     const signed = await built.tx.sign.withWallet().complete();
     checkpoint = {

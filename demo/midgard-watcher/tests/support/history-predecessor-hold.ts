@@ -1,5 +1,7 @@
 import { Cause, Runtime } from "effect";
 
+import { FRESH_TIP_MS } from "./published-block-actor.is-unanswered-submission.js";
+
 /** The SDK's user-event builders take `validFrom` this far behind the wall
  * clock (`userHistoryValidity`). */
 const VALID_FROM_BACKOFF_MS = 60_000;
@@ -42,6 +44,11 @@ export const buildPastProtectedPredecessor = async <T>(
   clock: Readonly<{
     nowMs: () => number;
     sleep: (ms: number) => Promise<void>;
+    /**
+     * Waits until the ledger tip is recent enough for the builders'
+     * backdated lower bound; the wall clock alone cannot tell.
+     */
+    awaitFreshTip?: () => Promise<void>;
   }> = {
     nowMs: Date.now,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -49,6 +56,7 @@ export const buildPastProtectedPredecessor = async <T>(
 ): Promise<T> => {
   for (let attempt = 1; ; attempt++) {
     try {
+      await clock.awaitFreshTip?.();
       return await build();
     } catch (error) {
       const until = protectedUntilOf(error);
@@ -78,7 +86,13 @@ export const protectedPredecessorHoldMs = (protectionMs: number) => {
   return protectionMs + VALID_FROM_BACKOFF_MS + SLOT_SLACK_MS;
 };
 
-/** The hold's clock on a chain's ledger time, for emulator and live chains. */
+/**
+ * The hold's clock on a chain's ledger time, for emulator and live chains.
+ * Each build first waits for a tip no older than `FRESH_TIP_MS`: a block gap
+ * longer than the builders' sixty-second backdating would otherwise leave
+ * the lower bound ahead of the tip, and the node would refuse the
+ * transaction.
+ */
 export const ledgerClock = (
   chain: Readonly<{
     now: () => number;
@@ -88,5 +102,8 @@ export const ledgerClock = (
   nowMs: () => chain.now(),
   sleep: async (ms: number) => {
     await chain.awaitLedgerTime(chain.now() + ms);
+  },
+  awaitFreshTip: async () => {
+    await chain.awaitLedgerTime(chain.now() - FRESH_TIP_MS);
   },
 });

@@ -83,6 +83,9 @@ export const createPublishedWatcherBlockActor = async ({
   onStage?: (name: string) => void;
 }) => {
   const { contracts, chain, references } = deployment;
+  // Appointments and commits set their lower bound a minute behind the wall
+  // clock; the ledger checks it against its tip, so build on a fresh tip.
+  const awaitFreshTip = () => chain.awaitLedgerTime(chain.now() - FRESH_TIP_MS);
   const address = await lucid.wallet().address();
   const awaitConfirmed = async (txHash: string) => {
     await lucid.awaitTx(txHash, 500);
@@ -277,11 +280,7 @@ export const createPublishedWatcherBlockActor = async ({
         SDK.REGISTERED_OPERATORS_ROOT_ASSET_NAME,
       ),
     );
-    // The appointment's lower bound trails the wall clock by sixty seconds,
-    // and the ledger checks it against its tip. A reappointment runs after
-    // the previous attempt's validity and grace have passed, so it must not
-    // build on a stale tip.
-    await chain.awaitLedgerTime(chain.now() - FRESH_TIP_MS);
+    await awaitFreshTip();
     const schedulerStart = BigInt(chain.now() + 39_999);
     const appointedDatum = Data.to(
       {
@@ -384,6 +383,7 @@ export const createPublishedWatcherBlockActor = async ({
       Data.from(lock.datum, SDK.CorrectionLockDatum) !== "Idle"
     )
       throw new Error("Cannot commit while correction lock is held");
+    await awaitFreshTip();
     const continuedDatum = await continuedActiveOperatorDatum(
       activeInput,
       block.header.endTime +

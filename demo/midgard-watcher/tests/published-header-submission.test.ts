@@ -394,3 +394,24 @@ it("waits for a fresh ledger tip before building a scheduler appointment", async
   expect(Number(wait![1])).toBeGreaterThanOrEqual(at - 30_000);
   expect(Number(wait![1])).toBeLessThanOrEqual(at);
 });
+
+it("waits for a fresh ledger tip before building a header commit", async () => {
+  const f = await fixture();
+  const at = f.now();
+  await expect(f.actor.commit(f.block, f.anchor)).resolves.toBe(f.txHash);
+  const waits = f.order.flatMap((step) => {
+    const wait = /^awaitLedgerTime (\d+)$/u.exec(step);
+    return wait === null ? [] : [Number(wait[1])];
+  });
+  // A tip no more than thirty seconds old.
+  expect(waits).toHaveLength(1);
+  expect(waits[0]).toBeGreaterThanOrEqual(at - 30_000);
+  expect(waits[0]).toBeLessThanOrEqual(at);
+  // The commit's backdated lower bound is then at or below that tip.
+  const [, , built] = vi.mocked(
+    SDK.incompleteEmulatorCommitBlockHeaderTxProgram,
+  ).mock.lastCall!;
+  expect(
+    Number((built as { validFrom: bigint }).validFrom),
+  ).toBeLessThanOrEqual(waits[0]!);
+});
