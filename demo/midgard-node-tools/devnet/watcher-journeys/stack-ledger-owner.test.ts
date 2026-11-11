@@ -37,6 +37,17 @@ const stack = (input: {
   const stages: string[] = [];
   const landed = (deposit: StackLedgerOwnerDeposit) =>
     clock >= (landsAt.get(deposit.txHash) ?? Infinity);
+  /** Our node's ledger and its attested tail hold the owner's output alike. */
+  const holdsOutput = async () => {
+    if (input.funded === true) return true;
+    const due = pending ?? deposits.at(-1);
+    return (
+      due !== undefined &&
+      landed(due) &&
+      input.absorbsAfterMs !== undefined &&
+      clock >= due.inclusionTime + input.absorbsAfterMs
+    );
+  };
   return {
     deposits,
     archived,
@@ -45,16 +56,8 @@ const stack = (input: {
     now: () => clock,
     fund: () =>
       awaitStackLedgerOwnerFunded({
-        ownerHoldsOutput: async () => {
-          if (input.funded === true) return true;
-          const due = pending ?? deposits.at(-1);
-          return (
-            due !== undefined &&
-            landed(due) &&
-            input.absorbsAfterMs !== undefined &&
-            clock >= due.inclusionTime + input.absorbsAfterMs
-          );
-        },
+        ourLedgerHoldsOutput: holdsOutput,
+        ownerHoldsOutput: holdsOutput,
         readPendingDeposit: async () => pending,
         depositStatus: async (deposit) =>
           landed(deposit)
@@ -66,18 +69,24 @@ const stack = (input: {
           if (pending !== undefined) archived.push(pending);
           pending = undefined;
         },
-        deposit: async () => {
+        beforeDeposit: async () => {},
+        buildDeposit: async () => {
           const deposit = {
             txHash: txHash(deposits.length + 1),
             inclusionTime: clock + 120_000,
             validTo: clock + DEPOSIT_VALIDITY_MS,
           };
-          deposits.push(deposit);
-          pending = deposit;
-          if (input.dropped !== true)
-            landsAt.set(deposit.txHash, clock + (input.landsAfterMs ?? 0));
-          return deposit;
+          return {
+            ...deposit,
+            submit: async () => {
+              deposits.push(deposit);
+              pending = deposit;
+              if (input.dropped !== true)
+                landsAt.set(deposit.txHash, clock + (input.landsAfterMs ?? 0));
+            },
+          };
         },
+        admitsDeposit: async () => true,
         clearPendingDeposit: async () => {
           pending = undefined;
         },

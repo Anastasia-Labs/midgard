@@ -1,4 +1,4 @@
-import { afterAll, it } from "vitest";
+import { afterAll, beforeAll, it } from "vitest";
 
 import { selectJourneyFixtures } from "./catalogue.js";
 import { selectJourneyDeploymentSource } from "./deployment-source.js";
@@ -16,6 +16,7 @@ import {
 } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { readStackJourneyTimingPaths } from "./stack-context.js";
+import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
 // skips without it; stack mode attaches to a running e2e-stack.
@@ -31,10 +32,34 @@ const stackTimingPaths =
     : undefined;
 
 let session: Promise<JourneySession | AttachedJourneySession> | undefined;
+const openSession = () =>
+  (session ??=
+    source!.mode === "devnet"
+      ? openJourneySession(source!.runDirectory)
+      : source!.open().then((context) =>
+          openAttachedJourneySession(context, {
+            operator2: source!.operator2,
+          }),
+        ));
 afterAll(async () => {
   const opened = await session?.catch(() => undefined);
   await opened?.close();
 }, 120_000);
+
+// On a stack the run funds the drill's ledger owner before any family's
+// timer starts: our node may absorb its deposit only after operator-2's
+// whole shift and its committee's attestation, which no family's limit
+// holds. Only the funding's own deadline bounds it, so the hook sets no
+// Vitest timeout of its own; a failure refuses the run before any family.
+beforeAll(async () => {
+  if (source?.mode !== "stack" || fixtures.length === 0) return;
+  const opened = await openSession();
+  if (opened.mode !== "attached") return;
+  await fundStackLedgerOwner(opened, {
+    category: fixtures[0]!.category,
+    onStage: (name) => console.info(`Ledger-owner funding: ${name}`),
+  });
+}, 0);
 
 // Every family is budgeted from the actual cadence and the depth its actions
 // wait for: the audited transitionTrace plan or the finite generic plan, plus
@@ -72,14 +97,7 @@ for (const [index, fixture] of fixtures.entries()) {
   it.skipIf(source === undefined)(
     `automatically proves '${fixture.category}', corrects exact economics, and processes an honest successor`,
     async () => {
-      const activeSession = await (session ??=
-        source!.mode === "devnet"
-          ? openJourneySession(source!.runDirectory)
-          : source!.open().then((context) =>
-              openAttachedJourneySession(context, {
-                operator2: source!.operator2,
-              }),
-            ));
+      const activeSession = await openSession();
       const last = fixture === fixtures.at(-1);
       await runAutonomousWatcherJourney(
         activeSession.mode === "devnet"

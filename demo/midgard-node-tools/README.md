@@ -161,6 +161,9 @@ before the drill. It runs from source through
 shares with the drill imports the watcher's test support, which exists only as
 source and is not in any build.
 
+The stack fault drill now funds its ledger owner itself, before any family's
+timer starts, so nobody needs to fund the owner by hand.
+
 ## Devnet wallet fee runway
 
 Fresh `devnet-stack` runs fund all fourteen roles once from the generated

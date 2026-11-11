@@ -33,7 +33,7 @@ import {
   stackLateShiftGate,
   stackUserEventPublicationGate,
 } from "./stack-late-shift.js";
-import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
+import { requireStackLedgerOwnerFunded } from "./stack-ledger-owner.js";
 import type {
   FaultPreparation,
   JourneyRetainedBlock,
@@ -172,13 +172,13 @@ export const journeyDaPath = async (
         ),
       },
       resolvePredecessor: async ({ stackActor, decodeRetained }) => {
-        await fundStackLedgerOwner(context, {
-          readAttestedTail: async () =>
-            decodeRetained(await da.readAttestedTail()),
-          beforeDeposit: () =>
-            userEvents.beforeFunding(stackActor!.operatorVkey),
-          onStage,
-        });
+        // The run funds the ledger owner before any family's timer starts
+        // (`fundStackLedgerOwner`); a family never funds it, and refuses
+        // before any L1 work when the attested tail holds none of its outputs.
+        requireStackLedgerOwnerFunded(
+          await decodeRetained(await da.readAttestedTail()),
+          context.layout.wallets.ledgerOwner.keyHash,
+        );
         await stackActor!.onboardOperator();
         return da.readAttestedTail();
       },

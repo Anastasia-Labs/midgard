@@ -1,6 +1,7 @@
 import type { OperatorShiftAppointment } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 import { describe, expect, it } from "vitest";
 
+import { lateShiftMinimumLeadMs } from "./honest-successor.observables.js";
 import {
   stackUserEventFloorOffsetMs,
   type StackUserEventTiming,
@@ -34,6 +35,9 @@ describe("the gate before the ledger owner's funding deposit in our node's shift
   const profiles = ["preprod-testing", "preprod-rehearsal"] as const;
   const latestDueAfterMs = (timing: StackUserEventTiming) =>
     timing.eventTtlMs + 1_000 + timing.eventWaitMs;
+  // Due no later than this before the shift's end, its operator can still
+  // commit it: the late-shift lead of `gateOn`'s commit allowance.
+  const marginMs = lateShiftMinimumLeadMs(190_000);
   /** Our node's shift, then operator-2's from `operator2StartMs`. */
   const shifts =
     (operator2StartMs: number) =>
@@ -43,21 +47,21 @@ describe("the gate before the ledger owner's funding deposit in our node's shift
         : { operator: OPERATOR_2, startTime: BigInt(operator2StartMs) };
 
   it.each(profiles)(
-    "publishes at once while a deposit is due in the shift, and otherwise waits for operator-2's floor, in one of %s's shifts",
+    "publishes at once while a deposit falls due early enough in the shift to be committed, and otherwise waits for operator-2's floor, in one of %s's shifts",
     async (name) => {
       const timing = eventTiming(name);
       const endMs = SHIFT_START_MS + timing.shiftDurationMs;
-      const boundMs = endMs - latestDueAfterMs(timing);
+      const boundMs = endMs - latestDueAfterMs(timing) - marginMs;
       const early = gateOn({
         timing,
         appointment: shifts(endMs),
-        nowMs: boundMs - 1,
+        nowMs: boundMs,
       });
       await early.gate.beforeFunding(OPERATOR_2);
-      expect(early.ledger.nowMs).toBe(boundMs - 1);
+      expect(early.ledger.nowMs).toBe(boundMs);
       expect(early.ledger.stages).toEqual([]);
       const floorMs = endMs + stackUserEventFloorOffsetMs(timing);
-      for (const nowMs of [boundMs, boundMs + 1, endMs - 1]) {
+      for (const nowMs of [boundMs + 1, endMs - 1]) {
         const late = gateOn({
           timing,
           appointment: shifts(endMs),
@@ -69,7 +73,7 @@ describe("the gate before the ledger owner's funding deposit in our node's shift
           /^awaiting the end of .* before funding the ledger owner/u,
         );
         // Held to the floor, it still falls due in operator-2's shift, so
-        // our node absorbs it in the same next shift as one built at once.
+        // our node absorbs it in its own next shift.
         expect(late.ledger.nowMs + latestDueAfterMs(timing)).toBeLessThan(
           endMs + timing.shiftDurationMs,
         );
@@ -105,7 +109,8 @@ describe("the gate before the ledger owner's funding deposit in our node's shift
       const { gate, ledger } = gateOn({
         timing,
         appointment: shifts(endMs),
-        nowMs: endMs - latestDueAfterMs(timing) - 5_000,
+        // One past the bound by the wall clock, 4.999 s inside it by the ledger.
+        nowMs: endMs - latestDueAfterMs(timing) - marginMs - 5_000 + 1,
         wallAheadMs: 5_000,
       });
       await gate.beforeFunding(OPERATOR_2);

@@ -56,10 +56,12 @@ const SCHEDULER_RECHECK_MS = 30_000;
  * late-shift window plus a commit's allowance), it refuses before the drill
  * publishes anything more. `beforeFunding`, for the ledger owner's funding
  * deposit, which our node absorbs once it is due: in another operator's
- * shift, publishes at once while the deposit falls due inside that shift;
- * otherwise it waits for the shift's end and reads the scheduler again, as
- * long as it takes. In operator-2's shift, from its actual start, it waits
- * for the floor. Once the floor has passed neither waits.
+ * shift, publishes at once while the deposit falls due early enough in that
+ * shift for its operator to commit it; otherwise it waits for the shift's
+ * end and reads the scheduler again, up to `notAfterMs`. In operator-2's
+ * shift, from its actual start, it waits for the floor. Once the floor has
+ * passed neither waits. `admitsFunding` checks the built deposit's actual
+ * due time the same way before it is submitted.
  */
 export const stackUserEventGate = (
   input: Readonly<{
@@ -80,6 +82,9 @@ export const stackUserEventGate = (
   }>,
 ) => {
   const { timing } = input;
+  // A deposit due in a live operator's shift is committed in it only when
+  // it falls due no later than the late-shift window's last commit start.
+  const commitMarginMs = lateShiftMinimumLeadMs(input.commitAllowanceMs);
   // The floor has no margin and the builders date validity from the wall
   // clock, so both the ledger and the wall clock must reach it. A wall clock
   // behind the ledger is waited for on the ledger, the gap further on.
@@ -131,7 +136,7 @@ export const stackUserEventGate = (
           `An undelivered ${event.kind} ${event.utxo.txHash}#${event.utxo.outputIndex.toString()}, due at ${event.inclusionTimeMs.toString()}, lets another operator strike operator-2 after ${threshold.thresholdMs.toString()}, before the fault's commit could land (by ${commitLandsMs.toString()}); refusing before the drill publishes its user events. Stage once no other user events are pending on the stack`,
         );
     },
-    beforeFunding: async (operator: string) => {
+    beforeFunding: async (operator: string, notAfterMs = Infinity) => {
       // The latest a deposit built now can fall due. Its builder dates its
       // validity from the wall clock (`resolveUserEventValidTo`), to the next
       // slot past its time to live, and it is due an event wait later. A
@@ -149,7 +154,7 @@ export const stackUserEventGate = (
         const startMs = Number(appointment.startTime);
         if (appointment.operator === operator) return awaitFloor(startMs);
         const endMs = startMs + timing.shiftDurationMs;
-        if (latestDueMs() < endMs) return;
+        if (latestDueMs() + commitMarginMs <= endMs) return;
         const shift = `${appointment.operator}'s shift from ${startMs.toString()}`;
         if (awaited !== shift)
           input.onStage(
@@ -158,10 +163,26 @@ export const stackUserEventGate = (
         awaited = shift;
         // Past its end the scheduler may not have moved yet.
         const nowMs = input.now();
-        await input.awaitLedgerTime(
-          nowMs < endMs ? endMs : nowMs + SCHEDULER_RECHECK_MS,
-        );
+        const untilMs = nowMs < endMs ? endMs : nowMs + SCHEDULER_RECHECK_MS;
+        if (untilMs > notAfterMs)
+          throw new Error(
+            `The ledger owner's funding waited for the end of ${shift} until ${notAfterMs.toString()}, its deadline, and the scheduler has not moved on`,
+          );
+        await input.awaitLedgerTime(untilMs);
       }
+    },
+    // Whether a built funding deposit, due at `inclusionTimeMs`, may be
+    // submitted, judged on the deposit itself rather than foreseen. In
+    // operator-2's shift its strike threshold must fall at or after the
+    // shift's end; in another operator's shift it must fall due early
+    // enough for that operator to commit a block covering it.
+    admitsFunding: async (operator: string, inclusionTimeMs: number) => {
+      const appointment = await input.readAppointment();
+      if (appointment === undefined) return true;
+      const endMs = Number(appointment.startTime) + timing.shiftDurationMs;
+      return appointment.operator === operator
+        ? inclusionTimeMs + timing.negligenceTimeoutMs >= endMs
+        : inclusionTimeMs + commitMarginMs <= endMs;
     },
   });
 };
