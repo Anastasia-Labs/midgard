@@ -119,6 +119,8 @@ const fixture = async (confirmed = false) => {
   const input = {
     directory,
     onStage: vi.fn(),
+    // Off an attached stack nothing holds a user event back.
+    beforeUserEvent: async () => undefined,
     readSignedCommitRecovery: readRecovery,
     predecessor: { header: { endTime: 0n } },
     context: {

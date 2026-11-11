@@ -52,6 +52,13 @@ export type JourneyFaultPreparationInput = JourneyFixtureStage & {
     name: string,
     build: (input: JourneyFaultBuildInput) => Promise<JourneyBlock>,
   ): Promise<JourneySuccessor>;
+  /**
+   * Called before building each user event the family publishes. On an
+   * attached stack it holds the event back to the publication floor of
+   * operator-2's shift, or refuses (`stackUserEventGate`); elsewhere it
+   * returns at once.
+   */
+  beforeUserEvent(): Promise<void>;
 };
 
 export type StagingCheckpoint = {

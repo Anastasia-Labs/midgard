@@ -147,6 +147,7 @@ it("stages the transition trace on an attached stack through its committee", asy
         waitedUntil: deployment.chain.now(),
       });
     },
+    beforeTraceDeposit: async () => {},
   };
   const ledgerAt = async (headerHash: string) =>
     headerHash === tail.current.headerHash

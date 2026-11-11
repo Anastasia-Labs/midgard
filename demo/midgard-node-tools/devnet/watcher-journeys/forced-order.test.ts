@@ -62,6 +62,8 @@ it.each([false, true])(
     const input = {
       directory,
       onStage: vi.fn(),
+      // Off an attached stack nothing holds a user event back.
+      beforeUserEvent: async () => undefined,
       readSignedCommitRecovery: async (attempt: {
         txHash: string;
         signedCbor: string;

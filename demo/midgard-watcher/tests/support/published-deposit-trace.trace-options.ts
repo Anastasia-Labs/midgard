@@ -2,6 +2,7 @@ import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 
 import type { PublishedWatcherBlock } from "./published-block-actor.js";
 import { sharedShiftWork } from "./published-block-actor.operator-shift.js";
+import { readPublishedDepositHistory } from "./published-deposit-history.js";
 import type { PublishedDepositTraceCheckpoint } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
 import type { PublishedDepositTraceLiveTail } from "./published-deposit-trace.queue-tail.js";
 
@@ -16,6 +17,17 @@ export type PublishedDepositTraceAttachedStack = Readonly<{
   shiftWorkMs: number;
   /** Before each attempt to commit the fault: its late-shift wait. */
   beforeFaultCommit(operatorVkey: string): Promise<void>;
+  /**
+   * Before the trace deposit is built, which only the fault's block
+   * delivers: the stack's publication floor in operator-2's shift, and the
+   * refusal of another's undelivered user event due after
+   * `tailEndTimeMs`, the latest predecessor deposit's inclusion, up to which
+   * the honest predecessor delivers every deposit first.
+   */
+  beforeTraceDeposit(
+    operatorVkey: string,
+    tailEndTimeMs: number,
+  ): Promise<void>;
 }>;
 
 /** An attached trace's work in operator-2's shift, from its shift wait. */
@@ -42,6 +54,27 @@ export type PublishedDepositTraceOptions = {
   finalityDepth?: number;
   /** Absent, abandoned headers are removed and the trace starts at the confirmed state. */
   liveTail?: PublishedDepositTraceLiveTail;
+};
+
+/** A resumed trace's captured deposits belong to this deployment. */
+export const assertPublishedDepositTraceResume = (
+  resume: PublishedDepositTraceCheckpoint | undefined,
+  depositPolicyId: string,
+) => {
+  if (resume === undefined) return;
+  const retained = readPublishedDepositHistory(
+    resume.depositHistory,
+    resume.depositMetadata,
+  );
+  if (retained.commitment.policy !== depositPolicyId)
+    throw new Error("Captured deposit belongs to another deployment");
+  for (const prior of resume.priorDeposits ?? []) {
+    if (
+      readPublishedDepositHistory(prior.history, prior.metadata).commitment
+        .policy !== depositPolicyId
+    )
+      throw new Error("Captured prior deposit belongs to another deployment");
+  }
 };
 
 /**

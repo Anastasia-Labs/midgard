@@ -8,13 +8,17 @@ import { OPERATOR_RESUME_WAIT_MS } from "./operator-pause.js";
  * What a family's staging shift cover is computed from on an attached
  * stack: its transaction allowance at the journey's action depth, the
  * deployment's event-history protection, and the deployment profile's event
- * wait and operator shift.
+ * wait, negligence timeout and operator shift.
  */
 export type StackShiftCoverInput = Readonly<{
   timing: Pick<JourneyTiming, "transactionAllowanceMs">;
   /** Each event history's protection duration, as its recipe carries it. */
   eventHistoryProtectionMs: Readonly<{ deposit: number; withdrawal: number }>;
-  profile: Readonly<{ event_wait_ms: number; operator_shift_ms: number }>;
+  profile: Readonly<{
+    event_wait_ms: number;
+    operator_shift_ms: number;
+    user_events_negligence_timeout_ms: number;
+  }>;
 }>;
 
 /**

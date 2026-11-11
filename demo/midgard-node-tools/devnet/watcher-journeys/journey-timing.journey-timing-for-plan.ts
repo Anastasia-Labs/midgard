@@ -8,6 +8,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/history-predecessor-hold";
 
+import { stackUserEventFloorOffsetMs } from "./stack-user-event-floor.js";
+
 /** Only the single lovelace-only deposit used by transitionTrace is audited here. */
 export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
   category: "transitionTrace",
@@ -351,7 +353,9 @@ export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
  * another, then waits once, until the fault may include the last of them and
  * before our node would. It holds each event transaction's validity; each
  * later event's build may first hold until the event before it leaves its
- * history protection; and then the one event wait.
+ * history protection; and then the one event wait. None of its events is
+ * built before `floorMs` into the shift (`stackUserEventFloorOffsetMs`); its
+ * history blocks, committed before its events, run meanwhile.
  */
 export const stackStagingShiftWorkMs = (
   timing: Pick<JourneyTiming, "transactionAllowanceMs">,
@@ -361,6 +365,8 @@ export const stackStagingShiftWorkMs = (
     eventWaitMs: number;
     /** The deployment's event-history protection duration. */
     protectionMs: number;
+    /** How far into the shift the first event may be built; none by default. */
+    floorMs?: number;
   }> = {
     count: 0,
     eventWaitMs: 0,
@@ -375,15 +381,20 @@ export const stackStagingShiftWorkMs = (
     throw new Error(
       `Stack staging publishes a whole number of user events, not ${events.count.toString()}`,
     );
+  const floorMs = events.floorMs ?? 0;
+  if (!Number.isSafeInteger(floorMs) || floorMs < 0)
+    throw new Error(
+      `A user event floor is a whole number of milliseconds, not ${floorMs.toString()}`,
+    );
   const commitMs = timing.transactionAllowanceMs;
   const attestationMs = 2 * timing.transactionAllowanceMs;
+  const blockMs = attestationMs + commitMs;
+  if (events.count === 0) return blocks * blockMs;
   const eventsMs =
-    events.count === 0
-      ? 0
-      : events.count * USER_EVENT_TX_TTL_MS +
-        (events.count - 1) * protectedPredecessorHoldMs(events.protectionMs) +
-        events.eventWaitMs;
-  return blocks * (attestationMs + commitMs) + eventsMs;
+    events.count * USER_EVENT_TX_TTL_MS +
+    (events.count - 1) * protectedPredecessorHoldMs(events.protectionMs) +
+    events.eventWaitMs;
+  return Math.max((blocks - 1) * blockMs, floorMs) + eventsMs + blockMs;
 };
 
 /**
@@ -401,10 +412,20 @@ export const stackStagingShiftCover = (
     /** The deployment's event-history protection duration. */
     eventHistoryProtectionMs: number;
     /** The deployment profile's timing. */
-    profile: Readonly<{ event_wait_ms: number; operator_shift_ms: number }>;
+    profile: Readonly<{
+      event_wait_ms: number;
+      operator_shift_ms: number;
+      user_events_negligence_timeout_ms: number;
+    }>;
   }>,
 ) => {
   const { profile } = input;
+  const floorMs = stackUserEventFloorOffsetMs({
+    eventTtlMs: USER_EVENT_TX_TTL_MS,
+    eventWaitMs: profile.event_wait_ms,
+    negligenceTimeoutMs: profile.user_events_negligence_timeout_ms,
+    shiftDurationMs: profile.operator_shift_ms,
+  });
   const coverMs = stackStagingShiftWorkMs(
     input.timing,
     1 + input.historyBlocks,
@@ -412,11 +433,12 @@ export const stackStagingShiftCover = (
       count: input.userEvents,
       eventWaitMs: profile.event_wait_ms,
       protectionMs: input.eventHistoryProtectionMs,
+      floorMs,
     },
   );
   if (coverMs > profile.operator_shift_ms)
     throw new Error(
-      `${input.category} staging holds operator-2's shift for ${coverMs.toString()} ms (${(1 + input.historyBlocks).toString()} blocks, ${input.userEvents.toString()} user events and one ${profile.event_wait_ms.toString()} ms event wait), longer than this profile's ${profile.operator_shift_ms.toString()} ms shift; the drill cannot stage it on this stack`,
+      `${input.category} staging holds operator-2's shift for ${coverMs.toString()} ms (${(1 + input.historyBlocks).toString()} blocks, ${input.userEvents.toString()} user events built from ${floorMs.toString()} ms into the shift and one ${profile.event_wait_ms.toString()} ms event wait), longer than this profile's ${profile.operator_shift_ms.toString()} ms shift; the drill cannot stage it on this stack`,
     );
   return coverMs;
 };

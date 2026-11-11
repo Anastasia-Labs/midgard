@@ -140,6 +140,12 @@ export const fundStackLedgerOwner = (
   context: StackJourneyContext,
   input: {
     readAttestedTail(): Promise<JourneyLedgerPredecessor>;
+    /**
+     * Before the deposit is built (`stackUserEventGate`): late in another
+     * operator's shift, the shift's end, and in operator-2's shift, which
+     * our node cannot absorb it in, the publication floor.
+     */
+    beforeDeposit(): Promise<void>;
     onStage(name: string): void;
   },
 ) => {
@@ -192,6 +198,7 @@ export const fundStackLedgerOwner = (
       const depositMinting = references.get("depositMint");
       if (depositMinting === undefined)
         throw new Error("Missing the stack's deposit minting reference");
+      await input.beforeDeposit();
       const deposit = await Effect.runPromise(
         SDK.buildUnsignedDepositTxWithMetadataProgram(
           publisherLucid,

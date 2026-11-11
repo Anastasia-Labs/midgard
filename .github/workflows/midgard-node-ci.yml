@@ -1381,6 +1381,9 @@ jobs:
             watcher-journeys/stack-trace-staging.attached.test.ts \
             watcher-journeys/stack-trace-staging.test.ts \
             watcher-journeys/stack-transactions.test.ts \
+            watcher-journeys/stack-user-event-floor.attached.test.ts \
+            watcher-journeys/stack-user-event-floor.funding.test.ts \
+            watcher-journeys/stack-user-event-floor.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.test.ts \

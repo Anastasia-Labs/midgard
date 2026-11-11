@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import {
   type OperatorShiftAppointment,
   operatorShiftAppointment,
@@ -15,6 +16,7 @@ import {
 } from "./honest-successor.observables.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
+import { stackUserEventGate } from "./stack-user-event-floor.js";
 
 /**
  * The stack node `.env` name of the late-shift lead: how long before the end
@@ -119,6 +121,18 @@ export const stackLateShiftFaultCommit = (
   };
 };
 
+/** The appointment of the attached stack's scheduler. */
+const readStackAppointment = async (context: StackJourneyContext) => {
+  const { contracts } = context.deployment;
+  const schedulers = await context.provider.getUtxosWithUnit(
+    contracts.scheduler.spendingScriptAddress,
+    toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
+  );
+  if (schedulers.length !== 1)
+    throw new Error("Expected one published scheduler");
+  return operatorShiftAppointment(schedulers[0]!);
+};
+
 /**
  * `stackLateShiftFaultCommit` on an attached stack: operator-2's shift from
  * the stack's scheduler, the ledger clock of its chain, and each commit's
@@ -135,19 +149,11 @@ export const stackLateShiftGate = (
     onStage(name: string): void;
   }>,
 ) => {
-  const { contracts, chain } = context.deployment;
+  const { chain } = context.deployment;
   return stackLateShiftFaultCommit({
     category: input.category,
     leadMs: context.lateShiftLeadMs,
-    readAppointment: async () => {
-      const schedulers = await context.provider.getUtxosWithUnit(
-        contracts.scheduler.spendingScriptAddress,
-        toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
-      );
-      if (schedulers.length !== 1)
-        throw new Error("Expected one published scheduler");
-      return operatorShiftAppointment(schedulers[0]!);
-    },
+    readAppointment: () => readStackAppointment(context),
     shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
     commitAllowanceMs: input.commitAllowanceMs,
     now: () => chain.now(),
@@ -156,6 +162,48 @@ export const stackLateShiftGate = (
     },
     record: (commit) =>
       writeJourneyArtifact(join(input.directory, "late-shift.json"), commit),
+    onStage: input.onStage,
+  });
+};
+
+/**
+ * `stackUserEventGate` on an attached stack: operator-2's shift from the
+ * stack's scheduler, the ledger clock of its chain, the deployment's user
+ * event timing, and the stack's undelivered user events read as a strike
+ * reads them (`fetchNeglectedUserEventProgram`).
+ */
+export const stackUserEventPublicationGate = (
+  context: StackJourneyContext,
+  input: Readonly<{
+    /** How long a commit takes to land. */
+    commitAllowanceMs: number;
+    onStage(name: string): void;
+  }>,
+) => {
+  const { contracts, chain, operatorLucid } = context.deployment;
+  return stackUserEventGate({
+    readAppointment: () => readStackAppointment(context),
+    timing: {
+      eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
+      eventWaitMs: SDK.EVENT_WAIT_DURATION_MS,
+      negligenceTimeoutMs: Number(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS),
+      graceMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
+      shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
+    },
+    commitAllowanceMs: input.commitAllowanceMs,
+    readUndeliveredEvent: (tailEndTimeMs) =>
+      Effect.runPromise(
+        SDK.fetchNeglectedUserEventProgram(
+          operatorLucid,
+          contracts,
+          tailEndTimeMs,
+        ),
+      ),
+    now: () => chain.now(),
+    wallClock: () => Date.now(),
+    awaitLedgerTime: async (timeMs) => {
+      await chain.awaitLedgerTime(timeMs);
+    },
     onStage: input.onStage,
   });
 };

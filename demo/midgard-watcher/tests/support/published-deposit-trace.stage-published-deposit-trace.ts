@@ -47,6 +47,7 @@ import {
 import { publishedDepositTraceQueue } from "./published-deposit-trace.queue-tail.js";
 import {
   assertPublishedDepositTraceDaPath,
+  assertPublishedDepositTraceResume,
   attachedTraceShiftWork,
   type PublishedDepositTraceOptions,
 } from "./published-deposit-trace.trace-options.js";
@@ -83,21 +84,10 @@ export const stagePublishedDepositTrace = async (
       );
     return daSignerConfig;
   };
-  if (resume !== undefined) {
-    const retained = readPublishedDepositHistory(
-      resume.depositHistory,
-      resume.depositMetadata,
-    );
-    if (retained.commitment.policy !== deployment.contracts.deposit.policyId)
-      throw new Error("Captured deposit belongs to another deployment");
-    for (const prior of resume.priorDeposits ?? []) {
-      if (
-        readPublishedDepositHistory(prior.history, prior.metadata).commitment
-          .policy !== deployment.contracts.deposit.policyId
-      )
-        throw new Error("Captured prior deposit belongs to another deployment");
-    }
-  }
+  assertPublishedDepositTraceResume(
+    resume,
+    deployment.contracts.deposit.policyId,
+  );
   const { contracts, chain, references } = deployment;
   let lucid = deployment.operatorLucid;
   let address = await lucid.wallet().address();
@@ -302,6 +292,8 @@ export const stagePublishedDepositTrace = async (
       type: "Key",
       hash: operatorVkey,
     });
+    // On a stack only the fault delivers it: held to operator-2's floor.
+    await attachedStack?.beforeTraceDeposit(operatorVkey, latestPriorInclusion);
     // A fresh deployment's deposit-history root is still protected.
     const deposit = await buildPastProtectedPredecessor(
       () =>

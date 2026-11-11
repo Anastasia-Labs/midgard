@@ -138,6 +138,7 @@ const confirmEvent = async (
         "Event checkpoint signed bytes differ from recorded hash",
       );
   } else {
+    await input.beforeUserEvent();
     const funding = (
       await lucid.utxosAt(await lucid.wallet().address())
     ).filter(

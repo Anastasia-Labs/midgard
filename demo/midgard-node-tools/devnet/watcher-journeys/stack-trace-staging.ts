@@ -13,7 +13,10 @@ import { readStackJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
-import { stackLateShiftGate } from "./stack-late-shift.js";
+import {
+  stackLateShiftGate,
+  stackUserEventPublicationGate,
+} from "./stack-late-shift.js";
 
 const CATEGORY = "transitionTrace";
 
@@ -63,8 +66,10 @@ export const stackTraceShiftWorkMs = (
 
 /**
  * The transition trace's attached stack: the stack committee attests its
- * blocks, it holds operator-2's shift for `stackTraceShiftWorkMs`, and its
- * fault commits in the late-shift window. Refuses, before any L1 work, when
+ * blocks, it holds operator-2's shift for `stackTraceShiftWorkMs`, its trace
+ * deposit, which only the fault delivers, waits for the publication floor
+ * (`stackUserEventPublicationGate`), and its fault commits in the late-shift
+ * window. Refuses, before any L1 work, when
  * the late-shift lead is unset or too short, or when no shift holds the
  * trace.
  */
@@ -88,6 +93,12 @@ export const stackTraceAttachedStack = async (
     directory: input.directory,
     onStage,
   });
+  // The cover already lets the trace deposit's build run as late as its
+  // `traceDepositAfterMs` into the shift, which is past the floor.
+  const userEvents = stackUserEventPublicationGate(context, {
+    commitAllowanceMs: timing.transactionAllowanceMs,
+    onStage,
+  });
   const { recipe } = SDK.requireEventHistoryContracts(
     context.deployment.contracts,
   ).deposit;
@@ -105,6 +116,8 @@ export const stackTraceAttachedStack = async (
     attest: (block) => da.publish(block, "attestation", [input.checkpointPath]),
     shiftWorkMs,
     beforeFaultCommit,
+    beforeTraceDeposit: (operatorVkey, tailEndTimeMs) =>
+      userEvents.beforeEvent(operatorVkey, BigInt(tailEndTimeMs)),
   };
 };
 

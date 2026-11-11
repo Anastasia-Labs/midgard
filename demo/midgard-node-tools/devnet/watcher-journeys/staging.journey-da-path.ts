@@ -29,7 +29,10 @@ import {
   type StackDaOutcome,
 } from "./stack-da-publication.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
-import { stackLateShiftGate } from "./stack-late-shift.js";
+import {
+  stackLateShiftGate,
+  stackUserEventPublicationGate,
+} from "./stack-late-shift.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import type {
   FaultPreparation,
@@ -66,6 +69,15 @@ export type JourneyDaPath = Readonly<{
   ): Promise<JourneySuccessor>;
   /** Before each attempt to commit the fault: on a stack, its late-shift wait. */
   beforeFaultCommit(actor: JourneyBlockActor): Promise<void>;
+  /**
+   * Before each user event the family builds, on the queue tail ending at
+   * `tailEndTimeMs`: on a stack, the publication floor in operator-2's shift
+   * and the refusal of another's undelivered event (`stackUserEventGate`).
+   */
+  beforeUserEvent(
+    actor: JourneyBlockActor,
+    tailEndTimeMs: bigint,
+  ): Promise<void>;
   /** A history block's DA, which the committee must attest. */
   attestHistory(
     actor: JourneyBlockActor,
@@ -129,6 +141,10 @@ export const journeyDaPath = async (
       directory,
       onStage,
     });
+    const userEvents = stackUserEventPublicationGate(context, {
+      commitAllowanceMs: timing.transactionAllowanceMs,
+      onStage,
+    });
     return {
       kind: "stack",
       ledgerOwnerSeedPhrase: context.accounts.ledgerOwner.seedPhrase,
@@ -148,6 +164,9 @@ export const journeyDaPath = async (
             profile: {
               event_wait_ms: SDK.EVENT_WAIT_DURATION_MS,
               operator_shift_ms: Number(SDK.SHIFT_DURATION_MS),
+              user_events_negligence_timeout_ms: Number(
+                SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS,
+              ),
             },
           }),
         ),
@@ -156,12 +175,16 @@ export const journeyDaPath = async (
         await fundStackLedgerOwner(context, {
           readAttestedTail: async () =>
             decodeRetained(await da.readAttestedTail()),
+          beforeDeposit: () =>
+            userEvents.beforeFunding(stackActor!.operatorVkey),
           onStage,
         });
         await stackActor!.onboardOperator();
         return da.readAttestedTail();
       },
       beforeFaultCommit: (actor) => lateShift(actor.operatorVkey),
+      beforeUserEvent: (actor, tailEndTimeMs) =>
+        userEvents.beforeEvent(actor.operatorVkey, tailEndTimeMs),
       attestHistory: async (_actor, block, checkpointPaths) => {
         const outcome = await da.publish(block, "attestation", checkpointPaths);
         if (outcome.kind === "refused")
@@ -188,6 +211,7 @@ export const journeyDaPath = async (
     ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
     actorOptions: { daSignerConfig },
     beforeFaultCommit: () => Promise.resolve(),
+    beforeUserEvent: () => Promise.resolve(),
     resolvePredecessor: async () => {
       if (existsSync(headPath)) {
         const head = await readJourneyArtifact<{

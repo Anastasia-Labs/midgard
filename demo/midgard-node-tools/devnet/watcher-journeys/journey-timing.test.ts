@@ -442,29 +442,6 @@ describe("an attached stack's staging work in operator-2's shift", () => {
     ).toThrow(/doubleWithdraw staging holds operator-2's shift/u);
   });
 
-  it.each(["preprod-testing", "preprod-rehearsal"] as const)(
-    "fits a family awaiting one user event, as fabricatedDeposit does, in one of %s's shifts",
-    (name) => {
-      const profile = DEPLOYMENT_PROFILES[name].timing;
-      const cover = stackStagingShiftCover({
-        category: "fabricatedDeposit",
-        timing: inclusion,
-        historyBlocks: 0,
-        userEvents: 1,
-        eventHistoryProtectionMs: stackProtectionMs,
-        profile,
-      });
-      expect(cover).toBe(
-        stackStagingShiftWorkMs(inclusion, 1, {
-          count: 1,
-          eventWaitMs: profile.event_wait_ms,
-          protectionMs: stackProtectionMs,
-        }),
-      );
-      expect(cover).toBeLessThanOrEqual(profile.operator_shift_ms);
-    },
-  );
-
   it("refuses, by family, staging that no shift of the profile holds", () => {
     const work = {
       category: "doubleWithdraw",
@@ -473,23 +450,22 @@ describe("an attached stack's staging work in operator-2's shift", () => {
       userEvents: 2,
       eventHistoryProtectionMs: stackProtectionMs,
     } as const;
-    const eventWaitMs =
-      DEPLOYMENT_PROFILES["preprod-rehearsal"].timing.event_wait_ms;
+    const rehearsal = DEPLOYMENT_PROFILES["preprod-rehearsal"].timing;
     const coverMs = stackStagingShiftWorkMs(inclusion, 1, {
       count: 2,
-      eventWaitMs,
+      eventWaitMs: rehearsal.event_wait_ms,
       protectionMs: stackProtectionMs,
     });
     expect(
       stackStagingShiftCover({
         ...work,
-        profile: { event_wait_ms: eventWaitMs, operator_shift_ms: coverMs },
+        profile: { ...rehearsal, operator_shift_ms: coverMs },
       }),
     ).toBe(coverMs);
     expect(() =>
       stackStagingShiftCover({
         ...work,
-        profile: { event_wait_ms: eventWaitMs, operator_shift_ms: coverMs - 1 },
+        profile: { ...rehearsal, operator_shift_ms: coverMs - 1 },
       }),
     ).toThrow(/doubleWithdraw staging holds operator-2's shift/u);
   });

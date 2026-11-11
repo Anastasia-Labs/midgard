@@ -440,6 +440,9 @@ export async function stageJourney(
     predecessor: retainedPredecessor,
     ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
     commitHistoryBlock,
+    // The tail the event follows: the latest history block, if any.
+    beforeUserEvent: () =>
+      daPath.beforeUserEvent(actor, retainedPredecessor.header.endTime),
   };
   const prepared = await task.prepare(preparationInput);
   if (prepared.predecessor !== undefined) {

@@ -57,6 +57,7 @@ export const publishJourneyForcedOrder = async (
           "Cannot replace a forced order bound by a signed or published fault commitment",
         );
     }
+    await input.beforeUserEvent();
     const nonceInput = (await lucid.wallet().getUtxos()).find(
       (utxo) =>
         utxo.datum == null &&
