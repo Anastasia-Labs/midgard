@@ -12,6 +12,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { faultProofFieldOpening } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
@@ -28,8 +29,7 @@ import {
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { requireInitialStepDatum, selectFeeInput } from "../step-support.js";
+import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { admitNativeInclusionArtifact } from "../workflow/native-index-artifact.js";
@@ -274,11 +274,9 @@ export const submitInputExistenceStep = async ({
       candidates,
     }));
   }
-  const wallet = await lucid.wallet().getUtxos();
-  const usable = referenceInputs.reduce<readonly UTxO[]>(
-    (xs, input) => excludeUtxo(xs, input),
-    wallet,
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   let outputIndex: bigint | undefined;
   const final = stepIndex === 3;
   const proofUnit = toUnit(
@@ -425,7 +423,7 @@ export const submitInputExistenceStep = async ({
   }) satisfies BuildTxWithRedeemer;
   let tx = lucid
     .newTx()
-    .collectFrom([selectFeeInput(usable)])
+    .collectFrom([feeInput])
     .collectFrom([threadUtxo], spend);
   if (final) {
     tx = tx
@@ -462,10 +460,7 @@ export const submitInputExistenceStep = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: usable as UTxO[],
-  });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const expected = await reachFraudProofPreSubmitBoundary({
     signed,

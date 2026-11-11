@@ -17,14 +17,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
   type LinearFaultStepContract,
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "./linear-fault-family.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
-import { selectFeeInput } from "./step-support.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -123,12 +122,9 @@ export const submitLinearFaultFinalize = async ({
     ...threadBurn.referenceInputs,
     ...proofMint.referenceInputs,
   ];
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const nonCarriageWalletUtxos = carriageUtxos.reduce<readonly UTxO[]>(
-    (utxos, carriage) => excludeUtxo(utxos, carriage),
-    walletUtxos,
-  );
-  const usableWalletUtxos = nonCarriageWalletUtxos;
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const fraudProofUnit = toUnit(fraudProof.policyId, threadToken.assetName);
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
@@ -190,7 +186,7 @@ export const submitLinearFaultFinalize = async ({
       threadBurn.attach(
         lucid
           .newTx()
-          .collectFrom([selectFeeInput(usableWalletUtxos)])
+          .collectFrom([feeInput])
           .collectFrom([threadUtxo], spendRedeemer)
           .readFrom(referenceInputs)
           .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
@@ -208,13 +204,7 @@ export const submitLinearFaultFinalize = async ({
     )
     .complete({
       localUPLCEval: true,
-      // Preset only to keep carriage the wallet view holds out of coin
-      // selection: Lucid takes collateral only from among preset inputs, so
-      // a preset would drop a wallet's own collateral (the watcher's
-      // reserved one, never among its funding UTxOs).
-      ...(usableWalletUtxos.length === walletUtxos.length
-        ? {}
-        : { presetWalletInputs: usableWalletUtxos as UTxO[] }),
+      ...walletInputs,
     });
   if (spendLayout === undefined || threadMintRedeemerIndex === undefined) {
     throw new Error(`${label}: unresolved final layout`);

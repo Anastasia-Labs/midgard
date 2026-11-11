@@ -27,12 +27,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { faultProofRawFieldCarriage } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   type PublishedProofChunk,
-  walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -48,7 +48,6 @@ import {
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -213,10 +212,9 @@ export const submitCommittedFieldShapeStep01 = async ({
   signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
   const carriedByChunks = chunks.length > 0;
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({ walletUtxos, chunks }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: chunks.map(({ utxo }) => utxo),
+  });
   const validatedStepReference = requireCommittedFieldShapeReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
@@ -424,7 +422,7 @@ export const submitCommittedFieldShapeStep01 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = membershipCarriage.attach(paid);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (resolvedLayout === undefined) {
     throw committedFieldShapeSubmitError(
       "BuildTxWithRedeemer did not resolve the step-01 layout.",

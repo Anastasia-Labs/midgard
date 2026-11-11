@@ -14,17 +14,14 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { faultProofFieldOpening } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   getCompiledScript,
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import {
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  selectFeeInput,
-} from "../step-support.js";
+import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -152,13 +149,12 @@ export const buildDistinctAssetAccumulationLimitTransition = async (
     });
   }) satisfies BuildTxWithRedeemer;
   custody.signer.selectWallet(custody.lucid);
-  const wallet = carriage.reduce<readonly UTxO[]>(
-    (utxos, item) => excludeUtxo(utxos, item),
-    await custody.lucid.wallet().getUtxos(),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(custody.lucid, {
+    excluding: carriage,
+  });
   let tx: TxBuilder = custody.lucid
     .newTx()
-    .collectFrom([selectFeeInput(wallet)])
+    .collectFrom([feeInput])
     .collectFrom([thread], spend)
     .readFrom([
       custody.references(transition.role),
@@ -179,13 +175,7 @@ export const buildDistinctAssetAccumulationLimitTransition = async (
     );
   return {
     tx,
-    complete: () =>
-      tx.complete({
-        localUPLCEval: true,
-        ...(carriage.length === 0
-          ? {}
-          : { presetWalletInputs: wallet as UTxO[] }),
-      }),
+    complete: () => tx.complete({ localUPLCEval: true, ...walletInputs }),
     outputIndex: () => outputIndex,
     referenceCandidates: [
       {

@@ -49,12 +49,11 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -217,14 +216,9 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   const missingReferenceInput =
     referenceInputs[Number(badReferenceInputIndex)]!;
 
-  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
-  // never spend anything this transaction must read.
-  const feeInput = selectFeeInput(
-    transactionReferenceInputs.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: transactionReferenceInputs,
+  });
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -297,7 +291,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...walletInputs });
   if (resolvedLayout === undefined) {
     throw withdrawnReferenceInputSubmitError(
       "BuildTxWithRedeemer did not resolve withdrawn-reference-input step 02 layout.",

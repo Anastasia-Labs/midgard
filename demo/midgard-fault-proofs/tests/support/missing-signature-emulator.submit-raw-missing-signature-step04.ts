@@ -12,13 +12,12 @@ import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
+import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import {
   planMissingSignatureAddressWitnessesOpening,
   requireMissingSignatureStepState,
   requireMissingSignatureThreadUtxo,
 } from "../../src/missing-signature/index.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
-import { selectFeeInput } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
@@ -176,12 +175,10 @@ export const submitRawMissingSignatureStep04 = async ({
     ...carriageUtxos,
   ];
   harness.proverSigner.selectWallet(harness.proverLucid);
-  const walletUtxos = await harness.proverLucid.wallet().getUtxos();
-  const candidates = [...carriageUtxos].reduce<readonly UTxO[]>(
-    (utxos, carriage) => excludeUtxo(utxos, carriage),
-    walletUtxos,
+  const { feeInput, walletInputs } = await stepWalletFunding(
+    harness.proverLucid,
+    { excluding: carriageUtxos },
   );
-  const feeInput = selectFeeInput(candidates);
   const proofUnit = toUnit(
     harness.missingSignature.fraudProof.policyId,
     threadToken.assetName,
@@ -271,7 +268,7 @@ export const submitRawMissingSignatureStep04 = async ({
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
     .attach(computationThreadCarriage.attach(base))
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   await harness.proverLucid.awaitTx(txHash);

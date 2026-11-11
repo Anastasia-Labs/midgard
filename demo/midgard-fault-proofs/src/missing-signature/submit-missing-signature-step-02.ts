@@ -36,12 +36,11 @@ import {
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -186,12 +185,9 @@ export const submitMissingSignatureStep02 = async ({
     }),
   ];
 
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const feeInput = selectFeeInput(walletUtxosSansCarriage);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const step03State: MissingSignatureStep03State = {
     missing_required_signer_hash: accusedHash,
     verified_tx_id: state.verified_tx_id,
@@ -265,9 +261,7 @@ export const submitMissingSignatureStep02 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...(carriageUtxos.length === 0
-      ? {}
-      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+    ...walletInputs,
   });
   if (resolvedLayout === undefined) {
     throw missingSignatureSubmitError(

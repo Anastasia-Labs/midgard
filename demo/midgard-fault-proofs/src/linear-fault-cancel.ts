@@ -144,12 +144,11 @@ export const submitLinearFaultCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   const walletUtxos = await lucid.wallet().getUtxos();
-  const usableWalletUtxos = walletUtxos;
   const unsigned = await burn
     .attach(
       lucid
         .newTx()
-        .collectFrom([selectFeeInput(usableWalletUtxos)])
+        .collectFrom([selectFeeInput(walletUtxos)])
         .collectFrom([threadUtxo], spendRedeemer)
         .readFrom([stepReference, ...burn.referenceInputs])
         .mintAssets({ [token.unit]: -1n }, burnRedeemer)

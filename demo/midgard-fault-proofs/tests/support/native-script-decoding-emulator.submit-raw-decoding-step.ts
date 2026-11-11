@@ -13,13 +13,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts.js";
 import {
   type NativeScriptDecodingStepIndex,
   requireNativeScriptDecodingReferenceScript,
 } from "../../src/native-script-decoding/submit-common.js";
 import { type ResolvedProverSigner } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
@@ -72,12 +72,9 @@ export const submitRawDecodingStep = async ({
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   signer.selectWallet(lucid);
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const feeInput = selectFeeInput(walletUtxosSansCarriage);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const outputMatches = computationThreadOutputPredicate({
     address: destinationAddress,
     datum: nextDatumCbor,
@@ -123,12 +120,7 @@ export const submitRawDecodingStep = async ({
     .addSignerKey(signer.paymentKeyHash);
   const tx = paid;
 
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    ...(carriageUtxos.length === 0
-      ? {}
-      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
-  });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);

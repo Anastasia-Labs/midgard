@@ -19,12 +19,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   type PublishedProofChunk,
-  walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -41,7 +41,6 @@ import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -173,12 +172,9 @@ export const submitL2TxMistagStep01 = async ({
   signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
   const carriedByChunks = chunks.length > 0;
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: chunks.map(({ utxo }) => utxo),
+  });
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -314,7 +310,10 @@ export const submitL2TxMistagStep01 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const completedTx = membershipCarriage.attach(paid);
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    ...walletInputs,
+  });
   if (layout === undefined) {
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");
   }

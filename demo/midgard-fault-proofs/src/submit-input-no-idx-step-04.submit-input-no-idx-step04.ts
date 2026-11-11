@@ -21,6 +21,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -29,11 +30,7 @@ import {
   type ResolvedProverSigner,
   resolveInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   type InputNoIdxStep04ResolvedLayout,
   type InputNoIdxStep04SpendLayout,
@@ -225,14 +222,9 @@ export const submitInputNoIdxStep04 = async ({
     );
   }
 
-  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
-  // never spend anything this transaction must read.
-  const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -303,7 +295,10 @@ export const submitInputNoIdxStep04 = async ({
     computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
   );
 
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    ...walletInputs,
+  });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

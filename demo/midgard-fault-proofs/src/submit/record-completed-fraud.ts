@@ -18,7 +18,7 @@ import {
 
 import { resolveCompletedFraudQueueNode } from "../fabricated-completed-fraud.js";
 import { fabricatedProofValidity } from "../fabricated-proof-validity.js";
-import { excludeUtxo } from "../spend-input-witness.js";
+import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 
 export type RecordCompletedFraudByReferenceOutcome =
@@ -152,12 +152,10 @@ export const buildRecordCompletedFraudByReferenceTx = async ({
       SDK.StateQueueSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const walletUtxos = [fraudProofTokenUtxo, queueReferenceScript].reduce<
-    readonly UTxO[]
-  >(
-    (candidates, excluded) => excludeUtxo(candidates, excluded),
-    await lucid.wallet().getUtxos(),
-  );
+  const walletInputs = await plainWalletInputs(lucid, [
+    fraudProofTokenUtxo,
+    queueReferenceScript,
+  ]);
   const tx = await lucid
     .newTx()
     .collectFrom([input], redeemer)
@@ -165,9 +163,6 @@ export const buildRecordCompletedFraudByReferenceTx = async ({
     .pay.ToContract(address, { kind: "inline", value: datum }, input.assets)
     .validFrom(validity.validFrom)
     .validTo(validity.validTo)
-    .complete({
-      localUPLCEval: true,
-      presetWalletInputs: [...walletUtxos],
-    });
+    .complete({ localUPLCEval: true, ...walletInputs });
   return { kind: "built", tx };
 };

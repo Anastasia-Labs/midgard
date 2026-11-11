@@ -23,12 +23,11 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -163,12 +162,9 @@ export const submitWithdrawnInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletInputs = referenceInputs.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const feeInput = selectFeeInput(walletInputs);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   const outputDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -241,10 +237,7 @@ export const submitWithdrawnInputStep02 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: walletInputs as UTxO[],
-  });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (layout === undefined) {
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }

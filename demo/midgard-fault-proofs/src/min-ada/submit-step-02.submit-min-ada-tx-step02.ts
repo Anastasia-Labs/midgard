@@ -23,12 +23,12 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "../linear-fault-family.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -65,7 +65,6 @@ import {
   type State,
   Step02Datum,
   Step03Datum,
-  walletInputsExcludingReferences,
 } from "./submit-step-02.require-step02.js";
 
 export const submitMinAdaTxStep02 = async ({
@@ -312,12 +311,9 @@ export const submitMinAdaTxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     yieldReference,
   ];
-  const feeInput = selectFeeInput(
-    walletInputsExcludingReferences({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      references: transactionReferences,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: transactionReferences,
+  });
   const unsigned = await lucid
     .newTx()
     .collectFrom([feeInput])
@@ -337,7 +333,7 @@ export const submitMinAdaTxStep02 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const {
     reachFraudProofPreSubmitBoundary,

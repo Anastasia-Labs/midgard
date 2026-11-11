@@ -18,12 +18,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
@@ -206,12 +205,9 @@ export const advanceStep03Thread = async ({
 }): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
   const stepLabel = nativeScriptDecodingStepLabel(spendingStepIndex);
   signer.selectWallet(lucid);
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const feeInput = selectFeeInput(walletUtxosSansCarriage);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState },
     NativeScriptDecodingStep03OpenSubjectDatum,
@@ -267,9 +263,7 @@ export const advanceStep03Thread = async ({
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...(carriageUtxos.length === 0
-      ? {}
-      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+    ...walletInputs,
   });
   if (resolvedLayout === undefined) {
     throw nativeScriptDecodingSubmitError(

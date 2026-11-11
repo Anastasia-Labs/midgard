@@ -28,12 +28,11 @@ import {
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -276,12 +275,9 @@ export const submitNetworkIdStep02 = async ({
     ...fraudProofMintCarriage.referenceInputs,
   ]);
 
-  const feeInput = selectFeeInput(
-    referenceInputs.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -397,7 +393,7 @@ export const submitNetworkIdStep02 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofMintCarriage
     .attach(computationThreadMintCarriage.attach(minted))
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...walletInputs });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

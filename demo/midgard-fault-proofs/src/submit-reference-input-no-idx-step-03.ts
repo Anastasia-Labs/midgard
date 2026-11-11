@@ -36,11 +36,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
-import {
-  type PublishedProofChunk,
-  walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+import { type PublishedProofChunk } from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -59,7 +57,6 @@ import {
   parseSubmitStep01TxInclusion,
   requireComputationThreadToken,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -267,12 +264,9 @@ export const submitReferenceInputNoIdxStep03 = async ({
 
   signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: chunks.map(({ utxo }) => utxo),
+  });
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -370,7 +364,10 @@ export const submitReferenceInputNoIdxStep03 = async ({
     stepScriptCarriage.attach(tx),
   );
 
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    ...walletInputs,
+  });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 03 layout.",

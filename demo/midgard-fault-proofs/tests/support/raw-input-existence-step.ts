@@ -14,6 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import type { PreparedInputExistence } from "../../src/input-existence/prepare.js";
 import {
   type InputExistenceContracts,
@@ -37,11 +38,7 @@ import {
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
-import {
-  requireInitialStepDatum,
-  selectFeeInput,
-} from "../../src/step-support.js";
+import { requireInitialStepDatum } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { admitNativeInclusionArtifact } from "../../src/workflow/native-index-artifact.js";
@@ -270,11 +267,9 @@ export const submitRawInputExistenceStep = async ({
       candidates,
     }));
   }
-  const wallet = await lucid.wallet().getUtxos();
-  const usable = referenceInputs.reduce<readonly UTxO[]>(
-    (xs, input) => excludeUtxo(xs, input),
-    wallet,
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   let outputIndex: bigint | undefined;
   const final = stepIndex === 3;
   const proofUnit = toUnit(
@@ -423,7 +418,7 @@ export const submitRawInputExistenceStep = async ({
   }) satisfies BuildTxWithRedeemer;
   let tx = lucid
     .newTx()
-    .collectFrom([selectFeeInput(usable)])
+    .collectFrom([feeInput])
     .collectFrom([threadUtxo], spend);
   if (final) {
     tx = tx
@@ -460,10 +455,7 @@ export const submitRawInputExistenceStep = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: usable as UTxO[],
-  });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const expected = await reachFraudProofPreSubmitBoundary({
     signed,

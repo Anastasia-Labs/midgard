@@ -19,11 +19,9 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
-import {
-  type PublishedProofChunk,
-  walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+import { type PublishedProofChunk } from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -35,7 +33,6 @@ import {
 } from "./runtime.js";
 import {
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -180,12 +177,9 @@ export const submitNativeTxBinding = async ({
     throw nativeTxBindingError(
       "published proof chunks require a carriage-aware family",
     );
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks: publishedProofChunks,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: publishedProofChunks.map(({ utxo }) => utxo),
+  });
   const stepReference = requireStepReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
@@ -277,7 +271,7 @@ export const submitNativeTxBinding = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = carriage.attachWithdrawal(base);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (layout === undefined) {
     throw nativeTxBindingError(
       `BuildTxWithRedeemer did not resolve ${label} layout.`,

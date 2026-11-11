@@ -5,9 +5,16 @@ import {
   DoubleSpendStep04Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import { Data, getAddressDetails } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type Emulator,
+  getAddressDetails,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import type { ResolvedProverSigner } from "../../../src/runtime.js";
+import type { FraudProofPreSubmitBoundary } from "../../../src/workflow/transaction-boundary.js";
 import {
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
@@ -58,6 +65,16 @@ export type DoubleSpendFixtureOptions = {
   readonly seeds?: Parameters<typeof buildProvedFixtureDeploymentContext>[2];
   /** Commit a block whose two transactions spend disjoint inputs. */
   readonly honestBlock?: boolean;
+  /** The signer and pre-submit boundary step 03 is built under, in place of
+   * the prover's own. */
+  readonly step03Funding?: (context: {
+    readonly emulator: Emulator;
+    readonly funderLucid: LucidEvolution;
+    readonly proverSigner: ResolvedProverSigner;
+  }) => Promise<{
+    readonly signer: ResolvedProverSigner;
+    readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
+  }>;
 };
 
 /**
@@ -71,6 +88,7 @@ export const stageDoubleSpendStep04 = async ({
   bondPaddingLovelace,
   seeds,
   honestBlock = false,
+  step03Funding,
 }: DoubleSpendFixtureOptions = {}) => {
   const {
     realBlueprint,
@@ -385,12 +403,20 @@ export const stageDoubleSpendStep04 = async ({
   });
   expect(thirdStepUtxo.assets[submitInitResult.computationThreadUnit]).toBe(1n);
 
+  const step03Signer = await step03Funding?.({
+    emulator,
+    funderLucid,
+    proverSigner,
+  });
   const step03Result = await submitStep03({
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
-    signer: proverSigner,
+    signer: step03Signer?.signer ?? proverSigner,
+    ...(step03Signer === undefined
+      ? {}
+      : { preSubmitBoundary: step03Signer.preSubmitBoundary }),
     threadOutRef: outRefLabel(thirdStepUtxo),
     tx1SpendInputCbors: parseSpendInputCbors(
       transactionInclusion.tx1SpendInputCbors,

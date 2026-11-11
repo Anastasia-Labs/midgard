@@ -36,6 +36,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
@@ -48,8 +49,6 @@ import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
-import { selectFeeInput } from "./step-support.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -298,14 +297,9 @@ export const submitMinFeeStep02 = async ({
     ...fraudProofMintCarriage.referenceInputs,
   ]);
 
-  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
-  // never spend anything this transaction must read.
-  const feeInput = selectFeeInput(
-    referenceInputs.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -418,7 +412,7 @@ export const submitMinFeeStep02 = async ({
   const tx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(base),
   );
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

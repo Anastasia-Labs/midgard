@@ -22,6 +22,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -33,11 +34,7 @@ import {
   resolveInputNoIdxDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   type InputNoIdxStep02Layout,
   parseSubmitInputNoIdxInputsPreimage,
@@ -160,13 +157,6 @@ export const submitInputNoIdxStep02 = async ({
       label: "Input-no-idx step 02 spend-inputs",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      walletUtxos,
-    ),
-  );
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -177,6 +167,9 @@ export const submitInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
 
   const step03Datum = Data.to(
     {
@@ -249,14 +242,7 @@ export const submitInputNoIdxStep02 = async ({
 
   const unsigned = await completedTx.complete({
     localUPLCEval: true,
-    ...(referenceInputs.length === 0
-      ? {}
-      : {
-          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
-            (candidates, utxo) => excludeUtxo(candidates, utxo),
-            walletUtxos,
-          ) as UTxO[],
-        }),
+    ...walletInputs,
   });
   if (resolvedLayout === undefined) {
     throw new Error(

@@ -1,5 +1,5 @@
 /**
- * Canonical spend-input witness decoding, plus the min-Ada and UTxO helpers the
+ * Canonical spend-input witness decoding, plus the min-Ada helpers the
  * publication builders share.
  *
  * **#604 removed this module's own publication path.** The banner it used to
@@ -18,10 +18,7 @@ import {
   CML,
   type LucidEvolution,
   type ProtocolParameters,
-  type UTxO,
 } from "@lucid-evolution/lucid";
-
-import { outRefsEqual } from "./runtime.js";
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
 
@@ -146,10 +143,5 @@ export const spendInputsWitnessFromCbors = (
  *
  * What survives here is what was never about that publication: the canonical
  * spend-input witness decoding used by `prepare-non-existent-input`, and the
- * min-Ada and UTxO helpers `publish-proof-chunks.ts` still uses.
+ * min-Ada helpers `publish-proof-chunks.ts` still uses.
  */
-
-export const excludeUtxo = (
-  utxos: readonly UTxO[],
-  excluded: UTxO,
-): readonly UTxO[] => utxos.filter((utxo) => !outRefsEqual(utxo, excluded));

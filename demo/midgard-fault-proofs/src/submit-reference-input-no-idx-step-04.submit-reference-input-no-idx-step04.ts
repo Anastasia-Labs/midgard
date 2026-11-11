@@ -227,14 +227,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     );
   }
 
-  // A tier-2 publication sits at the prover address under a large inline datum
-  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
-  // exclude datum-carrying UTxOs so the referenced publication is never spent.
-  const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,

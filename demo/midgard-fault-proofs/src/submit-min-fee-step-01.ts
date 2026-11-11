@@ -23,6 +23,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
@@ -31,10 +32,7 @@ import {
   requireMinFeeThreadUtxo,
 } from "./min-fee-submit-common.js";
 import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
-import {
-  type PublishedProofChunk,
-  walletInputsExcludingChunks,
-} from "./proof-chunk-carriage.js";
+import { type PublishedProofChunk } from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -46,7 +44,6 @@ import {
 import {
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -224,12 +221,9 @@ export const submitMinFeeStep01 = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: chunks.map(({ utxo }) => utxo),
+  });
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
@@ -245,7 +239,7 @@ export const submitMinFeeStep01 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = inclusionCarriage.attachWithdrawal(base);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (resolved === undefined) {
     throw minFeeSubmitError("step-01 layout was not resolved.");
   }

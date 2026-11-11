@@ -17,8 +17,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
@@ -242,21 +242,12 @@ export const submitMintAuthorizationEvaluate = async ({
     return Data.to(value, MintAuthorizationEvaluateSpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const wallet = (await lucid.wallet().getUtxos()).filter(
-    (candidate) =>
-      !refs.some(
-        (ref) =>
-          ref.txHash === candidate.txHash &&
-          ref.outputIndex === candidate.outputIndex,
-      ) &&
-      !(
-        candidate.txHash === threadUtxo.txHash &&
-        candidate.outputIndex === threadUtxo.outputIndex
-      ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: [...refs, threadUtxo],
+  });
   const builder = lucid
     .newTx()
-    .collectFrom([selectFeeInput(wallet)])
+    .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom(refs)
     .pay.ToContract(
@@ -267,7 +258,7 @@ export const submitMintAuthorizationEvaluate = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await carriage
     .attach(builder)
-    .complete({ localUPLCEval: true, presetWalletInputs: wallet });
+    .complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   if (outputIndex === undefined)
     throw new Error("mint evaluator did not resolve output index");

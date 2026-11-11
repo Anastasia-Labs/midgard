@@ -372,15 +372,7 @@ export const submitInputSetUniquenessStep02 = async ({
   };
 
   signer.selectWallet(lucid);
-  // A tier-2/3 publication sits at the prover's own address under a large
-  // inline datum (and the min-ADA that goes with it), so it can top the fee
-  // selector's descending-lovelace sort — it must not be spent by the very
-  // transaction that references it.
-  const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,

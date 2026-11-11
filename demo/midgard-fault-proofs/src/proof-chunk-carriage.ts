@@ -74,26 +74,6 @@ export const splitProofIntoChunkDatums = (
 };
 
 /**
- * Wallet inputs with the published chunks removed, so a step transaction can
- * never spend the very UTxOs it is referencing (nor offer them as collateral).
- */
-export const walletInputsExcludingChunks = ({
-  walletUtxos,
-  chunks,
-}: {
-  readonly walletUtxos: readonly UTxO[];
-  readonly chunks: readonly PublishedProofChunk[];
-}): UTxO[] =>
-  walletUtxos.filter(
-    (utxo) =>
-      !chunks.some(
-        (chunk) =>
-          chunk.utxo.txHash === utxo.txHash &&
-          chunk.utxo.outputIndex === utxo.outputIndex,
-      ),
-  );
-
-/**
  * The chunks' positions in the built transaction's reference inputs: the order
  * the on-chain `tx.reference_inputs` presents and therefore the order the
  * step's redeemer must name. Only the builder context knows the final set.

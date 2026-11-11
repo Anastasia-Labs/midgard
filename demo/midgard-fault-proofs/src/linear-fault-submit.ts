@@ -5,9 +5,8 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
-import { selectFeeInput } from "./step-support.js";
 import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
@@ -45,14 +44,12 @@ export const submitLinearFaultContinue = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation: boolean;
 }) => {
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const usableWalletUtxos = carriageUtxos.reduce<readonly UTxO[]>(
-    (utxos, carriage) => excludeUtxo(utxos, carriage),
-    walletUtxos,
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const unsigned = await lucid
     .newTx()
-    .collectFrom([selectFeeInput(usableWalletUtxos)])
+    .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([...carriageUtxos, stepReference, ...extraReferenceInputs])
     .pay.ToContract(
@@ -66,13 +63,7 @@ export const submitLinearFaultContinue = async ({
     .addSignerKey(signerPaymentKeyHash)
     .complete({
       localUPLCEval: true,
-      // Preset only to keep carriage the wallet view holds out of coin
-      // selection: Lucid takes collateral only from among preset inputs, so
-      // a preset would drop a wallet's own collateral (the watcher's
-      // reserved one, never among its funding UTxOs).
-      ...(usableWalletUtxos.length === walletUtxos.length
-        ? {}
-        : { presetWalletInputs: usableWalletUtxos as UTxO[] }),
+      ...walletInputs,
     });
   const signed = await unsigned.sign.withWallet().complete();
   const expectedTxHash = await reachFraudProofPreSubmitBoundary({

@@ -9,7 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { excludeUtxo } from "../../src/spend-input-witness.js";
+import { plainWalletInputs } from "../../src/funding/plain-funding-output.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import type { setupCompletedFraudQueue } from "./completed-fraud-queue-harness.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
@@ -95,10 +95,7 @@ export const buildRawRecord = async (
     ...read,
     h.queueReferenceScript,
   ];
-  const walletUtxos = references.reduce<readonly UTxO[]>(
-    (candidates, excluded) => excludeUtxo(candidates, excluded),
-    await h.lucid.wallet().getUtxos(),
-  );
+  const walletInputs = await plainWalletInputs(h.lucid, references);
   let tx = h.lucid
     .newTx()
     .collectFrom([input], redeemer)
@@ -110,10 +107,7 @@ export const buildRawRecord = async (
     tx = tx
       .mintAssets({ [toUnit(h.proofPolicy, proofName)]: 1n })
       .attach.MintingPolicy(h.proofIssuer);
-  return tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: [...walletUtxos],
-  });
+  return tx.complete({ localUPLCEval: true, ...walletInputs });
 };
 
 /** The state-queue spend refuses `buildRawRecord(h, options)` at `check`. */

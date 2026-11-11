@@ -5,14 +5,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import { buildMintAuthorizationStep02Evidence } from "../../src/mint-authorization/evidence.js";
 import {
   requireMintAuthorizationReferenceScript,
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "../../src/mint-authorization/submit-common.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
-import { selectFeeInput } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   type MintAuthorizationHarness,
@@ -91,9 +90,9 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
     unit: threadToken.unit,
   });
   signer.selectWallet(lucid);
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = excludeUtxo(walletUtxos, tamperedUtxo);
-  const feeInput = selectFeeInput(walletUtxosSansCarriage);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: [tamperedUtxo],
+  });
   const redeemer = ((ctx) => {
     SDK.requireOwnSpendPurpose(
       ctx,
@@ -150,10 +149,7 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .complete({
-      localUPLCEval: true,
-      presetWalletInputs: walletUtxosSansCarriage as UTxO[],
-    });
+    .complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);

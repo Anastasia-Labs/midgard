@@ -4,7 +4,7 @@ import {
   MinAdaStep02SpendRedeemerSchema,
   MinAdaStep03DatumSchema,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   requireLinearFaultStepState,
@@ -31,22 +31,6 @@ export const Step03Datum = asDataType<Step03Datum>(MinAdaStep03DatumSchema);
 export type Redeemer = Data.Static<typeof MinAdaStep02SpendRedeemerSchema>;
 
 export const Redeemer = asDataType<Redeemer>(MinAdaStep02SpendRedeemerSchema);
-
-export const walletInputsExcludingReferences = ({
-  walletUtxos,
-  references,
-}: {
-  readonly walletUtxos: readonly UTxO[];
-  readonly references: readonly UTxO[];
-}): UTxO[] =>
-  walletUtxos.filter(
-    (utxo) =>
-      !references.some(
-        (reference) =>
-          reference.txHash === utxo.txHash &&
-          reference.outputIndex === utxo.outputIndex,
-      ),
-  );
 
 export const requireStep02 = async ({
   lucid,

@@ -23,8 +23,13 @@ or reconstruct Lucid's private configuration.
 
 [`double-spend/submit-step-04.ts`](../../../demo/midgard-fault-proofs/src/double-spend/submit-step-04.ts)
 uses this callback for the double-spend spend and mint redeemers, then completes
-once with `localUPLCEval: true`. It also excludes reference inputs from wallet
-balancing when field carriage is present.
+once with `localUPLCEval: true`. Its fee input and wallet inputs come from
+`stepWalletFunding` in
+[`funding/plain-funding-output.ts`](../../../demo/midgard-fault-proofs/src/funding/plain-funding-output.ts):
+the plain wallet coins outside its reference inputs. It passes
+`presetWalletInputs` only when that narrows the wallet, because Lucid takes
+collateral only from among preset inputs; a needless preset would drop the
+watcher's reserved collateral.
 
 ## Consequences
 

@@ -20,6 +20,7 @@ import {
   publishFaultProofFieldCarriage,
   reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -31,8 +32,6 @@ import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
 import {
@@ -295,12 +294,9 @@ export const submitSpendInputSignerMissingStep02 = async ({
       SpendInputSignerStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
-      (values, utxo) => excludeUtxo(values, utxo),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const withMembership = (tx: TxBuilder): TxBuilder =>
     resolved === undefined
       ? tx
@@ -334,7 +330,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
         },
       )
       .addSignerKey(signer.paymentKeyHash),
-  ).complete({ localUPLCEval: true });
+  ).complete({ localUPLCEval: true, ...walletInputs });
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
   const signed = await unsigned.sign.withWallet().complete();

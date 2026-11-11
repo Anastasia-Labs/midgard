@@ -17,6 +17,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -25,14 +26,8 @@ import {
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import {
-  excludeUtxo,
-  spendInputsWitnessFromCbors,
-} from "../spend-input-witness.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "../step-support.js";
+import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
@@ -210,13 +205,9 @@ export const submitStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      walletUtxos,
-    ),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -297,17 +288,7 @@ export const submitStep04 = async ({
 
   const unsigned = await makeStep04Tx().complete({
     localUPLCEval: true,
-    // With carriage published at the prover's own address, balancing must not
-    // pick those UTxOs back up as wallet inputs while the redeemer references
-    // them — same guard as `submitInputNoIdxStep02`.
-    ...(referenceInputs.length === 0
-      ? {}
-      : {
-          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
-            (candidates, utxo) => excludeUtxo(candidates, utxo),
-            walletUtxos,
-          ) as UTxO[],
-        }),
+    ...walletInputs,
   });
   if (
     spendLayout === undefined ||

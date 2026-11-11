@@ -46,12 +46,11 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
@@ -316,19 +315,9 @@ export const submitValueNotPreservedStep03 = async ({
     final_delta: finalDelta,
   };
 
-  // The publications live at the prover's own key address, so coin
-  // selection must never consume them mid-flow — nor any OTHER datum-bearing
-  // UTxO (a reusable publication from an earlier flow, or an injected test
-  // fixture): fee input and preset candidates are datum-free only.
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansReferenced = referenceInputs.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const datumFreeWalletUtxos = walletUtxosSansReferenced.filter(
-    (utxo) => utxo.datum == null && utxo.datumHash == null,
-  );
-  const feeInput = selectFeeInput(datumFreeWalletUtxos);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: referenceInputs,
+  });
   const step04Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: completedState },
     ValueNotPreservedStep04Datum,
@@ -427,10 +416,7 @@ export const submitValueNotPreservedStep03 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const tx = stepCarriage.attach(withPayment);
 
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: datumFreeWalletUtxos as UTxO[],
-  });
+  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   if (resolvedLayout === undefined) {
     throw valueNotPreservedSubmitError(
       "BuildTxWithRedeemer did not resolve the step-03 layout.",

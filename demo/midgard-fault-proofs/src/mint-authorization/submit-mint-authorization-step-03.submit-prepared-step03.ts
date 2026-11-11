@@ -21,12 +21,11 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
 } from "../field-opening.js";
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
-import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
@@ -163,12 +162,9 @@ export const submitPreparedStep03 = async ({
     ...fieldReferenceInputs,
     ...stepCarriage.referenceInputs,
   ];
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
-    (candidates, utxo) => excludeUtxo(candidates, utxo),
-    walletUtxos,
-  );
-  const feeInput = selectFeeInput(walletUtxosSansCarriage);
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: carriageUtxos,
+  });
   const nextOutputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextStepDatum,
@@ -223,9 +219,7 @@ export const submitPreparedStep03 = async ({
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...(carriageUtxos.length === 0
-      ? {}
-      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+    ...walletInputs,
   });
   if (resolvedLayout === undefined) {
     throw mintAuthorizationSubmitError(

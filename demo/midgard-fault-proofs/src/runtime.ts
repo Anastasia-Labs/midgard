@@ -17,11 +17,7 @@ import "./runtime.resolve-fault-proof-deployment-contracts.js";
 import "./runtime.resolve-category-deployment-contracts.js";
 import "./runtime.resolve-fraudulent-header-hash.js";
 
-import {
-  compareOutRefs,
-  outRefLabel,
-  outRefsEqual,
-} from "@al-ft/midgard-core/out-ref";
+import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 export { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "./runtime.fraud-proof-deployment-entries-by-category.js";
 export {
   makeLucidForSubmit,
@@ -86,6 +82,6 @@ export {
   resolveProverSigner,
 } from "./runtime.resolve-prover-signer.js";
 
-export { compareOutRefs, outRefLabel, outRefsEqual };
+export { compareOutRefs, outRefLabel };
 
 export { readJsonFile } from "./json-file.js";

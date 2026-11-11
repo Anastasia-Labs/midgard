@@ -23,6 +23,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultInitialDatum,
@@ -30,10 +31,7 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage.js";
-import {
-  type PublishedProofChunk,
-  walletInputsExcludingChunks,
-} from "../proof-chunk-carriage.js";
+import { type PublishedProofChunk } from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -42,10 +40,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import {
-  parseSubmitStep01TxInclusion,
-  selectFeeInput,
-} from "../step-support.js";
+import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
@@ -240,12 +235,9 @@ export const submitMinAdaTxStep01 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks: publishedProofChunks,
-    }),
-  );
+  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+    excluding: publishedProofChunks.map(({ utxo }) => utxo),
+  });
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
@@ -262,7 +254,7 @@ export const submitMinAdaTxStep01 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await inclusion
     .attachWithdrawal(base)
-    .complete({ localUPLCEval: true });
+    .complete({ localUPLCEval: true, ...walletInputs });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
   const expectedTxHash = await reachFraudProofPreSubmitBoundary({
