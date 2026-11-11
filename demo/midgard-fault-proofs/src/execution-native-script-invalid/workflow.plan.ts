@@ -4,7 +4,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { DirectPurposeRole } from "../direct-purpose-family/family.js";
 import {
   type DirectPurposePaging,
   directPurposePaging,
@@ -46,7 +45,7 @@ export type PlannedExecutionNativeScriptInvalidArtifact = Readonly<{
   paging: DirectPurposePaging;
   /** Whether `role` is a role of the shared bind, source and purpose
    * custody. */
-  isSourceRole: (role: Role) => role is Role & DirectPurposeRole;
+  isSourceRole: (role: Role) => boolean;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: Role) => readonly number[];
   /** The one planned transition spending `role` from a thread holding
@@ -67,7 +66,7 @@ export const executionNativeScriptInvalidTransitionAt =
     proof: ExecutionNativeScriptInvalidProofPlan,
     step01Datum: string,
     paging: DirectPurposePaging,
-    isSourceRole: (role: Role) => role is Role & DirectPurposeRole,
+    isSourceRole: (role: Role) => boolean,
   ) =>
   (role: Role, datum: string): ExecutionNativeScriptInvalidTransition => {
     if (isExecutionNativeScriptInvalidWalkRole(role)) {
@@ -124,8 +123,7 @@ const plan = async (
     first: step01Datum,
   });
   const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
-  const isSourceRole = (role: Role): role is Role & DirectPurposeRole =>
-    sourceRoles.has(role);
+  const isSourceRole = (role: Role): boolean => sourceRoles.has(role);
   return Object.freeze({
     admitted,
     proof,

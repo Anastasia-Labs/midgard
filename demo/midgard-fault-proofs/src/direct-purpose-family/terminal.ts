@@ -36,6 +36,10 @@ import {
   directPurposeRoleIndex,
 } from "./family.js";
 
+/** The shared claim terminal's spend redeemer. */
+const directClaimFinalize = (indices: SDK.DirectClaimFinalizeArgs): string =>
+  Data.to({ Continue: [indices] }, SDK.DirectClaimFinalizeRedeemer);
+
 export const submitDirectPurposeTerminal = async <State>({
   family,
   lucid,
@@ -100,6 +104,7 @@ export const submitDirectPurposeTerminal = async <State>({
     { fraud_prover: signer.paymentKeyHash },
     SDK.FraudProofTokenDatum,
   );
+  const finalize = family.verdict.finalize ?? directClaimFinalize;
   let outputIndex: bigint | undefined;
   const spend = ((ctx) => {
     SDK.requireOwnSpendPurpose(ctx, threadUtxo, label);
@@ -112,22 +117,15 @@ export const submitDirectPurposeTerminal = async <State>({
       }),
       `${label} fraud-proof`,
     );
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: SDK.requireInputIndex(ctx, threadUtxo, label),
-            output_index: outputIndex,
-            fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
-              ctx,
-              contracts.fraudProof.policyId,
-              `${label} fraud-proof`,
-            ),
-          },
-        ],
-      },
-      SDK.DirectClaimFinalizeRedeemer,
-    );
+    return finalize({
+      input_index: SDK.requireInputIndex(ctx, threadUtxo, label),
+      output_index: outputIndex,
+      fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
+        ctx,
+        contracts.fraudProof.policyId,
+        `${label} fraud-proof`,
+      ),
+    });
   }) satisfies BuildTxWithRedeemer;
   const burn = ((ctx) => {
     SDK.requireOwnMintPurpose(

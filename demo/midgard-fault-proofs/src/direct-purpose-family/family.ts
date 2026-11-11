@@ -5,11 +5,17 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { Script } from "@lucid-evolution/lucid";
 
-/** Every role name a direct purpose family can bind. */
+/** Every role name a direct walk family can bind. */
 export type DirectPurposeRole =
   | SDK.MissingRedeemerRole
   | SDK.MissingScriptSourceRole
-  | SDK.UnusedRedeemerRole;
+  | SDK.UnusedRedeemerRole
+  | SDK.ReceivePurposeLanguageRole
+  | SDK.ExecutionSourceScriptDecodingRole
+  | SDK.DistinctAssetAccumulationLimitRole
+  | SDK.ExecutionNativeScriptInvalidRole
+  | SDK.ScriptIntegrityHashMismatchRole
+  | SDK.UnusedScriptWitnessRole;
 
 /** Resolved deployment of one direct purpose family. */
 export type DirectPurposeContracts = {
@@ -29,11 +35,15 @@ export type DirectPurposeContracts = {
   readonly fieldPreimageCertificatePolicyId: string;
 };
 
-/** The terminal's final-state datum and the off-chain twin of its verdict. */
+/** The terminal's final-state datum, the off-chain twin of its verdict and
+ * the redeemer that spends it. */
 export type DirectPurposeVerdict<State> = {
   readonly schema: { fraud_prover: string; data: State | null };
   /** Method syntax: a family of any final state is a family. */
   convicts(state: State): boolean;
+  /** Encodes the terminal's spend redeemer from the indices every claim
+   * terminal binds; the shared claim finalize when absent. */
+  readonly finalize?: (indices: SDK.DirectClaimFinalizeArgs) => string;
 };
 
 export type DirectPurposeFamily<State = SDK.DirectClaimFinalState> = {

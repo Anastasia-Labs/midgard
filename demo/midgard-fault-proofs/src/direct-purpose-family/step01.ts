@@ -42,6 +42,9 @@ type Step01Common = {
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** The step-01 spend redeemer's schema; the shared direct step-01 when
+   * absent. */
+  readonly redeemerSchema?: typeof SDK.DirectStep01Redeemer;
 };
 
 /** The datum step-01 pays to `bindEvent`: the bound source, owned by `prover`. */
@@ -112,7 +115,7 @@ export const submitDirectPurposeStep01Accepted = async ({
     txInclusion,
     ...(publishedProofChunks === undefined ? {} : { publishedProofChunks }),
     nextDatum: directPurposeStep01Datum(material, signer.paymentKeyHash),
-    spendRedeemerSchema: SDK.DirectStep01Redeemer,
+    spendRedeemerSchema: common.redeemerSchema ?? SDK.DirectStep01Redeemer,
     wrapInclusionCarriage: (inclusion) => ({
       source: { AcceptedSource: { inclusion } },
     }),
@@ -182,7 +185,7 @@ export const submitDirectPurposeStep01Forced = async ({
           },
         ],
       },
-      SDK.DirectStep01Redeemer,
+      common.redeemerSchema ?? SDK.DirectStep01Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const txHash = await submitLinearFaultContinue({

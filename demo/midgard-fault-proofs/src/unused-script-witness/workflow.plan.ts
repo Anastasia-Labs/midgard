@@ -3,7 +3,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { DirectPurposeRole } from "../direct-purpose-family/family.js";
 import {
   type DirectPurposePaging,
   directPurposePaging,
@@ -42,9 +41,7 @@ export type PlannedUnusedScriptWitnessArtifact = Readonly<{
   /** The shared source custody, re-pageable at any page size. */
   paging: DirectPurposePaging;
   /** Whether `role` is a role of the shared bind and source custody. */
-  isSourceRole: (
-    role: UnusedScriptWitnessRole,
-  ) => role is UnusedScriptWitnessRole & DirectPurposeRole;
+  isSourceRole: (role: UnusedScriptWitnessRole) => boolean;
   /** Every field a transition spending `role` opens. */
   fieldsOf: (role: UnusedScriptWitnessRole) => readonly number[];
   /** The one planned transition spending `role` from a thread holding `datum`. */
@@ -64,9 +61,7 @@ export const unusedScriptWitnessTransitionAt =
     proof: UnusedScriptWitnessProofPlan,
     step01Datum: string,
     paging: DirectPurposePaging,
-    isSourceRole: (
-      role: UnusedScriptWitnessRole,
-    ) => role is UnusedScriptWitnessRole & DirectPurposeRole,
+    isSourceRole: (role: UnusedScriptWitnessRole) => boolean,
   ) =>
   (
     role: UnusedScriptWitnessRole,
@@ -121,9 +116,7 @@ const plan = async (
     first: step01Datum,
   });
   const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
-  const isSourceRole = (
-    role: UnusedScriptWitnessRole,
-  ): role is UnusedScriptWitnessRole & DirectPurposeRole =>
+  const isSourceRole = (role: UnusedScriptWitnessRole): boolean =>
     sourceRoles.has(role);
   return Object.freeze({
     admitted,
