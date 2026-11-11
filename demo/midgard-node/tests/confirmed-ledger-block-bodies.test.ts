@@ -6,7 +6,6 @@
  * bodies. They are released (`releaseFinalFolds`) in the prune transaction
  * that makes the fold final, and nothing of the block is left behind then.
  */
-import "./utils.js";
 
 import fs from "node:fs";
 import path from "node:path";

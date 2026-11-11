@@ -6,7 +6,6 @@
  * refused before any row is written; and peers and users read their bodies
  * from separate permit pools, so neither can fill the other's.
  */
-import "./utils.js";
 
 import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";

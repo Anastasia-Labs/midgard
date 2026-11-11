@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   cekContextItemReferenceScripts,

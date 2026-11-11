@@ -6,7 +6,6 @@
  * nothing due, the tick commits as before. Each Defend pauses commits once:
  * one still due after the commits that ran past its bound pauses no more.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger, Ref } from "effect";

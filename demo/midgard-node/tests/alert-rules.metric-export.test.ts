@@ -6,7 +6,6 @@
  * the real Prometheus exporter. A rule over a family the node never exports
  * would never fire.
  */
-import "./utils.js";
 
 import { readFile } from "node:fs/promises";
 

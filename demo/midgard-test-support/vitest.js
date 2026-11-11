@@ -286,12 +286,13 @@ const workspaceBundleGuard = fileURLToPath(
  *   be skipped by the bundle, so never wrap a project that has one (the
  *   interactive-emulator projects rewrite a midgard-core module and stay
  *   source-mode).
- * - A `globalSetup` that imports a bundled package must be declared on the
- *   project passed here, not on the root config, so the analysis sees it and
- *   serves that import from the bundle too; otherwise the bundle plugin
- *   refuses its source load. Vitest runs a root `globalSetup` once more for
- *   every `extends: true` project, so a setup that must run once per run
- *   dedupes itself (see midgard-node's `tests/global-setup.ts`).
+ * - A `globalSetup` or `setupFiles` entry that imports a bundled package must
+ *   be declared on the project passed here, not on the root config, so the
+ *   analysis sees it and serves that import from the bundle too; otherwise
+ *   the bundle plugin refuses its source load. Vitest runs a root
+ *   `globalSetup` once more for every `extends: true` project, so a setup
+ *   that must run once per run dedupes itself (see midgard-node's
+ *   `tests/global-setup.ts`).
  *
  * The source project is named `<name>:source`; a `--project <name>` filter
  * must also name it (or use `--project '<name>*'`).
@@ -309,7 +310,7 @@ export const workspaceBundleProjects = (project, { packageDirectory }) => {
     ),
     // Relative setups and the absolute ones this package exports (the
     // run-shared directory's setup imports a module tests import too).
-    setupRoots: [test.globalSetup ?? []]
+    setupRoots: [test.globalSetup ?? [], test.setupFiles ?? []]
       .flat()
       .filter((file) => file.startsWith(".") || isAbsolute(file))
       .map((file) => (isAbsolute(file) ? file : join(packageDirectory, file))),

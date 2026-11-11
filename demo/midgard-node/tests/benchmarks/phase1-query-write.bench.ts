@@ -1,5 +1,3 @@
-import "../utils.js";
-
 import { createHash, randomInt } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";

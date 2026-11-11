@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { writeFile } from "node:fs/promises";
 
 import {

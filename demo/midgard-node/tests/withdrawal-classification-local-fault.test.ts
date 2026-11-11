@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   createReplayedLedger,

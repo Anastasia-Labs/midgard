@@ -29,7 +29,6 @@
  * corpus does not reliably build one, so the deterministic
  * `confirmed-ledger-temporal.test.ts` pins it.
  */
-import "./utils.js";
 
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";

@@ -31,6 +31,12 @@ process.env.MIDGARD_TEST_DATABASE_PREFIX ??=
 
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
+// midgard-node's shard pin: each file runs on its worker's own shard of this
+// package's family, whatever it imports. Declared on every project rather
+// than the root, so the workspace bundle serves the midgard-node code it
+// imports (see `workspaceBundleProjects`).
+const setupFiles = ["../midgard-node/tests/pin-database-shard.ts"];
+
 // Sign a public release and open it as public listen does, or run operator-2's
 // node on a public stack's deployment, so they compile the preprod-public
 // profile against a blueprint built for it.
@@ -98,6 +104,7 @@ export default defineConfig({
             // On the project, so the bundle serves the midgard-node helpers it
             // imports (see `workspaceBundleProjects`).
             globalSetup: ["./tests/global-setup.ts"],
+            setupFiles,
             include: ["./tests/**/*.test.ts"],
             exclude: [
               ...configDefaults.exclude,
@@ -118,6 +125,7 @@ export default defineConfig({
           name: "preprod-public-release",
           include: preprodPublicTests,
           globalSetup: [preprodPublicSetup],
+          setupFiles,
           env: {
             MIDGARD_DEPLOYMENT_PROFILE: "preprod-public",
             MIDGARD_REAL_BLUEPRINT_PATH: preprodPublicBlueprint,
@@ -134,6 +142,7 @@ export default defineConfig({
         test: {
           name: "preprod-public-stack",
           include: preprodPublicStackTests,
+          setupFiles,
           env: { MIDGARD_DEPLOYMENT_PROFILE: "preprod-public" },
         },
       },
@@ -147,6 +156,7 @@ export default defineConfig({
         test: {
           name: "preprod-rehearsal-stack",
           include: preprodRehearsalStackTests,
+          setupFiles,
           env: { MIDGARD_DEPLOYMENT_PROFILE: "preprod-rehearsal" },
         },
       },

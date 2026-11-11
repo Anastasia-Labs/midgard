@@ -17,6 +17,8 @@ export default defineConfig({
   test: {
     pool: "forks",
     maxWorkers: 1,
+    // The same per-worker database shard as vitest.config.ts.
+    setupFiles: ["./tests/pin-database-shard.ts"],
     reporters: [["default", { summary: false }]],
     include: ["./tests/**/*.bench.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     testTimeout: 900_000,

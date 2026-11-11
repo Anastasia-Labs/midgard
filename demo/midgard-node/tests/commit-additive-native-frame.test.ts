@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";

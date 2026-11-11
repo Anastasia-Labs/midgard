@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber } from "effect";

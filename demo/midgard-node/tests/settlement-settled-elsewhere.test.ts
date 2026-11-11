@@ -11,7 +11,6 @@
  * a real follower store over it, fed a simulated chain whose settlement
  * transactions are built raw.
  */
-import "./utils.js";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 

@@ -18,7 +18,6 @@
  * follower store whose origin is too late for the blocks after the landed
  * frontier is fatal.
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";

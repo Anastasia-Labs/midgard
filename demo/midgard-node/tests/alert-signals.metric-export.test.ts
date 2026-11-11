@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { SqlClient } from "@effect/sql";
 import {
   generateSeedPhrase,

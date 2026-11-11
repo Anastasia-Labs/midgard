@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { inspect } from "node:util";
 
 import { SqlClient } from "@effect/sql";

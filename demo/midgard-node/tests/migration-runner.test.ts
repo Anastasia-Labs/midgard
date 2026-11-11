@@ -1,4 +1,3 @@
-import "./utils.js";
 import "./migration-runner.public-read-indexes.js";
 import "./migration-runner.flat-scripts.js";
 import "./migration-runner.snapshot.js";

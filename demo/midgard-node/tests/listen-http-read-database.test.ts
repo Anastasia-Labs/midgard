@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";

@@ -1,4 +1,3 @@
-import "midgard-node/tests/utils";
 import "node:fs/promises";
 import "node:os";
 import "node:path";

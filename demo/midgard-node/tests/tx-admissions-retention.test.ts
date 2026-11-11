@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { createHash } from "node:crypto";
 
 import { SqlClient } from "@effect/sql";

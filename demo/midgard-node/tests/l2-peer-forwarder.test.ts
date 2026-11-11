@@ -9,7 +9,6 @@
  * next L1 advance; and with nothing pending no request is ever sent and an
  * L1 advance reads no admission history.
  */
-import "./utils.js";
 
 import { once } from "node:events";
 import { createServer } from "node:http";

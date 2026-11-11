@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

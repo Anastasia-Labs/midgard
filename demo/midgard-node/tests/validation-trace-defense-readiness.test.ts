@@ -12,7 +12,6 @@
  * - the node's `/readyz` answers unready on an underfunded move or a case
  *   with no active node of ours, and stays ready on our own fault.
  */
-import "./utils.js";
 
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";

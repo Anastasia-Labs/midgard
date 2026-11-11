@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";

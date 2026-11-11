@@ -14,7 +14,6 @@ import "../src/workers/commit-block-header/da-payload.js";
 import "../src/workers/commit-block-header/da-payload-backfill.js";
 import "../src/workers/commit-block-header/transition-roots.js";
 import "./midgard-output-helpers.js";
-import "./utils.js";
 import "./da-payload.record.js";
 import "./da-payload.build-journal-fixture.js";
 

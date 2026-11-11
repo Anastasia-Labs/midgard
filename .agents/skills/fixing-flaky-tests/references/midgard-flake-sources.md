@@ -141,12 +141,12 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 
 - **Symptom:** a file passes alone and fails in the full run, or passes with
   `MIDGARD_NODE_TEST_FORKS=1` and fails with the default of 4
-  (`demo/midgard-node/tests/test-env.ts:14`).
+  (`demo/midgard-node/tests/test-env.ts`).
 - **Mechanism:** files run in parallel forks. Files that clear whole tables
-  are safe only because each fork has its own shard; the list of
-  database-touching files is kept by hand in
-  `demo/midgard-node/vitest.config.ts:10-48`. A new file that picks its own
-  database, a fixed port, a shared temp path or a module-level singleton
-  outside the process breaks that.
+  are safe only because each fork has its own shard, which the `setupFiles`
+  entry `demo/midgard-node/tests/pin-database-shard.ts` assigns to every file;
+  there is no list to maintain. A new file that picks its own database, a
+  fixed port, a shared temp path or a module-level singleton outside the
+  process breaks that.
 - **Fix:** find the shared resource and give each fork its own. Running with
   one fork is a diagnostic, not a fix. `[review]`

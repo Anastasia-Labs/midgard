@@ -10,7 +10,6 @@
  * - Unsigned abandoned: nothing can land from it, so the insert replaces it
  *   as before.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";

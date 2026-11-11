@@ -7,7 +7,6 @@
  * scan. A store the node has not initialized, or a database with no store,
  * fails the read with no address scan sent.
  */
-import "./utils.js";
 
 import {
   applyChainSyncEvent,

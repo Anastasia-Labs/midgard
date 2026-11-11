@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

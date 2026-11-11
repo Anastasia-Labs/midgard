@@ -9,7 +9,6 @@
  * local fault on it too, and so is a block whose admitted forced order the
  * facts cannot read back.
  */
-import "./utils.js";
 
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

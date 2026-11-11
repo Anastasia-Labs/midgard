@@ -15,7 +15,6 @@
  *   terminal (`final`); a database with no follower tables migrates too.
  *   Such a database holds state, so the upgrade stops at 0029's refusal.
  */
-import "./utils.js";
 
 import { createHash, randomUUID } from "node:crypto";
 

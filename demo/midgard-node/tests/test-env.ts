@@ -3,7 +3,7 @@
  *
  * This module has no vitest and no `@/` imports on purpose: `vitest.config.ts`
  * and `tests/global-setup.ts` both need the shard vocabulary before any test
- * worker exists, and `tests/utils.ts` needs the env defaults inside one.
+ * worker exists, and `tests/pin-database-shard.ts` applies the env inside one.
  */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,10 +69,10 @@ export const testDatabaseNameForShard = (shard: string | number): string =>
 export const testDatabaseName = (): string =>
   testDatabaseNameForShard(process.env.VITEST_POOL_ID ?? "0");
 
-/** Every shard a run with the current fork bound can reach. */
-export const testDatabaseNames = (): readonly string[] => {
+/** Every shard a run whose pool ids reach `poolIds` can reach. */
+export const testDatabaseNames = (poolIds: number): readonly string[] => {
   const names = ["0"];
-  for (let shard = 1; shard <= testMaxForks(); shard += 1) {
+  for (let shard = 1; shard <= poolIds; shard += 1) {
     names.push(String(shard));
   }
   return names.map(testDatabaseNameForShard);

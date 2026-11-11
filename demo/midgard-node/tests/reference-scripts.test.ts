@@ -1,4 +1,3 @@
-import "./utils.js";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";

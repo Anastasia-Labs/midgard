@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { performance } from "node:perf_hooks";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";

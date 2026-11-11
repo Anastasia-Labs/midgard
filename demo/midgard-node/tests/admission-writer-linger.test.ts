@@ -4,7 +4,6 @@
  * stream is written in few large batches, and nothing that must not wait on
  * a clock (a lone tx's write beyond the linger, `flush`, a stop) does.
  */
-import "./utils.js";
 
 import { Effect, Exit, Scope } from "effect";
 import { describe, expect, it } from "vitest";

@@ -4,7 +4,6 @@
  * refused while the driver recomputes or has applied no view; a refused or
  * stalled prune deletes nothing more and the sweep goes on.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import {

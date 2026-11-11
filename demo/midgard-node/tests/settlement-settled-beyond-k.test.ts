@@ -6,7 +6,6 @@
  * retrying forever. Pruning never completes a job whose event is still
  * open, or one the follower never admitted.
  */
-import "./utils.js";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 

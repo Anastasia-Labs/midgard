@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import {
   credentialToAddress,
   generateSeedPhrase,

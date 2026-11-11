@@ -4,7 +4,6 @@
 // drain stub then marks every queued row terminal while the Postgres sampler
 // counts the rows. The node's own tx-queue processor never runs here, so the
 // stub is the only thing that drains.
-import "./utils.js";
 
 import fs from "node:fs";
 import os from "node:os";

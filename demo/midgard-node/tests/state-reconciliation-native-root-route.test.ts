@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";

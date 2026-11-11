@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec";
 import {
   deriveMidgardForcedTxProofSource,

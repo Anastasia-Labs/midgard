@@ -5,7 +5,6 @@
  * refused by `/submit` with validation's code and by `/peer/txs` as refused,
  * answered while the database refuses every connection, and never stored.
  */
-import "./utils.js";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Emulator, generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";

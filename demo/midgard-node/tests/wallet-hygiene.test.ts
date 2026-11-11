@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

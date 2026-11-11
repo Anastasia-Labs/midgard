@@ -5,7 +5,6 @@
 // `beforeAll`/`afterAll`/`afterEach` hooks. Importing it from a test file
 // registers those hooks for that file, exactly as the single monolithic file
 // used to register them once.
-import "./utils.js";
 import "node:crypto";
 import "node:fs/promises";
 import "node:os";

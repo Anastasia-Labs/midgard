@@ -14,7 +14,6 @@
  * The L1 slot comes from a registered tip source, as the follower's covered
  * tip supplies it in the node.
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";

@@ -248,7 +248,7 @@ const nativeBoundary = () => {
 };
 
 beforeEach(async () => {
-  // tests/utils.ts pins this file to its disposable worker database.
+  // tests/pin-database-shard.ts pins this file to its worker database.
   await run(resetApplicationTables);
 });
 

@@ -13,7 +13,6 @@ import "../../../midgard-validation/tests/validation-fixtures.js";
 import "../../src/database/index.js";
 import "../../src/services/validation-pool.js";
 import "../../src/workers/utils/validation-pool.js";
-import "../utils.js";
 import "./phase2-cpu-topology.js";
 import "./validation-worker-isolation.run-pool-phase-a.js";
 

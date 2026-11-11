@@ -4,7 +4,6 @@
  * block's deadline, and the rebase that takes a block off the landed chain
  * takes its entries out with it.
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";

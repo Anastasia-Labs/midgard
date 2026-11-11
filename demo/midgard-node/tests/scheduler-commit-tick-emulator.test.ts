@@ -4,7 +4,6 @@
  * nothing, the same node with work pushes the turn on, and a node whose
  * scheduler alignment keeps failing while it holds work says so on readiness.
  */
-import "./utils.js";
 
 import { describe, expect, it } from "vitest";
 

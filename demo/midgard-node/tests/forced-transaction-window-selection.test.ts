@@ -6,7 +6,6 @@
  * on-chain due predicate; the interval only decides the validation machine's
  * verdict at the block slot.
  */
-import "./utils.js";
 
 import {
   EMPTY_CBOR_LIST,

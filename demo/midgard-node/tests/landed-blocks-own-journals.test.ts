@@ -27,7 +27,6 @@
  * Every journal is kept: disposal abandons it under its replacement digest,
  * never deletes it.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";

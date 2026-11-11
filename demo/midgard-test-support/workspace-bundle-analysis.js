@@ -45,10 +45,10 @@ import {
  * reaches an entry that is not bundled, or loads from source a module that an
  * entry it imports also carries (a second instance).
  *
- * `setupRoots` are the project's `globalSetup` files. They run in the main
- * process, never beside a test, so they are never routed; they are walked so
- * that a workspace package they import is served from the bundle as well,
- * which keeps every load of a bundled module in that project on one side.
+ * `setupRoots` are the project's `globalSetup` and `setupFiles` entries.
+ * They are never routed; they are walked so that a workspace package they
+ * import is served from the bundle as well, which keeps every load of a
+ * bundled module in that project on one side.
  */
 export const analyzeSuite = ({
   packageDirectory,

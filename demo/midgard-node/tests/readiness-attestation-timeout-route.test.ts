@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect, Ref } from "effect";

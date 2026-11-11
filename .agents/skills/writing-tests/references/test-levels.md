@@ -130,9 +130,11 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
 ## 5. Postgres-backed node suite
 
 - **Where:** `demo/midgard-node/tests` (and `demo/midgard-node-tools/tests`,
-  which reuses the shard scheme under its own prefix). The files that touch
-  Postgres are inventoried in the comment at the top of
-  `demo/midgard-node/vitest.config.ts`; add a new one there. `[review]`
+  which reuses the shard scheme under its own prefix). Every worker has its
+  own database shard: the `setupFiles` entry `tests/pin-database-shard.ts`
+  pins each file to it whatever the file imports, so there is no list of
+  database files to maintain.
+  `[script: demo/midgard-node/tests/database-shard-pin.test.ts]`
 - **Prerequisites:**
   - A server on `127.0.0.1:5433` with `synchronous_commit=on`.
     `scripts/start-test-postgres.sh status` reports whether one is
@@ -150,12 +152,12 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
 
   Global setup creates and migrates one database per worker
   (`<prefix>_w0`..`<prefix>_wN`) before any file runs and builds the native
-  owner binary with cargo (`tests/global-setup.ts:187-197`).
+  owner binary with cargo (`tests/global-setup.ts`).
 
 - **Knobs** (`tests/test-env.ts`, `tests/global-setup.ts`):
   - `MIDGARD_TEST_DATABASE_PREFIX` names the shard family. It exists so
     `midgard-node-tools` (`midgard_tools_test`) never shares a database with
-    the node suite (`tests/test-env.ts:42-47`). The default `midgard_test`
+    the node suite (`tests/test-env.ts`). The default `midgard_test`
     names are the same for every checkout on the server, so two checkouts
     running the node suite at once share shards.
   - `MIDGARD_SKIP_DB_TESTS=1` skips provisioning for a focused run of a file

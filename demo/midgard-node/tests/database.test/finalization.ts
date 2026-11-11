@@ -16,7 +16,6 @@ import "../../src/workers/commit-block-header.js";
 import "../../src/workers/commit-block-header/event-roots.js";
 import ".././helpers/cardano-native-fixtures.js";
 import ".././midgard-output-helpers.js";
-import ".././utils.js";
 import "./fixtures.js";
 import "./finalization.database-test-directory.js";
 import "./finalization.register-finalization-tests.js";

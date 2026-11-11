@@ -10,7 +10,6 @@
  * `readiness-honest-degradation-route.test.ts`; the driver's hold is
  * `l1-state-queue-hook.test.ts`.)
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";

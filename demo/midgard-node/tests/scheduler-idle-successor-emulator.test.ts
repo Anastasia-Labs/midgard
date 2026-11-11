@@ -9,7 +9,6 @@
  * pushed shift to end and repeats, until it appoints itself. The idle
  * operators submit nothing.
  */
-import "./utils.js";
 
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

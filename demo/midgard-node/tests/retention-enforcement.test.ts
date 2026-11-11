@@ -15,7 +15,6 @@ import "../src/fibers/retention-sweeper.js";
 import "../src/services/index.js";
 import "./helpers/finalized-deployment-manifest.js";
 import "./helpers/retention-l1-view.js";
-import "./utils.js";
 import "./retention-enforcement.q54-executable-retention-deadline-alert.js";
 import "./retention-enforcement.terminal-merge.js";
 import "./retention-enforcement.registration.js";

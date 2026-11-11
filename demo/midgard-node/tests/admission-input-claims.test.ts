@@ -6,7 +6,6 @@
  * the processor forgets it, stay across a lease requeue, and come back after
  * a restart; and the check answers while Phase B holds its lock.
  */
-import "./utils.js";
 
 import { Emulator, generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

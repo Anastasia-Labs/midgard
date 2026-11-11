@@ -5,7 +5,6 @@
  * is admitted afresh; every other verdict sticks, and a user's own submission
  * is never forgotten.
  */
-import "./utils.js";
 
 import { Emulator, generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";

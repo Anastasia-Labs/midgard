@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { createHash } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";

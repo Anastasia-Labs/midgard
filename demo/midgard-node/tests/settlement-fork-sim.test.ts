@@ -16,7 +16,6 @@
  * The suite proves it saw confirmations reverted by rollbacks and attempts
  * stored final by the prune step.
  */
-import "./utils.js";
 
 import { randomUUID } from "node:crypto";
 

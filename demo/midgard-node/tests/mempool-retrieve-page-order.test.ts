@@ -5,7 +5,6 @@
  * between them holds the parent, not the child alone. A row with no
  * admission comes after those with one.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";

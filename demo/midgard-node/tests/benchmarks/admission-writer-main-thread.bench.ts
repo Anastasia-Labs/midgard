@@ -24,7 +24,6 @@
 // ADMISSION_WRITER_BENCH_LINGER_MS override the writer's shard count and
 // batch linger; unset, the writer runs with the node's defaults.
 // ADMISSION_WRITER_BENCH_OUTPUT names a file for the JSON row.
-import "../utils.js";
 
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";

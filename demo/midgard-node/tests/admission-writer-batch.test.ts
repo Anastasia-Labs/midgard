@@ -3,7 +3,6 @@
  * and test Postgres: one registration answers each request on its own, from
  * memory, and writes the registered ones.
  */
-import "./utils.js";
 
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";

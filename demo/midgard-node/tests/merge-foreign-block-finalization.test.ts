@@ -6,7 +6,6 @@
  * order. A block of this node's own whose journal is missing still fails
  * its finalization, counted.
  */
-import "./utils.js";
 
 import { Effect, Either, Metric } from "effect";
 import { describe, expect, it } from "vitest";

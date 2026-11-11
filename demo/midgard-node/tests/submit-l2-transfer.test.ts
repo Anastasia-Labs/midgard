@@ -1,4 +1,3 @@
-import "./utils.js";
 import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";

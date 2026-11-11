@@ -24,12 +24,7 @@ import {
 } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
-import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
-
-// Importing this module is what pins a test file to its worker's database
-// shard; see tests/test-env.ts for why the shard is assigned rather than read
-// from an ambient POSTGRES_DB.
-applyMidgardNodeTestEnv();
+import { testDatabaseName } from "./test-env.js";
 
 const AdmissionWriterTestLive = Layer.scoped(
   AdmissionWriter,

@@ -4,7 +4,6 @@
  * a recompute of that driver is under way or held. The follower's own
  * readiness (catching up, lagging) is its reasons, read from the follower.
  */
-import "./utils.js";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";

@@ -8,7 +8,6 @@
  * that outlives its budget, and keeps waiting on a retried one within it.
  * Both fail with `StartupStepFailedError` naming the step and reason.
  */
-import "./utils.js";
 
 import { SqlClient } from "@effect/sql";
 import { credentialToAddress } from "@lucid-evolution/lucid";

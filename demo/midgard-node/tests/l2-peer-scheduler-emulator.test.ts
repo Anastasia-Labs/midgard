@@ -20,7 +20,6 @@
  * The block the head would then commit is built by the commit worker, which
  * this test does not run; the operator twin covers that.
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {

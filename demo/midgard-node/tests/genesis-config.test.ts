@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";

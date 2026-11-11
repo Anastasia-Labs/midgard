@@ -6,7 +6,11 @@
  * distinct database prefix (see vitest.config.ts) so its shards never collide
  * with a midgard-node run on the same server.
  */
-import { provisionMidgardNodeTestDatabaseShards } from "midgard-node/tests/global-setup";
+import {
+  poolIdBound,
+  provisionMidgardNodeTestDatabaseShards,
+} from "midgard-node/tests/global-setup";
+import type { TestProject } from "vitest/node";
 
 const ONCE = Symbol.for("midgard-node-tools/tests/global-setup");
 
@@ -17,11 +21,13 @@ const ONCE = Symbol.for("midgard-node-tools/tests/global-setup");
  * one process. Provisioning drops and recreates the shard databases, so it
  * must happen exactly once per run: every call shares the first one's promise.
  */
-export const setup = (): Promise<void> => {
+export const setup = (project: TestProject): Promise<void> => {
   if (process.env.MIDGARD_SKIP_DB_TESTS === "1") {
     return Promise.resolve();
   }
   const registry = globalThis as { [ONCE]?: Promise<void> };
-  registry[ONCE] ??= provisionMidgardNodeTestDatabaseShards();
+  registry[ONCE] ??= provisionMidgardNodeTestDatabaseShards(
+    poolIdBound(project),
+  );
   return registry[ONCE];
 };

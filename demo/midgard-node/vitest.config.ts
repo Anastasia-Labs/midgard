@@ -17,114 +17,6 @@ import { configDefaults, defineConfig } from "vitest/config";
 import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
 
 /**
- * Files that talk to Postgres.
- *
- * Invariant: a database-touching file must not run concurrently with another
- * database-touching file on the same database — several of these clear whole
- * tables, so a neighbour's rows would vanish mid-assertion. The suite holds the
- * invariant by sharding rather than by serializing: `tests/test-env.ts` pins
- * each worker to `midgard_test_w${VITEST_POOL_ID}` and a fork-pool worker only
- * ever runs one file at a time, so no two files share a database. Keep this
- * inventory current — it is the list `tests/global-setup.ts` provisions shards
- * for, and the reason the shard scheme exists.
- *
- *   tests/admission-writer.test.ts
- *   tests/admission-writer-linger.test.ts
- *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
- *   tests/settlement-journal.test.ts
- *   tests/settlement-ownership-handoff.test.ts
- *   tests/settlement-tick-reporting.test.ts
- *   tests/native-mpf-local-finalization.test.ts
- *   tests/signed-intent-response-loss-emulator.test.ts
- *   tests/signed-intent-restart-emulator.test.ts
- *   tests/signed-intent-continuation-emulator.test.ts
- *   tests/observed-restart-emulator.test.ts
- *   tests/unresolved-block-submission-restart.test.ts
- *   tests/commit-replacement-state-queue-emulator.test.ts
- *   tests/orphan-funded-transfer-repair-emulator.test.ts
- *   tests/working-ledger-rebuild-order.test.ts
- *   tests/node-instance-lock.test.ts
- *   tests/commit-planning-notice.test.ts
- *   tests/follower-driver-recompute.test.ts
- *   tests/database.test.ts
- *   tests/listen-http-read-database.test.ts
- *   tests/submit-ingress-load.stack.test.ts
- *   tests/da-bond-pool-bootstrap-emulator.test.ts
- *   tests/deposit-flow-emulator-commit-selection.test.ts
- *   tests/deposit-flow-emulator-confirmation-journal.test.ts
- *   tests/deposit-flow-emulator-input-resolution.test.ts
- *   tests/deposit-flow-emulator-merge-payout.test.ts
- *   tests/deposit-flow-emulator-submission.test.ts
- *   tests/merge-foreign-block-finalization.test.ts
- *   tests/merge-landed-finalization.test.ts
- *   tests/merge-landed-finalization-cost.test.ts
- *   tests/merge-landed-finalization-emulator.test.ts
- *   tests/merge-maturity-preflight.test.ts
- *   tests/migration-locking.test.ts
- *   tests/migration-runner.test.ts
- *   tests/pipeline-status-route.test.ts
- *   tests/retention-enforcement.test.ts
- *   tests/correction-admission-rollback-emulator.test.ts
- *   tests/state-queue-node-floor-challenge-emulator.test.ts
- *   tests/state-reconciliation-emulator.test.ts
- *   tests/tx-admissions-claim-load.test.ts
- *   tests/tx-admissions-monotone-timestamps.test.ts
- *   tests/tx-admissions-retention.test.ts
- *   tests/block-commitment-signed-intent-skip.test.ts
- *   tests/commit-held-header-journal.test.ts
- *   tests/history-retention-prune.test.ts
- *   tests/retention-sweeper.history-permit.test.ts
- *   tests/readiness-honest-degradation-route.test.ts
- *   tests/readiness-follower-write-gate-route.test.ts
- *   tests/state-queue-mutation-lease-settle-retry.test.ts
- *   tests/forced-order-carriage.test.ts
- *   tests/forced-order-carriage-emulator.test.ts
- *   tests/l1-state-queue-liveness.test.ts
- *   tests/l1-state-queue-fiber-tick-spy.test.ts
- *   tests/history-commit-anchor-emulator.test.ts
- *   tests/intent-journal-commit-gate-emulator.test.ts
- *   tests/operator-watchdog-emulator.test.ts
- *   tests/availability-challenge-operation.test.ts
- *   tests/availability-challenge-responder-lifecycle.test.ts
- *   tests/builder-wallet-view.genesis-deposit-emulator.test.ts
- *   tests/builder-wallet-view.operator-exit-emulator.test.ts
- *   tests/builder-wallet-view.registration-emulator.test.ts
- *   tests/builder-wallet-view.reserve-payout-emulator.test.ts
- *   tests/cek-material-publication-emulator.test.ts
- *   tests/da-bond-pool-lifecycle.test.ts
- *   tests/mpf-audit-merge-permit-emulator.test.ts
- *   tests/native-mpf-startup-emulator.test.ts
- *   tests/operator-commands-emulator.test.ts
- *   tests/operator-watchdog-citation-emulator.test.ts
- *   tests/operator-watchdog-force-retire-emulator.test.ts
- *   tests/operator-watchdog-manifest-gate-idle.test.ts
- *   tests/operator-watchdog-slow-tick-emulator.test.ts
- *   tests/operator-watchdog-strike-retry-emulator.test.ts
- *   tests/published-initialization-recovery.test.ts
- *   tests/reference-publication-address-reads.test.ts
- *   tests/reference-publication-chain.test.ts
- *   tests/reference-publication-submit-seam.test.ts
- *   tests/reference-publication.test.ts
- *   tests/reference-script-sweep-emulator.test.ts
- *   tests/reserve-payout-economic-acceptance-emulator.test.ts
- *   tests/reserve-payout-reference-resolution-emulator.test.ts
- *   tests/script-reward-registration.test.ts
- *   tests/validation-trace-defense-survey-emulator.test.ts
- *   tests/defense-pocket-emulator.test.ts
- *   tests/validation-trace-defense-fiber-emulator.test.ts
- *   tests/validation-trace-defense-funding-emulator.test.ts
- *   tests/validation-trace-defense-race-emulator.test.ts
- *   tests/validation-trace-defense-restart-emulator.test.ts
- *   tests/validation-trace-defense-replacement-emulator.test.ts
- *   tests/validation-trace-defense-readiness.test.ts
- *   tests/block-commitment-validation-trace-defense-skip.test.ts
- *   tests/node-deployment-startup-emulator.test.ts
- *   tests/da-startup-follower-order.test.ts
- *   tests/listen-startup.validation-worker-readiness.test.ts   (connects; no tables)
- *   tests/listen-startup.ledger-signature-verifier.fault.test.ts   (connects; no tables)
- */
-
-/**
  * The files the interactive-emulator project runs on the 72 h emulator
  * profile: every suite that exercises the execution dispute (00000006), which
  * the 900 s testing profiles exclude because their maturity cannot hold it.
@@ -151,12 +43,14 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // The one-process-per-file requirement is stated once in
-    // `isolatedForksPool`. This suite's own choice is the scheduling cap: only
-    // ~15 of the ~155 files touch Postgres and each of those is pinned to its
-    // worker's own database shard, so file parallelism is safe. A 2-core
-    // runner sets `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every
-    // machine down to one file at a time.
+    // `isolatedForksPool`. This suite's own choice is the scheduling cap:
+    // every file runs on its worker's own database shard, so file parallelism
+    // is safe. A 2-core runner sets `MIDGARD_NODE_TEST_FORKS=1` rather than
+    // forcing every machine down to one file at a time.
     ...isolatedForksPool({ maxForks: testMaxForks() }),
+    // Pins each file to its worker's shard before the file loads, in every
+    // project (tests/test-env.ts states the invariant).
+    setupFiles: ["./tests/pin-database-shard.ts"],
     // Creates and migrates one database per worker shard before any file runs,
     // after refusing a stale onchain/aiken/plutus.json, and gives the run its
     // shared fixture directory.

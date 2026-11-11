@@ -1,5 +1,3 @@
-import "./utils.js";
-
 import {
   findLedgerSignatureVerifierUnavailable,
   ledgerEd25519SignatureReady,

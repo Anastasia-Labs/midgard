@@ -4,7 +4,6 @@
  * with `Retry-After`, answered while the database refuses every connection,
  * and a peer's `/peer/txs` is still admitted up to the full bound.
  */
-import "./utils.js";
 
 import { createHash } from "node:crypto";
 

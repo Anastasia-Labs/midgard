@@ -10,7 +10,6 @@
  * pending-table rows a folded own or foreign block marked stay marked until
  * that release deletes them, and an unfold before it loses none of them.
  */
-import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";

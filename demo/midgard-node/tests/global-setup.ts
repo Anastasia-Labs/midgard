@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
+import type { TestProject } from "vitest/node";
 
 import { MigrationRunner } from "../src/database/index.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
@@ -171,24 +172,34 @@ const buildNativeOwnerBinary = (): void => {
 };
 
 /**
- * Create and migrate every shard the current fork bound can reach. Shared with
- * midgard-node-tools, whose suite reuses this shard scheme under its own
+ * The highest `VITEST_POOL_ID` this run can hand out. The pool numbers each
+ * project group's workers from 1 to its resolved `maxWorkers`, a
+ * `--maxWorkers` flag included, so the bound is the largest across the run's
+ * projects.
+ */
+export const poolIdBound = (project: TestProject): number =>
+  Math.max(...project.vitest.projects.map(({ config }) => config.maxWorkers));
+
+/**
+ * Create and migrate every shard a pool id up to `poolIds` can reach. Shared
+ * with midgard-node-tools, whose suite reuses this shard scheme under its own
  * database prefix (tests/test-env.ts).
  */
-export const provisionMidgardNodeTestDatabaseShards =
-  async (): Promise<void> => {
-    applyMidgardNodeTestEnv();
-    const pinnedDatabase = process.env.POSTGRES_DB;
-    try {
-      for (const shard of testDatabaseNames()) {
-        await Effect.runPromise(provisionShard(shard));
-      }
-    } finally {
-      process.env.POSTGRES_DB = pinnedDatabase;
+export const provisionMidgardNodeTestDatabaseShards = async (
+  poolIds: number,
+): Promise<void> => {
+  applyMidgardNodeTestEnv();
+  const pinnedDatabase = process.env.POSTGRES_DB;
+  try {
+    for (const shard of testDatabaseNames(poolIds)) {
+      await Effect.runPromise(provisionShard(shard));
     }
-  };
+  } finally {
+    process.env.POSTGRES_DB = pinnedDatabase;
+  }
+};
 
-const provisionOnce = async (): Promise<void> => {
+const provisionOnce = async (poolIds: number): Promise<void> => {
   buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
   // needs a live Postgres, and most files in this suite do not, so a run that
@@ -197,7 +208,7 @@ const provisionOnce = async (): Promise<void> => {
   if (process.env.MIDGARD_SKIP_DB_TESTS === "1") {
     return;
   }
-  await provisionMidgardNodeTestDatabaseShards();
+  await provisionMidgardNodeTestDatabaseShards(poolIds);
 };
 
 /**
@@ -217,13 +228,13 @@ type Registry = {
   [JOURNAL_DIRECTORY]?: Promise<string>;
 };
 
-export const setup = async (): Promise<void> => {
+export const setup = async (project: TestProject): Promise<void> => {
   const registry = globalThis as Registry;
   // Created before any worker starts: Vitest copies this process's
   // environment into each worker when it starts running files.
   registry[JOURNAL_DIRECTORY] ??= createRunJournalDirectory();
   await registry[JOURNAL_DIRECTORY];
-  registry[ONCE] ??= provisionOnce();
+  registry[ONCE] ??= provisionOnce(poolIdBound(project));
   return registry[ONCE];
 };
 

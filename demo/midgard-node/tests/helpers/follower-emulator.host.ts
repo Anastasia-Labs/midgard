@@ -61,7 +61,6 @@ import {
   l1FollowerPlan,
 } from "../../src/services/l1-follower.plan.js";
 import { nodeDatabaseConnectionString } from "../../src/services/l1-provider.js";
-import { applyMidgardNodeTestEnv } from "../test-env.js";
 import {
   followedBlockBytes,
   type FollowedChain,
@@ -89,7 +88,6 @@ type Binding = Readonly<{
 const bindings = new WeakMap<Emulator, Binding>();
 
 const connectionString = (): string => {
-  applyMidgardNodeTestEnv();
   const env = process.env;
   return nodeDatabaseConnectionString({
     POSTGRES_HOST: env.POSTGRES_HOST!,
