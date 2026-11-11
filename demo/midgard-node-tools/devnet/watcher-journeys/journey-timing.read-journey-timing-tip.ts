@@ -47,6 +47,7 @@ const journeyCadence = (
     actionDepth: options.actionDepth,
     fixtureStagingAllowanceMs: options.fixtureStagingAllowanceMs,
     disputeTiming: manifest.deploymentProfile.timing,
+    deploymentProfile: manifest.deploymentProfile,
   };
 };
 

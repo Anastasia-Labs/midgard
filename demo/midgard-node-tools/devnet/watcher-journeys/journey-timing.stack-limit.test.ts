@@ -94,3 +94,52 @@ describe("an attached stack's per-family time limit", () => {
     ).toThrow(/timer range/u);
   });
 });
+
+describe("a family the deployment's profile leaves out of its catalogue", () => {
+  // The Preprod testing profile, as an attached twin stack's finalized
+  // manifest carries it: 10-block finality, the watcher acting at inclusion.
+  const testing = DEPLOYMENT_PROFILES["preprod-testing"];
+  const cadence = {
+    ...preprod,
+    confirmationDepth: testing.l1_finality.confirmation_depth,
+    actionDepth: 1,
+    disputeTiming: testing.timing,
+    deploymentProfile: testing,
+  };
+
+  it("refuses it by name and profile before any family is staged", () => {
+    expect(testing.excluded_fraud_proof_categories).toContain(
+      "validationTraceDispute",
+    );
+    expect(() =>
+      journeyTimingForCategory("validationTraceDispute", cadence),
+    ).toThrow(/validationTraceDispute.*preprod-testing/u);
+  });
+
+  it("refuses every family a profile leaves out and budgets every family it installs", () => {
+    const mainnet = DEPLOYMENT_PROFILES.mainnet;
+    const mainnetCadence = {
+      ...cadence,
+      disputeTiming: mainnet.timing,
+      deploymentProfile: mainnet,
+    };
+    expect(mainnet.excluded_fraud_proof_categories.length).toBeGreaterThan(1);
+    for (const category of mainnet.excluded_fraud_proof_categories)
+      expect(() => journeyTimingForCategory(category, mainnetCadence)).toThrow(
+        new RegExp(`${category}.*mainnet`, "u"),
+      );
+    for (const category of ["transitionTrace", "doubleWithdraw", "zeroInput"])
+      expect(
+        journeyTimingForCategory(category, cadence).journeyTimeoutMs,
+      ).toBeGreaterThan(0);
+    // The rehearsal profile installs the execution dispute.
+    const rehearsal = DEPLOYMENT_PROFILES["preprod-rehearsal"];
+    expect(
+      journeyTimingForCategory("validationTraceDispute", {
+        ...cadence,
+        disputeTiming: rehearsal.timing,
+        deploymentProfile: rehearsal,
+      }).allowances.undefendedCaseMs,
+    ).toBeGreaterThan(0);
+  });
+});

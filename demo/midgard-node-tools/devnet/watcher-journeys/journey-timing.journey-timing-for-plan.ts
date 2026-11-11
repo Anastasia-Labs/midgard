@@ -110,6 +110,14 @@ export interface JourneyCadence {
     dispute_side_clock_ms: number;
     dispute_max_validity_range_ms: number;
   }>;
+  /**
+   * The deployment profile's name and the fault families it leaves out of
+   * its fraud-proof catalogue; a family it leaves out has no journey.
+   */
+  deploymentProfile?: Readonly<{
+    name: string;
+    excluded_fraud_proof_categories: readonly string[];
+  }>;
 }
 
 /** How long an undefended case stays open: its defense window, C + L_d. */
@@ -419,15 +427,28 @@ export const transitionTraceJourneyTiming = (cadence: JourneyCadence) =>
 export const genericJourneyTiming = (cadence: JourneyCadence) =>
   journeyTimingForPlan(GENERIC_JOURNEY_PLAN, cadence);
 
+/**
+ * The audited plan for transitionTrace, the undefended-case plan for
+ * validationTraceDispute, and the finite generic plan for every other family.
+ * Refuses, naming the family and profile, a family the deployment's profile
+ * leaves out of its catalogue: its watcher never proves it, so a journey
+ * would stage the fault on L1 and only then fail.
+ */
 export const journeyTimingForCategory = (
   category: string,
   cadence: JourneyCadence,
-) =>
-  category === TRANSITION_TRACE_JOURNEY_PLAN.category
+) => {
+  const profile = cadence.deploymentProfile;
+  if (profile?.excluded_fraud_proof_categories.includes(category))
+    throw new Error(
+      `${category} is not installed on deployment profile ${profile.name}: the profile leaves it out of its fraud-proof catalogue, so the drill cannot run it on this deployment`,
+    );
+  return category === TRANSITION_TRACE_JOURNEY_PLAN.category
     ? transitionTraceJourneyTiming(cadence)
     : category === VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN.category
       ? journeyTimingForPlan(VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN, cadence)
       : genericJourneyTiming(cadence);
+};
 
 /**
  * A family's whole time limit on an attached stack (`journey.test.ts`): its
