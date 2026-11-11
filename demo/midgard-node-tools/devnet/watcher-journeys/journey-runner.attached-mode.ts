@@ -3,10 +3,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { nodeLedger } from "../../src/full-stack/journey.js";
 import { stackSuccessorPort } from "./honest-successor.js";
 import { LANDED_BLOCK_AWAITING_DA } from "./honest-successor.observables.js";
+import { stackTransferBeforeFault } from "./honest-successor.transfer.js";
 import { journeyNetwork } from "./journey-network.js";
 import type { JourneyRunMode } from "./journey-runner.journey-mode.js";
 import type { AttachedJourneySession } from "./journey-session.js";
 import { readStackJourneyTiming } from "./journey-timing.js";
+import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { createNodeHoldWatch } from "./node-hold-watch.js";
 import {
   fetchJourneyPublicDaPayload,
@@ -14,7 +16,9 @@ import {
   STACK_PUBLIC_DA_TRAIL_MS,
   verifyStackJourneyPublicDa,
 } from "./public-da-preflight.js";
+import { stackDaExpectation } from "./stack-da-publication.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
+import { stackLateShiftWindowOpensMs } from "./stack-late-shift.js";
 import {
   stackJourneyTransactions,
   stackSignedCommitRecovery,
@@ -95,6 +99,44 @@ export const attachedJourneyMode = (
           onFaultCommitted: (fault) => {
             holdWatch.start(fault.headerHash);
           },
+          // Our node holds its honest work from its first shift after the
+          // fault: handed over in operator-2's shift, where our node cannot
+          // commit, just before the fault's commit. A refused fault has no
+          // successor.
+          ...(stackDaExpectation(fixture.category) === "refusal"
+            ? {}
+            : {
+                beforeFaultCommit: (predecessor) =>
+                  stackTransferBeforeFault({
+                    directory,
+                    nodeEndpoint: context.stackConfig.endpoint,
+                    ledger: nodeLedger(context.stackConfig.endpoint),
+                    ledgerOwner: context.accounts.ledgerOwner,
+                    network: journeyNetwork().network,
+                    transferLovelace: BigInt(
+                      context.stackConfig.journey.transferLovelace,
+                    ),
+                    timeoutMs: context.stackConfig.timeoutMs,
+                    now: () => context.deployment.chain.now(),
+                    // Never past the opening of the fault's late-shift window.
+                    readyByMs: async () =>
+                      stackLateShiftWindowOpensMs(
+                        context,
+                        (
+                          await readStackJourneyTiming(
+                            {
+                              nodeConfigPath:
+                                context.layout.node.nodeConfigPath,
+                              manifestPath: context.layout.manifestPath,
+                            },
+                            fixture.category,
+                            { actionDepth: JOURNEY_ACTION_DEPTH },
+                          )
+                        ).transactionAllowanceMs,
+                      ),
+                    onStage,
+                  })(predecessor),
+              }),
           onStage,
         });
       } catch (cause) {

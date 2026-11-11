@@ -49,6 +49,8 @@ export async function stageJourney(
     onHealthyPredecessor,
     readSignedCommitRecovery,
     onFaultCommitted,
+    beforeFaultCommit,
+    createBlockActor = createPublishedWatcherBlockActor,
     onStage,
   }: JourneyFixtureStage,
   task: FaultPreparation,
@@ -240,7 +242,7 @@ export async function stageJourney(
   const readHeaderConsumptions = (unit: string) =>
     readKupoUnitConsumptions(context.kupoUrl, unit);
   const blockActor = (lucid: LucidEvolution) =>
-    createPublishedWatcherBlockActor({
+    createBlockActor({
       deployment,
       lucid,
       ...daPath.actorOptions,
@@ -495,6 +497,8 @@ export async function stageJourney(
       // Registration belongs to a new commit, never to recovery of a signed
       // or already published fault whose operator may have since been slashed.
       await actor.onboardOperator();
+      // Readied before the late-shift wait, handed over after it.
+      const handOver = await beforeFaultCommit?.(retainedPredecessor);
       for (;;) {
         await daPath.beforeFaultCommit(actor);
         const anchor = await assertTail(predecessor);
@@ -510,6 +514,7 @@ export async function stageJourney(
           delete checkpoint.signedCommit;
           await writeJourneyArtifact(checkpointPath, checkpoint);
         }
+        await handOver?.();
         try {
           checkpoint.commitTxHash = await actor.commit(
             current,

@@ -1339,6 +1339,7 @@ jobs:
             watcher-journeys/history-events.test.ts \
             watcher-journeys/honest-successor.observables.test.ts \
             watcher-journeys/honest-successor.test.ts \
+            watcher-journeys/honest-successor.transfer.test.ts \
             watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-network.test.ts \
@@ -1386,6 +1387,7 @@ jobs:
             watcher-journeys/stack-user-event-floor.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
+            watcher-journeys/staging-recovery.fault-commit-hook.test.ts \
             watcher-journeys/staging-recovery.test.ts \
             watcher-journeys/staging.decode-journey-retained-block.test.ts \
             watcher-journeys/transaction-cases.test.ts \

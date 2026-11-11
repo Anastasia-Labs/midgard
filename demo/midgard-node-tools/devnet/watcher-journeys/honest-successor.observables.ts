@@ -16,6 +16,7 @@ export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
 export const COMMIT_BASE_PENDING = "commit_base_pending";
 
 const HEADER_HASH = /^[0-9a-f]{56}$/u;
+const TX_HASH = /^[0-9a-f]{64}$/u;
 /** How landed-block processing names the block an invalid hold is on. */
 const HELD_BLOCK = /^block ([0-9a-f]{56})\b/u;
 
@@ -93,6 +94,8 @@ export type IndexedStateQueueHeader = Readonly<{
   createdAtSlot: number;
   /** When it was spent (merged or removed), if it was. */
   spentAtSlot?: number;
+  /** The transaction that spent it, where Kupo names it. */
+  spentByTxHash?: string;
 }>;
 
 type KupoMatch = Readonly<{
@@ -103,7 +106,7 @@ type KupoMatch = Readonly<{
   datum?: string | null;
   datum_type?: string | null;
   created_at: { slot_no: number };
-  spent_at?: { slot_no: number } | null;
+  spent_at?: { slot_no: number; transaction_id?: unknown } | null;
 }>;
 
 const readKupoMatches = async (
@@ -174,7 +177,15 @@ const headerOfMatch = async (
     txHash: match.transaction_id,
     outputIndex: match.output_index,
     createdAtSlot: match.created_at.slot_no,
-    ...(match.spent_at == null ? {} : { spentAtSlot: match.spent_at.slot_no }),
+    ...(match.spent_at == null
+      ? {}
+      : {
+          spentAtSlot: match.spent_at.slot_no,
+          ...(typeof match.spent_at.transaction_id === "string" &&
+          TX_HASH.test(match.spent_at.transaction_id)
+            ? { spentByTxHash: match.spent_at.transaction_id }
+            : {}),
+        }),
   };
 };
 
@@ -267,6 +278,11 @@ export type OperatorShiftOnFault = Readonly<{
  * the fault proves nothing about its refusal to build on it. The fault's
  * commit landed in operator-2's shift, so an appointment of ours that
  * overlaps the window was made after it.
+ *
+ * Also what tells a fault removed before our node's shift apart: the
+ * transaction that spent the fault, the start of our operator's first shift
+ * after the fault's commit, and the shift of the fault's operator that the
+ * commit landed in. Each is null when L1 does not show it.
  */
 export const readOperatorShiftsOnFault = async (
   input: Readonly<{
@@ -286,6 +302,16 @@ export const readOperatorShiftsOnFault = async (
   fromMs: number;
   toMs: number;
   ourShifts: OperatorShiftOnFault[];
+  /** The fault's spend, as Kupo indexed it; null while it is unspent. */
+  removal: Readonly<{
+    txHash: string | null;
+    slot: number;
+    atMs: number;
+  }> | null;
+  /** Our operator's first shift starting at or after the fault's commit. */
+  ourFirstShiftStartMs: number | null;
+  /** The fault's operator's shift that its commit landed in. */
+  faultOperatorShift: Readonly<{ startTime: number; endTime: number }> | null;
   /**
    * From the fault's commit to its removal and to the start of our
    * operator's first shift after it; null when L1 has neither yet. The
@@ -311,26 +337,40 @@ export const readOperatorShiftsOnFault = async (
   const faultCommittedMs = input.slotToUnixTime(fault.createdAtSlot);
   const fromMs = Math.max(faultCommittedMs, input.heldFromMs);
   const toMs = input.slotToUnixTime(fault.spentAtSlot ?? input.untilSlot);
+  // The appointment the fault's commit landed in was made less than a shift
+  // before it; two shifts back also holds one whose start was its upper
+  // validity bound.
+  const slotMs =
+    input.slotToUnixTime(fault.createdAtSlot + 1) - faultCommittedMs;
+  const lookbackSlots = 2 * Math.ceil(input.shiftDurationMs / slotMs);
   const appointments = await readKupoMatches(
     input.kupoUrl,
-    `/matches/${input.schedulerPolicyId}.${SDK.SCHEDULER_ASSET_NAME}?resolve_hashes&created_after=${Math.max(fault.createdAtSlot - 1, 0).toString()}`,
+    `/matches/${input.schedulerPolicyId}.${SDK.SCHEDULER_ASSET_NAME}?resolve_hashes&created_after=${Math.max(fault.createdAtSlot - 1 - lookbackSlots, 0).toString()}`,
     fetchImpl,
   );
   const ourShifts: OperatorShiftOnFault[] = [];
   let ourNextShiftMs: number | undefined;
+  let faultOperatorShift: { startTime: number; endTime: number } | null = null;
   for (const match of appointments) {
     if (match.datum_type !== "inline" || typeof match.datum !== "string")
       throw new Error(
         `Scheduler output ${match.transaction_id}#${match.output_index.toString()} has no inline datum in Kupo`,
       );
     const datum = Data.from(match.datum, SDK.SchedulerDatum);
-    if (
-      datum === "NoActiveOperators" ||
-      datum.ActiveOperator.operator !== input.operatorKeyHash
-    )
-      continue;
+    if (datum === "NoActiveOperators") continue;
     const startTime = Number(datum.ActiveOperator.start_time);
     const endTime = startTime + input.shiftDurationMs;
+    if (match.created_at.slot_no < fault.createdAtSlot) {
+      if (
+        datum.ActiveOperator.operator === fault.header.operatorVkey &&
+        startTime <= faultCommittedMs &&
+        faultCommittedMs < endTime &&
+        startTime >= (faultOperatorShift?.startTime ?? -Infinity)
+      )
+        faultOperatorShift = { startTime, endTime };
+      continue;
+    }
+    if (datum.ActiveOperator.operator !== input.operatorKeyHash) continue;
     if (startTime < toMs && endTime > fromMs)
       ourShifts.push({ txHash: match.transaction_id, startTime, endTime });
     if (
@@ -344,6 +384,16 @@ export const readOperatorShiftsOnFault = async (
     fromMs,
     toMs,
     ourShifts,
+    removal:
+      fault.spentAtSlot === undefined
+        ? null
+        : {
+            txHash: fault.spentByTxHash ?? null,
+            slot: fault.spentAtSlot,
+            atMs: toMs,
+          },
+    ourFirstShiftStartMs: ourNextShiftMs ?? null,
+    faultOperatorShift,
     measured: {
       faultCommitToConvictionMs:
         fault.spentAtSlot === undefined ? null : toMs - faultCommittedMs,

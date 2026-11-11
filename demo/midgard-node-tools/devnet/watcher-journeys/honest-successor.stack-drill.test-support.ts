@@ -31,6 +31,10 @@ import {
   schedulerPolicyId,
   serve,
 } from "./honest-successor.test-support.js";
+import {
+  type ReplayedPredecessor,
+  stackTransferBeforeFault,
+} from "./honest-successor.transfer.js";
 import { createNodeHoldWatch } from "./node-hold-watch.js";
 
 /** Every drill's directory, for the suite to remove. */
@@ -81,21 +85,26 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     () => appointments,
   );
   const sent: { cbor: string; txId: string }[] = [];
+  const outputOf = (address: string, lovelace: bigint) =>
+    Buffer.from(
+      makeMidgardTxOutput(
+        CML.Address.from_bech32(address),
+        assetsToValue({ lovelace }),
+      ).to_cbor_bytes(),
+    );
+  /** The owner's output at the predecessor; a lagging ledger shows another. */
+  const ownerOutput = "44".repeat(32);
+  let ledgerLags = false;
   const ledger: JourneyLedger = {
     utxos: (address) => {
-      const txHash = "44".repeat(32);
+      const txHash = ledgerLags ? "43".repeat(32) : ownerOutput;
       const assets = { lovelace: 50_000_000n };
       return Promise.resolve([
         {
           txHash,
           outputIndex: 0,
           outrefCbor: makeOutRefCbor(txHash, 0),
-          outputCbor: Buffer.from(
-            makeMidgardTxOutput(
-              CML.Address.from_bech32(address),
-              assetsToValue(assets),
-            ).to_cbor_bytes(),
-          ),
+          outputCbor: outputOf(address, assets.lovelace),
           address,
           assets,
         },
@@ -146,6 +155,55 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
       shiftDurationMs: SHIFT_MS,
       slotToUnixTime: at,
     });
+  /**
+   * The predecessor as staging replays it: the owner's output and another
+   * address's.
+   */
+  const replayedPredecessor = {
+    ...predecessor,
+    ledger: {
+      entries: [
+        {
+          outRef: makeOutRefCbor(ownerOutput, 0),
+          output: outputOf(owner, 50_000_000n),
+        },
+        {
+          outRef: makeOutRefCbor("45".repeat(32), 0),
+          output: outputOf(
+            walletFromSeed(generateSeedPhrase(), { network: "Preprod" })
+              .address,
+            7_000_000n,
+          ),
+        },
+      ],
+    },
+  } satisfies ReplayedPredecessor;
+  /** What readying the transfer reported. */
+  const stages: string[] = [];
+  /**
+   * The transfer handed over before the fault's commit, as staging asks;
+   * the fault's late-shift window opens at `readyByMs` of wall-clock time,
+   * by default never.
+   */
+  const transferBeforeFault = (
+    timeoutMs = 2_000,
+    readyByMs = Number.POSITIVE_INFINITY,
+  ) =>
+    stackTransferBeforeFault({
+      directory,
+      nodeEndpoint,
+      ledger,
+      ledgerOwner: { seedPhrase, address: owner },
+      network: "Preprod",
+      transferLovelace: 5_000_000n,
+      timeoutMs,
+      pollIntervalMs: 5,
+      now: () => Date.now(),
+      readyByMs: async () => readyByMs,
+      onStage: (name) => {
+        stages.push(name);
+      },
+    });
   /** Our node commits `block` carrying `transactions`, published and on L1. */
   const commits = async (
     block: JourneyBlock,
@@ -195,9 +253,22 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
       await pause(5);
     }
   };
-  /** The watcher removed the fault at `slot`. */
-  const removed = (slot: number) => {
-    indexed[1] = { ...indexed[1]!, spentAt: slot };
+  /** The watcher's authenticated correction of the fault. */
+  const correction = { removalTxHash: "ab".repeat(32) };
+  /**
+   * The fault's output was spent at `slot`, by default by the watcher's
+   * removal; `by: null` leaves the spending transaction unnamed in Kupo.
+   */
+  const removed = (
+    slot: number,
+    { by = correction.removalTxHash }: { by?: string | null } = {},
+  ) => {
+    indexed[1] = {
+      block: fault,
+      slot: 10,
+      spentAt: slot,
+      ...(by === null ? {} : { spentBy: by }),
+    };
   };
   /** The scheduler appoints `operator` from `slot`, one second a slot. */
   const appoints = (operator: string, slot: number) =>
@@ -214,7 +285,15 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     holdWatch,
     commits,
     observedHold,
+    correction,
     removed,
     appoints,
+    replayedPredecessor,
+    transferBeforeFault,
+    stages,
+    /** Whether our node's ledger is still behind the predecessor. */
+    ledgerLags: (lags: boolean) => {
+      ledgerLags = lags;
+    },
   };
 };

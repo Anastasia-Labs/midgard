@@ -1,6 +1,7 @@
 import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs";
-import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type { CheckedLedger, LedgerAt } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
+import type { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
 
 import type { StackShiftCoverInput } from "./journey-timing.js";
 import type { loadJourneyContext } from "./live-context.js";
@@ -70,6 +71,18 @@ export type JourneyFixtureStage = {
    * resumed staging. An attached stack starts watching our node's hold here.
    */
   onFaultCommitted?(fault: JourneyBlock): Promise<void> | void;
+  /**
+   * The fault is about to be committed on `predecessor`, the queue's tail,
+   * replayed: called once before the fault's late-shift wait, and what it
+   * returns on every commit attempt after that wait and the tail check, just
+   * before the commit. An attached stack hands our node its honest transfer
+   * there.
+   */
+  beforeFaultCommit?(
+    predecessor: JourneyBlock & Readonly<{ ledger: CheckedLedger }>,
+  ): Promise<() => Promise<void>>;
+  /** Creates the drill's block actor; the published one when absent. */
+  createBlockActor?: typeof createPublishedWatcherBlockActor;
   onStage(name: string): void;
 };
 

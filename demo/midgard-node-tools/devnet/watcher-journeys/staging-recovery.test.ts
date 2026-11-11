@@ -245,14 +245,11 @@ const openStage = async (funded = false) => {
   const recoveryReads = vi.fn();
   // What staging had done each time it reported the fault committed.
   const faultCommits: string[][] = [];
-  const stageInput = (
-    onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
-  ): JourneyFixtureStage => ({
+  const stageInput = (): JourneyFixtureStage => ({
     context,
     ledgerAt: fixtureJourneyLedgerAt([predecessor, current]),
     directory,
     retain,
-    onHealthyPredecessor,
     onFaultCommitted: (fault) => {
       if (fault.headerHash === current.headerHash)
         faultCommits.push([...actions]);
@@ -274,9 +271,8 @@ const openStage = async (funded = false) => {
       };
     },
   });
-  const stage = (
-    onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
-  ) => fixture.stage(stageInput(onHealthyPredecessor));
+  const stage = (more: Partial<JourneyFixtureStage> = {}) =>
+    fixture.stage({ ...stageInput(), ...more });
   return {
     directory,
     // Commits one prerequisite history block through the fault preparation,
@@ -364,7 +360,7 @@ it("starts observation after retaining healthy history and before preparing the 
     expect(fixture.actor.attest).not.toHaveBeenCalled();
     throw stop;
   });
-  await expect(fixture.stage(onHealthyPredecessor)).rejects.toBe(stop);
+  await expect(fixture.stage({ onHealthyPredecessor })).rejects.toBe(stop);
   expect(onHealthyPredecessor).toHaveBeenCalledOnce();
 });
 
@@ -817,8 +813,18 @@ it("does not replace a locally timed-out commit while canonical recovery still s
       expect(fixture.pinWallet).not.toHaveBeenCalled();
       return commit(...args);
     });
-  await fixture.stage();
+  // Our node's work is readied once, on the replayed predecessor, and handed
+  // over just before each commit attempt.
+  await fixture.stage({
+    beforeFaultCommit: async ({ header, ledger }) => {
+      fixture.actions.push(`ready ${ledger.utxosRoot === header.utxosRoot}`);
+      return async () => void fixture.actions.push("hand over");
+    },
+  });
   expect(fixture.actor.commit).toHaveBeenCalledTimes(2);
+  expect(fixture.actions.slice(0, 5).join()).toBe(
+    "onboard,ready true,hand over,hand over,commit",
+  );
   expect(await readJourneyArtifact(fixture.checkpointPath)).not.toHaveProperty(
     "signedCommit",
   );

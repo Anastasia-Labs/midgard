@@ -167,6 +167,29 @@ export const stackLateShiftGate = (
 };
 
 /**
+ * When the fault's late-shift window opens in the stack scheduler's current
+ * shift, as `stackLateShiftFaultCommit` plans it: the fault's commit waits
+ * for it in any case, so work readied before the commit may take until then
+ * without delaying it. Ledger time now when no shift or lead plans one.
+ */
+export const stackLateShiftWindowOpensMs = async (
+  context: StackJourneyContext,
+  /** How long a commit takes to land. */
+  commitAllowanceMs: number,
+) => {
+  const appointment = await readStackAppointment(context);
+  const leadMs = context.lateShiftLeadMs;
+  if (appointment === undefined || leadMs === undefined)
+    return context.deployment.chain.now();
+  const startMs = Number(appointment.startTime);
+  return planLateShiftFaultCommit({
+    shift: { startMs, endMs: startMs + Number(SDK.SHIFT_DURATION_MS) },
+    leadMs,
+    commitAllowanceMs,
+  }).notBeforeMs;
+};
+
+/**
  * `stackUserEventGate` on an attached stack: operator-2's shift from the
  * stack's scheduler, the ledger clock of its chain, the deployment's user
  * event timing, and the stack's undelivered user events read as a strike

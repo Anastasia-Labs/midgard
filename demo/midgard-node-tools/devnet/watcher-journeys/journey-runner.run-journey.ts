@@ -251,7 +251,9 @@ export const runJourney = async (
         contracts.stateQueue.policyId,
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
       );
-    const successor = await successorPort.commit();
+    const { successor, stage: successorStage } = await successorPort.commit({
+      removalTxHash: completion.correction.removalTxHash,
+    });
     const healthy = await awaitHealthyWatcher({
       name: "healthy processing after correction",
       observe: async () => {
@@ -326,6 +328,9 @@ export const runJourney = async (
       proverAddress: mode.proverAddress,
       completion,
       successor: successor.headerHash,
+      // Whether the successor stage tested our node's refusal, or the fault
+      // was removed before our node's shift could reach it.
+      ...successorStage,
       // The status read that proved healthy processing, which the evidence
       // verifier checks, not a later read that may carry a fresh alert.
       diagnostics: { ...(await running.diagnostics()), status: healthy.status },

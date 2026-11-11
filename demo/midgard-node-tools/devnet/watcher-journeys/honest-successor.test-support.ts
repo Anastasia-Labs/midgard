@@ -64,11 +64,15 @@ export const headerOn = async (
 
 export const schedulerPolicyId = "d4".repeat(28);
 
-/** A state-queue output, created at `slot` and spent at `spentAt`. */
+/**
+ * A state-queue output, created at `slot` and spent at `spentAt` by
+ * `spentBy`, which Kupo leaves unnamed when absent.
+ */
 export type IndexedOutput = Readonly<{
   block: JourneyBlock;
   slot: number;
   spentAt?: number;
+  spentBy?: string;
 }>;
 
 /** A scheduler output appointing `operator` from `startTime`, made at `slot`. */
@@ -130,7 +134,7 @@ export const kupo = (
     };
     const matches = [
       ...(name === "*" ? [root] : []),
-      ...outputs().map(({ block, slot, spentAt }, index) => {
+      ...outputs().map(({ block, slot, spentAt, spentBy }, index) => {
         const assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${block.headerHash}`;
         const node: SDK.StateQueueNode = {
           header: block.header,
@@ -156,7 +160,13 @@ export const kupo = (
             SDK.LinkedListDatum,
           ),
           created_at: { slot_no: slot },
-          spent_at: spentAt === undefined ? null : { slot_no: spentAt },
+          spent_at:
+            spentAt === undefined
+              ? null
+              : {
+                  slot_no: spentAt,
+                  ...(spentBy === undefined ? {} : { transaction_id: spentBy }),
+                },
           assetName,
         };
       }),

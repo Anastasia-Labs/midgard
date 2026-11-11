@@ -1,16 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type Network, walletFromSeed } from "@lucid-evolution/lucid";
-import { buildTransferTxWithMinFee } from "midgard-node/commands/submit-l2-transfer";
-import type { ResolvedTxStatus } from "midgard-node/commands/tx-status";
+import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { type JourneyLedger } from "../../src/full-stack/journey.js";
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
@@ -27,17 +21,42 @@ import {
   readIndexedStateQueueHeader,
   readOperatorShiftsOnFault,
 } from "./honest-successor.observables.js";
+import { successorTransfer } from "./honest-successor.transfer.js";
 import { createNodeHoldWatch, type NodeHoldWatch } from "./node-hold-watch.js";
+
+/**
+ * Whether the family's successor stage tested our node's refusal to build on
+ * the fault. It was not reached when the watcher's removal of the fault
+ * landed strictly before our operator's first shift after the fault's
+ * commit: our node never had a shift in which it could have built on the
+ * fault. That still passes the proof and the removal; the evidence is what
+ * L1 shows of the three.
+ */
+export type JourneySuccessorStage =
+  | Readonly<{ successorStage: "exercised" }>
+  | Readonly<{
+      successorStage: "not-reached-fault-removed-before-our-shift";
+      successorStageEvidence: Readonly<{
+        removal: Readonly<{ txHash: string; slot: number; atMs: number }>;
+        ourFirstShiftStartMs: number;
+        operator2ShiftEndMs: number;
+      }>;
+    }>;
 
 /**
  * How a family's honest successor comes about once the fault is on L1.
  * - `afterFaultLanded`: the fault is the queue's tail; give our node work.
- * - `commit`: the watcher removed the fault; return the successor block.
+ * - `commit`: the watcher removed the fault in `removalTxHash`; return the
+ *   successor block and whether the successor stage was reached.
  * - `close`: stop anything `afterFaultLanded` left running.
  */
 export type JourneySuccessorPort = Readonly<{
   afterFaultLanded(): Promise<void>;
-  commit(): Promise<JourneySuccessor>;
+  commit(
+    correction: Readonly<{ removalTxHash: string }>,
+  ): Promise<
+    Readonly<{ successor: JourneySuccessor; stage: JourneySuccessorStage }>
+  >;
   close(): Promise<void>;
 }>;
 
@@ -78,18 +97,46 @@ export const devnetSuccessorPort = (
         );
     await writeJourneyArtifact(successorPath, successor);
     await input.retain(successor, successor.commitTxHash);
-    return successor;
+    return { successor, stage: { successorStage: "exercised" } };
   },
   close: async () => {},
 });
 
-/** The drill's transfer to our node, saved for the fault it was sent for. */
-type TransferIntent = Readonly<{
-  faultHeaderHash: string;
-  txId: string;
-  signedTxCbor: string;
-  fee: string;
-}>;
+/**
+ * The successor stage was not reached only when L1 shows all of it: the
+ * fault spent by the watcher's own removal, our operator's first shift after
+ * the fault's commit starting strictly after that removal's slot, and the
+ * fault operator's shift the commit landed in. A removal in the slot our
+ * shift starts in is not before it. Otherwise names what L1 does not show.
+ */
+const faultRemovedBeforeOurShift = (
+  faultTail: Awaited<ReturnType<typeof readOperatorShiftsOnFault>>,
+  removalTxHash: string,
+): JourneySuccessorStage | string => {
+  const { removal, ourFirstShiftStartMs, faultOperatorShift } = faultTail;
+  if (removal === null)
+    return "Kupo shows the fault unspent, so its removal is not proven before our shift";
+  if (removal.txHash !== removalTxHash)
+    return `Kupo shows the fault spent by ${removal.txHash ?? "an unnamed transaction"}, not by the watcher's removal ${removalTxHash}`;
+  if (ourFirstShiftStartMs === null)
+    return "L1 shows no shift of ours after the fault's commit to place the removal before";
+  if (removal.atMs >= ourFirstShiftStartMs)
+    return `the removal at ${removal.atMs.toString()} ms is not before our first shift's start at ${ourFirstShiftStartMs.toString()} ms`;
+  if (faultOperatorShift === null)
+    return "L1 shows no shift of operator-2's that the fault's commit landed in";
+  return {
+    successorStage: "not-reached-fault-removed-before-our-shift",
+    successorStageEvidence: {
+      removal: {
+        txHash: removal.txHash,
+        slot: removal.slot,
+        atMs: removal.atMs,
+      },
+      ourFirstShiftStartMs,
+      operator2ShiftEndMs: faultOperatorShift.endTime,
+    },
+  };
+};
 
 /**
  * The stack successor: our own node builds it. After the fault lands the
@@ -103,7 +150,9 @@ type TransferIntent = Readonly<{
  *    predecessor and carries the transfer.
  * The refusal is tested only if our node could have built on the fault: it
  * had a shift while the fault was the tail, or reported `commit_base_pending`
- * then. Neither fails the family.
+ * then. Neither fails the family, unless L1 shows the watcher's removal of
+ * the fault strictly before our first shift's start: then the stage was not
+ * reached, and the family records why.
  */
 export const stackSuccessorPort = (
   input: Readonly<{
@@ -144,7 +193,7 @@ export const stackSuccessorPort = (
 ): JourneySuccessorPort => {
   const fetchImpl = input.fetchImpl ?? fetch;
   const faultHeaderHash = input.fault.headerHash;
-  const intentPath = join(input.directory, "successor-transfer.json");
+  const refusalPath = join(input.directory, "refusal.json");
   const holdWatch =
     input.holdWatch ??
     createNodeHoldWatch({
@@ -153,91 +202,33 @@ export const stackSuccessorPort = (
       pollIntervalMs: input.holdPollIntervalMs,
       fetchImpl,
     });
-  const txStatus = async (txId: string) => {
-    const response = await fetchImpl(
-      `${input.nodeEndpoint}/tx-status?tx_hash=${txId}`,
-      { signal: AbortSignal.timeout(10_000) },
-    );
-    const text = await response.text();
-    let status: ResolvedTxStatus | undefined;
-    try {
-      status = JSON.parse(text) as ResolvedTxStatus;
-    } catch {
-      status = undefined;
-    }
-    // Our node answers a transaction it does not know with 404 and the
-    // `not_found` status; any other answer must name this transaction.
-    const known =
-      status?.txId === txId &&
-      (response.ok
-        ? status.status !== "not_found"
-        : response.status === 404 && status.status === "not_found");
-    if (!known || status === undefined)
-      throw new Error(
-        `Our node's /tx-status answered ${response.status.toString()} for ${txId}: ${text}`,
-      );
-    if (status.status === "rejected")
-      throw new Error(
-        `Our node rejected the drill's transfer ${txId}: ${status.reasonCode}`,
-      );
-    return status;
-  };
-  // A transfer saved for another fault, staged by an earlier attempt, is not
-  // this fault's work.
-  const savedIntent = async (): Promise<TransferIntent | undefined> => {
-    if (!existsSync(intentPath)) return undefined;
-    const intent = await readJourneyArtifact<TransferIntent>(intentPath);
-    if (intent.faultHeaderHash !== faultHeaderHash) return undefined;
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
-      Buffer.from(intent.signedTxCbor, "hex"),
-    );
-    if (
-      computeMidgardNativeTxId(decoded).toString("hex") !== intent.txId ||
-      decoded.body.fee !== BigInt(intent.fee)
-    )
-      throw new Error(
-        "Saved successor transfer differs from its exact transaction identity or fee",
-      );
-    return intent;
-  };
+  const transfer = successorTransfer(input);
+  const { txStatus } = transfer;
+  const savedIntent = () => transfer.saved(input.predecessor, faultHeaderHash);
   return {
     afterFaultLanded: async () => {
       if (existsSync(join(input.directory, SUCCESSOR))) return;
-      let intent = await savedIntent();
-      if (intent === undefined) {
-        const { header } = input.predecessor;
-        const built = await buildTransferTxWithMinFee({
-          senderAddress: input.ledgerOwner.address,
-          destinationAddress: input.ledgerOwner.address,
-          signer: walletFromSeed(input.ledgerOwner.seedPhrase, {
-            network: input.network,
-          }).paymentKey,
-          availableUtxos: await input.ledger.utxos(input.ledgerOwner.address),
-          requestedAssets: { lovelace: input.transferLovelace },
-          network: input.network,
-          networkId: header.expectedNetworkId,
-          minFeeA: header.minFeeA,
-          minFeeB: header.minFeeB,
-        });
-        intent = {
-          faultHeaderHash,
-          txId: built.txIdHex,
-          signedTxCbor: built.txHex,
-          fee: built.fee.toString(),
-        };
-        // This checkpoint precedes the first send, including a lost response.
-        await writeJourneyArtifact(intentPath, intent);
-      }
-      if ((await txStatus(intent.txId)).status === "not_found")
-        await input.ledger.submitTransfer(intent.signedTxCbor, intent.txId);
+      // Handed over before the fault's commit, or built now.
+      await transfer.send(
+        (await savedIntent()) ?? (await transfer.build(input.predecessor)),
+      );
       holdWatch.start(faultHeaderHash);
     },
-    commit: async () => {
+    commit: async ({ removalTxHash }) => {
       const failure = await holdWatch.stop();
       if (failure !== undefined) throw failure;
       const successorPath = join(input.directory, SUCCESSOR);
-      if (existsSync(successorPath))
-        return await readJourneyArtifact<JourneySuccessor>(successorPath);
+      // A run that stopped after its successor reads both back; a refusal
+      // record without a stage predates the stage and passed the shift check.
+      if (existsSync(successorPath)) {
+        const refusal = await readJourneyArtifact<{
+          stage?: JourneySuccessorStage;
+        }>(refusalPath);
+        return {
+          successor: await readJourneyArtifact<JourneySuccessor>(successorPath),
+          stage: refusal.stage ?? { successorStage: "exercised" },
+        };
+      }
       const intent = await savedIntent();
       if (intent === undefined)
         throw new Error("The drill's successor transfer was never submitted");
@@ -352,20 +343,28 @@ export const stackSuccessorPort = (
         fault: faultHeaderHash,
         ...faultTail,
       });
+      let stage: JourneySuccessorStage = { successorStage: "exercised" };
       if (
         faultTail.ourShifts.length === 0 &&
         faultTail.commitBasePendingAt === undefined
-      )
-        throw new Error(
-          `Our node had no shift while the fault ${faultHeaderHash} was the tail (${faultTail.fromMs.toString()}..${faultTail.toMs.toString()} ms) and never reported ${COMMIT_BASE_PENDING}: its refusal to build on the fault went untested`,
+      ) {
+        const removedBeforeOurShift = faultRemovedBeforeOurShift(
+          faultTail,
+          removalTxHash,
         );
+        if (typeof removedBeforeOurShift === "string")
+          throw new Error(
+            `Our node had no shift while the fault ${faultHeaderHash} was the tail (${faultTail.fromMs.toString()}..${faultTail.toMs.toString()} ms) and never reported ${COMMIT_BASE_PENDING}: its refusal to build on the fault went untested, and ${removedBeforeOurShift}`,
+          );
+        stage = removedBeforeOurShift;
+      }
       const successor: JourneySuccessor = {
         header,
         headerHash: committed,
         payloadEnvelopeCbor,
         commitTxHash: onL1!.txHash,
       };
-      await writeJourneyArtifact(join(input.directory, "refusal.json"), {
+      await writeJourneyArtifact(refusalPath, {
         fault: input.fault.headerHash,
         holdObservations: observations.length,
         holdBinding: observations.find(({ hold }) => hold?.state === "held")
@@ -375,9 +374,10 @@ export const stackSuccessorPort = (
         transfer: intent.txId,
         successor: committed,
         commitTxHash: onL1!.txHash,
+        stage,
       });
       await writeJourneyArtifact(successorPath, successor);
-      return successor;
+      return { successor, stage };
     },
     close: async () => {
       await holdWatch.stop();

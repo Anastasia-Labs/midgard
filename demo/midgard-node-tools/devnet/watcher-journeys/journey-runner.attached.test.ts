@@ -318,6 +318,9 @@ describe("journey runner on an attached stack", () => {
         },
       ] as const;
       const runs = [];
+      // Which staging was asked to hand our node its transfer before the
+      // fault's commit.
+      const handsOver: Record<string, boolean> = {};
       for (const { category, target, failedStage } of failing) {
         const stack = await runningStackWatcher(liveStatus());
         stack.served.nodeReadyz = awaitingDa;
@@ -328,6 +331,7 @@ describe("journey runner on an attached stack", () => {
         const stage = async (
           input: JourneyFixtureStage,
         ): Promise<StagedJourney> => {
+          handsOver[category] = input.beforeFaultCommit !== undefined;
           await input.onFaultCommitted?.(fault);
           return {
             predecessor: fault,
@@ -356,6 +360,11 @@ describe("journey runner on an attached stack", () => {
         expect(stack.nodeRequests).toContain("/readyz");
         runs.push({ stack, reads: stack.nodeRequests.length });
       }
+      // A refused fault has no successor, so no transfer goes ahead of it.
+      expect(handsOver).toEqual({
+        doubleSpend: true,
+        canonicalDecodability: false,
+      });
       // A watch still running reads /readyz again within its 5 s interval.
       await pause(6_000);
       for (const { stack, reads } of runs)

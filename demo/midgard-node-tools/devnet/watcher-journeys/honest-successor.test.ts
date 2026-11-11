@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
@@ -45,7 +46,8 @@ describe("stack successor", () => {
       3n,
     );
     await drill.commits(ours, [txId]);
-    const successor = await port.commit();
+    const { successor, stage } = await port.commit(drill.correction);
+    expect(stage).toEqual({ successorStage: "exercised" });
     expect(successor).toMatchObject({
       headerHash: ours.headerHash,
       commitTxHash: "03".padStart(64, "0"),
@@ -72,7 +74,10 @@ describe("stack successor", () => {
     const resumed = drill.port();
     await resumed.afterFaultLanded();
     expect(drill.sent).toHaveLength(1);
-    expect((await resumed.commit()).headerHash).toBe(ours.headerHash);
+    await expect(resumed.commit(drill.correction)).resolves.toMatchObject({
+      successor: { headerHash: ours.headerHash },
+      stage: { successorStage: "exercised" },
+    });
   });
 
   it("sees our node's hold from the fault's commit, though the watcher corrected the fault before staging ended", async () => {
@@ -94,12 +99,12 @@ describe("stack successor", () => {
       3n,
     );
     await drill.commits(ours, [drill.sent[0]!.txId]);
-    await expect(port.commit()).resolves.toMatchObject({
-      headerHash: ours.headerHash,
+    await expect(port.commit(drill.correction)).resolves.toMatchObject({
+      successor: { headerHash: ours.headerHash },
     });
   });
 
-  it("ignores hold observations and a saved transfer of another fault", async () => {
+  it("ignores hold observations of another fault and a saved transfer on another predecessor", async () => {
     const drill = await stackDrill();
     const other = await headerOn(drill.predecessor.headerHash, operator2, 9n);
     const observedAt = new Date().toISOString();
@@ -127,23 +132,23 @@ describe("stack successor", () => {
       string,
       unknown
     >;
-    expect(saved["faultHeaderHash"]).toBe(drill.fault.headerHash);
-    // A transfer saved for another fault is not this fault's.
+    expect(saved["predecessorHeaderHash"]).toBe(drill.predecessor.headerHash);
+    // A transfer saved on another predecessor is not this fault's work.
     await writeFile(
       path,
-      JSON.stringify({ ...saved, faultHeaderHash: other.headerHash }),
+      JSON.stringify({ ...saved, predecessorHeaderHash: other.headerHash }),
     );
     const port = drill.port();
     await port.afterFaultLanded();
     expect(drill.sent).toHaveLength(2);
-    // The second attempt staged its own transfer, bound to this fault.
+    // The second attempt staged its own transfer, on this predecessor.
     expect(
       (JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>)[
-        "faultHeaderHash"
+        "predecessorHeaderHash"
       ],
-    ).toBe(drill.fault.headerHash);
+    ).toBe(drill.predecessor.headerHash);
     await pause(30);
-    await expect(port.commit()).rejects.toThrow(
+    await expect(port.commit(drill.correction)).rejects.toThrow(
       /never reported landed_block_invalid/u,
     );
   });
@@ -166,7 +171,7 @@ describe("stack successor", () => {
       3n,
     );
     await drill.commits(ours, [drill.sent[0]!.txId]);
-    await port.commit();
+    await port.commit(drill.correction);
     expect(
       JSON.parse(await readFile(join(drill.directory, "refusal.json"), "utf8")),
     ).toMatchObject({ faultTail: { ourShifts: [] } });
@@ -176,28 +181,45 @@ describe("stack successor", () => {
     ).toEqual(expect.any(String));
   });
 
-  it("fails when our node had no shift while the fault was the tail and never reported commit_base_pending", async () => {
+  it("passes a fault the watcher removed before our first shift as not reached, with its evidence", async () => {
     const drill = await stackDrill();
     const port = drill.port();
     await port.afterFaultLanded();
     drill.node.readyz = faultHold(drill.fault.headerHash);
     await drill.observedHold();
-    // Operator-2 held the shift until the watcher removed the fault; our
-    // node's next shift came after it, and one before the fault ended in
-    // time.
+    // Operator-2's shift (slots 9 to 14) held the fault's commit at slot 10;
+    // the watcher removed the fault at slot 13, before our node's next shift.
     drill.appoints(honestOperator, 1);
     drill.appoints(operator2, 9);
     drill.removed(13);
     drill.appoints(honestOperator, 14);
     drill.node.readyz = { ready: true, reasons: [] };
-    await drill.commits(
-      await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
-      [drill.sent[0]!.txId],
+    const ours = await headerOn(
+      drill.predecessor.headerHash,
+      honestOperator,
+      3n,
     );
-    await expect(port.commit()).rejects.toThrow(
-      /had no shift while the fault .* was the tail/u,
-    );
-    // The family's evidence keeps the timing the check failed on.
+    await drill.commits(ours, [drill.sent[0]!.txId]);
+    const notReached = {
+      successorStage: "not-reached-fault-removed-before-our-shift",
+      successorStageEvidence: {
+        removal: {
+          txHash: drill.correction.removalTxHash,
+          slot: 13,
+          atMs: drill.at(13),
+        },
+        ourFirstShiftStartMs: drill.at(14),
+        operator2ShiftEndMs: drill.at(14),
+      },
+    };
+    await expect(port.commit(drill.correction)).resolves.toEqual({
+      successor: expect.objectContaining({ headerHash: ours.headerHash }),
+      stage: notReached,
+    });
+    // The family's evidence records it with the timing it was decided on.
+    expect(
+      JSON.parse(await readFile(join(drill.directory, "refusal.json"), "utf8")),
+    ).toMatchObject({ successor: ours.headerHash, stage: notReached });
     expect(
       JSON.parse(
         await readFile(join(drill.directory, "fault-tail.json"), "utf8"),
@@ -210,7 +232,88 @@ describe("stack successor", () => {
         faultCommitToOurNextShiftMs: 4_000,
       },
     });
+    // A resumed run reads the stage back with its successor.
+    await expect(drill.port().commit(drill.correction)).resolves.toMatchObject({
+      successor: { headerHash: ours.headerHash },
+      stage: notReached,
+    });
   });
+
+  it.each([
+    [
+      "lands in the slot our first shift starts in",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 9);
+        drill.removed(14);
+        drill.appoints(honestOperator, 14);
+      },
+      /is not before our first shift's start/u,
+    ],
+    [
+      "is not indexed yet",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 9);
+        drill.appoints(honestOperator, 31);
+      },
+      /shows the fault unspent/u,
+    ],
+    [
+      "is not named by Kupo",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 9);
+        drill.removed(13, { by: null });
+        drill.appoints(honestOperator, 14);
+      },
+      /spent by an unnamed transaction/u,
+    ],
+    [
+      "is another transaction than the watcher's removal",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 9);
+        drill.removed(13, { by: "cd".repeat(32) });
+        drill.appoints(honestOperator, 14);
+      },
+      /not by the watcher's removal/u,
+    ],
+    [
+      "has no shift of ours on L1 after it",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 9);
+        drill.removed(13);
+      },
+      /no shift of ours after the fault's commit/u,
+    ],
+    [
+      "has no shift of operator-2's holding the fault's commit",
+      (drill: Awaited<ReturnType<typeof stackDrill>>) => {
+        drill.appoints(operator2, 3);
+        drill.removed(13);
+        drill.appoints(honestOperator, 14);
+      },
+      /no shift of operator-2's that the fault's commit landed in/u,
+    ],
+  ] as const)(
+    "fails the stage, naming why, when the fault's removal %s",
+    async (_label, chain, reason) => {
+      const drill = await stackDrill();
+      const port = drill.port();
+      await port.afterFaultLanded();
+      drill.node.readyz = faultHold(drill.fault.headerHash);
+      await drill.observedHold();
+      chain(drill);
+      drill.node.readyz = { ready: true, reasons: [] };
+      await drill.commits(
+        await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
+        [drill.sent[0]!.txId],
+      );
+      const failure = port.commit(drill.correction);
+      await expect(failure).rejects.toThrow(
+        /had no shift while the fault .* was the tail/u,
+      );
+      await expect(failure).rejects.toThrow(reason);
+      expect(existsSync(join(drill.directory, "refusal.json"))).toBe(false);
+    },
+  );
 
   it("takes no shift of ours that ended before our node first held the fault", async () => {
     // Our node first reports the fault invalid at slot 20.
@@ -229,7 +332,7 @@ describe("stack successor", () => {
       await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
       [drill.sent[0]!.txId],
     );
-    await expect(port.commit()).rejects.toThrow(
+    await expect(port.commit(drill.correction)).rejects.toThrow(
       /had no shift while the fault .* was the tail/u,
     );
     const tail = JSON.parse(
@@ -244,7 +347,7 @@ describe("stack successor", () => {
     const port = drill.port();
     await port.afterFaultLanded();
     await pause(30);
-    await expect(port.commit()).rejects.toThrow(
+    await expect(port.commit(drill.correction)).rejects.toThrow(
       /never reported landed_block_invalid/u,
     );
   });
@@ -256,7 +359,9 @@ describe("stack successor", () => {
     const other = await headerOn(drill.predecessor.headerHash, operator2, 9n);
     drill.node.readyz = faultHold(other.headerHash);
     await pause(30);
-    await expect(port.commit()).rejects.toThrow(/not on the fault/u);
+    await expect(port.commit(drill.correction)).rejects.toThrow(
+      /not on the fault/u,
+    );
   });
 
   it.each([
@@ -297,7 +402,7 @@ describe("stack successor", () => {
       await drill.observedHold();
       drill.node.readyz = { ready: true, reasons: [] };
       await commit(drill, drill.sent[0]!.txId);
-      await expect(port.commit()).rejects.toThrow(refusal);
+      await expect(port.commit(drill.correction)).rejects.toThrow(refusal);
     },
   );
 
@@ -315,7 +420,7 @@ describe("stack successor", () => {
       await headerOn(drill.predecessor.headerHash, honestOperator, 3n),
       [drill.sent[0]!.txId],
     );
-    await expect(port.commit()).rejects.toThrow(
+    await expect(port.commit(drill.correction)).rejects.toThrow(
       /built header .* on the fault/u,
     );
 
@@ -328,7 +433,9 @@ describe("stack successor", () => {
       await headerOn(held.predecessor.headerHash, honestOperator, 3n),
       [held.sent[0]!.txId],
     );
-    await expect(stays.commit()).rejects.toThrow(/still holds the fault/u);
+    await expect(stays.commit(held.correction)).rejects.toThrow(
+      /still holds the fault/u,
+    );
   });
 
   it("names why our node refused the transfer's status", async () => {
