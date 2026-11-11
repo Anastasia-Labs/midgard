@@ -5,6 +5,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeContracts,
+  type DirectPurposeRole,
+  directPurposeRoleIndex,
+} from "../direct-purpose-family/family.js";
+import {
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+} from "../direct-purpose-family/step01.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
+import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -33,19 +46,11 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareScriptIntegrityHashMismatchWorkflowArtifact } from "./artifact.js";
-import type {
-  ScriptIntegrityHashMismatchContracts,
-  ScriptIntegrityHashMismatchRole,
+import {
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
+  type ScriptIntegrityHashMismatchRole,
 } from "./contracts.js";
 import { fitScriptIntegrityHashMismatchPage } from "./fit.js";
-import {
-  submitScriptIntegrityHashMismatchStep01Accepted,
-  submitScriptIntegrityHashMismatchStep01Forced,
-} from "./step01.js";
-import {
-  type ScriptIntegrityHashMismatchCustody,
-  submitScriptIntegrityHashMismatchTransition,
-} from "./submit.js";
 import { submitScriptIntegrityHashMismatchTerminal } from "./terminal.js";
 import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
 import {
@@ -82,7 +87,7 @@ export const scriptIntegrityHashMismatchRoleAt = (
 export const scriptIntegrityHashMismatchWorkflowContracts = (
   binding: FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMismatch">,
   certificate: FieldPreimageCertificateBinding,
-): ScriptIntegrityHashMismatchContracts => {
+): DirectPurposeContracts => {
   const resolved = binding.resolvedContracts;
   const chain = resolved.contracts.scriptIntegrityHashMismatch;
   if (chain === undefined || resolved.stateQueuePolicyId === undefined)
@@ -109,7 +114,7 @@ type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMismatch">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ScriptIntegrityHashMismatchContracts;
+  contracts: DirectPurposeContracts;
   references: ScriptIntegrityHashMismatchWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -126,10 +131,10 @@ const threadAt = async (lucid: LucidEvolution, threadOutRef: string) => {
 export const createScriptIntegrityHashMismatchTransactionPort = (
   config: BoundConfig,
 ): CursorFamilyTransactionPort<"scriptIntegrityHashMismatch"> => {
-  const reference = (role: ScriptIntegrityHashMismatchRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const utxo =
       config.references.steps[
-        SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER.indexOf(role)
+        directPurposeRoleIndex(SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY, role)
       ];
     if (utxo === undefined)
       throw new Error(`scriptIntegrityHashMismatch ${role} reference absent`);
@@ -212,6 +217,7 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
             const role = scriptIntegrityHashMismatchRoleAt(step);
             const threadOutRef = cursorStringField(input, "threadOutRef");
             const common = {
+              family: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -223,7 +229,7 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
             };
             if (role === "step01") {
               if (admitted.coordinate.sourceKind === 1) {
-                await submitScriptIntegrityHashMismatchStep01Forced({
+                await submitDirectPurposeStep01Forced({
                   ...common,
                   material: admitted.material,
                   reconstruction: admitted.current,
@@ -237,7 +243,7 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
                 address: config.signer.address,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
-              await submitScriptIntegrityHashMismatchStep01Accepted({
+              await submitDirectPurposeStep01Accepted({
                 ...common,
                 material: admitted.material,
                 blueprint: config.binding.blueprint,
@@ -298,7 +304,8 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            const custody: ScriptIntegrityHashMismatchCustody = {
+            const custody: DirectPurposeCustody = {
+              family: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -321,11 +328,7 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
                   thread,
                 })
               : continued;
-            await submitScriptIntegrityHashMismatchTransition(
-              custody,
-              thread,
-              transition,
-            );
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
@@ -334,10 +337,7 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
 };
 
 /** The thread's one computation-thread token. */
-const threadUnit = (
-  thread: UTxO,
-  contracts: ScriptIntegrityHashMismatchContracts,
-) => {
+const threadUnit = (thread: UTxO, contracts: DirectPurposeContracts) => {
   const units = Object.keys(thread.assets).filter((unit) =>
     unit.startsWith(contracts.computationThread.policyId),
   );

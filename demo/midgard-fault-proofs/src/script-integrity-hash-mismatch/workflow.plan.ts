@@ -3,6 +3,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
+import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -16,28 +22,22 @@ import {
   admitScriptIntegrityHashMismatchWorkflowArtifact,
   type AdmittedScriptIntegrityHashMismatchArtifact,
 } from "./artifact.js";
-import type {
-  ScriptIntegrityHashMismatchContracts,
-  ScriptIntegrityHashMismatchRole,
-} from "./contracts.js";
-import type { ScriptIntegrityHashMismatchTransition } from "./custody.js";
 import {
   requireConvictingScriptIntegrityHashMismatchProof,
   type ScriptIntegrityHashMismatchProofPlan,
 } from "./prover.js";
-import { scriptIntegrityHashMismatchStep01Datum } from "./step01.js";
 import { isScriptIntegrityHashMismatchPagedRole } from "./walk.js";
 
 export type PlannedScriptIntegrityHashMismatchArtifact = Readonly<{
   admitted: AdmittedScriptIntegrityHashMismatchArtifact;
   proof: ScriptIntegrityHashMismatchProofPlan;
   /** Every field a transition spending `role` opens. */
-  fieldsOf: (role: ScriptIntegrityHashMismatchRole) => readonly number[];
+  fieldsOf: (role: DirectPurposeRole) => readonly number[];
   /** The one planned transition spending `role` from a thread holding `datum`. */
   transitionAt: (
-    role: ScriptIntegrityHashMismatchRole,
+    role: DirectPurposeRole,
     datum: string,
-  ) => ScriptIntegrityHashMismatchTransition;
+  ) => DirectPurposeTransition;
 }>;
 
 /** The transition continuing a thread at `role` that holds `datum`: a paged
@@ -46,10 +46,7 @@ export type PlannedScriptIntegrityHashMismatchArtifact = Readonly<{
  * transition that wrote `datum` (`step01Datum` before the first). */
 export const scriptIntegrityHashMismatchTransitionAt =
   (proof: ScriptIntegrityHashMismatchProofPlan, step01Datum: string) =>
-  (
-    role: ScriptIntegrityHashMismatchRole,
-    datum: string,
-  ): ScriptIntegrityHashMismatchTransition => {
+  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
     if (
       isScriptIntegrityHashMismatchPagedRole(role) ||
       role === "allPurposesSpendResolve"
@@ -72,7 +69,7 @@ export const scriptIntegrityHashMismatchTransitionAt =
 
 const plan = async (
   artifact: JournalJsonObject,
-  contracts: ScriptIntegrityHashMismatchContracts,
+  contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<PlannedScriptIntegrityHashMismatchArtifact> => {
   const admitted =
@@ -82,16 +79,13 @@ const plan = async (
     contracts,
     prover,
   });
-  const fields = new Map<ScriptIntegrityHashMismatchRole, Set<number>>();
+  const fields = new Map<DirectPurposeRole, Set<number>>();
   for (const transition of proof.transitions) {
     const opened = fields.get(transition.role) ?? new Set<number>();
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = scriptIntegrityHashMismatchStep01Datum(
-    admitted.material,
-    prover,
-  );
+  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   return Object.freeze({
     admitted,
     proof,
@@ -114,7 +108,7 @@ export const planScriptIntegrityHashMismatchArtifact = ({
   prover,
 }: {
   readonly artifact: JournalJsonObject;
-  readonly contracts: ScriptIntegrityHashMismatchContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
 }): Promise<PlannedScriptIntegrityHashMismatchArtifact> => {
   const key = [

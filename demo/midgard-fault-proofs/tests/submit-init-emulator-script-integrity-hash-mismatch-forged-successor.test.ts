@@ -18,13 +18,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import {
-  buildScriptIntegrityHashMismatchTransition,
-  scriptIntegrityHashMismatchContractRoles,
-  type ScriptIntegrityHashMismatchRole,
-  submitScriptIntegrityHashMismatchTransition,
-} from "../src/script-integrity-hash-mismatch/index.js";
+  buildDirectPurposeTransition,
+  type DirectPurposeRole,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
+import { submitNativeTxBinding } from "../src/native-tx-binding.js";
+import { scriptIntegrityHashMismatchContractRoles } from "../src/script-integrity-hash-mismatch/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
@@ -228,17 +228,16 @@ const forgedTerminal = async (
 const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
-): Promise<readonly ScriptIntegrityHashMismatchRole[]> => {
+): Promise<readonly DirectPurposeRole[]> => {
   const harness = await makeScriptIntegrityHashMismatchHarness();
   const references = await publishScriptIntegrityHashMismatchRoles(harness);
-  const reference = (role: ScriptIntegrityHashMismatchRole) =>
-    references.get(role)!.utxo;
+  const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupIntegrityScenario({
     harness,
     shape,
     source,
   });
-  const refused: ScriptIntegrityHashMismatchRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   const run = await driveScriptIntegrityHashMismatchThread({
     harness,
     scenario,
@@ -268,7 +267,7 @@ const forgeEveryRole = async (
       .find((datum) => datum !== transition.datum);
     if (forged === undefined)
       throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildScriptIntegrityHashMismatchTransition(
+    const built = await buildDirectPurposeTransition(
       run.custody,
       thread,
       transition,
@@ -292,11 +291,7 @@ const forgeEveryRole = async (
     );
     await expectOnchainRefusal(() => built.complete());
     thread = (
-      await submitScriptIntegrityHashMismatchTransition(
-        run.custody,
-        thread,
-        transition,
-      )
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
     refused.push(transition.role);
   }
@@ -309,7 +304,7 @@ const forgeEveryRole = async (
   return refused;
 };
 
-const EVERY_ROLE = new Set<ScriptIntegrityHashMismatchRole>(
+const EVERY_ROLE = new Set<DirectPurposeRole>(
   SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
 );
 

@@ -29,10 +29,13 @@ import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/w
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import type { DirectPurposeContracts, DirectPurposeFamily } from "./family.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeCustodyFamily,
+} from "./family.js";
 
 type Step01Common = {
-  readonly family: DirectPurposeFamily<unknown>;
+  readonly family: DirectPurposeCustodyFamily;
   readonly lucid: LucidEvolution;
   readonly contracts: DirectPurposeContracts;
   readonly categoryId: string;

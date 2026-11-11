@@ -37,13 +37,13 @@ import type {
 } from "./custody.js";
 import {
   type DirectPurposeContracts,
-  type DirectPurposeFamily,
+  type DirectPurposeCustodyFamily,
   type DirectPurposeRole,
   directPurposeRoleValidator,
 } from "./family.js";
 
 export type DirectPurposeCustody = {
-  readonly family: DirectPurposeFamily<unknown>;
+  readonly family: DirectPurposeCustodyFamily;
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;

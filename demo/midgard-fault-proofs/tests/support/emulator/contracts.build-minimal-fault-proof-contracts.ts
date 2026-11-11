@@ -93,7 +93,6 @@ import { type MintAuthorizationContracts } from "../../../src/mint-authorization
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
-import { type ScriptIntegrityHashMismatchContracts } from "../../../src/script-integrity-hash-mismatch/contracts.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { type UnusedScriptWitnessContracts } from "../../../src/unused-script-witness/contracts.js";
@@ -273,7 +272,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingScriptSource?: DirectPurposeContracts;
     readonly unusedRedeemer?: DirectPurposeContracts;
     readonly receivePurposeLanguage?: DirectPurposeContracts;
-    readonly scriptIntegrityHashMismatch?: ScriptIntegrityHashMismatchContracts;
+    readonly scriptIntegrityHashMismatch?: DirectPurposeContracts;
     readonly distinctAssetAccumulationLimit?: DirectPurposeContracts;
     readonly unusedScriptWitness?: UnusedScriptWitnessContracts;
     readonly missingSignature?: MissingSignatureContracts;
@@ -792,21 +791,10 @@ export const buildMinimalFaultProofContracts = async (
     receivePurposeLanguageContracts?.receivePurposeLanguage,
     receivePurposeLanguageContracts,
   );
-  const scriptIntegrityHashMismatch:
-    | ScriptIntegrityHashMismatchContracts
-    | undefined =
-    scriptIntegrityHashMismatchContracts === undefined
-      ? undefined
-      : {
-          steps: scriptIntegrityHashMismatchContracts
-            .scriptIntegrityHashMismatch.steps as never,
-          computationThread:
-            scriptIntegrityHashMismatchContracts.computationThread,
-          fraudProof: scriptIntegrityHashMismatchContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
+  const scriptIntegrityHashMismatch = directRecord(
+    scriptIntegrityHashMismatchContracts?.scriptIntegrityHashMismatch,
+    scriptIntegrityHashMismatchContracts,
+  );
   const distinctAssetAccumulationLimit = directRecord(
     distinctAssetAccumulationLimitContracts?.distinctAssetAccumulationLimit,
     distinctAssetAccumulationLimitContracts,

@@ -17,6 +17,8 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
@@ -31,13 +33,8 @@ import {
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL,
   scriptIntegrityHashMismatchContractRoles,
-  type ScriptIntegrityHashMismatchContracts,
 } from "./contracts.js";
-import {
-  scriptIntegrityHashMismatchFieldPlans,
-  type ScriptIntegrityHashMismatchTransition,
-  sharedSourceTransition,
-} from "./custody.js";
+import { scriptIntegrityHashMismatchFieldPlans } from "./custody.js";
 import {
   type ScriptIntegrityHashMismatchWalk,
   type ScriptIntegrityHashMismatchWalkBatch,
@@ -178,7 +175,7 @@ export type ScriptIntegrityHashMismatchProofPlan = {
   readonly evidence: DirectPurposeSourceEvidence;
   readonly plan: ReturnType<typeof scriptIntegrityHashMismatchFieldPlans>;
   /** Every custody transition from `bindEvent` to the terminal's input. */
-  readonly transitions: readonly ScriptIntegrityHashMismatchTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
   /** The completed walk the terminal reads. */
   readonly final: SDK.DirectAllPurposesState;
   /** The all-purposes walk, paged from any thread datum it holds. */
@@ -196,7 +193,7 @@ export const prepareScriptIntegrityHashMismatchProof = async ({
   batch,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly contracts: ScriptIntegrityHashMismatchContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
   readonly batch?: ScriptIntegrityHashMismatchWalkBatch;
 }): Promise<ScriptIntegrityHashMismatchProofPlan> => {
@@ -213,7 +210,7 @@ export const prepareScriptIntegrityHashMismatchProof = async ({
       resolvedScriptHash: roles.sourceResolved.spendingScriptHash,
       witnessesScriptHash: roles.sourceWitnesses.spendingScriptHash,
     }),
-  ].map(sharedSourceTransition);
+  ];
   const walk = await scriptIntegrityHashMismatchWalkTransitions({
     material,
     evidence,

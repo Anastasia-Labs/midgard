@@ -17,18 +17,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+  type DirectPurposeTransition,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
   resolveProverSigner,
 } from "../src/runtime.js";
-import {
-  scriptIntegrityHashMismatchContractRoles,
-  type ScriptIntegrityHashMismatchRole,
-  type ScriptIntegrityHashMismatchTransition,
-  submitScriptIntegrityHashMismatchTransition,
-} from "../src/script-integrity-hash-mismatch/index.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY } from "../src/script-integrity-hash-mismatch/index.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -93,9 +94,6 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
       harness.proverSigner.paymentKeyHash,
     );
 
-    const roles = scriptIntegrityHashMismatchContractRoles(
-      harness.scriptIntegrityHashMismatch,
-    );
     const phasScript: Script = {
       type: "PlutusV3",
       script: getCompiledScript(
@@ -108,9 +106,13 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
     /** The planned transition, built and signed by the stranger alone. */
     const strangerTransition = async (
       thread: UTxO,
-      transition: ScriptIntegrityHashMismatchTransition,
+      transition: DirectPurposeTransition,
     ) => {
-      const next = roles[transition.next];
+      const next = directPurposeRoleValidator(
+        SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
+        harness.scriptIntegrityHashMismatch,
+        transition.next,
+      );
       const label = `stranger ${transition.label}`;
       const carriage = transition.fields.flatMap((field) =>
         run.custody.carriage(field),
@@ -169,16 +171,12 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
     };
 
     let thread = run.thread;
-    const refused: ScriptIntegrityHashMismatchRole[] = [];
+    const refused: DirectPurposeRole[] = [];
     for (const transition of run.prepared.transitions) {
       await expectOnchainRefusal(() => strangerTransition(thread, transition));
       refused.push(transition.role);
       thread = (
-        await submitScriptIntegrityHashMismatchTransition(
-          run.custody,
-          thread,
-          transition,
-        )
+        await submitDirectPurposeTransition(run.custody, thread, transition)
       ).thread;
     }
     expect(new Set(refused)).toStrictEqual(

@@ -5,6 +5,16 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeCustody,
+  type DirectPurposeRole,
+  directPurposeStep01Datum,
+  submitDirectPurposeInit,
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+  submitDirectPurposeTransition,
+  submitDirectPurposeTransitions,
+} from "../../src/direct-purpose-family/index.js";
+import {
   certifyFaultProofFieldCarriage,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
@@ -12,20 +22,13 @@ import {
   fitScriptIntegrityHashMismatchPage,
   isScriptIntegrityHashMismatchPagedRole,
   prepareScriptIntegrityHashMismatchProof,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FIELDS,
   scriptIntegrityHashMismatchContractRoles,
-  type ScriptIntegrityHashMismatchCustody,
   type ScriptIntegrityHashMismatchProofPlan,
-  type ScriptIntegrityHashMismatchRole,
-  scriptIntegrityHashMismatchStep01Datum,
   scriptIntegrityHashMismatchTransitionAt,
   type ScriptIntegrityHashMismatchWalkBatch,
-  submitScriptIntegrityHashMismatchInit,
-  submitScriptIntegrityHashMismatchStep01Accepted,
-  submitScriptIntegrityHashMismatchStep01Forced,
   submitScriptIntegrityHashMismatchTerminal,
-  submitScriptIntegrityHashMismatchTransition,
-  submitScriptIntegrityHashMismatchTransitions,
 } from "../../src/script-integrity-hash-mismatch/index.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import type { IntegrityScenario } from "./script-integrity-hash-mismatch-emulator.subject.js";
@@ -67,7 +70,7 @@ export type ScriptIntegrityHashMismatchHarness = Awaited<
 >;
 
 export type RoleReference = {
-  readonly role: ScriptIntegrityHashMismatchRole;
+  readonly role: DirectPurposeRole;
   readonly scriptHash: string;
   readonly utxo: UTxO;
   readonly publication: CompleteSignedTransactionMeasurement;
@@ -77,12 +80,12 @@ export type RoleReference = {
  * which refuses any publication above 15,872 bytes. */
 export const publishScriptIntegrityHashMismatchRoles = async (
   harness: ScriptIntegrityHashMismatchHarness,
-): Promise<ReadonlyMap<ScriptIntegrityHashMismatchRole, RoleReference>> => {
+): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = scriptIntegrityHashMismatchContractRoles(
     harness.scriptIntegrityHashMismatch,
   );
   const byHash = new Map<string, RoleReference>();
-  const out = new Map<ScriptIntegrityHashMismatchRole, RoleReference>();
+  const out = new Map<DirectPurposeRole, RoleReference>();
   for (const role of SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER) {
     const validator = roles[role];
     let reference = byHash.get(validator.spendingScriptHash);
@@ -199,17 +202,14 @@ export type StepMeasurement = {
  * terminal's input, as the workflow does: each page that opens MPF proofs is
  * sized to the transaction budget. */
 const continueToTerminal = async (
-  custody: ScriptIntegrityHashMismatchCustody,
+  custody: DirectPurposeCustody,
   prepared: ScriptIntegrityHashMismatchProofPlan,
   start: UTxO,
   scenario: IntegrityScenario,
 ): Promise<UTxO> => {
   const transitionAt = scriptIntegrityHashMismatchTransitionAt(
     prepared,
-    scriptIntegrityHashMismatchStep01Datum(
-      scenario.material,
-      custody.signer.paymentKeyHash,
-    ),
+    directPurposeStep01Datum(scenario.material, custody.signer.paymentKeyHash),
   );
   let thread = start;
   let role = prepared.transitions[0]!.role;
@@ -222,13 +222,8 @@ const continueToTerminal = async (
           thread,
         })
       : transitionAt(role, thread.datum!);
-    thread = (
-      await submitScriptIntegrityHashMismatchTransition(
-        custody,
-        thread,
-        transition,
-      )
-    ).thread;
+    thread = (await submitDirectPurposeTransition(custody, thread, transition))
+      .thread;
     role = transition.next;
   }
   return thread;
@@ -244,10 +239,7 @@ export const driveScriptIntegrityHashMismatchThread = async ({
 }: {
   readonly harness: ScriptIntegrityHashMismatchHarness;
   readonly scenario: IntegrityScenario;
-  readonly references: ReadonlyMap<
-    ScriptIntegrityHashMismatchRole,
-    RoleReference
-  >;
+  readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   readonly batch?: ScriptIntegrityHashMismatchWalkBatch;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (
@@ -275,16 +267,17 @@ export const driveScriptIntegrityHashMismatchThread = async ({
       scenario,
       plan: prepared.plan,
     });
-  const reference = (role: ScriptIntegrityHashMismatchRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const found = references.get(role);
     if (found === undefined) throw new Error(`${role} reference absent`);
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitScriptIntegrityHashMismatchInit({
+    submitDirectPurposeInit({
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       network,
+      family: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
       contracts: scriptIntegrityHashMismatch,
       category: harness.category,
       catalogue: {
@@ -313,6 +306,7 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   }
   const common = {
     lucid: proverLucid,
+    family: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
     contracts: scriptIntegrityHashMismatch,
     categoryId: harness.category.categoryId,
     signer: proverSigner,
@@ -322,11 +316,11 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? submitScriptIntegrityHashMismatchStep01Forced({
+      ? submitDirectPurposeStep01Forced({
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : submitScriptIntegrityHashMismatchStep01Accepted({
+      : submitDirectPurposeStep01Accepted({
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -337,10 +331,11 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   );
   steps.push({ label: "step01", measurement: step01.measurement });
   const unit = init.result.computationThreadUnit;
-  const custody: ScriptIntegrityHashMismatchCustody = {
+  const custody: DirectPurposeCustody = {
     lucid: proverLucid,
     blueprint: harness.realBlueprint,
     network,
+    family: SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
     contracts: scriptIntegrityHashMismatch,
     signer: proverSigner,
     unit,
@@ -364,7 +359,7 @@ export const driveScriptIntegrityHashMismatchThread = async ({
   const thread =
     transitions === undefined
       ? await continueToTerminal(custody, prepared, start, scenario)
-      : await submitScriptIntegrityHashMismatchTransitions(
+      : await submitDirectPurposeTransitions(
           custody,
           start,
           transitions(prepared),

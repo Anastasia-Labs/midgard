@@ -7,6 +7,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
   grammarPages,
   pages,
   stepDatum,
@@ -17,10 +19,6 @@ import {
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
-import type {
-  ScriptIntegrityHashMismatchFieldPlan,
-  ScriptIntegrityHashMismatchTransition,
-} from "./custody.js";
 import {
   type Execution,
   executionOf,
@@ -66,14 +64,14 @@ export const isScriptIntegrityHashMismatchPagedRole = (
  * spends, one walk transaction otherwise. */
 export type ScriptIntegrityHashMismatchPage = Readonly<{
   size: number;
-  transitions: readonly ScriptIntegrityHashMismatchTransition[];
+  transitions: readonly DirectPurposeTransition[];
 }>;
 
 /** The language and probe facts of a whole walk, as the terminal reads them;
  * native executions add no language. */
 export type ScriptIntegrityHashMismatchWalk = Readonly<{
   /** The walk at the configured page sizes. */
-  transitions: readonly ScriptIntegrityHashMismatchTransition[];
+  transitions: readonly DirectPurposeTransition[];
   final: SDK.DirectAllPurposesState;
   /** The page continuing a thread that holds `datum` at `role`, of `size`
    * items (the configured maximum by default), never more than remain. */
@@ -88,7 +86,7 @@ export type ScriptIntegrityHashMismatchWalk = Readonly<{
   transitionAt: (
     role: ScriptIntegrityHashMismatchPagedRole | "allPurposesSpendResolve",
     datum: string,
-  ) => ScriptIntegrityHashMismatchTransition;
+  ) => DirectPurposeTransition;
 }>;
 
 export const scriptIntegrityHashMismatchWalkTransitions = async ({
@@ -102,12 +100,12 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
   readonly material: DirectScriptMaterial;
   readonly evidence: DirectPurposeSourceEvidence;
   readonly prover: string;
-  readonly plan: (field: number) => ScriptIntegrityHashMismatchFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   /** The spend walk's own hash, recorded as the resume hash of each take. */
   readonly spendScriptHash: string;
   readonly batch?: ScriptIntegrityHashMismatchWalkBatch;
 }): Promise<ScriptIntegrityHashMismatchWalk> => {
-  const out: ScriptIntegrityHashMismatchTransition[] = [];
+  const out: DirectPurposeTransition[] = [];
   const walkDatum = (state: SDK.DirectAllPurposesState) =>
     stepDatum(prover, state, SDK.DirectAllPurposesDatum);
   const counts = (field: number) => plan(field).items.length;
@@ -194,10 +192,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
     complete: index === counts(field),
   });
 
-  const take = (
-    start: number,
-    size: number,
-  ): ScriptIntegrityHashMismatchTransition => {
+  const take = (start: number, size: number): DirectPurposeTransition => {
     const end = start + size;
     return {
       label: `spend take ${start.toString()} (${size.toString()})`,
@@ -232,10 +227,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
         ),
     };
   };
-  const resolve = (
-    start: number,
-    size: number,
-  ): ScriptIntegrityHashMismatchTransition => {
+  const resolve = (start: number, size: number): DirectPurposeTransition => {
     const state = walking(0, start + size);
     const witnesses = spends.slice(start, start + size);
     return {
@@ -260,7 +252,7 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
     role: Exclude<ScriptIntegrityHashMismatchPagedRole, "allPurposesSpend">,
     start: number,
     size: number,
-  ): ScriptIntegrityHashMismatchTransition => {
+  ): DirectPurposeTransition => {
     const { field } = PAGED[role];
     const state = walking(field, start + size);
     const witnesses =
@@ -333,8 +325,8 @@ export const scriptIntegrityHashMismatchWalkTransitions = async ({
     field: 5 | 2,
     label: string,
     role: "allPurposesMintGrammar" | "allPurposesReceiveGrammar",
-    walkingRole: ScriptIntegrityHashMismatchTransition["next"],
-    exhausted: ScriptIntegrityHashMismatchTransition["next"],
+    walkingRole: DirectPurposeTransition["next"],
+    exhausted: DirectPurposeTransition["next"],
   ) => {
     state = {
       ...state,

@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
   requireLinearFaultReferenceScript,
@@ -33,10 +34,7 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import {
-  SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL,
-  type ScriptIntegrityHashMismatchContracts,
-} from "./contracts.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 import { scriptIntegrityHashMismatchVerdict } from "./prover.js";
 
 const TERMINAL_INDEX =
@@ -58,7 +56,7 @@ export const submitScriptIntegrityHashMismatchTerminal = async ({
   requireConviction = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ScriptIntegrityHashMismatchContracts;
+  readonly contracts: DirectPurposeContracts;
   /** The bound source whose committed witness set the terminal reads. */
   readonly material: DirectScriptMaterial;
   readonly categoryId: string;

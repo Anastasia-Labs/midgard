@@ -4,11 +4,14 @@ import {
   type SubmitResolvedInitParams,
   type SubmitResolvedInitResult,
 } from "../submit-init.js";
-import type { DirectPurposeContracts, DirectPurposeFamily } from "./family.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeCustodyFamily,
+} from "./family.js";
 
 export const submitDirectPurposeInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts"> & {
-    readonly family: DirectPurposeFamily<unknown>;
+    readonly family: DirectPurposeCustodyFamily;
     readonly contracts: DirectPurposeContracts;
   },
 ): Promise<SubmitResolvedInitResult> => {
