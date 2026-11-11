@@ -12,6 +12,7 @@ import {
 import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
+  fetchNodeTxStatus,
   type ResolvedWalletSeedPhrase,
   resolveWalletSeedPhrase,
 } from "midgard-node/commands/command-utils";
@@ -217,20 +218,7 @@ program
                     }),
                   );
                 },
-                fetchTxStatus: async (nodeEndpoint, txHash) => {
-                  const response = await fetch(
-                    `${nodeEndpoint}/tx-status?tx_hash=${encodeURIComponent(txHash)}`,
-                  );
-                  const body = (await response.json()) as {
-                    readonly status?: unknown;
-                  };
-                  if (!response.ok || typeof body.status !== "string") {
-                    throw new Error(
-                      `Failed to read /tx-status for ${txHash}: ${response.status.toString()}`,
-                    );
-                  }
-                  return body.status;
-                },
+                fetchTxStatus: fetchNodeTxStatus,
               },
             ),
           ).pipe(
