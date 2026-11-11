@@ -550,7 +550,7 @@
     {
       "id": "cek-core-step-v1",
       "kind": "golden",
-      "summary": "CEK core-step evidence for curated programs: JSON fixture plus one generated Aiken module per program.",
+      "summary": "CEK core-step evidence bytes: two curated steps whose CoreStepEvidenceV1 CBOR the generated Aiken module decodes and re-serialises; the Aiken function evaluator adjudicates every step of the curated programs in tests/cek-core-step.differential.test.ts.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs"
       ],
@@ -564,10 +564,7 @@
         "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
         "demo/midgard-validation/tests/fixtures/cek-core-step-v1.constr-data-vectors.mjs"
       ],
-      "outputs": [
-        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json",
-        "onchain/aiken/lib/midgard/cek-core-step-goldens/*.test.ak"
-      ],
+      "outputs": ["onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak"],
       "aikenImportsOfOutputs": true,
       "sync": {
         "run": "pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:sync"

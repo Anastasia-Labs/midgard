@@ -8,9 +8,8 @@
  * for why a `.d.mts` beside a `.mjs` rather than a `.ts`, and for the
  * `skipLibCheck` hazard: a name here that no longer exists in `src/` degrades
  * silently to `any`, so the export list is checked against the real module by
- * `tests/cek-core-step-goldens.test.ts` and every declared value is driven
- * through the real trace builder and compared byte-for-byte against the
- * checked-in fixture.
+ * `tests/cek-core-step.differential.test.ts` and every declared value is
+ * driven through the real trace builder.
  */
 
 import type { Data } from "../../src/uplc-data.js";

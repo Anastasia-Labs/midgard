@@ -194,16 +194,17 @@ export const prepareCase = (
 
 /**
  * Picks the steps of an execution the builder already ran to adjudicate.
- * `program` names the case.
+ * `program` names the case; `choose` overrides the sample.
  */
 export const prepareExecution = <P extends CaseProgram>(
   program: P,
   execution: MidgardCekStructuralExecution,
   sampleSeed: number,
+  choose: typeof chooseSteps = chooseSteps,
 ): PreparedCase<P> => {
   const steps = execution.steps;
   const local: string[] = [];
-  const sampled = chooseSteps(steps, sampleSeed).map((index) => {
+  const sampled = choose(steps, sampleSeed).map((index) => {
     const step = steps[index]!;
     if (!verifyMidgardCekCoreStep(step.pre, step.post, step.witness)) {
       local.push(`step ${index.toString()} fails the TypeScript verifier`);

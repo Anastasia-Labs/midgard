@@ -1,9 +1,10 @@
 /**
  * Complete boundary programs for TS verdict checks. A `pinBuiltinStep` case
- * emits only its named builtin transition in the Aiken golden, independently
- * of constant decoding in the trace prefix. The maximum successful result is
- * tag-102 Data, which the pre-en5 decoder cannot prove in direct presentation;
- * only the two semantic failure transitions join the core-step golden set.
+ * is adjudicated by the Aiken machine at its named builtin transition alone,
+ * independently of constant decoding in the trace prefix. The maximum
+ * successful result is tag-102 Data, which the pre-en5 decoder cannot prove in
+ * direct presentation; only the two semantic failure transitions join the
+ * curated core-step programs.
  */
 
 import {
@@ -95,7 +96,7 @@ export const CEK_CONSTR_DATA_INDEX_PROGRAMS = [
   },
 ];
 
-/** The two refusals, which join the core-step golden set. */
+/** The two refusals, which join the curated core-step programs. */
 export const CEK_CONSTR_DATA_INDEX_REFUSALS =
   CEK_CONSTR_DATA_INDEX_PROGRAMS.filter(
     (program) =>

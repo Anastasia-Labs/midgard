@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   CoreStepEvidenceSchema,
   SemanticBuiltinWitnessSchema,
@@ -23,8 +20,8 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
 
 /**
  * The SDK's `CoreStepEvidenceSchema` against the core-step evidence the
- * TypeScript machine emits, over every step of the V1 core-step golden
- * vectors.
+ * TypeScript machine emits, over every step of the curated V1 core-step
+ * programs (`fixtures/cek-core-step-v1.vectors.mjs`).
  *
  * A byte round trip through the schema catches a field of the wrong type or
  * arity, but not two fields of the same type in swapped places. So each
@@ -32,23 +29,6 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
  * TypeScript machine produced for it: the schema's snake_case names against
  * the witness's camelCase ones.
  */
-
-type GoldenProgram = {
-  readonly label: string;
-  readonly steps: readonly {
-    readonly kind: string;
-    readonly evidenceCbor: string;
-  }[];
-};
-
-const golden = JSON.parse(
-  readFileSync(
-    fileURLToPath(
-      new URL("./fixtures/cek-core-step-v1.generated.json", import.meta.url),
-    ),
-    "utf8",
-  ),
-) as { readonly programs: readonly GoldenProgram[] };
 
 const hex = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 
@@ -164,7 +144,7 @@ const execute = (
     maxSteps: definition.maxSteps,
     executionBudget: definition.executionBudget,
   }).steps.filter(
-    // A pinned boundary program's golden keeps only its named builtin step.
+    // A boundary program is read at its named builtin step alone.
     (step) =>
       definition.pinBuiltinStep === undefined ||
       ((step.witness.kind === "executeBuiltinSemantic" ||
@@ -185,8 +165,18 @@ const witnessConstructor = (evidenceCbor: string): bigint => {
   return BigInt(witness.index);
 };
 
-describe("SDK CoreStepEvidenceSchema against the core-step golden vectors", () => {
-  const steps = golden.programs.flatMap((program) => program.steps);
+/** Each curated program's steps, with the evidence the machine encodes. */
+const programs = vectors.CEK_CORE_STEP_PROGRAMS.map((definition) => ({
+  label: definition.label,
+  steps: execute(definition).map((step) => ({
+    step,
+    kind: step.witness.kind,
+    evidenceCbor: hex(encodeMidgardCekCoreStepDataCbor(step)),
+  })),
+}));
+
+describe("SDK CoreStepEvidenceSchema against the curated core-step programs", () => {
+  const steps = programs.flatMap((program) => program.steps);
 
   it("decodes and re-encodes every step byte-for-byte", () => {
     for (const step of steps) {
@@ -212,21 +202,8 @@ describe("SDK CoreStepEvidenceSchema against the core-step golden vectors", () =
   it("names every witness field as the machine does, for all 42 constructors", () => {
     const checked = new Set<bigint>();
     let checkedSteps = 0;
-    for (const program of golden.programs) {
-      const definition = vectors.CEK_CORE_STEP_PROGRAMS.find(
-        (candidate) => candidate.label === program.label,
-      );
-      expect(definition, program.label).toBeDefined();
-      if (definition === undefined) {
-        continue;
-      }
-      const executed = execute(definition);
-      expect(executed.map((step) => step.witness.kind)).toEqual(
-        program.steps.map((step) => step.kind),
-      );
-      executed.forEach((step, index) => {
-        const evidenceCbor = program.steps[index]?.evidenceCbor ?? "";
-        expect(hex(encodeMidgardCekCoreStepDataCbor(step))).toBe(evidenceCbor);
+    for (const program of programs) {
+      program.steps.forEach(({ step, evidenceCbor }, index) => {
         expectSameNamedFields(
           Data.from(evidenceCbor, CoreStepEvidenceSchema).witness,
           step.witness as unknown as Record<string, unknown>,
@@ -242,11 +219,11 @@ describe("SDK CoreStepEvidenceSchema against the core-step golden vectors", () =
 });
 
 describe("SDK CoreStepEvidenceSchema at a staged builtin step (arm 31, semantics groups 7 and 8)", () => {
-  const semanticStep = golden.programs
+  const semanticStep = programs
     .flatMap((program) => program.steps)
     .find((step) => witnessConstructor(step.evidenceCbor) === 31n);
   if (semanticStep === undefined) {
-    throw new Error("the golden vectors have no arm-31 step");
+    throw new Error("the curated programs have no arm-31 step");
   }
   const evidence = Data.from(semanticStep.evidenceCbor) as Constr<Data>;
   const witness = evidence.fields[2] as Constr<Data>;

@@ -494,16 +494,13 @@ jobs:
       - name: Check nested boundary Aiken constants
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:nested-boundary-aiken
-      # The V1 CEK core-step channel. Before it the Aiken CEK and the TypeScript
-      # CEK were pinned against each other by seventeen integer tags and one
-      # hand-pasted CBOR vector; nothing proved that a step the TypeScript trace
-      # builder emits is a step `verify_core_step_v1` accepts. The generator
-      # compiles the curated programs, emits every step's `CoreStepEvidenceV1`
-      # CBOR and state hashes plus per-program negative twists, and writes both
-      # the JSON fixture and the generated Aiken module. Same footing as the
-      # channels above: both artifacts are regenerated from the TypeScript twins
-      # and never hand-edited, so without this step an edited producer plus a
-      # `:sync` re-greens both language suites unnoticed.
+      # The V1 CEK core-step channel: the bytes of two curated steps'
+      # `CoreStepEvidenceV1`, which the generated Aiken module decodes and
+      # re-serialises. The Aiken function evaluator adjudicates the steps
+      # themselves in the validation job. Same footing as the channels above:
+      # the module is regenerated from the TypeScript twin and never
+      # hand-edited, so without this step an edited producer plus a `:sync`
+      # re-greens it unnoticed.
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1

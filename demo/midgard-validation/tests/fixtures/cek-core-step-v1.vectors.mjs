@@ -1,14 +1,11 @@
 /**
- * The **program definitions** behind the V1 CEK core-step golden vectors — one
- * source of truth, driven from two sides.
+ * The curated V1 CEK core-step **programs**, curated for witness-arm coverage.
  *
- * The generator (`scripts/generate-cek-core-step-v1-goldens.mjs`) compiles
- * these through the built `dist/` twins to emit the JSON fixture and the Aiken
- * module; the vitest suite (`tests/cek-core-step-goldens.test.ts`) drives the
- * same definitions through `src/` and checks the result against the checked-in
- * fixture. Because both start from these definitions rather than from the
- * fixture's own bytes, a trace builder that drifts is caught on the TypeScript
- * side too — not only by `--check` and the Aiken verifier.
+ * `tests/cek-core-step.differential.test.ts` drives every step of them
+ * through `src/` and sends it to the Aiken machine under the Aiken function
+ * evaluator. The generator (`scripts/generate-cek-core-step-v1-goldens.mjs`)
+ * runs two of them through the built `dist/` twins to pin the bytes of their
+ * evidence in an Aiken module.
  *
  * This module holds **UPLC terms, script contexts and twist definitions
  * only**. From the package it imports only the `uplc` entry, Midgard's
@@ -17,11 +14,6 @@
  * build of the CEK is under test. The UPLC terms are built exactly as
  * `tests/cek-executor.test.ts` builds them, and compiled as
  * `(program 1.1.0 term)` Flat bytes.
- *
- * Every program is small on purpose: the Aiken consumer decodes each step's
- * `CoreStepEvidenceV1` CBOR with the stdlib's pure-Aiken `cbor.deserialise`,
- * which is an order of magnitude more expensive than a builtin, so the set is
- * curated for **witness-arm coverage per step** rather than for size.
  */
 
 import {
@@ -414,15 +406,15 @@ export const CEK_CORE_STEP_PROGRAMS = [
 ];
 
 /**
- * The state each program's initial state is expected to carry before its
- * first step, pinned so the fixture's `initialState` is not a tautology.
+ * The mode each program's initial state is expected to carry before its
+ * first step.
  */
 export const INITIAL_MODE = "compute";
 
 /**
  * The per-program negative twists. Each one takes a genuine step from the
  * program's trace and perturbs exactly one field of its post-state, so the
- * pinned CBOR is well-formed `CoreStepEvidenceV1` that both verifiers must
+ * twisted step is well-formed `CoreStepEvidenceV1` that both verifiers must
  * still refuse. `select` names which step of the trace is twisted.
  */
 export const CEK_CORE_STEP_TWISTS = [

@@ -125,7 +125,7 @@ nothing about them. Instead:
   `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check`.
   The [regenerating-goldens-and-ledgers](../../regenerating-goldens-and-ledgers/SKILL.md)
   skill covers generators and their check modes.
-- `lib/midgard/cek-core-step-goldens/*.test.ak` is generated
+- `lib/midgard/cek-core-step-v1-golden.test.ak` is generated
   (`generate-cek-core-step-v1-goldens.mjs`, "Do not edit"). Split the
   generator's output, if at all, by changing the generator.
 

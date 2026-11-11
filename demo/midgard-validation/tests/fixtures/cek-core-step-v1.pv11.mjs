@@ -1,6 +1,6 @@
 /**
- * The protocol version 11 builtin programs (tags 87 to 100) of the V1 CEK
- * core-step golden vectors (`cek-core-step-v1.vectors.mjs`). A program cannot
+ * The protocol version 11 builtin programs (tags 87 to 100) of the curated V1
+ * CEK core-step programs (`cek-core-step-v1.vectors.mjs`). A program cannot
  * hold a Value or an array constant, so each one builds them: a Value from
  * Data with unValueData, an array from a list with listToArray. Like the rest
  * of the set, these are UPLC terms only, written in Midgard's own term

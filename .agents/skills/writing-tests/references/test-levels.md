@@ -64,11 +64,11 @@ A channel is one generator, a JSON fixture that a vitest suite recomputes, and
 one or more generated Aiken test modules that the fork re-verifies. It pins TypeScript
 and Aiken to the same bytes, and each channel's negative vectors keep a
 verifier that accepts everything from passing
-(`demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs:1-39`,
+(`demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs:3-27`,
 shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
 
 - **Add a case:** add the vector to the channel's vector source (for example
-  `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`), run
+  `demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.vectors.mjs`), run
   the generator without `--check`, and commit all outputs. Never hand-edit a
   generated fixture or `.ak` module.
 - **Check:**
