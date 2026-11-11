@@ -208,8 +208,10 @@ in-flight proofs from the old layout are not carried over, and the watcher
 neither imports nor resumes them. The launch deployment starts with a fresh
 data directory; before reusing an older one, follow
 [state reset rules](../../docs/agents/state-reset.md). Upgrading a watcher to
-this release needs a fresh watcher journal: start it on a fresh data
-directory. Evidence remains pinned by event, recovery, and
+this release needs a fresh watcher journal. When `/v1/status` shows no
+queued or active proof, stop the watcher, move `watcher-journals.sqlite` and
+its `-wal` and `-shm` files aside, and start it; otherwise start it on a fresh
+data directory. Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.
