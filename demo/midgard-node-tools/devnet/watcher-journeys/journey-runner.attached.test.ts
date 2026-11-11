@@ -41,6 +41,11 @@ afterEach(async () => {
 const readJson = async (path: string) =>
   JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
 
+// These fixtures stage by hand; only a time limit reads a staging's cover.
+const stackShiftCoverMs = () => {
+  throw new Error("A hand-staged fixture has no staging shift cover");
+};
+
 describe("journey runner on an attached stack", () => {
   it("reads the stack watcher's journals and the stack's genesis, holds operator-2, and launches nothing", async () => {
     const stack = await runningStackWatcher(liveStatus());
@@ -71,7 +76,7 @@ describe("journey runner on an attached stack", () => {
     await expect(
       runAutonomousWatcherJourney(
         stack.runDirectory,
-        { category: "doubleSpend", stage },
+        { category: "doubleSpend", stackShiftCoverMs, stage },
         { session },
       ),
     ).rejects.toThrow("staged");
@@ -161,7 +166,11 @@ describe("journey runner on an attached stack", () => {
       );
       await runAutonomousWatcherJourney(
         stack.runDirectory,
-        { category: "canonicalDecodability", stage: stageRefused },
+        {
+          category: "canonicalDecodability",
+          stackShiftCoverMs,
+          stage: stageRefused,
+        },
         { session },
       );
       await session.close();
@@ -212,7 +221,11 @@ describe("journey runner on an attached stack", () => {
           const before = (await operator2.invocations()).length;
           await runAutonomousWatcherJourney(
             stack.runDirectory,
-            { category: "canonicalDecodability", stage: stageRefused },
+            {
+              category: "canonicalDecodability",
+              stackShiftCoverMs,
+              stage: stageRefused,
+            },
             { session },
           );
           expect(
@@ -273,7 +286,11 @@ describe("journey runner on an attached stack", () => {
       await expect(
         runAutonomousWatcherJourney(
           stack.runDirectory,
-          { category: "canonicalDecodability", stage: stageRefused },
+          {
+            category: "canonicalDecodability",
+            stackShiftCoverMs,
+            stage: stageRefused,
+          },
           { session },
         ),
       ).rejects.toThrow(
@@ -324,7 +341,7 @@ describe("journey runner on an attached stack", () => {
           await expect(
             runAutonomousWatcherJourney(
               stack.runDirectory,
-              { category, stage },
+              { category, stackShiftCoverMs, stage },
               { session },
             ),
           ).rejects.toThrow();

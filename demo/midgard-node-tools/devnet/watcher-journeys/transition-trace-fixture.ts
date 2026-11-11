@@ -16,7 +16,10 @@ import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { isStackJourneyContext } from "./stack-da-publication.js";
-import { stackTraceAttachedStack } from "./stack-trace-staging.js";
+import {
+  stackTraceAttachedStack,
+  stackTraceShiftWorkMs,
+} from "./stack-trace-staging.js";
 
 /**
  * The deposit-trace journey. By default it starts from the confirmed state,
@@ -31,6 +34,15 @@ export const createTransitionTraceJourneyFixture = ({
   liveTail: boolean;
 }): JourneyFixture => ({
   category: "transitionTrace",
+  // The cover the attached trace's staging asks of operator-2's shift
+  // (`stackTraceAttachedStack`), from the deposit history's protection.
+  stackShiftCoverMs: ({ timing, eventHistoryProtectionMs, profile }) =>
+    stackTraceShiftWorkMs({
+      transactionAllowanceMs: timing.transactionAllowanceMs,
+      eventWaitMs: profile.event_wait_ms,
+      eventHistoryProtectionMs: eventHistoryProtectionMs.deposit,
+      operatorShiftMs: profile.operator_shift_ms,
+    }),
   async stage({
     context,
     ledgerAt,

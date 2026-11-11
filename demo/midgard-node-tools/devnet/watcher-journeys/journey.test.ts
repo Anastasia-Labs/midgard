@@ -12,6 +12,7 @@ import {
 import {
   readJourneyExecutionTiming,
   readStackJourneyTimeoutMs,
+  stackRunTimeoutsMs,
 } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { readStackJourneyTimingPaths } from "./stack-context.js";
@@ -35,14 +36,28 @@ afterAll(async () => {
   await opened?.close();
 }, 120_000);
 
+// Every family is budgeted from the actual cadence and the depth its actions
+// wait for: the audited transitionTrace plan or the finite generic plan, plus
+// the single release-finality window of the finalized evidence stamp. On a
+// stack it also waits for operator-2's shift to hold the family's staging
+// shift cover C: at worst the rest of one of its shifts, our node's whole
+// shift, and C of the next. The run's last family also resumes operator-2's
+// node and waits for it to report ready.
+const options = { actionDepth: JOURNEY_ACTION_DEPTH };
+const stackTimeoutsMs =
+  stackTimingPaths !== undefined
+    ? stackRunTimeoutsMs(
+        await Promise.all(
+          fixtures.map((fixture) =>
+            readStackJourneyTimeoutMs(stackTimingPaths, fixture, options),
+          ),
+        ),
+      )
+    : undefined;
+
 // All families share wallets and chain state. The package config admits one fork,
 // and this sequential suite leaves deployment and service ownership with the runner.
-for (const fixture of fixtures) {
-  // Every family is budgeted from the actual cadence and the depth its actions
-  // wait for: the audited transitionTrace plan or the finite generic plan, plus
-  // the single release-finality window of the finalized evidence stamp. On a
-  // stack it also waits up to two of operator-2's shifts for its staging.
-  const options = { actionDepth: JOURNEY_ACTION_DEPTH };
+for (const [index, fixture] of fixtures.entries()) {
   const timeoutMs =
     runDirectory !== undefined
       ? (
@@ -52,14 +67,8 @@ for (const fixture of fixtures) {
             options,
           )
         ).journeyTimeoutMs
-      : stackTimingPaths !== undefined
-        ? await readStackJourneyTimeoutMs(
-            stackTimingPaths,
-            fixture.category,
-            options,
-          )
-        : // No deployment selected: the case is skipped.
-          undefined;
+      : // A stack's limit; with no deployment selected the case is skipped.
+        stackTimeoutsMs?.[index];
   it.skipIf(source === undefined)(
     `automatically proves '${fixture.category}', corrects exact economics, and processes an honest successor`,
     async () => {

@@ -51,6 +51,24 @@ export type OperatorNodeControl = Readonly<{
   readReadiness(): Promise<OperatorNodeReadiness>;
 }>;
 
+/** How long one `docker compose` command may run before it is killed. */
+export const OPERATOR_COMPOSE_TIMEOUT_MS = 120_000;
+/** How long one `/readyz` read of an operator's node may take. */
+export const OPERATOR_READINESS_READ_TIMEOUT_MS = 5000;
+/** How long a resume waits between readiness reads, by default. */
+export const OPERATOR_RESUME_POLL_INTERVAL_MS = 5000;
+/**
+ * The longest a resume with the default options takes on a Compose-run
+ * node: its start command up to the compose timeout, then readiness reads
+ * until the restart allowance's deadline, and past it at most one poll
+ * interval and one more read before it refuses.
+ */
+export const OPERATOR_RESUME_WAIT_MS =
+  OPERATOR_COMPOSE_TIMEOUT_MS +
+  JOURNEY_RESTART_TIMEOUT_MS +
+  OPERATOR_RESUME_POLL_INTERVAL_MS +
+  OPERATOR_READINESS_READ_TIMEOUT_MS;
+
 const compose = (project: string, args: readonly string[]) =>
   new Promise<string>((resolve, reject) => {
     execFile(
@@ -60,7 +78,7 @@ const compose = (project: string, args: readonly string[]) =>
         cwd: "/",
         env: projectOnlyEnvironment(),
         encoding: "utf8",
-        timeout: 120_000,
+        timeout: OPERATOR_COMPOSE_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {
         if (error === null) resolve(stdout);
@@ -129,7 +147,7 @@ export const composeOperatorNodeControl = ({
       let response: Response;
       try {
         response = await fetch(new URL("/readyz", endpoint), {
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(OPERATOR_READINESS_READ_TIMEOUT_MS),
         });
       } catch (cause) {
         if (isJourneyOperationsConnectionRefused(cause))
@@ -282,7 +300,8 @@ export const createOperatorPause = (
   const resumeTimeoutMs = options.resumeTimeoutMs ?? JOURNEY_RESTART_TIMEOUT_MS;
   if (!Number.isFinite(resumeTimeoutMs) || resumeTimeoutMs <= 0)
     throw new Error("Operator resume timeout must be finite and positive");
-  const pollIntervalMs = options.pollIntervalMs ?? 5000;
+  const pollIntervalMs =
+    options.pollIntervalMs ?? OPERATOR_RESUME_POLL_INTERVAL_MS;
   let stopped = false;
   let resuming: Promise<OperatorResumedEvidence | undefined> | undefined;
   let guard: { disarm(): void } | undefined;

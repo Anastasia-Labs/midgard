@@ -21,10 +21,7 @@ import type {
   JourneySuccessor,
 } from "./fixture.js";
 import { journeyDaSignerConfig } from "./journey-network.js";
-import {
-  readStackJourneyTiming,
-  stackStagingShiftCover,
-} from "./journey-timing.js";
+import { readStackJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import {
   isStackJourneyContext,
@@ -105,7 +102,7 @@ export const journeyDaPath = async (
     JourneyFixtureStage,
     "context" | "directory" | "retain" | "readConfirmedTransaction" | "onStage"
   >,
-  task: Pick<FaultPreparation, "category" | "historyBlocks" | "userEvents">,
+  task: Pick<FaultPreparation, "category" | "stackShiftCoverMs">,
 ): Promise<JourneyDaPath> => {
   const { context, directory, retain, onStage } = stage;
   const fingerprint = context.deployment.manifest.manifestId;
@@ -125,15 +122,6 @@ export const journeyDaPath = async (
     const history = SDK.requireEventHistoryContracts(
       context.deployment.contracts,
     );
-    const eventHistoryProtectionMs = Number(
-      [history.deposit, history.withdrawal].reduce(
-        (longest, { recipe }) =>
-          recipe.protectionDurationMs > longest
-            ? recipe.protectionDurationMs
-            : longest,
-        0n,
-      ),
-    );
     // Refuses here, before any L1 work, when the lead is required and unset.
     const lateShift = stackLateShiftGate(context, {
       category: task.category,
@@ -149,12 +137,14 @@ export const journeyDaPath = async (
       // our node, which cannot commit in it, leaves the tail as read.
       actorOptions: {
         sharedScheduler: sharedShiftWork(
-          stackStagingShiftCover({
-            category: task.category,
+          task.stackShiftCoverMs({
             timing,
-            historyBlocks: task.historyBlocks ?? 0,
-            userEvents: task.userEvents ?? 0,
-            eventHistoryProtectionMs,
+            eventHistoryProtectionMs: {
+              deposit: Number(history.deposit.recipe.protectionDurationMs),
+              withdrawal: Number(
+                history.withdrawal.recipe.protectionDurationMs,
+              ),
+            },
             profile: {
               event_wait_ms: SDK.EVENT_WAIT_DURATION_MS,
               operator_shift_ms: Number(SDK.SHIFT_DURATION_MS),

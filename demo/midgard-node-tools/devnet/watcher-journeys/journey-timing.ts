@@ -5,6 +5,7 @@ import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "./journey-timing.journey-timing-for-plan.js";
 import "./journey-timing.read-journey-timing-tip.js";
+import "./journey-timing.stack-limit.js";
 export {
   GENERIC_JOURNEY_PLAN,
   genericJourneyTiming,
@@ -17,7 +18,6 @@ export {
   type JourneyTimingPlan,
   type ReadJourneyTimingOptions,
   requireHealthyReplayFitsDeadline,
-  stackJourneyTimeoutMs,
   stackStagingShiftCover,
   stackStagingShiftWorkMs,
   TRANSITION_TRACE_JOURNEY_PLAN,
@@ -37,3 +37,8 @@ export {
   readTransitionTraceJourneyTiming,
   transitionTraceJourneyExecutionTiming,
 } from "./journey-timing.read-journey-timing-tip.js";
+export {
+  stackJourneyTimeoutMs,
+  stackRunTimeoutsMs,
+  type StackShiftCoverInput,
+} from "./journey-timing.stack-limit.js";

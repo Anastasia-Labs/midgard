@@ -22,6 +22,11 @@ import {
   openJourneySession,
 } from "./journey-session.js";
 
+// A devnet session stages with its own committee; it reads no stack shift.
+const stackShiftCoverMs = () => {
+  throw new Error("A devnet journey has no stack shift cover");
+};
+
 beforeEach(async () => {
   state.runDirectory = await mkdtemp(join(tmpdir(), "watcher-shared-session-"));
   state.closed = [];
@@ -149,6 +154,7 @@ it("launches from a newly retained healthy predecessor after baseline capture an
       state.runDirectory,
       {
         category: "doubleSpend",
+        stackShiftCoverMs,
         stage: async (input) => {
           expect(state.launches).toEqual([]);
           expect(
@@ -223,7 +229,7 @@ it("starts against the retained head before staging and closes after fixture fai
   await expect(
     runAutonomousWatcherJourney(
       state.runDirectory,
-      { category: "doubleSpend", stage },
+      { category: "doubleSpend", stackShiftCoverMs, stage },
       { session },
     ),
   ).rejects.toThrow("fixture rejected");
@@ -418,6 +424,7 @@ it("rejects a foreign run directory before restarting its failed watcher", async
       join(state.runDirectory, "foreign"),
       {
         category: "doubleSpend",
+        stackShiftCoverMs,
         stage,
       },
       { session },

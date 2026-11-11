@@ -17,6 +17,7 @@ import type {
   JourneyFixtureStage,
   JourneySuccessor,
 } from "./fixture.js";
+import type { StackShiftCoverInput } from "./journey-timing.js";
 import type {
   StackDaDelivery,
   StackDaRefused,
@@ -109,4 +110,9 @@ export type FaultPreparation = {
    * one event wait.
    */
   userEvents?: number;
+  /**
+   * The family's staging shift cover from `historyBlocks` and `userEvents`
+   * (`stackStagingShiftCover`); its fixture's limit reads the same function.
+   */
+  stackShiftCoverMs(input: StackShiftCoverInput): number;
 };

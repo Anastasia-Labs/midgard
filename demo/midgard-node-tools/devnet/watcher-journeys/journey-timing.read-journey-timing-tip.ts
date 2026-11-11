@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  parseDeploymentManifestEventHistoryRecipe,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
+import type { JourneyFixture } from "./fixture.js";
 import {
   healthyJourneyReplayTiming,
   type JourneyCadence,
@@ -11,8 +15,8 @@ import {
   MAX_TIMER_MS,
   object,
   type ReadJourneyTimingOptions,
-  stackJourneyTimeoutMs,
 } from "./journey-timing.journey-timing-for-plan.js";
+import { stackJourneyTimeoutMs } from "./journey-timing.stack-limit.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
 /** A journey's cadence: its network's Shelley genesis and its finalized manifest. */
@@ -86,22 +90,39 @@ export const readStackJourneyTiming = async (
 
 /**
  * A family's whole time limit on an attached stack (`stackJourneyTimeoutMs`):
- * its stack timing and two of operator-2's shifts in the stack's deployment
- * profile. Safe at Vitest module load, like `readJourneyCadence`.
+ * its stack timing, operator-2's shift in the stack's deployment profile,
+ * and twice the family's own staging shift cover, computed as its staging
+ * computes it from the same manifest. Safe at Vitest module load, like
+ * `readJourneyCadence`.
  */
 export const readStackJourneyTimeoutMs = async (
   stack: Readonly<{ nodeConfigPath: string; manifestPath: string }>,
-  category: string,
+  fixture: Pick<JourneyFixture, "category" | "stackShiftCoverMs">,
   options: ReadJourneyTimingOptions = {},
 ) => {
   const [timing, manifestBytes] = await Promise.all([
-    readStackJourneyTiming(stack, category, options),
+    readStackJourneyTiming(stack, fixture.category, options),
     readFile(stack.manifestPath, "utf8"),
   ]);
-  const { deploymentProfile } = verifyFinalizedDeploymentManifest(
+  const { deploymentProfile, contracts } = verifyFinalizedDeploymentManifest(
     JSON.parse(manifestBytes),
   );
-  return stackJourneyTimeoutMs(timing, deploymentProfile.timing);
+  // The same recipes the stack's event-history contracts are read from.
+  const protectionMs = (role: "depositMint" | "withdrawalMint") =>
+    Number(
+      parseDeploymentManifestEventHistoryRecipe(
+        contracts[role]?.eventHistoryRecipe,
+      ).protectionDurationMs,
+    );
+  const coverMs = fixture.stackShiftCoverMs({
+    timing,
+    eventHistoryProtectionMs: {
+      deposit: protectionMs("depositMint"),
+      withdrawal: protectionMs("withdrawalMint"),
+    },
+    profile: deploymentProfile.timing,
+  });
+  return stackJourneyTimeoutMs(timing, deploymentProfile.timing, coverMs);
 };
 
 /** The audited plan for transitionTrace; the finite generic plan for every other family. */

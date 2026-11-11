@@ -2,6 +2,7 @@ import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import type { StackShiftCoverInput } from "./journey-timing.js";
 import type { loadJourneyContext } from "./live-context.js";
 import type { SignedCommitReconciliationPorts } from "./signed-commit-reconciliation.js";
 import type { StackJourneyContext } from "./stack-context.js";
@@ -80,4 +81,10 @@ export type JourneyFixtureStage = {
 export type JourneyFixture = {
   category: JourneyCategory;
   stage(input: JourneyFixtureStage): Promise<StagedJourney>;
+  /**
+   * How much of operator-2's shift this family's staging holds on an
+   * attached stack: the one value its staging asks the shift for and its
+   * time limit is derived from. Refuses when no shift holds it.
+   */
+  stackShiftCoverMs(input: StackShiftCoverInput): number;
 };

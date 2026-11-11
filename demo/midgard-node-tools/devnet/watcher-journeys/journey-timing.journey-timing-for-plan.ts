@@ -450,25 +450,6 @@ export const journeyTimingForCategory = (
       : genericJourneyTiming(cadence);
 };
 
-/**
- * A family's whole time limit on an attached stack (`journey.test.ts`): its
- * computed budget, plus up to two of operator-2's shifts, since the drill
- * stages only in operator-2's shift: up to one waiting for its turn and one
- * holding the staging. A refusal-only family's age-out (two attestation
- * timeouts) fits in the budget it replaces.
- */
-export const stackJourneyTimeoutMs = (
-  timing: Pick<JourneyTiming, "journeyTimeoutMs">,
-  profile: Readonly<{ operator_shift_ms: number }>,
-) => {
-  const limitMs = timing.journeyTimeoutMs + 2 * profile.operator_shift_ms;
-  if (!Number.isSafeInteger(limitMs) || limitMs > MAX_TIMER_MS)
-    throw new Error(
-      `A stack journey limit of ${limitMs.toString()} ms exceeds the supported timer range`,
-    );
-  return limitMs;
-};
-
 export const object = (
   value: unknown,
   label: string,

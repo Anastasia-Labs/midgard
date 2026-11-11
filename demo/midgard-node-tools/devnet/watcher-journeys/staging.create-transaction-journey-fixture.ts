@@ -3,6 +3,7 @@ import type {
   JourneyCategory,
   JourneyFixture,
 } from "./fixture.js";
+import { stackStagingShiftCover } from "./journey-timing.js";
 import {
   type FaultPreparation,
   type JourneyFaultBuildInput,
@@ -29,7 +30,25 @@ export const createPreparedJourneyFixture = (
     input: JourneyFaultPreparationInput,
   ) => Promise<JourneyPreparedFault>,
   options: Pick<FaultPreparation, "historyBlocks" | "userEvents"> = {},
-): JourneyFixture => ({
-  category,
-  stage: (input) => stageJourney(input, { ...options, category, prepare }),
-});
+): JourneyFixture => {
+  // On an attached stack, its staging asks operator-2's shift for this cover
+  // and its time limit is derived from it. A user event's protection is the
+  // longer of the two histories'.
+  const stackShiftCoverMs: FaultPreparation["stackShiftCoverMs"] = (input) =>
+    stackStagingShiftCover({
+      ...input,
+      eventHistoryProtectionMs: Math.max(
+        input.eventHistoryProtectionMs.deposit,
+        input.eventHistoryProtectionMs.withdrawal,
+      ),
+      category,
+      historyBlocks: options.historyBlocks ?? 0,
+      userEvents: options.userEvents ?? 0,
+    });
+  return {
+    category,
+    stackShiftCoverMs,
+    stage: (input) =>
+      stageJourney(input, { ...options, category, prepare, stackShiftCoverMs }),
+  };
+};
