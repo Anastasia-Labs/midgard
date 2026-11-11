@@ -7,6 +7,7 @@ import {
   isJourneyOperationsConnectionRefused,
   JOURNEY_RESTART_TIMEOUT_MS,
 } from "./operations.js";
+import { armOperatorReleaseGuard } from "./operator-release-guard.js";
 import { projectOnlyEnvironment } from "./watcher-evidence-reader.js";
 
 /** The Compose service of an operator's node in its stack. */
@@ -40,6 +41,11 @@ export type OperatorNodeControl = Readonly<{
   name: string;
   stop(): Promise<void>;
   start(): Promise<void>;
+  /**
+   * The command that starts the node from outside this process, for a run
+   * killed while it holds the node (`armOperatorReleaseGuard`).
+   */
+  startCommand?: readonly string[];
   runningServices(): Promise<readonly string[]>;
   /** Refused connections are `reachable: false`; any other failure throws. */
   readReadiness(): Promise<OperatorNodeReadiness>;
@@ -99,6 +105,14 @@ export const composeOperatorNodeControl = ({
     start: async () => {
       await compose(composeProject, ["start", ...services]);
     },
+    startCommand: [
+      "docker",
+      "compose",
+      "-p",
+      composeProject,
+      "start",
+      ...services,
+    ],
     runningServices: async () =>
       (
         await compose(composeProject, [
@@ -251,7 +265,9 @@ export const proveOperatorNodeStopped = async (
  * stopped; `assertStopped` proves it again, before every signature made with
  * its key; `resume` starts it only if this hold stopped it, then waits until
  * its `/readyz` reaches a terminal state (`resumedOperatorTerminal`),
- * refusing a node that took a drill block for its own.
+ * refusing a node that took a drill block for its own. While it holds the
+ * node, a guard process starts it again if this process dies first
+ * (`armOperatorReleaseGuard`, for a control with a `startCommand`).
  */
 export const createOperatorPause = (
   control: OperatorNodeControl,
@@ -259,6 +275,8 @@ export const createOperatorPause = (
     /** How long a resumed node may take to report ready; a restarted service's allowance by default. */
     resumeTimeoutMs?: number;
     pollIntervalMs?: number;
+    /** The process whose death releases the hold; this one by default. */
+    holderPid?: number;
   }> = {},
 ) => {
   const resumeTimeoutMs = options.resumeTimeoutMs ?? JOURNEY_RESTART_TIMEOUT_MS;
@@ -267,9 +285,18 @@ export const createOperatorPause = (
   const pollIntervalMs = options.pollIntervalMs ?? 5000;
   let stopped = false;
   let resuming: Promise<OperatorResumedEvidence | undefined> | undefined;
+  let guard: { disarm(): void } | undefined;
   const hold = async () => {
     if (resuming !== undefined)
       throw new Error("Operator-2's node was already resumed by this drill");
+    // Armed before the stop, so no kill leaves a stopped node unguarded.
+    if (guard === undefined && control.startCommand !== undefined)
+      guard = armOperatorReleaseGuard({
+        startCommand: control.startCommand,
+        ...(options.holderPid === undefined
+          ? {}
+          : { holderPid: options.holderPid }),
+      });
     stopped = true;
     await control.stop();
     return await proveOperatorNodeStopped(control);
@@ -285,6 +312,7 @@ export const createOperatorPause = (
     (resuming ??= (async () => {
       if (!stopped) return undefined;
       const startedAt = new Date().toISOString();
+      guard?.disarm();
       await control.start();
       const observedReasons: string[][] = [];
       const deadline = performance.now() + resumeTimeoutMs;
@@ -338,6 +366,7 @@ export const createOperatorPause = (
    */
   const release = async () => {
     if (!stopped || resuming !== undefined) return;
+    guard?.disarm();
     resuming = control.start().then(() => undefined);
     await resuming;
   };
