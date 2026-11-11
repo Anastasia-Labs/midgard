@@ -213,7 +213,7 @@ export const runJourney = async (
           (await verifiedHeaders.collect([staged.predecessor])) && decision
         );
       },
-      900_000,
+      timing.allowances.automaticDecisionMs,
     );
     const completion = await verifyJourneyCorrection({
       workflowBaseline,
