@@ -234,7 +234,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
    * watcher's loader runs on the configuration startup admitted. */
   readonly runtimeConfigPath: string;
   readonly deploymentFingerprint: string;
-  readonly operationsSink: () => Pick<
+  readonly operationsSink: Pick<
     WatcherOperationsSink,
     "recordProofStep" | "setAlert"
   >;
@@ -316,7 +316,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
     },
     execute: async ({ job, actuationPermit, admission }) => {
       const { category, headerHash, decisionDigest } = job;
-      const sink = dependencies.operationsSink();
       const actionIdentityDigest = watcherSha256CanonicalJson({
         category,
         headerHash,
@@ -329,7 +328,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         >[0]["status"],
         stage: "prepare" | "terminal" = "terminal",
       ) =>
-        sink.recordProofStep({
+        dependencies.operationsSink.recordProofStep({
           decisionDigest,
           stage,
           actionIdentityDigest,
@@ -350,7 +349,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           holds,
           job,
           decisionDigest,
-          sink,
+          sink: dependencies.operationsSink,
           cause,
         });
       };
@@ -520,7 +519,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         const cause = objectiveWork ? quarantineCause(error) : undefined;
         if (cause !== undefined) return quarantine(cause);
         record("failed");
-        sink.setAlert({
+        dependencies.operationsSink.setAlert({
           code: "proof_submission_failure",
           subjectDigest: decisionDigest,
           active: true,
@@ -533,7 +532,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           holds,
           job,
           decisionDigest,
-          sink,
+          sink: dependencies.operationsSink,
           wasQuarantined,
         });
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });

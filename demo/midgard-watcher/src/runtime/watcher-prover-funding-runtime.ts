@@ -31,8 +31,8 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly blueprintBytes?: Uint8Array;
   /** Reads the signed attempts of reservations no workflow drives again. */
   readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
-  /** Where an orphaned reservation's alert is raised, once bound. */
-  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
+  /** Where an orphaned reservation's alert is raised and cleared. */
+  readonly alertSink?: Pick<WatcherOperationsSink, "setAlert">;
 }) => {
   const store = await openWatcherSqliteProverFundingReservationStore({
     path: input.path,
@@ -72,7 +72,7 @@ export const openWatcherProverFundingRuntime = async (input: {
     // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
     // A refused decision journal, or one that could not be opened, keeps them
     // reserved: the supervisor reports journal_integrity or
-    // journal_unavailable once the operations server binds.
+    // journal_unavailable once it exists.
     await factory.releaseUnused({ startup: true }).catch((error: unknown) => {
       if (
         !isWatcherJournalIntegrityError(error) &&

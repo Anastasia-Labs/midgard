@@ -23,7 +23,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createWatcherReplayRefusals } from "../../src/fault-proofs/replay-refusals.js";
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
 import type { WatcherFollowerReplaySource } from "../../src/l1-follower/replay-source.js";
-import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
+import {
+  createWatcherOperationsSink,
+  createWatcherOperationsView,
+} from "../../src/runtime/operations-observability.js";
 import { observation } from "../fault-proofs/fault-decision-bridge.observation.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
@@ -61,7 +64,12 @@ const watcher = async (follower: WatcherFollowerReplaySource) => {
   const directory = await mkdtemp(join(tmpdir(), "watcher-replay-alarm-"));
   directories.push(directory);
   const logged: Record<string, unknown>[] = [];
+  const recorder = createWatcherOperationsSink({
+    deploymentFingerprint: MANIFEST,
+    nowMs: () => 100_000n,
+  });
   const refusals = createWatcherReplayRefusals({
+    sink: recorder.sink,
     nowMs: () => 100_000,
     log: (line) => logged.push(JSON.parse(line) as Record<string, unknown>),
   });
@@ -79,8 +87,7 @@ const watcher = async (follower: WatcherFollowerReplaySource) => {
     },
     refusals,
   });
-  const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: MANIFEST,
+  const operations = createWatcherOperationsView(recorder, {
     supervisor: supervisor().runtime,
     launchScopeStatus: () => ({
       installedCategoryCount: 32,
@@ -92,9 +99,7 @@ const watcher = async (follower: WatcherFollowerReplaySource) => {
     }),
     retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
     replayRefusals: refusals.status,
-    nowMs: () => 100_000n,
   });
-  refusals.attach(operations.sink);
   operations.sink.recordL1Source({
     sourceIdentityDigest: "22".repeat(32),
     sourceMode: "local_node",

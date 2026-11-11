@@ -20,12 +20,18 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityPolicy,
 } from "./deployment-identity.js";
+import type { WatcherOperationsSink } from "./operations-observability.js";
 
-/** Allocate the origin floor before the follower, then bind its replay facts. */
+/**
+ * Allocate the origin floor before the follower, then bind its replay facts.
+ * A confirmed head that does not open its root raises `root_mismatch` on
+ * `operationsSink`.
+ */
 export const createWatcherRuntimeReplayHost = (
   deploymentAuthority: VerifiedWatcherDeploymentAuthority,
   userEventScripts: ReturnType<typeof readWatcherUserEventScriptBinding>,
   journalDirectory: string,
+  operationsSink: Pick<WatcherOperationsSink, "setAlert">,
 ) => {
   const deploymentIdentity = deploymentAuthority.deploymentIdentity;
   const l1SlotConfig = deploymentAuthority.ruleBundle.ruleBundle.l1SlotConfig;
@@ -70,9 +76,7 @@ export const createWatcherRuntimeReplayHost = (
         observationAuthority:
           watcherDeploymentProtocolScriptAuthority(deploymentIdentity),
       });
-      // Created before the operations sink exists: it raises the
-      // `root_mismatch` alert once the runtime attaches the sink.
-      const refusals = createWatcherReplayRefusals();
+      const refusals = createWatcherReplayRefusals({ sink: operationsSink });
       const keeper = createWatcherReplayedLedger({
         follower: source,
         l1SlotConfig,

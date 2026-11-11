@@ -26,11 +26,11 @@ const sweeping = async () => {
   const { factory } = orphanReadingFactory(fixture, {
     observeSignedTransaction: fixture.observeSignedTransaction,
     now: () => clock,
-    alertSink: () => ({
+    alertSink: {
       setAlert: ({ subjectDigest, active }) => {
         alerts.push({ subjectDigest, active });
       },
-    }),
+    },
   });
   const orphan = () =>
     fixture

@@ -130,7 +130,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   /** The clock that paces those reads. */
   readonly now?: () => number;
   /** Where an orphaned reservation's failure alert is raised and cleared. */
-  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
+  readonly alertSink?: Pick<WatcherOperationsSink, "setAlert">;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);

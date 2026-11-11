@@ -55,8 +55,8 @@ export const prepareWatcherRuntimeWorkflows = async (
       follower: Pick<WatcherFollowerRuntime, "status" | "readiness">;
       l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
-      /** Read when a classifier's script re-execution gets stuck. */
-      operationsSink: () => Pick<WatcherOperationsSink, "setAlert">;
+      /** Alerted when a classifier's script re-execution gets stuck. */
+      operationsSink: Pick<WatcherOperationsSink, "setAlert">;
     }>,
 ) => {
   const {
@@ -82,7 +82,7 @@ export const prepareWatcherRuntimeWorkflows = async (
       infrastructure: input.config.faultProofInfrastructure,
       fundingProfileOverlay,
       onValidationTraceReplayStuck: (hold) =>
-        operationsSink().setAlert({
+        operationsSink.setAlert({
           code: "validation_trace_replay_stuck",
           subjectDigest: watcherValidationTraceReplayStuckAlertSubject(
             hold.headerHash,

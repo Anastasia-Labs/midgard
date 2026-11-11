@@ -210,7 +210,7 @@ const setup = async () => {
         workflowJournal: fixture.workflowJournal,
         runtimeConfigPath: "/unused-journal-busy-test.json",
         deploymentFingerprint: deploymentIdentity.manifestId,
-        operationsSink: () => ({ recordProofStep: vi.fn(), setAlert }),
+        operationsSink: { recordProofStep: vi.fn(), setAlert },
       }),
     });
     closers.push(() => supervisor.close());

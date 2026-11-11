@@ -64,6 +64,7 @@ describe("replay admission retention", () => {
       authority,
       deployment.scripts,
       "/unused/replay-checkpoint",
+      { setAlert: () => undefined },
     );
     // A shorter commit range cannot prove the earliest user-event admission.
     expect(MAX_EVENT_VALIDITY_RANGE_LENGTH_MS).toBeGreaterThan(

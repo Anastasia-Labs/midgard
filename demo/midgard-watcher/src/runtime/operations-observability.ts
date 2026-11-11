@@ -1,11 +1,16 @@
 import "./operations-observability.watcher-operations-metrics.js";
 import "./operations-observability.percentile.js";
+import "./operations-observability.sink.js";
 import "./operations-observability.create-watcher-operations-observability.js";
-export { createWatcherOperationsObservability } from "./operations-observability.create-watcher-operations-observability.js";
+export {
+  createWatcherOperationsObservability,
+  createWatcherOperationsView,
+} from "./operations-observability.create-watcher-operations-observability.js";
 export {
   watcherDaBondPoolReadFailureReporter,
   watcherDaBondPoolReporter,
 } from "./operations-observability.percentile.js";
+export { createWatcherOperationsSink } from "./operations-observability.sink.js";
 export {
   WATCHER_ALERT_CODES,
   WATCHER_INFORMATIONAL_ALERT_CODES,

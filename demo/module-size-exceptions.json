@@ -1180,11 +1180,6 @@
     "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
-    "max": 506,
-    "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules."
-  },
-  {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
     "max": 967,
     "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor."

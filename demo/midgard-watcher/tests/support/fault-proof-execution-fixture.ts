@@ -91,7 +91,7 @@ export const setupFaultProofExecution = async (
     workflowJournal,
     runtimeConfigPath: "/unused-test-runtime.json",
     deploymentFingerprint: deploymentIdentity.manifestId,
-    operationsSink: () => ({ recordProofStep, setAlert }),
+    operationsSink: { recordProofStep, setAlert },
   });
   const input = {
     job: {

@@ -3,21 +3,16 @@ import type { WatcherOperationsSink } from "../runtime/operations-observability.
 
 /**
  * The reservations held because no workflow drives their signed attempts
- * again. A reservation's failure alert is active exactly while it is held.
+ * again. A reservation's failure alert is active exactly while it is held:
+ * each `record` raises and clears it on `alertSink` at once.
  */
 export const createWatcherReservationHoldRegister = (
-  alertSink?: () => Pick<WatcherOperationsSink, "setAlert">,
+  alertSink?: Pick<WatcherOperationsSink, "setAlert">,
 ) => {
   const holds = new Map<string, WatcherDecisionHold>();
   const raised = new Set<string>();
   const syncAlerts = () => {
-    let sink;
-    try {
-      sink = alertSink?.();
-    } catch {
-      return; // Startup: the operations server is not bound yet.
-    }
-    if (sink === undefined) return;
+    if (alertSink === undefined) return;
     const held = new Set(
       [...holds.values()].flatMap((hold) =>
         hold.kind === "reservation" ? [hold.reservationId] : [],
@@ -25,7 +20,7 @@ export const createWatcherReservationHoldRegister = (
     );
     for (const id of new Set([...raised, ...held])) {
       if (raised.has(id) === held.has(id)) continue;
-      sink.setAlert({
+      alertSink.setAlert({
         code: "proof_submission_failure",
         subjectDigest: id,
         active: held.has(id),
@@ -48,9 +43,7 @@ export const createWatcherReservationHoldRegister = (
       syncAlerts();
     },
     ids: (): readonly string[] => [...holds.keys()],
-    current: (): readonly WatcherDecisionHold[] => {
-      syncAlerts();
-      return Object.freeze([...holds.values()]);
-    },
+    current: (): readonly WatcherDecisionHold[] =>
+      Object.freeze([...holds.values()]),
   });
 };

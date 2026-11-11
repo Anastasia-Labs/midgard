@@ -253,7 +253,7 @@ export const setup = async (
       workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-objective-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
-      operationsSink: () => ({ recordProofStep: vi.fn(), setAlert: vi.fn() }),
+      operationsSink: { recordProofStep: vi.fn(), setAlert: vi.fn() },
     });
   let execution: ReturnType<typeof createExecution> | undefined;
   const createSupervisor = (proofRetention = storelessProofRetention) => {

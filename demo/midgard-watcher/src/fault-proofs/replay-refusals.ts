@@ -101,11 +101,12 @@ const isRootMismatch = (
  * counted, kept in `recent` and logged once: at error level under
  * `replayed_ledger_root_mismatch` when the confirmed head does not open its
  * root, else at warn level under `replayed_ledger_refused`. The confirmed
- * head's mismatch also holds the `root_mismatch` alert on the attached
- * operations sink until `progressed` reports the ledger advanced.
+ * head's mismatch also holds the `root_mismatch` alert on `sink` until
+ * `progressed` reports the ledger advanced.
  */
 export const createWatcherReplayRefusals = (
   input: Readonly<{
+    sink?: Pick<WatcherOperationsSink, "setAlert">;
     nowMs?: () => number;
     log?: (line: string) => void;
   }> = {},
@@ -116,10 +117,9 @@ export const createWatcherReplayRefusals = (
   const totals = zeroTotals();
   const recent: WatcherReplayRefusalObservation[] = [];
   let rootMismatch: WatcherReplayRefusalObservation | null = null;
-  let sink: Pick<WatcherOperationsSink, "setAlert"> | undefined;
 
   const alert = (headerHash: string, active: boolean) =>
-    sink?.setAlert({
+    input.sink?.setAlert({
       code: "root_mismatch",
       subjectDigest: watcherRootMismatchAlertSubject(headerHash),
       active,
@@ -179,11 +179,6 @@ export const createWatcherReplayRefusals = (
       const { headerHash } = rootMismatch;
       rootMismatch = null;
       alert(headerHash, false);
-    },
-    /** Raises and clears `root_mismatch` on `target` from now on. */
-    attach: (target: Pick<WatcherOperationsSink, "setAlert">): void => {
-      sink = target;
-      if (rootMismatch !== null) alert(rootMismatch.headerHash, true);
     },
     status: (): WatcherReplayRefusalsStatus =>
       Object.freeze({

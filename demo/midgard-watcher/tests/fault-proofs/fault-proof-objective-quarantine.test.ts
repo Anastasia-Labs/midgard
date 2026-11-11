@@ -182,7 +182,7 @@ const setup = async (cause: () => unknown) => {
       workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-quarantine-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
-      operationsSink: () => ({ recordProofStep, setAlert }),
+      operationsSink: { recordProofStep, setAlert },
     });
     const supervisor = createWatcherFaultProofSupervisor({
       reservationDecisionHolds: () => [],

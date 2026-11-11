@@ -49,7 +49,8 @@ import {
 } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { type WatcherOperationsHttpServer } from "./operations-http.js";
 import {
-  createWatcherOperationsObservability,
+  createWatcherOperationsSink,
+  createWatcherOperationsView,
   watcherDaBondPoolReadFailureReporter,
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
@@ -161,6 +162,15 @@ export const startWatcherRuntime = async (
   };
 
   try {
+    // Every module below reports here; the view over it comes later.
+    const recorder = createWatcherOperationsSink({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+    });
+    const operationsSink = recorder.sink;
+    retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
+      deploymentIdentity,
+      sink: operationsSink,
+    });
     const releaseFinality =
       watcherDeploymentReleaseFinalityPolicy(deploymentIdentity).policy;
     const releaseDepth = releaseFinality.confirmationDepth;
@@ -206,6 +216,7 @@ export const startWatcherRuntime = async (
       deploymentAuthority,
       userEventScripts,
       input.config.workflowJournalDirectory,
+      operationsSink,
     );
     const activeFollower = openWatcherDeploymentFollower({
       authority,
@@ -247,7 +258,7 @@ export const startWatcherRuntime = async (
         onAllocated: (application) => {
           allocatedFaultProofApplication = application;
         },
-        operationsSink: () => operations.sink,
+        operationsSink,
       });
 
     const fundingRuntime = await openWatcherProverFundingRuntime({
@@ -266,7 +277,7 @@ export const startWatcherRuntime = async (
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
       observeSignedTransaction: activeFollower.observeSignedTransaction,
-      alertSink: () => operations.sink,
+      alertSink: operationsSink,
       blueprintBytes,
     });
     proverFundingStore = fundingRuntime.store;
@@ -279,7 +290,7 @@ export const startWatcherRuntime = async (
       workflowJournal: fundingRuntime.store.journal,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      operationsSink: () => operations.sink,
+      operationsSink,
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
@@ -307,8 +318,7 @@ export const startWatcherRuntime = async (
       driver: () => decisionDriver,
     });
     const refreshFollowerReadiness = (): void => void l1.refresh();
-    const operations = createWatcherOperationsObservability({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+    const operations = createWatcherOperationsView(recorder, {
       supervisor: activeSupervisor,
       launchScopeStatus: () => ({
         installedCategoryCount:
@@ -321,11 +331,6 @@ export const startWatcherRuntime = async (
       l1Readiness: () => [...l1.read(), ...execution.readiness()],
       l1Degradations: l1.degradations,
       replayRefusals: replay.refusals.status,
-    });
-    replay.refusals.attach(operations.sink);
-    retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
-      deploymentIdentity,
-      sink: operations.sink,
     });
     const headerSource = createWatcherQueueHeaderSource(store, {
       releaseDepth,
@@ -352,12 +357,11 @@ export const startWatcherRuntime = async (
       // E5: the pool readout and its alerts reach /v1/status; they never make
       // the watcher not_ready.
       onDaBondPool: watcherDaBondPoolReporter(
-        operations.sink,
+        operationsSink,
         deploymentIdentity.manifestId,
       ),
-      onDaBondPoolReadFailure: watcherDaBondPoolReadFailureReporter(
-        operations.sink,
-      ),
+      onDaBondPoolReadFailure:
+        watcherDaBondPoolReadFailureReporter(operationsSink),
     });
     availability = activeAvailability;
     const activeBridge = await createWatcherFaultDecisionBridge({
@@ -369,7 +373,7 @@ export const startWatcherRuntime = async (
       maximumClassificationConcurrency: 16,
       reservedFundingOutRefs: async () =>
         await fundingRuntime.store.store.readReservedOutRefs({}),
-      operationsSink: operations.sink,
+      operationsSink,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });
     faultDecisionBridge = activeBridge;
@@ -411,7 +415,7 @@ export const startWatcherRuntime = async (
         },
         onDecided: (tip) => {
           const observedAtMs = BigInt(Date.now()).toString();
-          operations.sink.recordL1Source({
+          operationsSink.recordL1Source({
             sourceIdentityDigest,
             sourceMode: "local_node",
             status: "consistent",
@@ -420,7 +424,7 @@ export const startWatcherRuntime = async (
             slot: tip.nativePoint.slot,
             observedAtMs,
           });
-          operations.sink.setAlert({
+          operationsSink.setAlert({
             code: "chain_rollback",
             subjectDigest: sourceIdentityDigest,
             active: false,
@@ -431,7 +435,7 @@ export const startWatcherRuntime = async (
         // Once per generation, whether the driver heard the rewind or pulled it
         // from the rollback log (before it subscribed, or left by a stop).
         onRewind: () => {
-          operations.sink.setAlert({
+          operationsSink.setAlert({
             code: "chain_rollback",
             subjectDigest: sourceIdentityDigest,
             active: true,
