@@ -16,7 +16,7 @@ import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { isStackJourneyContext } from "./stack-da-publication.js";
-import { stackJourneyDa } from "./stack-journey-da.js";
+import { stackTraceAttachedStack } from "./stack-trace-staging.js";
 
 /**
  * The deposit-trace journey. By default it starts from the confirmed state,
@@ -45,17 +45,18 @@ export const createTransitionTraceJourneyFixture = ({
           checkpointPath,
         )
       : undefined;
+    // Refuses, before any L1 work, a stack the trace cannot stage on.
     const stack = isStackJourneyContext(context)
-      ? stackJourneyDa(context, { readConfirmedTransaction, onStage })
+      ? await stackTraceAttachedStack(context, {
+          readConfirmedTransaction,
+          onStage,
+          directory,
+          checkpointPath,
+        })
       : undefined;
     const staged = await stagePublishedDepositTrace(context.deployment, {
       ...(isStackJourneyContext(context)
-        ? {
-            attachedStack: {
-              attest: (block) =>
-                stack!.publish(block, "attestation", [checkpointPath]),
-            },
-          }
+        ? { attachedStack: stack! }
         : { daSignerConfig: journeyDaSignerConfig(context.accounts) }),
       onStage,
       resume,

@@ -1,10 +1,19 @@
-import type { OperatorShiftAppointment } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
+import { join } from "node:path";
 
+import * as SDK from "@al-ft/midgard-sdk";
+import { toUnit } from "@lucid-evolution/lucid";
+import {
+  type OperatorShiftAppointment,
+  operatorShiftAppointment,
+} from "midgard-watcher/tests/support/published-block-actor.operator-shift";
+
+import { writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyCategory } from "./fixture.js";
 import {
   lateShiftMinimumLeadMs,
   planLateShiftFaultCommit,
 } from "./honest-successor.observables.js";
+import type { StackJourneyContext } from "./stack-context.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
 
 /**
@@ -108,4 +117,45 @@ export const stackLateShiftFaultCommit = (
       commitStartMs,
     });
   };
+};
+
+/**
+ * `stackLateShiftFaultCommit` on an attached stack: operator-2's shift from
+ * the stack's scheduler, the ledger clock of its chain, and each commit's
+ * window recorded in the journey's `late-shift.json`. Refuses as it does,
+ * so call it before any L1 work.
+ */
+export const stackLateShiftGate = (
+  context: StackJourneyContext,
+  input: Readonly<{
+    category: JourneyCategory;
+    /** How long a commit takes to land. */
+    commitAllowanceMs: number;
+    directory: string;
+    onStage(name: string): void;
+  }>,
+) => {
+  const { contracts, chain } = context.deployment;
+  return stackLateShiftFaultCommit({
+    category: input.category,
+    leadMs: context.lateShiftLeadMs,
+    readAppointment: async () => {
+      const schedulers = await context.provider.getUtxosWithUnit(
+        contracts.scheduler.spendingScriptAddress,
+        toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
+      );
+      if (schedulers.length !== 1)
+        throw new Error("Expected one published scheduler");
+      return operatorShiftAppointment(schedulers[0]!);
+    },
+    shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
+    commitAllowanceMs: input.commitAllowanceMs,
+    now: () => chain.now(),
+    awaitLedgerTime: async (timeMs) => {
+      await chain.awaitLedgerTime(timeMs);
+    },
+    record: (commit) =>
+      writeJourneyArtifact(join(input.directory, "late-shift.json"), commit),
+    onStage: input.onStage,
+  });
 };

@@ -2,15 +2,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { toUnit } from "@lucid-evolution/lucid";
 import type {
   createPublishedWatcherBlockActor,
   PublishedDaAttestationOutcome,
 } from "midgard-watcher/tests/support/published-block-actor";
-import {
-  operatorShiftAppointment,
-  sharedShiftWork,
-} from "midgard-watcher/tests/support/published-block-actor.operator-shift";
+import { sharedShiftWork } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 import type { PublishedDaTransactionRecord } from "midgard-watcher/tests/support/published-da-target-consumption";
 import {
   type PublishedDepositTraceCheckpoint,
@@ -36,7 +32,7 @@ import {
   type StackDaOutcome,
 } from "./stack-da-publication.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
-import { stackLateShiftFaultCommit } from "./stack-late-shift.js";
+import { stackLateShiftGate } from "./stack-late-shift.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import type {
   FaultPreparation,
@@ -126,8 +122,9 @@ export const journeyDaPath = async (
       task.category,
       { actionDepth: JOURNEY_ACTION_DEPTH },
     );
-    const { contracts, chain } = context.deployment;
-    const history = SDK.requireEventHistoryContracts(contracts);
+    const history = SDK.requireEventHistoryContracts(
+      context.deployment.contracts,
+    );
     const eventHistoryProtectionMs = Number(
       [history.deposit, history.withdrawal].reduce(
         (longest, { recipe }) =>
@@ -138,26 +135,10 @@ export const journeyDaPath = async (
       ),
     );
     // Refuses here, before any L1 work, when the lead is required and unset.
-    const lateShift = stackLateShiftFaultCommit({
+    const lateShift = stackLateShiftGate(context, {
       category: task.category,
-      leadMs: context.lateShiftLeadMs,
-      readAppointment: async () => {
-        const schedulers = await context.provider.getUtxosWithUnit(
-          contracts.scheduler.spendingScriptAddress,
-          toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
-        );
-        if (schedulers.length !== 1)
-          throw new Error("Expected one published scheduler");
-        return operatorShiftAppointment(schedulers[0]!);
-      },
-      shiftDurationMs: Number(SDK.SHIFT_DURATION_MS),
       commitAllowanceMs: timing.transactionAllowanceMs,
-      now: () => chain.now(),
-      awaitLedgerTime: async (timeMs) => {
-        await chain.awaitLedgerTime(timeMs);
-      },
-      record: (commit) =>
-        writeJourneyArtifact(join(directory, "late-shift.json"), commit),
+      directory,
       onStage,
     });
     return {

@@ -1,32 +1,27 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 
 import type { PublishedWatcherBlock } from "./published-block-actor.js";
 import { sharedShiftWork } from "./published-block-actor.operator-shift.js";
-import {
-  DEPOSIT_BLOCK_INTERVAL_MS,
-  type PublishedDepositTraceCheckpoint,
-} from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
+import type { PublishedDepositTraceCheckpoint } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
 import type { PublishedDepositTraceLiveTail } from "./published-deposit-trace.queue-tail.js";
 
 /** The DA path of a trace staged on an attached stack. */
 export type PublishedDepositTraceAttachedStack = Readonly<{
   /** Follow a committed block's payload to the stack committee's answer. */
   attest(block: PublishedWatcherBlock): Promise<{ readonly kind: string }>;
+  /**
+   * The trace's work in operator-2's shift, from its shift wait to the end
+   * of its fault's commit; derived from the stack's timing.
+   */
+  shiftWorkMs: number;
+  /** Before each attempt to commit the fault: its late-shift wait. */
+  beforeFaultCommit(operatorVkey: string): Promise<void>;
 }>;
 
-/**
- * The ledger time an attached stack's trace commits within, from its base
- * read: the deposit's admission range and event wait, then its block.
- */
-const ATTACHED_TRACE_SPAN_MS =
-  Number(SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS) +
-  SDK.EVENT_WAIT_DURATION_MS +
-  DEPOSIT_BLOCK_INTERVAL_MS;
-
-/** An attached trace's work in operator-2's shift, from its base read. */
-export const attachedTraceShiftWork = () =>
-  sharedShiftWork(ATTACHED_TRACE_SPAN_MS);
+/** An attached trace's work in operator-2's shift, from its shift wait. */
+export const attachedTraceShiftWork = (
+  stack: PublishedDepositTraceAttachedStack,
+) => sharedShiftWork(stack.shiftWorkMs);
 
 export type PublishedDepositTraceOptions = {
   /** The journey's own committee signers; absent on an attached stack. */

@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   createPublishedWorkflowDeploymentAccounts,
@@ -10,7 +11,10 @@ import {
   createPublishedWatcherBlockActor,
   type PublishedWatcherBlock,
 } from "../support/published-block-actor.js";
-import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
+import {
+  DEPOSIT_BLOCK_INTERVAL_MS,
+  stagePublishedDepositTrace,
+} from "../support/published-deposit-trace.js";
 
 /** Every state-queue entry in list order: the root's confirmed hash, then each header. */
 const queueOrder = async (
@@ -115,10 +119,33 @@ it("stages the transition trace on an attached stack through its committee", asy
     daSignerConfig,
   });
   const answered: string[] = [];
+  /** Each late-shift wait: for whom, the queue it saw, and when it ended. */
+  const lateShift: {
+    operator: string;
+    queue: string[];
+    waitedUntil: number;
+  }[] = [];
   const attachedStack = {
     attest: async (block: PublishedWatcherBlock) => {
       answered.push(block.headerHash);
       return committee.attest(block);
+    },
+    // The trace's span under the emulator profile, and the wait below.
+    shiftWorkMs:
+      Number(SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS) +
+      SDK.EVENT_WAIT_DURATION_MS +
+      DEPOSIT_BLOCK_INTERVAL_MS +
+      61_000,
+    // The first wait outlasts the fault block's interval, as the wait for
+    // the end of operator-2's shift does.
+    beforeFaultCommit: async (operator: string) => {
+      if (lateShift.length === 0)
+        await deployment.chain.awaitLedgerTime(deployment.chain.now() + 61_000);
+      lateShift.push({
+        operator,
+        queue: await queueOrder(deployment),
+        waitedUntil: deployment.chain.now(),
+      });
     },
   };
   const ledgerAt = async (headerHash: string) =>
@@ -129,6 +156,16 @@ it("stages the transition trace on an attached stack through its committee", asy
   await expect(
     stagePublishedDepositTrace(deployment, { attachedStack }),
   ).rejects.toThrow(/extends its live tail/u);
+  // Work no shift can hold is refused before the trace publishes anything.
+  await expect(
+    stagePublishedDepositTrace(deployment, {
+      attachedStack: {
+        ...attachedStack,
+        shiftWorkMs: Number(SDK.SHIFT_DURATION_MS) + 1,
+      },
+      liveTail: { ledgerAt },
+    }),
+  ).rejects.toThrow(/shift covers/u);
   await expect(
     stagePublishedDepositTrace(deployment, {
       daSignerConfig,
@@ -147,6 +184,24 @@ it("stages the transition trace on an attached stack through its committee", asy
     tail.current.headerHash,
   );
   expect(staged.commits).toHaveLength(2);
+  // The fault's commit waits for its late-shift window once the empty block
+  // is on the queue, and is rebuilt once its interval passed in that wait.
+  expect(lateShift.length).toBeGreaterThanOrEqual(1);
+  expect(new Set(lateShift.map(({ operator }) => operator))).toEqual(
+    new Set([
+      paymentCredentialOf(await deployment.operatorLucid.wallet().address())
+        .hash,
+    ]),
+  );
+  expect(lateShift[0]!.queue).toEqual([
+    "root",
+    tail.predecessor.headerHash,
+    tail.current.headerHash,
+    staged.predecessor.headerHash,
+  ]);
+  expect(Number(staged.current.header.endTime)).toBeGreaterThan(
+    lateShift[0]!.waitedUntil,
+  );
   expect([...new Set(answered)]).toEqual([
     staged.predecessor.headerHash,
     staged.current.headerHash,

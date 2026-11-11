@@ -129,7 +129,7 @@ export const stagePublishedDepositTrace = async (
     lucid,
     ...(attachedStack === undefined
       ? { daSignerConfig }
-      : { sharedScheduler: attachedTraceShiftWork() }),
+      : { sharedScheduler: attachedTraceShiftWork(attachedStack) }),
     onStage,
   });
   const onboardOperator = () => actor.onboardOperator();
@@ -570,14 +570,14 @@ export const stagePublishedDepositTrace = async (
       await anchorAtPredecessor();
     }
     if (commits.length === 1) {
-      // The event wait can outlast an unattested head's append deadline.
-      // Authenticate the predecessor's DA before waiting for the deposit,
-      // then use the continued queue output produced by that attestation.
+      // The event wait can outlast an unattested head's append deadline, so
+      // attest the predecessor first and continue from its queue output.
       await attest(empty);
       await anchorAtPredecessor();
       await chain.awaitLedgerTime(depositMetadata.inclusionTime);
       for (;;) {
         try {
+          await attachedStack?.beforeFaultCommit(operatorVkey);
           await commit(deposited);
           break;
         } catch (error) {
