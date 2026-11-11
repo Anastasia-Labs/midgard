@@ -1,13 +1,3 @@
-import { createHash } from "node:crypto";
-
-import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-
-import { encodeMidgardCekCoreStepDataCbor } from "../../src/cek-data.js";
-import {
-  type MidgardCekExecutionMode,
-  type MidgardCekStructuralExecution,
-  type MidgardCekStructuralVerdict,
-} from "../../src/cek-executor.js";
 import { constT, UPLCConst } from "../../src/uplc-constant.js";
 import { type UPLCTerm } from "../../src/uplc-term.js";
 import {
@@ -57,10 +47,8 @@ import {
   fstPair,
   headList,
   int,
-  type MidgardCekPreparedProgram,
   mkCons,
   nullList,
-  runMidgardCekProgram,
   seqAll,
   sndPair,
   tailList,
@@ -70,8 +58,8 @@ import {
 import { builtin } from "./uplc-builtins.js";
 
 /**
- * A corpus of CEK programs for comparing two structural executors step by
- * step: the adversarial shapes at small sizes, Data at the integer, byte and
+ * A corpus of CEK programs for comparing the structural executor with the
+ * Aiken machine step by step: the adversarial shapes at small sizes, Data at the integer, byte and
  * constructor encoding edges, every structural builtin on values that cross
  * the bounded direct-witness size in both directions, typed lists, large and
  * small script contexts, large source constants, and programs that fail.
@@ -307,83 +295,3 @@ export const MIDGARD_CEK_DIFFERENTIAL_CORPUS: readonly MidgardCekDifferentialCas
     ...typedListCases(),
     ...failureCases(),
   ];
-
-/**
- * A canonical rendering of a step witness: byte strings as hex, integers as
- * decimal, arrays and maps in order, object keys sorted, absent fields
- * omitted. Two witnesses render equally exactly when they carry the same
- * values in the same order.
- */
-const canonical = (value: unknown): unknown => {
-  if (value instanceof Uint8Array)
-    return `h:${Buffer.from(value).toString("hex")}`;
-  if (typeof value === "bigint") return `n:${value.toString(10)}`;
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value instanceof Map) {
-    return {
-      map: [...value.entries()].map(([key, item]) => [
-        canonical(key),
-        canonical(item),
-      ]),
-    };
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
-        .map((key) => [
-          key,
-          canonical((value as Record<string, unknown>)[key]),
-        ]),
-    );
-  }
-  return value;
-};
-
-export type MidgardCekDifferentialOutcome =
-  | { readonly throws: true }
-  | {
-      readonly throws: false;
-      readonly steps: number;
-      readonly stopReason: string;
-      readonly terminal: string;
-      readonly digest: string;
-    };
-
-/** Every committed byte of a run, in step order, folded into one digest. */
-export const runMidgardCekDifferentialCase = (
-  prepared: MidgardCekPreparedProgram,
-  mode: MidgardCekExecutionMode,
-  onStep?: (index: number, stepDigest: string) => void,
-): MidgardCekDifferentialOutcome => {
-  let run: MidgardCekStructuralExecution | MidgardCekStructuralVerdict;
-  try {
-    run = runMidgardCekProgram(prepared, mode);
-  } catch {
-    return { throws: true };
-  }
-  const hash = createHash("sha256");
-  hash.update(hashMidgardCekMachineState(run.initialState));
-  const steps = "steps" in run ? run.steps : [];
-  steps.forEach((step, index) => {
-    const stepHash = createHash("sha256")
-      .update(hashMidgardCekMachineState(step.pre))
-      .update(hashMidgardCekMachineState(step.post))
-      .update(encodeMidgardCekCoreStepDataCbor(step))
-      .update(JSON.stringify(canonical(step.witness)))
-      .digest();
-    onStep?.(index, stepHash.toString("hex"));
-    hash.update(stepHash);
-  });
-  const terminal = Buffer.from(
-    hashMidgardCekMachineState(run.terminalState),
-  ).toString("hex");
-  return {
-    throws: false,
-    steps: "steps" in run ? run.steps.length : run.stepCount,
-    stopReason: run.stopReason,
-    terminal,
-    digest: hash.update(terminal).digest("hex"),
-  };
-};

@@ -100,8 +100,11 @@ export type SampledStep = {
   readonly postHash: string;
 };
 
-export type PreparedCase = {
-  readonly program: CekStepFuzzProgram;
+/** What a case needs of its program: the label that names it. */
+type CaseProgram = { readonly label: string };
+
+export type PreparedCase<P extends CaseProgram = CekStepFuzzProgram> = {
+  readonly program: P;
   /** The seed of the step sample. */
   readonly sampleSeed: number;
   readonly totalSteps: number;
@@ -193,11 +196,11 @@ export const prepareCase = (
  * Picks the steps of an execution the builder already ran to adjudicate.
  * `program` names the case.
  */
-export const prepareExecution = (
-  program: CekStepFuzzProgram,
+export const prepareExecution = <P extends CaseProgram>(
+  program: P,
   execution: MidgardCekStructuralExecution,
   sampleSeed: number,
-): PreparedCase => {
+): PreparedCase<P> => {
   const steps = execution.steps;
   const local: string[] = [];
   const sampled = chooseSteps(steps, sampleSeed).map((index) => {
@@ -237,8 +240,8 @@ export type AdjudicatedStep = SampledStep & {
   readonly catalogued: CataloguedClass | null;
 };
 
-export type CaseResult = {
-  readonly prepared: PreparedCase;
+export type CaseResult<P extends CaseProgram = CekStepFuzzProgram> = {
+  readonly prepared: PreparedCase<P>;
   readonly steps: readonly AdjudicatedStep[];
   readonly divergences: readonly string[];
 };
@@ -259,10 +262,10 @@ const divergenceOf = (step: AdjudicatedStep): string | null => {
 };
 
 /** Adjudicates prepared cases, batching every step into few evaluations. */
-export const adjudicateCases = (
+export const adjudicateCases = <P extends CaseProgram>(
   aiken: AikenStepEvaluator,
-  cases: readonly PreparedCase[],
-): readonly CaseResult[] => {
+  cases: readonly PreparedCase<P>[],
+): readonly CaseResult<P>[] => {
   const all = cases.flatMap((entry) => entry.sampled);
   const verdicts = aiken.verify(all.map((step) => step.arguments));
   const genuine = all.filter((step) => step.twist === null);
