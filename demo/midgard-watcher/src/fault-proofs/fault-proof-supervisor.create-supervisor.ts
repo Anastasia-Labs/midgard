@@ -34,6 +34,7 @@ import {
   DEPLOYMENT_FINGERPRINT,
   MAX_RECOVERABLE_WORKFLOWS,
   recordedWorkflowObjectives,
+  supervisorClock,
   type SupervisorDependencies,
   type UnsafeWatcherFaultProofJobForTest,
   type UnsafeWatcherFaultProofSupervisorForTest,
@@ -133,6 +134,7 @@ export const createSupervisor = (input: {
       authenticationKey: input.queueAuthenticationKey,
       retention: input.proofRetention,
       onObjectiveSettled: input.dependencies.objectiveSettled,
+      releaseDecisionFunding: input.dependencies.releaseDecisionFunding,
       jobInProcess: (objective) =>
         [jobs, registering, transportRetries].some((held) =>
           held.has(objectiveKey(objective)),
@@ -145,7 +147,7 @@ export const createSupervisor = (input: {
         void input.settleUnattendedFunding?.().catch(() => undefined),
     });
   let progressAuthority = createAuthority();
-  let progressSerial = Promise.resolve();
+  let progressSerial: Promise<unknown> = Promise.resolve();
   let authorityEpoch = 0;
   if (
     categories.length !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
@@ -335,14 +337,7 @@ export const createSupervisor = (input: {
     resumed: () => input.journalBusyRequeue?.wake(),
   });
 
-  const now = (): number => {
-    const value = input.nowMs();
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error("watcher fault-proof supervisor clock is invalid");
-    }
-    return value;
-  };
-
+  const now = supervisorClock(input.nowMs);
   const remainingSafeStartMs = (job: WatcherFaultProofJob): bigint =>
     BigInt(job.deadline!.latestSafeStartAtMs) - BigInt(now());
 
@@ -982,6 +977,15 @@ export const createSupervisor = (input: {
           if (busy.reason() !== null && isWatcherSqliteBusyError(error)) return;
           throw failure;
         }
+      });
+      progressSerial = operation.catch(() => undefined);
+      return operation;
+    },
+    supersedeDecision: (request) => {
+      const operation = progressSerial.then(async () => {
+        if (phase === "blocked" || phase === "closed")
+          throw new Error(`watcher fault-proof supervisor is ${phase}`);
+        return await progressAuthority.supersede(request);
       });
       progressSerial = operation.catch(() => undefined);
       return operation;

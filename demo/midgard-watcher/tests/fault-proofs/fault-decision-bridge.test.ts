@@ -892,7 +892,7 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.enqueued).toHaveLength(0);
   });
 
-  it("resumes only the exact category-bound FraudProof lock target", async () => {
+  it("resumes only the exact category-bound FraudProof lock target and holds an unreproduced one", async () => {
     const base = observation([headerFixture("03"), headerFixture("04")]);
     const [first, second] = base.finalizedHeaders;
     const locked = observation([headerFixture("03"), headerFixture("04")], {
@@ -931,13 +931,21 @@ describe("production fault decision bridge", () => {
         },
       },
     });
-    const hostile = harness({
+    // A lock no admitted fault reproduces holds: no target, no failed pass.
+    const unreproduced = harness({
       current: substituted,
       categoryByHeader: { [first!.headerHash]: "doubleSpend" },
     });
-    await expect(
-      hostile.bridge.prepareForRecovery(substituted),
-    ).rejects.toThrow("did not reproduce an exact runnable classification");
+    expect(
+      (await unreproduced.bridge.reconcileAndDispatch(substituted)).target,
+    ).toBe(null);
+    expect(unreproduced.enqueued).toHaveLength(0);
+    expect(unreproduced.bridge.readiness()).toEqual([
+      {
+        reason: "correction_lock_unreproduced",
+        detail: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.invalidRange}${first!.headerHash}`,
+      },
+    ]);
 
     const availability = observation([headerFixture("03")], {
       Locked: {
@@ -957,26 +965,13 @@ describe("production fault decision bridge", () => {
     expect(held.enqueued).toHaveLength(0);
   });
 
-  it("rejects durable/fresh disagreement, structural observations, and classifier substitution", async () => {
+  it("rejects structural observations and classifier substitution", async () => {
     const current = observation([headerFixture("05")]);
     const [header] = current.finalizedHeaders;
-    const fresh = decision(header!.headerHash, "doubleSpend");
     const currentHarness = harness({
       current,
       categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      records: [
-        Object.freeze({
-          schemaVersion: "midgard-watcher-production-fault-decision-record-v1",
-          revision: "0",
-          priorRecordSha256: null,
-          decision: { ...fresh, decisionDigest: "ff".repeat(32) },
-        }),
-      ],
     });
-    await expect(
-      currentHarness.bridge.prepareForRecovery(current),
-    ).rejects.toThrow("differs from durable decision evidence");
-
     await expect(
       currentHarness.bridge.prepareForRecovery({ ...current }),
     ).rejects.toThrow("not admitted");

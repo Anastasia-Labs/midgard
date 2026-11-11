@@ -21,10 +21,7 @@ import {
 import { Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherWorkflowFundingProfileOverlay,
-  workflowFundingProfileFromOverlay,
-} from "../funding/workflow-funding-profile-overlay.js";
+import { watcherWorkflowFundingProfiles } from "../funding/workflow-funding-profile-overlay.js";
 import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
@@ -55,6 +52,7 @@ import {
   watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
 import { createWatcherCatalogueReplayer } from "./fault-proof-application.create-catalogue-replayer.js";
+import { driveProvenCorrectionFrom } from "./fault-proof-application.drive-proven-correction.js";
 import {
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -114,33 +112,11 @@ export function createApplication({
     }
   }
   const infrastructure = admitInfrastructure(options.infrastructure);
-  if (allowExecution && options.fundingProfileOverlay === undefined) {
-    throw new Error(
-      "watcher application requires its signed funding-profile overlay",
-    );
-  }
-  if (options.fundingProfileOverlay !== undefined) {
-    assertWatcherWorkflowFundingProfileOverlay(options.fundingProfileOverlay);
-    if (
-      options.fundingProfileOverlay.deploymentFingerprint !==
-        deploymentIdentity.manifestId ||
-      options.fundingProfileOverlay.blueprintHash !==
-        deploymentIdentity.blueprintHash
-    ) {
-      throw new Error(
-        "watcher funding-profile overlay changed deployment identity",
-      );
-    }
-  }
-  const fundingProfile = (category: WatcherInstalledWorkflowCategory) => {
-    const overlay = options.fundingProfileOverlay;
-    // Install every runner at startup. Funding is required when a category
-    // requests a reservation, so missing measurements do not stop observation.
-    if (overlay === undefined || overlay.profiles[category] === undefined) {
-      return undefined;
-    }
-    return workflowFundingProfileFromOverlay({ overlay, category });
-  };
+  const fundingProfile = watcherWorkflowFundingProfiles({
+    overlay: options.fundingProfileOverlay,
+    deploymentIdentity,
+    allowExecution,
+  });
   const environmentSnapshot = Object.freeze({ ...environment });
   const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
   let authorityGeneration = 0;
@@ -486,6 +462,15 @@ export function createApplication({
         throw error;
       }
     },
+    driveProvenCorrection: driveProvenCorrectionFrom({
+      isExecutable: () =>
+        allowExecution && admittedApplications.has(application),
+      infrastructure,
+      deploymentIdentity,
+      l1,
+      dependencies,
+      environment: environmentSnapshot,
+    }),
     runOrResume: async (invocation) => {
       if (!allowExecution) {
         throw new Error(

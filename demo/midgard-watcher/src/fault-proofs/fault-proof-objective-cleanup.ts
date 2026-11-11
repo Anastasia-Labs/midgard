@@ -29,12 +29,19 @@ export type WatcherProofObjectiveCleanup = Readonly<{
    * included; a released one's unless it holds a signed attempt, whose rows
    * the funding settle deletes once the attempt is retired, or cannot be
    * read for a refusal. A departed objective's header has left the
-   * finalized queue; any other waits for an observation that drops it.
+   * finalized queue; any other waits for an observation that drops it. A
+   * superseded objective's departure is its supersession, and `decision`
+   * names the one decision row that goes with its rows: its workflow rows
+   * go even with a signed attempt, which no run of it continues, so a
+   * fresh decision for the same objective starts its own execution.
    */
   forget(
     objective: WatcherProofObjective,
-    how: Readonly<{ final: boolean; departed: boolean }>,
+    how: Readonly<{ final: boolean; departed: boolean; decision?: string }>,
   ): Promise<void>;
+  /** Whether a job of the objective is queued or active in this process,
+   * or queued or active in its rows and not left by an earlier process. */
+  pending(objective: WatcherProofObjective): boolean;
   /** Retries every deferred or failed objective that is not open again. */
   retry(
     observation: WatcherAuthenticatedStateQueueObservation,
@@ -72,6 +79,7 @@ export const createWatcherProofObjectiveCleanup = (input: {
     readonly objective: WatcherProofObjective;
     final: boolean;
     departed: boolean;
+    decision?: string;
     failure?: WatcherProofCleanupFailure;
   };
   const entries = new Map<string, Entry>();
@@ -87,7 +95,7 @@ export const createWatcherProofObjectiveCleanup = (input: {
     if (pending(objective)) return;
     try {
       let keep = false;
-      if (!entry.final)
+      if (!entry.final && entry.decision === undefined)
         try {
           keep =
             readWatcherProofExecution({
@@ -104,6 +112,7 @@ export const createWatcherProofObjectiveCleanup = (input: {
       if (!keep) input.workflowJournal.forgetObjective(objective);
       forgetWatcherProofObjective(input.database(), objective, {
         decisions: entry.final,
+        ...(entry.decision === undefined ? {} : { decision: entry.decision }),
       });
       entries.delete(keyOf(objective));
       stale.delete(keyOf(objective));
@@ -121,6 +130,7 @@ export const createWatcherProofObjectiveCleanup = (input: {
   };
   return Object.freeze({
     markStale: (objective) => void stale.add(keyOf(objective)),
+    pending,
     forget: async (objective, how) => {
       const previous = entries.get(keyOf(objective));
       const entry: Entry = {
@@ -131,6 +141,8 @@ export const createWatcherProofObjectiveCleanup = (input: {
         final: how.final || previous?.final === true,
         departed: how.departed || previous?.departed === true,
       };
+      const decision = how.decision ?? previous?.decision;
+      if (decision !== undefined) entry.decision = decision;
       entries.set(keyOf(objective), entry);
       if (entry.departed) settle(entry);
     },

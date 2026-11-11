@@ -2,6 +2,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
   type HeaderDecision,
+  type HeaderFaultDecision,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
@@ -20,7 +21,11 @@ import {
   type WatcherProofObjective,
 } from "./fault-proof-objective-journal.js";
 import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
-import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type {
+  WatcherDecisionSupersedeRequest,
+  WatcherDecisionSupersession,
+  WatcherFaultProofProgressRequest,
+} from "./fault-proof-progress-authority.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
 
@@ -147,6 +152,10 @@ export type WatcherFaultProofSupervisor = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION;
   done: Promise<void>;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
+  /** The progress authority's supersede, serialized with progress. */
+  supersedeDecision(
+    request: WatcherDecisionSupersedeRequest,
+  ): Promise<WatcherDecisionSupersession>;
   revokeAuthority(reason: string): void;
   status(): WatcherFaultProofSupervisorStatus;
   durableQueueStatus(): Readonly<{
@@ -198,7 +207,19 @@ export type SupervisorDependencies = Readonly<{
   ): error is WorkflowActuationRevokedError;
   /** The objective is no longer driven: held, completed or its header gone. */
   objectiveSettled?(objective: WatcherProofObjective): void;
+  /** Releases a superseded decision's unused prover funding; false when a
+   * reservation of it is bound to a run. */
+  releaseDecisionFunding?(decision: HeaderFaultDecision): Promise<boolean>;
 }>;
+
+/** The supervisor clock: a safe non-negative integer of milliseconds. */
+export const supervisorClock = (nowMs: () => number) => (): number => {
+  const value = nowMs();
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("watcher fault-proof supervisor clock is invalid");
+  }
+  return value;
+};
 
 /** The recorded objectives that still hold work, in category order. */
 export const recordedWorkflowObjectives = (

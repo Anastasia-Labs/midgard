@@ -12,14 +12,14 @@ import {
 } from "./proof-material.js";
 
 export const TRANSITION_TRACE_WORKFLOW_ARTIFACT =
-  "midgard-transition-trace-workflow-artifact-v2";
+  "midgard-transition-trace-workflow-artifact-v3";
 export const createTransitionTraceWorkflowArtifact = ({
   evidence,
   predecessor,
   proof,
   detectionId,
   l1Snapshot,
-  eventOutRef,
+  eventIdentity,
   depositOpening,
 }: {
   evidence: CanonicalBlockEvidence;
@@ -27,7 +27,8 @@ export const createTransitionTraceWorkflowArtifact = ({
   proof: TransitionProofInput;
   detectionId: string;
   l1Snapshot: FraudProofRawL1Snapshot;
-  eventOutRef: string | null;
+  /** `kind:assetName` of the proved event: its identity, never its outRef. */
+  eventIdentity: string | null;
   depositOpening: TransitionDepositOpening | null;
 }): JournalJsonObject => {
   if (
@@ -45,7 +46,7 @@ export const createTransitionTraceWorkflowArtifact = ({
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorUtxosRoot: predecessor?.utxosRoot ?? null,
     proofCbor: transitionProofCbor(proof),
-    eventOutRef,
+    eventIdentity,
     depositOpening,
     // Durable exact raw evidence is retained for recovery/audit. It does not
     // grant authority; every run reopens fresh history and raw L1 observations.
@@ -69,19 +70,21 @@ export const requireTransitionTraceWorkflowArtifact = (
     "payloadEnvelopeCbor",
     "predecessorUtxosRoot",
     "proofCbor",
+    "eventIdentity",
   ] as const)
     if (artifact[key] !== freshlyDerived[key])
       throw new Error(
-        `Transition artifact ${key} differs from freshly admitted replay`,
+        key === "eventIdentity"
+          ? "Transition artifact event identity differs from freshly admitted replay"
+          : `Transition artifact ${key} differs from freshly admitted replay`,
       );
+  // A respent event node moves its outRef, not the event: every step reads
+  // current outRefs from a fresh capture, so the artifact binds no locator.
   const expectedOpening = freshlyDerived.depositOpening;
   if (expectedOpening === null) {
-    if (
-      artifact.depositOpening !== null ||
-      artifact.eventOutRef !== freshlyDerived.eventOutRef
-    )
+    if (artifact.depositOpening !== null)
       throw new Error(
-        "Transition artifact event reference differs from freshly admitted replay",
+        "Transition artifact deposit opening differs from freshly admitted replay",
       );
   } else {
     const opening = artifact.depositOpening;
@@ -102,7 +105,6 @@ export const requireTransitionTraceWorkflowArtifact = (
       throw new Error(
         "Transition artifact deposit opening differs from freshly admitted replay",
       );
-    // Pointer churn changes the diagnostic outRef, not captured immutable facts.
     // The on-chain stage still opens against its own authenticated commitment.
   }
   if (

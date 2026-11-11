@@ -1,4 +1,5 @@
 import type {
+  HeaderDecision,
   HeaderFaultDecision,
   WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
@@ -30,6 +31,43 @@ export type WatcherFaultProofProgressContext = Readonly<{
   deadline: WatcherFaultProofDeadline | null;
   rollbackGeneration: string;
 }>;
+
+/**
+ * A durable fault decision a fresh full-scope classification of the same
+ * authenticated observation no longer reproduces, and that fresh decision.
+ */
+export type WatcherDecisionSupersedeRequest = Readonly<{
+  observation: WatcherAuthenticatedStateQueueObservation;
+  prior: HeaderFaultDecision;
+  fresh: HeaderDecision;
+}>;
+
+/**
+ * What still drives the prior decision, so it is held unchanged:
+ * - `correction_locked`: the finalized CorrectionLock is Locked under its
+ *   category and header (the bridge checks this before asking);
+ * - `objective_held`: its objective is held (decision missing, unreadable);
+ * - `job_pending`: a job of its objective is queued or active;
+ * - `submission_unresolved`: a signed attempt of its execution is neither
+ *   confirmed nor failed yet;
+ * - `funding_in_use`: a funding reservation of it is bound to a run;
+ * - `cleanup_failed`: its rows could not be deleted; retried next pass.
+ */
+export type WatcherDecisionSupersedeHoldReason =
+  | "correction_locked"
+  | "objective_held"
+  | "job_pending"
+  | "submission_unresolved"
+  | "funding_in_use"
+  | "cleanup_failed";
+
+export type WatcherDecisionSupersession =
+  | Readonly<{ kind: "superseded" }>
+  | Readonly<{
+      kind: "held";
+      reason: WatcherDecisionSupersedeHoldReason;
+      detail: string;
+    }>;
 
 export type WatcherFaultProofProgressAuthority = Readonly<{
   admit(
@@ -69,6 +107,15 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
   }): Promise<void>;
+  /**
+   * Replaces the prior decision when nothing of it is in flight: releases
+   * its unused prover funding, forgets its workflow rows and its decision
+   * row, then records a fresh fault as a live decision. Anything in flight
+   * holds it unchanged; a later call supersedes it once that clears.
+   */
+  supersede(
+    request: WatcherDecisionSupersedeRequest,
+  ): Promise<WatcherDecisionSupersession>;
   reconcileExecution(input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;

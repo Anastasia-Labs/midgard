@@ -801,6 +801,19 @@ describe("transition trace installed retained-history workflow", () => {
                 expect(
                   await lucid.utxosByOutRef([witness.anchor.utxo]),
                 ).toHaveLength(0);
+                // The respent event node names the same event: reclassifying
+                // the same header observation keeps the decision identity.
+                const reclassified = await classifyHeader({
+                  classifier,
+                  observation,
+                  authenticatedObservationDigest:
+                    decision.authenticatedObservationDigest,
+                  sources,
+                  predecessorLedgerAt: fixtureLedgerAt({ sources }),
+                });
+                expect(reclassified.decisionDigest).toBe(
+                  decision.decisionDigest,
+                );
                 pointerChurned = true;
               }
             }

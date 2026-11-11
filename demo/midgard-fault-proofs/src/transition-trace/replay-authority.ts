@@ -11,7 +11,6 @@ import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
 import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 import {
   CanonicalReplayPrerequisiteError,
@@ -215,15 +214,18 @@ const readTransitionTraceEventCoverage = ({
   };
 };
 
-// Each key is an opaque handle owning immutable, already admitted raw evidence.
-// The cheap projection key below binds every mutable decision input; keep only
-// the latest projection so caller changes cannot grow an unbounded cache.
-const eventEvidenceDigests = new WeakMap<
-  TransitionTraceL1Events,
-  Readonly<{ projection: string; digest: string }>
->();
+const TRANSITION_TRACE_EVENT_EVIDENCE =
+  "midgard-transition-trace-event-evidence-v2" as const;
 
-/** Stable identity for every due or committed event, after full raw admission. */
+/**
+ * Content identity of every due or committed event, after full raw admission.
+ * It binds the block, the hub's event policy ids (the only hub fields replay
+ * reads) and each relevant event's unit, kind and content, and never an L1
+ * locator: a list insert or a governance update that respends an event node
+ * or the hub moves its outRef and grows its unit history, not the event. The
+ * admitted snapshot stays the admission authority, and builders take current
+ * outRefs from a fresh capture.
+ */
 export const computeTransitionTraceL1EventEvidenceDigest = ({
   evidence,
   l1Events,
@@ -239,85 +241,57 @@ export const computeTransitionTraceL1EventEvidenceDigest = ({
   const hubScope = l1.snapshot.scopes.find(
     (scope) => scope.role === "hub_oracle",
   )!;
-  const hubOutRef = `${l1.hub.txHash}#${l1.hub.outputIndex.toString()}`;
   const hubUnit =
     paymentCredentialOf(hubScope.address).hash + SDK.HUB_ORACLE_ASSET_NAME;
   if (!l1.snapshot.historyUnits.includes(hubUnit))
     throw new Error("Transition event evidence omits governed hub history");
-  const relevantUnits = new Set([hubUnit]);
-  const relevantOutRefs = new Set([hubOutRef]);
-  for (const event of relevantEvents) {
-    const policy =
-      event.kind === "deposit"
-        ? parameters.deposit
-        : event.kind === "withdrawal"
-          ? parameters.withdrawal
-          : parameters.tx_order;
-    relevantUnits.add(policy + event.assetName);
-    relevantOutRefs.add(
-      `${event.utxo.txHash}#${event.utxo.outputIndex.toString()}`,
+  const events = relevantEvents
+    .map((event) => ({
+      kind: event.kind,
+      unit:
+        (event.kind === "deposit"
+          ? parameters.deposit
+          : event.kind === "withdrawal"
+            ? parameters.withdrawal
+            : parameters.tx_order) + event.assetName,
+      content:
+        event.kind === "forcedTransaction"
+          ? { datumCbor: event.utxo.datum! }
+          : {
+              commitmentCbor: event.history.commitmentCbor,
+              openingCbor: event.history.openingCbor,
+            },
+    }))
+    .sort((left, right) =>
+      left.unit < right.unit ? -1 : left.unit > right.unit ? 1 : 0,
     );
-    if (
-      event.kind !== "forcedTransaction" &&
-      event.retainedDataUtxo !== undefined
-    )
-      relevantOutRefs.add(
-        `${event.retainedDataUtxo.txHash}#${event.retainedDataUtxo.outputIndex}`,
-      );
-  }
-  const history = l1.snapshot.history.filter((entry) =>
-    relevantUnits.has(entry.unit),
-  );
-  if (history.length !== relevantUnits.size)
+  const relevantUnits = new Set([hubUnit, ...events.map(({ unit }) => unit)]);
+  if (
+    l1.snapshot.history.filter((entry) => relevantUnits.has(entry.unit))
+      .length !== relevantUnits.size
+  )
     throw new Error("Transition event evidence omits relevant unit history");
-  const transactionHashes = new Set(
-    history.flatMap((entry) => entry.transactionHashes),
-  );
-  const headerCbor = SDK.encodeHeaderCbor(current.header).toString("hex");
-  const relevantEventOutRefs = [...relevantOutRefs].sort();
-  const projection = JSON.stringify([
-    evidence.headerHash,
-    headerCbor,
-    evidence.payloadEnvelopeSha256,
-    evidence.payloadSha256,
-    relevantEventOutRefs,
-    [...relevantUnits].sort(),
-  ]);
-  const cached = eventEvidenceDigests.get(l1Events);
-  if (cached?.projection === projection) return cached.digest;
-  // The original complete snapshot remains the admission authority. This is
-  // only a transcript projection, never a replacement address/history claim.
-  const rawEvidenceDigest = computeFraudProofRawL1SnapshotEvidenceDigest({
-    ...l1.snapshot,
-    scopes: l1.snapshot.scopes.map((scope) => ({
-      ...scope,
-      utxos: scope.utxos.filter((entry) => relevantOutRefs.has(entry.outRef)),
-    })),
-    historyUnits: [...relevantUnits],
-    history,
-    transactions: l1.snapshot.transactions.filter((entry) =>
-      transactionHashes.has(entry.txHash),
-    ),
-  });
-  const digest = createHash("sha256")
+  return createHash("sha256")
     .update(
       canonicalJson(
         {
-          schemaVersion: "midgard-transition-trace-event-evidence-v1",
+          schemaVersion: TRANSITION_TRACE_EVENT_EVIDENCE,
           headerHash: evidence.headerHash,
-          headerCbor,
+          headerCbor: SDK.encodeHeaderCbor(current.header).toString("hex"),
           payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
           payloadSha256: evidence.payloadSha256,
-          hubAddress: hubScope.address,
-          relevantEventOutRefs,
-          rawEvidenceDigest,
+          hub: {
+            unit: hubUnit,
+            deposit: parameters.deposit,
+            withdrawal: parameters.withdrawal,
+            txOrder: parameters.tx_order,
+          },
+          events,
         },
         "transition trace event evidence",
       ),
     )
     .digest("hex");
-  eventEvidenceDigests.set(l1Events, { projection, digest });
-  return digest;
 };
 
 /** The findings the block and its raw L1 events prove on their own, with no

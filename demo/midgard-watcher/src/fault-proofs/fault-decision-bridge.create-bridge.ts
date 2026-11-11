@@ -10,11 +10,8 @@ import {
 } from "../indexers/authenticated-state-queue-observation.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 import { classificationMissRecorder } from "./fault-decision-bridge.classification-miss.js";
-import {
-  assertDurableDecisionEvidence,
-  durableFaultDecisions,
-  verificationRecorder,
-} from "./fault-decision-bridge.classification-record.js";
+import { verificationRecorder } from "./fault-decision-bridge.classification-record.js";
+import { decisionHolds } from "./fault-decision-bridge.decision-holds.js";
 import { unverifiedMergedRecorder } from "./fault-decision-bridge.merged-headers.js";
 import { preservesPendingTargetEvidence } from "./fault-decision-bridge.preserves-pending-target-evidence.js";
 import {
@@ -71,6 +68,7 @@ export const createBridge = (input: {
   let targetClassification: ClassificationBinding | null = null;
   const mergedRecorder = unverifiedMergedRecorder(input.dependencies);
   const misses = classificationMissRecorder(input.dependencies);
+  const holds = decisionHolds(input.dependencies);
 
   const invalidate = (reason: string): void => {
     input.dependencies.retainDecisionAuthorities(null);
@@ -157,9 +155,6 @@ export const createBridge = (input: {
       );
     const classifiedBindings = new Map<string, ClassificationBinding>();
     let reusedTargetDecision: HeaderDecision | null = null;
-    const durableFaults = durableFaultDecisions(
-      await input.dependencies.readRecords(),
-    );
     let retainedPendingDecision: HeaderDecision | null = null;
     const assertRetainedTargetAuthority = () => {
       if (target === null || actuationController === null)
@@ -311,7 +306,6 @@ export const createBridge = (input: {
               "production classifier changed the authenticated queue identity",
             );
           }
-          assertDurableDecisionEvidence(durableFaults, decision);
           verification.recordDecision(authenticatedObservationDigest, decision);
           if (contextIdentity !== undefined) {
             classifiedBindings.set(header.headerHash, {
@@ -365,6 +359,7 @@ export const createBridge = (input: {
     ) {
       classifications[index] = null;
     }
+    await holds.settle(candidate, classifications);
     const decisions: HeaderDecision[] = [];
     for (let index = 0; index < classifications.length; index += 1) {
       const classification = classifications[index];
@@ -407,6 +402,8 @@ export const createBridge = (input: {
       observation: candidate,
       decisions,
       merged: new Set(merged.keys()),
+      onUnreproducedLock: holds.unreproducedLock,
+      onProvenHeader: holds.provenHeader,
     });
     const selectedDecision =
       selected === null
@@ -514,7 +511,10 @@ export const createBridge = (input: {
       // Keep reconciliation and its exact selected decision inside the same
       // serializer turn. A later prepare/rollback must not replace globals in
       // the gap between prepare resolution and enqueue.
-      if (dispatch) await dispatchPrepared();
+      if (dispatch) {
+        await holds.finishUntargeted();
+        await dispatchPrepared();
+      }
       return prepared;
     });
     serial = result.then(
@@ -560,7 +560,7 @@ export const createBridge = (input: {
     reconcileAndDispatch: async (candidate) =>
       await serializedPrepare(candidate, true),
     dispatchPrepared,
-    readiness: misses.readiness,
+    readiness: () => [...misses.readiness(), ...holds.readiness()],
     invalidateForRollback: () => invalidate("native_chain_rollback"),
     invalidateForShutdown: () => invalidate("watcher_shutdown"),
     status: () =>

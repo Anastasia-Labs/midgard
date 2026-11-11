@@ -48,6 +48,8 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly authenticationKey: Uint8Array;
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
+  /** The wallet out-refs prover funding reservations hold right now. */
+  readonly reservedFundingOutRefs: () => Promise<readonly string[]>;
   readonly operationsSink?: WatcherOperationsSink;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
@@ -114,6 +116,13 @@ export const createWatcherFaultDecisionBridge = async (input: {
         : { operationsSink: input.operationsSink }),
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
       warn: input.warn ?? writeWarning,
+      supersede: input.supervisor.supersedeDecision,
+      driveProvenRemoval: async ({ headerHash, fraudProofAssetName }) =>
+        await input.application.driveProvenCorrection({
+          runtimeConfigPath: input.runtimeConfigPath,
+          correction: { targetHeaderHash: headerHash, fraudProofAssetName },
+          reservedOutRefs: input.reservedFundingOutRefs,
+        }),
       requestProgress: input.supervisor.requestProgress,
       revokeAuthority: input.supervisor.revokeAuthority,
       unfinishedObjectiveCount: () =>

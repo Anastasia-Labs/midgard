@@ -48,19 +48,15 @@ export const durableFaultDecisions = (
   return byObservation;
 };
 
-export const assertDurableDecisionEvidence = (
+/** The durable fault a fresh decision of the same observation differs from. */
+export const durableDisagreement = (
   durable: ReadonlyMap<string, WatcherPersistedFaultDecisionRecord>,
   decision: HeaderDecision,
-): void => {
+): WatcherPersistedFaultDecisionRecord | undefined => {
   const prior = durable.get(observationKey(decision));
-  if (
-    prior !== undefined &&
-    prior.decision.decisionDigest !== decision.decisionDigest
-  ) {
-    throw new Error(
-      "fresh production classification differs from durable decision evidence",
-    );
-  }
+  return prior?.decision.decisionDigest === decision.decisionDigest
+    ? undefined
+    : prior;
 };
 
 /**

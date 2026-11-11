@@ -26,6 +26,7 @@ import {
   verificationRecorder,
 } from "./fault-decision-bridge.classification-record.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
+import type { WatcherDecisionSupersedeHoldReason } from "./fault-proof-progress-authority.js";
 import {
   replayLocalFaultHolds,
   type WatcherReplayLocalFaultHold,
@@ -67,6 +68,28 @@ export type WatcherClassificationWarning = Readonly<
       /** The header whose public DA payload was not served. */
       missingPayloadHeaderHash: string;
       challengeableUntilMs: string;
+    }
+  | {
+      event: "fault_decision_supersede_held";
+      headerHash: string;
+      cause: WatcherDecisionSupersedeHoldReason;
+    }
+  | {
+      event: "correction_lock_unreproduced";
+      headerHash: string;
+      fraudProofAssetName: string;
+    }
+  | {
+      event: "correction_lock_finishing_removal";
+      headerHash: string;
+      fraudProofAssetName: string;
+      fraudProofOutRef: string;
+    }
+  | {
+      event: "correction_lock_finishing_removal_failed";
+      headerHash: string;
+      fraudProofAssetName: string;
+      message: string;
     }
 >;
 

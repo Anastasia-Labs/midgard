@@ -99,6 +99,7 @@ describe("production fault-proof supervisor", () => {
       "revokeAuthority",
       "schemaVersion",
       "status",
+      "supersedeDecision",
     ]);
     await supervisor.requestProgress({
       observation: progressObservation({

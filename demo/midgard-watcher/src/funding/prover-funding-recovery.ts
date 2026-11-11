@@ -157,4 +157,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   });
 };
 
-export { releaseUnusedWatcherProverFundingReservations } from "./prover-funding-recovery.release-unused.js";
+export {
+  releaseUnusedDecisionReservations,
+  releaseUnusedWatcherProverFundingReservations,
+} from "./prover-funding-recovery.release-unused.js";

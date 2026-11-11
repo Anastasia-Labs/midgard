@@ -26,9 +26,10 @@ const signedReservation = async (
 
 /**
  * Reclaim unsubmitted work after its runner exits, or before startup
- * dispatch. A reservation whose recorded decision is missing is left as it
- * is. With `orphans`, signed funding nothing drives (no workflow journal
- * names it, or its objective was forgotten when its header left the queue)
+ * dispatch. An unsigned reservation whose recorded decision is missing is
+ * left as it is. With `orphans`, signed funding nothing drives (its decision
+ * was superseded, no workflow journal names it, or its objective was
+ * forgotten when its header left the queue)
  * is settled once each of its attempts is retired past release finality,
  * read from its own bytes, and held until then
  * (prover_funding_orphaned_reservation); the holds are returned. The settle
@@ -96,6 +97,12 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     const signed =
       input.orphans !== undefined &&
       (await signedReservation(input.store, record));
+    // A superseded decision's row is gone; no run continues its signed
+    // attempts.
+    if (matches.length === 0 && signed) {
+      orphaned.push(record);
+      continue;
+    }
     if (matches.length !== 1 || decision?.decision !== "fault_detected")
       continue;
     if (input.decisionMissingOnly === true && !signed) continue;
@@ -132,4 +139,38 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
       )) as readonly ReservationHold[]),
     );
   return Object.freeze(holds);
+};
+
+/**
+ * Releases the unused reservations of one superseded decision, while its
+ * decision row is still recorded (the release skips a reservation whose
+ * decision is missing). A signed one is left to the orphaned-funding
+ * settle, which returns its inputs once each of its attempts is retired.
+ * False, releasing nothing, when any active reservation of it is bound to a
+ * run (`live`): that work is in flight.
+ */
+export const releaseUnusedDecisionReservations = async (
+  input: Omit<
+    Parameters<typeof releaseUnusedWatcherProverFundingReservations>[0],
+    "reservations" | "decisionMissingOnly" | "orphans"
+  > &
+    Readonly<{ decisionDigest: string; live: ReadonlySet<string> }>,
+): Promise<boolean> => {
+  const reservations = (await input.store.readAll())
+    .map(parseWatcherProverFundingReservationRecord)
+    .filter(
+      (record) =>
+        record.decisionDigest === input.decisionDigest &&
+        record.state === "active",
+    );
+  if (reservations.some(({ reservationId }) => input.live.has(reservationId)))
+    return false;
+  const unsigned: WatcherProverFundingReservationRecord[] = [];
+  for (const record of reservations)
+    if (!(await signedReservation(input.store, record))) unsigned.push(record);
+  await releaseUnusedWatcherProverFundingReservations({
+    ...input,
+    reservations: unsigned,
+  });
+  return true;
 };

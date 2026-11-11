@@ -9,23 +9,22 @@ import type {
 // Admission compares already verified immutable facts. These bytes are not an
 // L1 authority; on-chain reopening separately authenticates the actual hashes.
 const artifact = (): JournalJsonObject => ({
-  schemaVersion: "midgard-transition-trace-workflow-artifact-v2",
+  schemaVersion: "midgard-transition-trace-workflow-artifact-v3",
   headerHash: "aa",
   detectionId: "deposit-0",
   payloadEnvelopeCbor: "bb",
   predecessorUtxosRoot: null,
   proofCbor: "cc",
-  eventOutRef: "old#0",
+  eventIdentity: "deposit:01",
   depositOpening: { commitmentCbor: "dd", openingCbor: "ee" },
   l1Snapshot: { evidence: "retained" },
 });
 
 describe("transition staged opening journal identity", () => {
-  it("survives serialization and pointer-only changes with the same immutable opening", () => {
+  it("survives serialization and a moved snapshot with the same immutable opening", () => {
     const prior = JSON.parse(JSON.stringify(artifact())) as JournalJsonObject;
     const fresh = {
       ...artifact(),
-      eventOutRef: "continued#1",
       l1Snapshot: { evidence: "current" },
     };
     expect(() =>
@@ -61,17 +60,36 @@ describe("transition staged opening journal identity", () => {
       ),
     ).toThrow(/deposit opening/);
   });
-  it("preserves exact reference binding for direct proofs without captured openings", () => {
-    const prior = { ...artifact(), depositOpening: null };
+  it.each([null, { commitmentCbor: "dd", openingCbor: "ee" }])(
+    "binds the proved event by identity, never by outRef (opening %j)",
+    (depositOpening) => {
+      const prior = { ...artifact(), depositOpening };
+      expect(() =>
+        requireTransitionTraceWorkflowArtifact(prior, {
+          ...prior,
+          l1Snapshot: { evidence: "respent" },
+        }),
+      ).not.toThrow();
+      expect(() =>
+        requireTransitionTraceWorkflowArtifact(prior, {
+          ...prior,
+          eventIdentity: "deposit:02",
+        }),
+      ).toThrow(/event identity/);
+    },
+  );
+  it("refuses an artifact journaled under the outRef-bound schema", () => {
+    const { eventIdentity: _identity, ...rest } = artifact();
     expect(() =>
-      requireTransitionTraceWorkflowArtifact(prior, {
-        ...prior,
-        eventOutRef: "changed#0",
-      }),
-    ).toThrow(/event reference/);
-    expect(() =>
-      requireTransitionTraceWorkflowArtifact(prior, prior),
-    ).not.toThrow();
+      requireTransitionTraceWorkflowArtifact(
+        {
+          ...rest,
+          schemaVersion: "midgard-transition-trace-workflow-artifact-v2",
+          eventOutRef: "old#0",
+        },
+        artifact(),
+      ),
+    ).toThrow(/shape changed|schemaVersion/);
   });
   it("still rejects a changed frozen proof or removed raw evidence", () => {
     expect(() =>

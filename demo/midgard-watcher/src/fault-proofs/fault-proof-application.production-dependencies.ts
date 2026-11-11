@@ -10,6 +10,8 @@ import {
   type FraudProofWorkflowTerminal,
   type HeaderDecision,
   parseContractDeploymentInfo,
+  type ProvenCorrectionRemoval,
+  type ProvenFraudProofCorrection,
   requireDeploymentReferenceScript,
   resolveProverSigner,
   type StateQueueMutationLeaseCoordinator,
@@ -237,6 +239,19 @@ export type WatcherFaultProofApplication = Readonly<{
     input: WatcherCompletedFaultProofInput,
   ): Promise<WatcherCompletedFaultProofVerification>;
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
+  /**
+   * Starts the removal of a proven correction's header from an Idle lock, or
+   * finishes the one a Locked lock waits for, from the proven record on L1,
+   * paid from coins no funding reservation holds. `observing`: this
+   * application only observes and started nothing.
+   */
+  driveProvenCorrection(
+    input: Readonly<{
+      runtimeConfigPath: string;
+      correction: ProvenFraudProofCorrection;
+      reservedOutRefs: () => Promise<readonly string[]>;
+    }>,
+  ): Promise<ProvenCorrectionRemoval | Readonly<{ kind: "observing" }>>;
   close(): Promise<void>;
 }>;
 

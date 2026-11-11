@@ -225,11 +225,10 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
         detectionId,
         l1Snapshot: replay.l1Snapshot,
         depositOpening,
-        eventOutRef:
-          bound.event === null ||
-          (finalIndex === 6 && bound.event.kind !== "forcedTransaction")
+        eventIdentity:
+          bound.event === null
             ? null
-            : `${bound.event.utxo.txHash}#${bound.event.utxo.outputIndex}`,
+            : `${bound.event.kind}:${bound.event.assetName}`,
       }),
     });
   }

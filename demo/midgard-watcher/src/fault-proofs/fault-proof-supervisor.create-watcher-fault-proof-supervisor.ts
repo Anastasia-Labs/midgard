@@ -60,6 +60,8 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
   /** Settles the funding of signed attempts whose objective was forgotten. */
   readonly settleUnattendedFunding?: () => Promise<void>;
+  /** Releases a superseded decision's unused prover funding. */
+  readonly releaseDecisionFunding?: SupervisorDependencies["releaseDecisionFunding"];
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -114,6 +116,9 @@ export const createWatcherFaultProofSupervisor = (input: {
           : verification;
       },
       isActuationRevokedError: isWorkflowActuationRevokedError,
+      ...(input.releaseDecisionFunding === undefined
+        ? {}
+        : { releaseDecisionFunding: input.releaseDecisionFunding }),
       ...(input.execution.objectiveSettled === undefined
         ? {}
         : { objectiveSettled: input.execution.objectiveSettled }),

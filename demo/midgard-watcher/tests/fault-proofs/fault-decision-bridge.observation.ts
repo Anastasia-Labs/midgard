@@ -57,6 +57,8 @@ export const observation = (
   lockDatum: CorrectionLockDatum = "Idle",
   daAvailability: readonly DaAvailabilityStateQueueStatus[] = [],
   blockTimes: readonly bigint[] = [],
+  /** Each node's completed-proof asset name, as a finished proof records it. */
+  provenFraud: readonly (string | null)[] = [],
 ): WatcherAuthenticatedStateQueueObservation => {
   const encoded = headers.map(encodedHeader);
   return Object.freeze({
@@ -95,7 +97,7 @@ export const observation = (
               header: headers[index]!,
               block_time: blockTimes[index] ?? headers[index]!.endTime,
               da_attestation: daAvailability[index] ?? "Unattested",
-              proven_fraud: null,
+              proven_fraud: provenFraud[index] ?? null,
             },
             StateQueueNode,
           ),

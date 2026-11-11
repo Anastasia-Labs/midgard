@@ -34,6 +34,7 @@ import {
   watcherProofJobPending,
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
+import { createProgressSupersede } from "./fault-proof-progress-authority.supersede.js";
 import type {
   WatcherFaultProofProgressAuthority,
   WatcherFaultProofProgressContext,
@@ -48,6 +49,9 @@ import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 export type {
+  WatcherDecisionSupersedeHoldReason,
+  WatcherDecisionSupersedeRequest,
+  WatcherDecisionSupersession,
   WatcherFaultProofProgressAuthority,
   WatcherFaultProofProgressContext,
   WatcherFaultProofProgressRequest,
@@ -87,6 +91,11 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly onObjectiveRemoved?: (objective: WatcherProofObjective) => void;
   /** Told when the objective is forgotten holding a signed attempt. */
   readonly onObjectiveUnattended?: (objective: WatcherProofObjective) => void;
+  /** Releases a superseded decision's unused prover funding; false when a
+   * reservation of it is bound to a run. */
+  readonly releaseDecisionFunding?: (
+    decision: HeaderFaultDecision,
+  ) => Promise<boolean>;
 }): WatcherFaultProofProgressAuthority => {
   const database = () =>
     openWatcherJournalDatabase({
@@ -400,7 +409,22 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objectives.set(keyOf(key), objective);
     pruneDecisions();
   };
+  const supersede = createProgressSupersede({
+    ...input,
+    initialize: initializeOnce,
+    cleanup,
+    objectives,
+    held: (key) => held.has(key) || unreadable.has(key),
+    forgetObjective: (key) => {
+      objectives.delete(key);
+      unheld.delete(key);
+    },
+    decisions,
+    openDecisions,
+    pruneDecisions,
+  });
   return Object.freeze({
+    supersede,
     admit: async (request) => {
       assertWatcherStateQueueObservation(request.observation);
       if (

@@ -30,6 +30,10 @@ export type WatcherProverFundingAuthorityFactory = Readonly<{
   releaseUnused(input?: {
     readonly actuationPermit: WorkflowActuationPermit;
   }): Promise<void>;
+  /** Releases a superseded decision's unused reservations while its
+   * decision is still recorded, leaving signed ones to the orphaned-funding
+   * settle; false, releasing nothing, when one is bound to a run. */
+  releaseUnusedDecision(decisionDigest: string): Promise<boolean>;
   /** Reads the held reservations' L1 facts again; safe beside live dispatch. */
   recheckDecisionHolds(): Promise<void>;
   /** Sweeps signed reservations no run is bound to, settling those nothing

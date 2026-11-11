@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -144,28 +145,198 @@ describe("fault decision bridge durable evidence", () => {
     ]);
   });
 
-  it("still refuses a fresh decision that differs from a durable fault", async () => {
+  it("supersedes a journaled withdrawalMistag with a fresh doubleWithdraw and dispatches it", async () => {
     const current = observation([headerFixture("01")]);
     const [header] = current.finalizedHeaders;
-    const fault = decision(header!.headerHash, "doubleSpend");
+    const journaled = decision(header!.headerHash, "withdrawalMistag");
     const h = harness({
       current,
-      categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      records: [
-        record(
-          {
-            ...fault,
-            replayDigest: "31".repeat(32),
-            decisionDigest: "ff".repeat(32),
-          },
-          0,
-        ),
-      ],
+      categoryByHeader: { [header!.headerHash]: "doubleWithdraw" },
+      records: [record(journaled, 0)],
+      supersede: async () => ({ kind: "superseded" }),
     });
-    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toThrow(
-      "differs from durable decision evidence",
-    );
+    const result = await h.bridge.reconcileAndDispatch(current);
+    expect(h.supersessions).toEqual([
+      {
+        prior: journaled.decisionDigest,
+        fresh: decision(header!.headerHash, "doubleWithdraw").decisionDigest,
+      },
+    ]);
+    expect(result.target).toMatchObject({
+      category: "doubleWithdraw",
+      headerHash: header!.headerHash,
+    });
+    expect(h.enqueued.map(({ category }) => category)).toEqual([
+      "doubleWithdraw",
+    ]);
+    expect(h.bridge.readiness()).toEqual([]);
+  });
+
+  it("supersedes a journaled fault the fresh replay finds healthy and dispatches the other headers", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [first, second] = current.finalizedHeaders;
+    const journaled = decision(first!.headerHash, "doubleSpend");
+    const fresh = healthy(first!.headerHash, "31");
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleSpend",
+        [second!.headerHash]: "invalidRange",
+      },
+      classifyOverride: (value) =>
+        value.headerHash === first!.headerHash ? fresh : value,
+      records: [record(journaled, 0)],
+      supersede: async () => ({ kind: "superseded" }),
+    });
+    const result = await h.bridge.reconcileAndDispatch(current);
+    expect(h.supersessions).toEqual([
+      { prior: journaled.decisionDigest, fresh: fresh.decisionDigest },
+    ]);
+    expect(result.target).toMatchObject({
+      category: "invalidRange",
+      headerHash: second!.headerHash,
+    });
+    expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
+      second!.headerHash,
+    ]);
+    expect(h.appended.map(({ headerHash }) => headerHash)).toEqual([
+      second!.headerHash,
+    ]);
+  });
+
+  it("holds a header whose journaled fault still has work in flight, dispatches the rest, and supersedes once it clears", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [first, second] = current.finalizedHeaders;
+    const journaled = decision(first!.headerHash, "withdrawalMistag");
+    let inFlight = true;
+    const warnings: unknown[] = [];
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleWithdraw",
+        [second!.headerHash]: "invalidRange",
+      },
+      records: [record(journaled, 0)],
+      warn: (warning) => void warnings.push(warning),
+      supersede: async () =>
+        inFlight
+          ? {
+              kind: "held",
+              reason: "submission_unresolved",
+              detail: `withdrawalMistag/${first!.headerHash}`,
+            }
+          : { kind: "superseded" },
+    });
+    const held = await h.bridge.reconcileAndDispatch(current);
+    expect(held.target).toMatchObject({
+      category: "invalidRange",
+      headerHash: second!.headerHash,
+    });
+    expect(h.appended.map(({ headerHash }) => headerHash)).toEqual([
+      second!.headerHash,
+    ]);
+    expect(h.bridge.readiness()).toEqual([
+      {
+        reason: "fault_decision_supersede_held",
+        detail: `${first!.headerHash}: submission_unresolved: withdrawalMistag/${first!.headerHash}`,
+      },
+    ]);
+    expect(warnings).toEqual([
+      {
+        event: "fault_decision_supersede_held",
+        headerHash: first!.headerHash,
+        cause: "submission_unresolved",
+      },
+    ]);
+
+    inFlight = false;
+    const superseded = await h.bridge.reconcileAndDispatch(current);
+    expect(superseded.target).toMatchObject({
+      category: "doubleWithdraw",
+      headerHash: first!.headerHash,
+    });
+    expect(h.enqueued.at(-1)).toMatchObject({
+      category: "doubleWithdraw",
+      headerHash: first!.headerHash,
+    });
+    expect(h.bridge.readiness()).toEqual([]);
+  });
+
+  it("holds a journaled fault the CorrectionLock is Locked under without superseding it", async () => {
+    const headers = [headerFixture("01")];
+    const [header] = observation(headers).finalizedHeaders;
+    const journaled = decision(header!.headerHash, "withdrawalMistag");
+    const assetName = `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag}${header!.headerHash}`;
+    const current = observation(headers, {
+      Locked: {
+        target_header_hash: header!.headerHash,
+        correction_identity: {
+          FraudProof: { fraud_proof_asset_name: assetName },
+        },
+      },
+    });
+    const h = harness({
+      current,
+      categoryByHeader: { [header!.headerHash]: "doubleWithdraw" },
+      records: [record(journaled, 0)],
+      supersede: async () => ({ kind: "superseded" }),
+    });
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(h.supersessions).toEqual([]);
     expect(h.appended).toEqual([]);
+    expect(h.enqueued).toEqual([]);
+    expect(h.bridge.readiness()).toEqual([
+      {
+        reason: "fault_decision_supersede_held",
+        detail: `${header!.headerHash}: correction_locked: ${assetName}`,
+      },
+    ]);
+  });
+
+  it("finishes the removal a held journaled fault left Locked from its proven record", async () => {
+    const headers = [headerFixture("01")];
+    const [header] = observation(headers).finalizedHeaders;
+    const journaled = decision(header!.headerHash, "withdrawalMistag");
+    const assetName = `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag}${header!.headerHash}`;
+    const current = observation(headers, {
+      Locked: {
+        target_header_hash: header!.headerHash,
+        correction_identity: {
+          FraudProof: { fraud_proof_asset_name: assetName },
+        },
+      },
+    });
+    const finished: unknown[] = [];
+    const record0 = `${"31".repeat(32)}#0`;
+    const h = harness({
+      current,
+      categoryByHeader: { [header!.headerHash]: "doubleWithdraw" },
+      records: [record(journaled, 0)],
+      supersede: async () => ({ kind: "superseded" }),
+      driveProvenRemoval: async (locked) => {
+        finished.push(locked);
+        return {
+          kind: "proven",
+          fraudProofOutRef: record0,
+          removal: new Promise(() => undefined),
+        };
+      },
+    });
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(h.supersessions).toEqual([]);
+    expect(finished).toEqual([
+      { headerHash: header!.headerHash, fraudProofAssetName: assetName },
+    ]);
+    expect(h.bridge.readiness()).toEqual([
+      {
+        reason: "fault_decision_supersede_held",
+        detail: `${header!.headerHash}: correction_locked: ${assetName}`,
+      },
+      {
+        reason: "correction_lock_finishing_removal",
+        detail: `${assetName}: locked: finishing removal from the proven record ${record0}`,
+      },
+    ]);
   });
 
   it("still refuses two durable faults under one observation identity", async () => {

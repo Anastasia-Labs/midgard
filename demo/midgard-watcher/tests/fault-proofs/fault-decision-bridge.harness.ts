@@ -47,8 +47,19 @@ export const harness = (input: {
     | (() => "submission" | "reconciliation");
   readonly observationDigestOverride?: typeof authenticatedStateQueueObservationDigest;
   readonly deadlineOffset?: () => number;
+  /** The supervisor's supersede; omitted, a disagreement fails the pass. */
+  readonly supersede?: BridgeDependencies["supersede"];
+  readonly driveProvenRemoval?: BridgeDependencies["driveProvenRemoval"];
 }) => {
   const admitted = new WeakSet<object>([input.current]);
+  // Production admits only the objects the classifier returned in this
+  // process: the journal append and the permit controller refuse a copy,
+  // such as a decision read back from the journal.
+  const classified = new WeakSet<object>();
+  const requireClassified = (value: object): void => {
+    if (!classified.has(value))
+      throw new Error("production header decision was not module-admitted");
+  };
   const appended: ReturnType<typeof decision>[] = [];
   const enqueued: ReturnType<typeof decision>[] = [];
   const enqueuedGenerations: string[] = [];
@@ -65,6 +76,7 @@ export const harness = (input: {
     }
   >();
   const retainedDecisionAuthorities: (string | null)[] = [];
+  const supersessions: { prior: string; fresh: string }[] = [];
   const application = {
     deploymentFingerprint: input.current.deploymentIdentityDigest,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -77,9 +89,12 @@ export const harness = (input: {
         throw new Error("test omitted category");
       }
       const fresh = decision(header.headerHash, category as never);
-      return input.classifyOverride === undefined
-        ? fresh
-        : await input.classifyOverride(fresh);
+      const returned =
+        input.classifyOverride === undefined
+          ? fresh
+          : await input.classifyOverride(fresh);
+      classified.add(returned);
+      return returned;
     }),
   };
   const bridge = unsafeCreateWatcherFaultDecisionBridgeForTest({
@@ -101,6 +116,9 @@ export const harness = (input: {
         ? {}
         : { mergedHeaders: input.mergedHeaders }),
       ...(input.warn === undefined ? {} : { warn: input.warn }),
+      ...(input.driveProvenRemoval === undefined
+        ? {}
+        : { driveProvenRemoval: input.driveProvenRemoval }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
       assertObservation: (candidate) => {
@@ -120,6 +138,7 @@ export const harness = (input: {
         input.classificationContextIdentity ?? (async () => "test-context"),
       readRecords: async () => input.records ?? Object.freeze([]),
       append: async (fresh) => {
+        requireClassified(fresh);
         appended.push(fresh as ReturnType<typeof decision>);
         return Object.freeze({
           schemaVersion: "midgard-watcher-production-fault-decision-record-v1",
@@ -154,6 +173,7 @@ export const harness = (input: {
         };
       },
       createActuationController: (_fresh, rollbackGeneration) => {
+        requireClassified(_fresh);
         controllerGenerations.push(rollbackGeneration);
         const permit = Object.freeze({
           permitVersion:
@@ -193,6 +213,18 @@ export const harness = (input: {
         }
       },
       unfinishedObjectiveCount: () => enqueued.length,
+      supersede: async (request) => {
+        // Production appends a fresh fault through the live journal.
+        if (request.fresh.decision === "fault_detected")
+          requireClassified(request.fresh);
+        supersessions.push({
+          prior: request.prior.decisionDigest,
+          fresh: request.fresh.decisionDigest,
+        });
+        if (input.supersede === undefined)
+          throw new Error("test omitted supersede");
+        return await input.supersede(request);
+      },
       revokeAuthority: (reason) => {
         authorityRevocations.push(reason);
       },
@@ -211,5 +243,6 @@ export const harness = (input: {
     progressRequests,
     authorityRevocations,
     retainedDecisionAuthorities,
+    supersessions,
   };
 };

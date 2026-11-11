@@ -9,6 +9,7 @@ import {
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
+  StateQueueNode,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -28,7 +29,11 @@ import {
   type WatcherFaultProofApplication,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
-import type { WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type {
+  WatcherDecisionSupersedeRequest,
+  WatcherDecisionSupersession,
+  WatcherFaultProofProgressRequest,
+} from "./fault-proof-progress-authority.js";
 import { type WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
 
 export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
@@ -97,6 +102,20 @@ export type WatcherUnverifiedHeaderWarning = Readonly<{
   lockedCorrectionTarget: boolean;
 }>;
 
+/**
+ * `proven`: a removal citing that record is under way and settles with
+ * `removal`; `finished`: nothing is left to do (the live lock moved on, or
+ * the header left the queue); `unproven`: L1 holds no record of the
+ * correction; `observing`: this watcher only observes and starts nothing.
+ */
+export type WatcherProvenRemovalStart =
+  | Readonly<{ kind: "unproven" | "finished" | "observing" }>
+  | Readonly<{
+      kind: "proven";
+      fraudProofOutRef: string;
+      removal: Promise<unknown>;
+    }>;
+
 export type BridgeDependencies = Readonly<{
   /** Queued headers merged or removed on L1 at release finality, by hash. */
   mergedHeaders?(
@@ -119,6 +138,13 @@ export type BridgeDependencies = Readonly<{
   /** Pins classifier configuration; omitted dependencies disable decision reuse. */
   classificationContextIdentity?(): Promise<string>;
   readRecords(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
+  /**
+   * Replaces a durable fault the fresh classification no longer reproduces,
+   * or holds it while any of its work is in flight.
+   */
+  supersede(
+    request: WatcherDecisionSupersedeRequest,
+  ): Promise<WatcherDecisionSupersession>;
   append(
     decision: HeaderDecision,
   ): Promise<WatcherPersistedFaultDecisionRecord>;
@@ -144,6 +170,14 @@ export type BridgeDependencies = Readonly<{
   nowMs?(): bigint;
   monotonicNowMs?(): number;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
+  /**
+   * Starts the removal of a proven correction's header from an Idle lock, or
+   * finishes the one a Locked lock waits for, from the proven record L1
+   * holds for it; no decision or journal is involved.
+   */
+  driveProvenRemoval?(
+    correction: Readonly<{ headerHash: string; fraudProofAssetName: string }>,
+  ): Promise<WatcherProvenRemovalStart>;
   revokeAuthority(reason: string): void;
   unfinishedObjectiveCount(): number;
   retainDecisionAuthorities(decisionDigest: string | null): void;
@@ -232,7 +266,7 @@ export const assertExactFinalizedHeaderOrder = (
   }
 };
 
-const exactLockedFraudProof = (
+export const exactLockedFraudProof = (
   lock: WatcherCorrectionLockObservation,
 ): Readonly<{ headerHash: string; fraudProofAssetName: string }> | null => {
   if (lock.datum === "Idle") return null;
@@ -250,6 +284,35 @@ const exactLockedFraudProof = (
   });
 };
 
+/**
+ * The first queued header, in queue order, whose state-queue node names the
+ * completed proof that convicts it; its record stays on L1. A node that
+ * cannot be read names no proof here; the replay hold reports it.
+ */
+const firstProvenHeader = (
+  observation: WatcherAuthenticatedStateQueueObservation,
+  merged: ReadonlySet<string> | undefined,
+): Readonly<{ headerHash: string; fraudProofAssetName: string }> | null => {
+  for (const header of observation.finalizedHeaders) {
+    if (merged?.has(header.headerHash)) continue;
+    let proven: string | null;
+    try {
+      proven = Data.from(
+        header.stateQueueNodeCborHex,
+        StateQueueNode,
+      ).proven_fraud;
+    } catch {
+      continue;
+    }
+    if (proven !== null)
+      return Object.freeze({
+        headerHash: header.headerHash,
+        fraudProofAssetName: proven,
+      });
+  }
+  return null;
+};
+
 export const selectedTarget = (input: {
   readonly observation: WatcherAuthenticatedStateQueueObservation;
   readonly decisions: readonly HeaderDecision[];
@@ -261,6 +324,21 @@ export const selectedTarget = (input: {
    * refuses it and it is never a runnable target.
    */
   readonly catalogueCategories?: readonly string[];
+  /**
+   * A Locked fraud-proof correction no admitted fault reproduces yields no
+   * target: it is reported here and the pass goes on.
+   */
+  readonly onUnreproducedLock?: (
+    locked: Readonly<{ headerHash: string; fraudProofAssetName: string }>,
+  ) => void;
+  /**
+   * With the lock Idle, the first queued header a completed proof convicts,
+   * unless the target is that same correction: its removal is driven from
+   * the record whatever the decisions say.
+   */
+  readonly onProvenHeader?: (
+    proven: Readonly<{ headerHash: string; fraudProofAssetName: string }>,
+  ) => void;
 }): WatcherFaultDecisionTarget | null => {
   const lock = input.observation.finalizedCorrectionLock;
   if (lock === null) {
@@ -283,6 +361,19 @@ export const selectedTarget = (input: {
   );
   if (lock.datum === "Idle") {
     const first = faults[0];
+    const proven =
+      input.onProvenHeader === undefined
+        ? null
+        : firstProvenHeader(input.observation, input.merged);
+    if (
+      proven !== null &&
+      !(
+        first?.headerHash === proven.headerHash &&
+        `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[first.category]}${first.headerHash}` ===
+          proven.fraudProofAssetName
+      )
+    )
+      input.onProvenHeader?.(proven);
     return first === undefined
       ? null
       : Object.freeze({
@@ -300,9 +391,8 @@ export const selectedTarget = (input: {
         locked.fraudProofAssetName,
   );
   if (match === undefined) {
-    throw new Error(
-      "locked fraud-proof target did not reproduce an exact runnable classification",
-    );
+    input.onUnreproducedLock?.(locked);
+    return null;
   }
   return Object.freeze({
     category: match.category as WatcherInstalledWorkflowCategory,

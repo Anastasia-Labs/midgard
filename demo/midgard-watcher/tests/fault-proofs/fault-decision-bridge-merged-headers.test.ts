@@ -234,16 +234,26 @@ describe("fault decision bridge behind an L1 merge", () => {
     expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
     expect(h.enqueued).toEqual([]);
 
-    // Unmerged, the same lock still requires its exact runnable decision.
+    expect(h.bridge.readiness()).toEqual([]);
+
+    // Unmerged, the same lock with no exact runnable decision is held and
+    // reported, not run.
     const unmerged = harness({
       current,
       categoryByHeader,
       mergedHeaders: async () => new Map(),
       classifyOverride: (fresh) => ({ ...fresh, decision: "healthy" }),
     });
-    await expect(unmerged.bridge.reconcileAndDispatch(current)).rejects.toThrow(
-      "locked fraud-proof target did not reproduce",
-    );
+    expect(
+      (await unmerged.bridge.reconcileAndDispatch(current)).target,
+    ).toBeNull();
+    expect(unmerged.enqueued).toEqual([]);
+    expect(unmerged.bridge.readiness()).toEqual([
+      {
+        reason: "correction_lock_unreproduced",
+        detail: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend}${target}`,
+      },
+    ]);
   });
 
   it("refuses a merge proof for a header outside the observation", async () => {

@@ -182,8 +182,9 @@ reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
 - A held proof objective clears once its header leaves the finalized state
   queue: its proof, or another one, landed and is final, or the header merged.
   A fresh detection of the same fault does not restart it.
-- A funding reservation whose decision the new journals do not hold stays
-  reserved: it is never run or reclaimed, and its inputs stay leased.
+- A funding reservation whose decision the new journals do not hold is never
+  run. An unused one stays reserved and its inputs stay leased; a signed one
+  is settled once each of its attempts is retired past release finality.
 
 Retention handles the rest. Workflow rows, follower pins of objectives
 that are never admitted again, and the leases of those reservations stay in
@@ -206,7 +207,9 @@ error-level `legacy_proofs_not_carried_over` alert naming each of them:
 in-flight proofs from the old layout are not carried over, and the watcher
 neither imports nor resumes them. The launch deployment starts with a fresh
 data directory; before reusing an older one, follow
-[state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
+[state reset rules](../../docs/agents/state-reset.md). Upgrading a watcher to
+this release needs a fresh watcher journal: start it on a fresh data
+directory. Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.

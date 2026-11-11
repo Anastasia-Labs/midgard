@@ -272,14 +272,14 @@ export const matchingWatcherProofMarker = (
 
 /**
  * Deletes the objective's row and its queued jobs in one commit; a prune
- * also deletes its fault decisions. The caller first deletes the workflow
- * rows, so a crash before this commit leaves a row whose execution is gone,
- * which the next start forgets again.
+ * also deletes its fault decisions, a supersede the one `decision` row. The
+ * caller first deletes the workflow rows, so a crash before this commit
+ * leaves a row whose execution is gone, which the next start forgets again.
  */
 export const forgetWatcherProofObjective = (
   database: WatcherJournalDatabase,
   objective: WatcherProofObjective,
-  options: Readonly<{ decisions: boolean }>,
+  options: Readonly<{ decisions: boolean; decision?: string }>,
 ): void => {
   const scope = watcherObjectiveScope(objective.category, objective.headerHash);
   const journals: WatcherJournalName[] = [
@@ -291,6 +291,11 @@ export const forgetWatcherProofObjective = (
     for (const journal of journals)
       for (const row of tx.rows(journal, { scope }))
         tx.delete(journal, row.key);
+    const decision =
+      options.decision === undefined
+        ? undefined
+        : tx.row("fault_decisions", options.decision);
+    if (decision?.scope === scope) tx.delete("fault_decisions", decision.key);
   });
 };
 

@@ -42,6 +42,7 @@ import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-ca
 import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
 import {
   authorizeWatcherProverFundingRecovery,
+  releaseUnusedDecisionReservations,
   releaseUnusedWatcherProverFundingReservations,
 } from "./prover-funding-recovery.js";
 import {
@@ -168,9 +169,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   // A sweep, a per-run release and a hold recheck each read the store and
   // then record holds; one at a time, none records over another's newer read.
   let releasing = Promise.resolve();
-  const serialize = (operation: () => Promise<void>): Promise<void> => {
+  const noop = (): void => undefined;
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = releasing.then(operation);
-    releasing = result.catch(() => undefined);
+    releasing = result.then(noop, noop);
     return result;
   };
   const factory: WatcherProverFundingAuthorityFactory = Object.freeze({
@@ -193,6 +195,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
           }),
         );
       }),
+    releaseUnusedDecision: (decisionDigest) =>
+      serialize(() =>
+        releaseUnusedDecisionReservations({ ...input, decisionDigest, live }),
+      ),
     recheckDecisionHolds: () =>
       serialize(async () => {
         const checked = decisionHolds.ids();

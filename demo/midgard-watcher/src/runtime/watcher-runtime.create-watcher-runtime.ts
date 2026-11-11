@@ -85,10 +85,9 @@ type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;
 const L1_READINESS_REFRESH_MS = 5_000;
 
 /**
- * Compose production startup around the watcher's chain follower (ticket
- * W1): every L1 read goes through the follower's fact store, and the
- * decision driver decides from its projections at the tip and at the
- * release depth.
+ * Compose production startup around the watcher's chain follower: every L1
+ * read goes through the follower's fact store, and the decision driver
+ * decides from its projections at the tip and at the release depth.
  *
  * Liveness: the operations server (`bound`) is bound before any stage
  * (`createWatcherRuntime`), so `/v1/status` (the liveness probe) answers
@@ -298,6 +297,8 @@ export const startWatcherRuntime = async (
         wake: () => decisionDriver?.wake(),
       },
       settleUnattendedFunding: () => fundingRuntime.factory.settleUnattended(),
+      releaseDecisionFunding: async ({ decisionDigest }) =>
+        await fundingRuntime.factory.releaseUnusedDecision(decisionDigest),
     });
     faultProofSupervisor = activeSupervisor;
 
@@ -367,6 +368,8 @@ export const startWatcherRuntime = async (
       authenticationKey: rollbackAuthenticationKey,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
+      reservedFundingOutRefs: async () =>
+        await fundingRuntime.store.store.readReservedOutRefs({}),
       operationsSink: operations.sink,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });

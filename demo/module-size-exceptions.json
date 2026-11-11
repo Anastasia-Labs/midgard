@@ -1160,11 +1160,6 @@
     "reason": "createBridge is the dominant indivisible declaration (575 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 513,
-    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-execution.ts",
     "max": 557,
     "reason": "One execution adapter: admission identity checks, funding permit mint, invocation, outcome mapping, per-objective quarantine and cleanup share the refusal holds and the operations sink; a split would pass that state across modules. The quarantine rules themselves live in fault-proof-quarantine.ts."

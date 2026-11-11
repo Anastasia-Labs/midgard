@@ -202,6 +202,45 @@ export const workflowFundingProfileFromOverlay = ({
 };
 
 /**
+ * The signed measured funding profile of each category, refused when an
+ * executing watcher has no overlay or the overlay names another deployment.
+ */
+export const watcherWorkflowFundingProfiles = ({
+  overlay,
+  deploymentIdentity,
+  allowExecution,
+}: {
+  readonly overlay: WatcherWorkflowFundingProfileOverlay | undefined;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly allowExecution: boolean;
+}) => {
+  if (allowExecution && overlay === undefined) {
+    throw new Error(
+      "watcher application requires its signed funding-profile overlay",
+    );
+  }
+  if (overlay !== undefined) {
+    assertWatcherWorkflowFundingProfileOverlay(overlay);
+    if (
+      overlay.deploymentFingerprint !== deploymentIdentity.manifestId ||
+      overlay.blueprintHash !== deploymentIdentity.blueprintHash
+    ) {
+      throw new Error(
+        "watcher funding-profile overlay changed deployment identity",
+      );
+    }
+  }
+  return (
+    category: FraudProofCatalogueCategoryName,
+  ): WorkflowFundingRequirements | undefined =>
+    // Install every runner at startup. Funding is required when a category
+    // requests a reservation, so missing measurements do not stop observation.
+    overlay === undefined || overlay.profiles[category] === undefined
+      ? undefined
+      : workflowFundingProfileFromOverlay({ overlay, category });
+};
+
+/**
  * Loads the funding bundle authenticated by the deployment signature and
  * local policy. Its canonical inner digest is separate from compiled release
  * evidence. A runtime path only selects bytes to verify.
