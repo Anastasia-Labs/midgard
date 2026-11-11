@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
+  alignedUnixTimeStrictlyAfter,
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
@@ -7,7 +8,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
-import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { type InlineWaitPolicy, planSubmitTiming } from "../submit-timing.js";
 import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "../submit-timing-due-work.js";
 

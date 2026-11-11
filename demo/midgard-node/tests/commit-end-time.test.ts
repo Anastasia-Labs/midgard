@@ -1,3 +1,4 @@
+import * as OgmiosSlot from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -7,8 +8,6 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  alignedUnixTimeStrictlyAfter,
-  alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   COMMIT_VALIDITY_BACKDATE_MS,
@@ -92,11 +91,11 @@ describe("commit end-time resolver", () => {
     const firstNowMs = emulator.now();
     const firstFloorMs = firstNowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
     expect(
-      alignUnixTimeToSlotBoundary(lucid, firstFloorMs),
+      OgmiosSlot.alignUnixTimeToSlotBoundary(lucid, firstFloorMs),
     ).toBeGreaterThanOrEqual(firstFloorMs - 999);
-    expect(alignedUnixTimeStrictlyAfter(lucid, firstFloorMs)).toBeGreaterThan(
-      firstFloorMs,
-    );
+    expect(
+      OgmiosSlot.alignedUnixTimeStrictlyAfter(lucid, firstFloorMs),
+    ).toBeGreaterThan(firstFloorMs);
     const first = resolveAlignedCommitEndTime({
       lucid,
       latestEndTime: firstNowMs - 1,
@@ -210,7 +209,7 @@ describe("commit end-time resolver", () => {
     const lucid = await makeLucid(120);
     const currentSlot = lucid.currentSlot();
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
-    const validToMs = alignedUnixTimeStrictlyAfter(
+    const validToMs = OgmiosSlot.alignedUnixTimeStrictlyAfter(
       lucid,
       slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     );

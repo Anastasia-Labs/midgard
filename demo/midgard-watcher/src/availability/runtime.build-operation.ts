@@ -16,12 +16,48 @@ import {
   required,
   WatcherAvailabilityCapitalShortfall,
   WatcherAvailabilityTimeoutPoolUnavailable,
+  WatcherAvailabilityValidityNotAdmissible,
 } from "./runtime.release-watcher-availability-workflows.js";
 import {
   selectWatcherAvailabilityFunding,
   watcherAvailabilityTimeoutCollateralLovelace,
-  watcherAvailabilityValidity,
 } from "./runtime.select-watcher-availability-funding.js";
+
+/**
+ * The validity interval of an availability step, measured from the observed
+ * L1 ledger tip (`SDK.daAvailabilityValidityWindow`) and kept inside the
+ * action's on-chain window (`limits`). The ledger would refuse an interval
+ * the tip has not reached, or one the window leaves no room for, so such a
+ * step is never built: it fails with `WatcherAvailabilityValidityNotAdmissible`
+ * and is deferred to a later reconciliation, never waited for inline.
+ */
+const watcherAvailabilityValidity = async (
+  lucid: LucidEvolution,
+  action: string,
+  ledgerTipSlot: () => Promise<number>,
+  limits?: SDK.DaAvailabilityValidityLimits,
+): Promise<{ validFrom: bigint; validTo: bigint }> => {
+  const tipSlot = await ledgerTipSlot();
+  const window = SDK.daAvailabilityValidityWindow({
+    lucid,
+    tip: { currentSlot: tipSlot, ledgerTipSlot: tipSlot },
+    nowMs: Date.now(),
+    ...(limits === undefined ? {} : { limits }),
+  });
+  if (window.status === "ready")
+    return { validFrom: window.validFrom, validTo: window.validTo };
+  if (window.status === "not_due")
+    throw new WatcherAvailabilityValidityNotAdmissible(
+      "ledger-tip-behind",
+      `Availability ${action}: the L1 ledger tip at slot ${window.tipSlot.toString()} has not reached slot ${window.dueSlot.toString()}, which the lower bound needs`,
+    );
+  throw new WatcherAvailabilityValidityNotAdmissible(
+    window.reason === "window_closed"
+      ? "validity-window-closed"
+      : "no-validity-interval",
+    `Availability ${action}: ${window.detail}`,
+  );
+};
 
 export const buildWatcherAvailabilityOperation = async (
   snapshot: SDK.DaAvailabilityChallengeSnapshot,
@@ -36,6 +72,8 @@ export const buildWatcherAvailabilityOperation = async (
     config: WatcherProcessConfig;
     journal: ReturnType<typeof openAvailabilityOperationJournal>;
     proverWalletAddress: string;
+    /** The observed L1 ledger tip's slot. */
+    ledgerTipSlot: () => Promise<number>;
   },
   scope?: SDK.DaAvailabilityReadScope,
 ): Promise<{
@@ -50,6 +88,7 @@ export const buildWatcherAvailabilityOperation = async (
     config,
     journal,
     proverWalletAddress,
+    ledgerTipSlot,
   } = context;
   const parameters = deployment.parameters;
   const openingLovelace =
@@ -146,21 +185,56 @@ export const buildWatcherAvailabilityOperation = async (
         "preparation-input",
       );
     }
+    const validity = await watcherAvailabilityValidity(
+      buildLucid,
+      "prepare",
+      ledgerTipSlot,
+    );
     return {
       action: "prepare",
-      build: () =>
+      build: async () =>
         SDK.buildDaAvailabilityFundingPreparationTx(
           buildLucid,
           {
             walletInputs: [funds.funding],
             outputLovelace: openingLovelace,
             feeLovelace: parameters.max_open_fee_lovelace,
-            ...watcherAvailabilityValidity(),
+            ...validity,
           },
           scope,
         ),
     };
   }
+  // The interval is taken when the step is admitted, so a step the tip does
+  // not admit yet is deferred with the other admission refusals. The Open's
+  // inclusive upper bound must stay before the header's block_time +
+  // da_challenge_window_ms; settling an expired (Active) tranche, and the
+  // Timeout with the correction lock it takes, need a lower bound at or past
+  // the response deadline.
+  const pastDeadline =
+    action.action === "timeout" ||
+    (action.action === "settle" &&
+      action.tranche !== undefined &&
+      "Active" in action.tranche.datum);
+  const validity = await watcherAvailabilityValidity(
+    buildLucid,
+    action.action,
+    ledgerTipSlot,
+    action.action === "open"
+      ? {
+          upperLimitMs:
+            Data.castFrom(
+              required(snapshot.queue, "queue").datum.data,
+              SDK.StateQueueNode,
+            ).block_time + DA_CHALLENGE_WINDOW_MS,
+        }
+      : pastDeadline
+        ? {
+            lowerLimitMs: required(snapshot.recordDatum, "challenge record")
+              .response_deadline,
+          }
+        : undefined,
+  );
   return {
     action: action.action,
     ...(action.action === "timeout"
@@ -170,16 +244,9 @@ export const buildWatcherAvailabilityOperation = async (
       const resources = {
         collateralInputs: funds.collateral,
         feeLovelace,
-        ...watcherAvailabilityValidity(),
+        ...validity,
       };
       if (action.action === "open") {
-        // The Open's inclusive upper bound must stay before the header's
-        // block_time + da_challenge_window_ms.
-        const node = Data.castFrom(
-          required(snapshot.queue, "queue").datum.data,
-          SDK.StateQueueNode,
-        );
-        const deadline = node.block_time + DA_CHALLENGE_WINDOW_MS;
         return (
           await Effect.runPromise(
             SDK.buildOpenDaAvailabilityChallengeTxProgram(
@@ -187,10 +254,6 @@ export const buildWatcherAvailabilityOperation = async (
               deployment,
               {
                 ...resources,
-                validTo:
-                  resources.validTo < deadline
-                    ? resources.validTo
-                    : deadline - 1n,
                 commitment: required(commitment, "attested commitment"),
                 queue: required(snapshot.queue, "queue").utxo,
                 challengerFunding: required(

@@ -1,11 +1,11 @@
+import {
+  alignedUnixTimeStrictlyAfter,
+  ledgerTipBackdatedValidFromMs,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  alignedUnixTimeStrictlyAfter,
-  ledgerTipBackdatedValidFromMs,
-} from "../../workers/utils/commit-end-time.js";
 import {
   awaitLedgerTipAtLowerBound,
   observedLedgerTip,

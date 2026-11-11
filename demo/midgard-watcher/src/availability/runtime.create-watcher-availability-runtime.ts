@@ -61,17 +61,18 @@ import {
   watcherAvailabilityWorkflowRefusal,
   type WatcherReleasedHeadersReader,
 } from "./runtime.release-watcher-availability-workflows.js";
-import {
-  buildAdmittedWatcherAvailabilityOperation,
-  watcherAvailabilityValidity,
-} from "./runtime.select-watcher-availability-funding.js";
+import { buildAdmittedWatcherAvailabilityOperation } from "./runtime.select-watcher-availability-funding.js";
 
 /** Concrete independent actor: signed release, public DA, exact L1 intake and durable executor. */
 export const createWatcherAvailabilityRuntime = async (input: {
   config: WatcherProcessConfig;
   identity: VerifiedWatcherDeploymentIdentity;
-  /** The watcher's chain follower: raw reads, and the provider every build uses. */
-  l1: WatcherAvailabilityL1 & Readonly<{ provider: Provider }>;
+  /**
+   * The watcher's chain follower: raw reads, the provider every build uses,
+   * and the slot of the observed ledger tip validity bounds are measured from.
+   */
+  l1: WatcherAvailabilityL1 &
+    Readonly<{ provider: Provider; ledgerTipSlot: () => Promise<number> }>;
   /** The verified deployment's release depth. */
   confirmationDepth: number;
   /** Read-only payload reconstruction may follow reversible fault-proof inclusion (the tip view). */
@@ -263,6 +264,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         config: input.config,
         journal,
         proverWalletAddress: input.proverWalletAddress,
+        ledgerTipSlot: input.l1.ledgerTipSlot,
       },
       scope,
     );
@@ -512,7 +514,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const ordered = orderWatcherAvailabilityActions(
           selectWatcherAvailabilityActions(
             candidates,
-            watcherAvailabilityValidity().validFrom,
+            BigInt(Date.now()),
             openWindow,
           ),
         );
@@ -524,6 +526,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           | "missedOpenDeadlines"
           | "openRefused"
           | "timeoutsDeferred"
+          | "stepsDeferred"
           | "workflowRefused"
           | "workflowReleased"
           | "workflowReleaseDeferred"
@@ -559,7 +562,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           WatcherAvailabilityAction,
           ReturnType<typeof attempt>
         >();
-        const { selected, openRefused, timeoutsDeferred } =
+        const { selected, openRefused, timeoutsDeferred, stepsDeferred } =
           await buildAdmittedWatcherAvailabilityOperation(
             ordered,
             (headerHash, action) => {
@@ -618,6 +621,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
           ...(timeoutsDeferred.length === 0
             ? {}
             : { timeoutsDeferred: Object.freeze(timeoutsDeferred) }),
+          ...(stepsDeferred.length === 0
+            ? {}
+            : { stepsDeferred: Object.freeze(stepsDeferred) }),
           ...(workflowRefused.length === 0
             ? {}
             : { workflowRefused: Object.freeze(workflowRefused) }),

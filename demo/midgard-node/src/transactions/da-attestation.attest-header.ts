@@ -1,3 +1,4 @@
+import { ledgerTipStartMs } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -8,7 +9,6 @@ import {
   journaledIntent,
 } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
-import { ledgerTipStartMs } from "../workers/utils/commit-end-time.js";
 import {
   type AttestStateQueueHeaderResult,
   completeWithLocalUplc,

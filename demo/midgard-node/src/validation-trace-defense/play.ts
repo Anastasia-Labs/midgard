@@ -16,7 +16,10 @@
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  ledgerTipBackdatedValidFromMs,
+  SUBMIT_SLOT_VALIDITY_BUFFER,
+} from "@al-ft/midgard-core/ogmios-slot";
 import {
   buildValidationTraceDefend,
   buildValidationTraceOperatorReveal,
@@ -41,7 +44,6 @@ import {
 } from "../services/intent-journal.js";
 import { observedLedgerTip } from "../transactions/ledger-tip-lower-bound.js";
 import { handleSignSubmitNoConfirmation } from "../transactions/utils.await-submitted-transaction-confirmation.js";
-import { ledgerTipBackdatedValidFromMs } from "../workers/utils/commit-end-time.js";
 import type { ValidationTraceDefenseWork } from "./decide.js";
 import {
   readDefenseAnchors,

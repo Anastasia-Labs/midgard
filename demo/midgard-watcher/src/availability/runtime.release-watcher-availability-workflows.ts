@@ -71,6 +71,38 @@ export type WatcherAvailabilityTimeoutDeferral = Readonly<{
 }>;
 
 /**
+ * A step not built this reconciliation because its validity interval is not
+ * admissible at the observed L1 ledger tip: the tip has not reached the
+ * lower bound by the submit margin (`ledger-tip-behind`; the last block
+ * trails the clock, or a response deadline is past the clock but not yet past
+ * the last block), or the action's on-chain window leaves no interval
+ * (`validity-window-closed`, `no-validity-interval`). The ledger would refuse
+ * the transaction, so it is never built; the step is reconsidered on the next
+ * reconciliation. Reported, never blocking: the watcher still takes the next
+ * admitted step.
+ */
+export type WatcherAvailabilityStepDeferral = Readonly<{
+  headerHash: string;
+  action: string;
+  reason:
+    | "ledger-tip-behind"
+    | "validity-window-closed"
+    | "no-validity-interval";
+  detail: string;
+}>;
+
+/** A step's validity interval is not admissible at the observed ledger tip. */
+export class WatcherAvailabilityValidityNotAdmissible extends Error {
+  constructor(
+    readonly reason: WatcherAvailabilityStepDeferral["reason"],
+    message: string,
+  ) {
+    super(message);
+    this.name = "WatcherAvailabilityValidityNotAdmissible";
+  }
+}
+
+/**
  * A step the availability journal's workflow rule refused this
  * reconciliation, with the journal's reason. Reported, never blocking. The
  * refusal of every step while the actor has a live workflow in another
@@ -133,6 +165,8 @@ export type WatcherAvailabilityStatus = Readonly<{
   openRefused?: readonly WatcherAvailabilityOpenRefusal[];
   /** Timeouts deferred for want of an authentic pool at the tip. */
   timeoutsDeferred?: readonly WatcherAvailabilityTimeoutDeferral[];
+  /** Steps deferred because the ledger tip does not admit their interval. */
+  stepsDeferred?: readonly WatcherAvailabilityStepDeferral[];
   /** Steps the journal's workflow rule refused in the last reconciliation. */
   workflowRefused?: readonly WatcherAvailabilityWorkflowRefusal[];
   /** Workflow rows released on someone else's terminal step (P20). */

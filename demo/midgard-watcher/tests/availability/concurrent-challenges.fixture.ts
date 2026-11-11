@@ -38,7 +38,7 @@ const io = vi.hoisted(() => ({
   snapshot: vi.fn<(...args: any[]) => any>(),
   attestedCommitment: vi.fn<(...args: any[]) => any>(),
   run: vi.fn<(...args: any[]) => any>(),
-  opens: [] as { validTo: bigint }[],
+  opens: [] as { validFrom: bigint; validTo: bigint }[],
   timeouts: [] as { pool: UTxO }[],
   tipPool: undefined as UTxO | undefined,
   /**
@@ -67,6 +67,8 @@ const io = vi.hoisted(() => ({
     | typeof import("@lucid-evolution/lucid").calculateMinLovelaceFromUTxO
     | undefined,
   timeoutTx: undefined as ((input: TimeoutInput) => unknown) | undefined,
+  /** How far the observed ledger tip trails the clock, in ms (1 s slots). */
+  tipLagMs: 0,
 }));
 export type TimeoutInput = Parameters<
   typeof SDK.buildTimeoutDaAvailabilityChallengeTxProgram
@@ -86,7 +88,7 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
     buildOpenDaAvailabilityChallengeTxProgram: (
       _lucid: unknown,
       _deployment: unknown,
-      input: { validTo: bigint },
+      input: { validFrom: bigint; validTo: bigint },
     ) => {
       if (io.openBuild !== undefined) return io.openBuild();
       io.opens.push(input);
@@ -135,9 +137,13 @@ vi.mock("@lucid-evolution/lucid", async (original) => ({
         getUtxos: async () => io.utxos,
       }),
       switchProvider: async () => undefined,
+      // One-second slots from the Unix epoch.
+      unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1000),
+      slotToUnixTime: (slot: number) => slot * 1000,
       config: () => ({
         protocolParameters: { coinsPerUtxoByte: 1n, collateralPercentage: 150 },
         provider: { submitTx: io.submitTx },
+        slotConfig: { zeroTime: 0, zeroSlot: 0, slotLength: 1000 },
       }),
     };
     io.lucidInstances.push(instance);
@@ -253,6 +259,7 @@ beforeEach(() => {
   io.lucidAllocated = undefined;
   io.minimumAda = undefined;
   io.timeoutTx = undefined;
+  io.tipLagMs = 0;
 });
 afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
@@ -362,6 +369,7 @@ export const runtime = (
       reads: {},
       store: {},
       provider: {},
+      ledgerTipSlot: async () => Math.floor((Date.now() - io.tipLagMs) / 1000),
     } as unknown as Parameters<
       typeof createWatcherAvailabilityRuntime
     >[0]["l1"],

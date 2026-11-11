@@ -369,18 +369,18 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
     } finally {
       await watcher.close();
     }
-    const deadline = endTime + window;
-    expect(io.opens.map(({ validTo }) => validTo)).toEqual([deadline - 1n]);
-    // The SDK's window check admits the capped bound and refuses the uncapped
-    // one the Open would otherwise carry.
+    const capped = ((endTime + window) / 1000n) * 1000n;
+    expect(io.opens.map(({ validTo }) => validTo)).toEqual([capped]);
+    // The SDK's window check admits the bound capped at the deadline's slot
+    // start (1 s slots) and refuses the uncapped one the Open would carry.
     const accepts = (validTo: bigint) => () =>
       assertDaAvailabilityOpenWithinChallengeWindow({
         validTo,
         nodeBlockTime: endTime,
         daChallengeWindowMs: window,
       });
-    expect(accepts(deadline)).not.toThrow();
-    expect(accepts(deadline + 30_000n)).toThrow("Challenge window closed");
+    expect(accepts(capped)).not.toThrow();
+    expect(accepts(capped + 30_000n)).toThrow("Challenge window closed");
   });
 });
 

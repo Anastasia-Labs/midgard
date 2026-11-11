@@ -1,5 +1,8 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  alignedUnixTimeStrictlyAfter,
+  SUBMIT_SLOT_LENGTH_MS,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -22,7 +25,6 @@ import {
   submitInitializePayoutProgram,
 } from "../transactions/reserve-payout.js";
 import { outRefLabel } from "../tx-context.js";
-import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import { parseEventId } from "./command-utils.js";
 import {
   type EventSettlementProofResolution,

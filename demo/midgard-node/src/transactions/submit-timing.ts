@@ -1,6 +1,7 @@
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
+  submitLowerBoundSlot,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
 
@@ -99,17 +100,6 @@ export type SubmitTimingPlan =
   | SubmitTimingExpiredPlan
   | SubmitTimingWindowTooNarrowPlan
   | SubmitTimingSlotSourceUnavailablePlan;
-
-/**
- * The slot a validity lower bound is judged at: the ledger's latest block.
- * The mempool checks `invalidBefore` against the slot after that tip, so a
- * wall-clock slot (which runs ahead of the tip between blocks) would call a
- * transaction due while the ledger still refuses it. A snapshot without a
- * ledger tip (emulator, tests) has no block gaps: its current slot is the tip.
- */
-export const submitLowerBoundSlot = (
-  snapshot: Pick<SubmitSlotSnapshot, "currentSlot" | "ledgerTipSlot">,
-): number => snapshot.ledgerTipSlot ?? snapshot.currentSlot;
 
 const safeNonNegativeInteger = (
   value: number | undefined,

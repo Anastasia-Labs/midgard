@@ -4,6 +4,7 @@
  * that has exhausted its strikes. Shared by the watchdog fiber and the manual
  * CLI verbs so both act on identical logic.
  */
+import { alignedUnixTimeStrictlyAfter } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
@@ -19,7 +20,6 @@ import {
   journaledIntent,
   openPlan,
 } from "../../services/intent-journal.js";
-import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import {
   awaitLedgerTipAtLowerBound,
   lowerBoundAtLedgerTip,

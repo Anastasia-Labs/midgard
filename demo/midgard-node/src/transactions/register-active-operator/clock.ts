@@ -9,13 +9,13 @@
  * slot, which runs on the wall clock for a live network; it only picks the
  * validity bounds of a transaction being built.
  */
+import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { l1NowUnixTimeMs, type L1SlotUnknownError } from "../../l1-heads.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../../lucid-time.js";
-import { alignUnixTimeToSlotBoundary } from "../../workers/utils/commit-end-time.js";
 
 /** The L1 `slotNow` as POSIX ms: the "now" every operator decision reads. */
 export const resolveL1NowMs = (

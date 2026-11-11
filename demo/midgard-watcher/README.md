@@ -312,7 +312,14 @@ and the watcher takes the next step in the same reconciliation, so a
 live challenge's settle, close or Timeout is never starved. A Timeout reads the
 pool at the source tip; when no authentic pool is found there it is skipped for
 that reconciliation and reported under `timeoutsDeferred`, and the next step
-runs. A step the journal refuses is reported under `workflowRefused` with the
+runs. Every step's validity interval is measured from the L1 node's ledger tip,
+not the wall clock, because the ledger judges a lower bound against its latest
+block: a step whose lower bound (for an expired tranche's settle or a Timeout,
+the response deadline) the tip has not yet passed by two slots, or whose
+on-chain window leaves no interval, is skipped for that reconciliation and
+reported under `stepsDeferred` (header, action, `reason` -
+`ledger-tip-behind`, `validity-window-closed` or `no-validity-interval` - and
+a `detail`), and the next step runs. A step the journal refuses is reported under `workflowRefused` with the
 journal's reason, which names the deployment and header of the live workflow
 that blocks it. A terminal step landed by someone else (the committee's Close,
 another watcher's Timeout, a prune or removal of the header) releases this
@@ -325,7 +332,7 @@ reconciliation; if it is no longer canonical the row is live again and the
 change is reported under `workflowReleaseDeferred`. Our own Timeout keeps the
 wallet reserved while descendants remain to be pruned. The actor settles answered or expired tranches, closes complete responses, and
 prunes descendants before removing an unavailable head. None of `openRefused`,
-`timeoutsDeferred`, `workflowRefused`, `workflowReleased` or
+`timeoutsDeferred`, `stepsDeferred`, `workflowRefused`, `workflowReleased` or
 `workflowReleaseDeferred` blocks actuation or readiness. Pending availability is not a healthy or faulty classification. After
 close, canonical L1 publication history supplies the committed envelope if the
 original peers still withhold it. Startup reconciles signed intents before new

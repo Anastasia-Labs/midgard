@@ -4,6 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { availabilityValidityWindow } from "./availability-challenge.availability-validity-window.js";
 import {
   assertAvailabilityCommandRemovalCapital,
   assertAvailabilityTimeoutCollateral,
@@ -108,7 +109,6 @@ export const buildAvailabilityCommandTransaction = async (
     });
   }
   const record = snapshot.recordDatum;
-  const now = Date.now();
   const expiredSettlement =
     action === "settle" &&
     snapshot.tranches.some(
@@ -117,19 +117,16 @@ export const buildAvailabilityCommandTransaction = async (
         datum.Active.descriptor.tranche_index ===
           snapshot.terminalDatum?.next_tranche_index,
     );
-  if (expiredSettlement && record && BigInt(now) <= record.response_deadline)
+  if (
+    expiredSettlement &&
+    record &&
+    BigInt(Date.now()) <= record.response_deadline
+  )
     throw new Error(
       "Active availability tranches cannot settle before the strict response deadline",
     );
-  const protocolLower =
-    (action === "timeout" || expiredSettlement) && record
-      ? record.response_deadline + 1n
-      : 0n;
-  const backedOff = BigInt(Math.max(0, now - 60_000));
-  const validFrom = protocolLower > backedOff ? protocolLower : backedOff;
-  let validTo = validFrom + 120_000n;
-  if (action === "publish" && record && validTo > record.response_deadline + 1n)
-    validTo = record.response_deadline + 1n;
+  const validityWindow = (limits?: SDK.DaAvailabilityValidityLimits) =>
+    availabilityValidityWindow(lucid, `Availability ${action}`, limits);
   const queue = () =>
     required(snapshot.queue, "the authenticated queue header").utxo;
   const challengeRecord = () =>
@@ -147,8 +144,9 @@ export const buildAvailabilityCommandTransaction = async (
     const { daChallengeWindowMs, unitHistory } = context;
     // The validator requires the inclusive upper bound, validTo - 1, to fall
     // before the window's end.
-    const windowEnd = node.block_time + daChallengeWindowMs;
-    if (validTo > windowEnd) validTo = windowEnd;
+    const { validFrom, validTo } = await validityWindow({
+      upperLimitMs: node.block_time + daChallengeWindowMs,
+    });
     const commitment = await recoverAvailabilityOpenCommitment({
       unitHistory,
       daAttestationPolicyId: required(
@@ -176,6 +174,18 @@ export const buildAvailabilityCommandTransaction = async (
       }),
     );
   }
+  // Settling an expired tranche, and the timeout with the lock it takes,
+  // need a lower bound past the response deadline; a publication's inclusive
+  // upper bound must not pass it.
+  const { validFrom, validTo } = await validityWindow(
+    record === undefined
+      ? {}
+      : action === "timeout" || expiredSettlement
+        ? { lowerLimitMs: record.response_deadline + 1n }
+        : action === "publish"
+          ? { upperLimitMs: record.response_deadline + 1n }
+          : {},
+  );
   const resources = {
     collateralInputs: [collateral],
     feeLovelace,

@@ -39,9 +39,14 @@ import {
   createAvailabilityFixture,
   openAvailability,
 } from "./helpers/availability-challenge-emulator.js";
+import {
+  blockSizedTip,
+  expectLatestAdmissibleAtTip,
+  observeEmulatorTip,
+} from "./helpers/emulator-observed-tip.js";
 
 describe("token-only DA challenger", () => {
-  it("prepares the opening input, collateral and working capital from token coins, then opens, settles and times out", async () => {
+  it("prepares the opening input, collateral and working capital from token coins, then opens, settles and times out, each admissible at a ledger tip that trails the wall clock by more than a minute", async () => {
     const directory = await mkdtemp(join(tmpdir(), "availability-token-only-"));
     const journal = openAvailabilityOperationJournal(
       join(directory, "operations.sqlite"),
@@ -70,6 +75,12 @@ describe("token-only DA challenger", () => {
         observe: async () => ({ status: "unspent", currentSlot: 0 }),
         submit: (cbor) => f.emulator.submitTx(cbor),
       };
+      // A block every 100 slots, and every step built 70 slots after the last
+      // one: the observed ledger tip trails the wall clock by more than a
+      // minute, the timeout's response deadline included.
+      const tip = blockSizedTip(f.lucid, f.emulator, 100);
+      const submissions = observeEmulatorTip(f.lucid, f.emulator, tip.tipAt);
+      tip.lastBlockSlotsAgo(70);
       const prepared = await prepareAvailabilityOpeningInput({
         lucid: f.lucid,
         deployment: d,
@@ -83,6 +94,7 @@ describe("token-only DA challenger", () => {
         reservedOutRefs: new Set(journal.reservedOutRefs(f.challengerKey)),
       });
       expect(prepared.status).toBe("submitted");
+      expectLatestAdmissibleAtTip(submissions);
       f.emulator.awaitBlock(1);
       const protocol = f.lucid.config().protocolParameters!;
       const amounts = availabilityPreparationAmounts({
@@ -129,6 +141,7 @@ describe("token-only DA challenger", () => {
         snapshot: SDK.DaAvailabilityChallengeSnapshot,
         action: SDK.DaAvailabilityTransactionAction,
       ) => {
+        tip.lastBlockSlotsAgo(70);
         const built = await buildAvailabilityCommandTransaction(
           f.lucid,
           d,
@@ -149,6 +162,7 @@ describe("token-only DA challenger", () => {
         ]);
         const signed = await built.tx.sign.withWallet().complete();
         expect(await signed.submit()).toBe(built.txId);
+        expectLatestAdmissibleAtTip(submissions);
         f.emulator.awaitBlock(1);
         return built;
       };
@@ -165,6 +179,7 @@ describe("token-only DA challenger", () => {
       snapshot = await snapshotNow();
       await step(snapshot, "timeout");
       expect((await snapshotNow()).queue).toBeUndefined();
+      expect(submissions).toHaveLength(4);
       // Collateral is never spent by a valid step; the working capital stays
       // for a longer removal path.
       for (const [ref, lovelace] of [

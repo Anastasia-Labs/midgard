@@ -1,4 +1,5 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
+import { ledgerTipBackdatedValidFromMs } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Data, Effect } from "effect";
@@ -26,7 +27,6 @@ import {
   TxSignError,
 } from "./transactions/utils.js";
 import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
-import { ledgerTipBackdatedValidFromMs } from "./workers/utils/commit-end-time.js";
 
 /** The deposit's lower bound looks back a minute from the observed tip. */
 const GENESIS_DEPOSIT_BACKDATE_MS = 60_000;

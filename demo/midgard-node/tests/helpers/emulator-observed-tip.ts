@@ -12,6 +12,7 @@ import {
   SUBMIT_SLOT_VALIDITY_BUFFER,
 } from "@al-ft/midgard-core/ogmios-slot";
 import type { Emulator, LucidEvolution } from "@lucid-evolution/lucid";
+import { expect } from "vitest";
 
 import { openL1Access } from "../../src/l1-access.js";
 import { inspectSignedTxValidityInterval } from "../../src/transactions/utils.js";
@@ -93,4 +94,40 @@ export const awaitEmulatorTipPastDeadline = (
 ): void => {
   const marginMs = SUBMIT_SLOT_VALIDITY_BUFFER * SUBMIT_SLOT_LENGTH_MS;
   while (emulator.now() - marginMs <= Number(deadlineMs)) emulator.awaitSlot(1);
+};
+
+/**
+ * A ledger tip that moves only when a block lands, one every `blockSlots`
+ * slots. `lastBlockSlotsAgo` places the last block that many slots before
+ * the emulator's slot now; the next ones follow every `blockSlots`.
+ */
+export const blockSizedTip = (
+  lucid: LucidEvolution,
+  emulator: Emulator,
+  blockSlots: number,
+): {
+  readonly tipAt: (wallSlot: number) => number;
+  readonly lastBlockSlotsAgo: (slots: number) => void;
+} => {
+  let origin = lucid.unixTimeToSlot(emulator.now());
+  return {
+    tipAt: (wallSlot) => wallSlot - ((wallSlot - origin) % blockSlots),
+    lastBlockSlotsAgo: (slots) => {
+      origin = lucid.unixTimeToSlot(emulator.now()) - slots;
+    },
+  };
+};
+
+/**
+ * Expects the latest submission's lower bound reached, by the submit margin,
+ * by the tip observed when it was sent: the ledger admits it there.
+ */
+export const expectLatestAdmissibleAtTip = (
+  submissions: readonly ObservedSubmission[],
+): void => {
+  const submitted = submissions.at(-1);
+  expect(submitted?.invalidBeforeSlot).toBeDefined();
+  expect(submitted!.observedTipSlot).toBeGreaterThanOrEqual(
+    submitted!.invalidBeforeSlot! + SUBMIT_SLOT_VALIDITY_BUFFER,
+  );
 };

@@ -25,9 +25,11 @@ import "./availability-challenge-transactions.removal.js";
 import "./availability-challenge-transactions.build-timeout-da-availability-challenge-tx-program.js";
 import "./availability-challenge-transactions.recover-da-availability-commitment-from-apply-tx.js";
 import "./availability-challenge-transactions.da-availability-challenge-snapshot-from-utxos.js";
+import "./availability-challenge-transactions.validity-window.js";
 export {
   type BuiltDaAvailabilityTransaction,
   type CloseDaAvailabilityChallengeParams,
+  DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS,
   type DaAvailabilityChallengeSnapshot,
   type DaAvailabilityDeployment,
   type DaAvailabilityExpectedOutput,
@@ -88,3 +90,11 @@ export {
   type DaAvailabilitySnapshotUtxos,
   recoverDaAvailabilityCommitmentFromApplyTx,
 } from "./availability-challenge-transactions.recover-da-availability-commitment-from-apply-tx.js";
+export {
+  DA_AVAILABILITY_VALIDITY_BACKDATE_MS,
+  DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS,
+  type DaAvailabilityValidityLimits,
+  type DaAvailabilityValidityRefusal,
+  type DaAvailabilityValidityWindow,
+  daAvailabilityValidityWindow,
+} from "./availability-challenge-transactions.validity-window.js";

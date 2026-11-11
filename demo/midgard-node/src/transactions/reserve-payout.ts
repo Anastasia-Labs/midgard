@@ -1,5 +1,8 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  ledgerTipBackdatedValidFromMs,
+  SUBMIT_SLOT_VALIDITY_BUFFER,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
@@ -9,7 +12,6 @@ import {
   type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
-import { ledgerTipBackdatedValidFromMs } from "../workers/utils/commit-end-time.js";
 import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import {
   handleSignSubmit,

@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
+import { availabilityValidityWindow } from "./availability-challenge.availability-validity-window.js";
 import {
   availabilityPreparationAmounts,
   required,
@@ -56,7 +57,10 @@ export const prepareAvailabilityOpeningInput = async (input: {
     headerHash: input.headerHash,
     action: "prepare",
     build: async (_signal, scope) => {
-      const validFrom = BigInt(Math.max(0, Date.now() - 60_000));
+      const { validFrom, validTo } = await availabilityValidityWindow(
+        lucid,
+        "Availability prepare",
+      );
       return SDK.buildDaAvailabilityFundingPreparationTx(
         lucid,
         {
@@ -68,7 +72,7 @@ export const prepareAvailabilityOpeningInput = async (input: {
             (u) => !input.reservedOutRefs.has(`${u.txHash}#${u.outputIndex}`),
           ),
           validFrom,
-          validTo: validFrom + 120_000n,
+          validTo,
         },
         scope,
       );

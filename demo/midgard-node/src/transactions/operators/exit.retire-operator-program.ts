@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { alignedUnixTimeStrictlyAfter } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -7,7 +8,6 @@ import {
   type IntentJournal,
   journaledIntent,
 } from "../../services/intent-journal.js";
-import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { awaitLedgerTipAtLowerBound } from "../ledger-tip-lower-bound.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";

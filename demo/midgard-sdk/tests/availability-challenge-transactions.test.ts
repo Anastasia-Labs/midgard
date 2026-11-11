@@ -7,3 +7,4 @@ import "../src/linked-list.js";
 import "./availability-challenge-transactions.challenge-record-min-ada.js";
 import "./availability-challenge-transactions.timeout-output-arithmetic.js";
 import "./availability-challenge-transactions.recover-da-availability-commitment-from-apply-tx.js";
+import "./availability-challenge-transactions.validity-window.js";

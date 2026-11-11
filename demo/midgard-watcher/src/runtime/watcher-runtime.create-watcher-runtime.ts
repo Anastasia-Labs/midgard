@@ -332,7 +332,14 @@ export const startWatcherRuntime = async (
     const activeAvailability = await createWatcherAvailabilityRuntime({
       config: input.config,
       identity: deploymentIdentity,
-      l1: { reads: rawReads, store, provider },
+      l1: {
+        reads: rawReads,
+        store,
+        provider,
+        // Validity lower bounds are measured from the ledger tip, not the
+        // wall clock: the ledger judges them against its latest block.
+        ledgerTipSlot: async () => (await provider.readTip()).slot,
+      },
       confirmationDepth: releaseDepth,
       faultProofObservation: {
         currentObservation: () => decisionDriver?.inclusion() ?? null,

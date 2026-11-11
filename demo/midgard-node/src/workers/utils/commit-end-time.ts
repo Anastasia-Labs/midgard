@@ -1,4 +1,9 @@
-import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  alignedUnixTimeStrictlyAfter,
+  alignUnixTimeToSlotBoundary,
+  ledgerTipBackdatedValidFromMs,
+  type SubmitSlotSnapshot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -71,105 +76,6 @@ export type CommitEndTimeFit =
       readonly maximumEndTimeMs: number;
       readonly reason: string;
     });
-
-export const alignUnixTimeToSlotBoundary = (
-  lucid: LucidEvolution,
-  unixTime: number,
-): number => {
-  if (!Number.isSafeInteger(unixTime)) {
-    throw new Error(`Cannot align invalid unix time ${String(unixTime)}`);
-  }
-  const slot = Number(lucid.unixTimeToSlot(unixTime));
-  const aligned = lucid.slotToUnixTime(slot);
-  if (!Number.isSafeInteger(slot) || !Number.isSafeInteger(aligned)) {
-    throw new Error(
-      `Lucid returned an invalid slot boundary for unix time ${unixTime.toString()}`,
-    );
-  }
-  return aligned;
-};
-
-export const alignedUnixTimeStrictlyAfter = (
-  lucid: LucidEvolution,
-  unixTimeExclusive: number,
-): number => {
-  const aligned = alignUnixTimeToSlotBoundary(lucid, unixTimeExclusive);
-  if (aligned > unixTimeExclusive) {
-    return aligned;
-  }
-  const slot = Number(lucid.unixTimeToSlot(unixTimeExclusive));
-  const strictlyAfter = lucid.slotToUnixTime(slot + 1);
-  if (!Number.isSafeInteger(strictlyAfter)) {
-    throw new Error(
-      `Lucid returned an invalid slot boundary after unix time ${unixTimeExclusive.toString()}`,
-    );
-  }
-  return strictlyAfter;
-};
-
-/**
- * The start of the observed ledger tip's slot, in ms: the time a lower bound
- * that must already be open is measured from. A snapshot without a ledger tip
- * (emulator, tests) has no block gaps: its current slot is the tip.
- */
-export const ledgerTipStartMs = (
-  lucid: LucidEvolution,
-  submitSlotSnapshot: Pick<SubmitSlotSnapshot, "currentSlot" | "ledgerTipSlot">,
-): number => {
-  const startMs = lucid.slotToUnixTime(
-    submitSlotSnapshot.ledgerTipSlot ?? submitSlotSnapshot.currentSlot,
-  );
-  if (!Number.isSafeInteger(startMs)) {
-    throw new Error(`Ledger-tip slot start is invalid: ${String(startMs)}`);
-  }
-  return startMs;
-};
-
-/**
- * A validity lower bound `backdateMs` before the observed ledger tip, on a
- * slot boundary and never before the first slot the client's slot config
- * expresses (its zeroSlot; an emulator client's is the slot it was created
- * at). The ledger tip, not the wall clock: between blocks the wall clock
- * runs ahead of the tip, and the mempool refuses a lower bound past the tip
- * as outside its validity interval. With `rangeFloorMs` (the upper bound less the longest range the
- * validator accepts) the bound is never before that floor either, so the
- * range stays within the limit even when the tip trails far behind.
- */
-export const ledgerTipBackdatedValidFromMs = ({
-  lucid,
-  submitSlotSnapshot,
-  backdateMs,
-  rangeFloorMs,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly submitSlotSnapshot: Pick<
-    SubmitSlotSnapshot,
-    "currentSlot" | "ledgerTipSlot"
-  >;
-  readonly backdateMs: number;
-  readonly rangeFloorMs?: number;
-}): number => {
-  // The first slot the client's slot config expresses (its zeroSlot): the
-  // evaluator refuses a bound before it as too far in the past.
-  const firstSlotStartMs =
-    (typeof lucid.config === "function"
-      ? lucid.config().slotConfig?.zeroTime
-      : undefined) ?? 0;
-  const backdatedMs = Math.max(
-    firstSlotStartMs,
-    ledgerTipStartMs(lucid, submitSlotSnapshot) - backdateMs,
-  );
-  if (rangeFloorMs === undefined) {
-    return alignUnixTimeToSlotBoundary(lucid, backdatedMs);
-  }
-  const validFromMs = alignUnixTimeToSlotBoundary(
-    lucid,
-    Math.max(backdatedMs, rangeFloorMs),
-  );
-  return validFromMs < rangeFloorMs
-    ? alignedUnixTimeStrictlyAfter(lucid, rangeFloorMs)
-    : validFromMs;
-};
 
 /**
  * The commit's validity interval for a fixed `validToMs`. On-chain only the

@@ -1,3 +1,4 @@
+import { submitLowerBoundSlot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -14,7 +15,6 @@ import {
   type ConfirmedMergeFinalization,
   mergeSemanticSkipResult,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
-import { submitLowerBoundSlot } from "../transactions/submit-timing.js";
 import {
   checkSlotAwareDueWork,
   clearSlotAwareDueWork,

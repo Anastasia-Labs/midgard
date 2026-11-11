@@ -7,8 +7,10 @@ import {
   WATCHER_AVAILABILITY_MAX_COLLATERAL_INPUTS,
   WatcherAvailabilityCapitalShortfall,
   type WatcherAvailabilityOpenRefusal,
+  type WatcherAvailabilityStepDeferral,
   type WatcherAvailabilityTimeoutDeferral,
   WatcherAvailabilityTimeoutPoolUnavailable,
+  WatcherAvailabilityValidityNotAdmissible,
 } from "./runtime.release-watcher-availability-workflows.js";
 
 /**
@@ -17,8 +19,10 @@ import {
  * starve a later step, such as a live challenge's own settle, close or
  * Timeout: an unfundable Open (or its preparation) is recorded as refused and
  * the next step is tried, and so is a Timeout whose pool cannot be read at the
- * tip, which is recorded as deferred. Any other build failure propagates. An
- * Open that builds as a preparation is admitted again under that action.
+ * tip, which is recorded as deferred, and so is any step whose validity
+ * interval the observed ledger tip does not admit. Any other build failure
+ * propagates. An Open that builds as a preparation is admitted again under
+ * that action.
  */
 export const buildAdmittedWatcherAvailabilityOperation = async <
   T extends Readonly<{
@@ -36,10 +40,12 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
     selected?: Readonly<{ step: T; operation: O }>;
     openRefused: readonly WatcherAvailabilityOpenRefusal[];
     timeoutsDeferred: readonly WatcherAvailabilityTimeoutDeferral[];
+    stepsDeferred: readonly WatcherAvailabilityStepDeferral[];
   }>
 > => {
   const openRefused: WatcherAvailabilityOpenRefusal[] = [];
   const timeoutsDeferred: WatcherAvailabilityTimeoutDeferral[] = [];
+  const stepsDeferred: WatcherAvailabilityStepDeferral[] = [];
   for (const step of ordered) {
     const { headerHash } = step.snapshot;
     if (!admits(headerHash, step.action.action)) continue;
@@ -52,6 +58,15 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
         cause instanceof SDK.DaAvailabilityReadScopeExpiredError
       ) {
         onOpenReadExpired?.(headerHash);
+        continue;
+      }
+      if (cause instanceof WatcherAvailabilityValidityNotAdmissible) {
+        stepsDeferred.push({
+          headerHash,
+          action: step.action.action,
+          reason: cause.reason,
+          detail: cause.message,
+        });
         continue;
       }
       if (
@@ -85,15 +100,14 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
       !admits(headerHash, operation.action)
     )
       continue;
-    return { selected: { step, operation }, openRefused, timeoutsDeferred };
+    return {
+      selected: { step, operation },
+      openRefused,
+      timeoutsDeferred,
+      stepsDeferred,
+    };
   }
-  return { openRefused, timeoutsDeferred };
-};
-
-/** The validity interval every availability transaction is built with. */
-export const watcherAvailabilityValidity = () => {
-  const now = BigInt(Date.now());
-  return { validFrom: now - 30_000n, validTo: now + 60_000n };
+  return { openRefused, timeoutsDeferred, stepsDeferred };
 };
 
 /**

@@ -1,11 +1,11 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { awaitExactTransactionConfirmation } from "../../transactions/utils.js";
 import { outRefLabel } from "../../tx-context.js";
-import { alignUnixTimeToSlotBoundary } from "./commit-end-time.js";
 import {
   type ActiveSchedulerState,
   activeSchedulerState,

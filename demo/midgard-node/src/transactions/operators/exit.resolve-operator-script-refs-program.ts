@@ -1,4 +1,8 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import {
+  alignedUnixTimeStrictlyAfter,
+  ledgerTipBackdatedValidFromMs,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -14,10 +18,6 @@ import {
   type IntentPlan,
   openPlan,
 } from "../../services/intent-journal.js";
-import {
-  alignedUnixTimeStrictlyAfter,
-  ledgerTipBackdatedValidFromMs,
-} from "../../workers/utils/commit-end-time.js";
 import { observedLedgerTip } from "../ledger-tip-lower-bound.js";
 import {
   fetchReferenceScriptUtxosProgram,

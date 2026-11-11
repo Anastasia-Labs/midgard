@@ -3,7 +3,9 @@
  * derived from Shelley genesis evidence, with the check that ties them
  * together. No network access: the Ogmios queries that read the evidence
  * live in `ogmios-slot-query.ts` (`@al-ft/midgard-core/ogmios-slot-query`),
- * a tools-only subpath that role processes never import.
+ * a tools-only subpath that role processes never import. Validity bounds
+ * measured from the observed ledger tip live in
+ * `ogmios-slot.ledger-tip-bounds.ts`, re-exported here.
  */
 import type { SlotConfig } from "@lucid-evolution/lucid";
 
@@ -13,6 +15,13 @@ import {
   type SubmitSlotSnapshot,
 } from "./ogmios-slot.parse-ogmios-evidence.js";
 
+export {
+  alignedUnixTimeStrictlyAfter,
+  alignUnixTimeToSlotBoundary,
+  ledgerTipBackdatedValidFromMs,
+  ledgerTipStartMs,
+  submitLowerBoundSlot,
+} from "./ogmios-slot.ledger-tip-bounds.js";
 export {
   assertNoOgmiosJsonRpcError,
   type FetchLike,

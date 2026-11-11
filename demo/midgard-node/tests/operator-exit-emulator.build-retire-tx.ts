@@ -1,3 +1,4 @@
+import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -11,7 +12,6 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
-import { alignUnixTimeToSlotBoundary } from "../src/workers/utils/commit-end-time.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   BOND_LOVELACE,

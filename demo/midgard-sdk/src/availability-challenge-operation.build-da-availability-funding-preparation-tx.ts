@@ -22,7 +22,11 @@ import {
   createDaAvailabilityReadScope,
   type DaAvailabilityReadScope,
 } from "./availability-challenge-operation.read-scope.js";
-import { fail, sameAssets } from "./availability-challenge-transactions.at.js";
+import {
+  DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS,
+  fail,
+  sameAssets,
+} from "./availability-challenge-transactions.at.js";
 import { daAvailabilityPlainCoinMinAda } from "./availability-challenge-transactions.da-availability-opening-input.js";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "./linked-list.js";
 import { isPlainPositiveAdaOnlyUtxo } from "./tx-output-utils.js";
@@ -107,7 +111,7 @@ export const buildDaAvailabilityFundingPreparationTx = async (
     input.feeLovelace <= 0n ||
     input.validFrom < 0n ||
     input.validTo <= input.validFrom ||
-    input.validTo - input.validFrom > 120_000n ||
+    input.validTo - input.validFrom > DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS ||
     input.validTo > BigInt(Number.MAX_SAFE_INTEGER)
   )
     fail(

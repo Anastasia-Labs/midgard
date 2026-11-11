@@ -1,4 +1,8 @@
-import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  alignedUnixTimeStrictlyAfter,
+  ledgerTipBackdatedValidFromMs,
+  type SubmitSlotSnapshot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   LucidEvolution,
@@ -16,10 +20,6 @@ import {
   journaledIntent,
 } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
-import {
-  alignedUnixTimeStrictlyAfter,
-  ledgerTipBackdatedValidFromMs,
-} from "../workers/utils/commit-end-time.js";
 import {
   DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
   DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,

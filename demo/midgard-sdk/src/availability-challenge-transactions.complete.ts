@@ -11,6 +11,7 @@ import {
 import * as Availability from "./availability-challenge.js";
 import {
   type BuiltDaAvailabilityTransaction,
+  DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS,
   type DaAvailabilityDeployment,
   type DaAvailabilityExpectedOutput,
   type DaAvailabilityTransactionAction,
@@ -161,7 +162,7 @@ export const complete = async (
     capped > cap ||
     p.validFrom < 0n ||
     p.validTo <= p.validFrom ||
-    p.validTo - p.validFrom > 120_000n ||
+    p.validTo - p.validFrom > DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS ||
     p.validTo > BigInt(Number.MAX_SAFE_INTEGER)
   )
     fail("Invalid fee or bounded validity interval");

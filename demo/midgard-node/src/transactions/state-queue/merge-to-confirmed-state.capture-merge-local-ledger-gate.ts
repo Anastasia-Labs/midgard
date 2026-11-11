@@ -1,5 +1,6 @@
 import {
   SUBMIT_SLOT_LENGTH_MS,
+  submitLowerBoundSlot,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -12,7 +13,6 @@ import {
 } from "../../fibers/slot-aware-due-work.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
 import { Database } from "../../services/index.js";
-import { submitLowerBoundSlot } from "../submit-timing.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   type NoInlineSubmitDefer,

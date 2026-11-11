@@ -47,6 +47,12 @@ export type DaAvailabilityDeployment = {
   readonly hubOracleRefInput: UTxO;
 };
 
+/**
+ * The longest validity interval (`validTo - validFrom`, ms) an availability
+ * builder, the funding preparation included, accepts.
+ */
+export const DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS = 120_000n;
+
 export type DaAvailabilityTransactionResources = {
   /**
    * Plain-ADA wallet coins offered as collateral. The builder picks at most
