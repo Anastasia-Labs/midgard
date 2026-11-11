@@ -54,9 +54,14 @@ export const stackDaPayloadInsert = (
 /**
  * The drill's producer publication manifest: the stack's own host producer
  * manifest (the committee peers, threshold and limits) with operator-2's
- * libp2p key in place of our node's. Refuses our node's own peer id, whose
- * second live connection would endanger our node's DA publishing. Keys are
- * named by their variables only; their values are secrets.
+ * libp2p key in place of our node's. The stack wrote that manifest for our
+ * node, so its announce addresses name our node's peer id; the producer
+ * transport opens only with its own peer id among them, so each one names
+ * operator-2's instead. A dial-only transport never listens on or announces
+ * them. Refuses our node's own peer id, whose second live connection would
+ * endanger our node's DA publishing, and a manifest whose announce addresses
+ * are not our node's. Keys are named by their variables only; their values
+ * are secrets.
  */
 export const readStackDaProducerManifest = async (input: {
   manifestPath: string;
@@ -76,17 +81,29 @@ export const readStackDaProducerManifest = async (input: {
       throw new Error(`${name} is not a libp2p private key source`);
     }
   };
-  if (
-    (await peerIdOf(input.operatorKey)) ===
-    (await peerIdOf(input.honestProducerKey))
-  )
+  const operatorPeerId = await peerIdOf(input.operatorKey);
+  const honestPeerId = await peerIdOf(input.honestProducerKey);
+  if (operatorPeerId === honestPeerId)
     throw new Error(
       `${input.operatorKey.name} is our node's own DA producer identity (${input.honestProducerKey.name}); use operator-2's`,
     );
-  return parseDaProducerPublicationManifest(
+  const ours = parseDaProducerPublicationManifest(
     JSON.parse(await readFile(input.manifestPath, "utf8")),
     { DA_LIBP2P_PRIVATE_KEY_SOURCE: input.operatorKey.source },
   );
+  const ourSuffix = `/p2p/${honestPeerId}`;
+  const announceMultiaddrs = ours.announceMultiaddrs.map((address) => {
+    if (!address.endsWith(ourSuffix))
+      throw new Error(
+        `${input.manifestPath} announces ${address}, which is not our node's producer (${input.honestProducerKey.name})`,
+      );
+    return `${address.slice(0, -ourSuffix.length)}/p2p/${operatorPeerId}`;
+  });
+  if (announceMultiaddrs.length === 0)
+    throw new Error(
+      `${input.manifestPath} announces no address for our node's producer (${input.honestProducerKey.name})`,
+    );
+  return { ...ours, announceMultiaddrs };
 };
 
 /** One publication through a fresh dial-only producer transport. */

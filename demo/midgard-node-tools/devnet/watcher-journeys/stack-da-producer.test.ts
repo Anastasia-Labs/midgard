@@ -3,7 +3,9 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import * as SDK from "@al-ft/midgard-sdk";
+import { createDaLibp2pProducerTransport } from "midgard-node/da/libp2p-producer";
 import {
   manifestFixture,
   PEER_A,
@@ -113,13 +115,33 @@ describe("an attached stack's removal of a published block", () => {
 describe("the drill's producer identity", () => {
   const OPERATOR_KEY = `seed:${"00".repeat(31)}02`;
   const OUR_KEY = `seed:${"00".repeat(31)}01`;
+  // Our stack's own host producer manifest, as the e2e-stack writes it: it
+  // announces our node's producer, on the host, and bootstraps from the
+  // committee's host ports.
+  const ourStackManifest = async () => {
+    const fixture = manifestFixture() as {
+      runtime_topology: Record<string, unknown>;
+      da_transport: Record<string, unknown>;
+    };
+    const ourPeerId = (await loadDaLibp2pIdentity(OUR_KEY)).peerId;
+    fixture.runtime_topology.profile = "host";
+    fixture.runtime_topology.producer_peer_id = ourPeerId;
+    fixture.da_transport.listen_multiaddrs = ["/ip4/127.0.0.1/tcp/26202"];
+    fixture.da_transport.announce_multiaddrs = [
+      `/ip4/127.0.0.1/tcp/26202/p2p/${ourPeerId}`,
+    ];
+    fixture.da_transport.bootstrap_multiaddrs = [
+      `/ip4/127.0.0.1/tcp/9/p2p/${PEER_A}`,
+    ];
+    return fixture;
+  };
   const withManifest = async (
     test: (manifestPath: string) => Promise<void>,
   ) => {
     const directory = await mkdtemp(join(tmpdir(), "stack-da-producer-"));
     try {
       const manifestPath = join(directory, "producer-host.json");
-      await writeFile(manifestPath, JSON.stringify(manifestFixture()));
+      await writeFile(manifestPath, JSON.stringify(await ourStackManifest()));
       await test(manifestPath);
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -138,6 +160,26 @@ describe("the drill's producer identity", () => {
         PEER_A,
         PEER_B,
       ]);
+    });
+  });
+
+  it("opens operator-2's producer transport from our stack's own producer manifest", async () => {
+    await withManifest(async (manifestPath) => {
+      const manifest = await readStackDaProducerManifest({
+        manifestPath,
+        operatorKey: { name: "OPERATOR2_KEY", source: OPERATOR_KEY },
+        honestProducerKey: { name: "OUR_KEY", source: OUR_KEY },
+      });
+      const transport = await createDaLibp2pProducerTransport(manifest, {
+        mode: "dial-only",
+      });
+      try {
+        expect(transport.localPeerId()).toBe(
+          (await loadDaLibp2pIdentity(OPERATOR_KEY)).peerId,
+        );
+      } finally {
+        await transport.close?.();
+      }
     });
   });
 
