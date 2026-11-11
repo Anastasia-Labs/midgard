@@ -46,6 +46,12 @@ export const prependMidgardInputResolutionSchedule = (input: {
 
 export type MidgardInputResolutionSourceKind = "spend" | "reference";
 
+/** Input resolution refuses a persisted output without an exact V1 descriptor. */
+export const noExactLedgerDescriptor = (outRefHex: string): Error =>
+  new Error(
+    `persisted ledger output ${outRefHex} cannot produce an exact V1 descriptor`,
+  );
+
 /**
  * The input-resolution schedule order: spend and reference inputs merged and
  * sorted by their canonical out-ref item bytes. A node's position in this

@@ -5,41 +5,53 @@ import {
 import { Cause, Effect } from "effect";
 
 import { completeValidationTrace } from "./trace-builder-complete.js";
-import { prepareValidationTrace } from "./trace-builder-prepare.js";
-import { DirectValidationTraceUnavailable } from "./trace-builder-prepare.js";
+import { prepareValidationTrace } from "./trace-builder-prepare.prepare-validation-trace.js";
 import { ValidationTraceStopped } from "./trace-builder-stop.js";
+import {
+  DirectValidationTraceUnavailable,
+  replayValidationTransaction,
+} from "./trace-replay.js";
 import {
   RetainingValidationTraceSink,
   type ValidationTraceRecording,
 } from "./trace-sink.js";
+import { openTraceWalk, ValidationTraceDisagreement } from "./trace-walk.js";
 import type {
   DeterministicValidationMachineTrace,
   ValidationMachineReplayInput,
 } from "./types.js";
-export { DirectValidationTraceUnavailable } from "./trace-builder-prepare.js";
 export { ValidationTraceStopped } from "./trace-builder-stop.js";
+export { DirectValidationTraceUnavailable } from "./trace-replay.js";
 
 const ZERO_32 = Buffer.alloc(32);
 
 /**
- * Replays `input` once, recording its states with `recording`. Returns the
- * completed replay and the script evaluations it ran or reused, in run
- * order: a replay given them as `input.scriptEvaluations` runs no evaluator.
+ * Replays `input` once, then walks its trace, recording the states with
+ * `recording`. Returns the completed walk and the script evaluations replay
+ * ran or reused, in run order: a replay given them as
+ * `input.scriptEvaluations` runs no evaluator.
  */
 export const replayValidationTrace = (
   input: ValidationMachineReplayInput,
   recording: ValidationTraceRecording,
 ) =>
   Effect.gen(function* () {
-    const context = yield* prepareValidationTrace(input, recording);
-    const completed = yield* completeValidationTrace(context);
-    return { ...completed, scriptEvaluations: context.scriptEvaluations };
+    const replay = yield* replayValidationTransaction(input, recording.mode);
+    const { walk, finish } = yield* openTraceWalk(input, replay, recording);
+    const context = yield* prepareValidationTrace(replay.transaction, walk);
+    yield* completeValidationTrace(context, walk);
+    const completed = yield* finish();
+    return {
+      ...completed,
+      scriptEvaluations: replay.transaction.scriptEvaluations,
+    };
   });
 
 /**
  * Classifies every failure of a trace build, thrown or failed, the same way
  * for every recording: a process-local alarm that carries the transaction's
- * existing classification.
+ * existing classification. A walk that disagrees with replay is a
+ * disagreement; any other failure leaves the trace unavailable.
  */
 export const classifyValidationTraceFailure =
   (input: ValidationMachineReplayInput) =>
@@ -55,14 +67,23 @@ export const classifyValidationTraceFailure =
           cause instanceof ValidationTraceStopped ||
             cause instanceof DirectValidationTraceUnavailable
             ? cause
-            : new ValidationTraceStopped(
-                "unavailable",
-                input,
-                cause instanceof Error
-                  ? cause.message
-                  : "Validation trace builder cannot build the classified transaction",
-                { cause },
-              ),
+            : cause instanceof ValidationTraceDisagreement
+              ? new ValidationTraceStopped(
+                  "disagreement",
+                  input,
+                  cause.message,
+                  {
+                    cause,
+                  },
+                )
+              : new ValidationTraceStopped(
+                  "unavailable",
+                  input,
+                  cause instanceof Error
+                    ? cause.message
+                    : "Validation trace builder cannot build the classified transaction",
+                  { cause },
+                ),
         );
       }),
     );

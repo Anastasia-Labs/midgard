@@ -18,7 +18,7 @@ import {
   replayValidationVerdictEvent,
   runPhaseAValidation,
 } from "../src/index.js";
-import { prepareValidationTrace } from "../src/validation-machine/trace-builder-prepare.js";
+import { replayValidationTransaction } from "../src/validation-machine/trace-replay.js";
 import {
   honestSignature,
   signerPublicKey,
@@ -122,13 +122,13 @@ describe("Ed25519 verification when libsodium fails to initialise", () => {
     );
   });
 
-  it("fails trace preparation with the local fault", async () => {
+  it("fails trace replay with the local fault", async () => {
     // The wait comes first: nothing of the input is read before it.
     expectLocalFault(
       await leftOf(
-        prepareValidationTrace(
-          {} as Parameters<typeof prepareValidationTrace>[0],
-          {} as Parameters<typeof prepareValidationTrace>[1],
+        replayValidationTransaction(
+          {} as Parameters<typeof replayValidationTransaction>[0],
+          "proof",
         ),
       ),
     );
