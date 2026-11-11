@@ -19,4 +19,7 @@ export {
   readJourneyCanonicalTransactions,
   readJourneyNativeEvidencePath,
 } from "./readiness-evidence.read-journey-canonical-transactions.js";
-export { verifyJourneyResultEvidence } from "./readiness-evidence.verify-journey-result-evidence.js";
+export {
+  verifyJourneyProverPayout,
+  verifyJourneyResultEvidence,
+} from "./readiness-evidence.verify-journey-result-evidence.js";

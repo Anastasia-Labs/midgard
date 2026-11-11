@@ -321,6 +321,7 @@ export const runJourney = async (
       evidenceStatus: "terminal-included-awaiting-anchor",
       category: fixture.category,
       deploymentFingerprint: deployment.manifest.manifestId,
+      proverAddress: mode.proverAddress,
       completion,
       successor: successor.headerHash,
       diagnostics: await running.diagnostics(),

@@ -41,6 +41,30 @@ import {
 } from "./verified-headers.js";
 
 /**
+ * The permanent proof token names the prover the run's watcher proved with,
+ * and the slashed bond's reward pays that prover's key. That prover is the
+ * watcher's configured wallet, which on a stack is not the deployer.
+ */
+export const verifyJourneyProverPayout = (
+  result: JourneyResult,
+  proofDatumCbor: string,
+  rewardAddress: string,
+) => {
+  assert(
+    typeof result.proverAddress === "string",
+    "Result does not name the prover the run used",
+  );
+  const prover = paymentCredentialOf(result.proverAddress).hash;
+  assert.deepEqual(Data.from(proofDatumCbor, SDK.FraudProofTokenDatum), {
+    fraud_prover: prover,
+  });
+  assert.equal(
+    rewardAddress,
+    credentialToAddress("Preprod", { type: "Key", hash: prover }),
+  );
+};
+
+/**
  * A result label is a claim. Live completion requires its manifest, validated
  * journal, native transactions and healthy-successor decision to agree.
  */
@@ -281,12 +305,7 @@ export const verifyJourneyResultEvidence = async (
     completion.proofToken.outRef,
   );
   assert.equal(proofs[0]!.address, contracts.fraudProof.spendingScriptAddress);
-  const prover = paymentCredentialOf(
-    manifest.referenceScriptDeployAddress,
-  ).hash;
-  assert.deepEqual(Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum), {
-    fraud_prover: prover,
-  });
+  const proofDatum = proofs[0]!.datum!;
   const headerUnit = (hash: string) =>
     toUnit(
       contracts.stateQueue.policyId,
@@ -350,10 +369,7 @@ export const verifyJourneyResultEvidence = async (
       completion.economics.operatorBondInputOutRef!,
     ),
   );
-  assert.equal(
-    reward.address,
-    credentialToAddress("Preprod", { type: "Key", hash: prover }),
-  );
+  verifyJourneyProverPayout(result, proofDatum, reward.address);
   assert.equal(result.diagnostics.status.readiness, "ready");
   assert.equal(result.diagnostics.status.liveness, "live");
   assert.deepEqual(result.diagnostics.status.activeAlerts, []);

@@ -28,6 +28,8 @@ export type JourneyResult = {
   nativeEvidencePath?: string;
   category: JourneyCategory;
   deploymentFingerprint: string;
+  /** The address the run's watcher proved with; it is paid the reward. */
+  proverAddress?: string;
   completion: FraudProofWorkflowTerminal;
   successor: string;
   diagnostics: {
