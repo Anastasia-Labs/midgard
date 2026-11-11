@@ -419,6 +419,8 @@
     "fixtures:cek-serialise-loop-v1:check": "pnpm run build && node scripts/generate-cek-serialise-loop-v1-goldens.mjs --check",
     "fixtures:cek-write-bits-loop-v1:sync": "pnpm run build && node scripts/generate-cek-write-bits-loop-v1-goldens.mjs",
     "fixtures:cek-write-bits-loop-v1:check": "pnpm run build && node scripts/generate-cek-write-bits-loop-v1-goldens.mjs --check",
+    "fixtures:cek-core-routing-v1:sync": "pnpm run build && pnpm --dir ../midgard-sdk run build && node scripts/generate-cek-core-routing-v1-goldens.mjs",
+    "fixtures:cek-core-routing-v1:check": "pnpm run build && pnpm --dir ../midgard-sdk run build && node scripts/generate-cek-core-routing-v1-goldens.mjs --check",
     "fixtures:plutus-data-cbor-decoding-v1:sync": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs",
     "fixtures:plutus-data-cbor-decoding-v1:check": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs --check",
     "fixtures:script-decode-step-v1:sync": "pnpm run build && node scripts/generate-script-decode-step-v1-goldens.mjs",

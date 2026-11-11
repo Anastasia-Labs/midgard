@@ -677,6 +677,38 @@
       }
     },
     {
+      "id": "cek-core-routing-v1",
+      "kind": "golden",
+      "summary": "CEK core routing (the core group a step's mode and arm witness select, and the semantics group of a builtin tag) given by the TypeScript twins cekCoreGroup (midgard-sdk) and midgardCekSemanticGroup: JSON fixture of routed and refused rows plus a whole generated Aiken module holding cek_semantic_chain.core_group and semantic_group to each row.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-core-routing-v1:sync",
+        "demo/midgard-validation:fixtures:cek-core-routing-v1:check"
+      ],
+      "producers": ["demo/midgard-validation", "demo/midgard-sdk"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/cek-core-routing-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-core-routing-v1.generated.json",
+        "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-core-routing-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-core-routing-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check CEK core routing golden vectors"
+      }
+    },
+    {
       "id": "plutus-data-cbor-decoding-v1",
       "kind": "golden",
       "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",

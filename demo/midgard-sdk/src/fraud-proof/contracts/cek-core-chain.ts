@@ -1,5 +1,5 @@
-/** The CEK core group a core step's mode and arm witness select
- * (cek-semantic-chain). */
+/** The CEK core chain (cek-semantic-chain): the group a core step's mode
+ * and arm witness select. */
 
 const MODE = {
   compute: 0n,

@@ -14,6 +14,7 @@
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import type * as SDK from "@al-ft/midgard-sdk";
+import { cekCoreGroup } from "@al-ft/midgard-sdk";
 import {
   buildValidationOneStepArgument,
   CekDecodeRecordRequiredError,
@@ -48,7 +49,6 @@ import {
   isCekCoreBuiltinGroup,
   isCekCoreGroup,
 } from "./one-step-core-chains.js";
-import { cekCoreGroup } from "./one-step-core-group.js";
 import {
   isValidationTracePhase,
   type ValidationTracePhase,

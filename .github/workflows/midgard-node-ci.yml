@@ -518,6 +518,11 @@ jobs:
       - name: Check writeBits loop golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-write-bits-loop-v1
+      # The CEK core routing channel: the Aiken core and semantics group
+      # routing is held to the TypeScript twins on every routed and refused row.
+      - name: Check CEK core routing golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-core-routing-v1
       # The Plutus Data CBOR decoding channel: both entries of the on-chain
       # decoder are held to the TypeScript decoder's outcome on every row.
       - name: Check Plutus Data CBOR decoding golden vectors
