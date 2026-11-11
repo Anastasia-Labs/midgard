@@ -59,7 +59,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
-  onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -79,7 +78,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -166,7 +164,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
           preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,

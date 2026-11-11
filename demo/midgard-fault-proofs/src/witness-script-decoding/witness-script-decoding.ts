@@ -332,14 +332,3 @@ export type WitnessScriptDecodingJournalEntry = Readonly<{
   outputReference: string | null;
   checkpointHash: string | null;
 }>;
-
-export const witnessScriptDecodingEvidenceIdentity = (
-  evidence: WitnessScriptDecodingEvidence,
-): string =>
-  [
-    evidence.finding.subject.transaction_id,
-    evidence.finding.subject.direction.toString(),
-    evidence.finding.scriptIndex.toString(),
-    evidence.fieldCommitmentHex,
-    evidence.itemCommitmentHex,
-  ].join(":");

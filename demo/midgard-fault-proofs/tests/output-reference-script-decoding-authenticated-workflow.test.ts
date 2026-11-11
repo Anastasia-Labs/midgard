@@ -1,11 +1,4 @@
 import {
-  computeMidgardNativeTxId,
-  encodeMidgardTxOutput,
-} from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import {
-  Data,
   type Script,
   type UTxO,
   validatorToScriptHash,
@@ -13,23 +6,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlan,
-  NativeScriptDecodingPlanRoutes,
-} from "../src/native-script-decoding/scan-plan.js";
-import {
   bindOutputReferenceScriptDecodingReferenceScripts,
   OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
-  OutputReferenceOutputControlSchema,
-  outputReferenceScriptControlData,
   type OutputReferenceScriptDecodingDeploymentBinding,
-  outputReferenceScriptDecodingNextOutputScanStage,
-  outputReferenceScriptDecodingNextStructuralStage,
   type OutputReferenceScriptDecodingReferenceScripts,
   outputReferenceScriptDecodingStageFromL1,
-  OutputReferenceScriptResultClasses,
-  prepareOutputReferenceScriptDecodingEvidence,
 } from "../src/output-reference-script-decoding/index.js";
-import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",
@@ -145,82 +127,5 @@ describe("outputReferenceScriptDecoding production workflow", () => {
         step: 7,
       } as never),
     ).toThrow(/exceeds six-step topology/u);
-  });
-
-  it("derives both descriptor and native self-loop exits from authenticated controls", () => {
-    const nativeScript = {
-      type: "all" as const,
-      scripts: Array.from({ length: 128 }, (_unused, index) => ({
-        type: "sig" as const,
-        keyHash: Buffer.alloc(28, index),
-      })),
-    };
-    const transaction = makeNativeTx({
-      spendInputCbors: [],
-      fee: 7n,
-      outputCbor: encodeMidgardTxOutput({
-        address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 1)]),
-        value: { lovelace: 2_000_000n, assets: new Map() },
-        script_ref: {
-          language: "NativeCardano",
-          scriptBytes: Buffer.alloc(0),
-          nativeScript,
-        },
-      }),
-    });
-    const transactionId = computeMidgardNativeTxId(transaction).toString("hex");
-    const evidence = prepareOutputReferenceScriptDecodingEvidence({
-      subject: forcedVerdictSubject({
-        transactionId,
-        sourceKey: { transactionId: "bb".repeat(32), outputIndex: 0n },
-        rejectionReason: {
-          OutputReferenceScriptMalformed: { output_index: 0n },
-        },
-      }),
-      outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(transaction),
-    });
-    const controlCbor = (index: number) =>
-      Data.to(
-        outputReferenceScriptControlData(
-          evidence.outputScanControls[index]!,
-        ) as never,
-        OutputReferenceOutputControlSchema as never,
-      );
-    expect(evidence.outputScanControls.length).toBeGreaterThan(2);
-    expect(
-      outputReferenceScriptDecodingNextOutputScanStage({
-        evidence,
-        controlCbor: controlCbor(0),
-      }),
-    ).toBe("outputScan");
-    expect(
-      outputReferenceScriptDecodingNextOutputScanStage({
-        evidence,
-        controlCbor: controlCbor(evidence.outputScanControls.length - 2),
-      }),
-    ).toBe("referenceBind");
-    const plan = buildNativeScriptDecodingScanPlan({
-      itemBytes: Buffer.from(evidence.referenceScriptItemHex, "hex"),
-      direction: 1,
-    });
-    expect(plan.route).toBe(NativeScriptDecodingPlanRoutes.Machine);
-    if (plan.route !== NativeScriptDecodingPlanRoutes.Machine)
-      throw new Error("native fixture did not enter structural machine");
-    expect(plan.segments.length).toBeGreaterThan(1);
-    expect(
-      outputReferenceScriptDecodingNextStructuralStage({
-        evidence,
-        controlCbor: plan.segments[0]!.controlBefore.cborHex,
-        resultClass: BigInt(OutputReferenceScriptResultClasses.Pending),
-      }),
-    ).toBe("scan");
-    expect(
-      outputReferenceScriptDecodingNextStructuralStage({
-        evidence,
-        controlCbor: plan.segments.at(-1)!.controlBefore.cborHex,
-        resultClass: BigInt(OutputReferenceScriptResultClasses.Pending),
-      }),
-    ).toBe("step06");
   });
 });

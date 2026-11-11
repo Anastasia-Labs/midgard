@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
@@ -12,10 +11,8 @@ import {
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal.js";
 import {
   type FieldItemWidthEvidence,
-  fieldItemWidthEvidenceIdentity,
   type FieldItemWidthStage,
 } from "./field-item-width-illegal.js";
 import { submitFieldItemWidthIllegalCancel } from "./submit-cancel.js";
@@ -33,7 +30,6 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   config,
   observe,
   resolveStage,
-  centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
@@ -42,9 +38,6 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   readonly observe: (identity: string) => Promise<FieldItemWidthStage>;
   readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly centralJournal?: ReturnType<
-    typeof createFieldItemWidthIllegalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -63,23 +56,6 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
       throw new Error(
         "fieldItemWidthIllegal evidence transaction id is not canonical",
       );
-    const familyIdentity = fieldItemWidthEvidenceIdentity(evidence);
-    const transition =
-      action === "submitInit"
-        ? (["none", "step01"] as const)
-        : action === "submitStep01"
-          ? (["step01", "step02"] as const)
-          : action === "submitStep02"
-            ? (["step02", "step03"] as const)
-            : action === "submitStep03"
-              ? (["step03", "proven"] as const)
-              : (["proven", "removed"] as const);
-    await centralJournal?.begin(
-      action,
-      familyIdentity,
-      transition[0],
-      transition[1],
-    );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
       const result = await submitCommittedFieldShapeInit({
@@ -93,14 +69,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step01" as const,
@@ -126,14 +95,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary:
-            preSubmitBoundary ??
-            centralJournal?.boundary(
-              action,
-              familyIdentity,
-              transition[0],
-              transition[1],
-            ),
+          preSubmitBoundary,
         });
         return {
           stage: "step02" as const,
@@ -157,14 +119,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step02" as const,
@@ -173,7 +128,6 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
       };
     }
     if (action === "submitStep02") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitFieldItemWidthIllegalStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -195,48 +149,11 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        certificatePreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        fieldGrammar: journalFaultProofFieldGrammar(
-          config.fieldGrammar,
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes) {
-                  await centralJournal.confirmAuxiliary(txHash);
-                }
-              },
+        publicationPreSubmitBoundary: preSubmitBoundary,
+        certificatePreSubmitBoundary: preSubmitBoundary,
+        fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step03" as const,
@@ -254,14 +171,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "proven" as const,
@@ -288,14 +198,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary:
-        preSubmitBoundary ??
-        centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+      preSubmitBoundary,
     });
     return {
       stage: "removed" as const,

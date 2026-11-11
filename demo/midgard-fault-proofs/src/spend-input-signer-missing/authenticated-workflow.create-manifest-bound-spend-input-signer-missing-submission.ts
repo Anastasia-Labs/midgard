@@ -16,7 +16,6 @@ import {
   required,
   type SpendInputSignerMissingRuntimeLoader,
 } from "./authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
-import { createSpendInputSignerMissingCentralJournalAdapter } from "./central-journal.js";
 import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
 import { submitSpendInputSignerMissingCancel } from "./submit-cancel.js";
 import { submitSpendInputSignerMissingStep01Accepted } from "./submit-step-01-accepted.js";
@@ -25,16 +24,12 @@ import { submitSpendInputSignerMissingStep02 } from "./submit-step-02.js";
 import { submitSpendInputSignerMissingStep03 } from "./submit-step-03.js";
 import { submitSpendInputSignerMissingStep04 } from "./submit-step-04.js";
 import { submitSpendInputSignerMissingStep05 } from "./submit-step-05.js";
-import {
-  type SpendInputSignerStage,
-  spendInputSignerWorkflowEvidenceIdentity,
-} from "./workflow.js";
+import { type SpendInputSignerStage } from "./workflow.js";
 
 export const createManifestBoundSpendInputSignerMissingSubmission = ({
   config,
   observe,
   resolveStage,
-  centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
@@ -43,9 +38,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
   readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
   readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly centralJournal?: ReturnType<
-    typeof createSpendInputSignerMissingCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -66,31 +58,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       throw new Error(
         "spendInputSignerMissing evidence transaction id is not canonical",
       );
-    const familyIdentity = spendInputSignerWorkflowEvidenceIdentity(evidence);
-    const transition =
-      action === "submitInit"
-        ? (["none", "step01"] as const)
-        : action === "submitStep01"
-          ? (["step01", "step02"] as const)
-          : action === "submitStep02"
-            ? // The witness scan continues at step 03; a coordinate that
-              // needs no signer closes at step 05 directly.
-              evidence.signerRequired
-              ? (["step02", "step03"] as const)
-              : (["step02", "step05"] as const)
-            : action === "submitStep03"
-              ? (["step03", "scanning"] as const)
-              : action === "submitScan"
-                ? (["scanning", "step05"] as const)
-                : action === "submitStep05"
-                  ? (["step05", "proven"] as const)
-                  : (["proven", "removed"] as const);
-    await centralJournal?.begin(
-      action,
-      familyIdentity,
-      transition[0],
-      transition[1],
-    );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
       const result = await submitCommittedFieldShapeInit({
@@ -104,14 +71,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step01" as const,
@@ -137,14 +97,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary:
-            preSubmitBoundary ??
-            centralJournal?.boundary(
-              action,
-              familyIdentity,
-              transition[0],
-              transition[1],
-            ),
+          preSubmitBoundary,
         });
         return {
           stage: "step02" as const,
@@ -168,14 +121,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step02" as const,
@@ -184,7 +130,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       };
     }
     if (action === "submitStep02") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -206,38 +151,10 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           config.referenceScripts.fieldPreimageCertificateMint,
         membershipReferenceScriptUtxo:
           config.referenceScripts.witnesses.phasMembershipWithdraw,
-        publicationBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        certificateBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes)
-                  await centralJournal.confirmAuxiliary(txHash);
-              },
+        publicationBoundary: preSubmitBoundary,
+        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.stage,
@@ -246,7 +163,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       };
     }
     if (action === "submitStep03") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep03({
         ownOutputs,
         lucid: config.lucid,
@@ -266,38 +182,10 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         ),
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ),
-        certificateBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes)
-                  await centralJournal.confirmAuxiliary(txHash);
-              },
+        publicationBoundary: preSubmitBoundary,
+        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "scanning" as const,
@@ -306,7 +194,6 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       };
     }
     if (action === "submitScan") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitSpendInputSignerMissingStep04({
         ownOutputs,
         lucid: config.lucid,
@@ -329,38 +216,10 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         ),
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "scanning",
-            auxiliaryHashes,
-          ),
-        certificateBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "scanning",
-            auxiliaryHashes,
-          ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes)
-                  await centralJournal.confirmAuxiliary(txHash);
-              },
+        publicationBoundary: preSubmitBoundary,
+        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.stage,
@@ -378,14 +237,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step05,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "proven" as const,
@@ -412,14 +264,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary:
-        preSubmitBoundary ??
-        centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+      preSubmitBoundary,
     });
     return {
       stage: "removed" as const,

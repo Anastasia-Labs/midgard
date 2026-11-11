@@ -1,4 +1,3 @@
-export * from "./central-journal.js";
 export * from "./contracts.js";
 export * from "./datum-plan.js";
 export * from "./schemas.js";

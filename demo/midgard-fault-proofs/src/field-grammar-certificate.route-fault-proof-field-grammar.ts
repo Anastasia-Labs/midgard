@@ -8,7 +8,6 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import { reuseOrCertifyFaultProofFieldGrammar } from "./field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import type { ResolvedProverSigner } from "./runtime.js";
-import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
 /**
  * The item count up to which a step reads a field's item by walking the
@@ -70,7 +69,6 @@ export type FaultProofFieldGrammarDeployment = Readonly<{
     "spendingScript" | "spendingScriptHash"
   >;
   certificateReferenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }>;
 
 /** The route a step's transaction takes and what its redeemer names. */
@@ -169,9 +167,6 @@ export const routeFaultProofFieldGrammar = async ({
     certificateReferenceScriptUtxo: fieldGrammar.certificateReferenceScriptUtxo,
     carriageUtxos,
     ...(plan.tier === "Certified" ? { fieldPreimageCertificatePolicyId } : {}),
-    ...(fieldGrammar.preSubmitBoundary === undefined
-      ? {}
-      : { preSubmitBoundary: fieldGrammar.preSubmitBoundary }),
   });
   return certifiedFieldGrammarRoute(certificateUtxo, label);
 };

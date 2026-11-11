@@ -43,7 +43,6 @@ import {
   type ProtectedOutputSignerMissingAssemblyRuntime,
   protectedOutputSignerStageFromL1,
 } from "./authenticated-workflow.derive-protected-output-signer-missing-authenticated-source.js";
-import { createProtectedOutputSignerMissingCentralJournalAdapter } from "./central-journal.js";
 import {
   planProtectedOutputSignerOutputOpening,
   planProtectedOutputSignerWitnessOpening,
@@ -89,27 +88,18 @@ export const createManifestBoundProtectedOutputSignerMissingRuntime = ({
   journal,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundProtectedOutputSignerMissingConfig;
   readonly journal: ProtectedOutputSignerJournal;
   readonly observe: ProtectedOutputSignerMissingRuntimeLoader["observe"];
   readonly resolveStage: ProtectedOutputSignerMissingRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createProtectedOutputSignerMissingCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
   const submission = createManifestBoundProtectedOutputSignerMissingSubmission({
     config,
-    observe: async (identity) => {
-      const observed = await observe(identity);
-      await centralJournal?.reconcile(observed);
-      return observed;
-    },
+    observe,
     resolveStage,
-    centralJournal,
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({

@@ -5,7 +5,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
@@ -13,7 +12,6 @@ import {
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { createTransactionOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import { submitTransactionOutputNonCanonicalCancel } from "./submit-cancel.js";
 import { submitTransactionOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted.js";
 import { submitTransactionOutputNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
@@ -23,7 +21,6 @@ import { submitTransactionOutputNonCanonicalStep03Datum } from "./submit-step-03
 import { submitTransactionOutputNonCanonicalStep04 } from "./submit-step-04.js";
 import {
   type TransactionOutputEvidence,
-  transactionOutputEvidenceIdentity,
   type TransactionOutputStage,
 } from "./transaction-output-non-canonical.js";
 import {
@@ -36,7 +33,6 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
   config,
   observe,
   resolveStage,
-  centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
@@ -45,9 +41,6 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
   readonly observe: (identity: string) => Promise<TransactionOutputStage>;
   readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly centralJournal?: ReturnType<
-    typeof createTransactionOutputNonCanonicalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -68,27 +61,6 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
       throw new Error(
         "transactionOutputNonCanonical evidence transaction id is not canonical",
       );
-    const familyIdentity = transactionOutputEvidenceIdentity(evidence);
-    const transition =
-      action === "submitInit"
-        ? (["none", "step01"] as const)
-        : action === "submitStep01"
-          ? (["step01", "step02"] as const)
-          : action === "submitStep02"
-            ? (["step02", "step03"] as const)
-            : action === "submitStep03"
-              ? (["step03", "step04"] as const)
-              : action === "submitStep03Datum"
-                ? (["step03Datum", "step04"] as const)
-                : action === "submitStep04"
-                  ? (["step04", "proven"] as const)
-                  : (["proven", "removed"] as const);
-    await centralJournal?.begin(
-      action,
-      familyIdentity,
-      transition[0],
-      transition[1],
-    );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
       const result = await submitCommittedFieldShapeInit({
@@ -102,14 +74,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step01" as const,
@@ -135,14 +100,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary:
-            preSubmitBoundary ??
-            centralJournal?.boundary(
-              action,
-              familyIdentity,
-              transition[0],
-              transition[1],
-            ),
+          preSubmitBoundary,
         });
         return {
           stage: "step02" as const,
@@ -166,14 +124,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step02" as const,
@@ -182,7 +133,6 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
       };
     }
     if (action === "submitStep02") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitTransactionOutputNonCanonicalStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -204,48 +154,11 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        certificatePreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        fieldGrammar: journalFaultProofFieldGrammar(
-          config.fieldGrammar,
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes) {
-                  await centralJournal.confirmAuxiliary(txHash);
-                }
-              },
+        publicationPreSubmitBoundary: preSubmitBoundary,
+        certificatePreSubmitBoundary: preSubmitBoundary,
+        fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step03" as const,
@@ -254,7 +167,6 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
       };
     }
     if (action === "submitStep03") {
-      const auxiliaryHashes: string[] = [];
       const result = await submitTransactionOutputNonCanonicalStep03({
         lucid: config.lucid,
         contracts: config.contracts,
@@ -275,38 +187,8 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ),
-        certificatePreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "certificate",
-            familyIdentity,
-            "step03",
-            auxiliaryHashes,
-          ),
-        onCarriageReady:
-          centralJournal === undefined
-            ? undefined
-            : async () => {
-                for (const txHash of auxiliaryHashes)
-                  await centralJournal.confirmAuxiliary(txHash);
-              },
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.nextStage,
@@ -326,14 +208,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         ),
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03Datum,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.nextStage,
@@ -351,14 +226,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step04,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "proven" as const,
@@ -386,14 +254,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary:
-        preSubmitBoundary ??
-        centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+      preSubmitBoundary,
     });
     return {
       stage: "removed" as const,

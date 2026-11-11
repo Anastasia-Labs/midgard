@@ -1,4 +1,3 @@
-export * from "./central-journal.js";
 export * from "./contracts.js";
 export * from "./submit-cancel.js";
 export * from "./submit-init.js";

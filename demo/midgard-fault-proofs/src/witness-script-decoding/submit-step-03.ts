@@ -204,7 +204,6 @@ export const submitWitnessScriptDecodingStep03 = async ({
   evidence,
   referenceScriptUtxo,
   preSubmitBoundary,
-  preSubmitBoundaryForResult,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -215,9 +214,6 @@ export const submitWitnessScriptDecodingStep03 = async ({
   readonly evidence: WitnessScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundaryForResult?: (
-    closed: boolean,
-  ) => Promise<FraudProofPreSubmitBoundary | undefined>;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
@@ -289,10 +285,6 @@ export const submitWitnessScriptDecodingStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const resolvedPreSubmitBoundary =
-    preSubmitBoundaryForResult === undefined
-      ? preSubmitBoundary
-      : await preSubmitBoundaryForResult(closes);
   const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
@@ -304,7 +296,7 @@ export const submitWitnessScriptDecodingStep03 = async ({
     nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary: resolvedPreSubmitBoundary,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   if (outputIndex === undefined)

@@ -6,7 +6,6 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "./workflow/deployment-manifest-binding.js";
-import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
 /** The deployment members a certified field read runs against. */
 export const FIELD_GRAMMAR_CERTIFICATE_SPEND = "fieldGrammarCertificateSpend";
@@ -96,77 +95,4 @@ export const requireFaultProofFieldGrammarDeployment = (
     );
   }
   return fieldGrammar;
-};
-
-/**
- * The deployment a journaled step hands its submitter. The certificate is the
- * prover's own transaction ahead of the step: under a central journal it is
- * journaled as an auxiliary through `certificateBoundary`, and it never takes
- * the step's own boundary.
- */
-export const journalFaultProofFieldGrammar = (
-  fieldGrammar: FaultProofFieldGrammarDeployment,
-  certificateBoundary: FraudProofPreSubmitBoundary | undefined,
-): FaultProofFieldGrammarDeployment =>
-  certificateBoundary === undefined
-    ? fieldGrammar
-    : Object.freeze({
-        ...fieldGrammar,
-        preSubmitBoundary: certificateBoundary,
-      });
-
-/**
- * The certificate and step boundary for a journaled step whose certificate
- * lands after its other auxiliaries were confirmed: the certificate is
- * journaled as its own auxiliary, and the step boundary confirms it before
- * the step itself.
- */
-export const journalFaultProofFieldGrammarAfterCarriage = <Stage>({
-  fieldGrammar,
-  journal,
-  familyIdentity,
-  stage,
-  stepBoundary,
-}: {
-  readonly fieldGrammar: FaultProofFieldGrammarDeployment;
-  readonly journal:
-    | Readonly<{
-        auxiliaryBoundary: (
-          kind: "certificate",
-          familyIdentity: string,
-          stage: Stage,
-          captured: string[],
-        ) => FraudProofPreSubmitBoundary;
-        confirmAuxiliary: (txHash: string) => Promise<void>;
-      }>
-    | undefined;
-  readonly familyIdentity: string;
-  readonly stage: Stage;
-  readonly stepBoundary: FraudProofPreSubmitBoundary | undefined;
-}): Readonly<{
-  fieldGrammar: FaultProofFieldGrammarDeployment;
-  preSubmitBoundary: FraudProofPreSubmitBoundary | undefined;
-}> => {
-  if (journal === undefined)
-    return { fieldGrammar, preSubmitBoundary: stepBoundary };
-  const certificateHashes: string[] = [];
-  return {
-    fieldGrammar: journalFaultProofFieldGrammar(
-      fieldGrammar,
-      journal.auxiliaryBoundary(
-        "certificate",
-        familyIdentity,
-        stage,
-        certificateHashes,
-      ),
-    ),
-    preSubmitBoundary:
-      stepBoundary === undefined
-        ? undefined
-        : async (transaction) => {
-            for (const txHash of certificateHashes)
-              await journal.confirmAuxiliary(txHash);
-            await stepBoundary(transaction);
-          },
-  };
 };

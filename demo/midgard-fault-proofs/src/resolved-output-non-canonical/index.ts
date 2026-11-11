@@ -1,5 +1,4 @@
 export * from "./authenticated-workflow.js";
-export * from "./central-journal.js";
 export * from "./contracts.js";
 export * from "./datum-plan.js";
 export * from "./reconstruction-plan.js";

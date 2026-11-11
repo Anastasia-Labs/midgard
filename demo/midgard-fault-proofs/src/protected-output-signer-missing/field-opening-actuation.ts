@@ -32,7 +32,6 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   publicationBoundary,
   certificateBoundary,
   label,
-  onReady,
   publishedCarriageUtxos,
   suppliedCertificateUtxo,
   ownOutputs = createOwnOutputJournal(),
@@ -48,7 +47,6 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly publicationBoundary?: FraudProofPreSubmitBoundary;
   readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly label: string;
-  readonly onReady?: () => Promise<void>;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -97,7 +95,6 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
     stepReference,
     ...(certificate === undefined ? [] : [certificate]),
   ];
-  await onReady?.();
   return Object.freeze({
     openingFor: (ctx: RedeemerContext): FieldOpening =>
       faultProofFieldOpening({

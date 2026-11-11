@@ -29,7 +29,6 @@ import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
-import { createTransactionOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
   runTransactionOutputProof,
   type TransactionOutputEvidence,
@@ -71,28 +70,19 @@ export const createManifestBoundTransactionOutputNonCanonicalRuntime = ({
   journal,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
   readonly journal: TransactionOutputJournal;
   readonly observe: TransactionOutputNonCanonicalRuntimeLoader["observe"];
   readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createTransactionOutputNonCanonicalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
   const submission = createManifestBoundTransactionOutputNonCanonicalSubmission(
     {
       config,
-      observe: async (identity) => {
-        const observed = await observe(identity);
-        await centralJournal?.reconcile(observed);
-        return observed;
-      },
+      observe,
       resolveStage,
-      centralJournal,
       stateQueueMutationLeaseCoordinator,
     },
   );

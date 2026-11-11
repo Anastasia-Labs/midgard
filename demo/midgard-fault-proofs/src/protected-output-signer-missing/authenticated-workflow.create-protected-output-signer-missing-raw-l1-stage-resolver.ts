@@ -1,9 +1,7 @@
 import {
   type FraudProofCatalogueCategoryName,
-  missingSignatureFieldWalkCheckpoint,
   PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
 
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
@@ -11,15 +9,8 @@ import {
   type ManifestBoundProtectedOutputSignerMissingConfig,
   type ProtectedOutputSignerMissingAuthenticatedSource,
   type ProtectedOutputSignerMissingRuntimeLoader,
-  type ProtectedOutputSignerMissingStage,
   required,
 } from "./authenticated-workflow.create-protected-output-signer-missing-bound-config.js";
-import { planProtectedOutputSignerWitnessOpening } from "./field-plans.js";
-import {
-  PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
-  type ProtectedOutputSignerMissingEvidence,
-} from "./protected-output-signer-missing.js";
-import { ProtectedOutputSignerStep04DatumSchema } from "./schemas.js";
 
 export const createProtectedOutputSignerMissingRawL1StageResolver =
   ({
@@ -110,62 +101,3 @@ export const createProtectedOutputSignerMissingRawL1StageResolver =
       ),
     };
   };
-
-export const protectedOutputSignerScanTargetFromAuthenticatedStage = ({
-  config,
-  stage,
-  evidence,
-}: {
-  readonly config: ManifestBoundProtectedOutputSignerMissingConfig;
-  readonly stage: ProtectedOutputSignerMissingStage;
-  readonly evidence: ProtectedOutputSignerMissingEvidence;
-}): "scanning" | "step05" => {
-  const threadUtxo = required(stage.threadUtxo, "scan thread UTxO");
-  if (threadUtxo.datum == null)
-    throw new Error("protectedOutputSignerMissing scan thread datum is absent");
-  const datum = Data.from(
-    threadUtxo.datum,
-    ProtectedOutputSignerStep04DatumSchema as never,
-  ) as {
-    data: { checkpoint_hash: string };
-  };
-  const planned = planProtectedOutputSignerWitnessOpening({
-    evidence,
-    nativeTxCompactCbor: required(
-      stage.nativeTxCompactCbor,
-      "native transaction compact CBOR",
-    ),
-    witnessSetCompactCbor: required(
-      stage.witnessSetCompactCbor,
-      "witness-set compact CBOR",
-    ),
-    owner: config.signer.paymentKeyHash,
-  });
-  const cursors: number[] = [];
-  for (
-    let cursor = 0;
-    cursor < planned.itemCount;
-    cursor += PROTECTED_OUTPUT_SIGNER_SCAN_BATCH
-  )
-    cursors.push(cursor);
-  if (planned.itemCount === 0) cursors.push(0);
-  const checkpoint = cursors.find(
-    (nextItemIndex) =>
-      missingSignatureFieldWalkCheckpoint({
-        txId: evidence.subject.transaction_id,
-        itemCount: planned.itemCount,
-        totalLength: planned.preimage.length,
-        nextItemIndex,
-      }).checkpointHash === datum.data.checkpoint_hash,
-  );
-  if (checkpoint === undefined)
-    throw new Error(
-      "protectedOutputSignerMissing authenticated scan checkpoint is not on the deterministic frontier",
-    );
-  return Math.min(
-    planned.itemCount,
-    checkpoint + PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
-  ) === planned.itemCount
-    ? "step05"
-    : "scanning";
-};

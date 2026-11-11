@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-
-import type { OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
-
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES = [
   "none",
   "step01",
@@ -44,22 +40,3 @@ export interface OutputReferenceScriptDecodingJournal {
   ): Promise<readonly OutputReferenceScriptDecodingJournalEntry[]>;
   append(entry: OutputReferenceScriptDecodingJournalEntry): Promise<void>;
 }
-export const outputReferenceScriptDecodingEvidenceIdentity = (
-  evidence: OutputReferenceScriptDecodingEvidence,
-): string =>
-  createHash("sha256")
-    .update(
-      JSON.stringify(
-        {
-          category: "outputReferenceScriptDecoding",
-          subject: evidence.subject,
-          outputIndex: evidence.outputIndex,
-          transaction: evidence.canonicalTransactionCborHex,
-          output: evidence.outputCborHex,
-          script: evidence.referenceScriptItemHex,
-        },
-        (_key, value: unknown) =>
-          typeof value === "bigint" ? value.toString() : value,
-      ),
-    )
-    .digest("hex");

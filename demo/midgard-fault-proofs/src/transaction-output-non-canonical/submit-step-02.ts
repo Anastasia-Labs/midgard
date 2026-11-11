@@ -62,7 +62,6 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
-  onCarriageReady,
   fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -83,7 +82,6 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -180,7 +178,6 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     fieldGrammar,
     label: "transaction-output-non-canonical field opening",
   });
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,

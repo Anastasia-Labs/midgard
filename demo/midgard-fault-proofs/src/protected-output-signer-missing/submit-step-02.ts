@@ -43,7 +43,6 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   certificateReferenceScriptUtxo,
   publicationBoundary,
   certificateBoundary,
-  onCarriageReady,
   fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -61,7 +60,6 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   readonly certificateReferenceScriptUtxo: UTxO;
   readonly publicationBoundary?: FraudProofPreSubmitBoundary;
   readonly certificateBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   /** The field grammar certificate, for an outputs field the walk cannot read. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -118,7 +116,6 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     publicationBoundary,
     certificateBoundary,
     label: "protected-output-signer-missing outputs",
-    onReady: onCarriageReady,
   });
   const coordinateOutOfRange = evidence.route === "coordinate_out_of_range";
   // The out-of-range arm reads the field's item count; every other arm reads

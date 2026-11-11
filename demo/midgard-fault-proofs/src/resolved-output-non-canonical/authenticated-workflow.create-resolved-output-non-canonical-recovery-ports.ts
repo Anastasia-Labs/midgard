@@ -45,7 +45,6 @@ import {
   type ManifestBoundResolvedOutputNonCanonicalConfig,
   RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
-import { createResolvedOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
@@ -63,27 +62,18 @@ export const createManifestBoundResolvedOutputNonCanonicalRuntime = ({
   journal,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
   readonly journal: ResolvedOutputJournal;
   readonly observe: ResolvedOutputNonCanonicalRuntimeLoader["observe"];
   readonly resolveStage: ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createResolvedOutputNonCanonicalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
   const submission = createManifestBoundResolvedOutputNonCanonicalSubmission({
     config,
-    observe: async (identity) => {
-      const observed = await observe(identity);
-      await centralJournal?.reconcile(observed);
-      return observed;
-    },
+    observe,
     resolveStage,
-    centralJournal,
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({

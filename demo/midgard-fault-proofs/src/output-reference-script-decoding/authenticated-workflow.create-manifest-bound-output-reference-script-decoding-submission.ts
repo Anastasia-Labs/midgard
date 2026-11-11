@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { journalFaultProofFieldGrammar } from "../field-grammar-certificate.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
@@ -18,11 +17,6 @@ import {
   type OutputReferenceScriptDecodingRuntimeLoader,
   required,
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
-import {
-  outputReferenceScriptDecodingOutputScanTarget,
-  outputReferenceScriptDecodingStructuralTarget,
-} from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
-import { createOutputReferenceScriptDecodingCentralJournalAdapter } from "./central-journal.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 import { submitOutputReferenceScriptDecodingCancel } from "./submit-cancel.js";
@@ -33,16 +27,12 @@ import { submitOutputReferenceScriptDecodingStep03 } from "./submit-step-03.js";
 import { submitOutputReferenceScriptDecodingStep04 } from "./submit-step-04.js";
 import { submitOutputReferenceScriptDecodingStep05 } from "./submit-step-05.js";
 import { submitOutputReferenceScriptDecodingStep06 } from "./submit-step-06.js";
-import {
-  outputReferenceScriptDecodingEvidenceIdentity,
-  type OutputReferenceScriptDecodingStage,
-} from "./workflow.js";
+import { type OutputReferenceScriptDecodingStage } from "./workflow.js";
 
 export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   config,
   observe,
   resolveStage,
-  centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
@@ -53,9 +43,6 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   ) => Promise<OutputReferenceScriptDecodingStage>;
   readonly resolveStage: OutputReferenceScriptDecodingRuntimeLoader["resolveStage"];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly centralJournal?: ReturnType<
-    typeof createOutputReferenceScriptDecodingCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -77,43 +64,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       throw new Error(
         "outputReferenceScriptDecoding evidence transaction id is not canonical",
       );
-    const familyIdentity =
-      outputReferenceScriptDecodingEvidenceIdentity(evidence);
     const stage = await resolveStage({ action, evidence });
-    const transition =
-      action === "submitInit"
-        ? (["none", "step01"] as const)
-        : action === "submitStep01"
-          ? (["step01", "step02"] as const)
-          : action === "submitStep02"
-            ? (["step02", "outputScan"] as const)
-            : action === "submitOutputScan"
-              ? ([
-                  "outputScan",
-                  outputReferenceScriptDecodingOutputScanTarget({
-                    stage,
-                    evidence,
-                  }),
-                ] as const)
-              : action === "submitReferenceBind"
-                ? (["referenceBind", "scan"] as const)
-                : action === "submitStructuralScan"
-                  ? ([
-                      "scan",
-                      outputReferenceScriptDecodingStructuralTarget({
-                        stage,
-                        evidence,
-                      }),
-                    ] as const)
-                  : action === "submitStep06"
-                    ? (["step06", "proven"] as const)
-                    : (["proven", "removed"] as const);
-    await centralJournal?.begin(
-      action,
-      familyIdentity,
-      transition[0],
-      transition[1],
-    );
     if (action === "submitInit") {
       const result = await submitCommittedFieldShapeInit({
         lucid: config.lucid,
@@ -126,14 +77,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step01" as const,
@@ -159,14 +103,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary:
-            preSubmitBoundary ??
-            centralJournal?.boundary(
-              action,
-              familyIdentity,
-              transition[0],
-              transition[1],
-            ),
+          preSubmitBoundary,
         });
         return {
           stage: "step02" as const,
@@ -190,14 +127,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "step02" as const,
@@ -206,13 +136,6 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       };
     }
     if (action === "submitStep02") {
-      const auxiliaryHashes: string[] = [];
-      const certificateBoundary = centralJournal?.auxiliaryBoundary(
-        "certificate",
-        familyIdentity,
-        "step02",
-        auxiliaryHashes,
-      );
       const result = await submitOutputReferenceScriptDecodingStep02({
         ownOutputs,
         lucid: config.lucid,
@@ -232,31 +155,12 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         publishCarriage: true,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "step02",
-            auxiliaryHashes,
-          ),
-        certificatePreSubmitBoundary: preSubmitBoundary ?? certificateBoundary,
-        fieldGrammar: journalFaultProofFieldGrammar(
-          config.fieldGrammar,
-          certificateBoundary,
-        ),
+        publicationPreSubmitBoundary: preSubmitBoundary,
+        certificatePreSubmitBoundary: preSubmitBoundary,
+        fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
-      for (const txHash of auxiliaryHashes)
-        await centralJournal?.confirmAuxiliary(txHash);
       return {
         stage: "outputScan" as const,
         txHash: result.txHash,
@@ -272,14 +176,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step03 thread out-ref"),
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.terminal
@@ -290,13 +187,6 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       };
     }
     if (action === "submitReferenceBind") {
-      const auxiliaryHashes: string[] = [];
-      const certificateBoundary = centralJournal?.auxiliaryBoundary(
-        "certificate",
-        familyIdentity,
-        "referenceBind",
-        auxiliaryHashes,
-      );
       const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
         lucid: config.lucid,
         deployment: config.scriptDecode,
@@ -328,31 +218,12 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
         publishCarriage: true,
-        publicationPreSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.auxiliaryBoundary(
-            "publication",
-            familyIdentity,
-            "referenceBind",
-            auxiliaryHashes,
-          ),
-        certificatePreSubmitBoundary: preSubmitBoundary ?? certificateBoundary,
-        fieldGrammar: journalFaultProofFieldGrammar(
-          config.fieldGrammar,
-          certificateBoundary,
-        ),
+        publicationPreSubmitBoundary: preSubmitBoundary,
+        certificatePreSubmitBoundary: preSubmitBoundary,
+        fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
-      for (const txHash of auxiliaryHashes)
-        await centralJournal?.confirmAuxiliary(txHash);
       return {
         stage: "scan" as const,
         txHash: result.txHash,
@@ -368,14 +239,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step05 thread out-ref"),
         evidence,
         referenceScriptUtxo: config.referenceScripts.step05,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: result.closed ? ("step06" as const) : ("scan" as const),
@@ -393,14 +257,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step06,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary:
-          preSubmitBoundary ??
-          centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+        preSubmitBoundary,
       });
       return {
         stage: "proven" as const,
@@ -427,14 +284,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary:
-        preSubmitBoundary ??
-        centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+      preSubmitBoundary,
     });
     return {
       stage: "removed" as const,
@@ -475,14 +325,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         config.referenceScripts.step05,
       ][index]!,
       witnessReferenceScripts: config.referenceScripts.witnesses,
-      preSubmitBoundary:
-        preSubmitBoundary ??
-        centralJournal?.boundary(
-          "cancel",
-          outputReferenceScriptDecodingEvidenceIdentity(evidence),
-          current,
-          "cancelled",
-        ),
+      preSubmitBoundary,
     });
     return {
       stage: "cancelled" as const,

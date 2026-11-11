@@ -45,7 +45,6 @@ import {
   type SpendInputSignerMissingAssemblyRuntime,
   spendInputSignerStageFromL1,
 } from "./authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
-import { createSpendInputSignerMissingCentralJournalAdapter } from "./central-journal.js";
 import {
   planSpendInputSignerInputOpening,
   planSpendInputSignerWitnessOpening,
@@ -91,27 +90,18 @@ export const createManifestBoundSpendInputSignerMissingRuntime = ({
   journal,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundSpendInputSignerMissingConfig;
   readonly journal: SpendInputSignerJournal;
   readonly observe: SpendInputSignerMissingRuntimeLoader["observe"];
   readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createSpendInputSignerMissingCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
   const submission = createManifestBoundSpendInputSignerMissingSubmission({
     config,
-    observe: async (identity) => {
-      const observed = await observe(identity);
-      await centralJournal?.reconcile(observed);
-      return observed;
-    },
+    observe,
     resolveStage,
-    centralJournal,
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({

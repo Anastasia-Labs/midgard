@@ -39,8 +39,6 @@ export {
 export {
   FIELD_GRAMMAR_CERTIFICATE_MINT,
   FIELD_GRAMMAR_CERTIFICATE_SPEND,
-  journalFaultProofFieldGrammar,
-  journalFaultProofFieldGrammarAfterCarriage,
   requireFaultProofFieldGrammarDeployment,
   resolveFaultProofFieldGrammarDeployment,
 } from "./field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";

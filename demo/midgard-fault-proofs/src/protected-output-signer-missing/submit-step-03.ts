@@ -36,7 +36,6 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
   certificateReferenceScriptUtxo,
   publicationBoundary,
   certificateBoundary,
-  onCarriageReady,
   publishedCarriageUtxos,
   certificateUtxo,
   preSubmitBoundary,
@@ -55,7 +54,6 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
   readonly certificateReferenceScriptUtxo: UTxO;
   readonly publicationBoundary?: FraudProofPreSubmitBoundary;
   readonly certificateBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -118,7 +116,6 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
     publicationBoundary,
     certificateBoundary,
     label: "protected-output-signer-missing address witnesses",
-    onReady: onCarriageReady,
     publishedCarriageUtxos,
     suppliedCertificateUtxo: certificateUtxo,
   });

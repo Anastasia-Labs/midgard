@@ -94,7 +94,6 @@ export const submitSpendInputSignerMissingStep04 = async ({
   publishCarriage = false,
   publicationBoundary,
   certificateBoundary,
-  onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
@@ -113,7 +112,6 @@ export const submitSpendInputSignerMissingStep04 = async ({
   readonly publishCarriage?: boolean;
   readonly publicationBoundary?: FraudProofPreSubmitBoundary;
   readonly certificateBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
@@ -227,7 +225,6 @@ export const submitSpendInputSignerMissingStep04 = async ({
           preSubmitBoundary: certificateBoundary,
         })
       : undefined;
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,

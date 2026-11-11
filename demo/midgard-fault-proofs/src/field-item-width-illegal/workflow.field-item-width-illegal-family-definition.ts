@@ -28,7 +28,6 @@ import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
-import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal.js";
 import {
   type FieldItemWidthEvidence,
   type FieldItemWidthJournal,
@@ -80,27 +79,18 @@ export const createManifestBoundFieldItemWidthIllegalRuntime = ({
   journal,
   observe,
   resolveStage,
-  centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundFieldItemWidthIllegalConfig;
   readonly journal: FieldItemWidthJournal;
   readonly observe: FieldItemWidthIllegalRuntimeLoader["observe"];
   readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createFieldItemWidthIllegalCentralJournalAdapter
-  >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
   const submission = createManifestBoundFieldItemWidthIllegalSubmission({
     config,
-    observe: async (identity) => {
-      const observed = await observe(identity);
-      await centralJournal?.reconcile(observed);
-      return observed;
-    },
+    observe,
     resolveStage,
-    centralJournal,
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({

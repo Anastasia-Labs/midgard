@@ -49,13 +49,7 @@ export {
   type OutputReferenceScriptDecodingDeploymentBinding,
   type OutputReferenceScriptDecodingReferenceScripts,
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
-export {
-  createOutputReferenceScriptDecodingRawL1StageResolver,
-  outputReferenceScriptDecodingNextOutputScanStage,
-  outputReferenceScriptDecodingNextStructuralStage,
-  outputReferenceScriptDecodingOutputScanTarget,
-  outputReferenceScriptDecodingStructuralTarget,
-} from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
+export { createOutputReferenceScriptDecodingRawL1StageResolver } from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
 export {
   deriveOutputReferenceScriptDecodingAuthenticatedSource,
   outputReferenceScriptDecodingStageFromL1,

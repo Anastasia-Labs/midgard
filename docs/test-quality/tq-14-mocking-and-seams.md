@@ -26,13 +26,6 @@ must cover real external behavior where required.
   repeated fetch counts. Determine whether each repeat protects freshness or
   is incidental before suggesting a cache or deleting the count. Identical
   returned idle state does not make the no-lease assertions redundant.
-- [The resolved-output journal adapter](../../demo/midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.ts)
-  accepts a `testOnlyJournalCategoryAlias` only under `NODE_ENV=test` and uses
-  it in workflow identity. Similar aliases occur in related family adapters.
-  Identify which tests claim the real category's journal/recovery behavior.
-  Migrate those tests to the real category where possible and review whether
-  the alias can be isolated to test support. This is a semantic decision-path
-  difference, unlike a read-only diagnostic accessor.
 - Historical preimage, cancellation, and event-handler tests with mocked
   collaborators: check which production function still runs. Retain useful
   orchestration coverage; add real admission/persistence coverage when the

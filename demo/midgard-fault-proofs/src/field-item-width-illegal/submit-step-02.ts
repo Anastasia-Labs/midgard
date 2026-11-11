@@ -66,7 +66,6 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   referenceScriptUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
-  onCarriageReady,
   fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -87,7 +86,6 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void>;
   /**
    * The field grammar certificate, for an outputs (2) or mint (5) field past
    * the walked limit or under tier 3; every other field is walked.
@@ -217,7 +215,6 @@ export const submitFieldItemWidthIllegalStep02 = async ({
           fieldGrammar,
           label: "field-item-width-illegal field opening",
         });
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,

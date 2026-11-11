@@ -72,7 +72,6 @@ export const submitWitnessScriptDecodingStep02 = async ({
   scriptDecodeRecordUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
-  onCarriageReady,
   fieldGrammar,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -101,7 +100,6 @@ export const submitWitnessScriptDecodingStep02 = async ({
   readonly scriptDecodeRecordUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly onCarriageReady?: () => Promise<void> | void;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -202,7 +200,6 @@ export const submitWitnessScriptDecodingStep02 = async ({
     fieldGrammar,
     label: `${FAMILY} step 02 field 6`,
   });
-  await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,

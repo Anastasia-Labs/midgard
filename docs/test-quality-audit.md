@@ -165,12 +165,11 @@ submission, retries, resource use, or idempotency; order may matter for
 persistence and authorization. Neither should be discarded solely because a
 state assertion also exists.
 
-Review the semantic `testOnlyJournalCategoryAlias` branches in the fault-proof
-journals separately from ordinary injected constructors and diagnostic accessors.
-A test-only behavior fork can make a test exercise different logic, while an
-injected collaborator can make the real logic testable. Neither `ForTest` nor
-`NODE_ENV` alone identifies the defect. See
-[TQ-14](test-quality/tq-14-mocking-and-seams.md).
+Review semantic test-only branches separately from ordinary injected
+constructors and diagnostic accessors. A test-only behavior fork can make a
+test exercise different logic, while an injected collaborator can make the real
+logic testable. Neither `ForTest` nor `NODE_ENV` alone identifies the defect.
+See [TQ-14](test-quality/tq-14-mocking-and-seams.md).
 
 ## 7. Redundant duplicates and template drift
 

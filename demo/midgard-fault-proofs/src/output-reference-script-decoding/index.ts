@@ -1,5 +1,4 @@
 export * from "./authenticated-workflow.js";
-export * from "./central-journal.js";
 export * from "./contracts.js";
 export * from "./output-reference-script-decoding.canonical-findings.js";
 export * from "./output-reference-script-decoding.js";
