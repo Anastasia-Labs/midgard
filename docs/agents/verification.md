@@ -33,15 +33,15 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
    that target. A feature branch's own upstream is not its acceptance base.
    Review the actual proposed merge tree; a historical ancestor does not
    describe work still unmerged. [script: scripts/preflight/run.mjs]
-2. Run locally scheduled checks and focused regressions once on frozen inputs.
-   Node CI owns the ordinary PR runtime matrix, including core/test-support
-   typechecks. The SDK preparation recipe is exactly its full Lucid/SDK suites
-   and shares that owner; changed recipes retain local execution. Required jobs
-   follow actual workflow paths: wait for them with `ci-status.mjs <pr> --wait`
-   (debugging-ci-failures skill), which verifies census, exact head and
-   conclusions, never a `gh run watch` or sleep loop. Node CI gate requires
-   every dependency to succeed. Conditional traced-refusal selectors and
-   distinct acceptance profiles remain intact. [review]
+2. Run locally scheduled checks and focused regressions once on frozen inputs. Node
+   CI owns the ordinary PR runtime matrix, including core/test-support typechecks.
+   The SDK preparation recipe is exactly its full Lucid/SDK suites and shares that
+   owner; a changed recipe runs locally. Required jobs follow actual workflow paths:
+   wait for them with `ci-status.mjs <pr> --wait` (debugging-ci-failures skill),
+   which verifies census, exact head and conclusions, never a `gh run watch` or
+   sleep loop. Node CI gate requires every dependency to succeed. Traced refusals
+   are selected by the preflight registry (`traced-refusals`): a changed validator
+   selects the pin files that reach it. CI imports the same trigger set. [review]
 3. `--strict --ci-run <Repo-Tools-run-id>` admits only required-checks generation
    and build-guard enrollment reuse, verifying merge tree/parents, inputs,
    current remote target, Node profile, commands and completed steps. Dirty,

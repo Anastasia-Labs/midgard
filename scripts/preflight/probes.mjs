@@ -27,12 +27,15 @@ export const START_TEST_POSTGRES = "bash scripts/start-test-postgres.sh";
 const CORE_DIST_CHECK = "demo/scripts/assert-midgard-core-dist-current.mjs";
 const BLUEPRINT_STAMP_MODULE = "demo/scripts/lib/blueprint-stamp.mjs";
 const WORKTREE_IDENTITY_MODULE = "scripts/lib/worktree-identity.mjs";
+const TRACED_REFUSAL_VITEST =
+  "demo/midgard-fault-proofs/node_modules/.bin/vitest";
 // The modules a capability's probe loads or runs by path rather than by
 // import, so a static import walk of the runner cannot see them (see
 // scripts/ci/preflight-runner-closure.mjs).
 export const PROBE_MODULES = {
   "core-dist": [CORE_DIST_CHECK],
   blueprint: [BLUEPRINT_STAMP_MODULE],
+  "traced-blueprint": [BLUEPRINT_STAMP_MODULE],
   "db-prefix": [WORKTREE_IDENTITY_MODULE],
 };
 
@@ -170,6 +173,34 @@ export const probeBlueprintStamp = async ({ root }) => {
     `blueprint stamp ${String(verdict?.status)}${verdict?.detail ? `: ${verdict.detail}` : ""}`,
     status === "available" ? undefined : verdict?.fix,
   );
+};
+
+// Whether the traced-refusal run can start: it swaps traced modules into the
+// stamped plain blueprint, which must be fresh, and runs the fault-proofs
+// package's own Vitest. The run builds or reuses the traced blueprint itself,
+// with the aiken capability.
+export const probeTracedBlueprint = async ({ root }) => {
+  const plain = await probeBlueprintStamp({ root });
+  if (plain.status !== "available") {
+    return result(
+      "traced-blueprint",
+      plain.status,
+      `the plain blueprint traced modules are swapped into: ${plain.detail}`,
+      plain.fix,
+    );
+  }
+  return existsSync(resolve(root, TRACED_REFUSAL_VITEST))
+    ? result(
+        "traced-blueprint",
+        "available",
+        `traced modules swap into the fresh plain blueprint (${plain.detail})`,
+      )
+    : result(
+        "traced-blueprint",
+        "missing",
+        `${TRACED_REFUSAL_VITEST} is absent`,
+        "pnpm --dir demo install --frozen-lockfile",
+      );
 };
 
 export const probeCoreDist = ({ root }) => {
@@ -341,6 +372,7 @@ export const createProbeSet = ({ root, env = process.env, overrides = {} }) => {
     aiken: () => probeAiken(),
     postgres: () => probePostgres({ env }),
     blueprint: () => probeBlueprintStamp({ root }),
+    "traced-blueprint": () => probeTracedBlueprint({ root }),
     "core-dist": () => probeCoreDist({ root }),
     "node-modules": () => probeNodeModules({ root }),
     "docs-site-node-modules": () =>

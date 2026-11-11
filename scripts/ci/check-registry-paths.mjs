@@ -37,7 +37,6 @@ import { GATES } from "../contrib/gates.mjs";
 import { packageByName } from "../contrib/files.mjs";
 import { buildRegistry, VERIFICATION_ONLY } from "../preflight/registry.mjs";
 import { globToRegExp } from "../preflight/derive.mjs";
-import { tracedRefusalInputs } from "./traced-refusal-inputs.mjs";
 
 const json = (root, path) =>
   JSON.parse(readFileSync(resolve(root, path), "utf8"));
@@ -111,11 +110,6 @@ export const REGISTRIES = [
         ),
       ];
     },
-  },
-  {
-    name: "traced-refusal inputs",
-    source: "scripts/ci/traced-refusal-inputs.mjs",
-    entries: () => tracedRefusalInputs.map((path) => entry(path)),
   },
   {
     name: "CI file durations",

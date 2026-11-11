@@ -24,6 +24,7 @@ import "../../onchain/aiken/scripts/guard-focused-selector.mjs";
 import "./derive.mjs";
 import "./registry.demo-checks.mjs";
 import "./registry.tooling-checks.mjs";
+import "./registry.traced-refusals.mjs";
 import "./registry.select-checks.mjs";
 export { IGNORED_PATHS } from "./derive.mjs";
 export {

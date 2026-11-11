@@ -83,9 +83,10 @@ is stated next to it.
    `expectOnchainRefusal`; a support module's pin runs in every `it` case
    that reaches it). The fault-proofs script
    `test:traced-refusals`, which CI runs whenever a change touches one of its
-   inputs (`scripts/ci/traced-refusal-inputs.mjs`), swaps each named module
-   for its verbose-traced build and fails any pin not checked against that
-   trace.
+   inputs (`scripts/preflight/registry.traced-refusals.mjs`), swaps each named
+   module for its verbose-traced build and fails any pin not checked against
+   that trace. Local preflight's `traced-refusals` check runs the pin files a
+   changed validator reaches.
    `assertCompleteLifecycleCoverage`
    (`src/testing/complete-lifecycle.ts:35`) fails a lifecycle missing any of
    the seven `COMPLETE_LIFECYCLE_BASE_SCENARIOS`, but only in tests that opt in

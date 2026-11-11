@@ -41,13 +41,22 @@ for (const [label, changed] of [
     assert.ok(yaml, "yaml is required to prove hosted coverage");
     const local = planPreflight(registry, changed, { runtimeOwner: "local" });
     const ordinary = planPreflight(registry, changed, { runtimeOwner: "ci" });
+    // A check with a handOff (traced-refusals) leaves the scope these paths
+    // give it to CI, as the runtime checks do.
+    const handedOff = (id) => {
+      if (RUNTIME_CHECKS.includes(id)) return true;
+      const { check, matched } = local.selected.find(
+        (selected) => selected.check.id === id,
+      );
+      return check.handOff?.({ matched, full: local.full }) === true;
+    };
     assert.deepEqual(
       ids(ordinary),
-      ids(local).filter((id) => !RUNTIME_CHECKS.includes(id)),
+      ids(local).filter((id) => !handedOff(id)),
     );
     assert.deepEqual(
       ordinary.hosted.map(({ id }) => id),
-      ids(local).filter((id) => RUNTIME_CHECKS.includes(id)),
+      ids(local).filter(handedOff),
     );
     assert.ok(ordinary.hosted.length > 0);
     assert.deepEqual(

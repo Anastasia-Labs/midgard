@@ -61,6 +61,9 @@ not widen selection. Automatic full-scope inputs keep ordinary PR ownership.
 Focused local causal regressions, the fast hook and distinct acceptance
 lanes remain mandatory. Prepare fresh local prerequisites for the checks
 you run: hosted scheduling supplies no dist, native binary or blueprint.
+`traced-refusals` runs the pin files a changed validator reaches; after an
+off-chain input change or at full scope, every pin is a pending Node CI
+obligation, and runs locally only when the runtime is local.
 Read the [merge checklist](verification.md#merge-checklist) before merging:
 workflow census, exact head, successful conclusions and reviews remain required.
 
@@ -1532,6 +1535,14 @@ Script budgets: Aiken execution units at or under their ceilings.
 - Fix: `node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why> — only for a cost you accept; otherwise shrink the script`
 - Runs on: demo/midgard-core/src/script-budgets.json, the judge, and every .ak module a budgeted module imports, transitively
 - Needs: `aiken`
+
+### `traced-refusals`
+
+Pinned emulator refusals against verbose-traced validators (the pins a change reaches).
+
+- Command: `node demo/midgard-fault-proofs/scripts/run-traced-refusals.mjs <pin files the changed validators reach>; every pin when an off-chain input changed and CI does not own it`
+- Runs on: the inputs Node CI's traced-refusal decision imports (scripts/ci/traced-refusal-inputs.mjs)
+- Needs: `aiken`, `traced-blueprint`
 
 ### `demo-test`
 

@@ -79,7 +79,6 @@ test("deleting a file any registry names fails the check", () => {
   assert.deepEqual(names, [
     "contrib gates",
     "preflight triggers",
-    "traced-refusal inputs",
     "CI file durations",
     "validator scenario registry",
   ]);

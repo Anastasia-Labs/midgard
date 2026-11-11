@@ -32,6 +32,7 @@ on:
       - "scripts/preflight/registry.demo-checks.mjs"
       - "scripts/preflight/registry.select-checks.mjs"
       - "scripts/preflight/registry.tooling-checks.mjs"
+      - "scripts/preflight/registry.traced-refusals.mjs"
       - "scripts/preflight/run.mjs"
       - "scripts/preflight/runtime-owner.mjs"
       - "scripts/preflight/sdk-suite-evidence.mjs"
@@ -63,6 +64,7 @@ on:
       - "scripts/preflight/registry.demo-checks.mjs"
       - "scripts/preflight/registry.select-checks.mjs"
       - "scripts/preflight/registry.tooling-checks.mjs"
+      - "scripts/preflight/registry.traced-refusals.mjs"
       - "scripts/preflight/run.mjs"
       - "scripts/preflight/runtime-owner.mjs"
       - "scripts/preflight/sdk-suite-evidence.mjs"
@@ -179,7 +181,7 @@ jobs:
   # pinned compiler fails the run rather than being rebuilt in place. The two
   # traced builds run only when the traced-refusal step below will read them:
   # on a pull request that touches one of that check's inputs
-  # (scripts/ci/traced-refusal-inputs.mjs lists them), and on every other
+  # (scripts/ci/traced-refusal-inputs.mjs decides), and on every other
   # event. Otherwise their steps are skipped and the job still succeeds.
   test-blueprints:
     name: Test blueprint (${{ matrix.blueprint }})

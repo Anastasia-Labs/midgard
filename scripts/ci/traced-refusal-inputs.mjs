@@ -4,33 +4,19 @@
 // the traced-refusal check (`pnpm --dir demo/midgard-fault-proofs run
 // test:traced-refusals`). The check is slow and only a change to one of its
 // inputs can change its outcome, so a pull request runs it only when it
-// touches one of the paths below. Every other event (a push to main, a manual
+// touches one of them. Every other event (a push to main, a manual
 // dispatch) always runs it.
 //
-// The inputs are everything a pinned refusal's outcome depends on:
-//   - the validators, their compiler and its install: onchain/, the
-//     deployment profiles the blueprint is built under, the fork build
-//     script, the workflow that pins the fork and the setup action that
-//     installs it and restores the prebuilt blueprints;
-//   - the check itself: the fault-proofs package, which holds the runner,
-//     its plan of which cases run each pin, the traced-blueprint builder,
-//     every `refusedBy` pin (in test files and support modules alike) and
-//     the `expectOnchainRefusal` helper that checks them, and this file;
-//   - what builds each pinned negative's transaction: the workspace packages
-//     the test files that run a pin import (the plain run only shows that
-//     *some* validator refused, so an off-chain change can move a refusal to
-//     another check, and only this check notices), and the dependency pins,
-//     patches and vendored evaluator they run on.
-// Measured: the 26 test files that run a pin reach midgard-core,
-// midgard-sdk, midgard-validation, lucid-midgard, midgard-node and
-// midgard-test-support, and the fault-proofs runtime also reads L1 depth
-// through midgard-l1-follower's heads module. A pinned test that
-// starts importing another workspace package must add it here.
+// The inputs are everything a pinned refusal's outcome depends on, and they
+// are the preflight registry's: tracedRefusalInputs in
+// scripts/preflight/registry.traced-refusals.mjs, which local preflight's
+// `traced-refusals` check selects on too. That module imports Node built-ins
+// and derive.mjs only, so this step runs before setup installs anything.
 //
 // On a pull request the checkout is the merge commit, so its first parent is
 // the base branch and `HEAD^1..HEAD` is exactly what merging would change. It
-// needs `fetch-depth: 2`. When the merge commit or the diff cannot be read
-// the check runs: an unreadable diff never skips it.
+// needs `fetch-depth: 2`. When the merge commit, the diff or a package
+// manifest cannot be read the check runs: an unreadable input never skips it.
 //
 // Writes `run=true` or `run=false` to $GITHUB_OUTPUT and prints why.
 //
@@ -38,56 +24,36 @@
 
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Directory prefixes end in `/`; anything else names one file.
-export const tracedRefusalInputs = [
-  "onchain/",
-  "config/deployments/",
-  "demo/flake.lock",
-  "scripts/ci/traced-refusal-inputs.mjs",
-  ".github/workflows/midgard-node-ci.yml",
-  ".github/actions/demo-setup/",
-  "demo/midgard-fault-proofs/",
-  "demo/midgard-core/",
-  "demo/midgard-l1-follower/",
-  "demo/midgard-sdk/",
-  "demo/midgard-validation/",
-  "demo/lucid-midgard/",
-  "demo/midgard-node/",
-  "demo/midgard-test-support/",
-  "demo/scripts/lib/",
-  "demo/scripts/deployment-profiles.mjs",
-  "demo/scripts/deployment-profile-aiken.mjs",
-  "demo/scripts/deployment-profile-identity.mjs",
-  "demo/scripts/deployment-profile-da.mjs",
-  "demo/scripts/deployment-profile-names.mjs",
-  "demo/scripts/deployment-profile-budgets.mjs",
-  "demo/scripts/deployment-profile-operator-economics.mjs",
-  "demo/package.json",
-  "demo/pnpm-lock.yaml",
-  "demo/pnpm-workspace.yaml",
-  "demo/.nvmrc",
-  "demo/patches/",
-  "demo/vendor/",
-];
-
-export const isTracedRefusalInput = (path) =>
-  tracedRefusalInputs.some((input) =>
-    input.endsWith("/") ? path.startsWith(input) : path === input,
-  );
+import {
+  isInput,
+  tracedRefusalInputs,
+} from "../preflight/registry.traced-refusals.mjs";
 
 /**
  * The decision for one event: `{ run, reason, matched }`. `git` runs a git
- * command and returns `{ status, stdout }`.
+ * command and returns `{ status, stdout }`; `inputs` returns the input list
+ * (or throws when a manifest is unreadable).
  */
-export const decide = ({ event, git }) => {
+export const decide = ({ event, git, inputs }) => {
   if (event !== "pull_request") {
     return {
       run: true,
       reason: `event '${String(event)}' is not a pull request; the check always runs`,
       matched: [],
+    };
+  }
+  let list;
+  try {
+    list = inputs();
+  } catch (error) {
+    return {
+      run: true,
+      reason: `could not derive the traced-refusal check's inputs (${error instanceof Error ? error.message : String(error)}); running the check`,
+      matched: [],
+      warn: true,
     };
   }
   const parents = git(["rev-list", "--parents", "--max-count=1", "HEAD"]);
@@ -111,7 +77,7 @@ export const decide = ({ event, git }) => {
     };
   }
   const changed = diff.stdout.split("\n").filter((line) => line.length > 0);
-  const matched = changed.filter(isTracedRefusalInput);
+  const matched = changed.filter((path) => isInput(list, path));
   return matched.length > 0
     ? {
         run: true,
@@ -134,8 +100,10 @@ if (isMain) {
     console.error("usage: traced-refusal-inputs.mjs");
     process.exit(2);
   }
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const verdict = decide({
     event: process.env.GITHUB_EVENT_NAME,
+    inputs: () => tracedRefusalInputs(root),
     git: (args) => {
       const result = spawnSync("git", args, { encoding: "utf8" });
       return { status: result.status, stdout: result.stdout ?? "" };

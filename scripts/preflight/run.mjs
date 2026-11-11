@@ -153,7 +153,21 @@ export const planPreflight = (registry, changed, options = {}) => {
   const hosted = [];
   const hostedRuntime = ciOwnsRuntime(registry, changed, options.runtimeOwner);
   for (const { check, matched } of selection.selected) {
-    const steps = check.plan({ matched, full: selection.full, advise });
+    // A check with a `handOff` runs part of its scope locally and leaves the
+    // rest to the runtime workflow while CI owns the runtime.
+    if (
+      hostedRuntime &&
+      check.handOff?.({ matched, full: selection.full }) === true
+    ) {
+      const { workflow, gate } = registry.runtimeWorkflow;
+      hosted.push({ id: check.id, workflow, gate });
+    }
+    const steps = check.plan({
+      matched,
+      full: selection.full,
+      advise,
+      ciOwnsRuntime: hostedRuntime,
+    });
     if (steps !== null) {
       if (
         hostedRuntime &&

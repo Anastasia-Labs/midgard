@@ -7,13 +7,18 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  decide,
-  isTracedRefusalInput,
+  isInput,
   tracedRefusalInputs,
-} from "./traced-refusal-inputs.mjs";
+} from "../preflight/registry.traced-refusals.mjs";
+import { deploymentProfileInputs } from "../preflight/derive.mjs";
+import { decide } from "./traced-refusal-inputs.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const script = join(root, "scripts/ci/traced-refusal-inputs.mjs");
+const inputs = tracedRefusalInputs(root);
+const isTracedRefusalInput = (path) => isInput(inputs, path);
+const pullRequest = (git) =>
+  decide({ event: "pull_request", git, inputs: () => inputs });
 
 /** A fake git: HEAD's parents line and the diff's changed files. */
 const fakeGit =
@@ -31,15 +36,15 @@ test("every non-pull-request event runs the check without asking git", () => {
     const verdict = decide({
       event,
       git: () => assert.fail("git must not be consulted"),
+      inputs: () => assert.fail("the inputs must not be derived"),
     });
     assert.equal(verdict.run, true, String(event));
   }
 });
 
 test("a pull request touching only non-inputs skips the check", () => {
-  const verdict = decide({
-    event: "pull_request",
-    git: fakeGit({
+  const verdict = pullRequest(
+    fakeGit({
       changed: [
         "demo/midgard-watcher/src/index.ts",
         "demo/midgard-node-tools/src/index.ts",
@@ -47,9 +52,10 @@ test("a pull request touching only non-inputs skips the check", () => {
         "scripts/ci/lint-workflows.mjs",
         ".github/workflows/aiken-ci.yml",
         "demo/scripts/lint-by-package.mjs",
+        "scripts/preflight/run.mjs",
       ],
     }),
-  });
+  );
   assert.equal(verdict.run, false);
   assert.deepEqual(verdict.matched, []);
 });
@@ -62,6 +68,8 @@ test("a pull request touching any input runs the check", () => {
     "config/deployments/preprod-testing.json",
     "demo/flake.lock",
     "scripts/ci/traced-refusal-inputs.mjs",
+    "scripts/preflight/registry.traced-refusals.mjs",
+    "scripts/preflight/derive.mjs",
     ".github/workflows/midgard-node-ci.yml",
     ".github/actions/demo-setup/action.yml",
     "demo/midgard-fault-proofs/scripts/run-traced-refusals.mjs",
@@ -80,10 +88,9 @@ test("a pull request touching any input runs the check", () => {
     "demo/pnpm-lock.yaml",
     "demo/vendor/mpf-1.3.1-midgard.1.tgz",
   ]) {
-    const verdict = decide({
-      event: "pull_request",
-      git: fakeGit({ changed: ["docs/agents/contracts.md", path] }),
-    });
+    const verdict = pullRequest(
+      fakeGit({ changed: ["docs/agents/contracts.md", path] }),
+    );
     assert.equal(verdict.run, true, path);
     assert.deepEqual(verdict.matched, [path]);
   }
@@ -101,10 +108,23 @@ test("an unreadable merge commit or diff runs the check", () => {
     fakeGit({ parents: "h b" }),
     fakeGit({ diffStatus: 128, changed: [] }),
   ]) {
-    const verdict = decide({ event: "pull_request", git });
+    const verdict = pullRequest(git);
     assert.equal(verdict.run, true);
     assert.equal(verdict.warn, true);
   }
+});
+
+test("inputs that cannot be derived run the check", () => {
+  const verdict = decide({
+    event: "pull_request",
+    git: fakeGit({ changed: ["docs/agents/contracts.md"] }),
+    inputs: () => {
+      throw new Error("demo/pnpm-workspace.yaml is unreadable");
+    },
+  });
+  assert.equal(verdict.run, true);
+  assert.equal(verdict.warn, true);
+  assert.match(verdict.reason, /pnpm-workspace\.yaml is unreadable/u);
 });
 
 // Every file that declares a pin, test file or support module, and the
@@ -123,10 +143,7 @@ test("every refusedBy pin and the check's scripts are inputs", () => {
   // Support modules remain inputs when all current pins live in test files.
   const support =
     "demo/midgard-fault-proofs/tests/support/new-refusal-helper.ts";
-  const verdict = decide({
-    event: "pull_request",
-    git: fakeGit({ changed: [support] }),
-  });
+  const verdict = pullRequest(fakeGit({ changed: [support] }));
   assert.equal(verdict.run, true);
   assert.deepEqual(verdict.matched, [support]);
   for (const path of [
@@ -152,10 +169,60 @@ test("the fault-proofs runtime workspace dependencies are inputs", () => {
   assert.ok(workspace.length > 0);
   for (const directory of [...workspace, "midgard-test-support"]) {
     assert.ok(
-      tracedRefusalInputs.includes(`demo/${directory}/`),
+      inputs.includes(`demo/${directory}/`),
       `demo/${directory}/ is not an input`,
     );
   }
+});
+
+// Kept for one release after the hand list was replaced (#901), then
+// deleted: the inputs this file listed by hand, each of which the derived set
+// must still cover at the same prefix granularity.
+const REPLACED_HAND_LIST = [
+  "onchain/",
+  "config/deployments/",
+  "demo/flake.lock",
+  "scripts/ci/traced-refusal-inputs.mjs",
+  ".github/workflows/midgard-node-ci.yml",
+  ".github/actions/demo-setup/",
+  "demo/midgard-fault-proofs/",
+  "demo/midgard-core/",
+  "demo/midgard-l1-follower/",
+  "demo/midgard-sdk/",
+  "demo/midgard-validation/",
+  "demo/lucid-midgard/",
+  "demo/midgard-node/",
+  "demo/midgard-test-support/",
+  "demo/scripts/lib/",
+  "demo/scripts/deployment-profiles.mjs",
+  "demo/scripts/deployment-profile-aiken.mjs",
+  "demo/scripts/deployment-profile-identity.mjs",
+  "demo/scripts/deployment-profile-da.mjs",
+  "demo/scripts/deployment-profile-names.mjs",
+  "demo/scripts/deployment-profile-budgets.mjs",
+  "demo/scripts/deployment-profile-operator-economics.mjs",
+  "demo/package.json",
+  "demo/pnpm-lock.yaml",
+  "demo/pnpm-workspace.yaml",
+  "demo/.nvmrc",
+  "demo/patches/",
+  "demo/vendor/",
+];
+
+test("the derived inputs cover the replaced hand list", () => {
+  for (const entry of REPLACED_HAND_LIST) {
+    assert.ok(
+      entry.endsWith("/")
+        ? inputs.includes(entry)
+        : isTracedRefusalInput(entry),
+      `scripts/ci/traced-refusal-inputs.mjs tracedRefusalInputs: ${entry}`,
+    );
+  }
+});
+
+test("every deployment-profile input is an input without a list edit", () => {
+  for (const path of deploymentProfileInputs(root))
+    assert.equal(isTracedRefusalInput(path), true, path);
 });
 
 test("the CLI writes its decision to GITHUB_OUTPUT", () => {

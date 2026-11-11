@@ -92,7 +92,6 @@ const PROFILE_MODULES = [
 
 const HAND_LISTS = {
   "scripts/preflight/registry.demo-checks.mjs FULL_RUN": PROFILE_MODULES,
-  "scripts/ci/traced-refusal-inputs.mjs tracedRefusalInputs": PROFILE_MODULES,
   ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json deployment-profiles generators":
     PROFILE_MODULES,
   "demo/scripts/interactive-emulator.test.mjs producer tree": [

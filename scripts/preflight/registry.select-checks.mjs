@@ -19,6 +19,7 @@ import {
   toolingChecks,
   txFuzzReferenceCheck,
 } from "./registry.tooling-checks.mjs";
+import { tracedRefusalCheck } from "./registry.traced-refusals.mjs";
 import { readRuntimeWorkflow } from "./runtime-owner.mjs";
 
 // The registry, in run order: cheap and independent first, then builds, then
@@ -54,6 +55,7 @@ export const buildRegistry = (root) => {
     txFuzzReferenceCheck(packages),
     ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
     scriptBudgetCheck(root, index, ciText),
+    tracedRefusalCheck(root, index),
     demo.test,
     demo.testDb,
     // This obligation can reuse only suites that have actually completed.
