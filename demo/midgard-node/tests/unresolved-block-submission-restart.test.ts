@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { hydratePendingBlockFinalizationOnStartup } from "../src/commands/listen-startup.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
+import { classifyCommitWorkerOutputAgainstLeaseJournal } from "../src/fibers/commit-worker-failure-classification.js";
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
@@ -25,7 +26,8 @@ import { provideDatabaseLayers } from "./utils.js";
  * its `_SINCE_MS`): a submitted block neither confirmed nor resolved. A
  * restart rebuilds it from the active journal: unresolved while a signed
  * commit may be on L1 unobserved, never for a commit the confirmation has
- * already observed.
+ * already observed. A failed commit attempt sets it the same way from its
+ * lease's journal rows.
  */
 
 /** Ten minutes before the test runs: older than any readiness bound. */
@@ -200,6 +202,39 @@ describe("startup hydration of the unresolved block submission", () => {
       ),
     ).toEqual([]);
   });
+});
+
+describe("a failed commit attempt", () => {
+  /** A worker failure after the journal retained the commit's signed intent. */
+  const RETAINED_FAILURE = {
+    type: "FailureOutput",
+    error: "provider timed out after the signed intent was journaled",
+  } as const;
+
+  it.each(JOURNALS)(
+    "sets the unresolved submission a restart would for a $status journal (signed: $signed)",
+    async (journal) => {
+      const { classified, submission } = await withGlobals((globals) =>
+        Effect.gen(function* () {
+          yield* writeJournal(journal);
+          const classified =
+            yield* classifyCommitWorkerOutputAgainstLeaseJournal(
+              globals,
+              RETAINED_FAILURE,
+              `before-ttl:${E_HEADER.toString("hex").slice(0, 8)}`,
+            ).pipe(Effect.either, Effect.provide(Database.layer));
+          return { classified, submission: yield* submissionOf(globals) };
+        }),
+      );
+      // No row here is abandoned unsigned, so none releases the lease.
+      expect(classified._tag).toBe("Left");
+      expect(submission).toEqual(
+        journal.unresolved
+          ? { txHash: E.hash, sinceMs: UPDATED_AT.getTime() }
+          : NO_SUBMISSION,
+      );
+    },
+  );
 });
 
 describe("a confirmation tick", () => {

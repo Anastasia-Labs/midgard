@@ -328,6 +328,22 @@ Commitment and liveness (raised by fibers, cleared by them):
   hash. Wait.
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
+- `commit_submit_refused:<code>` (a detail, then a reason): the commit's L1
+  submission was refused before anything was broadcast. Nothing was sent,
+  so the attempt is abandoned and the next tick retries it with its
+  transactions kept. It is a detail until the refusals since the first have
+  run ten minutes without a successful commit, then a reason. It clears
+  when a block commits. Read the warning that reads
+  `Commit submission refused before broadcast (<code>)` for the cause.
+  `<code>` names the refusal:
+  - `COMMIT_ANCHOR_NOT_CANONICAL`: the commit's anchor left the follower's
+    chain. Wait for the follower to settle; the next build uses a new
+    anchor.
+  - `INTENT_JOURNAL_REFUSED`: the intent journal refused the signed bytes,
+    and holds them under its own reason. Read that reason.
+  - `SIGNING_FAILED`: signing the commit failed. Check the operator's
+    signing key.
+  - `UNCLASSIFIED`: another refusal.
 - `commit_worker_verifier_unavailable`: the commit worker's runs since the
   last successful commit kept failing on local faults, up to the local-fault
   run limit, the last on this node's Ed25519 verifier. A local fault: the

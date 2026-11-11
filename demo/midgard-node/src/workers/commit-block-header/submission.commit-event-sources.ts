@@ -1,5 +1,4 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
@@ -24,7 +23,6 @@ import { forcedOrderHorizon } from "../../forced-orders/horizon.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
 import { requireCandidateView } from "../../services/follower-write-gate.js";
 import { Database } from "../../services/index.js";
-import { type TxSubmitError } from "../../transactions/utils.js";
 
 /** True when both lists hold the same ids, each exactly once. */
 const sameSourceIdSet = (
@@ -230,27 +228,6 @@ export const journalUtxoEntries = (
     [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: entry.outref,
     [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: entry.output,
   }));
-
-export const submitErrorReferencesOutRef = (
-  error: TxSubmitError,
-  outRef: string,
-): boolean => {
-  const [txHash, outputIndex] = outRef.split("#");
-  if (txHash === undefined || outputIndex === undefined) {
-    return false;
-  }
-  const detail = formatUnknownError(error, { includeCause: true }).replace(
-    /\\"/g,
-    '"',
-  );
-  return (
-    isSpentInputSubmitRejection(detail) &&
-    detail.includes(txHash) &&
-    (detail.includes(`"index":${outputIndex}`) ||
-      detail.includes(`"index": ${outputIndex}`) ||
-      detail.includes(`#${outputIndex}`))
-  );
-};
 
 export const isStaleCommitBaseError = (error: unknown): boolean =>
   error instanceof SDK.StateQueueError &&

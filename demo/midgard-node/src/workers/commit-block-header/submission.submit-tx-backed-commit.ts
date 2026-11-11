@@ -13,11 +13,12 @@ import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js
 import { emptyRootHexProgram } from "../../mpf/index.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import { Database } from "../../services/index.js";
-import { TxSignError, TxSubmitError } from "../../transactions/utils.js";
-import type { WorkerOutput } from "../utils/commit-block-header.js";
+import type {
+  CommitSubmitRefusal,
+  WorkerOutput,
+} from "../utils/commit-block-header.js";
 import {
   failedSubmissionProgram,
-  recoverSubmittedTxHashByHeaderProgram,
   skippedSubmissionProgram,
 } from "../utils/commit-submission.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
@@ -35,20 +36,17 @@ import {
   resolvePendingJournalLedgerState,
   revalidateStateQueueLease,
 } from "./pending-journal.js";
-import { stateQueueOutRef } from "./state-queue.js";
 import {
   assertCommitInputsWithinBlockEndTime,
   assertPreSubmitDaPayloadSize,
 } from "./submission.assert-pre-submit-da-payload-size.js";
+import { commitSubmitFailureOutput } from "./submission.classify-submit-failure.js";
 import {
   assertCommitUserEventSourceCompleteness,
-  isStaleCommitBaseError,
   journalUtxoEntries,
-  submitErrorReferencesOutRef,
 } from "./submission.commit-event-sources.js";
 import {
   awaitNextCommitWindow,
-  retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
 import type { SubmitTxBackedCommitInput } from "./submission.tx-backed-input.js";
@@ -188,19 +186,19 @@ export const submitTxBackedCommit = ({
     const newlyDeferredTxsSize = selectedPayloadAlreadyDeferred
       ? 0
       : sizeOfProcessedTxs;
-    const preserveTxPayloadForRetryAfterSubmitFailure = (
-      error: TxSubmitError,
+    const preserveTxPayloadForRetry = (
+      submitRefusal: CommitSubmitRefusal,
     ): Effect.Effect<WorkerOutput, never, Database> =>
       Effect.gen(function* () {
         if (selectedPayloadAlreadyDeferred) {
           yield* Effect.logWarning(
-            "🔹 Commit submission failed while the selected tx payload was already in ProcessedMempoolDB; preserving durable retry rows without another transfer.",
+            "🔹 Commit submission was refused while the selected tx payload was already in ProcessedMempoolDB; preserving durable retry rows without another transfer.",
           );
           return yield* failedSubmissionProgram(
             transactionsMpf,
             newlyDeferredTxsCount,
             newlyDeferredTxsSize,
-            error,
+            submitRefusal,
           );
         }
 
@@ -208,25 +206,18 @@ export const submitTxBackedCommit = ({
           skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
         );
         if (transferResult._tag === "Left") {
-          const detail = formatUnknownError(transferResult.left);
-          yield* Effect.logError(
-            `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-              error,
-            )}; transfer=${detail}`,
-          );
-          return {
-            type: "FailureOutput",
-            error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-              error,
-            )}; transfer=${detail}`,
-          } satisfies WorkerOutput;
+          const error = `Commit submission was refused and deferred transfer failed: submit=${submitRefusal.detail}; transfer=${formatUnknownError(
+            transferResult.left,
+          )}`;
+          yield* Effect.logError(`🔹 ${error}`);
+          return { type: "FailureOutput", error } satisfies WorkerOutput;
         }
 
         return yield* failedSubmissionProgram(
           transactionsMpf,
           newlyDeferredTxsCount,
           newlyDeferredTxsSize,
-          error,
+          submitRefusal,
         );
       });
 
@@ -407,101 +398,10 @@ export const submitTxBackedCommit = ({
                   ),
                   {
                     onFailure: (error) =>
-                      Effect.gen(function* () {
-                        const retained = yield* retainedIntentFailure(
-                          headerHashBuffer,
-                          error,
-                        );
-                        if (retained !== undefined) return retained;
-                        if (error instanceof TxSignError) {
-                          return yield* Effect.gen(function* () {
-                            yield* PendingBlockFinalizationsDB.markAbandoned(
-                              headerHashBuffer,
-                            ).pipe(Effect.catchAll(() => Effect.void));
-                            const detail = formatUnknownError(error);
-                            yield* Effect.logError(
-                              `🔹 Commit signing failed: ${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit signing failed: ${detail}`,
-                            } satisfies WorkerOutput;
-                          });
-                        }
-
-                        return yield* Effect.gen(function* () {
-                          if (
-                            error instanceof TxSubmitError &&
-                            submitErrorReferencesOutRef(
-                              error,
-                              stateQueueOutRef(commitBaseTail),
-                            )
-                          ) {
-                            yield* PendingBlockFinalizationsDB.markAbandoned(
-                              headerHashBuffer,
-                            ).pipe(Effect.catchAll(() => Effect.void));
-                            yield* Effect.logWarning(
-                              `🔹 Tx-backed commit submission hit stale state-queue tail ${stateQueueOutRef(
-                                commitBaseTail,
-                              )}; preserving tx payload for rebuild against the refreshed live tail.`,
-                            );
-                            return yield* preserveTxPayloadForRetryAfterSubmitFailure(
-                              error,
-                            );
-                          }
-
-                          if (!(error instanceof TxSubmitError)) {
-                            yield* PendingBlockFinalizationsDB.markAbandoned(
-                              headerHashBuffer,
-                            ).pipe(Effect.catchAll(() => Effect.void));
-                            if (isStaleCommitBaseError(error)) {
-                              yield* Effect.logWarning(
-                                `🔹 Tx-backed commit base ${stateQueueOutRef(
-                                  commitBaseTail,
-                                )} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
-                              );
-                              return {
-                                type: "NothingToCommitOutput",
-                              } satisfies WorkerOutput;
-                            }
-                            const detail = formatUnknownError(error);
-                            yield* Effect.logError(
-                              `🔹 Commit aborted before submission: ${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit aborted before submission: ${detail}`,
-                            } satisfies WorkerOutput;
-                          }
-
-                          const recoveredTxHash =
-                            yield* recoverSubmittedTxHashByHeaderProgram(
-                              contracts.stateQueue,
-                              newHeaderHash,
-                            );
-                          if (Option.isSome(recoveredTxHash)) {
-                            return yield* PendingBlockFinalizationsDB.markSubmitted(
-                              headerHashBuffer,
-                              Buffer.from(fromHex(recoveredTxHash.value)),
-                            ).pipe(
-                              Effect.andThen(
-                                submittedAwaitingConfirmationOutput(
-                                  recoveredTxHash.value,
-                                  txSize,
-                                  blockEndTimeMs,
-                                  newHeaderHash,
-                                ),
-                              ),
-                            );
-                          }
-
-                          yield* PendingBlockFinalizationsDB.markAbandoned(
-                            headerHashBuffer,
-                          ).pipe(Effect.catchAll(() => Effect.void));
-                          return yield* preserveTxPayloadForRetryAfterSubmitFailure(
-                            error,
-                          );
-                        });
+                      commitSubmitFailureOutput({
+                        error,
+                        headerHash: headerHashBuffer,
+                        preservePayload: preserveTxPayloadForRetry,
                       }),
                     onSuccess: (txHash) =>
                       PendingBlockFinalizationsDB.markSubmitted(

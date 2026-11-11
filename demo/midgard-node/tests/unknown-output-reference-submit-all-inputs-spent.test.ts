@@ -2,21 +2,17 @@
  * Ogmios refuses a body whose inputs its mempool view already consumed with
  * JSON-RPC 3997 "All inputs are spent. Transaction has probably already been
  * included", as it did to a node's own pending body resubmitted while it sat
- * in the mempool. It is not the ledger's unknown-input failure (3117): the
- * commit submitters abandon their attempt and rebuild over a tail the
- * unknown-input error names, which is wrong while their own transaction may
- * still land, so the unknown-input matcher leaves 3997 alone.
+ * in the mempool. It is not the ledger's unknown-input failure (3117): a
+ * submitter that reads an unknown-input refusal as its inputs being gone acts
+ * wrongly on 3997 while its own transaction may still land, so the
+ * unknown-input matcher leaves 3997 alone.
  */
 import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  submitSignedTxWithRecovery,
-  TxSubmitError,
-} from "../src/transactions/utils.js";
-import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.commit-event-sources.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
@@ -24,7 +20,6 @@ const TX_HASH =
   "378e3ff088ab820ca7454704bb9ba6c1584c6df8e33eddaa59982995750fff09";
 const TAIL_TX_HASH =
   "781ab70de6d012c855658d05353de5ef7af55169196be31b7de5fa1e9e55435e";
-const TAIL_OUT_REF = `${TAIL_TX_HASH}#0`;
 
 const allInputsSpent = () =>
   new OgmiosJsonRpcError({
@@ -76,21 +71,6 @@ describe("Ogmios 3997 'All inputs are spent' submit errors", () => {
       expect(isSpentInputSubmitRejection(error)).toBe(false);
     }
     expect(isSpentInputSubmitRejection(unknownTail())).toBe(true);
-  });
-
-  it("never make a commit submitter abandon its attempt over the tail, even when the text names it", () => {
-    const naming = (cause: unknown) =>
-      new TxSubmitError({
-        message: `Failed to submit the commit spending ${TAIL_OUT_REF}`,
-        cause,
-        txHash: TX_HASH,
-      });
-    expect(
-      submitErrorReferencesOutRef(naming(allInputsSpent()), TAIL_OUT_REF),
-    ).toBe(false);
-    expect(
-      submitErrorReferencesOutRef(naming(unknownTail()), TAIL_OUT_REF),
-    ).toBe(true);
   });
 
   it("keep the generic no-inline refusal for a fail-fast commit, without a confirmation wait", async () => {

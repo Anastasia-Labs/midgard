@@ -8,6 +8,10 @@ import { describe, expect, it } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
+import {
+  COMMIT_SUBMIT_REFUSED,
+  COMMIT_SUBMIT_SOURCE,
+} from "../src/fibers/block-commitment.worker-readiness.js";
 import { LANDED_BLOCK_REBASE_SOURCE } from "../src/landed-blocks/holds.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
@@ -273,6 +277,47 @@ describe("GET /readyz liveness reasons", () => {
       expect(cleared.livenessReasons).toEqual([]);
     },
   );
+  it("serves a commit submission refused before broadcast as a detail until its run escalates", async () => {
+    const [detail, escalated] = await onNode(({ globals, readyz }) =>
+      Effect.gen(function* () {
+        takeCommitWorkerOutput(
+          globals,
+          {
+            type: "SkippedSubmissionOutput",
+            mempoolTxsCount: 0,
+            sizeOfProcessedTxs: 0,
+            submitRefusal: {
+              code: "COMMIT_ANCHOR_NOT_CANONICAL",
+              detail: "the commit anchor is not canonical",
+            },
+          },
+          0,
+        );
+        const detail = yield* readyz;
+        yield* raiseLivenessIncident(
+          globals,
+          COMMIT_SUBMIT_SOURCE,
+          `${COMMIT_SUBMIT_REFUSED}:COMMIT_ANCHOR_NOT_CANONICAL`,
+          "the commit anchor is not canonical",
+          { escalateAfterMs: 0 },
+        );
+        return [detail, yield* readyz] as const;
+      }),
+    );
+    expect(detail.status).toBe(200);
+    expect(detail.reasons).toEqual([]);
+    expect(detail.details).toContain(
+      "commit_submit_refused:COMMIT_ANCHOR_NOT_CANONICAL",
+    );
+    expect(escalated.status).toBe(503);
+    expect(escalated.reasons).toEqual([
+      "commit_submit_refused:COMMIT_ANCHOR_NOT_CANONICAL",
+    ]);
+    expect(escalated.details).not.toContain(
+      "commit_submit_refused:COMMIT_ANCHOR_NOT_CANONICAL",
+    );
+  });
+
   it("names a raised hold with its age, and is ready again once it clears", async () => {
     const [before, raised, cleared] = await onNode(({ globals, readyz }) =>
       Effect.gen(function* () {

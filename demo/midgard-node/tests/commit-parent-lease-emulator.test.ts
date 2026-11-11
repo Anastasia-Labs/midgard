@@ -10,7 +10,7 @@ import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import * as Leases from "../src/database/stateQueueMutationLeases.js";
-import { classifyCommitWorkerOutputForMutationLease } from "../src/fibers/commit-worker-failure-classification.js";
+import { classifyCommitWorkerOutputAgainstLeaseJournal } from "../src/fibers/commit-worker-failure-classification.js";
 import { Database } from "../src/services/database.js";
 import {
   FollowerWrite,
@@ -161,20 +161,11 @@ it("fails the parent operation lease after accepted response loss while a later 
               attempt.output = output;
               // The real parent classifies before publishing a promotion or globals.
               // These two attempts must fail before any successful output publication.
-              return yield* classifyCommitWorkerOutputForMutationLease({
+              return yield* classifyCommitWorkerOutputAgainstLeaseJournal(
+                globals,
                 output,
                 stateQueueLeaseToken,
-                retrieveJournalEvidence: (leaseToken) =>
-                  Pending.retrieveByStateQueueLeaseToken(leaseToken).pipe(
-                    Effect.map((rows) =>
-                      rows.map((row) => ({
-                        headerHash: row[Pending.Columns.HEADER_HASH],
-                        submittedTxHash: row[Pending.Columns.SUBMITTED_TX_HASH],
-                        status: row[Pending.Columns.STATUS],
-                      })),
-                    ),
-                  ),
-              });
+              );
             }),
           ).pipe(Effect.provideService(Globals, globals));
         },

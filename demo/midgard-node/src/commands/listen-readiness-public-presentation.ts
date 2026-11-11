@@ -76,6 +76,7 @@ const observedEnums: ReadonlySet<string> = new Set([
   "complete",
   "commit",
   "commit_worker",
+  "commit_submit",
   "commit_base",
   "commit_window",
   "commit_scheduler",

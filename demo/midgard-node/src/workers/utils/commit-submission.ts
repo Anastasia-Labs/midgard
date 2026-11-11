@@ -25,7 +25,6 @@ import "./commit-submission.successful-local-finalization-recovery-program.js";
 export { finalizeCommittedBlockLocally } from "./commit-submission.finalize-committed-block-locally.js";
 export {
   failedSubmissionProgram,
-  recoverSubmittedTxHashByHeaderProgram,
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
 } from "./commit-submission.successful-local-finalization-recovery-program.js";

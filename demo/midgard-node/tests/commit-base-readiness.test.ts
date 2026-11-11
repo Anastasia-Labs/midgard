@@ -4,21 +4,26 @@
  * under `commit_base`, raised by the worker's wait output and cleared by
  * its next output that is not the wait. A commit waiting for the next
  * window (a signed abandoned journal holds its header hash) names
- * `commit_window_pending` under `commit_window` by the same rule.
+ * `commit_window_pending` under `commit_window` by the same rule. A
+ * submission refused before broadcast names `commit_submit_refused:<code>`
+ * under `commit_submit`, a detail until its run escalates.
  */
 import { Effect, Logger } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyCommitWorkerReadiness,
   clearCommitWorkerFailure,
   COMMIT_BASE_PENDING,
   COMMIT_BASE_SOURCE,
+  COMMIT_SUBMIT_REFUSED,
+  COMMIT_SUBMIT_SOURCE,
   COMMIT_WINDOW_PENDING,
   COMMIT_WINDOW_SOURCE,
   COMMIT_WORKER_FAILED,
   COMMIT_WORKER_FAILED_ESCALATION_MS,
   COMMIT_WORKER_SOURCE,
+  livenessReadiness,
 } from "../src/fibers/block-commitment.worker-readiness.js";
 import { Globals } from "../src/services/globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
@@ -180,5 +185,120 @@ describe("commit worker failure readiness", () => {
         escalated: true,
       }),
     ]);
+  });
+});
+
+const refused = (
+  code: "COMMIT_ANCHOR_NOT_CANONICAL" | "SIGNING_FAILED",
+): WorkerOutput => ({
+  type: "SkippedSubmissionOutput",
+  mempoolTxsCount: 0,
+  sizeOfProcessedTxs: 0,
+  submitRefusal: { code, detail: `${code} refusal\n    at frame` },
+});
+
+// A submission refused before broadcast is retried with its payload, so it
+// is a detail until its unbroken run outlasts the bound, then a reason; a
+// change of code does not restart the run, and a commit clears it.
+describe("commit submit refusal readiness", () => {
+  it("names the refusal's code and is a detail until its unbroken run outlasts the bound", async () => {
+    const [inside, past] = await Effect.runPromise(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const startMs = Date.now();
+        yield* applyCommitWorkerReadiness(
+          globals,
+          refused("COMMIT_ANCHOR_NOT_CANONICAL"),
+        );
+        yield* applyCommitWorkerReadiness(globals, {
+          type: "NothingToCommitOutput",
+        });
+        yield* applyCommitWorkerReadiness(globals, refused("SIGNING_FAILED"));
+        return [
+          yield* activeLivenessReasons(globals, startMs + 60_000),
+          yield* activeLivenessReasons(
+            globals,
+            startMs + COMMIT_WORKER_FAILED_ESCALATION_MS + 1_000,
+          ),
+        ] as const;
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+    expect(inside).toEqual([
+      expect.objectContaining({
+        source: COMMIT_SUBMIT_SOURCE,
+        reason: `${COMMIT_SUBMIT_REFUSED}:SIGNING_FAILED`,
+        detail: "SIGNING_FAILED refusal",
+        escalateAfterMs: COMMIT_WORKER_FAILED_ESCALATION_MS,
+        escalated: false,
+      }),
+    ]);
+    expect(livenessReadiness(inside)).toEqual({
+      reasons: [],
+      details: [`${COMMIT_SUBMIT_REFUSED}:SIGNING_FAILED`],
+    });
+    expect(past).toEqual([
+      expect.objectContaining({
+        reason: `${COMMIT_SUBMIT_REFUSED}:SIGNING_FAILED`,
+        escalated: true,
+      }),
+    ]);
+    expect(livenessReadiness(past)).toEqual({ reasons: past, details: [] });
+  });
+
+  describe("on the node's clock", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("a change of code does not restart the run", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+      const reasons = await Effect.runPromise(
+        Effect.gen(function* () {
+          const globals = yield* Globals;
+          yield* applyCommitWorkerReadiness(
+            globals,
+            refused("COMMIT_ANCHOR_NOT_CANONICAL"),
+          );
+          vi.advanceTimersByTime(6 * 60_000);
+          yield* applyCommitWorkerReadiness(globals, refused("SIGNING_FAILED"));
+          vi.advanceTimersByTime(5 * 60_000);
+          return livenessReadiness(yield* activeLivenessReasons(globals))
+            .reasons;
+        }).pipe(Effect.provide(Globals.Default)),
+      );
+      expect(reasons).toEqual([
+        expect.objectContaining({
+          source: COMMIT_SUBMIT_SOURCE,
+          reason: `${COMMIT_SUBMIT_REFUSED}:SIGNING_FAILED`,
+          escalated: true,
+        }),
+      ]);
+    });
+  });
+
+  it("clears on the next commit, and a skip that was not refused leaves it", async () => {
+    expect(
+      await reasonsAfter(refused("COMMIT_ANCHOR_NOT_CANONICAL"), {
+        type: "SkippedSubmissionOutput",
+        mempoolTxsCount: 0,
+        sizeOfProcessedTxs: 0,
+      }),
+    ).toEqual([
+      {
+        source: COMMIT_SUBMIT_SOURCE,
+        reason: `${COMMIT_SUBMIT_REFUSED}:COMMIT_ANCHOR_NOT_CANONICAL`,
+      },
+    ]);
+    expect(
+      await reasonsAfter(refused("COMMIT_ANCHOR_NOT_CANONICAL"), {
+        type: "SuccessfulSubmissionOutput",
+        submittedTxHash: "ab".repeat(32),
+        txSize: 0,
+        mempoolTxsCount: 0,
+        sizeOfBlocksTxs: 0,
+        blockEndTimeMs: 0,
+        mempoolLedgerDeletedOutRefHexes: [],
+      }),
+    ).toEqual([]);
   });
 });

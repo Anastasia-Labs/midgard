@@ -2,6 +2,7 @@ import { HttpServerResponse } from "@effect/platform";
 import { Effect, Option, Ref } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../../database/index.js";
+import { livenessReadiness } from "../../fibers/block-commitment.worker-readiness.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../../fibers/index.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../../l1-provider-readiness-probe.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
@@ -62,8 +63,8 @@ import {
  * local recovery state, and database connectivity. A database that does not
  * answer is `db_unhealthy` (503), never a server error. `details` names
  * degradations that do not stop admission, so they leave the node ready.
- * Every raised liveness reason (a hold on block production, or a stalled
- * fiber) is a reason, and `livenessReasons` gives each one's source, detail,
+ * A raised liveness reason (a hold, a stalled fiber) is a reason or a detail
+ * (`livenessReadiness`); `livenessReasons` gives each one's source, detail,
  * age and escalation. Readiness only reports: no admission route reads it.
  */
 export const getReadinessHandler = Effect.gen(function* () {
@@ -357,8 +358,9 @@ export const getReadinessHandler = Effect.gen(function* () {
   // A raised reason holds the fibers its source halts for as long as it is
   // raised, possibly for good, while every heartbeat stays fresh.
   const livenessReasons = yield* activeLivenessReasons(globals);
-  for (const { reason } of livenessReasons)
+  for (const { reason } of livenessReadiness(livenessReasons).reasons)
     if (!reasons.includes(reason)) reasons.push(reason);
+  details.push(...livenessReadiness(livenessReasons).details);
   if (providerReadiness.detail !== undefined)
     details.push(providerReadiness.detail);
   const pendingFinalizationDetail = pendingFinalizationAgeDetail(

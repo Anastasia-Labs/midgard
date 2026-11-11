@@ -45,7 +45,7 @@ import {
 import { runCommitWorkerInThread } from "./block-commitment.run-commit-worker-in-thread.js";
 import { publishCommitMempoolLedgerMutation } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import { COMMIT_WINDOW_PENDING } from "./block-commitment.worker-readiness.js";
-import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
+import { classifyCommitWorkerOutputAgainstLeaseJournal } from "./commit-worker-failure-classification.js";
 import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
@@ -213,24 +213,11 @@ export const buildAndSubmitCommitmentBlockAction = (
 
     const workerOutput: WorkerOutput = yield* worker.pipe(
       Effect.flatMap((output) =>
-        classifyCommitWorkerOutputForMutationLease({
+        classifyCommitWorkerOutputAgainstLeaseJournal(
+          globals,
           output,
           stateQueueLeaseToken,
-          retrieveJournalEvidence: (token) =>
-            PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
-              token,
-            ).pipe(
-              Effect.map((rows) =>
-                rows.map((row) => ({
-                  headerHash:
-                    row[PendingBlockFinalizationsDB.Columns.HEADER_HASH],
-                  submittedTxHash:
-                    row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
-                  status: row[PendingBlockFinalizationsDB.Columns.STATUS],
-                })),
-              ),
-            ),
-        }),
+        ),
       ),
       // A failed attempt may already have committed a commit-stage rejection
       // whose mempool_ledger revert the cache has not seen.

@@ -10,6 +10,7 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
+import { setUnresolvedBlockSubmission } from "../fibers/unresolved-block-submission.js";
 import { foldMerge } from "../landed-blocks/confirmed-merges.js";
 import { ownFoldRow } from "../landed-blocks/journal.js";
 import { Frontier } from "../landed-blocks/store.js";
@@ -292,23 +293,7 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
     const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
     const submittedTxHash =
       record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
-    // The confirmation observed an observed block's commit on L1, so its
-    // submission is resolved; only its local finalization is outstanding.
-    const unresolvedTxHash =
-      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
-        ? null
-        : (submittedTxHash ??
-          record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]);
-    yield* Ref.set(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-      unresolvedTxHash?.toString("hex") ?? "",
-    );
-    yield* Ref.set(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-      unresolvedTxHash === null
-        ? 0
-        : record[PendingBlockFinalizationsDB.Columns.UPDATED_AT].getTime(),
-    );
+    yield* setUnresolvedBlockSubmission(globals, record);
     // An observed block's node may already be merged into the confirmed state
     // (or removed), so no queue read ever yields it again: re-derive the node
     // its retained signed commit created, which local finalization binds to

@@ -3,6 +3,7 @@ import { Effect, Ref } from "effect";
 
 import type { Globals } from "../services/globals.js";
 import {
+  type ActiveLivenessReason,
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
@@ -54,6 +55,54 @@ export const COMMIT_WINDOW_SOURCE = "commit_window";
  */
 export const COMMIT_WINDOW_PENDING = "commit_window_pending";
 
+/** The liveness source `commit_submit_refused` is raised under. */
+export const COMMIT_SUBMIT_SOURCE = "commit_submit";
+/**
+ * The commit's L1 submission was refused before anything was broadcast,
+ * named `commit_submit_refused:<code>` by the refusal's bounded code
+ * (`COMMIT_SUBMIT_REFUSAL_CODES`). The attempt is abandoned and retried with
+ * its payload, so the refusal is a detail until its unbroken run outlasts
+ * `COMMIT_WORKER_FAILED_ESCALATION_MS`, then a reason. It clears with
+ * `commit_worker_failed` (`clearCommitWorkerFailure`).
+ */
+export const COMMIT_SUBMIT_REFUSED = "commit_submit_refused";
+/**
+ * Why a commit's submission was refused before broadcast: the commit anchor
+ * left the follower's chain (the pre-broadcast gate), the intent journal
+ * refused the bytes (it also holds them under its own reason), signing
+ * failed, or another refusal.
+ */
+export const COMMIT_SUBMIT_REFUSAL_CODES = [
+  "COMMIT_ANCHOR_NOT_CANONICAL",
+  "INTENT_JOURNAL_REFUSED",
+  "SIGNING_FAILED",
+  "UNCLASSIFIED",
+] as const;
+export type CommitSubmitRefusalCode =
+  (typeof COMMIT_SUBMIT_REFUSAL_CODES)[number];
+
+/** A raised `commit_submit_refused` that is still a readiness detail: its
+ * run has not outlasted its bound. */
+const commitSubmitRefusalIsDetail = ({
+  source,
+  escalated,
+}: ActiveLivenessReason): boolean =>
+  source === COMMIT_SUBMIT_SOURCE && !escalated;
+
+/** The raised liveness reasons as `/readyz` names them: each in `reasons`,
+ * but a `commit_submit_refused` still a detail in `details`. */
+export const livenessReadiness = (
+  active: readonly ActiveLivenessReason[],
+): {
+  readonly reasons: readonly ActiveLivenessReason[];
+  readonly details: readonly string[];
+} => ({
+  reasons: active.filter((each) => !commitSubmitRefusalIsDetail(each)),
+  details: active
+    .filter(commitSubmitRefusalIsDetail)
+    .map(({ reason }) => reason),
+});
+
 /** The liveness source `commit_scheduler_alignment_failed` is raised under. */
 export const COMMIT_SCHEDULER_SOURCE = "commit_scheduler";
 /**
@@ -71,6 +120,9 @@ export const COMMIT_SCHEDULER_ALIGNMENT_FAILED =
  * after `COMMIT_WORKER_FAILED_ESCALATION_MS`. Only actual worker success
  * or an independent empty-work preflight clears this reason. A heartbeat,
  * scheduler deferral or worker no-op does not prove outstanding work recovered.
+ *
+ * A submission refused before broadcast raises `commit_submit_refused`
+ * under `commit_submit`, cleared with this reason.
  *
  * A commit waiting for its base raises `commit_base_pending` under
  * `commit_base`, and one waiting for the next window raises
@@ -130,8 +182,17 @@ const workerOutcomeReadiness = (
     case "SubmittedAwaitingConfirmationOutput":
     case "SuccessfulLocalFinalizationRecoveryOutput":
       return clearCommitWorkerFailure(globals);
-    case "NothingToCommitOutput":
     case "SkippedSubmissionOutput":
+      return output.submitRefusal === undefined
+        ? Effect.void
+        : raiseLivenessIncident(
+            globals,
+            COMMIT_SUBMIT_SOURCE,
+            `${COMMIT_SUBMIT_REFUSED}:${output.submitRefusal.code}`,
+            output.submitRefusal.detail,
+            { escalateAfterMs: COMMIT_WORKER_FAILED_ESCALATION_MS },
+          );
+    case "NothingToCommitOutput":
     case "RegisteredDueWorkOutput":
     case "SubmittedAwaitingLocalFinalizationOutput":
       return Effect.void;
@@ -144,6 +205,7 @@ export const clearCommitWorkerFailure = (
   Effect.all(
     [
       clearLivenessIncident(globals, COMMIT_WORKER_SOURCE),
+      clearLivenessIncident(globals, COMMIT_SUBMIT_SOURCE),
       clearLivenessIncident(globals, COMMIT_BASE_SOURCE),
       clearLivenessIncident(globals, COMMIT_WINDOW_SOURCE),
       clearLivenessIncident(globals, COMMIT_SCHEDULER_SOURCE),

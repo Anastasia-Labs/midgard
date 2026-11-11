@@ -10,6 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { CommitSubmitRefusalCode } from "../../fibers/block-commitment.worker-readiness.js";
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
 import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
@@ -84,6 +85,17 @@ export type SkippedSubmissionOutput = {
     readonly endTimeMs: number;
     readonly roots: CommitCandidateRoots;
   };
+  /** Why the commit's submission was refused before broadcast, when it was
+   * (`commit_submit_refused`): the attempt was abandoned and its payload
+   * kept for the retry. */
+  submitRefusal?: CommitSubmitRefusal;
+};
+
+/** A commit submission refused before broadcast: its bounded code and the
+ * failure it was classified from. */
+export type CommitSubmitRefusal = {
+  readonly code: CommitSubmitRefusalCode;
+  readonly detail: string;
 };
 
 export type NothingToCommitOutput = {

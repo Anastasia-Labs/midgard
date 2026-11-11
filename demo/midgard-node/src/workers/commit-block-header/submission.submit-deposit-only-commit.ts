@@ -1,4 +1,3 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -21,11 +20,7 @@ import {
   type RetainedValidationTraceMember,
 } from "../../mpf/index.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
-import {
-  type ContractDeploymentIdentityValue,
-  Database,
-} from "../../services/index.js";
-import { TxSubmitError } from "../../transactions/utils.js";
+import type { ContractDeploymentIdentityValue } from "../../services/index.js";
 import type {
   WorkerInput,
   WorkerOutput,
@@ -45,20 +40,17 @@ import {
   resolvePendingJournalLedgerState,
   revalidateStateQueueLease,
 } from "./pending-journal.js";
-import { stateQueueOutRef } from "./state-queue.js";
 import {
   assertCommitInputsWithinBlockEndTime,
   assertPreSubmitDaPayloadSize,
 } from "./submission.assert-pre-submit-da-payload-size.js";
+import { commitSubmitFailureOutput } from "./submission.classify-submit-failure.js";
 import {
   assertCommitUserEventSourceCompleteness,
-  isStaleCommitBaseError,
   journalUtxoEntries,
-  submitErrorReferencesOutRef,
 } from "./submission.commit-event-sources.js";
 import {
   awaitNextCommitWindow,
-  retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
 import { type CommitSubmissionHooks } from "./submission-hooks.js";
@@ -387,17 +379,17 @@ export const submitDepositOnlyCommit = ({
                   ),
                   {
                     onFailure: (error) =>
-                      Effect.gen(function* () {
-                        const retained = yield* retainedIntentFailure(
-                          headerHashBuffer,
-                          error,
-                        );
-                        if (retained !== undefined) return retained;
-                        return yield* handleDepositOnlySubmissionFailure({
-                          error,
-                          headerHashBuffer,
-                          expectedTailOutRef: stateQueueOutRef(commitBaseTail),
-                        });
+                      commitSubmitFailureOutput({
+                        error,
+                        headerHash: headerHashBuffer,
+                        // A user-event-only commit holds no tx payload.
+                        preservePayload: (submitRefusal) =>
+                          Effect.succeed({
+                            type: "SkippedSubmissionOutput",
+                            mempoolTxsCount: 0,
+                            sizeOfProcessedTxs: 0,
+                            submitRefusal,
+                          } satisfies WorkerOutput),
                       }),
                     onSuccess: (txHash) =>
                       PendingBlockFinalizationsDB.markSubmitted(
@@ -420,54 +412,6 @@ export const submitDepositOnlyCommit = ({
           ),
         ),
       );
-
-    const handleDepositOnlySubmissionFailure = ({
-      error,
-      headerHashBuffer,
-      expectedTailOutRef,
-    }: {
-      readonly error: unknown;
-      readonly headerHashBuffer: Buffer;
-      readonly expectedTailOutRef: string;
-    }): Effect.Effect<WorkerOutput, never, Database> =>
-      error instanceof TxSubmitError &&
-      submitErrorReferencesOutRef(error, expectedTailOutRef)
-        ? Effect.gen(function* () {
-            yield* PendingBlockFinalizationsDB.markAbandoned(
-              headerHashBuffer,
-            ).pipe(Effect.catchAll(() => Effect.void));
-            yield* Effect.logWarning(
-              `🔹 User-event-only commit submission hit stale state-queue tail ${expectedTailOutRef}; the next worker tick will rebuild against the refreshed live tail.`,
-            );
-            return {
-              type: "NothingToCommitOutput",
-            } satisfies WorkerOutput;
-          })
-        : isStaleCommitBaseError(error)
-          ? Effect.gen(function* () {
-              yield* PendingBlockFinalizationsDB.markAbandoned(
-                headerHashBuffer,
-              ).pipe(Effect.catchAll(() => Effect.void));
-              yield* Effect.logWarning(
-                `🔹 User-event-only commit base ${expectedTailOutRef} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
-              );
-              return {
-                type: "NothingToCommitOutput",
-              } satisfies WorkerOutput;
-            })
-          : Effect.gen(function* () {
-              yield* PendingBlockFinalizationsDB.markAbandoned(
-                headerHashBuffer,
-              ).pipe(Effect.catchAll(() => Effect.void));
-              const detail = formatUnknownError(error);
-              yield* Effect.logError(
-                `🔹 User-event-only commit submission failed: ${detail}`,
-              );
-              return {
-                type: "FailureOutput",
-                error: `User-event-only commit submission failed: ${detail}`,
-              } satisfies WorkerOutput;
-            });
 
     return yield* submitCommitAttempt();
   });

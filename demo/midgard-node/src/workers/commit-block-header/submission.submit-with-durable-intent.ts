@@ -1,5 +1,4 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import { Database } from "../../services/index.js";
@@ -22,19 +21,6 @@ export const awaitNextCommitWindow = (heldHeaderHash: Buffer) =>
       heldHeaderHash: heldHeaderHash.toString("hex"),
       detail: HELD_HEADER_DETAIL,
     } satisfies WorkerOutput),
-  );
-
-export const retainedIntentFailure = (headerHash: Buffer, error: unknown) =>
-  PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash).pipe(
-    Effect.map((record) =>
-      Option.isSome(record) &&
-      record.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] != null
-        ? {
-            type: "FailureOutput" as const,
-            error: `Signed commit intent retained for canonical reconciliation: ${formatUnknownError(error)}`,
-          }
-        : undefined,
-    ),
   );
 
 export const submitWithDurableIntent = <A, E>(

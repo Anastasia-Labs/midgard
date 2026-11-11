@@ -1,9 +1,4 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const submissionTrace = vi.hoisted(() => ({
   calls: [] as string[],
   failJournalPreparation: false,
+  /** The pending row holds the commit's signed intent (`recordSignedIntent`). */
+  intentJournaled: false,
 }));
 
 vi.mock("../src/database/index.js", async () => {
@@ -45,14 +42,22 @@ vi.mock("../src/database/index.js", async () => {
         }),
       ),
       retrieveByHeaderHash: vi.fn(() =>
-        Effect.succeed(
+        Effect.sync(() =>
           Option.some({
             [actual.PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
               "33".repeat(32),
+            [actual.PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]:
+              submissionTrace.intentJournaled
+                ? Buffer.from("22".repeat(32), "hex")
+                : null,
             utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
           }),
         ),
       ),
+    },
+    ProcessedMempoolDB: {
+      ...actual.ProcessedMempoolDB,
+      moveFromMempool: vi.fn(() => Effect.void),
     },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
@@ -81,9 +86,15 @@ vi.mock("../src/forced-orders/horizon.js", () => ({
 vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
   reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
-vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", () => ({
-  buildUnsignedCommitTx: vi.fn(),
-}));
+vi.mock(
+  "../src/workers/commit-block-header/build-unsigned-tx.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../src/workers/commit-block-header/build-unsigned-tx.js")
+    >()),
+    buildUnsignedCommitTx: vi.fn(),
+  }),
+);
 vi.mock("../src/workers/commit-block-header/event-roots.js", () => ({
   resolveDepositsRoot: vi.fn(() =>
     Effect.succeed(Option.some("66".repeat(32))),
@@ -123,20 +134,23 @@ vi.mock("../src/workers/commit-block-header/transition-commitments.js", () => ({
 }));
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
-import { TxUtils as TxTable } from "../src/database/index.js";
+import { shouldSkipForRegisteredCommitDueWork } from "../src/fibers/block-commitment.should-skip-for-registered-commit-due-work.js";
 import {
   classifyCommitWorkerOutputForMutationLease,
   type CommitWorkerFailureJournalEvidence,
 } from "../src/fibers/commit-worker-failure-classification.js";
-import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
-import { Lucid, NodeConfig } from "../src/services/index.js";
+import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
-import {
-  submitDepositOnlyCommit,
-  submitTxBackedCommit,
-} from "../src/workers/commit-block-header/submission.js";
-import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { assertLiveTailCommitBase } from "../src/workers/commit-block-header/pending-journal.js";
 import { WorkerError } from "../src/workers/utils/common.js";
+import {
+  baseCommitArgs,
+  commitPaths,
+  HEADER_HASH,
+  NEW_HEADER,
+  SUBMIT_FAILURES,
+  TAIL_TX_HASH,
+} from "./commit-worker-failure-lease-classification.fixture.js";
 
 const failureOutput = {
   type: "FailureOutput",
@@ -145,15 +159,20 @@ const failureOutput = {
 
 const journalEvidence = ({
   status,
+  intendedTxHash = null,
   submittedTxHash = null,
 }: {
   readonly status: string;
+  readonly intendedTxHash?: Buffer | null;
   readonly submittedTxHash?: Buffer | null;
 }): CommitWorkerFailureJournalEvidence => ({
   headerHash: Buffer.from("11".repeat(28), "hex"),
+  intendedTxHash,
   submittedTxHash,
   status,
 });
+
+const COMMIT_TX_HASH = Buffer.from("22".repeat(32), "hex");
 
 describe("commit worker failure mutation-lease classification", () => {
   it("returns a typed failure normally when no journal exists for the lease token", async () => {
@@ -168,20 +187,66 @@ describe("commit worker failure mutation-lease classification", () => {
     expect(result).toStrictEqual(failureOutput);
   });
 
+  // A commit path abandons its journal on a pre-broadcast failure: the
+  // abandoned row is the attempt's own, and nothing it held was sent.
+  it("returns a typed failure normally when every journal row for the lease is abandoned unsigned", async () => {
+    const result = await Effect.runPromise(
+      classifyCommitWorkerOutputForMutationLease({
+        output: failureOutput,
+        stateQueueLeaseToken: "block_commitment:abandoned",
+        retrieveJournalEvidence: () =>
+          Effect.succeed([
+            journalEvidence({ status: "abandoned" }),
+            journalEvidence({ status: "abandoned" }),
+          ]),
+      }),
+    );
+
+    expect(result).toStrictEqual(failureOutput);
+  });
+
+  // A state-queue correction or journal disposal abandons a signed or
+  // submitted row, whose commit may still be on L1.
   for (const evidence of [
-    journalEvidence({ status: "pending_submission" }),
-    journalEvidence({ status: "abandoned" }),
-    journalEvidence({
-      status: "submitted_unconfirmed",
-      submittedTxHash: Buffer.from("22".repeat(32), "hex"),
-    }),
+    [journalEvidence({ status: "pending_submission" })],
+    [
+      journalEvidence({ status: "abandoned" }),
+      journalEvidence({ status: "pending_submission" }),
+    ],
+    [
+      journalEvidence({
+        status: "submitted_unconfirmed",
+        submittedTxHash: COMMIT_TX_HASH,
+      }),
+    ],
+    [journalEvidence({ status: "abandoned", intendedTxHash: COMMIT_TX_HASH })],
+    [
+      journalEvidence({
+        status: "abandoned",
+        intendedTxHash: COMMIT_TX_HASH,
+        submittedTxHash: COMMIT_TX_HASH,
+      }),
+    ],
+    [
+      journalEvidence({ status: "abandoned" }),
+      journalEvidence({ status: "abandoned", intendedTxHash: COMMIT_TX_HASH }),
+    ],
   ]) {
-    it(`fails closed for ${evidence.status} durable journal evidence`, async () => {
+    const statuses = evidence
+      .map(({ status, intendedTxHash, submittedTxHash }) =>
+        submittedTxHash !== null
+          ? `${status}(submitted)`
+          : intendedTxHash !== null
+            ? `${status}(signed)`
+            : status,
+      )
+      .join("+");
+    it(`fails closed for ${statuses} durable journal evidence`, async () => {
       const result = await Effect.runPromise(
         classifyCommitWorkerOutputForMutationLease({
           output: failureOutput,
-          stateQueueLeaseToken: `block_commitment:${evidence.status}`,
-          retrieveJournalEvidence: () => Effect.succeed([evidence]),
+          stateQueueLeaseToken: `block_commitment:${statuses}`,
+          retrieveJournalEvidence: () => Effect.succeed(evidence),
         }).pipe(Effect.either),
       );
 
@@ -256,195 +321,6 @@ describe("commit worker failure mutation-lease classification", () => {
   });
 });
 
-/**
- * A structurally complete V1 header, so the production pre-submit DA sizing
- * runs over real field values instead of dying on an empty stub.
- */
-const NEW_HEADER = {
-  prevUtxosRoot: "33".repeat(32),
-  utxosRoot: "33".repeat(32),
-  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  depositsRoot: "66".repeat(32),
-  transitionTraceRoot: "44".repeat(32),
-  eventToStepRoot: "55".repeat(32),
-  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  withdrawalCount: 0n,
-  forcedTransactionCount: 0n,
-  l2TransactionCount: 0n,
-  depositCount: 0n,
-  totalEventCount: 0n,
-  transitionStepCount: 0n,
-  validationTraceCount: 0n,
-  startTime: 0n,
-  endTime: 1n,
-  blockSlot: 1n,
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  prevHeaderHash: "11".repeat(28),
-  operatorVkey: "77".repeat(32),
-  protocolVersion: 1n,
-} as never;
-
-const HEADER_HASH = "11".repeat(28);
-const workerInput = {
-  data: {
-    availableConfirmedBlock: "",
-    availableLocalFinalizationBlock: "",
-    currentBlockStartTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
-    forcedValidationSlotConfig: {
-      zeroTime: Date.parse("2026-01-01T00:06:50.999Z"),
-      zeroSlot: 100,
-      slotLength: 1_000,
-    },
-    ledgerStoreLeaseOwner: "commit:12345678-1234-4123-8123-123456789abc",
-    localFinalizationPending: false,
-    mempoolTxsCountSoFar: 0,
-    sizeOfProcessedTxsSoFar: 0,
-    baseSnapshotId: "test",
-    stateQueueHasUnmergedTail: false,
-  },
-} as unknown as WorkerInput;
-const fakeLucid = {
-  api: {},
-  switchToOperatorsMainWallet: Effect.void,
-} as never;
-const fakeSql = Object.assign(
-  ((..._args: readonly unknown[]) =>
-    Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  {
-    array: vi.fn((values: readonly unknown[]) => values),
-    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
-  },
-) as unknown as SqlClient.SqlClient;
-
-const baseCommitArgs = {
-  contracts: {
-    stateQueue: {
-      spendingScriptAddress: "addr_test1statequeue",
-      policyId: "aa".repeat(28),
-    },
-  } as never,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker: {
-    schemaVersion: "midgard-deployment-marker-v1",
-    manifestId: "test-manifest",
-  } as never,
-  latestBlock: {
-    utxo: {
-      txHash: "22".repeat(32),
-      outputIndex: 0,
-      address: "addr_test1statequeue",
-      assets: {},
-      datum: "datum",
-    },
-    datum: { key: "Empty" },
-  } as never,
-  endTime: new Date("2026-01-01T00:07:00.999Z"),
-  includedDepositEntries: [],
-  includedDepositEventIds: [Buffer.from("01", "hex")],
-  includedForcedTransactionEntries: [],
-  includedForcedTransactionEventIds: [],
-  includedWithdrawalEntries: [],
-  includedWithdrawalEventIds: [],
-  workerInput,
-  blockEndTimeCapMs: undefined,
-  utxoRoot: "33".repeat(32),
-  txRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transitionTraceRoot: "44".repeat(32),
-  eventToStepRoot: "55".repeat(32),
-  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transitionTraceMembers: [],
-  eventToStepMembers: [],
-  validationTraceMembers: [],
-  transitionStepCount: 0,
-  validationTraceCount: 0,
-  ledgerDelta: { spent: [], produced: [] },
-  selectedBaseUtxosRoot: "33".repeat(32),
-  implicitGenesisEntries: [],
-  nativeMpfReplay: undefined,
-} as const;
-
-/**
- * A real canonical V1 transaction from the transaction-root golden fixture, so
- * the production DA-sizing path decodes genuine transaction bytes rather than
- * being short-circuited by a mock.
- */
-const goldenTx = (
-  JSON.parse(
-    readFileSync(
-      fileURLToPath(
-        new URL(
-          "./fixtures/transaction-root-v1.generated.json",
-          import.meta.url,
-        ),
-      ),
-      "utf8",
-    ),
-  ) as {
-    readonly transactions: readonly {
-      readonly txIdHex: string;
-      readonly canonicalTransactionCborHex: string;
-    }[];
-  }
-).transactions[0]!;
-const goldenTxId = Buffer.from(goldenTx.txIdHex, "hex");
-const processedMempoolTxs = [
-  {
-    [TxTable.Columns.TX_ID]: goldenTxId,
-    [TxTable.Columns.TX]: Buffer.from(
-      goldenTx.canonicalTransactionCborHex,
-      "hex",
-    ),
-    [TxTable.Columns.TIMESTAMPTZ]: new Date("2026-01-01T00:07:00.999Z"),
-  },
-] as never;
-
-/** The final recheck reads the commit-event depth (a fixture has no permit). */
-const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
-
-const runDepositOnlyCommit = () =>
-  Effect.runPromise(
-    Effect.either(
-      submitDepositOnlyCommit(
-        baseCommitArgs as unknown as Parameters<
-          typeof submitDepositOnlyCommit
-        >[0],
-      ),
-    ).pipe(
-      Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(NodeConfig, depthConfig),
-      Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
-    ) as Effect.Effect<unknown, never, never>,
-  );
-
-const runTxBackedCommit = () =>
-  Effect.runPromise(
-    Effect.either(
-      submitTxBackedCommit({
-        ...baseCommitArgs,
-        transactionsMpf: {} as never,
-        processedMempoolTxs,
-        mempoolTxHashes: [goldenTxId],
-        mempoolTxSourceTable: "mempool",
-        sizeOfProcessedTxs: 2,
-      } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
-    ).pipe(
-      Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(NodeConfig, depthConfig),
-      Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
-    ) as Effect.Effect<unknown, never, never>,
-  );
-
-const commitPaths = [
-  ["deposit-only", runDepositOnlyCommit],
-  ["tx-backed", runTxBackedCommit],
-] as const;
-
 describe("commit submission journals before it signs and submits", () => {
   beforeEach(() => {
     submissionTrace.calls.length = 0;
@@ -493,6 +369,73 @@ describe("commit submission journals before it signs and submits", () => {
 
       expect(submissionTrace.calls).toEqual(["prepare-journal"]);
       expect(outcome).toMatchObject({ _tag: "Left" });
+    },
+  );
+});
+
+describe("both commit paths classify a submit failure the same way", () => {
+  beforeEach(() => {
+    submissionTrace.calls.length = 0;
+    submissionTrace.failJournalPreparation = false;
+    submissionTrace.intentJournaled = false;
+    vi.mocked(PendingBlockFinalizationsDB.markAbandoned).mockClear();
+    vi.mocked(assertLiveTailCommitBase).mockReset();
+    vi.mocked(assertLiveTailCommitBase).mockReturnValue(Effect.void);
+  });
+
+  const armSubmitFailure = (failure: (typeof SUBMIT_FAILURES)[number]) => {
+    submissionTrace.intentJournaled = failure.intentJournaled;
+    if (failure.liveTail !== undefined)
+      vi.mocked(assertLiveTailCommitBase).mockReturnValue(
+        Effect.fail(failure.liveTail) as never,
+      );
+    vi.mocked(buildUnsignedCommitTx).mockReturnValue(
+      Effect.succeed({
+        preparedTxHash: TAIL_TX_HASH,
+        newHeaderHash: HEADER_HASH,
+        newHeader: NEW_HEADER,
+        newHeaderCbor: Buffer.from("header"),
+        blockEndTimeMs: baseCommitArgs.endTime.getTime(),
+        txValidFromMs: 0,
+        txValidToMs: 1,
+        signAndSubmitProgram: Effect.fail(failure.submit),
+        txSize: 1,
+      }) as never,
+    );
+  };
+
+  for (const failure of SUBMIT_FAILURES)
+    it.each(commitPaths)(`%s: ${failure.name}`, async (_name, run) => {
+      armSubmitFailure(failure);
+
+      const outcome = await run();
+
+      expect(outcome).toMatchObject({ _tag: "Right", right: failure.output });
+      expect(
+        vi.mocked(PendingBlockFinalizationsDB.markAbandoned),
+      ).toHaveBeenCalledTimes(failure.abandoned ? 1 : 0);
+    });
+
+  it.each(commitPaths)(
+    "%s: the tick after a pre-submit validity defer has no due work to wait on",
+    async (_name, run) => {
+      armSubmitFailure(
+        SUBMIT_FAILURES.find(
+          ({ name }) => name === "a pre-submit validity defer",
+        )!,
+      );
+
+      // The action's arm for this output registers nothing.
+      expect(await run()).toMatchObject({
+        _tag: "Right",
+        right: { type: "NothingToCommitOutput" },
+      });
+      expect(listSlotAwareDueWork()).toEqual([]);
+      expect(
+        await Effect.runPromise(
+          shouldSkipForRegisteredCommitDueWork as Effect.Effect<boolean>,
+        ),
+      ).toBe(false);
     },
   );
 });

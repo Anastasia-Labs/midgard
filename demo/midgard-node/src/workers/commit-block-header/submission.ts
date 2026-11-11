@@ -26,6 +26,7 @@ import "./state-queue.js";
 import "./transition-commitments.js";
 import "./submission.assert-pre-submit-da-payload-size.js";
 import "./submission.commit-event-sources.js";
+import "./submission.classify-submit-failure.js";
 import "./submission.submit-with-durable-intent.js";
 import "./submission.submit-deposit-only-commit.js";
 import "./submission.submit-tx-backed-commit.js";
