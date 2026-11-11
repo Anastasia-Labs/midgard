@@ -64,7 +64,8 @@ const ourShiftFrom = (timeMs: number) =>
  * little later. `ourLedgerFromMs` and `attestedFromMs` hold an output that
  * is already there; `pending` is a deposit an earlier run recorded, which
  * landed when `pendingLanded`. A `stuckScheduler` never leaves our node's
- * first shift.
+ * first shift. A `stalledKupo` keeps answering while its checkpoint never
+ * reaches a deposit's validity end, so every deposit stays pending.
  */
 const stack = (input: {
   startMs: number;
@@ -75,12 +76,14 @@ const stack = (input: {
   neverAbsorbs?: boolean;
   buildTakesMs?: number;
   stuckScheduler?: boolean;
+  stalledKupo?: boolean;
 }) => {
   let clock = input.startMs;
   let pending = input.pending;
   let ourLedgerFromMs = input.ourLedgerFromMs ?? Infinity;
   let attestedFromMs = input.attestedFromMs ?? Infinity;
   let schedulerReads = 0;
+  let statusReads = 0;
   const landsAt = new Map<string, number>();
   const builds: { builtAtMs: number; inclusionTime: number }[] = [];
   const deposits: (StackLedgerOwnerDeposit & { builtAtMs: number })[] = [];
@@ -125,12 +128,17 @@ const stack = (input: {
         ourLedgerHoldsOutput: async () => clock >= ourLedgerFromMs,
         ownerHoldsOutput: async () => clock >= attestedFromMs,
         readPendingDeposit: async () => pending,
-        depositStatus: async (deposit) =>
-          clock >= (landsAt.get(deposit.txHash) ?? Infinity)
+        depositStatus: async (deposit) => {
+          // A wait that never stops polling would otherwise hang the test.
+          if (++statusReads > 100_000)
+            throw new Error("The run read the deposit's status without bound");
+          if (input.stalledKupo === true) return "pending";
+          return clock >= (landsAt.get(deposit.txHash) ?? Infinity)
             ? "landed"
             : clock > deposit.validTo
               ? "expired"
-              : "pending",
+              : "pending";
+        },
         archivePendingDeposit: async () => {
           pending = undefined;
         },
@@ -283,6 +291,55 @@ describe("funding the drill's ledger owner before any family starts", () => {
       inclusionTime: deposit!.inclusionTime,
       validTo: deposit!.validTo,
     });
+  });
+
+  it("refuses the run, by name, when the stack's Kupo shows its deposit neither landed nor expired by the funding's deadline", async () => {
+    const run = stack({
+      startMs: OPERATOR_2_START_MS + 1_000,
+      stalledKupo: true,
+    });
+    const refusal = await run.fund().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(StackLedgerOwnerFundingRefusal);
+    expect(((refusal as Error).cause as Error).message).toMatch(
+      /neither landed nor expired on L1/u,
+    );
+    // The same deadline as the deposit's absorption, met within one poll.
+    const [deposit] = run.deposits;
+    expect(run.deposits).toHaveLength(1);
+    expect(run.now()).toBeGreaterThan(
+      deposit!.inclusionTime + ABSORB_WITHIN_MS,
+    );
+    expect(run.now()).toBeLessThanOrEqual(
+      deposit!.inclusionTime + ABSORB_WITHIN_MS + POLL_MS,
+    );
+    // Its record stays for the next run, which awaits it while it can land.
+    expect(run.pending()).toEqual({
+      txHash: deposit!.txHash,
+      inclusionTime: deposit!.inclusionTime,
+      validTo: deposit!.validTo,
+    });
+  });
+
+  it("refuses the run, by name, when an earlier run's deposit stays pending past its deadline", async () => {
+    const run = stack({
+      startMs: OPERATOR_2_START_MS + 1_000,
+      pending: stale,
+      stalledKupo: true,
+    });
+    const refusal = await run.fund().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(StackLedgerOwnerFundingRefusal);
+    expect(((refusal as Error).cause as Error).message).toMatch(
+      /neither landed nor expired on L1/u,
+    );
+    // Neither set aside nor replaced: Kupo has not shown it cannot land.
+    expect(run.deposits).toHaveLength(0);
+    expect(run.pending()).toEqual(stale);
   });
 });
 

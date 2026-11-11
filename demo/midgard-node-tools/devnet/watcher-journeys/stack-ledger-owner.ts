@@ -81,6 +81,10 @@ export type StackLedgerOwnerFundingPorts = {
   onStage(name: string): void;
 };
 
+/** The funding's own deadline for a deposit due at `dueMs`. */
+const absorbDeadlineMs = (ports: StackLedgerOwnerFundingPorts, dueMs: number) =>
+  dueMs + ports.absorbWithinMs;
+
 /**
  * Waits until our node's ledger and the stack's attested tail both hold an
  * output of the owner's, failing once ledger time passes `dueMs` by the
@@ -90,7 +94,7 @@ const awaitAbsorbed = async (
   ports: StackLedgerOwnerFundingPorts,
   dueMs: number,
 ): Promise<void> => {
-  const deadline = dueMs + ports.absorbWithinMs;
+  const deadline = absorbDeadlineMs(ports, dueMs);
   for (;;) {
     ports.onStage(
       `awaiting the stack's absorption of the ledger owner's deposit, due at ${dueMs.toString()}`,
@@ -147,7 +151,8 @@ const submitAdmittedDeposit = async (
  * replaced once its validity passed without it landing, and forgotten once
  * absorbed. A deposit this run made that expires unlanded fails the run,
  * keeping its record for the next. Before its deposit, it waits no longer
- * than the funding's own bound from its start.
+ * than the funding's own bound from its start; for the deposit to land, no
+ * longer than the deadline its absorption is held to.
  */
 export const awaitStackLedgerOwnerFunded = async (
   ports: StackLedgerOwnerFundingPorts,
@@ -177,6 +182,15 @@ export const awaitStackLedgerOwnerFunded = async (
       pending = undefined;
       continue;
     }
+    // A Kupo that answers while its checkpoint stalls short of the
+    // deposit's validity end shows it pending for ever. Healthy, it shows it
+    // landed or expired well before this deadline, which falls an event
+    // wait and the absorption bound after that end.
+    const deadline = absorbDeadlineMs(ports, pending.inclusionTime);
+    if (ports.now() > deadline)
+      throw new Error(
+        `The ledger owner's deposit ${pending.txHash} neither landed nor expired on L1, as the stack's Kupo shows it, by ${deadline.toString()}, the deadline for its absorption`,
+      );
     ports.onStage(
       `awaiting the ledger owner's deposit ${pending.txHash} on L1, valid to ${pending.validTo.toString()}`,
     );
