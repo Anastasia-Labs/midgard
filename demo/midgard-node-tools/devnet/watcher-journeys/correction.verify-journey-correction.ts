@@ -31,6 +31,10 @@ import {
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";
+import {
+  journeyStartDeadlinePassed,
+  type JourneyWatcherStartStatus,
+} from "./correction.watcher-start-deadline.js";
 import type { loadJourneyContext } from "./live-context.js";
 
 type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
@@ -128,6 +132,7 @@ export const verifyJourneyCorrection = async ({
   context,
   transactions,
   watcherStore,
+  watcherStatus,
   directory,
   category,
   headerHash,
@@ -151,6 +156,12 @@ export const verifyJourneyCorrection = async ({
   transactions: JourneyTransactions;
   /** Where the watcher's workflow rows are read. */
   watcherStore: JourneyWorkflowStore;
+  /**
+   * The watcher's `/v1/status`, read on each poll while the workflow has
+   * signed no step: once the watcher can no longer start this proof, the
+   * correction fails at once, naming why.
+   */
+  watcherStatus?: () => Promise<JourneyWatcherStartStatus>;
   directory: string;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
@@ -213,6 +224,16 @@ export const verifyJourneyCorrection = async ({
         category,
         headerHash,
       });
+      if (
+        watcherStatus !== undefined &&
+        !records.some(({ event }) => event.kind === "submission_intent")
+      ) {
+        const passed = journeyStartDeadlinePassed(await watcherStatus(), {
+          category,
+          headerHash,
+        });
+        if (passed !== undefined) throw new Error(passed);
+      }
       const recovery = journeyIntentRecovery(records);
       const progress = recovery.progressCount;
       if (progress !== progressCount) {

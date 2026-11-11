@@ -14,6 +14,7 @@ import {
   readJourneyWorkflowEntries,
   verifyJourneyCorrection,
 } from "./correction.js";
+import type { JourneyWatcherStartStatus } from "./correction.watcher-start-deadline.js";
 import type { JourneySuccessorPort } from "./honest-successor.js";
 import { attachedJourneyMode } from "./journey-runner.attached-mode.js";
 import {
@@ -225,6 +226,8 @@ export const runJourney = async (
       context,
       transactions: mode.transactions,
       watcherStore: mode.watcherStore,
+      watcherStatus: async () =>
+        (await operations("/v1/status")) as JourneyWatcherStartStatus,
       proverAddress: mode.proverAddress,
       directory,
       category: fixture.category,
