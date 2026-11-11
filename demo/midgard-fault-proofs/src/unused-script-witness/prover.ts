@@ -17,6 +17,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
@@ -31,13 +32,8 @@ import {
 import {
   UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL,
   unusedScriptWitnessContractRoles,
-  type UnusedScriptWitnessContracts,
 } from "./contracts.js";
-import {
-  unusedScriptWitnessFieldPlans,
-  unusedScriptWitnessSharedTransition,
-  type UnusedScriptWitnessTransition,
-} from "./custody.js";
+import { unusedScriptWitnessFieldPlans } from "./custody.js";
 import {
   type UnusedScriptWitnessWalk,
   type UnusedScriptWitnessWalkBatch,
@@ -206,7 +202,7 @@ export type UnusedScriptWitnessProofPlan = {
   /** The bind and source custody as the shared kit plans it, for paging. */
   readonly source: readonly DirectPurposeTransition[];
   /** Every custody transition from `bindEvent` to the terminal's input. */
-  readonly transitions: readonly UnusedScriptWitnessTransition[];
+  readonly transitions: readonly DirectPurposeTransition[];
   /** The all-purposes walk, paged from any thread datum it holds. */
   readonly walk: UnusedScriptWitnessWalk;
   /** The completed witness walk the terminal reads. */
@@ -226,7 +222,7 @@ export const prepareUnusedScriptWitnessProof = async ({
   batch,
 }: {
   readonly material: DirectScriptMaterial;
-  readonly contracts: UnusedScriptWitnessContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
   /** The witness to walk; the first convicting one otherwise. */
   readonly scriptIndex?: bigint;
@@ -294,11 +290,7 @@ export const prepareUnusedScriptWitnessProof = async ({
     plan,
     scriptIndex: chosen,
     source,
-    transitions: [
-      ...source.map(unusedScriptWitnessSharedTransition),
-      ...walk.transitions,
-      ...field.transitions,
-    ],
+    transitions: [...source, ...walk.transitions, ...field.transitions],
     walk,
     final: field.final,
     selection,

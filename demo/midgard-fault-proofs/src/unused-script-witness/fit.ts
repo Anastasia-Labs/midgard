@@ -4,18 +4,17 @@
  * two MPF proofs per item. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import type { DirectPurposeRole } from "../direct-purpose-family/family.js";
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import {
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+} from "../direct-purpose-family/family.js";
 import type { DirectPurposePaging } from "../direct-purpose-family/paging.js";
+import {
+  buildDirectPurposeTransition,
+  type DirectPurposeCustody,
+} from "../direct-purpose-family/submit.js";
 import { fitPage } from "../page-fit.js";
-import { unusedScriptWitnessContractRoles } from "./contracts.js";
-import {
-  unusedScriptWitnessSharedTransition,
-  type UnusedScriptWitnessTransition,
-} from "./custody.js";
-import {
-  buildUnusedScriptWitnessTransition,
-  type UnusedScriptWitnessCustody,
-} from "./submit.js";
 import type {
   UnusedScriptWitnessPagedRole,
   UnusedScriptWitnessWalk,
@@ -28,25 +27,28 @@ const threadDatum = (thread: UTxO, role: string) => {
 };
 
 const fitWith = (
-  custody: UnusedScriptWitnessCustody,
+  custody: DirectPurposeCustody,
   thread: UTxO,
   role: string,
   page: (size?: number) => {
     readonly size: number;
-    readonly transitions: readonly UnusedScriptWitnessTransition[];
+    readonly transitions: readonly DirectPurposeTransition[];
   },
-) => {
-  const roles = unusedScriptWitnessContractRoles(custody.contracts);
-  return fitPage({
+) =>
+  fitPage({
     lucid: custody.lucid,
     thread,
     label: `unusedScriptWitness ${role}`,
     page,
     build: (current, transition) =>
-      buildUnusedScriptWitnessTransition(custody, current, transition),
-    nextAddress: (transition) => roles[transition.next].spendingScriptAddress,
+      buildDirectPurposeTransition(custody, current, transition),
+    nextAddress: (transition) =>
+      directPurposeRoleValidator(
+        custody.family,
+        custody.contracts,
+        transition.next,
+      ).spendingScriptAddress,
   });
-};
 
 /** The transition continuing `thread` at a paged all-purposes walk role:
  * the first of the largest page, from the configured maximum halving down to
@@ -58,11 +60,11 @@ export const fitUnusedScriptWitnessPage = async ({
   role,
   thread,
 }: {
-  readonly custody: UnusedScriptWitnessCustody;
+  readonly custody: DirectPurposeCustody;
   readonly walk: UnusedScriptWitnessWalk;
   readonly role: UnusedScriptWitnessPagedRole;
   readonly thread: UTxO;
-}): Promise<UnusedScriptWitnessTransition> => {
+}): Promise<DirectPurposeTransition> => {
   const datum = threadDatum(thread, role);
   return fitWith(custody, thread, role, (size) => walk.page(role, datum, size));
 };
@@ -76,21 +78,14 @@ export const fitUnusedScriptWitnessSourceTransition = async ({
   role,
   thread,
 }: {
-  readonly custody: UnusedScriptWitnessCustody;
+  readonly custody: DirectPurposeCustody;
   readonly paging: DirectPurposePaging;
   readonly role: DirectPurposeRole;
   readonly thread: UTxO;
-}): Promise<UnusedScriptWitnessTransition> => {
+}): Promise<DirectPurposeTransition> => {
   const datum = threadDatum(thread, role);
-  if (!paging.isPageStart(role, datum))
-    return unusedScriptWitnessSharedTransition(
-      paging.transitionAt(role, datum),
-    );
-  return fitWith(custody, thread, role, (size) => {
-    const page = paging.page(role, datum, size);
-    return {
-      size: page.size,
-      transitions: page.transitions.map(unusedScriptWitnessSharedTransition),
-    };
-  });
+  if (!paging.isPageStart(role, datum)) return paging.transitionAt(role, datum);
+  return fitWith(custody, thread, role, (size) =>
+    paging.page(role, datum, size),
+  );
 };

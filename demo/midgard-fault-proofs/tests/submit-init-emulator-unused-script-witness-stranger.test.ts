@@ -17,6 +17,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  type DirectPurposeRole,
+  directPurposeRoleValidator,
+  type DirectPurposeTransition,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   getCompiledScript,
@@ -25,12 +31,7 @@ import {
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import {
-  submitUnusedScriptWitnessTransition,
-  unusedScriptWitnessContractRoles,
-  type UnusedScriptWitnessRole,
-  type UnusedScriptWitnessTransition,
-} from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_FAMILY } from "../src/unused-script-witness/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   expectedHash,
@@ -93,7 +94,6 @@ describe("unused-script-witness steps against a stranger key", () => {
       harness.proverSigner.paymentKeyHash,
     );
 
-    const roles = unusedScriptWitnessContractRoles(harness.unusedScriptWitness);
     const phasScript: Script = {
       type: "PlutusV3",
       script: getCompiledScript(
@@ -106,9 +106,13 @@ describe("unused-script-witness steps against a stranger key", () => {
     /** The planned transition, built and signed by the stranger alone. */
     const strangerTransition = async (
       thread: UTxO,
-      transition: UnusedScriptWitnessTransition,
+      transition: DirectPurposeTransition,
     ) => {
-      const next = roles[transition.next];
+      const next = directPurposeRoleValidator(
+        UNUSED_SCRIPT_WITNESS_FAMILY,
+        harness.unusedScriptWitness,
+        transition.next,
+      );
       const label = `stranger ${transition.label}`;
       const carriage = transition.fields.flatMap((field) =>
         run.custody.carriage(field),
@@ -166,16 +170,12 @@ describe("unused-script-witness steps against a stranger key", () => {
     };
 
     let thread = run.thread;
-    const refused: UnusedScriptWitnessRole[] = [];
+    const refused: DirectPurposeRole[] = [];
     for (const transition of run.prepared.transitions) {
       await expectOnchainRefusal(() => strangerTransition(thread, transition));
       refused.push(transition.role);
       thread = (
-        await submitUnusedScriptWitnessTransition(
-          run.custody,
-          thread,
-          transition,
-        )
+        await submitDirectPurposeTransition(run.custody, thread, transition)
       ).thread;
     }
     expect(new Set(refused)).toStrictEqual(

@@ -8,6 +8,7 @@ import {
   DIRECT_PURPOSE_FIELDS,
   type DirectPurposeContracts,
   type DirectPurposeCustody,
+  type DirectPurposeCustodyFamily,
   type DirectPurposeFamily,
   directPurposeFieldPlans,
   directPurposePaging,
@@ -79,7 +80,7 @@ export type RoleReference = {
  * which refuses any publication above 15,872 bytes. */
 export const publishDirectPurposeRoles = async (
   harness: DirectPurposeHarness,
-  family: DirectPurposeFamily<unknown>,
+  family: DirectPurposeCustodyFamily,
 ): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = family.roles(harness.direct);
   const byHash = new Map<string, RoleReference>();

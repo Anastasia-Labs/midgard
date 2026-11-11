@@ -7,6 +7,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
   grammarPages,
   pages,
   stepDatum,
@@ -17,10 +19,6 @@ import {
   type DirectScriptMaterial,
 } from "../direct-script-derivation/index.js";
 import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL } from "./contracts.js";
-import type {
-  UnusedScriptWitnessFieldPlan,
-  UnusedScriptWitnessTransition,
-} from "./custody.js";
 import {
   type Execution,
   executionOf,
@@ -66,13 +64,13 @@ export const isUnusedScriptWitnessPagedRole = (
  * spends, one walk transaction otherwise. */
 export type UnusedScriptWitnessPage = Readonly<{
   size: number;
-  transitions: readonly UnusedScriptWitnessTransition[];
+  transitions: readonly DirectPurposeTransition[];
 }>;
 
 /** The probe facts of a whole walk, as the terminal reads them. */
 export type UnusedScriptWitnessWalk = Readonly<{
   /** The walk at the configured page sizes. */
-  transitions: readonly UnusedScriptWitnessTransition[];
+  transitions: readonly DirectPurposeTransition[];
   final: SDK.DirectAllPurposesState;
   /** The page continuing a thread that holds `datum` at `role`, of `size`
    * items (the configured maximum by default), never more than remain. */
@@ -87,7 +85,7 @@ export type UnusedScriptWitnessWalk = Readonly<{
   transitionAt: (
     role: UnusedScriptWitnessPagedRole | "allPurposesSpendResolve",
     datum: string,
-  ) => UnusedScriptWitnessTransition;
+  ) => DirectPurposeTransition;
 }>;
 
 export const unusedScriptWitnessWalkTransitions = async ({
@@ -102,7 +100,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
   readonly material: DirectScriptMaterial;
   readonly evidence: DirectPurposeSourceEvidence;
   readonly prover: string;
-  readonly plan: (field: number) => UnusedScriptWitnessFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   /** The spend walk's own hash, recorded as the resume hash of each take. */
   readonly spendScriptHash: string;
   /** The audited witness's script hash; any bytes when the witness index is
@@ -110,7 +108,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
   readonly probe: string;
   readonly batch?: UnusedScriptWitnessWalkBatch;
 }): Promise<UnusedScriptWitnessWalk> => {
-  const out: UnusedScriptWitnessTransition[] = [];
+  const out: DirectPurposeTransition[] = [];
   const walkDatum = (state: SDK.DirectAllPurposesState) =>
     stepDatum(prover, state, SDK.DirectAllPurposesDatum);
   const counts = (field: number) => plan(field).items.length;
@@ -197,7 +195,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
     complete: index === counts(field),
   });
 
-  const take = (start: number, size: number): UnusedScriptWitnessTransition => {
+  const take = (start: number, size: number): DirectPurposeTransition => {
     const end = start + size;
     return {
       label: `spend take ${start.toString()} (${size.toString()})`,
@@ -232,10 +230,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
         ),
     };
   };
-  const resolve = (
-    start: number,
-    size: number,
-  ): UnusedScriptWitnessTransition => {
+  const resolve = (start: number, size: number): DirectPurposeTransition => {
     const state = walking(0, start + size);
     const witnesses = spends.slice(start, start + size);
     return {
@@ -260,7 +255,7 @@ export const unusedScriptWitnessWalkTransitions = async ({
     role: Exclude<UnusedScriptWitnessPagedRole, "allPurposesSpend">,
     start: number,
     size: number,
-  ): UnusedScriptWitnessTransition => {
+  ): DirectPurposeTransition => {
     const { field } = PAGED[role];
     const state = walking(field, start + size);
     const witnesses =
@@ -333,8 +328,8 @@ export const unusedScriptWitnessWalkTransitions = async ({
     field: 5 | 2,
     label: string,
     role: "allPurposesMintGrammar" | "allPurposesReceiveGrammar",
-    walkingRole: UnusedScriptWitnessTransition["next"],
-    exhausted: UnusedScriptWitnessTransition["next"],
+    walkingRole: DirectPurposeTransition["next"],
+    exhausted: DirectPurposeTransition["next"],
   ) => {
     state = {
       ...state,

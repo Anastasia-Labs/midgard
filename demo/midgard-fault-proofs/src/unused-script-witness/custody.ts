@@ -1,44 +1,9 @@
-/** One custody transition of the `unusedScriptWitness` thread: the role it
- * spends, the role it pays, the exact next datum, the fields it opens and the
- * redeemer built against Lucid's completed layout. */
-import * as SDK from "@al-ft/midgard-sdk";
-import type { RedeemerContext, UTxO } from "@lucid-evolution/lucid";
-
-import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+/** The fields the `unusedScriptWitness` thread opens. Its custody
+ * transitions are the kit's `DirectPurposeTransition`. */
+import type { DirectPurposeFieldPlan } from "../direct-purpose-family/custody.js";
 import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
-import {
-  UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL,
-  type UnusedScriptWitnessRole,
-} from "./contracts.js";
-
-export type UnusedScriptWitnessRedeemerArgs = {
-  readonly indices: {
-    readonly input_index: bigint;
-    readonly output_index: bigint;
-  };
-  readonly open: (field: number) => SDK.FieldOpening;
-  readonly ctx: RedeemerContext;
-  readonly thread: UTxO;
-  readonly unit: string;
-  readonly nextAddress: string;
-  readonly membershipRewardAddress: string;
-};
-
-export type UnusedScriptWitnessTransition = {
-  readonly label: string;
-  readonly role: UnusedScriptWitnessRole;
-  readonly next: UnusedScriptWitnessRole;
-  readonly datum: string;
-  readonly fields: readonly number[];
-  /** A PHAS membership withdrawal rides the transaction. */
-  readonly membership?: { readonly redeemer: string };
-  readonly redeemer: (args: UnusedScriptWitnessRedeemerArgs) => string;
-};
-
-export type UnusedScriptWitnessFieldPlan = ReturnType<
-  typeof createDirectFieldPlan
->;
+import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL } from "./contracts.js";
 
 /** Every field a thread transition opens: the input, output, observer, mint
  * and witness fields. */
@@ -50,7 +15,7 @@ export const UNUSED_SCRIPT_WITNESS_FIELDS: readonly number[] = [
 export const unusedScriptWitnessFieldPlans = (
   material: DirectScriptMaterial,
   prover: string,
-): ((field: number) => UnusedScriptWitnessFieldPlan) => {
+): ((field: number) => DirectPurposeFieldPlan) => {
   const plans = new Map(
     UNUSED_SCRIPT_WITNESS_FIELDS.map((field) => [
       field,
@@ -64,33 +29,5 @@ export const unusedScriptWitnessFieldPlans = (
         `${UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL}: field ${field.toString()} unplanned`,
       );
     return plan;
-  };
-};
-
-export const isUnusedScriptWitnessRole = (
-  role: string,
-): role is UnusedScriptWitnessRole =>
-  (SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER as readonly string[]).includes(role);
-
-/** The shared bind and source custody transitions, which carry the same role
- * names in both families. */
-export const unusedScriptWitnessSharedTransition = (
-  transition: DirectPurposeTransition,
-): UnusedScriptWitnessTransition => {
-  const { role, next } = transition;
-  if (!isUnusedScriptWitnessRole(role) || !isUnusedScriptWitnessRole(next))
-    throw new Error(
-      `${UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL}: shared transition ${transition.label} names a role outside this family`,
-    );
-  return {
-    label: transition.label,
-    role,
-    next,
-    datum: transition.datum,
-    fields: transition.fields,
-    ...(transition.membership === undefined
-      ? {}
-      : { membership: transition.membership }),
-    redeemer: transition.redeemer,
   };
 };

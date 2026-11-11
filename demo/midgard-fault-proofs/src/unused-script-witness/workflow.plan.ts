@@ -3,10 +3,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
 import {
   type DirectPurposePaging,
   directPurposePaging,
 } from "../direct-purpose-family/paging.js";
+import { directPurposeStep01Datum } from "../direct-purpose-family/step01.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -20,19 +26,10 @@ import {
   type AdmittedUnusedScriptWitnessArtifact,
   admitUnusedScriptWitnessWorkflowArtifact,
 } from "./artifact.js";
-import type {
-  UnusedScriptWitnessContracts,
-  UnusedScriptWitnessRole,
-} from "./contracts.js";
-import {
-  unusedScriptWitnessSharedTransition,
-  type UnusedScriptWitnessTransition,
-} from "./custody.js";
 import {
   requireConvictingUnusedScriptWitnessProof,
   type UnusedScriptWitnessProofPlan,
 } from "./prover.js";
-import { unusedScriptWitnessStep01Datum } from "./step01.js";
 import { isUnusedScriptWitnessPagedRole } from "./walk.js";
 
 export type PlannedUnusedScriptWitnessArtifact = Readonly<{
@@ -41,14 +38,14 @@ export type PlannedUnusedScriptWitnessArtifact = Readonly<{
   /** The shared source custody, re-pageable at any page size. */
   paging: DirectPurposePaging;
   /** Whether `role` is a role of the shared bind and source custody. */
-  isSourceRole: (role: UnusedScriptWitnessRole) => boolean;
+  isSourceRole: (role: DirectPurposeRole) => boolean;
   /** Every field a transition spending `role` opens. */
-  fieldsOf: (role: UnusedScriptWitnessRole) => readonly number[];
+  fieldsOf: (role: DirectPurposeRole) => readonly number[];
   /** The one planned transition spending `role` from a thread holding `datum`. */
   transitionAt: (
-    role: UnusedScriptWitnessRole,
+    role: DirectPurposeRole,
     datum: string,
-  ) => UnusedScriptWitnessTransition;
+  ) => DirectPurposeTransition;
 }>;
 
 /** The transition continuing a thread at `role` that holds `datum`: a
@@ -61,16 +58,10 @@ export const unusedScriptWitnessTransitionAt =
     proof: UnusedScriptWitnessProofPlan,
     step01Datum: string,
     paging: DirectPurposePaging,
-    isSourceRole: (role: UnusedScriptWitnessRole) => boolean,
+    isSourceRole: (role: DirectPurposeRole) => boolean,
   ) =>
-  (
-    role: UnusedScriptWitnessRole,
-    datum: string,
-  ): UnusedScriptWitnessTransition => {
-    if (isSourceRole(role))
-      return unusedScriptWitnessSharedTransition(
-        paging.transitionAt(role, datum),
-      );
+  (role: DirectPurposeRole, datum: string): DirectPurposeTransition => {
+    if (isSourceRole(role)) return paging.transitionAt(role, datum);
     if (
       isUnusedScriptWitnessPagedRole(role) ||
       role === "allPurposesSpendResolve"
@@ -93,7 +84,7 @@ export const unusedScriptWitnessTransitionAt =
 
 const plan = async (
   artifact: JournalJsonObject,
-  contracts: UnusedScriptWitnessContracts,
+  contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<PlannedUnusedScriptWitnessArtifact> => {
   const admitted = await admitUnusedScriptWitnessWorkflowArtifact(artifact);
@@ -103,20 +94,20 @@ const plan = async (
     prover,
     scriptIndex: admitted.scriptIndex,
   });
-  const fields = new Map<UnusedScriptWitnessRole, Set<number>>();
+  const fields = new Map<DirectPurposeRole, Set<number>>();
   for (const transition of proof.transitions) {
     const opened = fields.get(transition.role) ?? new Set<number>();
     for (const field of transition.fields) opened.add(field);
     fields.set(transition.role, opened);
   }
-  const step01Datum = unusedScriptWitnessStep01Datum(admitted.material, prover);
+  const step01Datum = directPurposeStep01Datum(admitted.material, prover);
   const paging = directPurposePaging({
     label: "unusedScriptWitness",
     transitions: proof.source,
     first: step01Datum,
   });
   const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
-  const isSourceRole = (role: UnusedScriptWitnessRole): boolean =>
+  const isSourceRole = (role: DirectPurposeRole): boolean =>
     sourceRoles.has(role);
   return Object.freeze({
     admitted,
@@ -144,7 +135,7 @@ export const planUnusedScriptWitnessArtifact = ({
   prover,
 }: {
   readonly artifact: JournalJsonObject;
-  readonly contracts: UnusedScriptWitnessContracts;
+  readonly contracts: DirectPurposeContracts;
   readonly prover: string;
 }): Promise<PlannedUnusedScriptWitnessArtifact> => {
   const key = [

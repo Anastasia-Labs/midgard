@@ -5,6 +5,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeContracts,
+  type DirectPurposeRole,
+  directPurposeRoleIndex,
+} from "../direct-purpose-family/family.js";
+import {
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+} from "../direct-purpose-family/step01.js";
+import {
+  type DirectPurposeCustody,
+  submitDirectPurposeTransition,
+} from "../direct-purpose-family/submit.js";
+import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -33,22 +46,14 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareUnusedScriptWitnessWorkflowArtifact } from "./artifact.js";
-import type {
-  UnusedScriptWitnessContracts,
-  UnusedScriptWitnessRole,
+import {
+  UNUSED_SCRIPT_WITNESS_FAMILY,
+  type UnusedScriptWitnessRole,
 } from "./contracts.js";
 import {
   fitUnusedScriptWitnessPage,
   fitUnusedScriptWitnessSourceTransition,
 } from "./fit.js";
-import {
-  submitUnusedScriptWitnessStep01Accepted,
-  submitUnusedScriptWitnessStep01Forced,
-} from "./step01.js";
-import {
-  submitUnusedScriptWitnessTransition,
-  type UnusedScriptWitnessCustody,
-} from "./submit.js";
 import { submitUnusedScriptWitnessTerminal } from "./terminal.js";
 import { isUnusedScriptWitnessPagedRole } from "./walk.js";
 import {
@@ -83,7 +88,7 @@ export const unusedScriptWitnessRoleAt = (
 export const unusedScriptWitnessWorkflowContracts = (
   binding: FraudProofWorkflowDeploymentBinding<"unusedScriptWitness">,
   certificate: FieldPreimageCertificateBinding,
-): UnusedScriptWitnessContracts => {
+): DirectPurposeContracts => {
   const resolved = binding.resolvedContracts;
   const chain = resolved.contracts.unusedScriptWitness;
   if (chain === undefined || resolved.stateQueuePolicyId === undefined)
@@ -110,7 +115,7 @@ type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"unusedScriptWitness">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: UnusedScriptWitnessContracts;
+  contracts: DirectPurposeContracts;
   references: UnusedScriptWitnessWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -127,10 +132,10 @@ const threadAt = async (lucid: LucidEvolution, threadOutRef: string) => {
 export const createUnusedScriptWitnessTransactionPort = (
   config: BoundConfig,
 ): CursorFamilyTransactionPort<"unusedScriptWitness"> => {
-  const reference = (role: UnusedScriptWitnessRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const utxo =
       config.references.steps[
-        SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER.indexOf(role)
+        directPurposeRoleIndex(UNUSED_SCRIPT_WITNESS_FAMILY, role)
       ];
     if (utxo === undefined)
       throw new Error(`unusedScriptWitness ${role} reference absent`);
@@ -211,6 +216,7 @@ export const createUnusedScriptWitnessTransactionPort = (
             const role = unusedScriptWitnessRoleAt(step);
             const threadOutRef = cursorStringField(input, "threadOutRef");
             const common = {
+              family: UNUSED_SCRIPT_WITNESS_FAMILY,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -222,7 +228,7 @@ export const createUnusedScriptWitnessTransactionPort = (
             };
             if (role === "step01") {
               if (admitted.coordinate.sourceKind === 1) {
-                await submitUnusedScriptWitnessStep01Forced({
+                await submitDirectPurposeStep01Forced({
                   ...common,
                   material: admitted.material,
                   reconstruction: admitted.current,
@@ -236,7 +242,7 @@ export const createUnusedScriptWitnessTransactionPort = (
                 address: config.signer.address,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
-              await submitUnusedScriptWitnessStep01Accepted({
+              await submitDirectPurposeStep01Accepted({
                 ...common,
                 material: admitted.material,
                 blueprint: config.binding.blueprint,
@@ -297,7 +303,8 @@ export const createUnusedScriptWitnessTransactionPort = (
                 ...(certificate === undefined ? [] : [certificate]),
               ]);
             }
-            const custody: UnusedScriptWitnessCustody = {
+            const custody: DirectPurposeCustody = {
+              family: UNUSED_SCRIPT_WITNESS_FAMILY,
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -327,11 +334,7 @@ export const createUnusedScriptWitnessTransactionPort = (
                     thread,
                   })
                 : continued;
-            await submitUnusedScriptWitnessTransition(
-              custody,
-              thread,
-              transition,
-            );
+            await submitDirectPurposeTransition(custody, thread, transition);
           },
         ),
       };
@@ -340,7 +343,7 @@ export const createUnusedScriptWitnessTransactionPort = (
 };
 
 /** The thread's one computation-thread token. */
-const threadUnit = (thread: UTxO, contracts: UnusedScriptWitnessContracts) => {
+const threadUnit = (thread: UTxO, contracts: DirectPurposeContracts) => {
   const units = Object.keys(thread.assets).filter((unit) =>
     unit.startsWith(contracts.computationThread.policyId),
   );

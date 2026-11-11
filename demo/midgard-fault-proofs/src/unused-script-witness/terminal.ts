@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -32,10 +33,7 @@ import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import {
-  UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL,
-  type UnusedScriptWitnessContracts,
-} from "./contracts.js";
+import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL } from "./contracts.js";
 
 const TERMINAL_INDEX = SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER.indexOf("terminal");
 const LABEL = `${UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL} terminal`;
@@ -82,7 +80,7 @@ export const submitUnusedScriptWitnessTerminal = async ({
   requireConviction = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: UnusedScriptWitnessContracts;
+  readonly contracts: DirectPurposeContracts;
   /** The source selected for the witness's script hash and its source-map
    * proof; `null` when field 6 ends before the witness. */
   readonly selection: SDK.UnusedScriptWitnessSelection | null;

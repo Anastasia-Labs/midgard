@@ -5,8 +5,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeCustody,
   directPurposePaging,
   type DirectPurposeRole,
+  directPurposeStep01Datum,
+  submitDirectPurposeInit,
+  submitDirectPurposeStep01Accepted,
+  submitDirectPurposeStep01Forced,
+  submitDirectPurposeTransition,
+  submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -17,18 +24,11 @@ import {
   fitUnusedScriptWitnessSourceTransition,
   isUnusedScriptWitnessPagedRole,
   prepareUnusedScriptWitnessProof,
-  submitUnusedScriptWitnessInit,
-  submitUnusedScriptWitnessStep01Accepted,
-  submitUnusedScriptWitnessStep01Forced,
   submitUnusedScriptWitnessTerminal,
-  submitUnusedScriptWitnessTransition,
-  submitUnusedScriptWitnessTransitions,
+  UNUSED_SCRIPT_WITNESS_FAMILY,
   UNUSED_SCRIPT_WITNESS_FIELDS,
   unusedScriptWitnessContractRoles,
-  type UnusedScriptWitnessCustody,
   type UnusedScriptWitnessProofPlan,
-  type UnusedScriptWitnessRole,
-  unusedScriptWitnessStep01Datum,
   unusedScriptWitnessTransitionAt,
   type UnusedScriptWitnessWalkBatch,
 } from "../../src/unused-script-witness/index.js";
@@ -71,7 +71,7 @@ export type UnusedScriptWitnessHarness = Awaited<
 >;
 
 export type RoleReference = {
-  readonly role: UnusedScriptWitnessRole;
+  readonly role: DirectPurposeRole;
   readonly scriptHash: string;
   readonly utxo: UTxO;
   readonly publication: CompleteSignedTransactionMeasurement;
@@ -81,10 +81,10 @@ export type RoleReference = {
  * which refuses any publication above 15,872 bytes. */
 export const publishUnusedScriptWitnessRoles = async (
   harness: UnusedScriptWitnessHarness,
-): Promise<ReadonlyMap<UnusedScriptWitnessRole, RoleReference>> => {
+): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = unusedScriptWitnessContractRoles(harness.unusedScriptWitness);
   const byHash = new Map<string, RoleReference>();
-  const out = new Map<UnusedScriptWitnessRole, RoleReference>();
+  const out = new Map<DirectPurposeRole, RoleReference>();
   for (const role of SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER) {
     const validator = roles[role];
     let reference = byHash.get(validator.spendingScriptHash);
@@ -192,12 +192,12 @@ export type StepMeasurement = {
  * workflow does: each page that opens MPF proofs, in the shared source walk
  * and in the all-purposes walk, is sized to the transaction budget. */
 const continueToTerminal = async (
-  custody: UnusedScriptWitnessCustody,
+  custody: DirectPurposeCustody,
   prepared: UnusedScriptWitnessProofPlan,
   start: UTxO,
   scenario: IntegrityScenario,
 ): Promise<UTxO> => {
-  const step01Datum = unusedScriptWitnessStep01Datum(
+  const step01Datum = directPurposeStep01Datum(
     scenario.material,
     custody.signer.paymentKeyHash,
   );
@@ -207,9 +207,7 @@ const continueToTerminal = async (
     first: step01Datum,
   });
   const sourceRoles = new Set<string>(prepared.source.map(({ role }) => role));
-  const isSourceRole = (
-    role: UnusedScriptWitnessRole,
-  ): role is UnusedScriptWitnessRole & DirectPurposeRole =>
+  const isSourceRole = (role: DirectPurposeRole): boolean =>
     sourceRoles.has(role);
   const transitionAt = unusedScriptWitnessTransitionAt(
     prepared,
@@ -235,9 +233,8 @@ const continueToTerminal = async (
             thread,
           })
         : transitionAt(role, thread.datum!);
-    thread = (
-      await submitUnusedScriptWitnessTransition(custody, thread, transition)
-    ).thread;
+    thread = (await submitDirectPurposeTransition(custody, thread, transition))
+      .thread;
     role = transition.next;
   }
   return thread;
@@ -256,7 +253,7 @@ export const driveUnusedScriptWitnessThread = async ({
 }: {
   readonly harness: UnusedScriptWitnessHarness;
   readonly scenario: IntegrityScenario;
-  readonly references: ReadonlyMap<UnusedScriptWitnessRole, RoleReference>;
+  readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   /** The witness to walk; the first convicting one otherwise. */
   readonly scriptIndex?: bigint;
   readonly batch?: UnusedScriptWitnessWalkBatch;
@@ -282,16 +279,17 @@ export const driveUnusedScriptWitnessThread = async ({
   });
   const { carriage, measurements: carriageMeasurements } =
     await publishCarriage({ harness, scenario, plan: prepared.plan });
-  const reference = (role: UnusedScriptWitnessRole) => {
+  const reference = (role: DirectPurposeRole) => {
     const found = references.get(role);
     if (found === undefined) throw new Error(`${role} reference absent`);
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitUnusedScriptWitnessInit({
+    submitDirectPurposeInit({
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       network,
+      family: UNUSED_SCRIPT_WITNESS_FAMILY,
       contracts: unusedScriptWitness,
       category: harness.category,
       catalogue: {
@@ -320,6 +318,7 @@ export const driveUnusedScriptWitnessThread = async ({
   }
   const common = {
     lucid: proverLucid,
+    family: UNUSED_SCRIPT_WITNESS_FAMILY,
     contracts: unusedScriptWitness,
     categoryId: harness.category.categoryId,
     signer: proverSigner,
@@ -329,11 +328,11 @@ export const driveUnusedScriptWitnessThread = async ({
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? submitUnusedScriptWitnessStep01Forced({
+      ? submitDirectPurposeStep01Forced({
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : submitUnusedScriptWitnessStep01Accepted({
+      : submitDirectPurposeStep01Accepted({
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -344,10 +343,11 @@ export const driveUnusedScriptWitnessThread = async ({
   );
   steps.push({ label: "step01", measurement: step01.measurement });
   const unit = init.result.computationThreadUnit;
-  const custody: UnusedScriptWitnessCustody = {
+  const custody: DirectPurposeCustody = {
     lucid: proverLucid,
     blueprint: harness.realBlueprint,
     network,
+    family: UNUSED_SCRIPT_WITNESS_FAMILY,
     contracts: unusedScriptWitness,
     signer: proverSigner,
     unit,
@@ -371,7 +371,7 @@ export const driveUnusedScriptWitnessThread = async ({
   const thread =
     transitions === undefined
       ? await continueToTerminal(custody, prepared, start, scenario)
-      : await submitUnusedScriptWitnessTransitions(
+      : await submitDirectPurposeTransitions(
           custody,
           start,
           transitions(prepared),

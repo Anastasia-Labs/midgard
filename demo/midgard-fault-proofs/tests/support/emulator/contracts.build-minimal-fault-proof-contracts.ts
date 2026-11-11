@@ -95,7 +95,6 @@ import { type NativeScriptDecodingContracts } from "../../../src/native-script-d
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
-import { type UnusedScriptWitnessContracts } from "../../../src/unused-script-witness/contracts.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/contracts.js";
 import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/contracts.js";
 import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/contracts.js";
@@ -274,7 +273,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly receivePurposeLanguage?: DirectPurposeContracts;
     readonly scriptIntegrityHashMismatch?: DirectPurposeContracts;
     readonly distinctAssetAccumulationLimit?: DirectPurposeContracts;
-    readonly unusedScriptWitness?: UnusedScriptWitnessContracts;
+    readonly unusedScriptWitness?: DirectPurposeContracts;
     readonly missingSignature?: MissingSignatureContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
@@ -799,18 +798,10 @@ export const buildMinimalFaultProofContracts = async (
     distinctAssetAccumulationLimitContracts?.distinctAssetAccumulationLimit,
     distinctAssetAccumulationLimitContracts,
   );
-  const unusedScriptWitness: UnusedScriptWitnessContracts | undefined =
-    unusedScriptWitnessContracts === undefined
-      ? undefined
-      : {
-          steps: unusedScriptWitnessContracts.unusedScriptWitness
-            .steps as never,
-          computationThread: unusedScriptWitnessContracts.computationThread,
-          fraudProof: unusedScriptWitnessContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
+  const unusedScriptWitness = directRecord(
+    unusedScriptWitnessContracts?.unusedScriptWitness,
+    unusedScriptWitnessContracts,
+  );
   const missingSignature: MissingSignatureContracts | undefined =
     missingSignatureContracts === undefined
       ? undefined

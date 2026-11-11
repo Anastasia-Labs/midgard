@@ -7,16 +7,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
   grammarPages,
   progressArgs,
   stepDatum,
 } from "../direct-purpose-family/custody.js";
 import { directWitnessSource } from "../direct-script-derivation/sources.js";
 import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL as LABEL } from "./contracts.js";
-import type {
-  UnusedScriptWitnessFieldPlan,
-  UnusedScriptWitnessTransition,
-} from "./custody.js";
 
 /** The most field-6 items one grammar or witness-walk transaction takes;
  * the validators accept at most `scan_batch` (16). */
@@ -42,7 +40,7 @@ export const unusedScriptWitnessHashAt = (
 };
 
 export type UnusedScriptWitnessFieldWalk = Readonly<{
-  transitions: readonly UnusedScriptWitnessTransition[];
+  transitions: readonly DirectPurposeTransition[];
   /** The state the terminal reads. */
   final: SDK.UnusedScriptWitnessWalkState;
 }>;
@@ -58,7 +56,7 @@ export const unusedScriptWitnessFieldWalk = ({
   readonly scan: SDK.DirectAllPurposesState;
   readonly scriptIndex: bigint;
   readonly prover: string;
-  readonly plan: (field: number) => UnusedScriptWitnessFieldPlan;
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   readonly batch?: UnusedScriptWitnessFieldBatch;
 }): UnusedScriptWitnessFieldWalk => {
   const field = plan(WITNESS_FIELD);
@@ -68,7 +66,7 @@ export const unusedScriptWitnessFieldWalk = ({
   const hash = unusedScriptWitnessHashAt(field.items, scriptIndex);
   // The walk stops after the audited witness, or at the field's end.
   const target = hash === null ? count : Number(scriptIndex) + 1;
-  const out: UnusedScriptWitnessTransition[] = [];
+  const out: DirectPurposeTransition[] = [];
 
   let state: SDK.UnusedScriptWitnessWalkState = {
     result: {

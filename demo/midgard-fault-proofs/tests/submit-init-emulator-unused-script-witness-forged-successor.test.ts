@@ -18,15 +18,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  buildDirectPurposeTransition,
+  type DirectPurposeRole,
+  submitDirectPurposeTransition,
+} from "../src/direct-purpose-family/index.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import {
-  buildUnusedScriptWitnessTransition,
-  submitUnusedScriptWitnessTransition,
-  unusedScriptWitnessContractRoles,
-  type UnusedScriptWitnessRole,
-} from "../src/unused-script-witness/index.js";
+import { unusedScriptWitnessContractRoles } from "../src/unused-script-witness/index.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -226,17 +226,16 @@ const forgedTerminal = async (
 const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
-): Promise<readonly UnusedScriptWitnessRole[]> => {
+): Promise<readonly DirectPurposeRole[]> => {
   const harness = await makeUnusedScriptWitnessHarness();
   const references = await publishUnusedScriptWitnessRoles(harness);
-  const reference = (role: UnusedScriptWitnessRole) =>
-    references.get(role)!.utxo;
+  const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupIntegrityScenario({
     harness,
     shape,
     source,
   });
-  const refused: UnusedScriptWitnessRole[] = [];
+  const refused: DirectPurposeRole[] = [];
   const run = await driveUnusedScriptWitnessThread({
     harness,
     scenario,
@@ -266,7 +265,7 @@ const forgeEveryRole = async (
       .find((datum) => datum !== transition.datum);
     if (forged === undefined)
       throw new Error(`${transition.label}: no distinct planned state`);
-    const built = await buildUnusedScriptWitnessTransition(
+    const built = await buildDirectPurposeTransition(
       run.custody,
       thread,
       transition,
@@ -290,7 +289,7 @@ const forgeEveryRole = async (
     );
     await expectOnchainRefusal(() => built.complete());
     thread = (
-      await submitUnusedScriptWitnessTransition(run.custody, thread, transition)
+      await submitDirectPurposeTransition(run.custody, thread, transition)
     ).thread;
     refused.push(transition.role);
   }
@@ -309,7 +308,7 @@ const forgeEveryRole = async (
   return refused;
 };
 
-const EVERY_ROLE = new Set<UnusedScriptWitnessRole>(
+const EVERY_ROLE = new Set<DirectPurposeRole>(
   SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
 );
 
