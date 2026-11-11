@@ -158,11 +158,24 @@ export const stackSuccessorPort = (
       `${input.nodeEndpoint}/tx-status?tx_hash=${txId}`,
       { signal: AbortSignal.timeout(10_000) },
     );
-    if (!response.ok)
+    const text = await response.text();
+    let status: ResolvedTxStatus | undefined;
+    try {
+      status = JSON.parse(text) as ResolvedTxStatus;
+    } catch {
+      status = undefined;
+    }
+    // Our node answers a transaction it does not know with 404 and the
+    // `not_found` status; any other answer must name this transaction.
+    const known =
+      status?.txId === txId &&
+      (response.ok
+        ? status.status !== "not_found"
+        : response.status === 404 && status.status === "not_found");
+    if (!known || status === undefined)
       throw new Error(
-        `Our node's /tx-status answered ${response.status.toString()}`,
+        `Our node's /tx-status answered ${response.status.toString()} for ${txId}: ${text}`,
       );
-    const status = (await response.json()) as ResolvedTxStatus;
     if (status.status === "rejected")
       throw new Error(
         `Our node rejected the drill's transfer ${txId}: ${status.reasonCode}`,
