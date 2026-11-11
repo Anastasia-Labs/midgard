@@ -244,10 +244,9 @@ it("retains actual typed readiness refusals and commit coordination phases", () 
       jobTimeoutMs: 1_000,
     },
     stateQueueMutationLease: {
-      active: true,
-      stale: true,
-      remainingMs: -100,
-      holder: "commit",
+      holder: "block_commitment",
+      heldMs: 600_001,
+      maxHoldMs: 600_000,
     },
     attestationTimeoutCorrection: {
       consecutiveFailures: 3,

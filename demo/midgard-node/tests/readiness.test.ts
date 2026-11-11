@@ -104,38 +104,23 @@ describe("evaluateReadiness", () => {
     expect(readiness.reasons).toContain("db_unhealthy");
   });
 
-  it("reports fresh active state-queue leases without failing readiness", () => {
-    const readiness = evaluateReadiness(
-      readinessInput({
-        stateQueueMutationLease: {
-          active: true,
-          stale: false,
-          remainingMs: 30_000,
-          holder: "block_commitment",
-        },
-      }),
-    );
+  it("names a state-queue lease holder only once its hold outlasts the bound", () => {
+    const lease = (heldMs: number) =>
+      evaluateReadiness(
+        readinessInput({
+          stateQueueMutationLease: {
+            holder: "state_queue_merge",
+            heldMs,
+            maxHoldMs: 600_000,
+          },
+        }),
+      );
 
-    expect(readiness.ready).toBe(true);
-    expect(readiness.reasons).toHaveLength(0);
-  });
-
-  it("fails readiness when a state-queue lease is stale", () => {
-    const readiness = evaluateReadiness(
-      readinessInput({
-        stateQueueMutationLease: {
-          active: true,
-          stale: true,
-          remainingMs: -120_000,
-          holder: "state_queue_merge",
-        },
-      }),
-    );
-
-    expect(readiness.ready).toBe(false);
-    expect(readiness.reasons).toContain(
-      "state_queue_lease_stale:state_queue_merge:-120000",
-    );
+    expect(lease(600_000)).toEqual({ ready: true, reasons: [] });
+    expect(lease(600_001)).toEqual({
+      ready: false,
+      reasons: ["state_queue_lease_held_long:state_queue_merge:600001"],
+    });
   });
 
   it("keeps readiness healthy for a fully live validation pool", () => {

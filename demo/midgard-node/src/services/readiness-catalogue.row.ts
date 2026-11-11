@@ -54,8 +54,6 @@ export const format = (source: string): BoundedParam => ({
 
 /** A decimal count, a duration or an age in ms. */
 export const COUNT = format("[0-9]+");
-/** A signed count, such as the ms left on a lease. */
-export const SIGNED = format("-?[0-9]+");
 
 /** Lowercase hex of `min` to `max` characters. */
 export const hex = (min: number, max = min): BoundedParam =>

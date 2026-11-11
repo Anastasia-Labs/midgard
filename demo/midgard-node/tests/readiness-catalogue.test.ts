@@ -83,7 +83,7 @@ describe("the readiness catalogue", () => {
   it("shows a bounded line as it is, and a value outside its format not at all", () => {
     for (const line of [
       "stale_heartbeat:merge:1200",
-      "state_queue_lease_stale:commit:-100",
+      "state_queue_lease_held_long:block_commitment:600001",
       `validation-trace-defense-underfunded:${"ab".repeat(28)}:5000:2000000`,
       `validation-trace-defense-awaiting:${"ab".repeat(28)}:none`,
       "commit_da_frame_pressure:required_work:90",

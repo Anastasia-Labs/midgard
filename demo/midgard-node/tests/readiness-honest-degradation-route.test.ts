@@ -130,6 +130,44 @@ describe("GET /readyz under internal transients", () => {
     expect(storedStatus).toBe(Leases.Status.Active);
   });
 
+  it.each([
+    { heldMs: 600_001, ready: false },
+    { heldMs: 540_000, ready: true },
+  ])(
+    "names a lease its holder kept renewing for $heldMs ms past a 600000 ms bound only when held longer",
+    async ({ heldMs, ready }) => {
+      const response = await readyz({
+        journal: Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const acquisition = yield* Leases.tryAcquire({
+            holder: "block_commitment",
+          });
+          if (acquisition._tag !== "Acquired") throw new Error("lease busy");
+          // Moving the acquisition back on the database clock stands in for
+          // the wait; the renewal is the keep-alive a wedged holder runs.
+          yield* sql`UPDATE state_queue_mutation_leases
+            SET acquired_at = NOW() - make_interval(secs => ${heldMs / 1000})`;
+          yield* Leases.renew({ token: acquisition.token });
+        }),
+      });
+      expect(response.ready).toBe(ready);
+      if (ready) {
+        expect(response.status).toBe(200);
+        expect(response.reasons).toEqual([]);
+        return;
+      }
+      expect(response.status).toBe(503);
+      expect(response.reasons).toEqual([
+        expect.stringMatching(
+          /^state_queue_lease_held_long:block_commitment:\d+$/u,
+        ),
+      ]);
+      expect(Number(response.reasons[0]!.split(":").at(-1))).toBeGreaterThan(
+        600_000,
+      );
+    },
+  );
+
   it("keeps a provider failure shortly after a success as a detail and stays ready", async () => {
     const degraded = await readyz({
       provider: [

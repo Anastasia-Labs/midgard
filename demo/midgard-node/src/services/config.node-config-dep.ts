@@ -183,7 +183,9 @@ export type NodeConfigDep = {
   VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD: number;
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
-  STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
+  /** The longest a state-queue mutation lease may be held before `/readyz`
+   * names its holder (`state_queue_lease_held_long`). */
+  STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS: number;
   /** The commit-event depth d (plan §8.1): the deployment profile's
    * `l1_finality.commit_event_depth`. A commit's anchor is the follower block
    * d below the view it is planned at, and its header end is at most the

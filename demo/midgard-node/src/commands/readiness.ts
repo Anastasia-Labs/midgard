@@ -37,11 +37,14 @@ export type ReadinessInput = {
     readonly oldestInFlightAgeMs: number;
     readonly jobTimeoutMs: number;
   };
+  /** The active state-queue mutation lease, if any: its holder, how long it
+   * has held the lease by the database clock, and the longest a hold may
+   * last. Renewal keeps a wedged holder's lease active, so only the hold time
+   * shows it. */
   readonly stateQueueMutationLease?: {
-    readonly active: boolean;
-    readonly stale: boolean;
-    readonly remainingMs: number | null;
-    readonly holder: string | null;
+    readonly holder: string;
+    readonly heldMs: number;
+    readonly maxHoldMs: number;
   };
   /** The operator's attestation-timeout correction step. Every node runs it;
    * the field is optional only so callers without the fiber (tests) may omit
@@ -142,12 +145,9 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
     );
   }
 
-  if (input.stateQueueMutationLease?.stale === true) {
-    reasons.push(
-      `state_queue_lease_stale:${
-        input.stateQueueMutationLease.holder ?? "unknown"
-      }:${input.stateQueueMutationLease.remainingMs ?? "unknown"}`,
-    );
+  const lease = input.stateQueueMutationLease;
+  if (lease !== undefined && lease.heldMs > lease.maxHoldMs) {
+    reasons.push(`state_queue_lease_held_long:${lease.holder}:${lease.heldMs}`);
   }
 
   const correction = input.attestationTimeoutCorrection;

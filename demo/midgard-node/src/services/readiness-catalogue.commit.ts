@@ -1,10 +1,12 @@
 /**
- * Readiness catalogue rows of block commitment: the commit worker, its build
- * alarms and plans, and the validation-trace defender
- * (`readiness-catalogue.ts`).
+ * Readiness catalogue rows of block commitment: the commit worker, the
+ * state-queue lease it takes, its build alarms and plans, and the
+ * validation-trace defender (`readiness-catalogue.ts`).
  */
 import { DA_PAYLOAD_FRAME_PRESSURE_STAGES } from "@al-ft/midgard-core/da-payload-sizing";
 
+import { NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS } from "../commands/listen-startup.release-state-queue-leases-of-previous-node-process.js";
+import { OFFLINE_MPF_AUDIT_LEASES } from "../commands/mpf-audit-leases.js";
 import { COMMIT_ANCHOR_UNAVAILABLE } from "../fibers/block-commitment.commit-anchor-readiness.js";
 import { L1_OWN_BLOCK_EVENT_ORPHANED } from "../fibers/block-commitment.own-block-event-orphaned.js";
 import {
@@ -76,6 +78,16 @@ export const COMMIT_READINESS_ROWS: readonly ReadinessRow[] = [
   reason(COMMIT_WINDOW_PENDING),
   reason(COMMIT_SCHEDULER_ALIGNMENT_FAILED),
   reason(COMMIT_WORKER_FAILED),
+  // A state-queue lease held past its bound keeps commit busy
+  // (`evaluateReadiness`, `commands/readiness.ts`).
+  reason(
+    "state_queue_lease_held_long",
+    oneOf(
+      ...NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS,
+      OFFLINE_MPF_AUDIT_LEASES.stateQueueHolder,
+    ),
+    COUNT,
+  ),
   // A detail until its unbroken run outlasts its bound, then a reason.
   both(COMMIT_SUBMIT_REFUSED, oneOf(...COMMIT_SUBMIT_REFUSAL_CODES)),
   reason(COMMIT_WORKER_VERIFIER_UNAVAILABLE),

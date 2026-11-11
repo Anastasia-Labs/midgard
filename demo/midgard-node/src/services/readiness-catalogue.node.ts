@@ -31,7 +31,6 @@ import {
   oneOf,
   type ReadinessRow,
   reason,
-  SIGNED,
   TEXT,
 } from "./readiness-catalogue.row.js";
 
@@ -52,18 +51,6 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   reason("validation_worker_pool_degraded", COUNT, COUNT, COUNT),
   reason("validation_worker_job_timeout", COUNT, COUNT),
   reason("unresolved_block_submission", COUNT, COUNT),
-  reason(
-    "state_queue_lease_stale",
-    oneOf(
-      "commit",
-      "merge",
-      "initialize",
-      "state_correction",
-      "reconcile",
-      "unknown",
-    ),
-    SIGNED,
-  ),
   reason("attestation_timeout_correction_failing", hex(56), COUNT, COUNT),
   reason("attestation_timeout_correction_stalled", hex(56), COUNT, COUNT),
   reason("attestation_timeout_queue_unknown", COUNT, COUNT),

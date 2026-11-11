@@ -258,10 +258,14 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
   been neither confirmed nor resolved for longer than
   `UNCONFIRMED_BLOCK_MAX_AGE_MS`. Check that the L1 node is synced and that
   the submission reached it.
-- `state_queue_lease_stale:<holder>:<remaining_ms>`: the state-queue
-  mutation lease expired past its grace while still held. Check whether the
-  named holder process is alive; a node releases a previous process's leases
-  at start.
+- `state_queue_lease_held_long:<holder>:<held_ms>`: `<holder>` has held
+  the state-queue mutation lease for longer than
+  `STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS` (10 minutes) by the database
+  clock, so commit and merge skip because the lease is busy. The holder
+  renews the lease whether or not it makes progress. Check whether the named
+  holder is still making progress, and stop it if it is not. A legitimately
+  long CLI hold, such as a large `mpf-audit`, reports unready until it
+  finishes.
 - `attestation_timeout_correction_failing:<header>:<failures>:<overdue_ms>`,
   `attestation_timeout_correction_stalled:<header>:<since_ms>:<bound_ms>`:
   an unattested header is past its DA-attestation deadline and its

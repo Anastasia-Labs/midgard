@@ -418,14 +418,16 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const stateQueueMutationLeaseStaleGraceMs = yield* Config.integer(
-    "STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS",
+  // The `commit_worker_failed` escalation bound, until real hold times are
+  // measured.
+  const stateQueueMutationLeaseMaxHoldMs = yield* Config.integer(
+    "STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS",
   ).pipe(
-    Config.withDefault(60 * 1000),
+    Config.withDefault(10 * 60 * 1000),
     Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value < 0) {
+      if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
-          "STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS must be a non-negative safe integer",
+          "STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS must be a positive safe integer",
         );
       }
       return value;
@@ -939,8 +941,7 @@ const makeConfig = Effect.gen(function* () {
     STATE_QUEUE_MUTATION_LEASE_TTL_MS: stateQueueMutationLeaseTtlMs,
     STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS:
       stateQueueMutationLeaseRenewIntervalMs,
-    STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
-      stateQueueMutationLeaseStaleGraceMs,
+    STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS: stateQueueMutationLeaseMaxHoldMs,
     COMMIT_EVENT_DEPTH: DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth,
     ...nodeBehind,
     BLOCK_EX_UNITS_BUDGET: blockExUnitsBudget,

@@ -209,11 +209,6 @@ export const getReadinessHandler = Effect.gen(function* () {
   const encodedLeaseInspection =
     StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection);
   const activeLease = leaseInspection.activeLease;
-  const activeLeaseRemainingMs =
-    activeLease === undefined
-      ? null
-      : activeLease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].getTime() -
-        leaseInspection.dbNow.getTime();
 
   const baseReadiness = evaluateReadiness({
     nowMillis,
@@ -238,15 +233,18 @@ export const getReadinessHandler = Effect.gen(function* () {
       oldestInFlightAgeMs: validationPoolStats.oldestInFlightAgeMs,
       jobTimeoutMs: nodeConfig.VALIDATION_WORKER_JOB_TIMEOUT_MS,
     },
-    stateQueueMutationLease: {
-      active: activeLease !== undefined,
-      stale:
-        activeLeaseRemainingMs !== null &&
-        activeLeaseRemainingMs <
-          -nodeConfig.STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS,
-      remainingMs: activeLeaseRemainingMs,
-      holder: activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
-    },
+    stateQueueMutationLease:
+      activeLease === undefined
+        ? undefined
+        : {
+            holder: activeLease[StateQueueMutationLeasesDB.Columns.HOLDER],
+            heldMs:
+              leaseInspection.dbNow.getTime() -
+              activeLease[
+                StateQueueMutationLeasesDB.Columns.ACQUIRED_AT
+              ].getTime(),
+            maxHoldMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS,
+          },
     attestationTimeoutCorrection: {
       ...attestationTimeoutCorrection,
       ...attestationTimeoutCorrectionReadinessBounds(
