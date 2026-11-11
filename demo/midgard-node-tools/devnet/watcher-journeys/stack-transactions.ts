@@ -10,6 +10,7 @@ import {
   type WebSocketFactory,
 } from "midgard-node/l1-external/kupmios-history";
 
+import { httpFailureDetail } from "./http-failure.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
 import {
   readSignedTransactionRecovery,
@@ -56,7 +57,9 @@ const kupoCreationPoint = async (
     { signal: AbortSignal.timeout(30_000) },
   );
   if (!response.ok)
-    throw new Error(`Kupo ${path} failed with ${response.status.toString()}`);
+    throw new Error(
+      `Kupo ${path} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
+    );
   const matches = (await response.json()) as unknown;
   if (!Array.isArray(matches) || matches.length === 0)
     throw new Error(`Kupo indexes no output of transaction ${txHash}`);
@@ -182,7 +185,9 @@ export const readKupoTransactionInclusion = async (
     { signal: AbortSignal.timeout(30_000) },
   );
   if (!response.ok)
-    throw new Error(`Kupo ${path} failed with ${response.status.toString()}`);
+    throw new Error(
+      `Kupo ${path} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
+    );
   const matches = (await response.json()) as unknown;
   const indexedThroughSlot = Number(
     response.headers.get("X-Most-Recent-Checkpoint"),

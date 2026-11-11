@@ -57,16 +57,18 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
   const node = {
     readyz: { ready: false, reasons: ["landed_block_awaiting_da"] } as unknown,
     status: { status: "not_found" } as Record<string, unknown>,
+    /** An answer our node's /tx-status gives in place of the status. */
+    txStatusRefusal: undefined as { status: number; body: unknown } | undefined,
   };
   const nodeEndpoint = await serve((url) =>
     url.pathname === "/readyz"
       ? { status: 503, body: node.readyz }
       : url.pathname === "/tx-status"
-        ? {
+        ? (node.txStatusRefusal ?? {
             // Our node answers an unknown transaction with 404 and its status.
             status: node.status["status"] === "not_found" ? 404 : 200,
             body: { txId: url.searchParams.get("tx_hash"), ...node.status },
-          }
+          })
         : { status: 404, body: {} },
   );
   const indexed: IndexedOutput[] = [

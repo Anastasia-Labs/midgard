@@ -3,6 +3,7 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { JOURNEY_HEADER_END_AHEAD_MS } from "./fixture.js";
+import { httpFailureDetail } from "./http-failure.js";
 
 /**
  * Our node's replay hold on a landed block that does not replay to its
@@ -114,7 +115,9 @@ const readKupoMatches = async (
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok)
-    throw new Error(`Kupo ${path} failed with ${response.status.toString()}`);
+    throw new Error(
+      `Kupo ${path} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
+    );
   const matches: unknown = await response.json();
   if (
     !Array.isArray(matches) ||

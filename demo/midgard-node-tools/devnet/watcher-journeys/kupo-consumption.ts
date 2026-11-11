@@ -1,5 +1,7 @@
 import type { PublishedHeaderConsumption } from "midgard-watcher/tests/support/published-da-target-consumption";
 
+import { httpFailureDetail } from "./http-failure.js";
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -28,7 +30,7 @@ export const readKupoUnitConsumptions = async (
   );
   if (!response.ok)
     throw new Error(
-      `Kupo spent matches for ${unit} failed with ${response.status.toString()}`,
+      `Kupo spent matches for ${unit} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
     );
   const matches: unknown = await response.json();
   if (!Array.isArray(matches))

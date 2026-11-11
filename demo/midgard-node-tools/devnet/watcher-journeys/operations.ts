@@ -1,5 +1,7 @@
 import { setTimeout as pause } from "node:timers/promises";
 
+import { httpFailureDetail } from "./http-failure.js";
+
 export const isJourneyOperationsConnectionRefused = (
   cause: unknown,
 ): boolean => {
@@ -50,8 +52,12 @@ export const readJourneyOperations = async (endpoint: string, path: string) => {
     const signal = AbortSignal.timeout(5000);
     try {
       const response = await fetch(`${endpoint}${path}`, { signal });
+      // A refusing watcher names why in its body (`journal_integrity`,
+      // `journal_unavailable`, `starting`).
       if (!response.ok)
-        throw new Error(`Operations HTTP returned ${response.status}`);
+        throw new Error(
+          `Operations HTTP returned ${response.status}${await httpFailureDetail(response)}`,
+        );
       return await response.json();
     } catch (error) {
       if (

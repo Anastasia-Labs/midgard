@@ -143,6 +143,35 @@ describe("stack transaction reads", () => {
     );
   });
 
+  it("names why Kupo refused a transaction read", async () => {
+    const recording = loadL1Recording(REMOVAL);
+    const { id } = recording.transaction!;
+    const outputs = recording.exchanges.find(
+      (exchange) =>
+        exchange.surface === "kupo" &&
+        exchange.request.path === `/matches/*@${id}?resolve_hashes`,
+    )!;
+    Object.assign(outputs, {
+      response: {
+        ...outputs.response,
+        status: 503,
+        body: { hint: "Kupo is still synchronizing" },
+        bodyText: undefined,
+      },
+    });
+    const refusal = /failed with 503: .*Kupo is still synchronizing/u;
+    await expect((await readerOf(recording)).transaction(id)).rejects.toThrow(
+      refusal,
+    );
+    await expect(
+      readKupoTransactionInclusion(
+        "http://kupo.recorded",
+        id,
+        recordedFetch(recording) as typeof fetch,
+      ),
+    ).rejects.toThrow(refusal);
+  });
+
   it("settles a signed commit the stack's Kupo indexed as included, and reports how far Kupo had indexed", async () => {
     const recording = loadL1Recording(REMOVAL);
     const { id } = recording.transaction!;

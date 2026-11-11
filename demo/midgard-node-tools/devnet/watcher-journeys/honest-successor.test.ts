@@ -331,6 +331,21 @@ describe("stack successor", () => {
     await expect(stays.commit()).rejects.toThrow(/still holds the fault/u);
   });
 
+  it("names why our node refused the transfer's status", async () => {
+    const drill = await stackDrill();
+    drill.node.txStatusRefusal = {
+      status: 500,
+      body: {
+        error: "Request could not be completed",
+        error_code: "E_HTTP_INTERNAL",
+      },
+    };
+    await expect(drill.port().afterFaultLanded()).rejects.toThrow(
+      /\/tx-status answered 500\b.*E_HTTP_INTERNAL/u,
+    );
+    expect(drill.sent).toHaveLength(0);
+  });
+
   it("never resends a transfer our node knows, and refuses a changed saved transfer", async () => {
     const drill = await stackDrill();
     const first = drill.port();

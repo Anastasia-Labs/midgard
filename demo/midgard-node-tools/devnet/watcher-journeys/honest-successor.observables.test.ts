@@ -16,6 +16,7 @@ import {
   kupo,
   operator2,
   policyId,
+  serve,
 } from "./honest-successor.test-support.js";
 
 afterEach(closeServers);
@@ -114,6 +115,22 @@ describe("no header of ours on the fault", () => {
         honestOperatorKeyHash: honestOperator,
       }),
     ).rejects.toThrow(/indexes no state-queue output of the fault/u);
+  });
+
+  it("names why Kupo refused the read", async () => {
+    const fault = await headerOn("00".repeat(28), operator2, 2n);
+    const kupoUrl = await serve(() => ({
+      status: 503,
+      body: { hint: "Kupo is still synchronizing" },
+    }));
+    await expect(
+      assertNoHonestHeaderOnFault({
+        kupoUrl,
+        policyId,
+        faultHeaderHash: fault.headerHash,
+        honestOperatorKeyHash: honestOperator,
+      }),
+    ).rejects.toThrow(/failed with 503: .*Kupo is still synchronizing/u);
   });
 });
 

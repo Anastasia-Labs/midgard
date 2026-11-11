@@ -91,6 +91,13 @@ it("fails closed on a non-list body or an HTTP error", async () => {
     readKupoUnitConsumptions("http://kupo", unit, kupo([], 503)),
   ).rejects.toThrow("failed with 503");
   await expect(
+    readKupoUnitConsumptions(
+      "http://kupo",
+      unit,
+      kupo({ hint: "Kupo is still synchronizing" }, 503),
+    ),
+  ).rejects.toThrow('failed with 503: {"hint":"Kupo is still synchronizing"}');
+  await expect(
     readKupoUnitConsumptions("http://kupo", "zz", kupo([])),
   ).rejects.toThrow("Malformed unit");
 });
