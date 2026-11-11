@@ -45,6 +45,17 @@ export type WatcherReplayedLedger = Readonly<{
   ): Promise<readonly WatcherDecisionReadiness[]>;
 }>;
 
+/**
+ * A replay failure that says only that its L1 or DA source has not answered
+ * yet: the follower or node is not ready, the chain moved under the read, or
+ * no retained-DA peer served the payload yet. A replay host holds it as
+ * pending and replays again; every other failure stands.
+ */
+export const isWatcherReplaySourcePending = (error: unknown): boolean =>
+  isWatcherL1TransientFailure(error) ||
+  isFraudProofL1WaitError(error) ||
+  isRetainedDaPayloadUnavailableError(error);
+
 /** What the committee signs a deployment's payload commitments with. */
 export const watcherReplayAvailabilityAuthority =
   (identity: VerifiedWatcherDeploymentIdentity) =>
@@ -207,12 +218,7 @@ export const createWatcherReplayedLedger = (
               error.message,
             ),
           ];
-        if (
-          !isWatcherL1TransientFailure(error) &&
-          !isFraudProofL1WaitError(error) &&
-          !isRetainedDaPayloadUnavailableError(error)
-        )
-          throw error;
+        if (!isWatcherReplaySourcePending(error)) throw error;
         return [
           {
             reason: "replayed_ledger_source_pending",

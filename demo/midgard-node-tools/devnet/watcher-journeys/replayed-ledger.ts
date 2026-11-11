@@ -1,11 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
-import {
-  isFraudProofL1WaitError,
-  type LedgerAt,
-} from "@al-ft/midgard-fault-proofs";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
@@ -32,6 +28,7 @@ import {
 } from "midgard-watcher/replayed-ledger";
 
 import { createJourneyReplayLifetime } from "./journey-replay-lifetime.js";
+import { readWhenJourneyReplayed } from "./replayed-ledger.read-when-replayed.js";
 
 /** A read-only production follower and keeper for the staging owner's ledger reads. */
 export const openJourneyReplayedLedger = async (input: {
@@ -138,36 +135,31 @@ export const openJourneyReplayedLedger = async (input: {
   }
   const lifetime = createJourneyReplayLifetime();
   const ledgerAt: LedgerAt = (headerHash) =>
-    lifetime.run(async () => {
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        if (lifetime.isClosed())
-          throw new Error("Journey replay host is closed");
-        const status = follower.status();
-        if (status !== null && status.readiness.length === 0) {
-          try {
-            const observation = await readWatcherObservation(follower.store, {
-              authority: protocolAuthority,
-              sourceId: "journey-replayed-ledger",
-              depth: minimumCheckpointDepth,
-              releaseDepth: release.confirmationDepth,
-            });
-            // Until a stable checked checkpoint exists, retention continues to hold the origin.
-            if (observation.kind === "ok")
-              await keeper.advance(observation.observation, da.sources);
-            return await keeper.ledgerAt(da.sources)(headerHash);
-          } catch (error) {
-            if (!isFraudProofL1WaitError(error) || Date.now() >= deadline)
-              throw error;
-          }
-        }
-        if (Date.now() >= deadline)
-          throw new Error(
-            `Journey replay follower is pending: ${JSON.stringify(await follower.readiness())}`,
-          );
-        await pause(250);
-      }
-    });
+    lifetime.run(() =>
+      readWhenJourneyReplayed(
+        {
+          isClosed: lifetime.isClosed,
+          ready: () => {
+            const status = follower.status();
+            return status !== null && status.readiness.length === 0;
+          },
+          cursor: () => follower.status()?.cursor ?? null,
+          pending: follower.readiness,
+        },
+        async () => {
+          const observation = await readWatcherObservation(follower.store, {
+            authority: protocolAuthority,
+            sourceId: "journey-replayed-ledger",
+            depth: minimumCheckpointDepth,
+            releaseDepth: release.confirmationDepth,
+          });
+          // Until a stable checked checkpoint exists, retention continues to hold the origin.
+          if (observation.kind === "ok")
+            await keeper.advance(observation.observation, da.sources);
+          return await keeper.ledgerAt(da.sources)(headerHash);
+        },
+      ),
+    );
   return {
     ledgerAt,
     close: () =>
