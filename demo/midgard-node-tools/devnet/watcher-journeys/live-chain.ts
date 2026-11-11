@@ -5,6 +5,12 @@ import type { PublishedWorkflowChain } from "midgard-node/tests/helpers/publishe
 
 import { awaitLedgerTipSlot } from "./ledger-tip.js";
 
+/**
+ * How long the tip may stay short of a bound once the wall clock has passed
+ * it, before the wait counts the tip as stalled.
+ */
+export const LEDGER_TIP_STALL_ALLOWANCE_MS = 15 * 60_000;
+
 /** Shared timing for fresh and resumed live journeys. Polling never gates on a block. */
 export const createLiveWorkflowChain = ({
   lucid,
@@ -31,10 +37,14 @@ export const createLiveWorkflowChain = ({
       lucid.slotToUnixTime(enclosingSlot) < targetUnixTimeMs
         ? enclosingSlot + 1
         : enclosingSlot;
+    // A bound still ahead of the wall clock (the end of a shift, say) is
+    // waited for in full; the stall allowance runs from when it is due.
     await awaitLedgerTipSlot({
       targetSlot,
       readTipSlot,
-      timeoutMs: 15 * 60_000,
+      timeoutMs:
+        Math.max(0, targetUnixTimeMs - Date.now()) +
+        LEDGER_TIP_STALL_ALLOWANCE_MS,
       pollMs: slotLength,
       sleep,
     });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLiveWorkflowChain } from "./live-chain.js";
 
@@ -66,6 +66,51 @@ describe("live journey polling and protocol timing", () => {
       expect(sleep.mock.calls).toEqual([[slotLength]]);
     },
   );
+
+  describe("a bound further ahead than a stalled tip's allowance", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+    /**
+     * A Preprod-shaped chain: the wall clock is the system clock, each sleep
+     * passes that much of it, and the tip moves in 20-slot block jumps
+     * behind it (or not at all once `stallAt` is reached).
+     */
+    const preprod = (stallAt = Number.POSITIVE_INFINITY) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(210_000);
+      const slotOf = (time: number) => Math.floor((time - 10_000) / 1000);
+      return createLiveWorkflowChain({
+        lucid: {
+          currentSlot: () => slotOf(Date.now()),
+          slotToUnixTime: (slot) => 10_000 + slot * 1000,
+          unixTimeToSlot: slotOf,
+        },
+        slotLength: 1000,
+        readTipSlot: async () => {
+          const slot = slotOf(Date.now());
+          return Math.min(slot - (slot % 20), stallAt);
+        },
+        sleep: async (milliseconds) => {
+          vi.setSystemTime(Date.now() + milliseconds);
+        },
+      });
+    };
+
+    it("waits out a whole operator shift for a tip moving in block jumps", async () => {
+      const chain = preprod();
+      const shiftEnd = chain.now() + 1_800_000;
+      await chain.awaitLedgerTime(shiftEnd);
+      expect(chain.now()).toBeGreaterThanOrEqual(shiftEnd);
+    });
+
+    it("still refuses a tip that stalls before a far bound", async () => {
+      const chain = preprod(1000);
+      await expect(
+        chain.awaitLedgerTime(chain.now() + 1_800_000),
+      ).rejects.toThrow(/Ledger tip stalled at slot 1000/u);
+    });
+  });
 
   it("a zero polling delay does not wait for the clock or ledger", async () => {
     const { chain, sleep, readTipSlot } = fixture([]);
