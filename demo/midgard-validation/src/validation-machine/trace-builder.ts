@@ -4,6 +4,8 @@ import {
 } from "@al-ft/midgard-core";
 import { Cause, Effect } from "effect";
 
+import { ledgerEntriesPreState } from "./pre-state-ledger.js";
+import { buildPreparedValidationTransaction } from "./prepared-validation-transaction.js";
 import { completeValidationTrace } from "./trace-builder-complete.js";
 import { prepareValidationTrace } from "./trace-builder-prepare.prepare-validation-trace.js";
 import { ValidationTraceStopped } from "./trace-builder-stop.js";
@@ -27,9 +29,10 @@ const ZERO_32 = Buffer.alloc(32);
 
 /**
  * Replays `input` once, then walks its trace, recording the states with
- * `recording`. Returns the completed walk and the script evaluations replay
- * ran or reused, in run order: a replay given them as
- * `input.scriptEvaluations` runs no evaluator.
+ * `recording`. Input resolution proves against `input.preStateLedger`, or
+ * else a ledger built from `input.ledgerWitnessEntries`. Returns the
+ * completed walk and the script evaluations replay ran or reused, in run
+ * order: a replay given them as `input.scriptEvaluations` runs no evaluator.
  */
 export const replayValidationTrace = (
   input: ValidationMachineReplayInput,
@@ -38,8 +41,16 @@ export const replayValidationTrace = (
   Effect.gen(function* () {
     const replay = yield* replayValidationTransaction(input, recording.mode);
     const { walk, finish } = yield* openTraceWalk(input, replay, recording);
-    const context = yield* prepareValidationTrace(replay.transaction, walk);
-    yield* completeValidationTrace(context, walk);
+    const prepared = yield* buildPreparedValidationTransaction(
+      replay.transaction,
+      input.preStateLedger ??
+        ledgerEntriesPreState(
+          input.ledgerWitnessEntries,
+          replay.transaction.ledgerDescriptorState,
+        ),
+    );
+    const state = yield* prepareValidationTrace(prepared, walk);
+    yield* completeValidationTrace(prepared, state, walk);
     const completed = yield* finish();
     return {
       ...completed,

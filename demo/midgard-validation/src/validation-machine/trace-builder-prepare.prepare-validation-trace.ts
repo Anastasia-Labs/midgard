@@ -7,22 +7,16 @@ import {
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
-  buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-  deriveMidgardTxFieldPreimages,
   encodeCbor,
   encodeMidgardBlake2b224TraceControl,
   encodeMidgardLedgerOutputProofControl,
-  hashMidgardInlineScriptSourceLeaf,
   hashMidgardMintAssetLeaf,
   hashMidgardOutputDescriptorLeaf,
   hashMidgardOutputItemLeaf,
-  hashMidgardOutputLeaf,
   hashMidgardRedeemerItemLeaf,
   hashMidgardRedeemerItemProofControl,
-  hashMidgardRedeemerLeaf,
   hashMidgardReferenceScriptSourceLeaf,
   hashMidgardResolvedContextItemLeaf,
   hashMidgardScriptExecutionLeaf,
@@ -34,7 +28,6 @@ import {
   midgardBlake2b,
   type MidgardBlake2b224TraceControl,
   MidgardBlake2b224TraceStages,
-  type MidgardBoundedCollection,
   midgardBoundedItemChunkCount,
   type MidgardBoundedItemChunkProof,
   type MidgardLedgerOutputProofControl,
@@ -49,9 +42,6 @@ import {
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxWitnessSetCompact,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeSingleCbor,
@@ -63,19 +53,12 @@ import {
   readCborInteger,
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
-import {
-  decodeMidgardForcedTxCompact,
-  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec/forced";
 import { Effect } from "effect";
-
-import { Store, Trie } from "#merkle-patricia-forestry";
 
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
 } from "../ledger-output-descriptor.js";
-import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import {
   initialInputSetMergeControl,
   inputSetMergeStep,
@@ -86,10 +69,7 @@ import {
   MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
   MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
 } from "./canonical-field-item.js";
-import {
-  canonicalDecodeItemRefusal,
-  canonicalOrderedItemEncodedLength,
-} from "./canonical-field-order.js";
+import { canonicalOrderedItemEncodedLength } from "./canonical-field-order.js";
 import {
   encodeScriptDiscoveryControlCbor,
   encodeValidationControlList,
@@ -100,7 +80,6 @@ import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
   emptyMidgardInputResolutionSchedule,
   noExactLedgerDescriptor,
-  orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 import {
@@ -115,32 +94,109 @@ import {
   type ValidationMachineNativeScriptTokenHead,
   type ValidationMachineVersionedScriptHeader,
 } from "./native-script-frame.js";
+import {
+  preparedFieldPreimage,
+  preparedSignerProof,
+  type PreparedValidationTransaction,
+} from "./prepared-validation-transaction.js";
 import { redeemerPointerMatchesPurpose } from "./redeemer-purpose.js";
 import { refusedOutputStopReason } from "./trace-builder-prepare.refused-output-stop-reason.js";
 import type {
   MintFoldTraceControl,
   PhaseANativeScriptsScanControl,
-  ResolutionScheduleNode,
   ScriptExecutionProofEntry,
   ScriptPurposeProofEntry,
   ScriptSourceProofEntry,
   SignatureScanControl,
+  ValidationTraceWalkState,
 } from "./trace-builder-types.js";
-import {
-  phaseContinues,
-  phaseStops,
-  type ReplayedValidationTransaction,
-  type TraceWalk,
-} from "./trace-walk.js";
+import { phaseContinues, phaseStops, type TraceWalk } from "./trace-walk.js";
 import {
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
+/** `source` as the bounded item of its origin field, checked against the
+ * descriptor facts it was authenticated with. */
+export const boundedItemForScriptSource = (source: ScriptSourceProofEntry) => {
+  // The two origin kinds carry two different keys, and each has exactly one
+  // decoder. An inline key is a bare canonical CBOR index; a reference key
+  // *is* the ledger out-ref, i.e. §5.3's fixed-index 38-byte item, whose
+  // `19 0000` head a minimal-CBOR reader rejects — so it goes through the
+  // §5.3 twin, never `decodeSingleCbor`. See `docs/spec/midgard-tx.md` §5.3.
+  const itemIndexValue =
+    source.originKind === "inline"
+      ? decodeSingleCbor(source.sourceKey)
+      : decodeMidgardSpendInputItem(source.sourceKey).outputIndex;
+  const itemIndex =
+    typeof itemIndexValue === "number"
+      ? itemIndexValue
+      : typeof itemIndexValue === "bigint" &&
+          itemIndexValue <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(itemIndexValue)
+        : -1;
+  if (!Number.isSafeInteger(itemIndex) || itemIndex < 0) {
+    throw new Error("V1 script source has a noncanonical item index");
+  }
+  const item = buildMidgardBoundedItem({
+    fieldIndex:
+      source.originKind === "inline" ? MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX : 2,
+    itemIndex,
+    bytes: source.authenticatedVersionedItemBytes,
+  });
+  if (
+    item.bytes.length !== source.scriptTotalLength ||
+    !item.commitment.equals(source.scriptItemCommitment)
+  ) {
+    throw new Error(
+      "V1 script source bytes disagree with authenticated descriptor facts",
+    );
+  }
+  return item;
+};
+
+/** The NativeScripts scan witness at `control`; a late execution scan
+ * passes its NativeScripts continuation. */
+export const phaseANativeScriptsScanWitnessCbor = (
+  {
+    proofSource,
+    contextCbor,
+    resolutionScheduleHash,
+    signerFrontier,
+  }: PreparedValidationTransaction,
+  control: PhaseANativeScriptsScanControl,
+  continuationCbor: Buffer = Buffer.alloc(0),
+): Buffer =>
+  encodeValidationControlList([
+    proofSource.compactCbor,
+    proofSource.witnessSetCompactCbor,
+    proofSource.fieldPreimageLengthsCbor,
+    contextCbor,
+    // A late execution scan binds its NativeScripts continuation here.
+    continuationCbor.length === 0
+      ? resolutionScheduleHash
+      : Buffer.from(midgardBlake2b(continuationCbor, { dkLen: 32 })),
+    BigInt(control.stage),
+    BigInt(control.scriptCount),
+    BigInt(control.scriptSeen),
+    BigInt(control.containsNonNativeScript),
+    BigInt(control.itemLength),
+    control.itemCommitment,
+    BigInt(control.cursor),
+    control.stackRoot,
+    BigInt(control.stackDepth),
+    BigInt(control.nodeCount),
+    BigInt(control.result),
+    BigInt(signerFrontier.count),
+    [encodeValidationFrontierPeaks(signerFrontier), continuationCbor],
+    control.purposeKind,
+    control.purposeIndex,
+  ]);
+
 export const prepareValidationTrace = (
-  transaction: ReplayedValidationTransaction,
+  prepared: PreparedValidationTransaction,
   walk: TraceWalk,
-) =>
+): Effect.Effect<ValidationTraceWalkState, Error> =>
   Effect.gen(function* () {
     const {
       input,
@@ -148,136 +204,51 @@ export const prepareValidationTrace = (
       phaseALedgerTx,
       ledgerState,
       ledgerDescriptorState,
-      scriptEvaluations,
-    } = transaction;
+      proofSource,
+      compactProofTransaction,
+      fieldPreimages,
+      spendInputsCollection,
+      referenceInputsCollection,
+      outputsCollection,
+      requiredObserversCollection,
+      requiredSignersCollection,
+      mintCollection,
+      scriptWitnessesCollection,
+      addressWitnessesCollection,
+      redeemerWitnessesCollection,
+      resolutionScheduleNodes,
+      resolutionScheduleHash,
+      transactionContextWitnessCbor,
+      sourceContextWitnessCbor,
+      addressWitnessScanItems,
+      signerFrontier,
+      signerFrontierCommitment,
+      inlineScriptSourceLeafHashes,
+      inlineScriptSourceFrontier,
+      outputCbors,
+      outputLeafHashes,
+      outputFrontier,
+      decodedProofRedeemers,
+      canonicalRedeemerWitnessCbors,
+      redeemerLeafHashes,
+      redeemerFrontier,
+      emptyValidationFrontier,
+    } = prepared;
     const { push: pushWitness } = walk;
-    // A canonical-decode refusal stops the walk before any later semantic item is read.
-    const stopsAtCanonicalDecode = canonicalDecodeItemRefusal(
-      input.canonicalTransactionCbor,
-      input.sourceKind,
-    );
-
-    // Exact submitted bytes bind the source independently of the operator's verdict.
-    const proofSource = (
-      input.sourceKind === "forced"
-        ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
-        : deriveMidgardNativeTxProofSourceFromCanonicalCbor
-    )(input.canonicalTransactionCbor);
-    const compactProofTransaction = (
-      input.sourceKind === "forced"
-        ? decodeMidgardForcedTxCompact
-        : decodeMidgardNativeTxCompact
-    )(proofSource.compactCbor);
-    const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompact(
-      proofSource.witnessSetCompactCbor,
-    );
-    const fieldPreimages = deriveMidgardTxFieldPreimages(
-      input.canonicalTransactionCbor,
-      input.sourceKind,
-    );
-    const machineFieldTrace = (fieldIndex: number): MidgardBoundedCollection =>
-      countedMachineFieldTrace(
-        fieldIndex,
-        fieldPreimages[fieldIndex]!.preimageCbor,
-      );
-    /**
-     * The §5.1 preimage every field-reading step names — the carriage plan
-     * input, not a carriage (#600). One helper rather than thirteen call-site
-     * expressions, because "which bytes this step read" has to be answered the
-     * same way at every site; the tier those bytes travel under is decided once,
-     * later, where a transaction exists.
-     */
     const fieldPreimage = (fieldIndex: number): Buffer =>
-      Buffer.from(fieldPreimages[fieldIndex]!.preimageCbor);
-    const spendInputsCollection = machineFieldTrace(0);
-    const referenceInputsCollection = machineFieldTrace(1);
-    const outputsCollection = machineFieldTrace(2);
-    const requiredObserversCollection = machineFieldTrace(3);
-    const requiredSignersCollection = machineFieldTrace(4);
-    const mintCollection = machineFieldTrace(5);
-    const scriptWitnessesCollection = machineFieldTrace(
-      MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
-    );
-    const addressWitnessesCollection = machineFieldTrace(
-      MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
-    );
-    const redeemerWitnessesCollection = machineFieldTrace(8);
-    const resolutionItems = orderMidgardInputResolutionSchedule({
-      spend: spendInputsCollection.items,
-      reference: referenceInputsCollection.items,
-      keyOf: (item) => item.bytes,
-    }).map(({ sourceKind, itemIndex, item }) => ({
-      sourceKind,
-      itemIndex,
-      key: item.bytes,
-    }));
-    const resolutionScheduleNodes = new Array<ResolutionScheduleNode>(
-      resolutionItems.length,
-    );
-    let resolutionScheduleHash = emptyMidgardInputResolutionSchedule();
-    for (let index = resolutionItems.length - 1; index >= 0; index -= 1) {
-      const item = resolutionItems[index]!;
-      const nextScheduleHash = resolutionScheduleHash;
-      resolutionScheduleHash = prependMidgardInputResolutionSchedule({
-        sourceKind: item.sourceKind,
-        itemIndex: item.itemIndex,
-        key: item.key,
-        nextHash: nextScheduleHash,
-      });
-      resolutionScheduleNodes[index] = {
-        ...item,
-        nextScheduleHash,
-        scheduleHash: resolutionScheduleHash,
-        proofCbor: Buffer.alloc(0),
-      };
-    }
-    const resolutionProofs = yield* Effect.tryPromise({
-      try: async () => {
-        const store = new Store(undefined);
-        await store.ready();
-        const trie = new Trie(store);
-        for (const entry of [...input.ledgerWitnessEntries].sort(
-          (left, right) => Buffer.compare(left.outRef, right.outRef),
-        )) {
-          const descriptorCbor = ledgerDescriptorState.get(
-            entry.outRef.toString("hex"),
-          );
-          if (descriptorCbor === undefined) {
-            throw new Error(
-              "input-resolution descriptor state lost a persisted ledger entry",
-            );
-          }
-          await trie.insert(entry.outRef, descriptorCbor);
-        }
-        // One proof at a time: the trie allows a single proof in flight.
-        const proofs: Buffer[] = [];
-        for (const node of resolutionScheduleNodes) {
-          const proof = await trie.prove(
-            node.key,
-            !ledgerDescriptorState.has(node.key.toString("hex")),
-          );
-          proofs.push(Buffer.from(proof.toCBOR()));
-        }
-        return proofs;
-      },
-      catch: (cause) =>
-        cause instanceof Error
-          ? cause
-          : new Error("failed to build input-resolution MPF witnesses"),
-    });
-    for (let index = 0; index < resolutionScheduleNodes.length; index += 1) {
-      resolutionScheduleNodes[index]!.proofCbor = resolutionProofs[index]!;
-    }
-    const transactionContextWitnessCbor = encodeCbor([
-      input.canonicalTransactionCbor,
-      contextCbor,
-    ]);
-    const sourceContextWitnessCbor = encodeCbor([
-      proofSource.compactCbor,
-      proofSource.witnessSetCompactCbor,
-      proofSource.fieldPreimageLengthsCbor,
-      contextCbor,
-    ]);
+      preparedFieldPreimage(prepared, fieldIndex);
+    const signerProofForHash = (signerHash: Buffer) =>
+      preparedSignerProof(prepared, signerHash);
+    const scriptSourceEntries: ScriptSourceProofEntry[] = [
+      ...prepared.inlineScriptSourceEntries,
+    ];
+    const scriptPurposeEntries: ScriptPurposeProofEntry[] = [];
+    const scriptExecutionEntries: ScriptExecutionProofEntry[] = [];
+    const outputMembership = (outputIndex: number) =>
+      buildMidgardValidationMerkleMembership(outputLeafHashes, outputIndex);
+    const admittedOutputDescriptorCbors: Buffer[] = [];
+    const admittedOutputDescriptorLeafHashes: Buffer[] = [];
+    const encodeFrontierPeaks = encodeValidationFrontierPeaks;
     const inputSetsWitnessCbor = (control: {
       readonly spendCount: number;
       readonly referenceCount: number;
@@ -304,173 +275,6 @@ export const prepareValidationTrace = (
         Buffer.from(control.cachedOtherHead),
         control.resolutionScheduleHash,
       ]);
-    const decodeAddressWitnessItem = (
-      witnessCbor: Buffer,
-    ): {
-      readonly verificationKey: Buffer;
-      readonly signature: Buffer;
-      readonly signerHash: Buffer;
-    } => {
-      const header = readCborArrayHeader(witnessCbor, 0, "address_witness");
-      if (header.length !== 2) {
-        throw new Error("address witness must contain [vkey, signature]");
-      }
-      const verificationKey = readCborBytes(
-        witnessCbor,
-        header.nextOffset,
-        "address_witness.vkey",
-      );
-      const signature = readCborBytes(
-        witnessCbor,
-        verificationKey.nextOffset,
-        "address_witness.signature",
-      );
-      if (
-        verificationKey.value.length !== 32 ||
-        signature.value.length !== 64 ||
-        signature.nextOffset !== witnessCbor.length
-      ) {
-        throw new Error("address witness has a non-canonical shape");
-      }
-      return {
-        verificationKey: verificationKey.value,
-        signature: signature.value,
-        signerHash: Buffer.from(
-          midgardBlake2b(verificationKey.value, { dkLen: 28 }),
-        ),
-      };
-    };
-    // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
-    // Signatures reads field 7 in physical order: CanonicalDecode has refused
-    // it unless it is strictly ascending by (signer hash, item bytes).
-    const addressWitnessScanItems = (
-      stopsAtCanonicalDecode ? [] : addressWitnessesCollection.items
-    ).map((item) => ({ item, decoded: decodeAddressWitnessItem(item.bytes) }));
-    const canonicalSignerHashes = addressWitnessScanItems
-      .map(({ decoded }) => decoded.signerHash)
-      .sort(Buffer.compare)
-      .filter(
-        (hash, index, hashes) =>
-          index === 0 || !hash.equals(hashes[index - 1]!),
-      );
-    const signerLeafHashes = canonicalSignerHashes.map((signerHash) =>
-      hashMidgardSignerLeaf(signerHash),
-    );
-    const signerFrontier =
-      buildMidgardValidationMerkleFrontier(signerLeafHashes);
-    const signerFrontierCommitment =
-      commitMidgardValidationMerkleFrontier(signerFrontier);
-    const scriptSourceEntries: ScriptSourceProofEntry[] =
-      transaction.scriptWitnesses.map((witness) => {
-        const sourceKey = encodeCbor(BigInt(witness.index));
-        const item = scriptWitnessesCollection.items[witness.index]!;
-        const scriptLanguageTag =
-          witness.script.language === "NativeCardano"
-            ? 0
-            : witness.script.language === "PlutusV3"
-              ? 3
-              : 128;
-        const scriptHash = Buffer.from(witness.hash);
-        return {
-          originKind: "inline",
-          sourceKey,
-          script: witness.script,
-          authenticatedVersionedItemBytes: Buffer.from(item.bytes),
-          scriptLanguageTag,
-          scriptHash,
-          scriptTotalLength: item.bytes.length,
-          scriptItemCommitment: item.commitment,
-          leaf: hashMidgardInlineScriptSourceLeaf({
-            sourceIndex: BigInt(witness.index),
-            scriptLanguageTag,
-            scriptHash,
-            scriptTotalLength: item.bytes.length,
-            itemCommitment: item.commitment,
-          }),
-        };
-      });
-    const boundedItemForScriptSource = (source: ScriptSourceProofEntry) => {
-      // The two origin kinds carry two different keys, and each has exactly one
-      // decoder. An inline key is a bare canonical CBOR index; a reference key
-      // *is* the ledger out-ref, i.e. §5.3's fixed-index 38-byte item, whose
-      // `19 0000` head a minimal-CBOR reader rejects — so it goes through the
-      // §5.3 twin, never `decodeSingleCbor`. See `docs/spec/midgard-tx.md` §5.3.
-      const itemIndexValue =
-        source.originKind === "inline"
-          ? decodeSingleCbor(source.sourceKey)
-          : decodeMidgardSpendInputItem(source.sourceKey).outputIndex;
-      const itemIndex =
-        typeof itemIndexValue === "number"
-          ? itemIndexValue
-          : typeof itemIndexValue === "bigint" &&
-              itemIndexValue <= BigInt(Number.MAX_SAFE_INTEGER)
-            ? Number(itemIndexValue)
-            : -1;
-      if (!Number.isSafeInteger(itemIndex) || itemIndex < 0) {
-        throw new Error("V1 script source has a noncanonical item index");
-      }
-      const item = buildMidgardBoundedItem({
-        fieldIndex:
-          source.originKind === "inline"
-            ? MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX
-            : 2,
-        itemIndex,
-        bytes: source.authenticatedVersionedItemBytes,
-      });
-      if (
-        item.bytes.length !== source.scriptTotalLength ||
-        !item.commitment.equals(source.scriptItemCommitment)
-      ) {
-        throw new Error(
-          "V1 script source bytes disagree with authenticated descriptor facts",
-        );
-      }
-      return item;
-    };
-    const inlineScriptSourceLeafHashes = scriptSourceEntries.map(
-      (entry) => entry.leaf,
-    );
-    const scriptPurposeEntries: ScriptPurposeProofEntry[] = [];
-    const scriptExecutionEntries: ScriptExecutionProofEntry[] = [];
-    const inlineScriptSourceFrontier = buildMidgardValidationMerkleFrontier(
-      inlineScriptSourceLeafHashes,
-    );
-    const outputCbors = decodeMidgardNativeByteListPreimage(
-      fieldPreimages[2]!.preimageCbor,
-      "v1.outputs",
-    );
-    const outputLeafHashes = outputCbors.map((outputCbor, outputIndex) =>
-      hashMidgardOutputLeaf({ outputIndex, outputCbor }),
-    );
-    const outputFrontier =
-      buildMidgardValidationMerkleFrontier(outputLeafHashes);
-    const outputMembership = (outputIndex: number) =>
-      buildMidgardValidationMerkleMembership(outputLeafHashes, outputIndex);
-    const admittedOutputDescriptorCbors: Buffer[] = [];
-    const admittedOutputDescriptorLeafHashes: Buffer[] = [];
-    const decodedProofRedeemers = stopsAtCanonicalDecode
-      ? []
-      : decodeMidgardRedeemers(fieldPreimages[8]!.preimageCbor);
-    const canonicalRedeemerWitnessCbors = decodedProofRedeemers.map(
-      (redeemer) =>
-        encodeCbor([
-          BigInt(redeemer.tag),
-          redeemer.index,
-          Buffer.from(redeemer.dataCborHex, "hex"),
-          [redeemer.exUnits.memory, redeemer.exUnits.steps],
-        ]),
-    );
-    const redeemerLeafHashes = canonicalRedeemerWitnessCbors.map(
-      (canonicalRedeemerWitnessCbor, redeemerIndex) =>
-        hashMidgardRedeemerLeaf({
-          redeemerIndex,
-          canonicalRedeemerWitnessCbor,
-        }),
-    );
-    const redeemerFrontier =
-      buildMidgardValidationMerkleFrontier(redeemerLeafHashes);
-    const encodeFrontierPeaks = encodeValidationFrontierPeaks;
-    const emptyValidationFrontier = buildMidgardValidationMerkleFrontier([]);
     const signaturesScanWitnessCbor = (control: SignatureScanControl): Buffer =>
       encodeCbor([
         proofSource.compactCbor,
@@ -498,35 +302,6 @@ export const prepareValidationTrace = (
       signerFrontier: emptyValidationFrontier,
       firstInvalidWitnessIndex: -1,
     };
-    const phaseANativeScriptsScanWitnessCbor = (
-      control: PhaseANativeScriptsScanControl,
-      continuationCbor: Buffer = Buffer.alloc(0),
-    ): Buffer =>
-      encodeValidationControlList([
-        proofSource.compactCbor,
-        proofSource.witnessSetCompactCbor,
-        proofSource.fieldPreimageLengthsCbor,
-        contextCbor,
-        // A late execution scan binds its NativeScripts continuation here.
-        continuationCbor.length === 0
-          ? resolutionScheduleHash
-          : Buffer.from(midgardBlake2b(continuationCbor, { dkLen: 32 })),
-        BigInt(control.stage),
-        BigInt(control.scriptCount),
-        BigInt(control.scriptSeen),
-        BigInt(control.containsNonNativeScript),
-        BigInt(control.itemLength),
-        control.itemCommitment,
-        BigInt(control.cursor),
-        control.stackRoot,
-        BigInt(control.stackDepth),
-        BigInt(control.nodeCount),
-        BigInt(control.result),
-        BigInt(signerFrontier.count),
-        [encodeFrontierPeaks(signerFrontier), continuationCbor],
-        control.purposeKind,
-        control.purposeIndex,
-      ]);
     const resetPhaseANativeScriptsScanControl = (input: {
       readonly scriptCount: number;
       readonly scriptSeen: number;
@@ -734,55 +509,6 @@ export const prepareValidationTrace = (
         );
       }
       return encodeCbor(fields);
-    };
-    const signerMembership = (signerIndex: number) =>
-      buildMidgardValidationMerkleMembership(signerLeafHashes, signerIndex);
-    const signerProofForHash = (
-      signerHash: Buffer,
-    ): ValidationMachineSignerSetProof => {
-      const insertionIndex = canonicalSignerHashes.findIndex(
-        (candidate) => Buffer.compare(candidate, signerHash) >= 0,
-      );
-      if (
-        insertionIndex >= 0 &&
-        canonicalSignerHashes[insertionIndex]!.equals(signerHash)
-      ) {
-        return {
-          kind: "membership",
-          frontier: signerFrontier,
-          signerIndex: insertionIndex,
-          siblings: signerMembership(insertionIndex).siblings,
-        };
-      }
-      if (canonicalSignerHashes.length === 0) {
-        return { kind: "empty", frontier: signerFrontier };
-      }
-      if (insertionIndex === 0) {
-        return {
-          kind: "belowFirst",
-          frontier: signerFrontier,
-          firstSignerHash: canonicalSignerHashes[0]!,
-          siblings: signerMembership(0).siblings,
-        };
-      }
-      if (insertionIndex === -1) {
-        const lastIndex = canonicalSignerHashes.length - 1;
-        return {
-          kind: "aboveLast",
-          frontier: signerFrontier,
-          lastSignerHash: canonicalSignerHashes[lastIndex]!,
-          siblings: signerMembership(lastIndex).siblings,
-        };
-      }
-      return {
-        kind: "between",
-        frontier: signerFrontier,
-        lowerIndex: insertionIndex - 1,
-        lowerSignerHash: canonicalSignerHashes[insertionIndex - 1]!,
-        lowerSiblings: signerMembership(insertionIndex - 1).siblings,
-        upperSignerHash: canonicalSignerHashes[insertionIndex]!,
-        upperSiblings: signerMembership(insertionIndex).siblings,
-      };
     };
     const signerSetProof = (
       sourceKind: "spend" | "reference",
@@ -1208,7 +934,7 @@ export const prepareValidationTrace = (
         ): void => {
           pushWitness(
             "phaseANativeScripts",
-            phaseANativeScriptsScanWitnessCbor(phaseANativeControl),
+            phaseANativeScriptsScanWitnessCbor(prepared, phaseANativeControl),
             auxiliary,
           );
         };
@@ -1769,7 +1495,7 @@ export const prepareValidationTrace = (
     yield* walk.phase("scriptSources", () =>
       Effect.gen(function* () {
         const scriptSourceControl = {
-          resolvedInputCount: resolutionItems.length,
+          resolvedInputCount: resolutionScheduleNodes.length,
         };
         let authenticatedInlineSourceFrontier = emptyValidationFrontier;
         let inlineSourceTotalCount = 0;
@@ -3294,36 +3020,13 @@ export const prepareValidationTrace = (
       }),
     );
     return {
-      authenticatedNativeScriptsBaseFields,
-      authenticatedNativeScriptsWitnessCbor,
-      resolutionScheduleHash,
-      scriptExecutionEntries,
       scriptSourceEntries,
       scriptPurposeEntries,
-      boundedItemForScriptSource,
-      signerFrontier,
-      emptyValidationFrontier,
-      phaseANativeScriptsScanWitnessCbor,
-      signerProofForHash,
-      compactProofTransaction,
-      compactProofWitnessSet,
-      redeemerLeafHashes,
-      resolutionScheduleNodes,
-      ledgerDescriptorState,
-      decodedProofRedeemers,
-      scriptEvaluations,
-      input,
-      redeemerWitnessesCollection,
+      scriptExecutionEntries,
       admittedOutputDescriptorCbors,
       admittedOutputDescriptorLeafHashes,
-      canonicalSignerHashes,
-      signerMembership,
-      requiredObserversCollection,
-      fieldPreimage,
-      phaseALedgerTx,
       mintFoldControl,
-      ledgerState,
-      outputCbors,
-      contextCbor,
-    } as const;
+      authenticatedNativeScriptsWitnessCbor,
+      authenticatedNativeScriptsBaseFields,
+    };
   });

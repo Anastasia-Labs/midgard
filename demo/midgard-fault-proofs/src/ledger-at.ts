@@ -17,11 +17,15 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  type PreStateLedger,
+} from "@al-ft/midgard-validation";
 
 import { undecodableNativeOutputDescriptor } from "./evidence/retained-ledger-output.js";
 import { parseHex, parseJsonText } from "./json-file.js";
 import {
+  keyValuePhasResolutionProofs,
   type KeyValuePhasRoot,
   keyValuePhasRootWithCount,
 } from "./transition-trace/phas.js";
@@ -196,6 +200,15 @@ export const checkLedgerAgainstRoot = async ({
     ),
   }) as unknown as CheckedLedger;
 };
+
+/** `ledger` as the pre-state a validation trace proves input resolution
+ * against: its checked descriptor trie, shared by every opening of it. */
+export const checkedLedgerPreState = (
+  ledger: CheckedLedger,
+): PreStateLedger => ({
+  proveResolution: async (keys) =>
+    await keyValuePhasResolutionProofs(ledger.trie, keys),
+});
 
 /** The ledger after the authenticated header `{ headerHash, utxosRoot }`. */
 export const ledgerAfter = async ({

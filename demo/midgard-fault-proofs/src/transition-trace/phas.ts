@@ -187,6 +187,30 @@ export const keyValuePhasMembershipProofs = async (
   return proofs;
 };
 
+/**
+ * Each key's MPF proof CBOR against `root`, in order: membership for a key
+ * the trie holds, absence for one it does not. Membership reads the trie
+ * every opening of `root` shares; an absence proof edits a trie while it
+ * builds, so those take a trie of their own.
+ */
+export const keyValuePhasResolutionProofs = async (
+  root: KeyValuePhasRoot,
+  keys: readonly Buffer[],
+): Promise<readonly Buffer[]> => {
+  const held = new Set(root.entries.map(({ key }) => key.toString("hex")));
+  let scratch: Promise<Trie> | undefined;
+  const proofs: Buffer[] = [];
+  for (const key of keys) {
+    const member = held.has(key.toString("hex"));
+    const trie = await (member
+      ? trieForRoot(root)
+      : (scratch ??= trieFromEntries(root.entries)));
+    const proof = await trie.prove(Buffer.from(key), !member);
+    proofs.push(Buffer.from(proof.toCBOR()));
+  }
+  return proofs;
+};
+
 export const keyValuePhasNonMembershipProof = async (
   root: KeyValuePhasRoot,
   key: Buffer,

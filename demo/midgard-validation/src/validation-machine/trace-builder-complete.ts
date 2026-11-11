@@ -84,12 +84,22 @@ import {
   type ValidationMachineNativeScriptTokenHead,
   type ValidationMachineVersionedScriptHeader,
 } from "./native-script-frame.js";
+import {
+  preparedFieldPreimage,
+  preparedSignerMembership,
+  preparedSignerProof,
+  type PreparedValidationTransaction,
+} from "./prepared-validation-transaction.js";
 import { redeemerTagForPurposeKind } from "./redeemer-purpose.js";
-import type { prepareValidationTrace } from "./trace-builder-prepare.prepare-validation-trace.js";
+import {
+  boundedItemForScriptSource,
+  phaseANativeScriptsScanWitnessCbor,
+} from "./trace-builder-prepare.prepare-validation-trace.js";
 import type {
   PhaseANativeScriptsScanControl,
   ScriptExecutionProofEntry,
   ScriptPurposeProofEntry,
+  ValidationTraceWalkState,
 } from "./trace-builder-types.js";
 import {
   exactDescriptorSummary,
@@ -118,52 +128,40 @@ import {
 const emptyReplayProofCbor = Buffer.from([0x80]);
 
 export const completeValidationTrace = (
-  context: Effect.Effect.Success<ReturnType<typeof prepareValidationTrace>>,
+  prepared: PreparedValidationTransaction,
+  state: ValidationTraceWalkState,
   walk: TraceWalk,
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const {
-      authenticatedNativeScriptsBaseFields,
-      authenticatedNativeScriptsWitnessCbor,
       resolutionScheduleHash,
-      scriptExecutionEntries,
-      scriptSourceEntries,
-      scriptPurposeEntries,
-      boundedItemForScriptSource,
       signerFrontier,
-      emptyValidationFrontier,
-      phaseANativeScriptsScanWitnessCbor,
-      signerProofForHash,
       compactProofTransaction,
-      compactProofWitnessSet,
-      redeemerLeafHashes,
       resolutionScheduleNodes,
       ledgerDescriptorState,
       decodedProofRedeemers,
-      scriptEvaluations,
       input,
-      redeemerWitnessesCollection,
-      admittedOutputDescriptorCbors,
-      admittedOutputDescriptorLeafHashes,
-      canonicalSignerHashes,
-      signerMembership,
       requiredObserversCollection,
-      fieldPreimage,
       phaseALedgerTx,
-      mintFoldControl,
-      ledgerState,
       outputCbors,
-    } = context;
+    } = prepared;
+    const {
+      scriptExecutionEntries,
+      scriptPurposeEntries,
+      admittedOutputDescriptorCbors,
+    } = state;
     const { push: pushWitness, budget: executionBudget } = walk;
+    const sourceLeaves = state.scriptSourceEntries.map((entry) => entry.leaf);
+    const purposeLeaves = scriptPurposeEntries.map((entry) => entry.leaf);
     const executionLeaves = scriptExecutionEntries.map((entry) => entry.leaf);
     // The NativeScripts handoff the later phases continue from.
     let authenticatedNativeControlCbor = Buffer.alloc(0);
 
     yield* walk.phase("nativeScripts", () =>
       Effect.gen(function* () {
-        const nativeBaseFields = authenticatedNativeScriptsBaseFields;
+        const nativeBaseFields = state.authenticatedNativeScriptsBaseFields;
         if (
-          authenticatedNativeScriptsWitnessCbor === null ||
+          state.authenticatedNativeScriptsWitnessCbor === null ||
           nativeBaseFields === null
         ) {
           return yield* Effect.fail(
@@ -182,8 +180,6 @@ export const completeValidationTrace = (
             BigInt(languageBitmap),
             resolutionScheduleHash,
           ]);
-        const sourceLeaves = scriptSourceEntries.map((entry) => entry.leaf);
-        const purposeLeaves = scriptPurposeEntries.map((entry) => entry.leaf);
         let languageBitmap = 0;
         for (
           let executionIndex = 0;
@@ -233,7 +229,7 @@ export const completeValidationTrace = (
             signerFrontier:
               execution.languageTag === 0
                 ? signerFrontier
-                : emptyValidationFrontier,
+                : prepared.emptyValidationFrontier,
           });
           if (execution.languageTag === 0) {
             if (execution.source.script.language !== "NativeCardano") {
@@ -299,6 +295,7 @@ export const completeValidationTrace = (
               pushWitness(
                 "phaseANativeScripts",
                 phaseANativeScriptsScanWitnessCbor(
+                  prepared,
                   lateControl,
                   continuationCbor,
                 ),
@@ -377,7 +374,7 @@ export const completeValidationTrace = (
                 }
                 const signerProof =
                   token?.kind === 0
-                    ? signerProofForHash(token.keyHash)
+                    ? preparedSignerProof(prepared, token.keyHash)
                     : ({ kind: "none" } as const);
                 pushLateWitness({
                   kind: "nativeScriptToken",
@@ -556,7 +553,7 @@ export const completeValidationTrace = (
             authenticatedNativeControlCbor,
             3n,
             compactProofTransaction.transactionBody.scriptIntegrityHash,
-            compactProofWitnessSet.redeemerTxWitsHash,
+            prepared.compactProofWitnessSet.redeemerTxWitsHash,
           ]),
         );
         return phaseContinues;
@@ -565,9 +562,7 @@ export const completeValidationTrace = (
 
     yield* walk.phase("cek", () =>
       Effect.sync(() => {
-        const sourceLeaves = scriptSourceEntries.map((entry) => entry.leaf);
-        const purposeLeaves = scriptPurposeEntries.map((entry) => entry.leaf);
-        const redeemerLeaves = redeemerLeafHashes;
+        const redeemerLeaves = prepared.redeemerLeafHashes;
         const resolvedLeaves = resolutionScheduleNodes.map(
           (node, itemIndex) => {
             const descriptorCbor = ledgerDescriptorState.get(
@@ -759,7 +754,7 @@ export const completeValidationTrace = (
             (executionEntry.languageTag === 3 &&
               executionEntry.purpose.purposeKind === 3)
               ? undefined
-              : scriptEvaluations[evaluationIndex++];
+              : prepared.scriptEvaluations[evaluationIndex++];
           const completedCpu = executionBudget.cpu;
           const completedMemory = executionBudget.memory;
           pushWitness(
@@ -889,7 +884,7 @@ export const completeValidationTrace = (
             scriptPurposeEntries.length,
           );
           const selectedItem =
-            redeemerWitnessesCollection.items[selected.index]!;
+            prepared.redeemerWitnessesCollection.items[selected.index]!;
           const selectionTrace = buildMidgardRedeemerItemProofTrace({
             itemIndex: selected.index,
             itemCount: decodedProofRedeemers.length,
@@ -1133,7 +1128,7 @@ export const completeValidationTrace = (
                 outputIndex,
                 descriptorCbor,
                 siblings: buildMidgardValidationMerkleMembership(
-                  admittedOutputDescriptorLeafHashes,
+                  state.admittedOutputDescriptorLeafHashes,
                   outputIndex,
                 ).siblings,
               },
@@ -1174,11 +1169,11 @@ export const completeValidationTrace = (
           }
 
           for (
-            let signerIndex = canonicalSignerHashes.length - 1;
+            let signerIndex = prepared.canonicalSignerHashes.length - 1;
             signerIndex >= 0;
             signerIndex -= 1
           ) {
-            const signerHash = canonicalSignerHashes[signerIndex]!;
+            const signerHash = prepared.canonicalSignerHashes[signerIndex]!;
             pushWitness(
               "cek",
               cekContextWitness({
@@ -1192,7 +1187,8 @@ export const completeValidationTrace = (
                 frontier: signerFrontier,
                 signerIndex,
                 signerHash,
-                siblings: signerMembership(signerIndex).siblings,
+                siblings: preparedSignerMembership(prepared, signerIndex)
+                  .siblings,
               },
             );
             contextControl = {
@@ -1253,7 +1249,7 @@ export const completeValidationTrace = (
                 kind: "transactionFieldChunk",
                 fieldIndex: 3,
                 itemIndex: observer.itemIndex,
-                fieldPreimage: fieldPreimage(3),
+                fieldPreimage: preparedFieldPreimage(prepared, 3),
               },
             );
             contextControl = {
@@ -1317,7 +1313,7 @@ export const completeValidationTrace = (
               authenticatedMintFrontier,
             ).equals(
               commitMidgardValidationMerkleFrontier(
-                mintFoldControl.assetFrontier,
+                state.mintFoldControl.assetFrontier,
               ),
             )
           ) {
@@ -1423,7 +1419,8 @@ export const completeValidationTrace = (
                 "CEK execution leaf names a redeemer outside the redeemer frontier",
               );
             }
-            const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+            const item =
+              prepared.redeemerWitnessesCollection.items[redeemerIndex]!;
             const descriptorOnly =
               executionEntry.languageTag === 3 && purpose.purposeKind === 3;
             const itemTrace = buildMidgardRedeemerItemProofTrace({
@@ -1787,7 +1784,7 @@ export const completeValidationTrace = (
             );
           }
         }
-        if (evaluationIndex !== scriptEvaluations.length) {
+        if (evaluationIndex !== prepared.scriptEvaluations.length) {
           throw new Error(
             "CEK trace did not consume every local script evaluation",
           );
@@ -1824,7 +1821,7 @@ export const completeValidationTrace = (
         const valueContributions: ValidationValueContribution[] = [];
         for (const node of resolutionScheduleNodes) {
           if (node.sourceKind !== "spend") continue;
-          const value = ledgerState.get(node.key.toString("hex"));
+          const value = prepared.ledgerState.get(node.key.toString("hex"));
           if (value === undefined) {
             return yield* Effect.fail(
               new Error(
@@ -1937,7 +1934,7 @@ export const completeValidationTrace = (
         }
         for (const [replayCursor, node] of resolutionScheduleNodes.entries()) {
           const outRefHex = node.key.toString("hex");
-          const outputCbor = ledgerState.get(outRefHex);
+          const outputCbor = prepared.ledgerState.get(outRefHex);
           const descriptorCbor = ledgerDescriptorState.get(outRefHex);
           if (outputCbor === undefined || descriptorCbor === undefined) {
             return yield* Effect.fail(
@@ -2072,7 +2069,7 @@ export const completeValidationTrace = (
               outputIndex,
               descriptorCbor,
               siblings: buildMidgardValidationMerkleMembership(
-                admittedOutputDescriptorLeafHashes,
+                state.admittedOutputDescriptorLeafHashes,
                 outputIndex,
               ).siblings,
             },

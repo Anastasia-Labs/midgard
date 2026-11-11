@@ -32,6 +32,7 @@ import {
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
 import { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";
+import type { PreStateLedger } from "./pre-state-ledger.js";
 
 export type ValidationMachineReplayInput = {
   readonly consensusProfile: MidgardConsensusProfile;
@@ -42,6 +43,11 @@ export type ValidationMachineReplayInput = {
   readonly priorUtxosRoot: string;
   readonly postUtxosRoot: string;
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
+  /**
+   * The ledger input resolution proves against, holding exactly
+   * `ledgerWitnessEntries`. Without it, one is built from them.
+   */
+  readonly preStateLedger?: PreStateLedger;
   readonly expectedLedgerOps: readonly ValidationMachineLedgerOp[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   /** Captures supplied by the node classification; an empty array forbids evaluation. */

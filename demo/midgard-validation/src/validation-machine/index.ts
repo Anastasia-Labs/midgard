@@ -48,6 +48,10 @@ export {
   validationTransactionCommitmentV1,
 } from "./placeholder-trace-descriptor.js";
 export {
+  ledgerEntriesPreState,
+  type PreStateLedger,
+} from "./pre-state-ledger.js";
+export {
   type MidgardPurposeKind,
   type MidgardRedeemerPurposeTag,
   purposeKindForRedeemerTag,

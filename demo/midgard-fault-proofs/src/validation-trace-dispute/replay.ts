@@ -24,7 +24,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import { type CheckedLedger, checkedLedgerPreState } from "../ledger-at.js";
 import type { SourceEventRecord } from "../transition-trace/reconstruct.js";
 
 export type CommittedL2Event = Extract<
@@ -110,6 +110,7 @@ export const plutusReplayInput = ({
   sourceKind: "normal",
   priorUtxosRoot: ledger.utxosRoot,
   ledgerWitnessEntries: ledger.entries,
+  preStateLedger: checkedLedgerPreState(ledger),
   ...(verdict.verdict === "rejected"
     ? {
         postUtxosRoot: ledger.utxosRoot,

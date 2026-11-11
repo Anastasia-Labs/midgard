@@ -41,12 +41,12 @@ export type ScriptPurposeProofEntry = {
   readonly leaf: Buffer;
 };
 export type ResolutionScheduleNode = {
-  sourceKind: "spend" | "reference";
-  itemIndex: number;
-  key: Buffer;
-  nextScheduleHash: Buffer;
-  scheduleHash: Buffer;
-  proofCbor: Buffer;
+  readonly sourceKind: "spend" | "reference";
+  readonly itemIndex: number;
+  readonly key: Buffer;
+  readonly nextScheduleHash: Buffer;
+  readonly scheduleHash: Buffer;
+  readonly proofCbor: Buffer;
 };
 export type ScriptSourceProofEntry = {
   readonly originKind: "inline" | "reference";
@@ -87,4 +87,16 @@ export type MintFoldTraceControl = {
   readonly policyAssetCursor: number;
   readonly previousAsset: Buffer;
   readonly assetFrontier: MidgardValidationMerkleFrontier;
+};
+/** What the walk's earlier phases accumulate and its later phases read. */
+export type ValidationTraceWalkState = {
+  readonly scriptSourceEntries: readonly ScriptSourceProofEntry[];
+  readonly scriptPurposeEntries: readonly ScriptPurposeProofEntry[];
+  readonly scriptExecutionEntries: readonly ScriptExecutionProofEntry[];
+  readonly admittedOutputDescriptorCbors: readonly Buffer[];
+  readonly admittedOutputDescriptorLeafHashes: readonly Buffer[];
+  readonly mintFoldControl: MintFoldTraceControl;
+  /** The NativeScripts handoff, or null where the walk never reached it. */
+  readonly authenticatedNativeScriptsWitnessCbor: Buffer | null;
+  readonly authenticatedNativeScriptsBaseFields: readonly unknown[] | null;
 };
