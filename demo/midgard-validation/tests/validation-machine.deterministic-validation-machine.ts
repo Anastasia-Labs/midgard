@@ -22,6 +22,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildOpaqueNativeReferenceScriptLedgerOutputMaterial,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgument,
@@ -1885,6 +1886,49 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           postUtxosRoot: unchangedRoot,
           ledgerWitnessEntries: [
             { outRef: spent, output: Buffer.from("8200", "hex") },
+          ],
+          expectedLedgerOps: [],
+          expectedVerdict: "rejected",
+          expectedRejectionCode: RejectCodes.InvalidOutput,
+        }),
+      ),
+    ).rejects.toThrow("cannot produce an exact V1 descriptor");
+  });
+
+  it("refuses to resolve an output held only by its bytes-only descriptor", async () => {
+    const spent = outRefFromByte(0x11);
+    // A native script_ref whose body does not decode: no canonical descriptor.
+    const output = Buffer.from(
+      "a300581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0038200428109",
+      "hex",
+    );
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
+    });
+    const unchangedRoot = root(6);
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+          ...context,
+          sourceKind: "forced",
+          transactionId: transaction.txId,
+          canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(transaction.tx),
+          ),
+          priorUtxosRoot: unchangedRoot,
+          postUtxosRoot: unchangedRoot,
+          ledgerWitnessEntries: [
+            {
+              outRef: spent,
+              output,
+              descriptor: buildOpaqueNativeReferenceScriptLedgerOutputMaterial({
+                outputIndex: 0,
+                outputCbor: output,
+              }).descriptorCbor,
+            },
           ],
           expectedLedgerOps: [],
           expectedVerdict: "rejected",

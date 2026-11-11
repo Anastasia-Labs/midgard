@@ -162,6 +162,11 @@ import {
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
+const noExactDescriptor = (outRefHex: string): Error =>
+  new Error(
+    `persisted ledger output ${outRefHex} cannot produce an exact V1 descriptor`,
+  );
+
 export const prepareValidationTrace = (
   input: ValidationMachineReplayInput,
   recording: ValidationTraceRecording,
@@ -212,18 +217,21 @@ export const prepareValidationTrace = (
         );
       }
       ledgerState.set(outRefHex, Buffer.from(entry.output));
-      const outputMaterial = yield* Effect.try({
-        try: () =>
-          buildCanonicalMidgardLedgerEntryOutputMaterial({
-            outRef: entry.outRef,
-            outputCbor: entry.output,
-          }),
-        catch: () =>
-          new Error(
-            `persisted ledger output ${outRefHex} cannot produce an exact V1 descriptor`,
-          ),
-      });
-      ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
+      let descriptorCbor: Buffer;
+      try {
+        descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
+          outRef: entry.outRef,
+          outputCbor: entry.output,
+        }).descriptorCbor;
+      } catch {
+        // An entry the trace never resolves needs only its trie leaf; input
+        // resolution refuses one without a canonical descriptor.
+        if (entry.descriptor === undefined) {
+          return yield* Effect.fail(noExactDescriptor(outRefHex));
+        }
+        descriptorCbor = Buffer.from(entry.descriptor);
+      }
+      ledgerDescriptorState.set(outRefHex, descriptorCbor);
     }
     const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null = !(
       "ledgerTx" in phaseA
@@ -2116,11 +2124,16 @@ export const prepareValidationTrace = (
             break;
           }
 
+          const outputIndex = yield* Effect.try({
+            try: () =>
+              buildCanonicalMidgardLedgerEntryOutputMaterial({
+                outRef: item.key,
+                outputCbor,
+              }).descriptor.outputIndex,
+            catch: () => noExactDescriptor(outRefHex),
+          });
           const outputProof = buildMidgardLedgerOutputProofTrace({
-            outputIndex: buildCanonicalMidgardLedgerEntryOutputMaterial({
-              outRef: item.key,
-              outputCbor,
-            }).descriptor.outputIndex,
+            outputIndex,
             outputCbor,
           });
           pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {

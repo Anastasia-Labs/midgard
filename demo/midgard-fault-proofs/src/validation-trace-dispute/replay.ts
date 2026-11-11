@@ -109,10 +109,7 @@ export const plutusReplayInput = ({
   canonicalTransactionCbor: Buffer.from(event.entry.fullTransactionCbor),
   sourceKind: "normal",
   priorUtxosRoot: ledger.utxosRoot,
-  ledgerWitnessEntries: ledger.entries.map(({ outRef, output }) => ({
-    outRef,
-    output,
-  })),
+  ledgerWitnessEntries: ledger.entries,
   ...(verdict.verdict === "rejected"
     ? {
         postUtxosRoot: ledger.utxosRoot,

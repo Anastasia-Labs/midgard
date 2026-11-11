@@ -1,7 +1,15 @@
+import {
+  encodeMidgardTxOutput,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+} from "@al-ft/midgard-core";
+import { encodeMidgardDefiniteBytes } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { describe, expect, it } from "vitest";
 
-import { RejectCodes } from "../src/index.js";
+import {
+  buildOpaqueNativeReferenceScriptLedgerOutputMaterial,
+  RejectCodes,
+} from "../src/index.js";
 import {
   limitRefusal,
   MIN_NATIVE_NODE_BYTES,
@@ -12,9 +20,18 @@ import {
 import {
   expectControlledRows,
   expectRowVerdicts,
+  funded,
+  KEY_ADDRESS,
+  keySpent,
   machineTrace,
+  mintedOutput,
+  mintOf,
   producer,
 } from "./emission-order.support.js";
+import {
+  FUNDED_OUTPUT_LOVELACE,
+  outRefFromByte,
+} from "./validation-fixtures.js";
 
 /** The rows of case (e); see `emission-order.native.rows.ts`. */
 describe("emission order (e): native-script failures", () => {
@@ -59,4 +76,59 @@ describe("emission order (e): native-script failures", () => {
     },
     180_000,
   );
+
+  it("a truncated reference native script a whole number of chunks long stops at input resolution", async () => {
+    // `all` claiming one child more than it holds: an execution-mode scan
+    // would read its next token head at the item's end, past the last chunk.
+    const leaves = [
+      ...Array.from({ length: 2 }, () => Buffer.from("82041818", "hex")),
+      ...Array.from({ length: 1359 }, () => Buffer.from("820400", "hex")),
+    ];
+    const item = Buffer.concat([
+      Buffer.from([0x82, 0x00]),
+      encodeMidgardDefiniteBytes(
+        Buffer.concat([Buffer.from("8201990552", "hex"), ...leaves]),
+      ),
+    ]);
+    expect(leaves.length + 1).toBe(0x0552);
+    expect(item.length).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    const plain = encodeMidgardTxOutput({
+      address: KEY_ADDRESS,
+      value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
+    });
+    const output = Buffer.concat([
+      Buffer.from([plain[0]! + 1]),
+      plain.subarray(1),
+      Buffer.from([0x03]),
+      item,
+    ]);
+    const policy = buildOpaqueNativeReferenceScriptLedgerOutputMaterial({
+      outputIndex: 0,
+      outputCbor: output,
+    }).descriptor.referenceScriptHash.toString("hex");
+    const reference = outRefFromByte(0x90);
+    const { rejection } = await producer({
+      name: "e_refusal_truncated_reference_native_chunk_multiple",
+      kind: "refusal",
+      guard: true,
+      state: [
+        [keySpent, funded],
+        [reference, output],
+      ],
+      tx: {
+        spendInputs: [keySpent],
+        referenceInputs: [reference],
+        outputs: [mintedOutput(policy)],
+        mintPreimageCbor: mintOf(policy),
+      },
+      expected: { code: RejectCodes.InvalidOutput, reason: null },
+    });
+    // The reference input's output does not decode, so no native execution
+    // runs; the trace builder refuses to resolve that output at all.
+    expect(rejection).toMatchObject({
+      code: RejectCodes.InvalidOutput,
+      consensusPhase: "resolveInputs",
+      subject: { arm: "InputSpentOutputNonCanonical", sourceKind: 1n },
+    });
+  }, 180_000);
 });

@@ -18,6 +18,13 @@ import { type CanonicalTransitionEffect } from "../transition-effect.js";
 export type ValidationMachineLedgerEntry = {
   readonly outRef: Buffer;
   readonly output: Buffer;
+  /**
+   * The trie leaf of an output with no canonical descriptor (a native
+   * script_ref that does not decode), derived from its bytes alone and
+   * authenticated by the prior ledger root. It only commits the entry to the
+   * trie: a trace that resolves the entry is refused.
+   */
+  readonly descriptor?: Buffer | undefined;
 };
 
 export type ValidationMachineLedgerOp =

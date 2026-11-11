@@ -799,7 +799,8 @@
         "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check"
       },
       "ci": {
-        "none": "No workflow step runs this generator's --check."
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check RejectionReasonV1 golden vectors"
       }
     },
     {
@@ -980,7 +981,8 @@
         "run": "pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:check"
       },
       "ci": {
-        "none": "No workflow step runs fixtures:cek-program-large-integer:check."
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check CEK large-integer program fixture"
       }
     },
     {
@@ -1219,7 +1221,8 @@
         "run": "pnpm --dir demo/midgard-node run fixtures:transaction-root-v1:check"
       },
       "ci": {
-        "none": "No workflow step runs fixtures:transaction-root-v1:check."
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check V1 transaction-root golden vectors"
       }
     },
     {
