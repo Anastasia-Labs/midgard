@@ -30,7 +30,7 @@ import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
  * - cost: proof mode spends exactly what verdict mode spends;
  * - reference (opt-in): the external evaluator's verdict and, on accept, its
  *   spent budget equal Phase B's;
- * - steps: the proof run's steps, sampled for the step oracle.
+ * - steps: the proof run's steps, sampled for the Aiken step evaluator.
  *
  * Disagreements in a known class are counted under it, never as divergences.
  */
@@ -61,7 +61,7 @@ export type TxCaseResult = {
   readonly known: readonly TxKnownClass[];
   /** Whether the reference leg ran. */
   readonly referenced: boolean;
-  /** The proof run's steps for the step oracle, when the script ran. */
+  /** The proof run's steps for the Aiken step evaluator, when the script ran. */
   readonly steps: PreparedCase | null;
 };
 

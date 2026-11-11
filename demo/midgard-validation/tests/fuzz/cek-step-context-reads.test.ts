@@ -3,6 +3,10 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import {
+  type AikenStepEvaluator,
+  makeAikenStepEvaluator,
+} from "@al-ft/midgard-test-support/aiken-evaluator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -32,10 +36,6 @@ import {
   v,
 } from "../helpers/cek-uplc-terms.js";
 import { builtin } from "../helpers/uplc-builtins.js";
-import {
-  type AikenStepOracle,
-  makeAikenStepOracle,
-} from "./cek-step-fuzz.oracle.js";
 
 /**
  * Scripts that read a transaction-shaped context, or build Data of the same
@@ -145,16 +145,17 @@ const stateCbor = (state: MidgardCekMachineState): Uint8Array =>
   lucidDataToCborIterative(midgardCekMachineStateData(state) as never);
 
 describe("CEK steps of context-reading scripts against the Aiken machine", () => {
-  let oracle: AikenStepOracle | undefined;
+  let aiken: AikenStepEvaluator | undefined;
 
-  // The oracle compiles the on-chain project twice per run, shared by every
-  // file that uses it (about 45 s on a developer machine, a few minutes on a
-  // loaded CI runner); a file that starts meanwhile waits for it.
+  // The exports are cached by their compiler inputs: a cold cache compiles
+  // the on-chain project twice (about 50 s each on a loaded machine, a few
+  // minutes on a loaded CI runner), and a file that starts meanwhile waits
+  // for those compiles.
   beforeAll(async () => {
-    oracle = await makeAikenStepOracle();
+    aiken = await makeAikenStepEvaluator();
   }, 300_000);
 
-  afterAll(() => oracle?.close());
+  afterAll(() => aiken?.close());
 
   it.each(cases)(
     "verifies every step of %s",
@@ -178,7 +179,7 @@ describe("CEK steps of context-reading scripts against the Aiken machine", () =>
             : [],
         ),
       ).toEqual(builtins.map((builtin) => BigInt(builtin.builtinTag)));
-      const verdicts = oracle!.verify(
+      const verdicts = aiken!.verify(
         steps.map((step) => ({
           pre: stateCbor(step.pre),
           post: stateCbor(step.post),
@@ -194,7 +195,7 @@ describe("CEK steps of context-reading scripts against the Aiken machine", () =>
             : [`step ${index.toString()} (${steps[index]!.witness.kind})`],
         ),
       ).toEqual([]);
-      expect(oracle!.hash(steps.map((step) => stateCbor(step.post)))).toEqual(
+      expect(aiken!.hash(steps.map((step) => stateCbor(step.post)))).toEqual(
         steps.map((step) =>
           hashMidgardCekMachineState(step.post).toString("hex"),
         ),

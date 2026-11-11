@@ -3,6 +3,11 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import type {
+  AikenStepArguments,
+  AikenStepEvaluator,
+  AikenVerdict,
+} from "@al-ft/midgard-test-support/aiken-evaluator";
 
 import {
   midgardCekCoreStepWitnessData,
@@ -24,11 +29,6 @@ import {
   type CataloguedClass,
   cataloguedClassOf,
 } from "./cek-step-fuzz.catalogue.js";
-import type {
-  AikenStepArguments,
-  AikenStepOracle,
-  AikenVerdict,
-} from "./cek-step-fuzz.oracle.js";
 import type { CekStepFuzzProgram } from "./cek-step-fuzz.programs.js";
 
 /**
@@ -260,13 +260,13 @@ const divergenceOf = (step: AdjudicatedStep): string | null => {
 
 /** Adjudicates prepared cases, batching every step into few evaluations. */
 export const adjudicateCases = (
-  oracle: AikenStepOracle,
+  aiken: AikenStepEvaluator,
   cases: readonly PreparedCase[],
 ): readonly CaseResult[] => {
   const all = cases.flatMap((entry) => entry.sampled);
-  const verdicts = oracle.verify(all.map((step) => step.arguments));
+  const verdicts = aiken.verify(all.map((step) => step.arguments));
   const genuine = all.filter((step) => step.twist === null);
-  const hashes = oracle.hash(genuine.map((step) => step.arguments.post));
+  const hashes = aiken.hash(genuine.map((step) => step.arguments.post));
   const hashOf = new Map(genuine.map((step, index) => [step, hashes[index]]));
   let cursor = 0;
   return cases.map((prepared) => {

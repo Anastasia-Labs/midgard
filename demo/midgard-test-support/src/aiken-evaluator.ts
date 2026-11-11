@@ -1,13 +1,10 @@
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { join } from "node:path";
 
-import { readCborBytes } from "@al-ft/midgard-core/codec/cbor";
-import { memoizeForRun } from "@al-ft/midgard-test-support/run-shared-fixtures";
-
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
+import { exportAikenFunctions } from "../aiken-export-cache.js";
 import {
   app,
   applyExportedProgram,
@@ -15,43 +12,24 @@ import {
   type FlatTerm,
   listOf,
   v,
-} from "./cek-step-fuzz.flat.js";
+} from "./uplc-flat.js";
 
 /**
- * The Aiken side of the step differential: the pinned evaluator running the
- * on-chain machine's own step adjudicator, `cek_machine_v1.verify_core_step_v1`,
- * and its state hash, `cek_machine_v1.hash_state_v1`, exported from the
- * on-chain project as UPLC. Many steps are adjudicated in one evaluation: the
- * exported function is applied to every step's arguments and the results are
- * collected into one list.
+ * The Aiken function evaluator: the pinned compiler's own evaluator running
+ * functions exported from the on-chain project as UPLC.
+ *
+ * The step evaluator runs the on-chain machine's step adjudicator,
+ * `cek_machine_v1.verify_core_step_v1`, and its state hash,
+ * `cek_machine_v1.hash_state_v1`. Many steps are adjudicated in one
+ * evaluation: the exported function is applied to every step's arguments and
+ * the results are collected into one list. Exports are cached by their
+ * compiler inputs (`aiken-export-cache.js`), which records what one costs.
  */
 
-const repositoryRoot = resolve(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "../../../..",
-);
-const aikenProject = join(repositoryRoot, "onchain/aiken");
-const aikenResolver = join(repositoryRoot, "scripts/lib/aiken.mjs");
+/** The aiken `demo/flake.lock` pins, which every evaluation runs. */
+export { aikenBinary };
+
 const MACHINE_MODULE = "midgard/cek_machine_v1";
-
-let resolvedAiken: string | undefined;
-
-/**
- * The aiken `demo/flake.lock` pins, from the repository's one resolver
- * (`scripts/lib/aiken.mjs`), resolved once per run.
- */
-export const aikenBinary = (): string => {
-  if (resolvedAiken !== undefined) return resolvedAiken;
-  const run = spawnSync(process.execPath, [aikenResolver], {
-    encoding: "utf8",
-  });
-  if (run.error !== undefined) throw run.error;
-  if (run.status !== 0) {
-    throw new Error(`could not resolve the pinned aiken:\n${run.stderr}`);
-  }
-  resolvedAiken = run.stdout.trim();
-  return resolvedAiken;
-};
 
 const MAX_OUTPUT = 512 * 1024 * 1024;
 
@@ -80,58 +58,6 @@ export class AikenEvaluationFailed extends Error {
   }
 }
 
-/**
- * The Flat program of an exported function, unwrapped from its CBOR. Each
- * export type-checks and compiles the whole on-chain project: about 40 s on a
- * developer machine.
- */
-const exportFunction = async (name: string): Promise<Uint8Array> => {
-  let stdout: string;
-  try {
-    ({ stdout } = await promisify(execFile)(
-      aikenBinary(),
-      ["export", "-m", MACHINE_MODULE, "-n", name],
-      { cwd: aikenProject, encoding: "utf8", maxBuffer: MAX_OUTPUT },
-    ));
-  } catch (cause) {
-    const failed = cause as { stdout?: string; stderr?: string };
-    throw new AikenEvaluationFailed(
-      `aiken export ${name} failed`,
-      `${failed.stdout ?? ""}${failed.stderr ?? String(cause)}`,
-    );
-  }
-  const exported = JSON.parse(stdout) as { readonly compiledCode: string };
-  const cbor = Buffer.from(exported.compiledCode, "hex");
-  let wrapped: { readonly value: Buffer; readonly nextOffset: number };
-  try {
-    wrapped = readCborBytes(cbor, 0);
-  } catch (cause) {
-    throw new Error(`the export of ${name} is not a CBOR byte string`, {
-      cause,
-    });
-  }
-  if (wrapped.nextOffset !== cbor.length) {
-    throw new Error(`the export of ${name} is not a CBOR byte string`);
-  }
-  return Uint8Array.from(wrapped.value);
-};
-
-/**
- * Both exported functions, produced once per run and shared by every file
- * that builds an oracle: the two exports run side by side, and files that
- * start meanwhile wait for them instead of compiling the project again.
- */
-const machineExports = memoizeForRun(
-  "aiken-cek-machine-v1-exports",
-  async () => {
-    const [verify, hash] = await Promise.all([
-      exportFunction("verify_core_step_v1"),
-      exportFunction("hash_state_v1"),
-    ]);
-    return { verify, hash };
-  },
-);
-
 type EvaluatedList =
   | { readonly kind: "list"; readonly items: readonly string[] }
   | { readonly kind: "failed"; readonly output: string };
@@ -145,7 +71,7 @@ const listItems = (result: string): readonly string[] | undefined => {
   return inner === "" ? [] : inner.split(",").map((item) => item.trim());
 };
 
-export type AikenStepOracle = {
+export type AikenStepEvaluator = {
   /** `verify_core_step_v1(pre, post, witness)` for each step, in order. */
   readonly verify: (
     steps: readonly AikenStepArguments[],
@@ -193,14 +119,17 @@ const inBatches = <A, B>(
 };
 
 /**
- * Builds the oracle: exports both functions once per run, then evaluates
- * batches. A file waiting for another file's exports waits as long as they
- * take, so call it from a hook sized for two project compiles on a loaded
- * runner.
+ * Builds the step evaluator: exports both functions, then evaluates batches.
+ * On a cold cache, or while another process compiles the same exports, it
+ * waits for two project compiles, so call it from a hook sized for them on a
+ * loaded runner.
  */
-export const makeAikenStepOracle = async (): Promise<AikenStepOracle> => {
-  const { verify: verifyFlat, hash: hashFlat } = await machineExports();
-  const directory = mkdtempSync(join(tmpdir(), "midgard-cek-step-fuzz-"));
+export const makeAikenStepEvaluator = async (): Promise<AikenStepEvaluator> => {
+  const [verifyFlat, hashFlat] = await exportAikenFunctions([
+    { module: MACHINE_MODULE, name: "verify_core_step_v1", flags: [] },
+    { module: MACHINE_MODULE, name: "hash_state_v1", flags: [] },
+  ]);
+  const directory = mkdtempSync(join(tmpdir(), "midgard-aiken-evaluator-"));
   let counter = 0;
 
   const evaluate = (

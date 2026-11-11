@@ -1481,6 +1481,7 @@ Transaction differential with the pinned aiken reference leg.
   - `demo/midgard-l1-follower/src/**`
   - `demo/midgard-user-cli/src/**`
   - `demo/midgard-validation/tests/fuzz/**`
+  - `demo/midgard-test-support/aiken-export-cache.js`
   - `demo/midgard-validation/vitest.config.ts`
   - `onchain/aiken/lib/**`
   - `onchain/aiken/aiken.toml`

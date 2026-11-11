@@ -5,6 +5,10 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import {
+  type AikenStepEvaluator,
+  makeAikenStepEvaluator,
+} from "@al-ft/midgard-test-support/aiken-evaluator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -39,10 +43,6 @@ import {
   DataList,
   DataMap,
 } from "../src/uplc-data.js";
-import {
-  type AikenStepOracle,
-  makeAikenStepOracle,
-} from "./fuzz/cek-step-fuzz.oracle.js";
 import {
   discard,
   lam,
@@ -373,16 +373,17 @@ const stateCbor = (state: MidgardCekMachineState): Uint8Array =>
   lucidDataToCborIterative(midgardCekMachineStateData(state) as never);
 
 describe("Boundary constant roots against the Aiken machine", () => {
-  let oracle: AikenStepOracle | undefined;
+  let aiken: AikenStepEvaluator | undefined;
 
-  // The oracle compiles the on-chain project twice per run, shared by every
-  // file that uses it (about 45 s on a developer machine, a few minutes on a
-  // loaded CI runner); a file that starts meanwhile waits for it.
+  // The exports are cached by their compiler inputs: a cold cache compiles
+  // the on-chain project twice (about 50 s each on a loaded machine, a few
+  // minutes on a loaded CI runner), and a file that starts meanwhile waits
+  // for those compiles.
   beforeAll(async () => {
-    oracle = await makeAikenStepOracle();
+    aiken = await makeAikenStepEvaluator();
   }, 300_000);
 
-  afterAll(() => oracle?.close());
+  afterAll(() => aiken?.close());
 
   it(
     "commits every boundary constant to the root the Aiken machine derives",
@@ -416,7 +417,7 @@ describe("Boundary constant roots against the Aiken machine", () => {
       const steps = runs.flatMap(({ label, steps }) =>
         steps.map((step, index) => ({ label, index, step })),
       );
-      const verdicts = oracle!.verify(
+      const verdicts = aiken!.verify(
         steps.map(({ step }) => ({
           pre: stateCbor(step.pre),
           post: stateCbor(step.post),
@@ -434,7 +435,7 @@ describe("Boundary constant roots against the Aiken machine", () => {
         }),
       ).toEqual([]);
       expect(
-        oracle!.hash(steps.map(({ step }) => stateCbor(step.post))),
+        aiken!.hash(steps.map(({ step }) => stateCbor(step.post))),
       ).toEqual(
         steps.map(({ step }) =>
           hashMidgardCekMachineState(step.post).toString("hex"),

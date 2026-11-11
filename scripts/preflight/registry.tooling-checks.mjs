@@ -90,9 +90,10 @@ export const goldenChecks = (root, packages, ciText) =>
 // --- the transaction differential's reference leg --------------------------
 
 // The tx-fuzz rows again with the reference leg on: every generated spend is
-// also evaluated by the pinned aiken's `uplc eval`, which the step oracle
-// resolves through scripts/lib/aiken.mjs. With the leg on, each row's pins
-// include the leg's own classes per seed, so its verdicts are pinned too.
+// also evaluated by the pinned aiken's `uplc eval`, which the test-support
+// Aiken evaluator resolves through scripts/lib/aiken.mjs. With the leg on,
+// each row's pins include the leg's own classes per seed, so its verdicts are
+// pinned too.
 const VALIDATION = "@al-ft/midgard-validation";
 const TX_FUZZ_TEST = "tests/fuzz/tx-fuzz.test.ts";
 
@@ -119,6 +120,7 @@ export const txFuzzReferenceCheck = (packages) => {
         .filter((candidate) => dependencies.has(candidate.name))
         .map((candidate) => `${candidate.directory}/src/**`),
       `${validation.directory}/tests/fuzz/**`,
+      "demo/midgard-test-support/aiken-export-cache.js",
       `${validation.directory}/vitest.config.ts`,
       `${AIKEN_PROJECT}/lib/**`,
       `${AIKEN_PROJECT}/aiken.toml`,

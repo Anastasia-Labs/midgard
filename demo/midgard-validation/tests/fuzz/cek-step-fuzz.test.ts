@@ -1,5 +1,9 @@
 import { randomInt } from "node:crypto";
 
+import {
+  type AikenStepEvaluator,
+  makeAikenStepEvaluator,
+} from "@al-ft/midgard-test-support/aiken-evaluator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -16,10 +20,6 @@ import {
   type CaseResult,
   prepareCase,
 } from "./cek-step-fuzz.harness.js";
-import {
-  type AikenStepOracle,
-  makeAikenStepOracle,
-} from "./cek-step-fuzz.oracle.js";
 import {
   type ClassCounts,
   STEP_CORPUS_PINS,
@@ -117,16 +117,17 @@ const describeDivergences = (results: readonly CaseResult[]): string[] =>
   );
 
 describe("CEK step differential against the Aiken machine", () => {
-  let oracle: AikenStepOracle | undefined;
+  let aiken: AikenStepEvaluator | undefined;
 
-  // The oracle compiles the on-chain project twice per run, shared by every
-  // file that uses it (about 45 s on a developer machine, a few minutes on a
-  // loaded CI runner); a file that starts meanwhile waits for it.
+  // The exports are cached by their compiler inputs: a cold cache compiles
+  // the on-chain project twice (about 50 s each on a loaded machine, a few
+  // minutes on a loaded CI runner), and a file that starts meanwhile waits
+  // for those compiles.
   beforeAll(async () => {
-    oracle = await makeAikenStepOracle();
+    aiken = await makeAikenStepEvaluator();
   }, 300_000);
 
-  afterAll(() => oracle?.close());
+  afterAll(() => aiken?.close());
 
   const run = (
     programs: readonly { program: CekStepFuzzProgram; sampleSeed: number }[],
@@ -136,7 +137,7 @@ describe("CEK step differential against the Aiken machine", () => {
       const prepared = programs
         .slice(start, start + CHUNK)
         .map(({ program, sampleSeed }) => prepareCase(program, sampleSeed));
-      results.push(...adjudicateCases(oracle!, prepared));
+      results.push(...adjudicateCases(aiken!, prepared));
     }
     if (recordDivergences) {
       recordCorpusVectors(

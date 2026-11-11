@@ -28,7 +28,8 @@
     "vitest.d.ts",
     "database-identity.d.ts",
     "run-shared-fixtures.d.ts",
-    "duration-shards.d.ts"
+    "duration-shards.d.ts",
+    "aiken-export-cache.d.ts"
   ],
   "exclude": ["node_modules"]
 }

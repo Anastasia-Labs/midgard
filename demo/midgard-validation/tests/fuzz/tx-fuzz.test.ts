@@ -1,12 +1,12 @@
 import { randomInt } from "node:crypto";
 
+import {
+  type AikenStepEvaluator,
+  makeAikenStepEvaluator,
+} from "@al-ft/midgard-test-support/aiken-evaluator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { adjudicateCases } from "./cek-step-fuzz.harness.js";
-import {
-  type AikenStepOracle,
-  makeAikenStepOracle,
-} from "./cek-step-fuzz.oracle.js";
 import { runTxCase, type TxCaseResult } from "./tx-fuzz.legs.js";
 import {
   pinsWithoutReferenceLeg,
@@ -27,7 +27,7 @@ import { txFuzzScenario } from "./tx-fuzz.scenario.js";
  * both directions, the cost check across modes and, when
  * `MIDGARD_TX_FUZZ_UPLC_BIN` names an evaluator (`pinned`: the pinned
  * aiken), the reference leg (`tx-fuzz.legs.ts`). The proof run's sampled steps go to the on-chain
- * machine through the step oracle, as in the step differential.
+ * machine through the Aiken step evaluator, as in the step differential.
  *
  * - CI: the fixed seed set and the corpus seeds, with zero divergences. Each
  *   known disagreement and catalogued step is pinned to its seed: the counts
@@ -98,20 +98,21 @@ const bumpSeed = (
 };
 
 describe("transaction differential", () => {
-  let oracle: AikenStepOracle | undefined;
+  let aiken: AikenStepEvaluator | undefined;
   let reference: Reference | undefined;
 
-  // The oracle compiles the on-chain project twice per run, shared by every
-  // file that uses it (about 45 s on a developer machine, a few minutes on a
-  // loaded CI runner); a file that starts meanwhile waits for it.
+  // The exports are cached by their compiler inputs: a cold cache compiles
+  // the on-chain project twice (about 50 s each on a loaded machine, a few
+  // minutes on a loaded CI runner), and a file that starts meanwhile waits
+  // for those compiles.
   beforeAll(async () => {
-    oracle = await makeAikenStepOracle();
+    aiken = await makeAikenStepEvaluator();
     const binary = referenceBinary();
     reference = binary === undefined ? undefined : makeReference(binary);
   }, 300_000);
 
   afterAll(() => {
-    oracle?.close();
+    aiken?.close();
     reference?.close();
   });
 
@@ -129,7 +130,7 @@ describe("transaction differential", () => {
       const prepared = results.flatMap((result) =>
         result.steps === null ? [] : [result.steps],
       );
-      for (const adjudicated of adjudicateCases(oracle!, prepared)) {
+      for (const adjudicated of adjudicateCases(aiken!, prepared)) {
         summary.adjudicatedSteps += adjudicated.steps.length;
         for (const { catalogued } of adjudicated.steps) {
           if (catalogued === null) continue;

@@ -68,6 +68,10 @@
     "./duration-shards-contract": {
       "midgard-source": "./src/duration-shards-contract.ts",
       "types": "./src/duration-shards-contract.ts"
+    },
+    "./aiken-evaluator": {
+      "midgard-source": "./src/aiken-evaluator.ts",
+      "types": "./src/aiken-evaluator.ts"
     }
   },
   "files": [
@@ -92,7 +96,9 @@
     "database-identity.d.ts",
     "duration-shards.js",
     "duration-shards.d.ts",
-    "duration-plan.js"
+    "duration-plan.js",
+    "aiken-export-cache.js",
+    "aiken-export-cache.d.ts"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { aikenBinary } from "@al-ft/midgard-test-support/aiken-evaluator";
+
 import {
   Application,
   Builtin,
@@ -13,7 +15,6 @@ import {
   Lambda,
   type UPLCTerm,
 } from "../../src/uplc-term.js";
-import { aikenBinary } from "./cek-step-fuzz.oracle.js";
 
 /**
  * The reference leg of the transaction differential: a UPLC evaluator outside
@@ -27,7 +28,7 @@ import { aikenBinary } from "./cek-step-fuzz.oracle.js";
  * spent budget. Nothing in the leg passes through this repository's Flat or
  * Data decoders, so a fault in either shows as a divergence. Its verdict under the declared ex-units
  * is: the result is unit (PlutusV3) and the spend is within them.
- * The value `pinned` names that build, resolved as the step oracle resolves
+ * The value `pinned` names that build, resolved as the Aiken evaluator resolves
  * it; CI runs the leg so (the `tx-fuzz-reference` preflight check). Unset,
  * the leg is off.
  */

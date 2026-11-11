@@ -1,8 +1,9 @@
+import type { AikenVerdict } from "@al-ft/midgard-test-support/aiken-evaluator";
+
 import { type MidgardCekConstantWitness } from "../../src/cek-constant.js";
 import { type MidgardCekExecutionStep } from "../../src/cek-executor.js";
 import { plutusDataFromCborIterative } from "../../src/plutus-data-iterative.decode.js";
 import { DataI, DataList } from "../../src/uplc-data.js";
-import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
 
 /**
  * The classes of genuine step that the on-chain machine does not adjudicate
