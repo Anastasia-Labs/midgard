@@ -1310,12 +1310,14 @@ jobs:
             watcher-journeys/correction-recovery.test.ts \
             watcher-journeys/correction.journey-progress-clock.test.ts \
             watcher-journeys/correction.test.ts \
+            watcher-journeys/correction.watcher-start-deadline.test.ts \
             watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
+            watcher-journeys/history-event-fresh-tip.test.ts \
             watcher-journeys/history-events.test.ts \
             watcher-journeys/honest-successor.observables.test.ts \
             watcher-journeys/honest-successor.test.ts \
@@ -1323,7 +1325,10 @@ jobs:
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-network.test.ts \
             watcher-journeys/journey-replay-lifetime.test.ts \
+            watcher-journeys/journey-replay-store.test.ts \
+            watcher-journeys/journey-replay-warm-up.test.ts \
             watcher-journeys/journey-runner.attached.test.ts \
+            watcher-journeys/journey-runner.await-healthy-watcher.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.stack-limit.test.ts \
             watcher-journeys/journey-timing.test.ts \
@@ -1333,13 +1338,17 @@ jobs:
             watcher-journeys/local-kupmios.test.ts \
             watcher-journeys/native-ledger-kupmios.test.ts \
             watcher-journeys/native-recorder.test.ts \
+            watcher-journeys/operations.http-failure.test.ts \
             watcher-journeys/operations.test.ts \
             watcher-journeys/operator-pause.test.ts \
+            watcher-journeys/operator-release-guard.test.ts \
             watcher-journeys/process.test.ts \
             watcher-journeys/prover-address-isolation.test.ts \
             watcher-journeys/public-da-preflight.test.ts \
+            watcher-journeys/readiness-evidence.prover-payout.test.ts \
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
+            watcher-journeys/replayed-ledger.read-when-replayed.test.ts \
             watcher-journeys/replayed-ledger.test.ts \
             watcher-journeys/script-cases.test.ts \
             watcher-journeys/script-validation-trace-case.test.ts \
@@ -1351,6 +1360,8 @@ jobs:
             watcher-journeys/stack-late-shift.test.ts \
             watcher-journeys/stack-ledger-owner.test.ts \
             watcher-journeys/stack-replayed-ledger.test.ts \
+            watcher-journeys/stack-trace-staging.attached.test.ts \
+            watcher-journeys/stack-trace-staging.test.ts \
             watcher-journeys/stack-transactions.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
