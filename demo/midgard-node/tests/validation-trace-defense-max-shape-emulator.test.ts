@@ -42,6 +42,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   at,
@@ -212,11 +213,11 @@ describe("the validation-trace defender at the consensus-maximum shape", () => {
       `reveals: ${fits.length.toString()}, at most ${most((fit) => BigInt(fit.completeSignedBytes)).toString()} bytes, ${most((fit) => fit.executionMemory).toString()} mem, ${most((fit) => fit.executionSteps).toString()} steps, at most ${fees.reduce((max, fee) => (fee > max ? fee : max), 0n).toString()} lovelace fee; our clock left ${clockLeft.toString()} ms`,
     );
 
-    // Past the case's duration, our thread expires into the pocket.
-    const expiresAfter =
-      startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
-    s.scene.h.emulator.awaitSlot(
-      Math.ceil((expiresAfter - s.scene.h.emulator.now()) / 1000) + 1,
+    // Past the case's duration, as the observed tip judges the expiry's
+    // lower bound, our thread expires into the pocket.
+    awaitEmulatorTipPastDeadline(
+      s.scene.h.emulator,
+      startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
     );
     const pocketBefore = new Set(at(s, s.pocketAddress).map(outRefOf));
     expect(await s.tick()).toStrictEqual([

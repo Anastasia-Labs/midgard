@@ -7,6 +7,10 @@
  * every builder that judges a lower bound read that tip. Its slot clock
  * follows the wall clock, as a live node's does between blocks.
  */
+import {
+  SUBMIT_SLOT_LENGTH_MS,
+  SUBMIT_SLOT_VALIDITY_BUFFER,
+} from "@al-ft/midgard-core/ogmios-slot";
 import type { Emulator, LucidEvolution } from "@lucid-evolution/lucid";
 
 import { openL1Access } from "../../src/l1-access.js";
@@ -70,4 +74,23 @@ export const observeEmulatorTip = (
     return submitTx(tx);
   };
   return submissions;
+};
+
+/**
+ * Advances `emulator` until a transaction whose lower bound must lie past
+ * `deadlineMs` (a strike past its inactivity threshold, a thread expiry past
+ * its duration, a move refused past a deadline) is due at the observed
+ * ledger tip. Submit admits a lower bound only once the tip is the submit
+ * margin (`SUBMIT_SLOT_VALIDITY_BUFFER` slots) past it, and a node loop that
+ * backdates its bound from the tip backdates it by that margin, so either
+ * way the tip less the margin must be past the deadline: one slot past the
+ * deadline is not enough. The emulator's tip is its current slot, and
+ * `emulator.now()` is that slot's start.
+ */
+export const awaitEmulatorTipPastDeadline = (
+  emulator: Emulator,
+  deadlineMs: number | bigint,
+): void => {
+  const marginMs = SUBMIT_SLOT_VALIDITY_BUFFER * SUBMIT_SLOT_LENGTH_MS;
+  while (emulator.now() - marginMs <= Number(deadlineMs)) emulator.awaitSlot(1);
 };

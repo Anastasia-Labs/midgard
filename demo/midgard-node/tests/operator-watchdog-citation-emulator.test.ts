@@ -40,10 +40,10 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
+import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
-  advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
@@ -82,7 +82,9 @@ describe("operator watchdog strike evidence", () => {
     );
     if (early.plan.kind !== "not-yet")
       throw new Error(`Expected a not-yet plan, got ${early.plan.kind}`);
-    advanceEmulatorPastUnixTime(fixture.emulator, early.plan.thresholdMs);
+    // Due at the observed tip: the strike's lower bound is past the
+    // threshold, and submit admits it once the tip is the margin past that.
+    awaitEmulatorTipPastDeadline(fixture.emulator, early.plan.thresholdMs);
     const shiftHolder = async (): Promise<string | null> => {
       const datum = await fetchSchedulerDatum(fixture);
       return datum === "NoActiveOperators"

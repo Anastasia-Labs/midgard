@@ -34,6 +34,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { shouldSkipForDueValidationTraceDefense } from "../src/fibers/block-commitment.validation-trace-defense-pause.js";
 import { VALIDATION_TRACE_DEFEND_MARGIN_LOVELACE } from "../src/validation-trace-defense/funding.js";
+import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   at,
@@ -240,12 +241,20 @@ describe("the validation-trace defender's funding", () => {
       `reveals: ${fits.length.toString()}, at most ${most((fit) => BigInt(fit.completeSignedBytes)).toString()} bytes, ${most((fit) => fit.executionMemory).toString()} mem, ${most((fit) => fit.executionSteps).toString()} steps`,
     );
 
-    // Past the case's duration, our thread expires into the pocket.
+    // Past the case's duration, our thread expires into the pocket. The
+    // expiry's lower bound must be past the expiry time and sits the submit
+    // margin behind the observed tip, so a slot past the expiry time it is
+    // not due yet; once the tip is the margin past it, it is.
     const expiresAfter =
       startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
     s.scene.h.emulator.awaitSlot(
       Math.ceil((expiresAfter - s.scene.h.emulator.now()) / 1000) + 1,
     );
+    expect(await s.tick()).toStrictEqual([
+      { kind: "expiry", subject: threadUnit, outcome: "not_due" },
+    ]);
+    expect(s.liveByUnit(threadUnit)).toBeDefined();
+    awaitEmulatorTipPastDeadline(s.scene.h.emulator, expiresAfter);
     const pocketBefore = new Set(at(s, s.pocketAddress).map(outRefOf));
     expect(await s.tick()).toStrictEqual([
       { kind: "expiry", subject: threadUnit, outcome: "submitted" },

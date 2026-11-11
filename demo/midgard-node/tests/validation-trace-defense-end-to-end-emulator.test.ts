@@ -37,6 +37,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   at,
@@ -133,14 +134,11 @@ describe("the validation-trace defender against the challenger", () => {
     expect(resolved.thread.turn).toBe("ReadyForOneStep");
     expect(resolved.thread.defender_clock_ms).toBeGreaterThan(0n);
 
-    // Past the case's duration, our thread expires into the pocket.
-    s.scene.h.emulator.awaitSlot(
-      Math.ceil(
-        (startedAtOf(claim.caseUtxo) +
-          MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS -
-          scene.h.emulator.now()) /
-          1000,
-      ) + 1,
+    // Past the case's duration, as the observed tip judges the expiry's
+    // lower bound, our thread expires into the pocket.
+    awaitEmulatorTipPastDeadline(
+      s.scene.h.emulator,
+      startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
     );
     const pocketBefore = new Set(at(s, s.pocketAddress).map(outRefOf));
     expect(await s.tick()).toStrictEqual([

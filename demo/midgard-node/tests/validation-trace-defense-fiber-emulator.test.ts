@@ -18,7 +18,6 @@
  * - with no L1 follower view the tick does nothing and names nothing.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
-import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
 import {
   commitSceneSuccessor,
   falseClaimMaterial,
@@ -41,6 +40,7 @@ import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js"
 import { VALIDATION_TRACE_DEFENSE_LEASE_HOLDER } from "../src/validation-trace-defense/health.js";
 import type { DefenseMaterialWorker } from "../src/validation-trace-defense/material.js";
 import { validationTraceDefenseTick } from "../src/validation-trace-defense/tick.js";
+import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   bondUnlockTimeOf,
@@ -299,11 +299,7 @@ describe("the validation-trace defender's tick", () => {
       startedAtOf(claim.caseUtxo) + MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS;
     // Past it even for the earliest lower bound the tip admits: the Defend's
     // bound sits the submit margin behind the observed tip.
-    emulator.awaitSlot(
-      Math.ceil((deadline - emulator.now()) / 1000) +
-        1 +
-        SUBMIT_SLOT_VALIDITY_BUFFER,
-    );
+    awaitEmulatorTipPastDeadline(emulator, deadline);
     const sentBefore = s.env.sent.length;
     expect(await s.tick()).toStrictEqual([
       { kind: "defend", subject: claim.caseUnit, outcome: "past_deadline" },
