@@ -203,3 +203,22 @@ test("misses of one key at once compile it once", async (t) => {
   assert.deepEqual(results, [[PROGRAM], [PROGRAM]]);
   assert.equal(calls().length, 1);
 });
+
+test("a job that requires prefetched exports fails on a miss and compiles nothing", async (t) => {
+  const { calls, write, exportWith } = withTree(t);
+  await exportWith([VERIFY]);
+  const previous = process.env.MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS;
+  process.env.MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS = "1";
+  t.after(() => {
+    if (previous === undefined)
+      delete process.env.MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS;
+    else process.env.MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS = previous;
+  });
+  assert.deepEqual(await exportWith([VERIFY]), [PROGRAM]);
+  write("onchain/aiken/lib/midgard/probe.ak", "pub const x = 2\n");
+  await assert.rejects(
+    exportWith([VERIFY]),
+    /MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS=1 forbids compiling midgard\/probe\.verify/u,
+  );
+  assert.equal(calls().length, 1);
+});

@@ -221,6 +221,67 @@ test(
   },
 );
 
+// The validation suites run the Aiken function evaluator on exports the
+// `blueprint` job prefetches (demo/midgard-test-support/aiken-export-cache.js).
+// A job that runs them restores the `aiken-exports` artifact, under which a
+// miss fails instead of compiling, so no other job compiles an export.
+const EVALUATOR_SUITES =
+  /pnpm --dir demo\/midgard-validation (?:run )?test\b|--run tx-fuzz-reference\b/u;
+
+test(
+  "every job running the Aiken evaluator's suites restores the prefetched exports",
+  {
+    skip:
+      yaml === undefined && process.env.GITHUB_ACTIONS !== "true"
+        ? "could not check: yaml absent (run `pnpm --dir demo install`)"
+        : false,
+  },
+  () => {
+    const directory = resolve(repositoryRoot, ".github/workflows");
+    const consumers = readdirSync(directory)
+      .filter((file) => /\.ya?ml$/u.test(file))
+      .flatMap((file) => {
+        const { jobs = {} } = yaml.parse(
+          readFileSync(resolve(directory, file), "utf8"),
+        );
+        return Object.entries(jobs)
+          .filter(([, body]) =>
+            (body.steps ?? []).some((step) =>
+              EVALUATOR_SUITES.test(step.run ?? ""),
+            ),
+          )
+          .map(([job, body]) => ({ where: `${file} ${job}`, jobs, body }));
+      });
+    assert.ok(consumers.length > 0, "no job runs the evaluator's suites");
+    for (const { where, jobs, body } of consumers) {
+      const prefetch = jobs.blueprint?.steps ?? [];
+      assert.deepEqual(
+        {
+          needsBlueprint: [body.needs ?? []].flat().includes("blueprint"),
+          restores: (body.steps ?? []).some(
+            (step) =>
+              step.uses === "./.github/actions/demo-setup" &&
+              step.with?.["aiken-exports"] === "true",
+          ),
+          prefetched: prefetch.some(
+            (step) =>
+              step.run ===
+              "node demo/midgard-test-support/aiken-export-cache.js",
+          ),
+          shared: prefetch.some((step) => step.with?.name === "aiken-exports"),
+        },
+        {
+          needsBlueprint: true,
+          restores: true,
+          prefetched: true,
+          shared: true,
+        },
+        where,
+      );
+    }
+  },
+);
+
 // The reverse direction: a check whose blocking status comes from the
 // workflows warns only while no workflow runs it, so a new golden channel or
 // gate left out of CI would sit silently warn-only. Every warn-only check is

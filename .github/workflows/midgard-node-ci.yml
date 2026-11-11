@@ -168,6 +168,18 @@ jobs:
             onchain/aiken/plutus.json.deployment.json
           if-no-files-found: error
           retention-days: 3
+      # The functions the validation suites evaluate (aiken-export-cache.js),
+      # compiled once here; the validation job restores them and fails on a
+      # miss rather than compiling.
+      - name: Prefetch the Aiken function evaluator's exports
+        run: node demo/midgard-test-support/aiken-export-cache.js
+      - name: Share the Aiken function evaluator's exports with later jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiken-exports
+          path: onchain/aiken/build/aiken-exports/*.json
+          if-no-files-found: error
+          retention-days: 3
 
   # The blueprints only test runs read, built here once rather than in every
   # shard that reads them: the interactive-emulator one that the fault-proof,
@@ -750,6 +762,7 @@ jobs:
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          aiken-exports: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test

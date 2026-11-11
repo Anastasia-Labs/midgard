@@ -18,6 +18,13 @@ inputs:
       plutus.json.deployment.json from the run's `testnet-blueprint` artifact.
       Implies "aiken", since blueprint freshness checks may ask the compiler.
     default: "false"
+  aiken-exports:
+    description: >-
+      "true" restores the Aiken function evaluator's exports from the run's
+      `aiken-exports` artifact and sets
+      MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS=1, so a suite that misses one
+      fails instead of compiling it. Implies "aiken", which evaluates them.
+    default: "false"
   interactive-blueprint:
     description: >-
       "true" restores the interactive- and curated-emulator blueprints and
@@ -88,7 +95,7 @@ runs:
       shell: bash
       run: cd demo && corepack pnpm --version
     - name: Pinned Aiken
-      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      if: inputs.aiken == 'true' || inputs.aiken-exports == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.preprod-public-blueprint == 'true' || inputs.traced-blueprints == 'true'
       uses: ./.github/actions/aiken
     - name: Download the testnet blueprint and its build record
       if: inputs.blueprint == 'true'
@@ -126,6 +133,16 @@ runs:
       with:
         name: test-blueprint-traced-preprod-emulator-testing
         path: onchain/aiken/build/traced-refusals/preprod-emulator-testing
+    - name: Download the Aiken function evaluator's exports
+      if: inputs.aiken-exports == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: aiken-exports
+        path: onchain/aiken/build/aiken-exports
+    - name: Forbid compiling an Aiken export the blueprint job did not prefetch
+      if: inputs.aiken-exports == 'true'
+      shell: bash
+      run: echo "MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS=1" >> "$GITHUB_ENV"
     # The suites never rebuild what an earlier job built: a restored copy that
     # does not match the checkout fails them.
     - name: Forbid rebuilding the restored test blueprints

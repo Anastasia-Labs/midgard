@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
-import { exportAikenFunctions } from "../aiken-export-cache.js";
+import {
+  exportAikenFunctions,
+  STEP_EVALUATOR_EXPORTS,
+} from "../aiken-export-cache.js";
 import {
   app,
   applyExportedProgram,
@@ -28,8 +31,6 @@ import {
 
 /** The aiken `demo/flake.lock` pins, which every evaluation runs. */
 export { aikenBinary };
-
-const MACHINE_MODULE = "midgard/cek_machine_v1";
 
 const MAX_OUTPUT = 512 * 1024 * 1024;
 
@@ -125,10 +126,9 @@ const inBatches = <A, B>(
  * loaded runner.
  */
 export const makeAikenStepEvaluator = async (): Promise<AikenStepEvaluator> => {
-  const [verifyFlat, hashFlat] = await exportAikenFunctions([
-    { module: MACHINE_MODULE, name: "verify_core_step_v1", flags: [] },
-    { module: MACHINE_MODULE, name: "hash_state_v1", flags: [] },
-  ]);
+  const [verifyFlat, hashFlat] = await exportAikenFunctions(
+    STEP_EVALUATOR_EXPORTS,
+  );
   const directory = mkdtempSync(join(tmpdir(), "midgard-aiken-evaluator-"));
   let counter = 0;
 

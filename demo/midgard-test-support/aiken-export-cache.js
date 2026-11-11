@@ -32,6 +32,13 @@
  * compile logs one `[aiken-evaluator] exporting` line: a run that logs none
  * compiled nothing.
  *
+ * CI compiles once per run: the `blueprint` job runs this file
+ * (`node demo/midgard-test-support/aiken-export-cache.js`), which exports
+ * `STEP_EVALUATOR_EXPORTS`, and shares the entries as the `aiken-exports`
+ * artifact. A job that restores them sets
+ * `MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS=1`, under which a miss fails
+ * instead of compiling.
+ *
  * Plain JavaScript, like the build lock, the source stamp and the resource
  * queue it composes, so that its tests run with this package's tooling tests.
  */
@@ -148,6 +155,16 @@ const writeEntry = (path, inputs, flat) => {
   renameSync(staging, path);
 };
 
+/**
+ * The functions the step evaluator (`src/aiken-evaluator.ts`) runs, listed
+ * here so that plain Node can prefetch them.
+ */
+export const STEP_EVALUATOR_EXPORTS = Object.freeze(
+  ["verify_core_step_v1", "hash_state_v1"].map((name) =>
+    Object.freeze({ module: "midgard/cek_machine_v1", name, flags: [] }),
+  ),
+);
+
 const heavyCompile = (action) => withResource("memory-heavy-build", action);
 
 const logLine = (line) => process.stderr.write(`${line}\n`);
@@ -175,8 +192,13 @@ export const exportAikenFunctions = async (
       const inputs = keyInputs(tree, fn);
       const key = keyOf(inputs);
       const path = join(directory, `${key}.json`);
+      const label = `${fn.module}.${fn.name}`;
       let flat = readEntry(path, key);
       if (flat !== undefined) return flat;
+      if (process.env.MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS === "1")
+        throw new Error(
+          `MIDGARD_REQUIRE_PREFETCHED_AIKEN_EXPORTS=1 forbids compiling ${label}, and no prefetched export has its compiler inputs (key ${key})`,
+        );
       await withBuildLock(
         {
           lock: `${path}.lock`,
@@ -185,7 +207,6 @@ export const exportAikenFunctions = async (
         },
         () =>
           lease(async () => {
-            const label = `${fn.module}.${fn.name}`;
             log(`[aiken-evaluator] exporting ${label} (key ${key})`);
             const started = Date.now();
             const compiled = await compile({ root, compiler, ...fn });
@@ -202,3 +223,9 @@ export const exportAikenFunctions = async (
     }),
   );
 };
+
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  await exportAikenFunctions(STEP_EVALUATOR_EXPORTS);

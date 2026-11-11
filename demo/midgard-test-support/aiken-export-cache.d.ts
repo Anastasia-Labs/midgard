@@ -7,6 +7,8 @@ export type AikenFunction = {
   readonly flags: readonly string[];
 };
 
+export declare const STEP_EVALUATOR_EXPORTS: readonly AikenFunction[];
+
 export declare const exportAikenFunctions: (
   functions: readonly AikenFunction[],
   options?: {
