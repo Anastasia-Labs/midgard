@@ -70,3 +70,46 @@ export const readWhenJourneyReplayed = async <T>(
     await pause(pollMs);
   }
 };
+
+/** The follower as the warm-up drives it: also the node tip it last heard. */
+export type JourneyReplayWarmFollowerView = JourneyReplayFollowerView &
+  Readonly<{ tip(): Readonly<{ height: number }> | null }>;
+
+/** Where a warm-up left the follower, by block height. */
+export type JourneyReplayWarmth = Readonly<{
+  /** The first cursor this process saw, or null if it saw none. */
+  fromHeight: number | null;
+  cursorHeight: number | null;
+  tipHeight: number | null;
+}>;
+
+/**
+ * Drives the journey's replay follower until it is ready at the node's tip,
+ * then runs `advance` once, as a read would (`readWhenJourneyReplayed`), so
+ * its only bound is that read's progress rule: it fails once the cursor has
+ * not moved for `stallMs`, however long the whole walk takes.
+ */
+export const warmWhenJourneyReplayed = async (
+  follower: JourneyReplayWarmFollowerView,
+  advance: () => Promise<void>,
+  options: Readonly<{ stallMs?: number; pollMs?: number }> = {},
+): Promise<JourneyReplayWarmth> => {
+  let fromHeight: number | null = null;
+  await readWhenJourneyReplayed(
+    {
+      ...follower,
+      cursor: () => {
+        const cursor = follower.cursor();
+        fromHeight ??= cursor?.height ?? null;
+        return cursor;
+      },
+    },
+    advance,
+    options,
+  );
+  return {
+    fromHeight,
+    cursorHeight: follower.cursor()?.height ?? null,
+    tipHeight: follower.tip()?.height ?? null,
+  };
+};

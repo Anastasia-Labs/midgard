@@ -27,6 +27,7 @@ import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/sup
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { expect } from "vitest";
 
+import { warmJourneyReplayStore } from "./journey-replay-warm-up.js";
 import type { OperatorNodeControl } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackDaProducer } from "./stack-da-producer.js";
@@ -110,16 +111,45 @@ export type StackTls = Readonly<{
 }>;
 
 /**
+ * Fills the run's replay store as the warm-up command does, from a stack
+ * follower that creates its store where it opens and is already at the tip.
+ */
+const warmStackReplay = (runDirectory: string) =>
+  warmJourneyReplayStore({
+    runDirectory,
+    identity: {
+      deploymentManifestId: deploymentIdentity.manifestId,
+      blueprintHash: deploymentIdentity.blueprintHash,
+      origin: null,
+    },
+    openLedger: async (directory) => {
+      await writeFile(join(directory, "replayed-ledger-follower.sqlite"), "");
+      return {
+        warm: async () => ({
+          fromHeight: 5_398_120,
+          cursorHeight: 5_398_120,
+          tipHeight: 5_398_120,
+        }),
+        close: async () => undefined,
+      };
+    },
+  });
+
+/**
  * A running stack watcher: its operations endpoint and its mounted state.
  * Its prover holds `proverLovelace`, by default the configured minimum.
+ * The run's replay store is warmed unless `replay` is `cold`.
  */
 export const runningStackWatcher = async (
   status: Record<string, unknown>,
   {
     proverLovelace = PROVER_MINIMUM_LOVELACE,
     tls,
+    replay = "warmed",
   }: {
     proverLovelace?: bigint;
+    /** Whether the warm-up command filled the run's replay store. */
+    replay?: "warmed" | "cold";
     /** A public stack's TLS: our node then serves its API over HTTPS only. */
     tls?: StackTls;
   } = {},
@@ -177,6 +207,7 @@ export const runningStackWatcher = async (
   servers.push(node);
   const nodeEndpoint = `${tls === undefined ? "http" : "https"}://127.0.0.1:${(node.address() as AddressInfo).port}`;
   const runDirectory = join(root, "run/fault-journeys/drill-1");
+  if (replay === "warmed") await warmStackReplay(runDirectory);
   // The stack node's configuration, its genesis, and the deployment manifest.
   const nodeConfigPath = join(root, "node/config.json");
   const manifestPath = join(root, "contract-deployment-info.json");
@@ -251,6 +282,8 @@ export const runningStackWatcher = async (
     storePath,
     runDirectory,
     context,
+    /** Runs the warm-up over the run's replay store. */
+    warmReplay: () => warmStackReplay(runDirectory),
     proverAddress: prover.address,
     served,
     requests,

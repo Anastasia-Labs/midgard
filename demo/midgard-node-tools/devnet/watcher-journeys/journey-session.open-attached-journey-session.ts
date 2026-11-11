@@ -83,8 +83,9 @@ const assertStackProverFunded = async (context: StackJourneyContext) => {
  * from the stack watcher's `/v1/status`; decision and workflow evidence from
  * its journals, read inside its container (`exec`, by default
  * `docker compose exec`). Staging reads ledgers from the stack's own replay,
- * opened on its first read. It refuses a prover below the stack's funding
- * minimum before the drill starts.
+ * opened on its first read in the run's replay store. Before the drill
+ * starts it refuses a run whose replay store the warm-up command has not
+ * filled, and a prover below the stack's funding minimum.
  */
 export const openAttachedJourneySession = async (
   context: StackJourneyContext,
@@ -134,7 +135,7 @@ export const openAttachedJourneySession = async (
     onClose(operator2.release);
     // Closes run in reverse order and each runs even if a later one throws,
     // so operator-2 is started again whatever the ledger close does.
-    const replayedLedger = openStackJourneyReplayedLedger(context);
+    const replayedLedger = await openStackJourneyReplayedLedger(context);
     onClose(replayedLedger.close);
     const deploymentFingerprint = context.deployment.manifest.manifestId;
     const deploymentIdentity = context.release.deploymentIdentity;

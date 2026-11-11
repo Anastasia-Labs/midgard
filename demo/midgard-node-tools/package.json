@@ -31,6 +31,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "e2e-stack": "pnpm run build && node dist/index.js e2e-stack",
+    "journey-replay:warm-up": "node devnet/watcher-journeys/run-journey-source.mjs devnet/watcher-journeys/journey-replay-warm-up.main.ts",
     "quick-test": "pnpm run build && node dist/index.js --help",
     "create-l2-wallet": "pnpm run build && node dist/index.js create-l2-wallet",
     "stress-wallets:prepare": "pnpm run build && node dist/index.js stress-wallets:prepare",

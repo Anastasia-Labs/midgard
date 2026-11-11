@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
 import {
+  fillJourneyReplayStore,
   type JourneyReplayStoreIdentity,
   openJourneyReplayStore,
+  requireJourneyReplayStore,
 } from "./journey-replay-store.js";
 
 // A stack deployment, followed from twin4's L1 origin slot.
@@ -28,29 +30,59 @@ const runDirectory = async () => {
   return path;
 };
 
-it("reopens the store a finished family of the same run left, with what it followed", async () => {
+const FOLLOWER_STORE = "replayed-ledger-follower.sqlite";
+
+/** A run whose replay store the warm-up filled: its identity and its follower store. */
+const warmedRun = async (identity = twin4) => {
   const run = await runDirectory();
-  const first = await openJourneyReplayStore(run, twin4);
-  await writeFile(
-    join(first.directory, "replayed-ledger-follower.sqlite"),
-    "cursor at 5398120",
-  );
-  first.release();
-  const next = await openJourneyReplayStore(run, twin4);
+  const store = await fillJourneyReplayStore(run, identity);
+  await writeFile(join(store.directory, FOLLOWER_STORE), "cursor at 5398120");
+  store.release();
+  return { run, directory: store.directory };
+};
+
+it("opens for the drill the store the warm-up filled, with what it followed", async () => {
+  const { run, directory } = await warmedRun();
+  await requireJourneyReplayStore(run, twin4);
+  const drill = await openJourneyReplayStore(run, twin4);
   try {
-    expect(next.directory).toBe(first.directory);
+    expect(drill.directory).toBe(directory);
     await expect(
-      readFile(join(next.directory, "replayed-ledger-follower.sqlite"), "utf8"),
+      readFile(join(drill.directory, FOLLOWER_STORE), "utf8"),
     ).resolves.toBe("cursor at 5398120");
   } finally {
-    next.release();
+    drill.release();
   }
 });
 
-it("refuses a second family process while one holds the run's store, and lets it in once released", async () => {
+it("refuses the drill a run whose replay store was never filled, naming the warm-up command", async () => {
   const run = await runDirectory();
+  await expect(requireJourneyReplayStore(run, twin4)).rejects.toThrow(
+    /pnpm run journey-replay:warm-up/u,
+  );
+  await expect(openJourneyReplayStore(run, twin4)).rejects.toThrow(
+    /pnpm run journey-replay:warm-up/u,
+  );
+});
+
+it("refuses the drill a store whose warm-up stopped before its follower opened", async () => {
+  const run = await runDirectory();
+  (await fillJourneyReplayStore(run, twin4)).release();
+  await expect(requireJourneyReplayStore(run, twin4)).rejects.toThrow(
+    /pnpm run journey-replay:warm-up/u,
+  );
+  await expect(openJourneyReplayStore(run, twin4)).rejects.toThrow(
+    /pnpm run journey-replay:warm-up/u,
+  );
+});
+
+it("refuses a second process while one holds the run's store, and lets it in once released", async () => {
+  const { run } = await warmedRun();
   const holder = await openJourneyReplayStore(run, twin4);
   await expect(openJourneyReplayStore(run, twin4)).rejects.toThrow(
+    /another journey process holds the replay store/u,
+  );
+  await expect(fillJourneyReplayStore(run, twin4)).rejects.toThrow(
     /another journey process holds the replay store/u,
   );
   holder.release();
@@ -77,10 +109,26 @@ it.each([
 ] as const)(
   "refuses the run's store for %s, and leaves it to the next claim",
   async (_name, other, names) => {
-    const run = await runDirectory();
-    (await openJourneyReplayStore(run, twin4)).release();
+    const { run } = await warmedRun();
     await expect(openJourneyReplayStore(run, other)).rejects.toThrow(names);
+    await expect(fillJourneyReplayStore(run, other)).rejects.toThrow(names);
     const again = await openJourneyReplayStore(run, twin4);
     again.release();
   },
 );
+
+it("refuses at drill start a store filled for another deployment or blueprint", async () => {
+  const { run } = await warmedRun();
+  await expect(
+    requireJourneyReplayStore(run, {
+      ...twin4,
+      deploymentManifestId: "aa".repeat(32),
+    }),
+  ).rejects.toThrow(/deployment/u);
+  await expect(
+    requireJourneyReplayStore(run, {
+      ...twin4,
+      blueprintHash: "cc".repeat(32),
+    }),
+  ).rejects.toThrow(/blueprint/u);
+});

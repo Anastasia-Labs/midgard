@@ -33,9 +33,9 @@ describe("attached journey session", () => {
     try {
       expect(session.mode).toBe("attached");
       expect(session.directory.startsWith(stack.runDirectory)).toBe(true);
-      expect(await readdir(join(stack.runDirectory, "work/journeys"))).toEqual([
-        "sessions",
-      ]);
+      expect(
+        (await readdir(join(stack.runDirectory, "work/journeys"))).sort(),
+      ).toEqual(["replay", "sessions"]);
       expect(session.releaseFinality).toEqual(
         await watcherDeploymentReleaseFinalityAuthority(
           deploymentIdentity,
@@ -109,6 +109,25 @@ describe("attached journey session", () => {
     await expect(
       openAttachedJourneySession(stack.context, stack.options()),
     ).rejects.toThrow();
+  });
+
+  it("refuses at drill start a run whose replay store was never warmed, naming the warm-up command, before any L1 work", async () => {
+    const stack = await runningStackWatcher(liveStatus(), { replay: "cold" });
+    await expect(
+      openAttachedJourneySession(stack.context, stack.options()),
+    ).rejects.toThrow(/pnpm run journey-replay:warm-up/u);
+    expect(stack.requests).toEqual([]);
+    expect(stack.operator2.calls).toEqual([]);
+  });
+
+  it("opens the drill on the replay store the warm-up filled", async () => {
+    const stack = await runningStackWatcher(liveStatus(), { replay: "cold" });
+    await stack.warmReplay();
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    await session.close();
   });
 
   it("refuses at drill start a prover below the stack's configured minimum, by address and shortfall", async () => {
