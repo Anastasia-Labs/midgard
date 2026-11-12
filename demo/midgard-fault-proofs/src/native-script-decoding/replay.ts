@@ -155,11 +155,11 @@ export const prepareNativeScriptDecodingReplay = async ({
   );
   const output = ledger.outputs.get(selected.toString("hex"));
   if (output === undefined) return null;
-  const descriptorCbor = ledger.root.entries.find((entry) =>
+  const descriptorCbor = ledger.trie.entries.find((entry) =>
     entry.key.equals(selected),
   )!.value;
   const descriptor = decodeMidgardLedgerOutputCommitment(descriptorCbor);
-  const referenceScriptItemBytes = retainedOutputReferenceScript(output.value);
+  const referenceScriptItemBytes = retainedOutputReferenceScript(output);
   let plan: ReturnType<typeof buildNativeScriptDecodingScanPlan> | null = null;
   if (descriptor.referenceScriptLanguage !== 0) {
     if (direction === 0n) return null;
@@ -185,11 +185,11 @@ export const prepareNativeScriptDecodingReplay = async ({
     });
   }
   const ledgerTrie = {
-    rootHex: ledger.root.root,
+    rootHex: ledger.trie.root,
     prove: async (key: Buffer) =>
       Buffer.from(
         Data.to(
-          await keyValuePhasProof(ledger.root, key, descriptorCbor),
+          await keyValuePhasProof(ledger.trie, key, descriptorCbor),
           SDK.Proof,
         ),
         "hex",

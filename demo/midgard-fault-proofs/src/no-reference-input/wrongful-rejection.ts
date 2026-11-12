@@ -150,10 +150,6 @@ export const prepareNoReferenceInputWrongfulRejection = async ({
         predecessor,
       })
     ).trie;
-    if (ledger.root !== transitionMembership.value.pre_utxos_root)
-      throw new Error(
-        "noReferenceInput: selected transition pre-state differs",
-      );
     const key = material.inputItems[Number(material.inputIndex)]!;
     const entry = ledger.entries.find((item) => item.key.equals(key));
     if (entry === undefined)

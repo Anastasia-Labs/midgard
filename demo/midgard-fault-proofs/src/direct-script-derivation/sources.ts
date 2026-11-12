@@ -84,7 +84,7 @@ export const directResolvedSources = async (
       throw new Error(
         "direct script derivation: retained resolved output absent",
       );
-    const item = retainedOutputReferenceScript(output.value);
+    const item = retainedOutputReferenceScript(output);
     if (item === null)
       throw new Error("direct script derivation: retained script absent");
     const envelope = decodeMidgardVersionedScriptEnvelope(item);

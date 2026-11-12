@@ -24,7 +24,7 @@ describe("withdrawal mistag retained replay", () => {
             current: fixture.evidence.reconstruction,
             index: 0,
           }),
-        ).rejects.toThrow("authenticated predecessor ledger unavailable");
+        ).rejects.toThrow("the block starts from a non-empty ledger");
         await expect(
           prepareWithdrawalMistagReplay({
             current: fixture.evidence.reconstruction,

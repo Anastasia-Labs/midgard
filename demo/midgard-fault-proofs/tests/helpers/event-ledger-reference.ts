@@ -151,7 +151,7 @@ export const referenceLedgerBefore = async ({
       ledger = await checkLedgerAgainstRoot({
         entries: [...entries.values()],
         utxosRoot: step!.post_utxos_root,
-        label: `input-existence earlier event ${index.toString()}`,
+        label: `event ledger earlier event ${index.toString()}`,
       });
     } catch (cause) {
       if (cause instanceof LedgerRootMismatchError)

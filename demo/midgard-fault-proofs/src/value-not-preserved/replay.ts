@@ -134,7 +134,7 @@ export const prepareValueConservationArtifact = async ({
     reconstruction: block.reconstruction,
     stepIndex: event.value.step_index,
   });
-  const { root: ledger, outputs } = await eventLedgerBeforeStep(
+  const { trie: ledger, outputs } = await eventLedgerBeforeStep(
     block.reconstruction,
     event.value.step_index,
     predecessor,
@@ -157,11 +157,7 @@ export const prepareValueConservationArtifact = async ({
   // proof convicts this spend. A forced rejection's reason ranks after that
   // output's fault, and no family yet convicts that: the decline holds the
   // block.
-  if (
-    !resolvedInputs.every(({ output }) =>
-      readsAsTransactionOutput(output.value),
-    )
-  )
+  if (!resolvedInputs.every(({ output }) => readsAsTransactionOutput(output)))
     throw replayPrerequisiteFailure(
       block.headerHash,
       eventKey,
@@ -172,7 +168,7 @@ export const prepareValueConservationArtifact = async ({
     fee: transaction.body.fee,
     spentValues: resolvedInputs.map(({ output }) => ({
       kind: "resolved",
-      value: decodeMidgardTxOutput(output.value).value,
+      value: decodeMidgardTxOutput(output).value,
     })),
     outputValues: decodeMidgardFieldPreimage(
       transaction.body.outputsPreimageCbor,
@@ -235,15 +231,12 @@ export const prepareValueConservationArtifact = async ({
     transitionCbor: Data.to(transition, SDK.IndexedTraceProof),
     inputs: await Promise.all(
       resolvedInputs.map(async ({ key, output }) => ({
-        outputCbor: output.value.toString("hex"),
+        outputCbor: output.toString("hex"),
         proofCbor: Data.to(
           await keyValuePhasProof(
             ledger,
             key,
-            ledgerEntryLeaf(
-              { outRef: key, output: output.value },
-              "value conservation",
-            ).leaf,
+            ledgerEntryLeaf({ outRef: key, output }, "value conservation").leaf,
           ),
           SDK.Proof,
         ),

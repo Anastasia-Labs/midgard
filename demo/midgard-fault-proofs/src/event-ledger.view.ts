@@ -16,7 +16,8 @@ import {
 /** Steps whose membership trie the walk keeps: the first this many any
  * reader proves against. Plutus detection walks forward and builds a trie
  * only for an event it finds failing, so these are the earliest failing
- * events, whose claims prove against the same ledgers again. */
+ * events, whose claims prove against the same ledgers again. Families share
+ * the slots first come, so another family's earlier proof can take one. */
 export const RETAINED_PROOF_TRIES = 4;
 
 /** What step `step` did to one out-ref: created `created`, or spent it. */
@@ -118,9 +119,13 @@ export const view = (pass: Pass, step: number): CheckedLedger => {
     if (merged !== undefined) return merged;
     const kept: { entry: LedgerEntry; leaf: KeyValuePhasEntry }[] = [];
     const leaves = predecessor.trie.entries;
-    for (const [index, entry] of predecessor.entries.entries())
+    for (const [index, entry] of predecessor.entries.entries()) {
+      const leaf = leaves[index];
+      if (leaf === undefined || !leaf.key.equals(entry.outRef))
+        throw new Error("event ledger: predecessor entry and leaf differ");
       if (latestBefore(pass, entry.outRef.toString("hex"), step) === undefined)
-        kept.push({ entry, leaf: leaves[index]! });
+        kept.push({ entry, leaf });
+    }
     const created: typeof kept = [];
     for (const key of pass.changes.keys()) {
       const leaf = latestBefore(pass, key, step)?.created;

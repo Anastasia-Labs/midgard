@@ -78,11 +78,11 @@ export const prepareMintAuthorizationReplay = async ({
   const nativeScriptBytesByHashHex: Record<string, string> = {};
   const resolve = (key: Buffer) => {
     const output = ledger.outputs.get(key.toString("hex"))!;
-    const entry = ledger.root.entries.find((entry) => entry.key.equals(key));
+    const entry = ledger.trie.entries.find((entry) => entry.key.equals(key));
     if (entry === undefined)
       throw new Error("mint authorization: descriptor absent");
     const descriptor = decodeMidgardLedgerOutputCommitment(entry.value);
-    const scriptBytes = retainedOutputReferenceScript(output.value);
+    const scriptBytes = retainedOutputReferenceScript(output);
     if (descriptor.referenceScriptLanguage === 0) {
       if (scriptBytes === null)
         throw new Error("mint authorization: retained native payload absent");
@@ -148,7 +148,7 @@ export const prepareMintAuthorizationReplay = async ({
     spendInputItemCbors: items(tx.body.spendInputsPreimageCbor),
     references,
     spends,
-    referenceLedger: ledger.root,
+    referenceLedger: ledger.trie,
   }));
 };
 

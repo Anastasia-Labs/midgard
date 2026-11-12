@@ -73,22 +73,22 @@ export const prepareWithdrawalMistagReplay = async ({
     outputIndex: Number(entry.value.body.l2_outref.outputIndex),
   });
   const output = ledger.outputs.get(key.toString("hex"));
-  const descriptor = ledger.root.entries.find((e) => e.key.equals(key));
+  const descriptor = ledger.trie.entries.find((e) => e.key.equals(key));
   const ledgerEvidence =
     output === undefined
       ? {
           AbsentLedgerOutput: {
             non_membership_proof: await keyValuePhasNonMembershipProof(
-              ledger.root,
+              ledger.trie,
               key,
             ),
           },
         }
       : {
           PresentLedgerOutput: {
-            output_cbor: output.value.toString("hex"),
+            output_cbor: output.toString("hex"),
             membership_proof: await keyValuePhasProof(
-              ledger.root,
+              ledger.trie,
               key,
               descriptor!.value,
             ),

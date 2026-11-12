@@ -127,7 +127,8 @@ export const prepareDirectScriptMaterial = async ({
     sourceBound,
     bound,
     material,
-    ledger,
+    // Its readers, the direct-walk families among them, take the trie as `root`.
+    ledger: { root: ledger.trie, outputs: ledger.outputs },
     eventKey,
     eventMembership,
     transitionMembership,

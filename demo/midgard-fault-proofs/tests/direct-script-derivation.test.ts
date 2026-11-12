@@ -395,7 +395,7 @@ describe("direct script preparation", () => {
           },
         },
       }),
-    ).rejects.toThrow("authenticated predecessor ledger unavailable");
+    ).rejects.toThrow("the block starts from a non-empty ledger");
   });
 
   it("keeps sorted receive ordinals distinct from first output locations", async () => {

@@ -128,7 +128,7 @@ describe("value conservation installed canonical replay", () => {
             sourceIndex: 0,
             forced,
           }),
-        ).rejects.toThrow("authenticated predecessor ledger unavailable");
+        ).rejects.toThrow("the block starts from a non-empty ledger");
       }
     },
   );

@@ -1,7 +1,8 @@
 /**
- * A committed block of one forced transaction the operator rejected for the
- * value it does not preserve, over the predecessor ledger of
- * `event-ledger-committed-steps.ts`.
+ * A committed block of one forced transaction the operator rejected, by
+ * default for the value it does not preserve, over the predecessor ledger of
+ * `event-ledger-committed-steps.ts`. `pre` is the step's committed pre-state
+ * root, when it is not the predecessor's.
  */
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
@@ -26,15 +27,22 @@ const ORDER: SDK.OutputReference = {
   outputIndex: 0n,
 };
 
-export const forcedValueRejection = async (
-  input: FixtureTransactionInput,
-  predecessor: readonly LedgerEntry[] = [NATIVE, SPENT, OTHER],
-) => {
+export const forcedRejection = async ({
+  input,
+  reason = "ValueNotPreserved",
+  pre,
+  predecessor = [NATIVE, SPENT, OTHER],
+}: {
+  readonly input: FixtureTransactionInput;
+  readonly reason?: SDK.RejectionReason;
+  readonly pre?: string;
+  readonly predecessor?: readonly LedgerEntry[];
+}) => {
   const root = await ledgerEntriesRoot(predecessor);
   const fixture = await buildDecodingBlockFixture({
     operatorVkey: "aa".repeat(28),
     startTime: 1_000_000n,
-    priorLedgerRoot: root,
+    priorLedgerRoot: pre ?? root,
     prevUtxosRoot: root,
     subject: {
       kind: "forced",
@@ -42,7 +50,7 @@ export const forcedValueRejection = async (
         buildFixtureTransaction(input).canonicalCbor,
       ),
       orderKey: ORDER,
-      verdict: { ForcedTxInvalid: { reason: "ValueNotPreserved" } },
+      verdict: { ForcedTxInvalid: { reason } },
     },
   });
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
@@ -62,6 +70,8 @@ export const forcedValueRejection = async (
     }),
   };
   return {
+    evidence,
+    context,
     key: { ForcedTransactionEventKey: { tx_order_id: ORDER } } as SDK.EventKey,
     replay: async (members: readonly CompleteCanonicalReplay[]) =>
       (members.length === 1

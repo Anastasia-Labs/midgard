@@ -44,7 +44,7 @@ import {
   replayPrerequisiteFailure,
 } from "./workflow/replay-prerequisite.js";
 
-export type EventLedgerRefusalReason =
+type EventLedgerRefusalReason =
   | "step_out_of_range"
   | "transition_link_changed"
   | "source_event_changed"
@@ -65,7 +65,7 @@ export class EventLedgerReplayRefusal extends Error {
     readonly reason: EventLedgerRefusalReason,
     readonly step: bigint,
   ) {
-    super(`input-existence: event ledger replay refused (${reason})`);
+    super(`event ledger: replay refused (${reason})`);
     this.name = "EventLedgerReplayRefusal";
   }
 }
@@ -139,16 +139,21 @@ type EventLedgerWalk = Readonly<{
  * One block's committed steps, applied in order and each at most once: the
  * ledgers before several events of the block cost one walk. A step whose
  * phase follows the requested event's refuses that request only, and the
- * walk goes no further for it. A step that fails to apply stops the walk
- * there, and every request past it meets that failure.
+ * walk goes no further for it. A step that fails stops it there. What the
+ * walk finds of the block, a refusal or an output no ledger can hold, every
+ * request past that step meets; any other failure is not the block's, and
+ * `evict` takes the walk from the shared walks so the next reader walks
+ * afresh.
  */
 const walkSteps = ({
   reconstruction,
   stepCount,
   open,
+  evict,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepCount: bigint;
+  readonly evict: () => void;
   /** The admitted ledger the block starts from. */
   readonly open: () => CheckedLedger;
 }): EventLedgerWalk => {
@@ -257,10 +262,7 @@ const walkSteps = ({
           for (const entry of outputs)
             try {
               created.push(
-                ledgerEntryLeaf(
-                  entry,
-                  `input-existence earlier event ${index}`,
-                ),
+                ledgerEntryLeaf(entry, `event ledger earlier event ${index}`),
               );
             } catch (cause) {
               throw new EventLedgerOutputNotCanonical(
@@ -291,6 +293,11 @@ const walkSteps = ({
     } catch (error) {
       walk.failure = { step: index, error };
       delete walk.trie;
+      if (
+        !(error instanceof EventLedgerReplayRefusal) &&
+        !(error instanceof EventLedgerOutputNotCanonical)
+      )
+        evict();
     }
   };
 
@@ -343,9 +350,13 @@ const walkSteps = ({
   });
 };
 
+/** The key of a reconstruction's walk from the genesis ledger. */
+const GENESIS = Object.freeze({});
+
+/** Held weakly by reconstruction and by predecessor ledger. */
 const sharedWalks = new WeakMap<
   TransitionTraceReconstruction,
-  Map<CheckedLedger | undefined, EventLedgerWalk>
+  WeakMap<object, EventLedgerWalk>
 >();
 
 /**
@@ -358,22 +369,25 @@ const sharedWalk = (
   reconstruction: TransitionTraceReconstruction,
   predecessor: CheckedLedger | undefined,
 ): EventLedgerWalk => {
-  let walks = sharedWalks.get(reconstruction);
-  if (walks === undefined) sharedWalks.set(reconstruction, (walks = new Map()));
-  let walk = walks.get(predecessor);
-  if (walk === undefined) {
-    walk = walkSteps({
-      reconstruction,
-      stepCount: reconstruction.header.transitionStepCount,
-      open: () =>
-        requireLedgerOpening({
-          ledger: predecessor,
-          utxosRoot: reconstruction.header.prevUtxosRoot,
-          label: "input-existence predecessor ledger",
-        }),
-    });
-    walks.set(predecessor, walk);
-  }
+  const walks = sharedWalks.get(reconstruction) ?? new WeakMap();
+  sharedWalks.set(reconstruction, walks);
+  const key = predecessor ?? GENESIS;
+  const known = walks.get(key);
+  if (known !== undefined) return known;
+  const walk: EventLedgerWalk = walkSteps({
+    reconstruction,
+    stepCount: reconstruction.header.transitionStepCount,
+    open: () =>
+      requireLedgerOpening({
+        ledger: predecessor,
+        utxosRoot: reconstruction.header.prevUtxosRoot,
+        label: "event ledger predecessor",
+      }),
+    evict: () => {
+      if (walks.get(key) === walk) walks.delete(key);
+    },
+  });
+  walks.set(key, walk);
   return walk;
 };
 
@@ -397,6 +411,13 @@ export const eventLedgerBefore = async ({
   SDK.assertTransactionSourceInclusionRootAuthenticated(
     block.inclusionRootAuthentication,
   );
+  // The walk reads the reconstruction's header; it must be the block's.
+  const { header } = block.reconstruction;
+  if (
+    header.prevUtxosRoot !== block.header.prevUtxosRoot ||
+    header.transitionStepCount !== block.header.transitionStepCount
+  )
+    fatal("block header differs from its reconstruction's");
   return await sharedWalk(block.reconstruction, predecessor).before(
     eventKey,
     stepIndex,
@@ -441,22 +462,11 @@ export const eventLedgerBeforeStep = async (
   current: TransitionTraceReconstruction,
   stepIndex: bigint,
   predecessor?: CheckedLedger,
-) => {
-  if (
-    predecessor !== undefined &&
-    predecessor.utxosRoot !== current.header.prevUtxosRoot
-  )
-    fatal("unrelated predecessor");
-  if (
-    predecessor === undefined &&
-    current.header.prevUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT
-  )
-    fatal("authenticated predecessor ledger unavailable");
+): Promise<CheckedLedger> => {
   const target = current.traceByStepIndex.get(stepIndex)?.value;
   if (target === undefined) fatal("prior transition mismatch");
-  let ledger: CheckedLedger;
   try {
-    ledger = await sharedWalk(current, predecessor).before(
+    return await sharedWalk(current, predecessor).before(
       target.event_key,
       stepIndex,
     );
@@ -475,16 +485,4 @@ export const eventLedgerBeforeStep = async (
     if ("fatal" in outcome) fatal(outcome.fatal);
     throw at(cause.step, outcome.prerequisite);
   }
-  return {
-    root: ledger.trie,
-    outputs: {
-      get: (key: string) => {
-        const value = ledger.outputs.get(key);
-        return value === undefined
-          ? undefined
-          : { key: Buffer.from(key, "hex"), value };
-      },
-      has: (key: string) => ledger.outputs.has(key),
-    },
-  };
 };

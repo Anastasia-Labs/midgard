@@ -46,7 +46,7 @@ import {
   SPENT,
   type Step,
 } from "./helpers/event-ledger-committed-steps.js";
-import { forcedValueRejection } from "./helpers/event-ledger-forced-step.js";
+import { forcedRejection } from "./helpers/event-ledger-forced-step.js";
 import {
   outRef,
   undecodableNativeOutput,
@@ -220,7 +220,7 @@ describe("value-not-preserved declines an output that does not decode", () => {
 
 describe("value-not-preserved declines a forced rejection whose output does not decode", () => {
   const declined = async (
-    fixture: Awaited<ReturnType<typeof forcedValueRejection>>,
+    fixture: Awaited<ReturnType<typeof forcedRejection>>,
     members: Parameters<typeof fixture.replay>[0],
   ) =>
     expect(await prerequisites(() => fixture.replay(members))).toEqual([
@@ -228,7 +228,7 @@ describe("value-not-preserved declines a forced rejection whose output does not 
     ]);
 
   it("in its own outputs, which no admitted order carries", async () => {
-    const fixture = await forcedValueRejection(creator.input);
+    const fixture = await forcedRejection({ input: creator.input });
     await declined(fixture, [VNP]);
     await declined(fixture, [
       VNP,
@@ -237,10 +237,12 @@ describe("value-not-preserved declines a forced rejection whose output does not 
   });
 
   it("spent from the predecessor ledger", async () => {
-    const fixture = await forcedValueRejection({
-      spendInputs: [NATIVE.outRef],
-      outputs: [makeOutput(3_000_000n)],
-      fee: 7n,
+    const fixture = await forcedRejection({
+      input: {
+        spendInputs: [NATIVE.outRef],
+        outputs: [makeOutput(3_000_000n)],
+        fee: 7n,
+      },
     });
     await declined(fixture, [VNP]);
     await declined(fixture, [

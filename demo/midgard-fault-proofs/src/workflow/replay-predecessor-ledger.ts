@@ -25,8 +25,3 @@ export const requireReplayPredecessorLedger = ({
     utxosRoot: block.header.prevUtxosRoot,
     label: `${label} predecessor ledger`,
   });
-
-/** The previous ledger's outputs keyed by canonical out-ref bytes (hex). */
-export const replayPredecessorOutputs = (
-  ledger: CheckedLedger,
-): ReadonlyMap<string, Uint8Array> => ledger.outputs;
