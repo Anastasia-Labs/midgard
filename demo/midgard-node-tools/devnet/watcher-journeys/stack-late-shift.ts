@@ -1,9 +1,10 @@
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { toUnit } from "@lucid-evolution/lucid";
+import { paymentCredentialOf, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
+  nodeSchedulerRefresh,
   type OperatorShiftAppointment,
   operatorShiftAppointment,
 } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
@@ -14,6 +15,7 @@ import {
   lateShiftMinimumLeadMs,
   planLateShiftFaultCommit,
 } from "./honest-successor.observables.js";
+import type { OperatorPause } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
 import { stackUserEventGate } from "./stack-user-event-floor.js";
@@ -191,21 +193,52 @@ export const stackLateShiftWindowOpensMs = async (
 
 /**
  * `stackUserEventGate` on an attached stack: operator-2's shift from the
- * stack's scheduler, the ledger clock of its chain, the deployment's user
- * event timing, and the stack's undelivered user events read as a strike
- * reads them (`fetchNeglectedUserEventProgram`).
+ * stack's scheduler, advanced past an ended shift with operator-2's wallet
+ * through the node's own alignment (`nodeSchedulerRefresh`) once `operator2`
+ * holds its node stopped (a gate without it advances nothing), the ledger
+ * clock of its chain, the deployment's user event timing, and the stack's
+ * undelivered user events read as a strike reads them
+ * (`fetchNeglectedUserEventProgram`).
  */
 export const stackUserEventPublicationGate = (
   context: StackJourneyContext,
   input: Readonly<{
     /** How long a commit takes to land. */
     commitAllowanceMs: number;
+    /** Operator-2's node, held stopped before the gate signs as operator-2. */
+    operator2?: Pick<OperatorPause, "hold">;
     onStage(name: string): void;
   }>,
 ) => {
-  const { contracts, chain, operatorLucid } = context.deployment;
+  const { contracts, chain, operatorLucid, references } = context.deployment;
+  const schedulerSpendingScriptRef = references.get("schedulerSpend");
   return stackUserEventGate({
     readAppointment: () => readStackAppointment(context),
+    holdOperator2: async () => {
+      if (input.operator2 === undefined)
+        throw new Error(
+          "This user-event gate holds no operator-2 node, so it cannot advance the scheduler as operator-2",
+        );
+      return input.operator2.hold();
+    },
+    refresh: async (targetTime) => {
+      if (schedulerSpendingScriptRef === undefined)
+        throw new Error(
+          "The stack deployment publishes no scheduler spending script reference",
+        );
+      return nodeSchedulerRefresh({
+        lucid: operatorLucid,
+        contracts,
+        operatorVkey: paymentCredentialOf(
+          await operatorLucid.wallet().address(),
+        ).hash,
+        schedulerUnit: toUnit(
+          contracts.scheduler.policyId,
+          SDK.SCHEDULER_ASSET_NAME,
+        ),
+        schedulerSpendingScriptRef,
+      })(targetTime);
+    },
     timing: {
       eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
       eventWaitMs: SDK.EVENT_WAIT_DURATION_MS,

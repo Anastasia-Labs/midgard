@@ -65,8 +65,9 @@ const ourShiftFrom = (timeMs: number) =>
  * little later. `ourLedgerFromMs` and `attestedFromMs` hold an output that
  * is already there; `pending` is a deposit an earlier run recorded, which
  * landed when `pendingLanded`. A `stuckScheduler` never leaves our node's
- * first shift. A `stalledKupo` keeps answering while its checkpoint never
- * reaches a deposit's validity end, so every deposit stays pending.
+ * first shift: its node reports every refresh of it not yet due. A
+ * `stalledKupo` keeps answering while its checkpoint never reaches a
+ * deposit's validity end, so every deposit stays pending.
  * `attestedTailFails` is how every read of the attested tail fails.
  */
 const stack = (input: {
@@ -108,6 +109,11 @@ const stack = (input: {
       return input.stuckScheduler === true
         ? appointmentAt(SHIFT_START_MS)
         : appointmentAt(clock);
+    },
+    holdOperator2: async () => {},
+    refresh: async () => {
+      if (input.stuckScheduler === true) return { notDueForMs: POLL_MS };
+      throw new Error("This stack's scheduler never holds an ended shift");
     },
     timing,
     commitAllowanceMs: COMMIT_ALLOWANCE_MS,

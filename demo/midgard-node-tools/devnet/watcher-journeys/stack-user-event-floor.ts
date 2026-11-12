@@ -1,5 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { OperatorShiftAppointment } from "midgard-watcher/tests/support/published-block-actor.operator-shift";
+import type {
+  OperatorShiftAppointment,
+  OperatorShiftPorts,
+} from "midgard-watcher/tests/support/published-block-actor.operator-shift";
 
 import { lateShiftMinimumLeadMs } from "./honest-successor.observables.js";
 
@@ -42,8 +45,13 @@ export const stackUserEventFloorOffsetMs = (
 /** One slot: a user event's validity ends at the slot after its time to live. */
 const VALIDITY_SLOT_MS = 1_000;
 
-/** How often a funding deposit held past a shift's end rereads the scheduler. */
-const SCHEDULER_RECHECK_MS = 30_000;
+const sameShift = (
+  left: OperatorShiftAppointment,
+  right: { operator: string; startTime: bigint },
+) => left?.operator === right.operator && left.startTime === right.startTime;
+
+const describeShift = (appointment: { operator: string; startTime: bigint }) =>
+  `${appointment.operator}'s shift from ${appointment.startTime.toString()}`;
 
 /**
  * Before each user event the drill publishes on an attached stack.
@@ -58,14 +66,33 @@ const SCHEDULER_RECHECK_MS = 30_000;
  * deposit, which our node absorbs once it is due: in another operator's
  * shift, publishes at once while the deposit falls due early enough in that
  * shift for its operator to commit it; otherwise it waits for the shift's
- * end and reads the scheduler again, up to `notAfterMs`. In operator-2's
- * shift, from its actual start, it waits for the floor. Once the floor has
- * passed neither waits. `admitsFunding` checks the built deposit's actual
- * due time the same way before it is submitted.
+ * end, up to `notAfterMs`. In operator-2's shift, from its actual start, it
+ * waits for the floor. Once the floor has passed neither waits.
+ * `admitsFunding` checks the built deposit's actual due time the same way
+ * before it is submitted.
+ *
+ * None of them decides on a shift that has ended. Who holds the next shift,
+ * and from when, is not fixed until a transaction advances the scheduler: an
+ * ended shift passes to its one successor, starting at that transaction's
+ * validity start (`scheduler.ak` `validate_end_of_shift_and_get_operators`).
+ * A node advances it only to commit, so on an idle stack an ended datum
+ * stays put. `beforeFunding` therefore advances it itself, through
+ * `refresh` (the node's own alignment, as each family's onboarding does), and
+ * decides on the shift that appoints; `beforeEvent` and `admitsFunding`
+ * refuse an ended one. The refresh signs as operator-2, so, as before each
+ * family's staging, the gate first holds operator-2's node stopped
+ * (`holdOperator2`); a gate that advances nothing leaves it running.
  */
 export const stackUserEventGate = (
   input: Readonly<{
     readAppointment(): Promise<OperatorShiftAppointment>;
+    /**
+     * Advance an ended shift towards operator-2's as its node would before a
+     * commit covering `targetTime`, or say how long until it can be.
+     */
+    refresh: OperatorShiftPorts["refresh"];
+    /** Hold operator-2's node stopped, as each signature of its wallet requires. */
+    holdOperator2(): Promise<unknown>;
     timing: StackUserEventTiming;
     /** How long a commit takes to land. */
     commitAllowanceMs: number;
@@ -108,6 +135,10 @@ export const stackUserEventGate = (
           `The scheduler does not appoint operator-2 (${operator}) for the drill's user events: ${appointment === undefined ? "no appointment" : `${appointment.operator}'s shift`}`,
         );
       const startMs = Number(appointment.startTime);
+      if (input.now() >= startMs + timing.shiftDurationMs)
+        throw new Error(
+          `Operator-2's ${describeShift(appointment)} has ended; the drill publishes its user events only in a shift operator-2 holds`,
+        );
       await awaitFloor(startMs);
       const event = await input.readUndeliveredEvent(tailEndTimeMs);
       if (event === null) return;
@@ -152,27 +183,70 @@ export const stackUserEventGate = (
         const appointment = await input.readAppointment();
         if (appointment === undefined) return;
         const startMs = Number(appointment.startTime);
-        if (appointment.operator === operator) return awaitFloor(startMs);
         const endMs = startMs + timing.shiftDurationMs;
+        const shift = describeShift(appointment);
+        if (input.now() >= endMs) {
+          // Nothing else need move an ended shift; the drill advances it.
+          if (input.now() > notAfterMs)
+            throw new Error(
+              `The ledger owner's funding could not advance the scheduler past ${shift} by ${notAfterMs.toString()}, its deadline`,
+            );
+          input.onStage(
+            `advancing the scheduler past ${shift}, which ended at ${endMs.toString()}, before funding the ledger owner`,
+          );
+          await input.holdOperator2();
+          let refreshed: Awaited<ReturnType<typeof input.refresh>> | undefined;
+          let failure: unknown;
+          try {
+            refreshed = await input.refresh(
+              BigInt(input.now() + stackUserEventFloorOffsetMs(timing)),
+            );
+          } catch (error) {
+            failure = error;
+          }
+          // Whoever advanced it, decide on the shift it now holds; only an
+          // ended shift that did not move waits or refuses.
+          if (!sameShift(await input.readAppointment(), appointment)) continue;
+          if (refreshed === undefined) throw failure;
+          if (!("notDueForMs" in refreshed))
+            throw new Error(
+              `The scheduler refresh reported it aligned, but the scheduler still holds ${shift}, which ended at ${endMs.toString()}`,
+            );
+          // At least a slot, so that a refresh due now is retried on a later
+          // one; none past the deadline, where the funding refuses anyway.
+          const retryMs =
+            input.now() + Math.max(refreshed.notDueForMs, VALIDITY_SLOT_MS);
+          if (retryMs > notAfterMs)
+            throw new Error(
+              `The ledger owner's funding could not advance the scheduler past ${shift} by ${notAfterMs.toString()}, its deadline: the node holds it not due until ${retryMs.toString()}`,
+            );
+          await input.awaitLedgerTime(retryMs);
+          continue;
+        }
+        if (appointment.operator === operator) {
+          const floorMs = startMs + stackUserEventFloorOffsetMs(timing);
+          if (floorMs > notAfterMs)
+            throw new Error(
+              `The ledger owner's funding would wait for operator-2's floor ${floorMs.toString()} in ${shift} past ${notAfterMs.toString()}, its deadline`,
+            );
+          return awaitFloor(startMs);
+        }
         if (latestDueMs() + commitMarginMs <= endMs) return;
-        const shift = `${appointment.operator}'s shift from ${startMs.toString()}`;
         if (awaited !== shift)
           input.onStage(
             `awaiting the end of ${shift} before funding the ledger owner, whose deposit could fall due in the next shift`,
           );
         awaited = shift;
-        // Past its end the scheduler may not have moved yet.
-        const nowMs = input.now();
-        const untilMs = nowMs < endMs ? endMs : nowMs + SCHEDULER_RECHECK_MS;
-        if (untilMs > notAfterMs)
+        if (endMs > notAfterMs)
           throw new Error(
-            `The ledger owner's funding waited for the end of ${shift} until ${notAfterMs.toString()}, its deadline, and the scheduler has not moved on`,
+            `The ledger owner's funding would wait for the end of ${shift} past ${notAfterMs.toString()}, its deadline`,
           );
-        await input.awaitLedgerTime(untilMs);
+        await input.awaitLedgerTime(endMs);
       }
     },
     // Whether a built funding deposit, due at `inclusionTimeMs`, may be
-    // submitted, judged on the deposit itself rather than foreseen. In
+    // submitted, judged on the deposit itself rather than foreseen, in a
+    // shift that has not ended. In
     // operator-2's shift its strike threshold must fall at or after the
     // shift's end; in another operator's shift it must fall due early
     // enough for that operator to commit a block covering it.
@@ -180,6 +254,9 @@ export const stackUserEventGate = (
       const appointment = await input.readAppointment();
       if (appointment === undefined) return true;
       const endMs = Number(appointment.startTime) + timing.shiftDurationMs;
+      // Built against an ended shift, its due time falls under a shift no
+      // transaction has fixed yet.
+      if (input.now() >= endMs) return false;
       return appointment.operator === operator
         ? inclusionTimeMs + timing.negligenceTimeoutMs >= endMs
         : inclusionTimeMs + commitMarginMs <= endMs;

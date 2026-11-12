@@ -128,6 +128,10 @@ it("builds the trace deposit no earlier than operator-2's floor when a predecess
       operator: operatorVkey,
       startTime: BigInt((shiftStartMs ??= chain.now())),
     }),
+    holdOperator2: () =>
+      Promise.reject(new Error("This trace never holds operator-2")),
+    refresh: () =>
+      Promise.reject(new Error("This trace never advances the scheduler")),
     timing,
     commitAllowanceMs: 190_000,
     readUndeliveredEvent: (tailEndTimeMs) => {

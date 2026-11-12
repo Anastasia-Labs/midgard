@@ -62,6 +62,11 @@ it("publishes an attached family's deposit no earlier than operator-2's floor, a
         operator: OPERATOR_2,
         startTime: BigInt(shiftStartMs),
       }),
+      // Every case stages inside a shift that has not ended.
+      holdOperator2: () =>
+        Promise.reject(new Error("This case never holds operator-2")),
+      refresh: () =>
+        Promise.reject(new Error("This case never advances the scheduler")),
       timing,
       // A commit's allowance at twin cadence.
       commitAllowanceMs: 190_000,

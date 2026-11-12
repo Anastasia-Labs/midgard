@@ -1,7 +1,4 @@
-import {
-  DEPLOYMENT_PROFILES,
-  SELECTED_DEPLOYMENT_PROFILE,
-} from "@al-ft/midgard-core/deployment-profile";
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -36,6 +33,8 @@ import {
   OUR_NODE,
   type ProfileName,
   SHIFT_START_MS,
+  soonestDueOnGrid,
+  strikeThreshold,
 } from "./stack-user-event-floor.test-support.js";
 
 /** The profile's cadence: 1 s slots, 5% active, the watcher acting at inclusion. */
@@ -51,27 +50,6 @@ const journeyTiming = (category: string, name: ProfileName) => {
   });
 };
 
-/** The scheduler's threshold for a user event due at `inclusionTimeMs`. */
-const strikeThreshold = (
-  timing: StackUserEventTiming,
-  shiftStartMs: number,
-  inclusionTimeMs: number,
-) =>
-  SDK.computeInactivityThreshold({
-    shiftStartMs: BigInt(shiftStartMs),
-    stateQueueTailEndTimeMs: 0n,
-    neglectedEvent: {
-      kind: "Deposit",
-      inclusionTimeMs: BigInt(inclusionTimeMs),
-    },
-    params: {
-      ...SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
-      shiftDurationMs: BigInt(timing.shiftDurationMs),
-      newShiftInactivityGracePeriodMs: BigInt(timing.graceMs),
-      userEventsNegligenceTimeoutMs: BigInt(timing.negligenceTimeoutMs),
-    },
-  });
-
 /** A real 1 s slot grid, the Lucid emulator's, as twin4's chain has. */
 let lucid: LucidEvolution;
 beforeAll(async () => {
@@ -81,35 +59,8 @@ beforeAll(async () => {
   );
 });
 
-/**
- * The soonest the SDK makes an event built at `builtMs` due, over every
- * place in a slot the build can fall: its validity end
- * (`resolveUserEventValidTo`, at that instant on the emulator's slot grid),
- * then its inclusion (`resolveEventInclusionTime`). The SDK compiles one
- * profile's event wait, so another profile's replaces it.
- */
-const soonestDueMs = (timing: StackUserEventTiming, builtMs: number) => {
-  const slotStartMs = SDK.slotToUnixTimeForLucid(lucid, 1_000)!;
-  const slotMs = SDK.slotToUnixTimeForLucid(lucid, 1_001)! - slotStartMs;
-  let soonestMs = Number.POSITIVE_INFINITY;
-  for (let intoSlotMs = 0; intoSlotMs < slotMs; intoSlotMs++) {
-    const nowMs = slotStartMs + intoSlotMs;
-    const validToMs = SDK.resolveUserEventValidTo(
-      lucid,
-      timing.eventTtlMs,
-      () => nowMs,
-    );
-    const dueMs =
-      SDK.resolveEventInclusionTime(
-        validToMs,
-        SELECTED_DEPLOYMENT_PROFILE.network,
-      ) -
-      SDK.EVENT_WAIT_DURATION_MS +
-      timing.eventWaitMs;
-    soonestMs = Math.min(soonestMs, builtMs + dueMs - nowMs);
-  }
-  return soonestMs;
-};
+const soonestDueMs = (timing: StackUserEventTiming, builtMs: number) =>
+  soonestDueOnGrid(lucid, timing, builtMs);
 
 describe("the publication floor of operator-2's shift", () => {
   it.each([

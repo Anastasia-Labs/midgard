@@ -91,6 +91,10 @@ describe("the gate before the ledger owner's funding deposit in our node's shift
         timing,
         appointment: shifts(operator2StartMs),
         nowMs: endMs - 1,
+        // Another operator advances it before the drill's own refresh is due.
+        refresh: async (_, nowMs) => ({
+          notDueForMs: operator2StartMs - nowMs,
+        }),
       });
       await gate.beforeFunding(OPERATOR_2);
       expect(ledger.nowMs).toBe(

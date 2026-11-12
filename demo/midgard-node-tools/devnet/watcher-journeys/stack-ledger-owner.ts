@@ -20,6 +20,7 @@ import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 import { readStackJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
+import type { OperatorPause } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
 import { stackUserEventPublicationGate } from "./stack-late-shift.js";
@@ -318,7 +319,12 @@ const LEDGER_OWNER_POLL_MS = 30_000;
  * counts as funded.
  */
 export const fundStackLedgerOwner = async (
-  session: Readonly<{ context: StackJourneyContext; ledgerAt: LedgerAt }>,
+  session: Readonly<{
+    context: StackJourneyContext;
+    ledgerAt: LedgerAt;
+    /** Held stopped only if the funding must advance the scheduler itself. */
+    operator2: Pick<OperatorPause, "hold">;
+  }>,
   input: Readonly<{
     /** A family of the run, whose commit allowance every family shares. */
     category: string;
@@ -350,6 +356,7 @@ export const fundStackLedgerOwner = async (
   );
   const gate = stackUserEventPublicationGate(context, {
     commitAllowanceMs: transactionAllowanceMs,
+    operator2: session.operator2,
     onStage,
   });
   return fundStackLedgerOwnerBeforeRun({
