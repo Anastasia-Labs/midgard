@@ -13,13 +13,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { faultProofFieldOpening } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   getCompiledScript,
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
@@ -28,7 +27,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type {
@@ -152,13 +150,11 @@ export const buildDirectPurposeTransition = async (
       membershipRewardAddress: membership.rewardAddress,
     });
   }) satisfies BuildTxWithRedeemer;
-  custody.signer.selectWallet(custody.lucid);
-  const { feeInput, walletInputs } = await stepWalletFunding(custody.lucid, {
+  const funding = await fundStep(custody.lucid, {
+    signer: custody.signer,
     excluding: carriage,
   });
-  let tx: TxBuilder = custody.lucid
-    .newTx()
-    .collectFrom([feeInput])
+  let tx: TxBuilder = funding.tx
     .collectFrom([thread], spend)
     .readFrom([
       custody.references(transition.role),
@@ -169,8 +165,7 @@ export const buildDirectPurposeTransition = async (
       next.spendingScriptAddress,
       { kind: "inline", value: datum },
       thread.assets,
-    )
-    .addSignerKey(custody.signer.paymentKeyHash);
+    );
   if (transition.membership !== undefined)
     tx = tx.withdraw(
       membership.rewardAddress,
@@ -179,7 +174,7 @@ export const buildDirectPurposeTransition = async (
     );
   return {
     tx,
-    complete: () => tx.complete({ localUPLCEval: true, ...walletInputs }),
+    complete: () => completeStep(tx, funding),
     outputIndex: () => outputIndex,
     referenceCandidates: [
       {
@@ -203,26 +198,20 @@ export const submitDirectPurposeTransition = async (
   transition: DirectPurposeTransition,
 ): Promise<{ readonly txHash: string; readonly thread: UTxO }> => {
   const built = await buildDirectPurposeTransition(custody, thread, transition);
-  const signed = await (await built.complete()).sign.withWallet().complete();
+  const signed = await built.complete();
   const outputIndex = built.outputIndex();
   if (outputIndex === undefined)
     throw new Error(`${transition.label}: completed output index absent`);
   custody.onSigned?.(transition.label, signed);
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(custody.lucid, signed, {
+    label: `${custody.family.label} ${transition.label}`,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: built.referenceCandidates,
     }),
     boundary: custody.preSubmitBoundary,
+    awaitConfirmation: custody.awaitConfirmation ?? true,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expected)
-    throw new Error(
-      `${transition.label}: provider returned ${txHash}, expected ${expected}`,
-    );
-  if (custody.awaitConfirmation ?? true)
-    await custody.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   const [next] = await custody.lucid.utxosByOutRef([
     { txHash, outputIndex: Number(outputIndex) },
   ]);

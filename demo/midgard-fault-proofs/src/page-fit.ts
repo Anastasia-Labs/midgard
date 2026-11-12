@@ -2,11 +2,7 @@
  * opens MPF proofs per item, so its cost grows with the depth of the tries it
  * opens; the page is built at the configured maximum and halved until each of
  * its transactions fits. */
-import type {
-  LucidEvolution,
-  TxSignBuilder,
-  UTxO,
-} from "@lucid-evolution/lucid";
+import type { LucidEvolution, TxSigned, UTxO } from "@lucid-evolution/lucid";
 
 import { scriptDecodeLedgerLimits } from "./script-decode/record.js";
 import { transactionExUnits } from "./script-decode/submit.js";
@@ -17,10 +13,10 @@ export type FittedPage<Transition> = Readonly<{
   transitions: readonly Transition[];
 }>;
 
-/** An unsubmitted thread transaction and the thread output index its
- * completed layout chose. */
+/** An unsubmitted thread transaction, completed and signed by `complete`,
+ * and the thread output index its completed layout chose. */
 export type PageTransaction = Readonly<{
-  complete: () => Promise<TxSignBuilder>;
+  complete: () => Promise<TxSigned>;
   outputIndex: () => bigint | undefined;
 }>;
 
@@ -48,7 +44,7 @@ const pageFits = async <Transition extends { readonly datum: string }>(
   let current = thread;
   for (const transition of transitions) {
     const built = await build(current, transition);
-    const signed = await (await built.complete()).sign.withWallet().complete();
+    const signed = await built.complete();
     const outputIndex = built.outputIndex();
     if (outputIndex === undefined || !withinBudget(lucid, signed.toCBOR()))
       return false;

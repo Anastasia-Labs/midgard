@@ -15,11 +15,8 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -27,7 +24,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -94,8 +90,7 @@ export const submitDirectPurposeTerminal = async <State>({
     family: family.label,
     stepIndex: terminalIndex,
   });
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -166,30 +161,28 @@ export const submitDirectPurposeTerminal = async <State>({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${label} fraud-proof mint`,
   });
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], spend)
-    .mintAssets({ [threadToken.unit]: -1n }, burn)
-    .mintAssets({ [fraudProofUnit]: 1n }, mint)
-    .pay.ToContract(
-      contracts.fraudProof.spendingScriptAddress,
-      { kind: "inline", value: fraudProofDatum },
-      { lovelace: threadUtxo.assets.lovelace ?? 0n, [fraudProofUnit]: 1n },
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .readFrom([
-      stepReference,
-      ...burnCarriage.referenceInputs,
-      ...mintCarriage.referenceInputs,
-    ])
-    .complete({ localUPLCEval: true });
+  const signed = await completeStep(
+    funding.tx
+      .collectFrom([threadUtxo], spend)
+      .mintAssets({ [threadToken.unit]: -1n }, burn)
+      .mintAssets({ [fraudProofUnit]: 1n }, mint)
+      .pay.ToContract(
+        contracts.fraudProof.spendingScriptAddress,
+        { kind: "inline", value: fraudProofDatum },
+        { lovelace: threadUtxo.assets.lovelace ?? 0n, [fraudProofUnit]: 1n },
+      )
+      .readFrom([
+        stepReference,
+        ...burnCarriage.referenceInputs,
+        ...mintCarriage.referenceInputs,
+      ]),
+    funding,
+  );
   if (outputIndex === undefined)
     throw new Error(`${label}: completed layout unresolved`);
-  const signed = await unsigned.sign.withWallet().complete();
   onSigned?.("terminal", signed);
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: label,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -211,14 +204,8 @@ export const submitDirectPurposeTerminal = async <State>({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expected)
-    throw new Error(
-      `${label}: provider returned ${txHash}, expected ${expected}`,
-    );
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     finalState: state,
