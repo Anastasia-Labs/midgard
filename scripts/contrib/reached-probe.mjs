@@ -7,8 +7,8 @@
 // are graphed too. Vitest's `--related` walks the same graph from test files
 // only, which is why it cannot see a module reached only through a worker
 // entry. A module Vitest cannot transform (a standalone entry with top-level
-// await) has its imports resolved one by one; one that cannot be resolved
-// is reported failed.
+// await) has its imports resolved one by one; one with a bare import that
+// cannot be resolved is reported failed.
 //
 // For each graphed module it also records the path-like tokens of its string
 // literals outside import specifiers (the names it can read, spawn or load
@@ -111,6 +111,12 @@ const parse = async (file) => {
   };
 };
 
+// An import Vite cannot resolve, as written: a relative one names a file that
+// is not there, relative to its importer (graphed as importing nothing, and
+// reached.mjs reads a JS spelling as its TS sources); any other is unknown.
+const unresolved = (specifier, importer) =>
+  specifier.startsWith(".") ? resolve(dirname(importer), specifier) : undefined;
+
 const vitest = await createVitest(
   "test",
   { watch: false, passWithNoTests: true, cliExclude: request.exclude },
@@ -136,8 +142,8 @@ try {
       if (visited.has(file)) return;
       visited.add(file);
       // An import of a file that is not there (a fixture's deliberate
-      // absence, an unbuilt dist) runs nothing to graph; what builds it is
-      // the reach's build rule.
+      // absence, an unbuilt dist) runs nothing to graph; the reach says it
+      // is missing, and what builds it is the reach's build rule.
       if (!existsSync(file)) {
         edges[file] ??= [];
         return;
@@ -155,11 +161,10 @@ try {
           .map((dependency) =>
             dependency.startsWith("/@fs/")
               ? dependency.slice(4)
-              : // An import Vite cannot resolve stays as written, relative
-                // to its importer; a resolved one is relative to the root.
-                dependency.startsWith(".")
-                ? resolve(dirname(file), dependency)
-                : join(project.config.root, dependency),
+              : // An unresolved import stays as written; a resolved one is
+                // relative to the root.
+                (unresolved(dependency, file) ??
+                join(project.config.root, dependency)),
           );
       } catch (error) {
         // Vitest cannot run this module (a standalone entry with top-level
@@ -172,9 +177,10 @@ try {
               specifier,
               file,
             );
-            if (!resolved)
+            const path = resolved ? resolved.id : unresolved(specifier, file);
+            if (!path)
               throw new Error(`cannot resolve ${specifier}`, { cause: error });
-            if (!resolved.external) dependencies.push(resolved.id);
+            if (!resolved?.external) dependencies.push(path);
           }
         } catch (fallback) {
           failed[file] = String(fallback?.message ?? fallback).split("\n")[0];

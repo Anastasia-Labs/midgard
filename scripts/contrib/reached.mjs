@@ -14,7 +14,8 @@ import { runProcess } from "./process.mjs";
 //   (reached-probe.mjs), in source mode so edges into other workspace
 //   packages are not hidden inside the per-run bundles. Unlike `--related`
 //   the graph is rooted at every script of the package and every script
-//   outside the packages, not only at test files.
+//   outside the packages, not only at test files. A JS spelling of a TS
+//   source that is not there (deleted) still imports that source.
 // - Names: a module whose string literals (outside import specifiers) spell
 //   a file's name (a worker entry, a spawned script, a fixture, a document)
 //   depends on that file, and on what that file depends on. Scripts answer
@@ -67,6 +68,22 @@ const stemOf = (path) => {
   return name.slice(0, name.length - extname(name).length);
 };
 const distinctive = (stem) => /[-_.]/u.test(stem);
+
+// A TS source is imported by its JS spelling, which the probe keeps as
+// written when the source is not there (deleted, say): such an import is one
+// of the TS sources the spelling can mean.
+const TS_SOURCES = {
+  ".js": [".ts", ".tsx"],
+  ".jsx": [".tsx"],
+  ".mjs": [".mts"],
+  ".cjs": [".cts"],
+};
+const tsSourcesOf = (path) => {
+  const extension = extname(path);
+  return (TS_SOURCES[extension] ?? []).map(
+    (source) => path.slice(0, -extension.length) + source,
+  );
+};
 
 /** The spellings by which a module names `path` (outside an import). */
 export const namesOf = (path) => {
@@ -221,15 +238,26 @@ export const reachIn = ({
     relevant.add(absolute(BLUEPRINT));
 
   const importers = new Map();
+  const missing = new Set();
   for (const [file, dependencies] of Object.entries(graph.edges))
     for (const dependency of dependencies) {
-      if (!importers.has(dependency)) importers.set(dependency, new Set());
-      importers.get(dependency).add(file);
+      if (!existsSync(dependency)) missing.add(dependency);
+      const sources = missing.has(dependency) ? tsSourcesOf(dependency) : [];
+      for (const imported of [dependency, ...sources]) {
+        if (!importers.has(imported)) importers.set(imported, new Set());
+        importers.get(imported).add(file);
+      }
     }
+  // The probe graphs an import of a file that is not there as importing
+  // nothing; say which, in case one should be.
+  for (const path of missing)
+    why.push(
+      `missing on disk: ${repoPath(path)} (imported by ${[...importers.get(path)].map(repoPath).join(", ")})`,
+    );
   const modules = Object.keys(graph.edges);
   // Each module's path-like literals, split into segments, and every segment
   // it spells. A module the probe could not spell is in `graph.failed`, so
-  // it is affected whatever it names.
+  // it is affected whatever it names, or is not there and names nothing.
   const spelled = new Map(
     Object.entries(graph.spelled ?? {}).map(([file, { paths, walks }]) => {
       const tokens = paths.map((path) => ({
@@ -390,6 +418,7 @@ export const reachIn = ({
   );
   const frontier = new Set([...relevant, ...Object.keys(graph.failed)]);
   const named = new Set();
+  const naming = new Map();
   let affected;
   for (;;) {
     affected = new Set(frontier);
@@ -436,9 +465,7 @@ export const reachIn = ({
       if (target) {
         added.push(module);
         named.add(target);
-        // Every name edge, not only one to a changed file: a name of a file
-        // the change reaches by import pulls in all that imports the namer.
-        why.push(`${repoPath(module)} names ${repoPath(target)}`);
+        naming.set(module, target);
         continue;
       }
       const built = distOf
@@ -483,6 +510,15 @@ export const reachIn = ({
   }
 
   const reached = new Set([...affected].filter((file) => tests.has(file)));
+  // A name edge says why when its namer leads to a reached test, by imports
+  // and names.
+  const leading = new Set(reached);
+  for (const file of leading)
+    for (const next of [...(graph.edges[file] ?? []), naming.get(file)])
+      if (next) leading.add(next);
+  for (const [module, target] of naming)
+    if (leading.has(module))
+      why.push(`${repoPath(module)} names ${repoPath(target)}`);
   for (const file of relevant) {
     const path = repoPath(file);
     if (

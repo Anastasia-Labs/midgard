@@ -175,6 +175,65 @@ test("a worker entry named by a string reaches what imports the module spawning 
   );
 });
 
+test("a name edge says why only when its namer leads to a reached test", (t) => {
+  const root = workspace(t);
+  const a = at(root);
+  const graph = appGraph(root);
+  // Nothing imports unrelated.ts: its name of the worker reaches no test.
+  graph.spelled[a("demo/app/src/unrelated.ts")].paths = ["./worker.js"];
+  const quiet = reach(root, ["demo/app/src/worker.ts"], graph);
+  assert.ok(
+    !quiet.why.includes(
+      "demo/app/src/unrelated.ts names demo/app/src/worker.ts",
+    ),
+    quiet.why,
+  );
+  // A test naming unrelated.ts leads to it: both edges say why.
+  graph.spelled[a("demo/app/tests/contracts.test.ts")].paths = [
+    "src/unrelated.ts",
+  ];
+  const chained = reach(root, ["demo/app/src/worker.ts"], graph);
+  assert.ok(chained.files.includes("tests/contracts.test.ts"), chained.files);
+  for (const line of [
+    "demo/app/tests/contracts.test.ts names demo/app/src/unrelated.ts",
+    "demo/app/src/unrelated.ts names demo/app/src/worker.ts",
+    "demo/app/src/pool.ts names demo/app/src/worker.ts",
+  ])
+    assert.ok(chained.why.includes(line), chained.why);
+});
+
+test("a JS spelling not on disk is imported as its TS sources and said to be missing; one on disk is itself", (t) => {
+  const root = workspace(t, {
+    ...FILES,
+    "demo/app/src/legacy.js": "export {};\n",
+    "demo/app/src/legacy.ts": "export {};\n",
+    "demo/app/src/gone.ts": "export {};\n",
+  });
+  const a = at(root);
+  const graph = appGraph(root);
+  graph.edges[a("demo/app/tests/pool.test.ts")].push(
+    a("demo/app/src/legacy.js"),
+  );
+  graph.edges[a("demo/app/tests/helper.test.ts")].push(
+    a("demo/app/src/gone.mjs"),
+  );
+  // Each source change also reaches built.test.ts, which runs the dist.
+  const files = (path) => reach(root, [path], graph).files;
+  assert.deepEqual(files("demo/app/src/legacy.ts"), ["tests/built.test.ts"]);
+  assert.deepEqual(files("demo/app/src/gone.ts"), ["tests/built.test.ts"]);
+  const result = reach(root, ["demo/app/src/gone.mts"], graph);
+  assert.deepEqual(result.files, [
+    "tests/built.test.ts",
+    "tests/helper.test.ts",
+  ]);
+  assert.ok(
+    result.why.includes(
+      "missing on disk: demo/app/src/gone.mjs (imported by demo/app/tests/helper.test.ts)",
+    ),
+    result.why,
+  );
+});
+
 test("a fixture reaches the tests naming it; a data file nothing names runs the whole package", (t) => {
   const root = workspace(t);
   const named = reach(root, ["demo/app/tests/fixtures/data.json"]);
@@ -344,8 +403,11 @@ test("the probe graphs a real package with Vitest's resolver: imports across pac
       'import { x } from "../../core/src/x.js";\nexport const y = x;\n',
     "demo/app/tests/pool.test.ts":
       'import { test } from "vitest";\nimport { spawn } from "../src/pool.js";\ntest("spawns", () => { spawn(); });\n',
+    // A module Vitest cannot transform, importing a file that is not there.
+    "demo/app/vitest.config.mjs":
+      'export default { plugins: [{ name: "refuse", transform(code, id) { if (id.endsWith("child.ts")) throw new Error("refused"); } }] };\n',
     "demo/app/tests/child.ts":
-      'import { y } from "../src/worker.js";\nawait Promise.resolve(y);\n',
+      'import { y } from "../src/worker.js";\nimport "./gone.js";\nawait Promise.resolve(y);\n',
   });
   mkdirSync(resolve(root, "demo/node_modules"));
   symlinkSync(realpathSync(vitest), resolve(root, "demo/node_modules/vitest"));
@@ -366,6 +428,7 @@ test("the probe graphs a real package with Vitest's resolver: imports across pac
   ]);
   assert.deepEqual(graph.edges[a("demo/app/tests/child.ts")], [
     a("demo/app/src/worker.ts"),
+    a("demo/app/tests/gone.js"),
   ]);
   assert.ok(
     graph.spelled[a("demo/app/src/pool.ts")].paths.includes("./worker.js"),
@@ -404,6 +467,11 @@ test("a source change reaches the tests importing it, directly or not, and no te
       'import { test } from "vitest";\nimport { y } from "../src/y.js";\ntest("y", () => y);\n',
     "demo/app/tests/unrelated.test.ts":
       'import { test } from "vitest";\nimport { entry } from "../src/other.js";\ntest("entry", () => entry());\n',
+    // Imports a source that is not there (deleted), and the unbuilt dist.
+    "demo/app/tests/deleted.test.ts":
+      'import { test } from "vitest";\nimport { z } from "../src/z.js";\ntest("z", () => z);\n',
+    "demo/app/tests/dist.test.ts":
+      'import { test } from "vitest";\nimport { out } from "../dist/out.js";\ntest("out", () => out);\n',
     // A worker that loads the unbuilt dist, or a module deliberately absent.
     "demo/app/tests/loader.mjs":
       'if (process.env.LOAD_ABSENT) await import("./absent.mjs");\nawait import("../dist/out.js");\n',
@@ -425,14 +493,21 @@ test("a source change reaches the tests importing it, directly or not, and no te
     graph,
     changed: ["demo/app/src/x.ts"],
   });
+  // A source change also reaches the test running the package's dist.
   assert.deepEqual(result.files, [
     "tests/direct.test.ts",
+    "tests/dist.test.ts",
     "tests/transitive.test.ts",
   ]);
   assert.deepEqual(
     reachIn({ root, pkg: app, graph, changed: ["demo/app/src/other.ts"] })
       .files,
-    ["tests/unrelated.test.ts"],
+    ["tests/dist.test.ts", "tests/unrelated.test.ts"],
+  );
+  // Deleting a source reaches what still imports it by its JS spelling.
+  assert.deepEqual(
+    reachIn({ root, pkg: app, graph, changed: ["demo/app/src/z.ts"] }).files,
+    ["tests/deleted.test.ts", "tests/dist.test.ts"],
   );
   // Unresolved imports resolve against their importer, and what is not
   // there is graphed as importing nothing, not as unanalysable.
@@ -442,4 +517,10 @@ test("a source change reaches the tests importing it, directly or not, and no te
     a("demo/app/tests/absent.mjs"),
   ]);
   assert.deepEqual(graph.failed, {});
+  assert.ok(
+    result.why.includes(
+      "missing on disk: demo/app/src/z.js (imported by demo/app/tests/deleted.test.ts)",
+    ),
+    result.why,
+  );
 });
