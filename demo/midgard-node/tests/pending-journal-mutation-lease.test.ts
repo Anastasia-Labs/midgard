@@ -8,8 +8,6 @@
  * recorded its signed intent is never discarded there: its commit may be
  * on L1.
  */
-import "./utils.js";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";

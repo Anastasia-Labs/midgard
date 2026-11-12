@@ -10,8 +10,6 @@
  *   not challenge-relevant. A dead journal whose intent row is still there,
  *   or with an effect pending, is kept until neither is.
  */
-import "./utils.js";
-
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
