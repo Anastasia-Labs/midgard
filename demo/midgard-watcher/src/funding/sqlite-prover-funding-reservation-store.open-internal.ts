@@ -24,6 +24,7 @@ import {
   retainedProverFundingInputs,
   signedCollateralOutRefs,
 } from "./prover-funding-reservation.retained-signed-inputs.js";
+import { OUT_REF } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { createProverFundingAbandonmentRecords } from "./sqlite-prover-funding-reservation-store.abandonment-records.js";
 import {
   assertPlanMatchesRecord,
@@ -373,7 +374,37 @@ export const openInternal = async (
     }
   };
 
+  /** Wallet coins an action outside any reservation holds, in memory,
+   * until each hold's wall-clock expiry or release. */
+  const walletHolds = new Map<string, Readonly<{ untilMs: number }>>();
+  const heldWalletInput = (outRef: string): boolean => {
+    const hold = walletHolds.get(outRef);
+    if (hold === undefined) return false;
+    if (hold.untilMs > Date.now()) return true;
+    walletHolds.delete(outRef);
+    return false;
+  };
+  const holdWalletInputs: WatcherProverFundingReservationStore["holdWalletInputs"] =
+    ({ outRefs, untilMs }) => {
+      const held = [...new Set(outRefs)];
+      if (
+        held.some((outRef) => !OUT_REF.test(outRef)) ||
+        !Number.isSafeInteger(untilMs)
+      )
+        throw new Error("prover wallet input hold is invalid");
+      for (const outRef of held)
+        if (heldWalletInput(outRef) || selectLease.get(outRef) !== undefined)
+          throw new ReservationConflictError(outRef);
+      const hold = Object.freeze({ untilMs });
+      for (const outRef of held) walletHolds.set(outRef, hold);
+      return () => {
+        for (const outRef of held)
+          if (walletHolds.get(outRef) === hold) walletHolds.delete(outRef);
+      };
+    };
+
   const assertLeaseAvailable = (outRef: string, reservationId: string) => {
+    if (heldWalletInput(outRef)) throw new ReservationConflictError(outRef);
     const row = selectLease.get(outRef) as
       | Readonly<{ reservation_id: unknown }>
       | undefined;
@@ -720,15 +751,17 @@ export const openInternal = async (
     readReservedOutRefs: async ({ excludingReservationId }) => {
       auditRead();
       return [
-        ...new Set(
-          leaseProjection()
+        ...new Set([
+          ...leaseProjection()
             .leases.filter(
               (claim) => claim.reservationId !== excludingReservationId,
             )
             .map((claim) => claim.outRef),
-        ),
+          ...[...walletHolds.keys()].filter(heldWalletInput),
+        ]),
       ];
     },
+    holdWalletInputs,
     hasSignedHistory: async ({ reservationId }) => {
       if (!auditRead().some((record) => record.reservationId === reservationId))
         throw new Error("prover funding history reservation is missing");

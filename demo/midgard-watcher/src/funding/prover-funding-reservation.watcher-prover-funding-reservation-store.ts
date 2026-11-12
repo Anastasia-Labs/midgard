@@ -80,9 +80,21 @@ export type WatcherProverFundingReservationStore = Readonly<{
   /** Whether a change commits entries of this workflow journal store in its
    * own transaction. */
   commitsJournal?(journal: object): boolean;
+  /** Stored leases, other than `excludingReservationId`'s, and live wallet
+   * holds. */
   readReservedOutRefs(input: {
     readonly excludingReservationId?: string;
   }): Promise<readonly string[]>;
+  /**
+   * Holds wallet coins an action outside any reservation is spending, in
+   * memory, until `untilMs` (wall clock) or the returned release: no
+   * reservation takes them meanwhile. Throws a reservation conflict when one
+   * is leased or held already. A restart drops every hold.
+   */
+  holdWalletInputs(input: {
+    readonly outRefs: readonly string[];
+    readonly untilMs: number;
+  }): () => void;
   /** Includes recorded and superseded attempts and lineage, not just the
    * current pending attempt. */
   hasSignedHistory?(input: {
