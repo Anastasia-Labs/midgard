@@ -7,6 +7,7 @@ import {
   submitRemoveFraudulentBlock,
   submitWithdrawnInputStep03,
 } from "../src/index.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -20,6 +21,7 @@ import {
 
 describe("withdrawn-input emulator lifecycle", () => {
   it("mints the permanent fault token and removes the fraudulent block", async () => {
+    pinStepTranscript();
     const scenario = await makeWithdrawnInputEmulatorScenario("fault");
     const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     const final = await submitWithdrawnInputStep03({

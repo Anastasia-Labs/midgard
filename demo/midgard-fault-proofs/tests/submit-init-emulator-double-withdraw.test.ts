@@ -54,6 +54,7 @@ import {
   submitRawTerminal,
 } from "./submit-init-emulator-double-withdraw.submit-raw-terminal.js";
 import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -63,6 +64,7 @@ import {
 
 describe("double-withdraw emulator lifecycle", () => {
   it("proves the payable duplicate, resumes from step-02, and removes the fraudulent block", async () => {
+    pinStepTranscript();
     const harness = await makeHarness();
     const block = await setupBlock({ harness, secondInfo: PAYABLE_INFO });
     const refs = await publishStepReferences({

@@ -189,7 +189,7 @@ export const submitNetworkIdAcceptedForcedBind = async ({
   }) satisfies BuildTxWithRedeemer;
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference: referenceScriptUtxo,

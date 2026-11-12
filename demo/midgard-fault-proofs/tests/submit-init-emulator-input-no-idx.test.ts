@@ -77,6 +77,7 @@ import {
   startInputNoIdxStep02Thread,
 } from "./submit-init-emulator-input-no-idx.measure-step02-proof-transaction.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock as setupFraudulentBlock,
@@ -91,6 +92,7 @@ import {
 
 describe("input-no-idx fault-proof emulator lifecycle", () => {
   it("proves and removes an out-of-range spend-input block end to end", async () => {
+    pinStepTranscript();
     const harness = await makeEmulatorHarness();
     const {
       realBlueprint,

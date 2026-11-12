@@ -149,10 +149,9 @@ const submitContinue = async (
       ScriptIntegritySpendRedeemers[physicalStep] as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference: reference,

@@ -1,4 +1,8 @@
 /** Real list initialization/admission for complete fabricated-family fixtures. */
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -8,13 +12,46 @@ import {
   type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { expect } from "vitest";
+import { afterAll, expect } from "vitest";
 
 import { type makeFaultProofEmulatorHarness } from "./harness.js";
 import { inputAt, same } from "./history-pair.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import { headerCommitValidFrom } from "./setup-tx.js";
+
+/**
+ * The history records a complete fabricated-family fixture collects. When
+ * `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR` is set, they are written there as
+ * `fileName`, with the blueprint's digest, once the fixture's tests finish.
+ */
+export const fabricatedFamilyHistoryEvidence = (
+  fileName: string,
+): unknown[] => {
+  const records: unknown[] = [];
+  afterAll(() => {
+    const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (directory === undefined) return;
+    mkdirSync(directory, { recursive: true });
+    const blueprint = readFileSync(
+      new URL("../../../../../onchain/aiken/plutus.json", import.meta.url),
+    );
+    writeFileSync(
+      join(directory, fileName),
+      JSON.stringify(
+        {
+          scope:
+            "Real history admission, catalogue-member CT initialization adapter, production stages 01-04 and fraud removal; fixture catalogue governance, not live acceptance",
+          blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
+          records,
+        },
+        (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
+        2,
+      ) + "\n",
+    );
+  });
+  return records;
+};
 
 /**
  * Header lead for a block that commits a family-history admission: the widest

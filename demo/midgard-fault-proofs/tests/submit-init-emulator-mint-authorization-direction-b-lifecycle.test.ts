@@ -37,6 +37,7 @@ import {
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   network,
@@ -49,6 +50,7 @@ const DIRECTION_SCRIPT_UNSATISFIED =
 
 describe("mint-authorization direction-B emulator lifecycle", () => {
   it("proves an unsatisfied native mint policy end to end and removes the fraudulent commitment", async () => {
+    pinStepTranscript();
     const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,

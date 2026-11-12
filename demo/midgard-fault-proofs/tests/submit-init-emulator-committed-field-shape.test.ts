@@ -22,6 +22,7 @@ import {
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
 } from "./support/committed-field-shape-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
@@ -32,6 +33,7 @@ import {
 
 describe("committed-field-shape emulator lifecycle", () => {
   it("proves a real wrong-stride commitment through mint and removes its block", async () => {
+    pinStepTranscript();
     const harness = await makeCommittedFieldShapeEmulatorHarness();
     const scenario = await setupCommittedFieldShapeScenario({
       harness,

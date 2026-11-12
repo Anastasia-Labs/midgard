@@ -5,17 +5,18 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
-import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
-import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+  completeStep,
+  fundStep,
+  type StepSigner,
+  submitStep,
+} from "./step-completion.js";
+import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
 export const submitLinearFaultContinue = async ({
   lucid,
-  signerPaymentKeyHash,
+  signer,
   threadUtxo,
   threadUnit,
   stepReference,
@@ -30,7 +31,7 @@ export const submitLinearFaultContinue = async ({
   awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
-  readonly signerPaymentKeyHash: string;
+  readonly signer: StepSigner;
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
   readonly stepReference: UTxO;
@@ -44,30 +45,22 @@ export const submitLinearFaultContinue = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation: boolean;
 }) => {
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
-    excluding: carriageUtxos,
-  });
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .readFrom([...carriageUtxos, stepReference, ...extraReferenceInputs])
-    .pay.ToContract(
-      nextAddress,
-      { kind: "inline", value: nextDatum },
-      {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
-        [threadUnit]: 1n,
-      },
-    )
-    .addSignerKey(signerPaymentKeyHash)
-    .complete({
-      localUPLCEval: true,
-      ...walletInputs,
-    });
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const funding = await fundStep(lucid, { signer, excluding: carriageUtxos });
+  const signed = await completeStep(
+    funding.tx
+      .collectFrom([threadUtxo], redeemer)
+      .readFrom([...carriageUtxos, stepReference, ...extraReferenceInputs])
+      .pay.ToContract(
+        nextAddress,
+        { kind: "inline", value: nextDatum },
+        {
+          lovelace: threadUtxo.assets.lovelace ?? 0n,
+          [threadUnit]: 1n,
+        },
+      ),
+    funding,
+  );
+  return await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: stepRole,
@@ -76,15 +69,6 @@ export const submitLinearFaultContinue = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `${stepRole}: provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
-  return txHash;
 };

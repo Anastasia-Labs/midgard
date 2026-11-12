@@ -191,7 +191,7 @@ export const submitDirectPurposeStep01Forced = async ({
   }) satisfies BuildTxWithRedeemer;
   const txHash = await submitLinearFaultContinue({
     lucid: common.lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,

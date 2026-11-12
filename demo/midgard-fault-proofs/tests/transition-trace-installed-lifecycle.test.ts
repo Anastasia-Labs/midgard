@@ -99,6 +99,7 @@ import {
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import { scratchDirectory } from "./support/scratch-directory.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
@@ -203,6 +204,7 @@ describe("transition trace installed retained-history workflow", () => {
   it.each(installedCases)(
     "runs $name against real registered chain and raw L1 observations",
     async ({ name, datumBytes, honest, kind, timing }) => {
+      pinStepTranscript();
       const recorder = recordCrossBlockRawEmulator();
       let clock: ReturnType<typeof vi.spyOn> | undefined;
       let directory: string | undefined;

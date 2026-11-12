@@ -2,19 +2,10 @@
  * The byte transcript of a direct-walk family's installed lifecycle: the
  * cursor adapter drives the family's port from a genuine Init to the proof
  * token, exactly as the family's installed-lifecycle suite does, and every
- * transaction the emulator accepts is kept as its hash and the SHA-256 of its
- * signed CBOR.
- *
- * Wallet seeds and the emulator's start time are the only inputs a run does
- * not choose, so a transcript run draws randomness from a stream seeded by the
- * case name and starts the clock at a fixed instant. Two runs of the same code
- * then accept the same bytes.
+ * transaction the emulator accepts is kept as its two step-transcript digests.
  */
-import { createHash } from "node:crypto";
-
-import { layerMethod } from "@al-ft/midgard-test-support/method-layer";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry, singleLedgerAt } from "../../src/ledger-at.js";
@@ -42,86 +33,54 @@ import {
   MemoryFraudProofWorkflowJournalStore,
 } from "../../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
-import { observeEmulatorSubmissions } from "./cross-block-raw-emulator.js";
 import type { DirectWalkCategory } from "./direct-walk-emulator.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { recordStepSubmissions, sha256 } from "./step-transcript.js";
 import {
   type FaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
 } from "./submit-init-emulator-shared.js";
 
-/** The instant every transcript run's emulator starts at, a whole second. */
-const TRANSCRIPT_EPOCH_MS = Date.UTC(2026, 10, 1);
-
 /** The installed lifecycle's bound on cursor actions. */
 const MAX_ACTIONS = 120;
-
-const sha256 = (text: string) => createHash("sha256").update(text).digest();
-
-/** `crypto.getRandomValues` over a SHA-256 counter stream seeded by `seed`. */
-const seededRandomValues = (
-  seed: string,
-): typeof globalThis.crypto.getRandomValues => {
-  let draws = 0;
-  return <T extends Exclude<NodeJS.TypedArray, Float32Array | Float64Array>>(
-    array: T,
-  ): T => {
-    const bytes = new Uint8Array(
-      array.buffer,
-      array.byteOffset,
-      array.byteLength,
-    );
-    for (let offset = 0; offset < bytes.length; offset += 32)
-      bytes.set(
-        sha256(`${seed}:${(draws++).toString()}`).subarray(
-          0,
-          bytes.length - offset,
-        ),
-        offset,
-      );
-    return array;
-  };
-};
 
 type DirectWalkAction = Readonly<{ stage: string; txHash: string }>;
 
 /**
- * Runs `drive` with seeded randomness and a fixed clock, and renders every
- * emulator submission: the setup transactions as one count and digest, then
- * each cursor action as its stage, hash and CBOR digest.
+ * Runs `drive` under a step recording seeded by `seed` and renders every
+ * emulator submission: the setup transactions as one count and digest of
+ * each kind, then each cursor action as its stage, full digest and step
+ * digest.
  */
 export const recordDirectWalkTranscript = async (
   seed: string,
   drive: () => Promise<readonly DirectWalkAction[]>,
 ): Promise<string> => {
-  const submitted: { readonly txHash: string; readonly cbor: string }[] = [];
-  const random = layerMethod(globalThis.crypto, "getRandomValues", () =>
-    seededRandomValues(seed),
-  );
-  const submissions = observeEmulatorSubmissions((txHash, cbor) =>
-    submitted.push({ txHash, cbor: sha256(cbor).toString("hex") }),
-  );
-  vi.useFakeTimers({ toFake: ["Date"], now: TRANSCRIPT_EPOCH_MS });
+  const recording = recordStepSubmissions(seed);
   try {
     const actions = await drive();
     const byHash = new Map(actions.map((action) => [action.txHash, action]));
-    const setup = submitted
-      .filter(({ txHash }) => !byHash.has(txHash))
-      .map(({ txHash, cbor }) => `${txHash} ${cbor}`);
-    const lines = submitted.flatMap(({ txHash, cbor }) => {
+    const setup = recording.submitted.filter(
+      ({ txHash }) => !byHash.has(txHash),
+    );
+    const lines = recording.submitted.flatMap(({ txHash, cbor, step }) => {
       const action = byHash.get(txHash);
-      return action === undefined ? [] : [`${action.stage} ${txHash} ${cbor}`];
+      return action === undefined
+        ? []
+        : [`${action.stage} ${txHash} ${cbor} ${step}`];
     });
     expect(lines).toHaveLength(actions.length);
+    const digest = (rows: readonly string[]) =>
+      sha256(rows.join("\n")).toString("hex");
     return [
       seed,
-      `setup ${setup.length.toString()} ${sha256(setup.join("\n")).toString("hex")}`,
+      `setup ${setup.length.toString()} ${digest(
+        setup.map(({ txHash, cbor }) => `${txHash} ${cbor}`),
+      )} ${digest(setup.map(({ step }) => step))}`,
       ...lines,
     ].join("\n  ");
   } finally {
-    vi.useRealTimers();
-    submissions.restore();
-    random.restore();
+    recording.restore();
   }
 };
 

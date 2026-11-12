@@ -20,6 +20,7 @@ import {
   l2TxMistagCategory,
   publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock,
@@ -27,6 +28,7 @@ import {
 
 describe("l2-tx-mistag emulator lifecycle", () => {
   it("mints permanent evidence for a committed code-1 normal leaf and removes the fraudulent block", async () => {
+    pinStepTranscript();
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realL2TxMistag: true,

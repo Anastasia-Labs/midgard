@@ -32,6 +32,7 @@ import {
   publishOperatorLifecycleReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   expectStateQueueHeaderOrder,
@@ -57,6 +58,7 @@ import { publishTransitionTraceYields } from "./support/transition-trace-yields.
 
 describe("fault-proof emulator integration", () => {
   it("submits and removes a tail transition-trace fraud proof end to end", async () => {
+    pinStepTranscript();
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });

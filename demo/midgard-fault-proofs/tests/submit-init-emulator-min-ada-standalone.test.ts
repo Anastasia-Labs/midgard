@@ -17,6 +17,7 @@ import {
   publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -27,6 +28,7 @@ import {
 
 describe("min-ada standalone emulator lifecycle", () => {
   it("proves the transaction polarity, cancels and resumes, removes the header, and retains the permanent proof", async () => {
+    pinStepTranscript();
     const harness = await makeMinAdaEmulatorHarness();
     let dispatcherPublicationBytes: number | undefined;
     const refs = await publishFinalFamilyReferenceScripts({

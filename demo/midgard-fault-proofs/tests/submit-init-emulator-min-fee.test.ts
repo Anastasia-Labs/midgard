@@ -37,6 +37,7 @@ import {
   setupScenario,
   TIER2_SPEND_INPUT_COUNT,
 } from "./submit-init-emulator-min-fee.setup-scenario.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -46,6 +47,7 @@ import {
 
 describe("min-fee emulator lifecycle", () => {
   it("cancels both steps, resumes the same thread, rejects malformed evidence, mints, and removes", async () => {
+    pinStepTranscript();
     const harness = await makeHarness();
     const scenario = await setupScenario({
       harness,

@@ -42,6 +42,7 @@ import {
   setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -55,6 +56,7 @@ import {
 
 describe("input-set-uniqueness emulator lifecycle", () => {
   it("proves a duplicate spend input end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
+    pinStepTranscript();
     const harness = await makeInputSetUniquenessEmulatorHarness();
     const {
       realBlueprint,

@@ -90,6 +90,7 @@ import {
   smallMalformedOutput,
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
   it("contradicts a wrongful acceptance of a non-canonical spend input at the maximum shape: refuses the accepted seams, resumes the scan, mints and removes", async () => {
@@ -675,6 +676,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
   }, 600_000);
 
   it("corrects both remaining source-kind/direction pairs at a small shape and cancels from steps 02, 03 and 04", async () => {
+    pinStepTranscript();
     // Accepted, reference input (field 1), non-canonical.
     {
       const context = await makeResolvedOutputContext();

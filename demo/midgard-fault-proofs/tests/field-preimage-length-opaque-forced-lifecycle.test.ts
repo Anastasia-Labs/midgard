@@ -23,12 +23,14 @@ import {
   setup,
 } from "./field-preimage-length-mismatch-lifecycle.setup.js";
 import { opaqueForcedLifecycleDaFixture } from "./field-preimage-length-opaque-forced-lifecycle.fixture.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   authenticatedObservation,
   retainedSource,
 } from "./transition-trace-challenger.build-payload-fixture.js";
 
 it("adjudicates authenticated opaque forced bytes with the installed field-length validators", async () => {
+  pinStepTranscript();
   const preimage = Buffer.from("8180", "hex");
   const fixture = await setup({
     honestAccepted: true,

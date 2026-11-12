@@ -11,6 +11,7 @@ import {
   submitWithdrawnReferenceInputStep02,
   submitWithdrawnReferenceInputStep03,
 } from "../src/index.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -25,6 +26,7 @@ import {
 
 describe("withdrawn-reference-input emulator lifecycle", () => {
   it("proves the same-block conflict, mints permanent evidence, and removes the fraudulent block", async () => {
+    pinStepTranscript();
     const harness = await makeWithdrawnReferenceInputEmulatorHarness();
     const scenario = await setupWithdrawnReferenceInputScenario({ harness });
     const [step01Ref, step02Ref, step03Ref] =

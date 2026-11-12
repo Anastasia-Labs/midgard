@@ -65,6 +65,7 @@ import {
   submitRawReferenceInputNoIdxStep02,
   submitRawReferenceInputNoIdxStep04,
 } from "./support/reference-input-no-idx-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock as setupFraudulentBlock,
@@ -82,6 +83,7 @@ const CHALLENGED_OUTPUT_INDEX = 7n;
 
 describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
   it("proves and removes an out-of-range reference-input block end to end", async () => {
+    pinStepTranscript();
     const harness = await makeReferenceInputNoIdxEmulatorHarness();
     const {
       realBlueprint,

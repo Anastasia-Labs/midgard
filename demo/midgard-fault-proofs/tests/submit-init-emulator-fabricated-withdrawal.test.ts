@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-
 /**
  * Complete fabricated-withdrawal proof fixture: real list initialization and
  * nonce admission, retained-DA preparation, catalogue-member CT initialization,
@@ -19,7 +15,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { fabricatedProofValidity } from "../src/fabricated-proof-validity.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
@@ -58,10 +54,12 @@ import {
 import { historyWitnessFixture } from "./helpers/history-witness-fixture.js";
 import {
   awaitHeaderCommitWindow,
+  fabricatedFamilyHistoryEvidence,
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
   recordFamilyTransaction,
 } from "./support/emulator/family-history.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -78,28 +76,9 @@ import {
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
-const historyRecords: unknown[] = [];
-afterAll(() => {
-  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
-  if (directory === undefined) return;
-  mkdirSync(directory, { recursive: true });
-  const blueprint = readFileSync(
-    new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-  );
-  writeFileSync(
-    join(directory, "full-withdrawal-history.json"),
-    JSON.stringify(
-      {
-        scope:
-          "Real history admission, catalogue-member CT initialization adapter, production stages 01-04 and fraud removal; fixture catalogue governance, not live acceptance",
-        blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
-        records: historyRecords,
-      },
-      (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
-      2,
-    ) + "\n",
-  );
-});
+const historyRecords = fabricatedFamilyHistoryEvidence(
+  "full-withdrawal-history.json",
+);
 
 // The `mismatched_content_block_v1` scenario, measured out of
 // `onchain/aiken/lib/midgard/fraud-proofs/fabricated-withdrawal/step-0{1,2}.ak`:
@@ -530,6 +509,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
   )(
     "proves $scenario withdrawal with $mode history, mints permanent evidence, and removes the fraudulent commitment",
     async ({ mode, scenario }) => {
+      pinStepTranscript();
       const absent = scenario === "absent-identity";
       // A repeat commits the authentic content of an event an earlier block
       // already carried.

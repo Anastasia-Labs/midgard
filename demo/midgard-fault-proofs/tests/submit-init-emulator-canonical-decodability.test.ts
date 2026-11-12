@@ -20,6 +20,7 @@ import {
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -28,6 +29,7 @@ import {
 
 describe("canonical-decodability real-fault lifecycle", () => {
   it("mints permanent evidence and removes the fraudulent commitment", async () => {
+    pinStepTranscript();
     const harness = await makeCanonicalDecodabilityEmulatorHarness();
     const {
       realBlueprint,

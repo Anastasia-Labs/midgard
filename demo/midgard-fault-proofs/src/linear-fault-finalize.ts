@@ -17,13 +17,17 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
   type LinearFaultStepContract,
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "./linear-fault-family.js";
-import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
+import {
+  completeStep,
+  fundStep,
+  type StepSigner,
+  submitStep,
+} from "./step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -31,7 +35,6 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -67,10 +70,7 @@ export const submitLinearFaultFinalize = async ({
     readonly mintingScript: NonNullable<UTxO["scriptRef"]>;
     readonly spendingScriptAddress: string;
   };
-  readonly signer: {
-    readonly paymentKeyHash: string;
-    readonly selectWallet: (lucid: LucidEvolution) => void;
-  };
+  readonly signer: StepSigner;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -98,7 +98,6 @@ export const submitLinearFaultFinalize = async ({
   readonly awaitConfirmation: boolean;
 }) => {
   const label = linearFaultStepLabel(family, stepIndex);
-  signer.selectWallet(lucid);
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: step.spendingScriptHash,
@@ -122,9 +121,6 @@ export const submitLinearFaultFinalize = async ({
     ...threadBurn.referenceInputs,
     ...proofMint.referenceInputs,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
-    excluding: carriageUtxos,
-  });
   const fraudProofUnit = toUnit(fraudProof.policyId, threadToken.assetName);
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
@@ -181,12 +177,11 @@ export const submitLinearFaultFinalize = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await proofMint
-    .attach(
+  const funding = await fundStep(lucid, { signer, excluding: carriageUtxos });
+  const signed = await completeStep(
+    proofMint.attach(
       threadBurn.attach(
-        lucid
-          .newTx()
-          .collectFrom([feeInput])
+        funding.tx
           .collectFrom([threadUtxo], spendRedeemer)
           .readFrom(referenceInputs)
           .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
@@ -198,20 +193,15 @@ export const submitLinearFaultFinalize = async ({
               lovelace: threadUtxo.assets.lovelace ?? 0n,
               [fraudProofUnit]: 1n,
             },
-          )
-          .addSignerKey(signer.paymentKeyHash),
+          ),
       ),
-    )
-    .complete({
-      localUPLCEval: true,
-      ...walletInputs,
-    });
+    ),
+    funding,
+  );
   if (spendLayout === undefined || threadMintRedeemerIndex === undefined) {
     throw new Error(`${label}: unresolved final layout`);
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: label,
@@ -230,11 +220,8 @@ export const submitLinearFaultFinalize = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) throw new Error(`${label}: hash mismatch`);
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,

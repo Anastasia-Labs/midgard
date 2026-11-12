@@ -11,6 +11,7 @@ import {
   submitWithdrawalMistagStep04,
   submitWithdrawalMistagStep05,
 } from "../src/withdrawal-mistag/index.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   initWithdrawalMistagThread,
   makeWithdrawalMistagEmulatorHarness,
@@ -21,6 +22,7 @@ import {
 
 describe("withdrawal-mistag cancel and resume", () => {
   it("burns a cancelled thread, re-initialises, and resumes from only its committed out-ref", async () => {
+    pinStepTranscript();
     const harness = await makeWithdrawalMistagEmulatorHarness();
     const scenario = await setupWithdrawalMistagScenario({
       harness,

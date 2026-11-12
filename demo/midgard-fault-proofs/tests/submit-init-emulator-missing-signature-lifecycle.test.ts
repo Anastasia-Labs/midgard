@@ -25,6 +25,7 @@ import {
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -167,6 +168,7 @@ describe("missing-signature positive emulator lifecycle", () => {
   }, 600_000);
 
   it("drives every submitter directly at tier-1 inline carriage", async () => {
+    pinStepTranscript();
     const harness = await makeMissingSignatureEmulatorHarness();
     const scenario = await setupMissingSignatureScenario({ harness });
     if (scenario.block.txInclusion === null) {

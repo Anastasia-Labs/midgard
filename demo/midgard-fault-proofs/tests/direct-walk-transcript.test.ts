@@ -1,9 +1,9 @@
 /**
  * Pins the bytes of every direct-walk fault-proof family: each capture case
  * of the nine installed lifecycles is driven again with seeded wallets and a
- * fixed clock, and the hash and signed-CBOR digest of every transaction its
- * cursor submits must equal the committed snapshot. Folding the families onto
- * one kit must leave this transcript byte-identical; a drift is a behaviour
+ * fixed clock, and the full and step digests of every transaction its cursor
+ * submits must equal the committed snapshot. Folding the families onto one
+ * kit must leave this transcript byte-identical; a drift is a behaviour
  * change, never a reason to rewrite the snapshot.
  */
 import * as SDK from "@al-ft/midgard-sdk";

@@ -102,10 +102,9 @@ export const submitWitnessScriptDecodingStep03Raw = async ({
       WitnessScriptDecodingStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,

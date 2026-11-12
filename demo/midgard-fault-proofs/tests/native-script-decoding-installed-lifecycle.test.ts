@@ -43,6 +43,7 @@ import {
   publishDecodingReferenceScripts,
 } from "./support/native-script-decoding-emulator.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -69,6 +70,7 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
   ])(
     "captures, journals and restarts $name through proof mint and removal",
     async (scenario) => {
+      pinStepTranscript();
       const h = await makeDecodingEmulatorHarness();
       const operator = getAddressDetails(
         await h.funderLucid.wallet().address(),

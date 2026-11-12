@@ -308,7 +308,7 @@ const dataStepRaw = async ({
     )) satisfies BuildTxWithRedeemer;
   return await submitLinearFaultContinue({
     lucid: harness.proverLucid,
-    signerPaymentKeyHash: harness.proverSigner.paymentKeyHash,
+    signer: harness.proverSigner,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference: requireLinearFaultReferenceScript({

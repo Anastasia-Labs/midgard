@@ -35,6 +35,7 @@ import {
 } from "../src/index.js";
 import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock as setupFraudulentBlock,
@@ -124,6 +125,7 @@ const makeEmulatorHarness = async () =>
 
 describe("da-hash-preimage fault-proof emulator lifecycle", () => {
   it("proves and removes a tail miskeyed-leaf block end to end", async () => {
+    pinStepTranscript();
     const harness = await makeEmulatorHarness();
     const {
       realBlueprint,

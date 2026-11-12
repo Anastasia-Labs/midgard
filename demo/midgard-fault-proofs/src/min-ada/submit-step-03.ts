@@ -218,10 +218,9 @@ export const submitMinAdaStep03 = async ({
           Redeemer,
         );
       }) satisfies BuildTxWithRedeemer;
-      signer.selectWallet(lucid);
       const txHash = await submitLinearFaultContinue({
         lucid,
-        signerPaymentKeyHash: signer.paymentKeyHash,
+        signer,
         threadUtxo: active.threadUtxo,
         threadUnit: active.threadToken.unit,
         stepReference: reference,
@@ -297,7 +296,7 @@ export const submitMinAdaStep03 = async ({
   }) satisfies BuildTxWithRedeemer;
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,

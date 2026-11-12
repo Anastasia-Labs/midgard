@@ -15,11 +15,13 @@ import {
   fundReservedCollateral,
   restrictedProverFunding,
 } from "./support/restricted-prover-funding.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("double-spend steps under the watcher's restricted wallet", () => {
   it("takes step 03's and step 04's collateral from the reserved collateral", async () => {
+    pinStepTranscript();
     let collateral: UTxO | undefined;
     let step03Checked = () => 0;
     const staged = await stageDoubleSpendStep04({

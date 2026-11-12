@@ -46,6 +46,7 @@ import {
   submitRawInvalidSignatureStep02,
 } from "./support/invalid-signature-emulator.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -60,6 +61,7 @@ import {
 
 describe("invalid-signature emulator lifecycle", () => {
   it("convicts an invalid address witness end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
+    pinStepTranscript();
     const harness = await makeInvalidSignatureEmulatorHarness();
     const {
       realBlueprint,

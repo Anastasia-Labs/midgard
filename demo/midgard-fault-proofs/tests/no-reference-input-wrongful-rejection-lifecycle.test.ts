@@ -47,6 +47,7 @@ import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./support/no-reference-input-native.js";
 import { submitRawNoReferenceInputForcedStep } from "./support/no-reference-input-raw-step.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   publishPlainReferenceScriptUtxo,
@@ -64,6 +65,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
   ])(
     "proves $count inputs at $index deep=$deep",
     async (scenario) => {
+      pinStepTranscript();
       const ownOutputs = createOwnOutputJournal();
       const { count, index, deep } = scenario;
       const honest = "honest" in scenario;

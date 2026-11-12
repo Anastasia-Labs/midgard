@@ -148,10 +148,9 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
       WitnessScriptDecodingStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,
@@ -316,10 +315,9 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
       WitnessScriptDecodingStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,

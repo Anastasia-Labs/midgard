@@ -87,10 +87,12 @@ import {
 import { submitStep03WithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { transitionTraceOutRef } from "./support/submit-init-emulator-shared.js";
 
 describe("spendInputSignerMissing registered-chain lifecycle", () => {
   it("runs the accepted 318-witness maximum from Init through proof mint, cancelling every physical step", async () => {
+    pinStepTranscript();
     const harness = await newHarness();
     const family = await registeredContracts(harness);
     const paymentCredential = Buffer.alloc(28, 0x51).toString("hex");

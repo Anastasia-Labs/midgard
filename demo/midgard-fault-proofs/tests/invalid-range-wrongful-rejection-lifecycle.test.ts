@@ -40,6 +40,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -273,6 +274,7 @@ const stageForcedRejection = async (interval: {
 
 describe("invalidRange wrongful-rejection real lifecycle", () => {
   it("runs every cancel/restart boundary, forced contradiction, permanent mint, and leased removal", async () => {
+    pinStepTranscript();
     // The wrongly rejected transaction's validity interval contains the slot.
     const {
       harness,

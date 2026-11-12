@@ -191,7 +191,7 @@ export const submitStep03WithForeignCertificate = async ({
   }) satisfies BuildTxWithRedeemer;
   return submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,

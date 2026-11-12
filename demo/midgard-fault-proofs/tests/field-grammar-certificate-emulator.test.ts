@@ -52,6 +52,7 @@ import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 
 const EMPTY = Buffer.from("80", "hex");
 /** The repository's per-transaction execution reserve: 80% of each limit. */
@@ -223,6 +224,7 @@ const ownCertificateFixture = async (salt: number) => {
 
 describe("field grammar certificate builder against the emulator", () => {
   it("opens, advances and completes a certificate, reuses its own, and builds its own past another key's", async () => {
+    pinStepTranscript();
     const prover = proverAccount(5_000_000_000n);
     const consumer = proverAccount(1_000_000_000n);
     const emulator = new Emulator(

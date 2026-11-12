@@ -21,23 +21,19 @@ import {
   requireLinearFaultReferenceScript,
 } from "./linear-fault-family.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -104,7 +100,6 @@ export const submitLinearFaultCancel = async ({
   if (datum.fraud_prover !== signer.paymentKeyHash) {
     throw new Error(`${family}: signer does not own thread`);
   }
-  signer.selectWallet(lucid);
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: step.spendingScriptHash,
@@ -143,24 +138,20 @@ export const submitLinearFaultCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const unsigned = await burn
-    .attach(
-      lucid
-        .newTx()
-        .collectFrom([selectFeeInput(walletUtxos)])
+  const funding = await fundStep(lucid, { signer });
+  const signed = await completeStep(
+    burn.attach(
+      funding.tx
         .collectFrom([threadUtxo], spendRedeemer)
         .readFrom([stepReference, ...burn.referenceInputs])
-        .mintAssets({ [token.unit]: -1n }, burnRedeemer)
-        .addSignerKey(signer.paymentKeyHash),
-    )
-    .complete({ localUPLCEval: true });
+        .mintAssets({ [token.unit]: -1n }, burnRedeemer),
+    ),
+    funding,
+  );
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
     throw new Error(`${label}: unresolved cancellation layout`);
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: `${label}-cancel`,
@@ -174,11 +165,8 @@ export const submitLinearFaultCancel = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) throw new Error(`${label}: hash mismatch`);
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     cancelledStepIndex: stepIndex,

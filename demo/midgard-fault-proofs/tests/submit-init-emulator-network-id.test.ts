@@ -17,6 +17,7 @@ import {
   NETWORK_ID_EMULATOR_CATEGORY_ID,
   publishNetworkIdReferenceScripts,
 } from "./support/network-id-emulator.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -41,6 +42,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
   ])(
     "mints permanent evidence and removes $label",
     async ({ outputNetworkId, protectedAddress }) => {
+      pinStepTranscript();
       const harness = await makeNetworkIdEmulatorHarness();
       const submitMeasured = async <T>(operation: () => Promise<T>) => {
         const captured = await captureEmulatorSubmission(

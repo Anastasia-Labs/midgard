@@ -215,10 +215,9 @@ export const submitInputSetUniquenessStep04Advance = async ({
       InputSetUniquenessStep04SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
+    signer,
     threadUtxo,
     threadUnit: threadToken.unit,
     stepReference,
