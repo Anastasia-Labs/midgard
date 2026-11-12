@@ -23,7 +23,10 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
-import { newestTerminalOutcome } from "../l1-queue-terminals/reads.js";
+import {
+  liveQueueNodeHeader,
+  newestTerminalOutcome,
+} from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
 import { readIntentStatus } from "../services/intent-journal.js";
 import { commitAnchorCanonical } from "./commit-anchor.js";
@@ -115,6 +118,34 @@ export const liveJournalSql = (sql: SqlClient.SqlClient, dead: DeadHeaders) =>
     ORDER BY live.created_at DESC, live.header_hash DESC
     LIMIT 1`;
 
+/**
+ * SQL condition: the dead journal aliased `p` has a disposal effect pending
+ * (`landed-blocks/own-journals.ts`): a withdrawal still classified for it
+ * and in no journal outside `dead`, an inclusion mark its header holds, its
+ * block's `blocks` rows, or its lease still active.
+ */
+export const deadEffectPending = (
+  sql: SqlClient.SqlClient,
+  dead: DeadHeaders,
+) =>
+  sql`(EXISTS (
+    SELECT 1 FROM pending_block_finalization_withdrawals member
+    JOIN withdrawal_utxos d ON d.event_id = member.member_id
+    WHERE member.header_hash = p.header_hash
+      AND d.status = 'projected' AND d.projected_header_hash IS NULL
+      AND d.classification_revision = member.classification_revision
+      AND NOT EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals other
+        WHERE other.member_id = member.member_id
+          AND other.header_hash <> member.header_hash
+          AND NOT ${deadHeader(sql, "other.header_hash", dead)}))
+  OR EXISTS (SELECT 1 FROM mempool WHERE mempool.included_by = p.header_hash)
+  OR EXISTS (SELECT 1 FROM processed_mempool processed
+    WHERE processed.included_by = p.header_hash)
+  OR EXISTS (SELECT 1 FROM blocks WHERE blocks.header_hash = p.header_hash)
+  OR EXISTS (SELECT 1 FROM state_queue_mutation_leases lease
+    WHERE lease.token = p.state_queue_lease_token
+      AND lease.status = 'active'))`;
+
 export type DeadJournals = Readonly<{
   /** Dead journal header (hex) to why its block can no longer land. */
   causes: ReadonlyMap<string, string>;
@@ -152,9 +183,15 @@ const intentDead = (txHash: string) =>
  *   processed landed row or a retained fold (a journal built on a dead
  *   journal's block is dead with it);
  * - another processed or folded block took the slot after its base;
- * - it is signed and its commit's intent was pruned, which happens only
- *   once the intent was terminal for k blocks, or S6 derives that commit
- *   dead (`isDeadStatus`) at the follower's view.
+ * - it is signed and S6 derives its commit dead (`isDeadStatus`) at the
+ *   follower's view, or its commit's intent was pruned while the follower's
+ *   facts hold no live queue node of its header. The follower prunes an
+ *   intent once it was terminal for k blocks, which a landing is too; what
+ *   keeps the intent of an own block that landed but is not processed yet
+ *   is the landed frontier's floor on that prune (`prune-floor.ts`), which
+ *   holds the facts back to where the frontier's header entered the queue.
+ *   With the frontier's header outside the facts the floor sets none, so
+ *   the live queue node is checked here too.
  *
  * Callers inside a follower-gated write compute it once in that
  * transaction and pass its headers to every SQL reader there.
@@ -171,7 +208,8 @@ export const deadJournals: Effect.Effect<
     intents: boolean;
   }>`SELECT to_regclass('l1_blocks') IS NOT NULL AS blocks,
     to_regclass('l1_follower_cursor') IS NOT NULL AS cursor,
-    to_regclass('l1_intents') IS NOT NULL AS intents`;
+    to_regclass('l1_intents') IS NOT NULL
+      AND to_regclass('l1_output_assets') IS NOT NULL AS intents`;
   const missing = [
     ...(tables?.blocks === true ? [] : ["l1_blocks"]),
     ...(tables?.cursor === true ? [] : ["l1_follower_cursor"]),
@@ -181,7 +219,8 @@ export const deadJournals: Effect.Effect<
     tables?.intents === true
       ? sql`(p.intended_tx_hash IS NOT NULL AND NOT EXISTS (
           SELECT 1 FROM l1_intents intent
-          WHERE intent.tx_hash = p.intended_tx_hash))`
+          WHERE intent.tx_hash = p.intended_tx_hash)
+        AND NOT ${liveQueueNodeHeader(sql, "p.header_hash")})`
       : sql`FALSE`;
   const rows = yield* sql<{
     header_hash: Buffer;

@@ -69,28 +69,6 @@ export type OwnJournalDisposition = Readonly<{
   held?: DriverHold;
 }>;
 
-/** SQL condition: the dead journal aliased `p` has an effect pending. */
-const effectPending = (
-  sql: SqlClient.SqlClient,
-  dead: PendingBlockFinalizationsDB.DeadHeaders,
-) => sql`(EXISTS (
-    SELECT 1 FROM pending_block_finalization_withdrawals member
-    JOIN withdrawal_utxos d ON d.event_id = member.member_id
-    WHERE member.header_hash = p.header_hash
-      AND d.status = 'projected' AND d.projected_header_hash IS NULL
-      AND d.classification_revision = member.classification_revision
-      AND NOT EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals other
-        WHERE other.member_id = member.member_id
-          AND other.header_hash <> member.header_hash
-          AND NOT ${Journals.deadHeader(sql, "other.header_hash", dead)}))
-  OR EXISTS (SELECT 1 FROM mempool WHERE mempool.included_by = p.header_hash)
-  OR EXISTS (SELECT 1 FROM processed_mempool processed
-    WHERE processed.included_by = p.header_hash)
-  OR EXISTS (SELECT 1 FROM blocks WHERE blocks.header_hash = p.header_hash)
-  OR EXISTS (SELECT 1 FROM state_queue_mutation_leases lease
-    WHERE lease.token = p.state_queue_lease_token
-      AND lease.status = 'active'))`;
-
 /** The dead journals and those the rebase disposes of. */
 export const ownJournalDisposition = Effect.gen(function* () {
   const dead = yield* Journals.deadJournals;
@@ -117,7 +95,7 @@ export const ownJournalDisposition = Effect.gen(function* () {
     intended_tx_hash: Buffer | null;
     pending: boolean;
   }>`SELECT p.header_hash, p.intended_tx_hash,
-      ${effectPending(sql, headers)} AS pending
+      ${Journals.deadEffectPending(sql, headers)} AS pending
     FROM pending_block_finalizations p
     WHERE ${Journals.deadHeader(sql, "p.header_hash", headers)}
     ORDER BY p.created_at, p.header_hash`;

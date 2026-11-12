@@ -52,6 +52,7 @@ export {
 export { validateForcedTransactionJournalMembers } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 export {
   appliedOrFolded,
+  deadEffectPending,
   deadHeader,
   type DeadHeaders,
   deadHeadersOf,

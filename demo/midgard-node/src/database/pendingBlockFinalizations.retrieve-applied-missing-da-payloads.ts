@@ -16,6 +16,7 @@ import {
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import {
   appliedOrFolded,
+  deadEffectPending,
   deadHeader,
   type DeadHeaders,
   deadHeadersOf,
@@ -223,15 +224,21 @@ export const withdrawalMemberToAssignment = (
  * Deletes folded journals whose block ended before `challengeableCutoff`,
  * `batchLimit` rows per statement until a batch comes up short, `maxBatches`
  * ran, or the clock passes `deadlineMs`; each journal's member rows go with it
- * by cascade. Never removed: any journal not folded (an unlanded one may
- * still land, and a dead one is kept as the record of its disposal), the
- * newest applied or folded journal (the local block boundary), any journal
+ * by cascade. A dead journal (`deadJournals`, read in the batch's gated
+ * transaction) goes too, whatever its age, once its signed commit's intent
+ * row is gone, no disposal effect is pending
+ * (`deadEffectPending`) and its header is not challenge-relevant: its block
+ * can no longer land and nothing is left to undo. Never removed: any other
+ * journal not folded (an unlanded one that is not dead may still land, a
+ * dead one whose intent row or an effect is left is kept until neither is,
+ * and an unsigned one is the commit tick's to discard),
+ * the newest applied or folded journal (the local block boundary), any journal
  * whose header is still challenge-relevant (`challengeRelevantHeader`: the
  * confirmed head, a live queue header, or a header DA retention holds for
  * finality: live in the follower's facts, or merged or removed by a landed
  * tx that is not final yet, so a landed merge keeps its journal until it is
- * final at k), and any journal with an orphaned event member
- * (`orphanMemberJournal`). Recovery dependencies are also kept: the bases,
+ * final at k), and any folded journal with an orphaned event member
+ * (`orphanMemberJournal`). Folded recovery dependencies are also kept: the bases,
  * same-base siblings and descendants of journals not applied or folded, and
  * every retained native recovery plan's primary/member headers. Each batch
  * is its own gated write, so it needs the follower write gate and holds it
@@ -260,15 +267,27 @@ export const pruneFoldedBeyondChallengeability = ({
     deadlineMs,
     batch: (limit) =>
       Effect.gen(function* () {
+        const dead = deadHeadersOf(yield* deadJournals);
         const sql = yield* SqlClient.SqlClient;
+        // Without the intent journal's table no intent can be read gone.
+        const [intents] = yield* sql<{ present: boolean }>`SELECT
+          to_regclass('l1_intents') IS NOT NULL AS present`;
+        const spentDead =
+          dead.length === 0 || intents?.present !== true
+            ? sql`FALSE`
+            : sql`(${deadHeader(sql, `p.${Columns.HEADER_HASH}`, dead)}
+              AND p.${sql(Columns.INTENDED_TX_HASH)} IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM l1_intents intent
+                WHERE intent.tx_hash = p.${sql(Columns.INTENDED_TX_HASH)})
+              AND NOT ${deadEffectPending(sql, dead)})`;
         const rows = yield* sql<{ header_hash: Buffer }>`DELETE FROM ${sql(
           tableName,
         )}
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT p.${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)} p
-          WHERE p.${sql(Columns.BLOCK_TIME)} < ${challengeableCutoff}
+          WHERE NOT ${challengeRelevantHeader(sql, `p.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
+            AND (${spentDead} OR (p.${sql(Columns.BLOCK_TIME)} < ${challengeableCutoff}
             AND ${ownBlockStatusSql(sql, "p")} = 'folded'
-            AND NOT ${challengeRelevantHeader(sql, `p.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
             AND NOT ${recoveryRelevantJournal(sql, `p.${Columns.HEADER_HASH}`)}
             AND NOT ${orphanMemberJournal(sql, `p.${Columns.HEADER_HASH}`)}
             AND p.${sql(Columns.HEADER_HASH)} <> (
@@ -278,7 +297,7 @@ export const pruneFoldedBeyondChallengeability = ({
               WHERE ${appliedOrFolded(sql, "newest")}
               ORDER BY newest.${sql(Columns.BLOCK_END_TIME)} DESC,
                 newest.${sql(Columns.CREATED_AT)} DESC
-              LIMIT 1)
+              LIMIT 1)))
           ORDER BY p.${sql(Columns.BLOCK_END_TIME)} ASC
           LIMIT ${limit})
         RETURNING ${sql(Columns.HEADER_HASH)}`;
