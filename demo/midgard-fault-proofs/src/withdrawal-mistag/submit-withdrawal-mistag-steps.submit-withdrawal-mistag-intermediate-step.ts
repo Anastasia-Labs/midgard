@@ -11,16 +11,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { structuredDataPublicationPlan } from "../workflow/structured-data-preimage.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawalMistagContracts } from "./contracts.js";
@@ -148,28 +144,22 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     });
   }) satisfies BuildTxWithRedeemer;
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const funding = await fundStep(lucid, { signer });
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(references)
     .pay.ToContract(
       contracts.steps[stepIndex + 1].spendingScriptAddress,
       { kind: "inline", value: nextDatum },
       threadUtxo.assets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await base.complete({ localUPLCEval: true });
+    );
+  const signed = await completeStep(base, funding);
   if (resolved === undefined) {
     throw withdrawalMistagError(
       "transaction builder did not resolve step layout",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -181,15 +171,8 @@ export const submitWithdrawalMistagIntermediateStep = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawalMistagError(
-      `${withdrawalMistagStepLabel(stepIndex)} provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     threadOutRef,

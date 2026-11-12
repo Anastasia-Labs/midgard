@@ -20,11 +20,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -32,7 +29,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawalMistagContracts } from "./contracts.js";
@@ -93,8 +89,7 @@ export const submitWithdrawalMistagStep05 = async ({
     throw withdrawalMistagError("honestly tagged withdrawal cannot finalize");
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -193,9 +188,7 @@ export const submitWithdrawalMistagStep05 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudMintRedeemer)
@@ -203,20 +196,17 @@ export const submitWithdrawalMistagStep05 = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       { lovelace: threadUtxo.assets.lovelace ?? 0n, [fraudProofUnit]: 1n },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(base.readFrom(referenceInputs)),
   );
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (layout === undefined || threadMintIndex === undefined) {
     throw withdrawalMistagError(
       "transaction builder did not resolve final layout",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -238,15 +228,8 @@ export const submitWithdrawalMistagStep05 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawalMistagError(
-      `step 05 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     threadOutRef,
