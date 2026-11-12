@@ -66,17 +66,16 @@ import {
 import { resolveRegisteredOperatorRemovalWitness } from "./remove-fraudulent-block.resolve-registered-operator-removal-witness.js";
 import { buildSlashingInputs } from "./remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   outRefLabel,
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "./runtime.js";
+import { submitStep } from "./step-completion.js";
 import { selectFeeInput } from "./step-support.js";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "./workflow/release-economics-policy.js";
 import {
   CapturedLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
   workflowTransactionInputOutRefs,
 } from "./workflow/transaction-boundary.js";
@@ -581,8 +580,8 @@ export const submitRemoveFraudulentBlock = async ({
       );
       readFraudSlashFundingAuthority(signed);
     }
-    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-      signed,
+    const txHash = await submitStep(lucid, signed, {
+      label: "remove-fraudulent-block",
       referenceScripts: workflowReferenceScriptsUsedByTransaction({
         signed,
         candidates: [
@@ -628,18 +627,14 @@ export const submitRemoveFraudulentBlock = async ({
           },
         ],
       }),
-      boundary: preSubmitBoundary,
+      // The slash must reach the network exactly as it was evaluated, so the
+      // check runs after the workflow boundary and before submission.
+      boundary: async (transaction) => {
+        await preSubmitBoundary?.(transaction);
+        readFraudSlashFundingAuthority(signed);
+      },
+      awaitConfirmation,
     });
-    readFraudSlashFundingAuthority(signed);
-    const txHash = await signed.submit();
-    if (txHash !== expectedTxHash) {
-      throw new Error(
-        `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-      );
-    }
-    if (awaitConfirmation) {
-      await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-    }
     await stateQueueMutationLease?.renew();
     return {
       kind,
