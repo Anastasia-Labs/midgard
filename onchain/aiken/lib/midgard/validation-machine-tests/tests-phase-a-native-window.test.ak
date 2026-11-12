@@ -26,6 +26,7 @@ use midgard/validation_machine/machine_types as mt
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/phase_a_native_scripts as pans
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{test_l1_slot_config, zero}
 use midgard/validation_machine_tests/fixtures_native_execution.{
   LateWalk, inline_one, inline_zero, late_walk, late_walk_keyed, reference,
@@ -489,7 +490,13 @@ fn end_state(payload: ByteArray, stage: Int) -> ScanState {
   scan_state(payload, stage, length, frame(2, 1), 5, -1, 3)
 }
 
-fn chunk_hashes(item: ByteArray, index: Int, count: Int) -> List<ByteArray> {
+fn chunk_hashes(
+  field_index: Int,
+  item_index: Int,
+  item: ByteArray,
+  index: Int,
+  count: Int,
+) -> List<ByteArray> {
   if index >= count {
     []
   } else {
@@ -500,12 +507,12 @@ fn chunk_hashes(item: ByteArray, index: Int, count: Int) -> List<ByteArray> {
     )
     [
       bounded_item_v1.hash_chunk(
-        6,
-        0,
+        field_index,
+        item_index,
         index,
         bytearray.slice(item, offset, offset + length - 1),
       ),
-      ..chunk_hashes(item, index + 1, count)
+      ..chunk_hashes(field_index, item_index, item, index + 1, count)
     ]
   }
 }
@@ -513,15 +520,25 @@ fn chunk_hashes(item: ByteArray, index: Int, count: Int) -> List<ByteArray> {
 /// The genuine proof of the last chunk of the single field-6 item `item`, of
 /// at most three chunks.
 fn last_chunk_proof(item: ByteArray) -> bounded_item_v1.ChunkProofV1 {
+  last_chunk_proof_at(6, 0, item)
+}
+
+/// The genuine proof of the last chunk of `item` as item `item_index` of
+/// field `field_index`, of at most three chunks.
+fn last_chunk_proof_at(
+  field_index: Int,
+  item_index: Int,
+  item: ByteArray,
+) -> bounded_item_v1.ChunkProofV1 {
   let length = bytearray.length(item)
   let count = bounded_item_v1.chunk_count(length)
   expect count <= 3
-  let hashes = chunk_hashes(item, 0, count)
+  let hashes = chunk_hashes(field_index, item_index, item, 0, count)
   let last = count - 1
   bounded_item_v1.ChunkProofV1 {
     version: bounded_item_v1.version,
-    field_index: 6,
-    item_index: 0,
+    field_index,
+    item_index,
     total_length: length,
     chunk_index: last,
     chunk: bytearray.drop(item, last * bounded_item_v1.chunk_bytes),
@@ -861,4 +878,127 @@ test aligned_items_have_their_lengths_and_genuine_last_chunks() {
           }
         },
       )
+}
+
+// ---------------------------------------------------------------------------
+// End of item in execution mode
+//
+// A late continuation walks an execution's native source in the same window,
+// so an aligned end of item opens no chunk there either. Its reject names the
+// carried purpose key.
+// ---------------------------------------------------------------------------
+
+/// `all` declaring one child more than the `n + 2` timelocks it holds. With
+/// `n = 1359` the item is 4095 bytes, with `n = 2724` it is 8190.
+fn timelock_payload(n: Int) -> ByteArray {
+  #"820199"
+    |> bytearray.concat(bytearray.from_int_big_endian(n + 3, 2))
+    |> bytearray.concat(repeat(#"82041818", 2))
+    |> bytearray.concat(repeat(#"820400", n))
+}
+
+/// The execution-mode token head at the end of `payload`'s item, read as the
+/// script of reference output 3 under the mint purpose key, one frame deep.
+fn late_aligned_end_of_item_is_rejected(payload: ByteArray, length: Int) -> Bool {
+  let walk = late_walk_keyed(reference, keyed_kind, keyed_index)
+  let c = vm_witness.phase_a_native_control_from_witness(walk.entry_cbor)
+  let item = item_of(payload)
+  let work = vm_witness.encode_phase_a_native_scripts_scan_witness(
+    c.compact_cbor,
+    c.witness_set_compact_cbor,
+    c.field_preimage_lengths_cbor,
+    c.context_cbor,
+    c.resolution_schedule_hash,
+    1,
+    c.script_count,
+    c.script_seen,
+    c.contains_non_native_script,
+    length,
+    bounded_item_v1.from_bytes(2, 3, item),
+    length,
+    native_script_scan_v1.hash_frame_v1(frame(n_children(length), 1)),
+    1,
+    n_children(length),
+    -1,
+    c.signer_count,
+    c.signer_peaks,
+    c.continuation_cbor,
+    c.purpose_kind,
+    c.purpose_index,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..walk.entry_pre,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseANativeScripts,
+      walk.entry_pre.program_counter,
+      work,
+    ),
+  }
+  let last = last_chunk_proof_at(2, 3, item)
+  let admits = fn(successor) {
+    let transition = mt.ValidationOneStepWitnessV1 {
+      work_witness_cbor: work,
+      claimed_successor: successor,
+    }
+    let monolith = pans.verify_phase_a_native_scripts_scan(
+      pre,
+      transition,
+      mt.NativeScriptTokenWitness {
+        chunk_proof: last,
+        next_chunk_proof: None,
+        signer_proof: mt.NoSignerSetProof,
+      },
+      inline_field_door(),
+    )
+    let split = pans.verify_phase_a_native_token_head_semantics_v1(
+      pre,
+      transition,
+      last,
+      None,
+    )
+    expect monolith == split
+    monolith
+  }
+  and {
+    bytearray.length(item) == length,
+    c.continuation_cbor != #"",
+    bounded_item_v1.verify_chunk(bounded_item_v1.from_bytes(2, 3, item), last),
+    admits(
+      exact_rejection_post(
+        pre,
+        ExecutionNativeScriptMalformed {
+          purpose_kind: keyed_kind,
+          purpose_index: keyed_index,
+        },
+      ),
+    ),
+    !admits(
+      exact_rejection_post(
+        pre,
+        ExecutionNativeScriptMalformed {
+          purpose_kind: keyed_kind,
+          purpose_index: keyed_index + 1,
+        },
+      ),
+    ),
+    !admits(
+      exact_rejection_post(
+        pre,
+        WitnessNativeScriptMalformed { script_index: 0 },
+      ),
+    ),
+  }
+}
+
+/// The node count at the end of a `timelock_payload` item `length` bytes long:
+/// the `all` and every timelock it holds.
+fn n_children(length: Int) -> Int {
+  ( length - 18 ) / 3 + 3
+}
+
+test late_aligned_end_of_item_rejects_at_the_carried_purpose_key() {
+  and {
+    late_aligned_end_of_item_is_rejected(timelock_payload(1359), 4095),
+    late_aligned_end_of_item_is_rejected(timelock_payload(2724), 8190),
+  }
 }

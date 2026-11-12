@@ -402,12 +402,12 @@ export const buildPreparedValidationTransaction = (
  * later, where a transaction exists.
  */
 export const preparedFieldPreimage = (
-  prepared: PreparedValidationTransaction,
+  prepared: Pick<PreparedValidationTransaction, "fieldPreimages">,
   fieldIndex: number,
 ): Buffer => Buffer.from(prepared.fieldPreimages[fieldIndex]!.preimageCbor);
 
 export const preparedSignerMembership = (
-  prepared: PreparedValidationTransaction,
+  prepared: Pick<PreparedValidationTransaction, "signerLeafHashes">,
   signerIndex: number,
 ) =>
   buildMidgardValidationMerkleMembership(
@@ -417,7 +417,10 @@ export const preparedSignerMembership = (
 
 /** The signer set's proof that `signerHash` is in it, or where it would be. */
 export const preparedSignerProof = (
-  prepared: PreparedValidationTransaction,
+  prepared: Pick<
+    PreparedValidationTransaction,
+    "canonicalSignerHashes" | "signerFrontier" | "signerLeafHashes"
+  >,
   signerHash: Buffer,
 ): ValidationMachineSignerSetProof => {
   const { canonicalSignerHashes, signerFrontier: frontier } = prepared;

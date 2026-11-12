@@ -2,7 +2,6 @@ import {
   appendMidgardValidationMerkleLeaf,
   attachMidgardLedgerOutputProofFacts,
   buildMidgardBlake2b224Trace,
-  buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerDataUnreadableTrace,
@@ -25,7 +24,6 @@ import {
   hashMidgardSignerLeaf,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  midgardBlake2b,
   type MidgardBlake2b224TraceControl,
   MidgardBlake2b224TraceStages,
   midgardBoundedItemChunkCount,
@@ -42,9 +40,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
-  decodeSingleCbor,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -72,7 +68,6 @@ import {
 import { canonicalOrderedItemEncodedLength } from "./canonical-field-order.js";
 import {
   encodeScriptDiscoveryControlCbor,
-  encodeValidationControlList,
   encodeValidationFrontierPeaks,
   type ScriptDiscoveryTraceControl,
 } from "./control-encoding.js";
@@ -83,17 +78,13 @@ import {
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 import {
-  hashValidationMachineNativeScriptFrame,
-  MAX_NATIVE_SCRIPT_SCAN_DEPTH,
-  MAX_NATIVE_SCRIPT_SCAN_NODES,
-  readValidationMachineNativeScriptPayload,
-  readValidationMachineNativeScriptTokenHead,
   readValidationMachineVersionedScriptHeader,
-  type ValidationMachineNativeScriptFrame,
-  type ValidationMachineNativeScriptToken,
-  type ValidationMachineNativeScriptTokenHead,
   type ValidationMachineVersionedScriptHeader,
 } from "./native-script-frame.js";
+import {
+  phaseANativeScriptsScanWitnessCbor,
+  scanNativeScriptItem,
+} from "./native-script-scan.js";
 import {
   preparedFieldPreimage,
   preparedSignerProof,
@@ -116,83 +107,6 @@ import {
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
-/** `source` as the bounded item of its origin field, checked against the
- * descriptor facts it was authenticated with. */
-export const boundedItemForScriptSource = (source: ScriptSourceProofEntry) => {
-  // The two origin kinds carry two different keys, and each has exactly one
-  // decoder. An inline key is a bare canonical CBOR index; a reference key
-  // *is* the ledger out-ref, i.e. §5.3's fixed-index 38-byte item, whose
-  // `19 0000` head a minimal-CBOR reader rejects — so it goes through the
-  // §5.3 twin, never `decodeSingleCbor`. See `docs/spec/midgard-tx.md` §5.3.
-  const itemIndexValue =
-    source.originKind === "inline"
-      ? decodeSingleCbor(source.sourceKey)
-      : decodeMidgardSpendInputItem(source.sourceKey).outputIndex;
-  const itemIndex =
-    typeof itemIndexValue === "number"
-      ? itemIndexValue
-      : typeof itemIndexValue === "bigint" &&
-          itemIndexValue <= BigInt(Number.MAX_SAFE_INTEGER)
-        ? Number(itemIndexValue)
-        : -1;
-  if (!Number.isSafeInteger(itemIndex) || itemIndex < 0) {
-    throw new Error("V1 script source has a noncanonical item index");
-  }
-  const item = buildMidgardBoundedItem({
-    fieldIndex:
-      source.originKind === "inline" ? MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX : 2,
-    itemIndex,
-    bytes: source.authenticatedVersionedItemBytes,
-  });
-  if (
-    item.bytes.length !== source.scriptTotalLength ||
-    !item.commitment.equals(source.scriptItemCommitment)
-  ) {
-    throw new Error(
-      "V1 script source bytes disagree with authenticated descriptor facts",
-    );
-  }
-  return item;
-};
-
-/** The NativeScripts scan witness at `control`; a late execution scan
- * passes its NativeScripts continuation. */
-export const phaseANativeScriptsScanWitnessCbor = (
-  {
-    proofSource,
-    contextCbor,
-    resolutionScheduleHash,
-    signerFrontier,
-  }: PreparedValidationTransaction,
-  control: PhaseANativeScriptsScanControl,
-  continuationCbor: Buffer = Buffer.alloc(0),
-): Buffer =>
-  encodeValidationControlList([
-    proofSource.compactCbor,
-    proofSource.witnessSetCompactCbor,
-    proofSource.fieldPreimageLengthsCbor,
-    contextCbor,
-    // A late execution scan binds its NativeScripts continuation here.
-    continuationCbor.length === 0
-      ? resolutionScheduleHash
-      : Buffer.from(midgardBlake2b(continuationCbor, { dkLen: 32 })),
-    BigInt(control.stage),
-    BigInt(control.scriptCount),
-    BigInt(control.scriptSeen),
-    BigInt(control.containsNonNativeScript),
-    BigInt(control.itemLength),
-    control.itemCommitment,
-    BigInt(control.cursor),
-    control.stackRoot,
-    BigInt(control.stackDepth),
-    BigInt(control.nodeCount),
-    BigInt(control.result),
-    BigInt(signerFrontier.count),
-    [encodeValidationFrontierPeaks(signerFrontier), continuationCbor],
-    control.purposeKind,
-    control.purposeIndex,
-  ]);
-
 export const prepareValidationTrace = (
   prepared: PreparedValidationTransaction,
   walk: TraceWalk,
@@ -205,7 +119,6 @@ export const prepareValidationTrace = (
       ledgerState,
       ledgerDescriptorState,
       proofSource,
-      compactProofTransaction,
       fieldPreimages,
       spendInputsCollection,
       referenceInputsCollection,
@@ -926,7 +839,6 @@ export const prepareValidationTrace = (
     let phaseANativeControl = initialPhaseANativeScriptsScanControl;
     yield* walk.phase("phaseANativeScripts", () =>
       Effect.sync(() => {
-        const nativeScriptFrames: ValidationMachineNativeScriptFrame[] = [];
         const phaseANativeFault = (): string =>
           `bounded native-script scan stopped at stage=${phaseANativeControl.stage},cursor=${phaseANativeControl.cursor}`;
         const pushPhaseANativeWitness = (
@@ -979,279 +891,22 @@ export const prepareValidationTrace = (
               continue;
             }
 
-            phaseANativeControl = {
+            const scan = scanNativeScriptItem(prepared, pushWitness, item, {
               ...phaseANativeControl,
               stage: 1,
               scriptCount: activeScriptCount,
               itemLength: item.bytes.length,
               itemCommitment: item.commitment,
               cursor: header.payloadOffset,
-            };
-            for (;;) {
-              if (phaseANativeControl.stage === 1) {
-                const chunkCount = midgardBoundedItemChunkCount(
-                  item.bytes.length,
-                );
-                // An exhausted cursor authenticates an empty parser window on
-                // chain. Carry the real last chunk; there is no chunk after it.
-                const chunkIndex =
-                  phaseANativeControl.cursor === item.bytes.length
-                    ? chunkCount - 1
-                    : Math.floor(
-                        phaseANativeControl.cursor /
-                          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-                      );
-                let head: ValidationMachineNativeScriptTokenHead | null = null;
-                try {
-                  head = readValidationMachineNativeScriptTokenHead(
-                    item.bytes,
-                    phaseANativeControl.cursor,
-                  );
-                } catch {
-                  // The authenticated token witness still proves the exact
-                  // malformed bytes to the one-step resolver.
-                }
-                pushPhaseANativeWitness({
-                  kind: "nativeScriptToken",
-                  chunkProof: buildMidgardBoundedItemChunkProof(
-                    item,
-                    chunkIndex,
-                  ),
-                  nextChunkProof:
-                    chunkIndex + 1 < chunkCount
-                      ? buildMidgardBoundedItemChunkProof(item, chunkIndex + 1)
-                      : null,
-                  signerProof: { kind: "none" },
-                });
-                if (head === null) {
-                  return phaseStops(
-                    {
-                      WitnessNativeScriptMalformed: {
-                        script_index: BigInt(phaseANativeControl.scriptSeen),
-                      },
-                    },
-                    phaseANativeFault(),
-                  );
-                }
-
-                const nextNodeCount = phaseANativeControl.nodeCount + 1;
-                if (nextNodeCount > MAX_NATIVE_SCRIPT_SCAN_NODES) {
-                  return phaseStops(
-                    {
-                      WitnessNativeScriptNodeLimit: {
-                        script_index: BigInt(phaseANativeControl.scriptSeen),
-                      },
-                    },
-                    phaseANativeFault(),
-                  );
-                }
-
-                phaseANativeControl = {
-                  ...phaseANativeControl,
-                  stage: (head.kind + 3) as 3 | 4 | 5 | 6 | 7 | 8,
-                  cursor: head.payloadOffset,
-                  nodeCount: nextNodeCount,
-                };
-                continue;
-              }
-
-              if (phaseANativeControl.stage >= 3) {
-                const kind = (phaseANativeControl.stage - 3) as
-                  | 0
-                  | 1
-                  | 2
-                  | 3
-                  | 4
-                  | 5;
-                const chunkCount = midgardBoundedItemChunkCount(
-                  item.bytes.length,
-                );
-                // An exhausted cursor authenticates an empty parser window on
-                // chain. Carry the real last chunk; there is no chunk after it.
-                const chunkIndex =
-                  phaseANativeControl.cursor === item.bytes.length
-                    ? chunkCount - 1
-                    : Math.floor(
-                        phaseANativeControl.cursor /
-                          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-                      );
-                let token: ValidationMachineNativeScriptToken | null = null;
-                let payloadParseFailure = "none";
-                try {
-                  token = readValidationMachineNativeScriptPayload(
-                    item.bytes,
-                    phaseANativeControl.cursor,
-                    kind,
-                  );
-                } catch (cause) {
-                  payloadParseFailure = String(cause);
-                  // The authenticated payload witness proves the exact
-                  // malformed bytes to the selected one-step resolver.
-                }
-                const signerProof =
-                  token?.kind === 0
-                    ? signerProofForHash(token.keyHash)
-                    : ({ kind: "none" } as const);
-                pushPhaseANativeWitness({
-                  kind: "nativeScriptToken",
-                  chunkProof: buildMidgardBoundedItemChunkProof(
-                    item,
-                    chunkIndex,
-                  ),
-                  nextChunkProof:
-                    chunkIndex + 1 < chunkCount
-                      ? buildMidgardBoundedItemChunkProof(item, chunkIndex + 1)
-                      : null,
-                  signerProof,
-                });
-                if (token === null) {
-                  return phaseStops(
-                    {
-                      WitnessNativeScriptMalformed: {
-                        script_index: BigInt(phaseANativeControl.scriptSeen),
-                      },
-                    },
-                    `bounded native-script payload failed at stage=${phaseANativeControl.stage},cursor=${phaseANativeControl.cursor},bytes=${item.bytes.subarray(phaseANativeControl.cursor).toString("hex")}: ${payloadParseFailure}`,
-                  );
-                }
-
-                if (
-                  token.kind >= 1 &&
-                  token.kind <= 3 &&
-                  token.childCount > 0
-                ) {
-                  const nextDepth = phaseANativeControl.stackDepth + 1;
-                  if (nextDepth > MAX_NATIVE_SCRIPT_SCAN_DEPTH) {
-                    return phaseStops(
-                      {
-                        WitnessNativeScriptDepthLimit: {
-                          script_index: BigInt(phaseANativeControl.scriptSeen),
-                        },
-                      },
-                      phaseANativeFault(),
-                    );
-                  }
-                  const frame: ValidationMachineNativeScriptFrame = {
-                    tail: phaseANativeControl.stackRoot,
-                    kind: token.kind as 1 | 2 | 3,
-                    childCount: token.childCount,
-                    remaining: token.childCount,
-                    validCount: 0,
-                    required: token.required,
-                  };
-                  nativeScriptFrames.push(frame);
-                  phaseANativeControl = {
-                    ...phaseANativeControl,
-                    stage: 1,
-                    cursor: token.nextOffset,
-                    stackRoot: hashValidationMachineNativeScriptFrame(frame),
-                    stackDepth: nextDepth,
-                  };
-                  continue;
-                }
-
-                let valid: boolean;
-                if (token.kind === 0) {
-                  valid = signerProof.kind === "membership";
-                } else if (token.kind === 4) {
-                  valid =
-                    compactProofTransaction.transactionBody
-                      .validityIntervalStart >= 0n &&
-                    compactProofTransaction.transactionBody
-                      .validityIntervalStart >= token.slot;
-                } else if (token.kind === 5) {
-                  valid =
-                    compactProofTransaction.transactionBody
-                      .validityIntervalEnd >= 0n &&
-                    compactProofTransaction.transactionBody
-                      .validityIntervalEnd <= token.slot;
-                } else if (token.kind === 1) {
-                  valid = true;
-                } else if (token.kind === 2) {
-                  valid = false;
-                } else {
-                  valid = token.required === 0n;
-                }
-                phaseANativeControl = {
-                  ...phaseANativeControl,
-                  stage: 2,
-                  cursor: token.nextOffset,
-                  result: valid ? 1 : 0,
-                };
-                continue;
-              }
-
-              const frame = nativeScriptFrames[nativeScriptFrames.length - 1];
-              if (frame !== undefined) {
-                pushPhaseANativeWitness({
-                  kind: "nativeScriptFrame",
-                  frame,
-                });
-                const validCount =
-                  frame.validCount + (phaseANativeControl.result === 1 ? 1 : 0);
-                if (frame.remaining === 1) {
-                  nativeScriptFrames.pop();
-                  const valid =
-                    frame.kind === 1
-                      ? validCount === frame.childCount
-                      : frame.kind === 2
-                        ? validCount > 0
-                        : BigInt(validCount) >= frame.required;
-                  phaseANativeControl = {
-                    ...phaseANativeControl,
-                    stackRoot: frame.tail,
-                    stackDepth: phaseANativeControl.stackDepth - 1,
-                    result: valid ? 1 : 0,
-                  };
-                } else {
-                  const nextFrame: ValidationMachineNativeScriptFrame = {
-                    ...frame,
-                    remaining: frame.remaining - 1,
-                    validCount,
-                  };
-                  nativeScriptFrames[nativeScriptFrames.length - 1] = nextFrame;
-                  phaseANativeControl = {
-                    ...phaseANativeControl,
-                    stage: 1,
-                    stackRoot:
-                      hashValidationMachineNativeScriptFrame(nextFrame),
-                    result: -1,
-                  };
-                }
-                continue;
-              }
-
-              pushPhaseANativeWitness();
-              if (
-                phaseANativeControl.cursor !== phaseANativeControl.itemLength
-              ) {
-                return phaseStops(
-                  {
-                    WitnessNativeScriptMalformed: {
-                      script_index: BigInt(phaseANativeControl.scriptSeen),
-                    },
-                  },
-                  phaseANativeFault(),
-                );
-              }
-              if (phaseANativeControl.result === 0) {
-                return phaseStops(
-                  {
-                    WitnessNativeScriptFalse: {
-                      script_index: BigInt(phaseANativeControl.scriptSeen),
-                    },
-                  },
-                  phaseANativeFault(),
-                );
-              }
-              phaseANativeControl = resetPhaseANativeScriptsScanControl({
-                scriptCount: activeScriptCount,
-                scriptSeen: phaseANativeControl.scriptSeen + 1,
-                containsNonNativeScript:
-                  phaseANativeControl.containsNonNativeScript,
-              });
-              break;
-            }
+            });
+            phaseANativeControl = scan.control;
+            if (scan.stop !== null) return scan.stop;
+            phaseANativeControl = resetPhaseANativeScriptsScanControl({
+              scriptCount: activeScriptCount,
+              scriptSeen: phaseANativeControl.scriptSeen + 1,
+              containsNonNativeScript:
+                phaseANativeControl.containsNonNativeScript,
+            });
           }
         }
         return phaseContinues;
