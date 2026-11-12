@@ -152,8 +152,10 @@ export const defineDirectWalkFamily = <
     const role = directWalkRoleAt(walk, step);
     return role === "step01" || role === "terminal" ? null : role;
   };
-  /** The carriage of `field` ahead of any action whose role opens it. */
+  /** The carriage of `field` ahead of any action whose role opens it; the
+   * entry names its field. */
   const fieldCarriage = (field: number) => ({
+    field,
     requirementForAction: async (
       context: Context,
       input: LinearFamilyPrerequisiteInput,

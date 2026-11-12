@@ -12,9 +12,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   createDirectWalkTransactionPort,
+  DIRECT_PURPOSE_FIELDS,
+  type DirectPurposePlannedArtifact,
   type DirectPurposeReplay,
+  type DirectPurposeRole,
+  directPurposeStep01Datum,
   type DirectWalkFamily,
+  type DirectWalkPortConfig,
   type DirectWalkProof,
+  planDirectPurposeArtifact,
 } from "../src/direct-purpose-family/index.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
@@ -101,7 +107,46 @@ type Case = Readonly<{
   drive: () => ReturnType<typeof driveDirectWalkLifecycle>;
 }>;
 
-/** A family's cases, each driving the port its walk declares. */
+/**
+ * The fields a page opens past its page-start role's: following the plan
+ * from step 01's datum, every page the port fits at a page start must open
+ * only fields its role's transitions open (`fieldsOf`), since the carriage
+ * prerequisite publishes a field ahead of an action by that role alone while
+ * the port resolves the carriage of the whole page.
+ */
+const uncarriedPageFields = async (
+  roleOrder: readonly DirectPurposeRole[],
+  planned: Readonly<{
+    prover: string;
+    plan: () => Promise<
+      DirectPurposePlannedArtifact<DirectPurposeReplay, DirectWalkProof>
+    >;
+  }>,
+) => {
+  const plan = await planned.plan();
+  const { paging } = plan;
+  const uncarried: string[] = [];
+  let pages = 0;
+  let role = roleOrder[1]!;
+  let datum = directPurposeStep01Datum(plan.admitted.material, planned.prover);
+  while (role !== "terminal") {
+    if (paging.isPageStart(role, datum)) {
+      pages += 1;
+      const carried = plan.fieldsOf(role);
+      for (const transition of paging.page(role, datum).transitions)
+        for (const field of transition.fields)
+          if (!carried.includes(field))
+            uncarried.push(`${role} page: ${transition.role} opens ${field}`);
+    }
+    const next = paging.transitionAt(role, datum);
+    role = next.next;
+    datum = next.datum;
+  }
+  return { pages, uncarried };
+};
+
+/** A family's cases, each driving the port its walk declares and checking
+ * the carriage of every page of the plan the port drove. */
 const familyCases = <
   Category extends DirectWalkCategory,
   StepCount extends number,
@@ -111,17 +156,48 @@ const familyCases = <
   walk: DirectWalkFamily<Category, StepCount, Prepared, Proof>,
   scenes: Readonly<Record<string, () => Promise<DirectWalkScene>>>,
 ): readonly Case[] => {
+  let planned: Parameters<typeof uncarriedPageFields>[1] | null = null;
   const family: DirectWalkSceneFamily<Category> = {
     label: walk.family.label,
     category: walk.spec.category,
     spec: walk.spec,
     replay: walk.replay,
     roleOrder: walk.family.roleOrder,
-    createPort: (config) => createDirectWalkTransactionPort(walk, config),
+    createPort: (config: DirectWalkPortConfig<Category, StepCount>) => {
+      const port = createDirectWalkTransactionPort(walk, config);
+      return {
+        ...port,
+        prepare: async (args) => {
+          const artifact = await port.prepare(args);
+          planned = {
+            prover: config.signer.paymentKeyHash,
+            // Planned after the lifecycle, the port's own plan, cached.
+            plan: () =>
+              planDirectPurposeArtifact(walk.artifact, {
+                artifact,
+                contracts: config.contracts,
+                prover: config.signer.paymentKeyHash,
+              }),
+          };
+          return artifact;
+        },
+      };
+    },
   };
   return Object.entries(scenes).map(([name, scene]) => ({
     name: `${family.label}: ${name}`,
-    drive: async () => await driveDirectWalkLifecycle(family, await scene()),
+    drive: async () => {
+      planned = null;
+      const actions = await driveDirectWalkLifecycle(family, await scene());
+      const { pages, uncarried } = await uncarriedPageFields(
+        walk.family.roleOrder,
+        planned!,
+      );
+      expect(uncarried).toStrictEqual([]);
+      // A walk that opens fields fits at least one page.
+      expect(pages > 0).toBe((walk.fields ?? DIRECT_PURPOSE_FIELDS).length > 0);
+      return actions;
+    },
   }));
 };
 

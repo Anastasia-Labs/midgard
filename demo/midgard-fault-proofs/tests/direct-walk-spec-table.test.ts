@@ -44,7 +44,11 @@ type Walk = Readonly<{
       spec?: unknown;
       stepContractNames?: readonly string[];
     }>;
-    fieldCarriage?: readonly unknown[];
+    /** Each entry names the field it carries. */
+    fieldCarriage?: readonly Readonly<{
+      requirementForAction: unknown;
+      field?: number;
+    }>[];
     proofChunk?: unknown;
   }>;
 }>;
@@ -213,7 +217,9 @@ describe("the direct-walk spec table", () => {
 
     it("carries one field ahead of its actions per field it opens", () => {
       expect(walk.fields ?? DIRECT_PURPOSE_FIELDS).toStrictEqual(row.fields);
-      expect(definition.fieldCarriage).toHaveLength(row.fields.length);
+      expect(definition.fieldCarriage?.map(({ field }) => field)).toStrictEqual(
+        row.fields,
+      );
     });
 
     it("publishes the step-01 proof chunk exactly when its row says so", () => {
