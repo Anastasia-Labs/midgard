@@ -27,7 +27,7 @@
  * usage: node scripts/generate-cek-core-routing-v1-goldens.mjs [--check]
  */
 
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -46,12 +46,9 @@ const generatedJsonPath = join(
   packageRoot,
   "tests/fixtures/cek-core-routing-v1.generated.json",
 );
-const aikenFileName = "cek-core-routing-golden.test.ak";
-const generatedAikenPath = join(
-  repositoryRoot,
-  "onchain/aiken/validators/fraud-proofs/validation-trace",
-  aikenFileName,
-);
+const aikenModule =
+  "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak";
+const generatedAikenPath = join(repositoryRoot, aikenModule);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-cek-core-routing-v1-goldens.mjs [--check]",
@@ -314,7 +311,7 @@ writeOrCheck(
   stripTrailingWhitespace(
     formatAikenSource({
       source: renderAiken(),
-      fileName: aikenFileName,
+      fileName: basename(aikenModule),
       repositoryRoot,
       tmpPrefix: "cek-core-routing-v1-",
     }),

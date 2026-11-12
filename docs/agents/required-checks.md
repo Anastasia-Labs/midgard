@@ -927,6 +927,7 @@ Golden channel cek-core-routing-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-routing-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-core-routing-v1.vectors.mjs`
+  - `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
