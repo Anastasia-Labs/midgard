@@ -5,18 +5,30 @@ import type { NodeConfigDep } from "../../src/services/config.node-config-dep.js
 import { TEST_ENV_DEFAULTS, testDatabaseName } from "../test-env.js";
 
 /**
- * The node's real settings parse, reading its settings from `env`.
+ * The node's real settings parse, reading its settings from `env`. Each key
+ * the parse reads, set or not, is passed to `onRead`.
  */
 export const parseNodeConfig = (
   env: Readonly<Record<string, string>>,
-): NodeConfigDep =>
-  Effect.runSync(
+  onRead: (key: string) => void = () => {},
+): NodeConfigDep => {
+  const settings = ConfigProvider.fromMap(
+    new Map(Object.entries(env)),
+  ).flattened;
+  const recording = ConfigProvider.makeFlat({
+    load: (path, primitive, split) => {
+      onRead(path.join("."));
+      return settings.load(path, primitive, split);
+    },
+    enumerateChildren: (path) => settings.enumerateChildren(path),
+    patch: settings.patch,
+  });
+  return Effect.runSync(
     makeConfig.pipe(
-      Effect.withConfigProvider(
-        ConfigProvider.fromMap(new Map(Object.entries(env))),
-      ),
+      Effect.withConfigProvider(ConfigProvider.fromFlat(recording)),
     ),
   );
+};
 
 let fixtureConfig: NodeConfigDep | undefined;
 
