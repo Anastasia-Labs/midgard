@@ -240,9 +240,12 @@ export const preparePendingSubmission = (
               cause: input.headerHash.toString("hex"),
             }),
           );
-        // One live journal at a time: the lease row is locked FOR UPDATE
-        // (`holdMutationLease`), so prepares under one lease run one after
-        // another, and a later holder's takeover waits for this write.
+        // One live journal at a time: two prepares never both pass this
+        // check. In production the follower write gate row, locked FOR
+        // UPDATE by `withFollowerWrite`, serialises them; in the fixture
+        // mode (no applied view, so the gate row is not locked) the lease
+        // row, locked FOR UPDATE by `holdMutationLease`, does. The lease
+        // lock also makes a later holder's takeover wait for this write.
         const dead = deadHeadersOf(yield* deadJournals);
         const live = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
           SELECT p.${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)} p

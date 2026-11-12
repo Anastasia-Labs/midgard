@@ -17,10 +17,14 @@
 --   with these exact bytes, or that records a submitted hash with no
 --   intended one. Its commit may still be on its way to L1, and once the
 --   signed bytes go, only the intent journal can say what became of it.
---   Locally applied and abandoned journals are exempt: they are landed or
---   dead, nothing reads their bytes again, and the follower prunes an
---   intent row once it has been terminal for k blocks, so a long-lived
---   database holds such journals with no intent row by design.
+--   Locally applied and abandoned journals are exempt: nothing reads their
+--   signed bytes again, and the follower prunes an intent row once it has
+--   been terminal for k blocks, so a long-lived database holds such journals
+--   with no intent row by design. An abandoned journal is not necessarily
+--   dead once derived: one that is unlanded and whose block can still land
+--   (its commit's intent not dead, its base still on the landed chain, see
+--   `deadJournals`) is the live journal until its commit settles, which
+--   derives it landed or dead.
 -- - MIGRATION_0037_UNRECOVERABLE_LOCAL_FINALIZATION: an unfinished (running
 --   or failed) local-finalization job that startup would have refused: its
 --   id names no header, its journal is gone, or its journal was never
@@ -136,8 +140,10 @@ DELETE FROM pending_block_finalizations p
     AND NOT EXISTS (SELECT 1 FROM node_confirmed_ledger_frontier frontier
       WHERE frontier.header_hash = p.header_hash);
 
--- One live journal at a time is held by the state-queue mutation lease
--- (`holdMutationLease`), not by an index over a stored status.
+-- One live journal at a time is held by row locks taken before the prepare's
+-- live check, not by an index over a stored status: in production the
+-- follower write gate row (`withFollowerWrite`), in the fixture mode the
+-- state-queue mutation lease row (`holdMutationLease`), both FOR UPDATE.
 DROP INDEX uniq_pending_block_finalizations_single_active;
 DROP INDEX idx_pending_block_finalizations_status;
 ALTER TABLE pending_block_finalizations
