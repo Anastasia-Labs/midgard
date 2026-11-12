@@ -104,6 +104,25 @@ export const keyValuePhasRootWithCount = async (
   };
 };
 
+/** A trie of `entries` its one owner edits in place, to replay a ledger
+ * forward: after each edit `root()` is the root of the entries it then holds.
+ * Its insertions are edits, never proof devices, so nothing proves against
+ * it. */
+export const mutableKeyValuePhasTrie = async (
+  entries: readonly KeyValuePhasEntry[],
+) => {
+  const trie = await trieFromEntries(entries);
+  return Object.freeze({
+    insert: async (key: Buffer, value: Buffer): Promise<void> => {
+      await trie.insert(Buffer.from(key), Buffer.from(value));
+    },
+    delete: async (key: Buffer): Promise<void> => {
+      await trie.delete(Buffer.from(key));
+    },
+    root: (): string => normalizeRoot(trie.hash),
+  });
+};
+
 export const keyValuePhasRoot = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<string> => (await keyValuePhasRootWithCount(entries)).root;

@@ -111,41 +111,31 @@ const withDescriptor = ({
   }
 };
 
-/**
- * `withDescriptor`, reusing `from`'s entry and leaf for an entry with the
- * same out-ref and output bytes: the leaf is a function of those bytes alone,
- * and `from`'s root check already admitted it. A source-supplied descriptor
- * that is not that leaf takes the full derivation, as without `from`.
- */
-const reusingDescriptors = (
-  from: CheckedLedger | undefined,
-): ((entry: LedgerEntry) => { entry: LedgerEntry; leaf: Buffer }) => {
-  if (from === undefined) return withDescriptor;
-  const indexByKey = new Map(
-    from.entries.map(({ outRef }, index) => [outRef.toString("hex"), index]),
+const notCanonical = (label: string, cause: unknown) =>
+  new Error(
+    `${label}: the ledger has an entry that is not a canonical ledger entry`,
+    { cause },
   );
-  return (entry) => {
-    const index = indexByKey.get(Buffer.from(entry.outRef).toString("hex"));
-    const prior = index === undefined ? undefined : from.entries[index];
-    const leaf = index === undefined ? undefined : from.trie.entries[index];
-    return prior !== undefined &&
-      leaf !== undefined &&
-      leaf.key.equals(prior.outRef) &&
-      prior.output.equals(entry.output) &&
-      (entry.descriptor === undefined ||
-        leaf.value.equals(Buffer.from(entry.descriptor)))
-      ? { entry: prior, leaf: leaf.value }
-      : withDescriptor(entry);
-  };
+
+/** `entry` and its trie leaf, derived as every ledger root check derives
+ * them; refused under `label` when it is not a canonical ledger entry. */
+export const ledgerEntryLeaf = (
+  entry: LedgerEntry,
+  label: string,
+): { entry: LedgerEntry; leaf: Buffer } => {
+  try {
+    return withDescriptor(entry);
+  } catch (cause) {
+    throw notCanonical(label, cause);
+  }
 };
 
 const ledgerTrie = async (
   entries: readonly LedgerEntry[],
   label: string,
-  from?: CheckedLedger,
 ): Promise<{ copied: LedgerEntry[]; trie: KeyValuePhasRoot }> => {
+  const leaves = entries.map((entry) => ledgerEntryLeaf(entry, label));
   try {
-    const leaves = entries.map(reusingDescriptors(from));
     return {
       copied: leaves.map(({ entry }) => entry),
       trie: await keyValuePhasRootWithCount(
@@ -153,10 +143,7 @@ const ledgerTrie = async (
       ),
     };
   } catch (cause) {
-    throw new Error(
-      `${label}: the ledger has an entry that is not a canonical ledger entry`,
-      { cause },
-    );
+    throw notCanonical(label, cause);
   }
 };
 
@@ -168,24 +155,17 @@ export const ledgerEntriesRoot = async (
   entries: readonly LedgerEntry[],
 ): Promise<string> => (await ledgerTrie(entries, "ledger root")).trie.root;
 
-/**
- * Refuses `entries` unless their descriptor trie opens `utxosRoot`. With
- * `from`, a ledger the entries were derived from, an entry `from` already
- * holds byte for byte keeps its descriptor rather than deriving it again; the
- * result and every refusal are the same as without it.
- */
+/** Refuses `entries` unless their descriptor trie opens `utxosRoot`. */
 export const checkLedgerAgainstRoot = async ({
   entries,
   utxosRoot,
   label,
-  from,
 }: {
   readonly entries: readonly LedgerEntry[];
   readonly utxosRoot: string;
   readonly label: string;
-  readonly from?: CheckedLedger;
 }): Promise<CheckedLedger> => {
-  const { copied, trie } = await ledgerTrie(entries, label, from);
+  const { copied, trie } = await ledgerTrie(entries, label);
   if (trie.root !== utxosRoot)
     throw new LedgerRootMismatchError(label, utxosRoot, trie.root);
   const sorted = copied.sort((left, right) =>

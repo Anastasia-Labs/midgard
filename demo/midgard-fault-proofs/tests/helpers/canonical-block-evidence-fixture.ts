@@ -25,7 +25,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { h28, h32 } from "@al-ft/midgard-test-support/hex";
+import { h28, h32, h32ForOrdinal } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -47,6 +47,7 @@ export const outRefCbor = (txIdByte: number, index: bigint): Buffer =>
   });
 
 export type FixtureTransactionInput = {
+  readonly validity?: MidgardNativeTxCanonical["validity"];
   readonly spendInputs: readonly Buffer[];
   readonly referenceInputs?: readonly Buffer[];
   readonly outputs?: readonly Buffer[];
@@ -72,6 +73,7 @@ export type FixtureTransaction = {
 };
 
 export const buildFixtureTransaction = ({
+  validity = "TxIsValid",
   spendInputs,
   referenceInputs = [],
   outputs = [],
@@ -89,7 +91,7 @@ export const buildFixtureTransaction = ({
 }: FixtureTransactionInput): FixtureTransaction => {
   const canonical: MidgardNativeTxCanonical = {
     version: MIDGARD_NATIVE_TX_VERSION,
-    validity: "TxIsValid",
+    validity,
     body: {
       spendInputsPreimageCbor: encodeCbor([...spendInputs]),
       referenceInputsPreimageCbor: encodeCbor([...referenceInputs]),
@@ -231,10 +233,10 @@ export const buildCanonicalBlockFixture = async ({
         {
           schema_version: 1n,
           machine_version: 1n,
-          trace_root: h32(140 + index),
+          trace_root: h32ForOrdinal(140 + index),
           step_count: 1n,
-          initial_state_hash: h32(150 + index),
-          terminal_state_hash: h32(160 + index),
+          initial_state_hash: h32ForOrdinal(150 + index),
+          terminal_state_hash: h32ForOrdinal(160 + index),
           verdict: "Accepted",
           rejection_code_hash: "00".repeat(32),
         } satisfies SDK.ValidationTraceDescriptor,

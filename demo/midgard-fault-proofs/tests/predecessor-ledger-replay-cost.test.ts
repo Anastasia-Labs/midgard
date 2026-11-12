@@ -1,12 +1,13 @@
 /** Complete replays that read the predecessor ledger once per block, however
  * many of its entries or events they visit: the ledger-relative input scan
- * walks the block's steps once for every event's pre-state, and the
- * resolved-output prior view proves every entry from one trie. Results are
- * those of a one-off reconstruction. Work is counted as in
- * `helpers/trie-leaves.ts`. */
+ * walks the block's steps once for every event's pre-state, editing one trie
+ * of the predecessor, and the resolved-output prior view proves every entry
+ * from one trie. Results are those of a one-off reconstruction. Work is
+ * counted as in `helpers/trie-leaves.ts`. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { ledgerBeforeTransactionEvent } from "../src/event-ledger.js";
 import { deriveResolvedOutputPriorLedgerReplay } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import {
@@ -50,8 +51,38 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     ];
     expect(smallScan.result).toStrictEqual([]);
     expect(largeScan.result).toStrictEqual([]);
-    // Events at steps 0 to 3: one walk applies steps 0, 1 and 2 once each.
-    expect((largeScan.leaves - smallScan.leaves) / FILLER).toBe(3);
+    // Events at steps 0 to 3: one walk applies steps 0, 1 and 2 to one trie
+    // of the predecessor.
+    expect((largeScan.leaves - smallScan.leaves) / FILLER).toBe(1);
+  });
+
+  it("builds one trie of the predecessor for the ledger before a single event, however many steps precede it", async () => {
+    const spends = ["passing", "passing", "passing", "passing"] as const;
+    const [small, large] = await Promise.all([
+      plutusExecutionEventsBlockFixture(spends),
+      plutusExecutionEventsBlockFixture(spends, {
+        predecessorFiller: filler(FILLER),
+      }),
+    ]);
+    const lastBefore = async (block: Block) =>
+      await trieLeaves(() =>
+        ledgerBeforeTransactionEvent({
+          block: block.evidence,
+          eventKey: {
+            L2TransactionEventKey: { tx_id: block.txs.at(-1)!.txId },
+          },
+          stepIndex: 3n,
+          predecessor: predecessorOf(block),
+        }),
+      );
+    const [smallLedger, largeLedger] = [
+      await lastBefore(small),
+      await lastBefore(large),
+    ];
+    expect(largeLedger.result.entries).toHaveLength(
+      smallLedger.result.entries.length + FILLER,
+    );
+    expect((largeLedger.leaves - smallLedger.leaves) / FILLER).toBe(1);
   });
 
   it("holds every event after a step whose committed root its ledger does not open, in source order", async () => {

@@ -89,6 +89,7 @@ export default tseslint.config(
             "lucid-midgard/tsup.config.ts",
             "lucid-midgard/vitest.config.ts",
             "midgard-core/vitest.config.ts",
+            "midgard-fault-proofs/vitest.bench.config.ts",
             "midgard-fault-proofs/vitest.config.ts",
             "midgard-node/tsup.config.ts",
             "midgard-node/vitest.bench.config.ts",
