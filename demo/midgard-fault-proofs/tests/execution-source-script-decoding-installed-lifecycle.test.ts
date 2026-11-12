@@ -15,11 +15,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
-  createExecutionSourceScriptDecodingTransactionPort,
-  type ExecutionSourceScriptDecodingWorkflowReferenceScripts,
-} from "../src/execution-source-script-decoding/index.js";
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
@@ -87,13 +88,18 @@ const blockEvidence = async (scenario: MissingRedeemerScenario) =>
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<
+  "executionSourceScriptDecoding",
+  3
+>;
+
 const workflowReferences = async (
   h: ExecutionSourceScriptDecodingHarness,
-): Promise<ExecutionSourceScriptDecodingWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishExecutionSourceScriptDecodingRoles(h);
   const steps = SDK.EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as ExecutionSourceScriptDecodingWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -101,8 +107,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as ExecutionSourceScriptDecodingWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -163,15 +168,18 @@ describe("executionSourceScriptDecoding installed cursor actuator", () => {
           currentEvidence: evidence,
         }),
       };
-      const port = createExecutionSourceScriptDecodingTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.essd,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.essd,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

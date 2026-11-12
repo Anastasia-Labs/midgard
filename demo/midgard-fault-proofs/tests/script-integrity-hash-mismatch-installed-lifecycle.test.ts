@@ -14,13 +14,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import {
-  createScriptIntegrityHashMismatchTransactionPort,
-  type ScriptIntegrityHashMismatchWorkflowReferenceScripts,
-} from "../src/script-integrity-hash-mismatch/index.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/index.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -88,13 +89,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"scriptIntegrityHashMismatch", 21>;
+
 const workflowReferences = async (
   h: ScriptIntegrityHashMismatchHarness,
-): Promise<ScriptIntegrityHashMismatchWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishScriptIntegrityHashMismatchRoles(h);
   const steps = SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as ScriptIntegrityHashMismatchWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -102,8 +105,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as ScriptIntegrityHashMismatchWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -146,14 +148,17 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createScriptIntegrityHashMismatchTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.scriptIntegrityHashMismatch,
-        references,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.scriptIntegrityHashMismatch,
+          references,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

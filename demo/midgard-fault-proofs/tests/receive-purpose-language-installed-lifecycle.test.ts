@@ -19,12 +19,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
-import {
-  createReceivePurposeLanguageTransactionPort,
-  type ReceivePurposeLanguageWorkflowReferenceScripts,
-} from "../src/receive-purpose-language/index.js";
+import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
@@ -97,13 +98,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"receivePurposeLanguage", 21>;
+
 const workflowReferences = async (
   h: ReceivePurposeLanguageHarness,
-): Promise<ReceivePurposeLanguageWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishReceivePurposeLanguageRoles(h);
   const steps = SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as ReceivePurposeLanguageWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -111,8 +114,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as ReceivePurposeLanguageWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -189,15 +191,18 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createReceivePurposeLanguageTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.receivePurposeLanguage,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.receivePurposeLanguage,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

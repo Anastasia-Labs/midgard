@@ -3,4 +3,3 @@ export * from "./prover.js";
 export * from "./replay.js";
 export * from "./routes.js";
 export * from "./workflow.js";
-export * from "./workflow.transaction-port.js";

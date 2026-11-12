@@ -16,11 +16,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
-  createExecutionNativeScriptInvalidTransactionPort,
-  type ExecutionNativeScriptInvalidWorkflowReferenceScripts,
-} from "../src/execution-native-script-invalid/index.js";
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
@@ -95,13 +96,18 @@ const blockEvidence = async (scenario: NativeScenario) =>
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<
+  "executionNativeScriptInvalid",
+  28
+>;
+
 const workflowReferences = async (
   h: ExecutionNativeScriptInvalidHarness,
-): Promise<ExecutionNativeScriptInvalidWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishExecutionNativeScriptInvalidRoles(h);
   const steps = SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -109,8 +115,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as ExecutionNativeScriptInvalidWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -160,15 +165,18 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
           currentEvidence: evidence,
         }),
       };
-      const port = createExecutionNativeScriptInvalidTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.executionNativeScriptInvalid,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.executionNativeScriptInvalid,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

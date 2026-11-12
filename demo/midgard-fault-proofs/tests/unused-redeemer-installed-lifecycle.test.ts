@@ -16,13 +16,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import {
-  createUnusedRedeemerTransactionPort,
-  type UnusedRedeemerWorkflowReferenceScripts,
-} from "../src/unused-redeemer/index.js";
+import { UNUSED_REDEEMER_DIRECT_WALK } from "../src/unused-redeemer/index.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -91,13 +92,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"unusedRedeemer", 25>;
+
 const workflowReferences = async (
   h: UnusedRedeemerHarness,
-): Promise<UnusedRedeemerWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishUnusedRedeemerRoles(h);
   const steps = SDK.UNUSED_REDEEMER_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as UnusedRedeemerWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -105,8 +108,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as UnusedRedeemerWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -176,15 +178,18 @@ describe("unusedRedeemer installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createUnusedRedeemerTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.unusedRedeemer,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        UNUSED_REDEEMER_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.unusedRedeemer,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision = await UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY.replay(
         evidence,
         replayContext,

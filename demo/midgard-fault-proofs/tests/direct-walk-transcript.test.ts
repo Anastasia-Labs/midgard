@@ -10,33 +10,27 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { createDistinctAssetAccumulationLimitTransactionPort } from "../src/distinct-asset-accumulation-limit/index.js";
-import { createExecutionNativeScriptInvalidTransactionPort } from "../src/execution-native-script-invalid/index.js";
-import { createExecutionSourceScriptDecodingTransactionPort } from "../src/execution-source-script-decoding/index.js";
-import type { LedgerEntry } from "../src/ledger-at.js";
-import { createMissingRedeemerTransactionPort } from "../src/missing-redeemer/index.js";
-import { createMissingScriptSourceTransactionPort } from "../src/missing-script-source/index.js";
-import { createReceivePurposeLanguageTransactionPort } from "../src/receive-purpose-language/index.js";
-import { createScriptIntegrityHashMismatchTransactionPort } from "../src/script-integrity-hash-mismatch/index.js";
-import { createUnusedRedeemerTransactionPort } from "../src/unused-redeemer/index.js";
-import { createUnusedScriptWitnessTransactionPort } from "../src/unused-script-witness/index.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
+  createDirectWalkTransactionPort,
+  type DirectPurposeReplay,
+  type DirectWalkFamily,
+  type DirectWalkProof,
+} from "../src/direct-purpose-family/index.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
+import type { LedgerEntry } from "../src/ledger-at.js";
+import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
+import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/index.js";
+import { UNUSED_REDEEMER_DIRECT_WALK } from "../src/unused-redeemer/index.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
 import {
   type DirectWalkCategory,
-  type DirectWalkFamily,
   type DirectWalkScene,
+  type DirectWalkSceneFamily,
   driveDirectWalkLifecycle,
   recordDirectWalkTranscript,
 } from "./support/direct-walk-transcript.js";
@@ -136,18 +130,29 @@ type Case = Readonly<{
   drive: () => ReturnType<typeof driveDirectWalkLifecycle>;
 }>;
 
-const familyCases = <Category extends DirectWalkCategory>(
-  family: Omit<DirectWalkFamily<Category>, "spec">,
+/** A family's cases, each driving the port its walk declares. */
+const familyCases = <
+  Category extends DirectWalkCategory,
+  StepCount extends number,
+  Prepared extends DirectPurposeReplay,
+  Proof extends DirectWalkProof,
+>(
+  walk: DirectWalkFamily<Category, StepCount, Prepared, Proof>,
   scenes: Readonly<Record<string, () => Promise<DirectWalkScene>>>,
-): readonly Case[] =>
-  Object.entries(scenes).map(([name, scene]) => ({
+): readonly Case[] => {
+  const family: DirectWalkSceneFamily<Category> = {
+    label: walk.family.label,
+    category: walk.spec.category,
+    spec: walk.spec,
+    replay: walk.replay,
+    roleOrder: walk.family.roleOrder,
+    createPort: (config) => createDirectWalkTransactionPort(walk, config),
+  };
+  return Object.entries(scenes).map(([name, scene]) => ({
     name: `${family.label}: ${name}`,
-    drive: async () =>
-      await driveDirectWalkLifecycle(
-        { ...family, spec: CURSOR_FAMILY_SPECS[family.category] as never },
-        await scene(),
-      ),
+    drive: async () => await driveDirectWalkLifecycle(family, await scene()),
   }));
+};
 
 /** A family's scene builder: its harness, block setup and role publication,
  * and the predecessor its lifecycle replays over, where it replays over one. */
@@ -256,227 +261,146 @@ const DEEP_RECEIVE = {
 
 /** Every capture case of the nine installed lifecycles, in their order. */
 const CASES: readonly Case[] = [
-  ...familyCases(
-    {
-      label: "missing-redeemer",
-      category: "missingRedeemer",
-      replay: MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.MISSING_REDEEMER_ROLE_ORDER,
-      createPort: createMissingRedeemerTransactionPort,
-    },
-    {
-      "accepted missing observer redeemer": missingRedeemer(
-        {
-          observers: [
-            { script: plutusScript(1), redeemer: false },
-            { script: plutusScript(2), redeemer: true },
-          ],
-        },
-        NORMAL,
+  ...familyCases(MISSING_REDEEMER_DIRECT_WALK, {
+    "accepted missing observer redeemer": missingRedeemer(
+      {
+        observers: [
+          { script: plutusScript(1), redeemer: false },
+          { script: plutusScript(2), redeemer: true },
+        ],
+      },
+      NORMAL,
+    ),
+    "forced RedeemerMissing on a native observer": missingRedeemer(
+      { observers: [{ script: nativeScript(1n), redeemer: false }] },
+      forced(redeemerMissingVerdict(2n, 0n)),
+    ),
+  }),
+  ...familyCases(MISSING_SCRIPT_SOURCE_DIRECT_WALK, {
+    "accepted observer with no source": missingScriptSource(
+      {
+        observers: [
+          { script: plutusScript(1), witness: false, redeemer: true },
+          { script: plutusScript(2), redeemer: true },
+        ],
+      },
+      NORMAL,
+    ),
+    "forced ScriptSourceMissing on a reference-sourced observer":
+      missingScriptSource(
+        honestForcedObserverShape(5),
+        forced(scriptSourceMissingVerdict(2n, 0n)),
       ),
-      "forced RedeemerMissing on a native observer": missingRedeemer(
-        { observers: [{ script: nativeScript(1n), redeemer: false }] },
-        forced(redeemerMissingVerdict(2n, 0n)),
+  }),
+  ...familyCases(RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK, {
+    "accepted PlutusV3 receive execution": receivePurposeLanguage(
+      {
+        observers: [],
+        receives: [{ script: plutusScript(3), redeemer: true }],
+      },
+      NORMAL,
+    ),
+    "accepted PlutusV3 receive execution over a deep ledger":
+      receivePurposeLanguage(DEEP_RECEIVE, NORMAL),
+    "forced arm at a PlutusV3 receive no redeemer reaches":
+      receivePurposeLanguage(
+        forcedReceiving(plutusScript(4)),
+        forced(receivePurposeLanguageVerdict(3n, 0n)),
       ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "missing-script-source",
-      category: "missingScriptSource",
-      replay: MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.MISSING_SCRIPT_SOURCE_ROLE_ORDER,
-      createPort: createMissingScriptSourceTransactionPort,
-    },
-    {
-      "accepted observer with no source": missingScriptSource(
-        {
-          observers: [
-            { script: plutusScript(1), witness: false, redeemer: true },
-            { script: plutusScript(2), redeemer: true },
-          ],
-        },
-        NORMAL,
-      ),
-      "forced ScriptSourceMissing on a reference-sourced observer":
-        missingScriptSource(
-          honestForcedObserverShape(5),
-          forced(scriptSourceMissingVerdict(2n, 0n)),
-        ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "receive-purpose-language",
-      category: "receivePurposeLanguage",
-      replay: RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
-      createPort: createReceivePurposeLanguageTransactionPort,
-    },
-    {
-      "accepted PlutusV3 receive execution": receivePurposeLanguage(
-        {
-          observers: [],
-          receives: [{ script: plutusScript(3), redeemer: true }],
-        },
-        NORMAL,
-      ),
-      "accepted PlutusV3 receive execution over a deep ledger":
-        receivePurposeLanguage(DEEP_RECEIVE, NORMAL),
-      "forced arm at a PlutusV3 receive no redeemer reaches":
-        receivePurposeLanguage(
-          forcedReceiving(plutusScript(4)),
-          forced(receivePurposeLanguageVerdict(3n, 0n)),
-        ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "unused-redeemer",
-      category: "unusedRedeemer",
-      replay: UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.UNUSED_REDEEMER_ROLE_ORDER,
-      createPort: createUnusedRedeemerTransactionPort,
-    },
-    {
-      "accepted redeemer with no purpose": unusedRedeemer(
-        {
-          observers: [{ script: plutusScript(1), redeemer: true }],
-          paddingRedeemers: [Buffer.from(Data.to(0n), "hex")],
-        },
-        NORMAL,
-      ),
-      "forced UnusedRedeemer past an empty redeemer field": unusedRedeemer(
-        FORCED_SOURCELESS,
-        forced(unusedRedeemerVerdict(0n)),
-      ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "execution-source-script-decoding",
-      category: "executionSourceScriptDecoding",
-      replay: EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER,
-      createPort: createExecutionSourceScriptDecodingTransactionPort,
-    },
-    {
-      "forced ExecutionNativeScriptMalformed rejection":
-        executionSourceScriptDecoding(
-          honestForcedObserverShape(5),
-          forced({
-            ForcedTxInvalid: {
-              reason: { ExecutionNativeScriptMalformed: ESSD_OBSERVER },
-            },
-          }),
-        ),
-      "forced ExecutionNativeScriptDepthLimit rejection":
-        executionSourceScriptDecoding(
-          honestForcedObserverShape(5),
-          forced({
-            ForcedTxInvalid: {
-              reason: { ExecutionNativeScriptDepthLimit: ESSD_OBSERVER },
-            },
-          }),
-        ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "distinct-asset-accumulation-limit",
-      category: "distinctAssetAccumulationLimit",
-      replay: DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
-      createPort: createDistinctAssetAccumulationLimitTransactionPort,
-    },
-    {
-      "accepted mint crossing": distinctAsset(
-        { inputs: SPENT, outputs: [[256], [256]], mint: [256, 256, 10] },
-        NORMAL,
-      ),
-      "forced input crossing recorded at its field ordinal": distinctAsset(
-        { inputs: [...SPENT, 1_536], references: 2, outputs: [[1]], mint: [] },
-        distinctAssetRejectedFor({
-          InputAssetAccumulationLimit: {
-            input_index: 10n,
-            asset_index: 1_024n,
+  }),
+  ...familyCases(UNUSED_REDEEMER_DIRECT_WALK, {
+    "accepted redeemer with no purpose": unusedRedeemer(
+      {
+        observers: [{ script: plutusScript(1), redeemer: true }],
+        paddingRedeemers: [Buffer.from(Data.to(0n), "hex")],
+      },
+      NORMAL,
+    ),
+    "forced UnusedRedeemer past an empty redeemer field": unusedRedeemer(
+      FORCED_SOURCELESS,
+      forced(unusedRedeemerVerdict(0n)),
+    ),
+  }),
+  ...familyCases(EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK, {
+    "forced ExecutionNativeScriptMalformed rejection":
+      executionSourceScriptDecoding(
+        honestForcedObserverShape(5),
+        forced({
+          ForcedTxInvalid: {
+            reason: { ExecutionNativeScriptMalformed: ESSD_OBSERVER },
           },
         }),
       ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "execution-native-script-invalid",
-      category: "executionNativeScriptInvalid",
-      replay: EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER,
-      createPort: createExecutionNativeScriptInvalidTransactionPort,
-    },
-    {
-      "accepted observer whose native script is not yet valid": nativeInvalid(
-        admissibleNativeObservers(
-          [
-            native({
-              type: "all",
-              scripts: [sig(PAYER), { type: "after", slot: 100n }],
-            }),
-          ],
-          { validityStart: 0n },
-        ),
-        NORMAL,
+    "forced ExecutionNativeScriptDepthLimit rejection":
+      executionSourceScriptDecoding(
+        honestForcedObserverShape(5),
+        forced({
+          ForcedTxInvalid: {
+            reason: { ExecutionNativeScriptDepthLimit: ESSD_OBSERVER },
+          },
+        }),
       ),
-      "forced ExecutionNativeScriptFalse rejection of a script that holds":
-        nativeInvalid(
-          admissibleNativeObservers([native(sig(PAYER))]),
-          forced({ ForcedTxInvalid: { reason: nativeFalseAt(2n, 0n) } }),
-        ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "script-integrity-hash-mismatch",
-      category: "scriptIntegrityHashMismatch",
-      replay: SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
-      createPort: createScriptIntegrityHashMismatchTransactionPort,
-    },
-    {
-      "accepted wrong hash": integrityMismatch(
-        {
-          observers: [{ script: integrityPlutusScript(1), redeemer: true }],
-          integrity: WRONG_HASH,
+  }),
+  ...familyCases(DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK, {
+    "accepted mint crossing": distinctAsset(
+      { inputs: SPENT, outputs: [[256], [256]], mint: [256, 256, 10] },
+      NORMAL,
+    ),
+    "forced input crossing recorded at its field ordinal": distinctAsset(
+      { inputs: [...SPENT, 1_536], references: 2, outputs: [[1]], mint: [] },
+      distinctAssetRejectedFor({
+        InputAssetAccumulationLimit: {
+          input_index: 10n,
+          asset_index: 1_024n,
         },
-        NORMAL,
+      }),
+    ),
+  }),
+  ...familyCases(EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK, {
+    "accepted observer whose native script is not yet valid": nativeInvalid(
+      admissibleNativeObservers(
+        [
+          native({
+            type: "all",
+            scripts: [sig(PAYER), { type: "after", slot: 100n }],
+          }),
+        ],
+        { validityStart: 0n },
       ),
-      "forced false ScriptIntegrityHashMismatch": integrityMismatch(
-        {
-          observers: [{ script: integrityPlutusScript(2), redeemer: true }],
-          integrity: expectedHash("PlutusV3"),
-        },
-        integrityRejectedFor("ScriptIntegrityHashMismatch"),
+      NORMAL,
+    ),
+    "forced ExecutionNativeScriptFalse rejection of a script that holds":
+      nativeInvalid(
+        admissibleNativeObservers([native(sig(PAYER))]),
+        forced({ ForcedTxInvalid: { reason: nativeFalseAt(2n, 0n) } }),
       ),
-    },
-  ),
-  ...familyCases(
-    {
-      label: "unused-script-witness",
-      category: "unusedScriptWitness",
-      replay: UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-      roleOrder: SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
-      createPort: createUnusedScriptWitnessTransactionPort,
-    },
-    {
-      "accepted unused Plutus witness": unusedWitness(
-        everyPurposeWith([integrityPlutusScript(16)]),
-        NORMAL,
-      ),
-      "admitted forced acceptance with an unused native witness": unusedWitness(
-        admissibleForcedWith([holdingNativeScript(3)]),
-        { kind: "forced", verdict: "ForcedTxValid" },
-      ),
-    },
-  ),
+  }),
+  ...familyCases(SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK, {
+    "accepted wrong hash": integrityMismatch(
+      {
+        observers: [{ script: integrityPlutusScript(1), redeemer: true }],
+        integrity: WRONG_HASH,
+      },
+      NORMAL,
+    ),
+    "forced false ScriptIntegrityHashMismatch": integrityMismatch(
+      {
+        observers: [{ script: integrityPlutusScript(2), redeemer: true }],
+        integrity: expectedHash("PlutusV3"),
+      },
+      integrityRejectedFor("ScriptIntegrityHashMismatch"),
+    ),
+  }),
+  ...familyCases(UNUSED_SCRIPT_WITNESS_DIRECT_WALK, {
+    "accepted unused Plutus witness": unusedWitness(
+      everyPurposeWith([integrityPlutusScript(16)]),
+      NORMAL,
+    ),
+    "admitted forced acceptance with an unused native witness": unusedWitness(
+      admissibleForcedWith([holdingNativeScript(3)]),
+      { kind: "forced", verdict: "ForcedTxValid" },
+    ),
+  }),
 ];
 
 describe("direct-walk transcript", () => {

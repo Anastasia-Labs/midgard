@@ -16,9 +16,10 @@ import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  createDistinctAssetAccumulationLimitTransactionPort,
-  type DistinctAssetAccumulationLimitWorkflowReferenceScripts,
-} from "../src/distinct-asset-accumulation-limit/index.js";
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
@@ -120,13 +121,18 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<
+  "distinctAssetAccumulationLimit",
+  12
+>;
+
 const workflowReferences = async (
   h: DistinctAssetAccumulationLimitHarness,
-): Promise<DistinctAssetAccumulationLimitWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishDistinctAssetAccumulationLimitRoles(h);
   const steps = SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as DistinctAssetAccumulationLimitWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -134,8 +140,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as DistinctAssetAccumulationLimitWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -177,15 +182,18 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createDistinctAssetAccumulationLimitTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.distinctAssetAccumulationLimit,
-        references,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-        replayContext,
-      });
+      const port = createDirectWalkTransactionPort(
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.distinctAssetAccumulationLimit,
+          references,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+          replayContext,
+        },
+      );
       const decision =
         await DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

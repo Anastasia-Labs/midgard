@@ -8,4 +8,3 @@ export * from "./routes.js";
 export * from "./signers.js";
 export * from "./walk.js";
 export * from "./workflow.js";
-export * from "./workflow.transaction-port.js";

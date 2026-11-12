@@ -14,12 +14,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
-import {
-  createMissingRedeemerTransactionPort,
-  type MissingRedeemerWorkflowReferenceScripts,
-} from "../src/missing-redeemer/index.js";
+import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
@@ -86,13 +87,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"missingRedeemer", 39>;
+
 const workflowReferences = async (
   h: MissingRedeemerHarness,
-): Promise<MissingRedeemerWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishMissingRedeemerRoles(h);
   const steps = SDK.MISSING_REDEEMER_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as MissingRedeemerWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -100,8 +103,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as MissingRedeemerWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -146,14 +148,17 @@ describe("missingRedeemer installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createMissingRedeemerTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.missingRedeemer,
-        references,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        MISSING_REDEEMER_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.missingRedeemer,
+          references,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY.replay(evidence);
       const classification = await classifyCanonicalBlockViolations({

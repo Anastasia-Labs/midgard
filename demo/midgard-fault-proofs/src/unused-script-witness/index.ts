@@ -5,4 +5,3 @@ export * from "./replay.js";
 export * from "./walk.js";
 export * from "./witness-walk.js";
 export * from "./workflow.js";
-export * from "./workflow.transaction-port.js";

@@ -15,12 +15,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
-import {
-  createMissingScriptSourceTransactionPort,
-  type MissingScriptSourceWorkflowReferenceScripts,
-} from "../src/missing-script-source/index.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
@@ -89,13 +90,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"missingScriptSource", 37>;
+
 const workflowReferences = async (
   h: MissingScriptSourceHarness,
-): Promise<MissingScriptSourceWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishMissingScriptSourceRoles(h);
   const steps = SDK.MISSING_SCRIPT_SOURCE_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as MissingScriptSourceWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -103,8 +106,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as MissingScriptSourceWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -173,15 +175,18 @@ describe("missingScriptSource installed cursor actuator", () => {
         resolvedContracts: { category: h.category },
         releaseEconomics: { policy: { fraudProverRewardLovelace: "0" } },
       };
-      const port = createMissingScriptSourceTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.missingScriptSource,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.missingScriptSource,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

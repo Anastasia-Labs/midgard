@@ -15,13 +15,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkReferenceScripts,
+} from "../src/direct-purpose-family/index.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import {
-  createUnusedScriptWitnessTransactionPort,
-  type UnusedScriptWitnessWorkflowReferenceScripts,
-} from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -90,13 +91,15 @@ const blockEvidence = async (
     daProvenance,
   });
 
+type References = DirectWalkReferenceScripts<"unusedScriptWitness", 24>;
+
 const workflowReferences = async (
   h: UnusedScriptWitnessHarness,
-): Promise<UnusedScriptWitnessWorkflowReferenceScripts> => {
+): Promise<References> => {
   const published = await publishUnusedScriptWitnessRoles(h);
   const steps = SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
-  ) as unknown as UnusedScriptWitnessWorkflowReferenceScripts["steps"];
+  ) as unknown as References["steps"];
   const certificate = await publishPlainReferenceScriptUtxo({
     lucid: h.proverLucid,
     script: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -104,8 +107,7 @@ const workflowReferences = async (
   });
   return {
     steps,
-    witnesses:
-      h.witnessReferenceScripts as UnusedScriptWitnessWorkflowReferenceScripts["witnesses"],
+    witnesses: h.witnessReferenceScripts as References["witnesses"],
     fieldPreimageCertificateMint: certificate.utxo,
   };
 };
@@ -152,15 +154,18 @@ describe("unusedScriptWitness installed cursor actuator", () => {
           currentEvidence: evidence,
         }),
       };
-      const port = createUnusedScriptWitnessTransactionPort({
-        binding: binding as never,
-        lucid: h.proverLucid,
-        signer: h.proverSigner,
-        contracts: h.unusedScriptWitness,
-        references,
-        replayContext,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
-      });
+      const port = createDirectWalkTransactionPort(
+        UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+        {
+          binding: binding as never,
+          lucid: h.proverLucid,
+          signer: h.proverSigner,
+          contracts: h.unusedScriptWitness,
+          references,
+          replayContext,
+          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        },
+      );
       const decision =
         await UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY.replay(
           evidence,

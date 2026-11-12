@@ -162,16 +162,17 @@ export type DirectWalkScene = Readonly<{
   publishRoles: () => Promise<ReadonlyMap<string, Readonly<{ utxo: UTxO }>>>;
 }>;
 
-export type DirectWalkFamily<Category extends DirectWalkCategory> = Readonly<{
-  /** The family's kebab label, as its lifecycle names its fixtures. */
-  label: string;
-  category: Category;
-  spec: CursorFamilySpec<Category>;
-  replay: CompleteCanonicalReplay;
-  roleOrder: readonly string[];
-  /** The family's port factory; its config is the lifecycle's. */
-  createPort: (config: never) => CursorFamilyTransactionPort<Category>;
-}>;
+export type DirectWalkSceneFamily<Category extends DirectWalkCategory> =
+  Readonly<{
+    /** The family's kebab label, as its lifecycle names its fixtures. */
+    label: string;
+    category: Category;
+    spec: CursorFamilySpec<Category>;
+    replay: CompleteCanonicalReplay;
+    roleOrder: readonly string[];
+    /** The family's port factory; its config is the lifecycle's. */
+    createPort: (config: never) => CursorFamilyTransactionPort<Category>;
+  }>;
 
 const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
@@ -190,7 +191,7 @@ const provenance = {
 export const driveDirectWalkLifecycle = async <
   Category extends DirectWalkCategory,
 >(
-  family: DirectWalkFamily<Category>,
+  family: DirectWalkSceneFamily<Category>,
   scene: DirectWalkScene,
 ): Promise<readonly DirectWalkAction[]> => {
   const { harness: h, contracts, scenario } = scene;
