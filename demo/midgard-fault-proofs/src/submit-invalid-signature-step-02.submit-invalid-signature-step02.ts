@@ -20,17 +20,14 @@ import {
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
   resolveInvalidSignatureDeploymentContracts,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   type InvalidSignatureStep02ResolvedLayout,
   type InvalidSignatureStep02SpendLayout,
@@ -51,7 +48,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -158,7 +154,6 @@ export const submitInvalidSignatureStep02 = async ({
   });
   const badAddrTxWitsHash = planned.commitment;
 
-  signer.selectWallet(lucid);
   // §8.4: publish tier-2 field carriage before the final transaction selects
   // fee inputs or resolves indices into the complete reference-input set.
   const published = [
@@ -218,7 +213,7 @@ export const submitInvalidSignatureStep02 = async ({
     );
   }
 
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -234,9 +229,7 @@ export const submitInvalidSignatureStep02 = async ({
   let spendLayout: InvalidSignatureStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const withInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const withInputs = funding.tx
     .collectFrom(
       [threadUtxo],
       makeInvalidSignatureStep02SpendRedeemer({
@@ -282,8 +275,7 @@ export const submitInvalidSignatureStep02 = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   // `readFrom([])` is an error rather than a no-op, so the branch is on
   // whether any witness published a reference script at all.
   const chained =
@@ -294,7 +286,7 @@ export const submitInvalidSignatureStep02 = async ({
     computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
   );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -307,9 +299,7 @@ export const submitInvalidSignatureStep02 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -331,16 +321,8 @@ export const submitInvalidSignatureStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `invalid-signature step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
