@@ -21,15 +21,14 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
   resolveInputNoIdxDeploymentContracts,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   type InputNoIdxStep04ResolvedLayout,
@@ -52,7 +51,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -150,7 +148,6 @@ export const submitInputNoIdxStep04 = async ({
     label: "Input-no-idx step 04 outputs",
   });
   const producingTxOutputsHash = planned.commitment;
-  signer.selectWallet(lucid);
   // §8's ladder decides whether anything has to exist on-chain first. Tier 1
   // publishes nothing; tiers 2–3 publish raw carriage located by content
   // (§8.7), and a publication that already exists at this address is reused
@@ -222,7 +219,8 @@ export const submitInputNoIdxStep04 = async ({
     );
   }
 
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: carriageUtxos,
   });
   const fraudProofUnit = toUnit(
@@ -240,7 +238,7 @@ export const submitInputNoIdxStep04 = async ({
   let spendLayout: InputNoIdxStep04SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const txWithInputs = lucid.newTx().collectFrom([feeInput]);
+  const txWithInputs = funding.tx;
   const txWithReferences =
     referenceInputs.length === 0
       ? txWithInputs
@@ -289,16 +287,12 @@ export const submitInputNoIdxStep04 = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const completedTx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
   );
 
-  const unsigned = await completedTx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(completedTx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -311,9 +305,7 @@ export const submitInputNoIdxStep04 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -336,16 +328,8 @@ export const submitInputNoIdxStep04 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `input-no-idx step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

@@ -22,9 +22,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -34,6 +32,7 @@ import {
   resolveInputNoIdxDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   type InputNoIdxStep02Layout,
@@ -51,7 +50,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -141,7 +139,6 @@ export const submitInputNoIdxStep02 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
   // §8's ladder decides whether anything has to exist on-chain first. Tier 1
   // publishes nothing; tiers 2–3 publish raw carriage located by content (§8.7),
   // and a chunk that already exists at this address is reused rather than
@@ -167,7 +164,8 @@ export const submitInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: referenceInputs,
   });
 
@@ -223,35 +221,25 @@ export const submitInputNoIdxStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const txWithInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer);
+  const txWithInputs = funding.tx.collectFrom([threadUtxo], redeemer);
   const txWithReferences =
     referenceInputs.length === 0
       ? txWithInputs
       : txWithInputs.readFrom([...referenceInputs]);
-  const tx = txWithReferences.pay
-    .ToContract(
-      chain.steps[2].spendingScriptAddress,
-      { kind: "inline", value: step03Datum },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  const tx = txWithReferences.pay.ToContract(
+    chain.steps[2].spendingScriptAddress,
+    { kind: "inline", value: step03Datum },
+    threadAssets,
+  );
   const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await completedTx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(completedTx, funding);
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve input-no-idx step 02 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -264,16 +252,8 @@ export const submitInputNoIdxStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `input-no-idx step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
