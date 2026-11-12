@@ -64,6 +64,25 @@ const stagedPath =
   runDirectory === undefined
     ? undefined
     : join(runDirectory, "work/journeys/transition-trace/staged.json");
+/** The direct purpose families, by category, whose artifact the kit prepares. */
+const DIRECT_PURPOSE_ARTIFACT_FAMILIES: Partial<
+  Record<string, FP.DirectPurposeArtifactAdmission<FP.DirectPurposeReplay>>
+> = {
+  missingRedeemer: FP.MISSING_REDEEMER_ARTIFACT_FAMILY,
+  missingScriptSource: FP.MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
+  unusedRedeemer: FP.UNUSED_REDEEMER_ARTIFACT_FAMILY,
+  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
+  scriptIntegrityHashMismatch:
+    FP.SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
+  executionSourceScriptDecoding:
+    FP.EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
+  executionNativeScriptInvalid:
+    FP.EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
+  distinctAssetAccumulationLimit:
+    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY,
+};
+
 const loadRetainedDeposit = async () => {
   const staged = await readJourneyArtifact<PublishedDepositTraceCheckpoint>(
     stagedPath!,
@@ -248,6 +267,7 @@ it
       });
       if (selected.decision !== "fault_detected")
         throw new Error("Closing classification disappeared");
+      const directPurpose = DIRECT_PURPOSE_ARTIFACT_FAMILIES[category];
       const artifact =
         category === "nativeScriptDecoding"
           ? await FP.prepareNativeScriptDecodingWorkflowArtifact({
@@ -255,73 +275,16 @@ it
               classification: selected,
               replayContext: context,
             })
-          : category === "missingRedeemer"
-            ? await FP.prepareMissingRedeemerWorkflowArtifact({
+          : directPurpose !== undefined
+            ? await FP.prepareDirectPurposeArtifact(directPurpose, {
                 evidence,
                 classification: selected,
                 replayContext: context,
               })
-            : category === "missingScriptSource"
-              ? await FP.prepareMissingScriptSourceWorkflowArtifact({
-                  evidence,
-                  classification: selected,
-                  replayContext: context,
-                })
-              : category === "unusedRedeemer"
-                ? await FP.prepareUnusedRedeemerWorkflowArtifact({
-                    evidence,
-                    classification: selected,
-                    replayContext: context,
-                  })
-                : category === "receivePurposeLanguage"
-                  ? await FP.prepareReceivePurposeLanguageWorkflowArtifact({
-                      evidence,
-                      classification: selected,
-                      replayContext: context,
-                    })
-                  : category === "scriptIntegrityHashMismatch"
-                    ? await FP.prepareScriptIntegrityHashMismatchWorkflowArtifact(
-                        {
-                          evidence,
-                          classification: selected,
-                          replayContext: context,
-                        },
-                      )
-                    : category === "executionSourceScriptDecoding"
-                      ? await FP.prepareExecutionSourceScriptDecodingWorkflowArtifact(
-                          {
-                            evidence,
-                            classification: selected,
-                            replayContext: context,
-                          },
-                        )
-                      : category === "executionNativeScriptInvalid"
-                        ? await FP.prepareExecutionNativeScriptInvalidWorkflowArtifact(
-                            {
-                              evidence,
-                              classification: selected,
-                              replayContext: context,
-                            },
-                          )
-                        : category === "distinctAssetAccumulationLimit"
-                          ? await FP.prepareDistinctAssetAccumulationLimitWorkflowArtifact(
-                              {
-                                evidence,
-                                classification: selected,
-                                replayContext: context,
-                              },
-                            )
-                          : category === "unusedScriptWitness"
-                            ? await FP.prepareUnusedScriptWitnessWorkflowArtifact(
-                                {
-                                  evidence,
-                                  classification: selected,
-                                  replayContext: context,
-                                },
-                              )
-                            : await FP.prepareScriptIntegrityHashMissingArtifact(
-                                { evidence, classification: selected },
-                              );
+            : await FP.prepareScriptIntegrityHashMissingArtifact({
+                evidence,
+                classification: selected,
+              });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
     await verifyJourneyFixture({

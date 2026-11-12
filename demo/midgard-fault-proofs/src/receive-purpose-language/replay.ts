@@ -9,6 +9,7 @@ import {
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
@@ -19,7 +20,10 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { receivePurposeLanguageDetection } from "./prover.js";
+import {
+  receivePurposeLanguageDetection,
+  requireConvictingReceivePurposeLanguageProof,
+} from "./prover.js";
 
 export const RECEIVE_PURPOSE_LANGUAGE_VIOLATION_ID =
   "receive-purpose-plutus-v3-forbidden";
@@ -115,3 +119,21 @@ export const detectReceivePurposeLanguageReplay = async ({
         };
   });
 };
+
+/** The journaled `receivePurposeLanguage` workflow artifact: the retained
+ * payload, the predecessor ledger and the coordinate, re-planned on every
+ * admission. */
+export const RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "receivePurposeLanguage",
+    artifactVersion: "midgard-receive-purpose-language-workflow-artifact-v1",
+    prepare: prepareReceivePurposeLanguageReplay,
+    detect: detectReceivePurposeLanguageReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingReceivePurposeLanguageProof({
+        material: admitted.material,
+        contracts,
+        prover,
+        ...(admitted.observed === null ? {} : { observed: admitted.observed }),
+      }),
+  });

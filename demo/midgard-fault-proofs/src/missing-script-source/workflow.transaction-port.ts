@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,14 +50,11 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareMissingScriptSourceWorkflowArtifact } from "./artifact.js";
 import { MISSING_SCRIPT_SOURCE_FAMILY } from "./contracts.js";
-import {
-  missingScriptSourceSourceInclusion,
-  planMissingScriptSourceArtifact,
-} from "./workflow.plan.js";
+import { MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY } from "./replay.js";
 
 export type MissingScriptSourceWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.MISSING_SCRIPT_SOURCE_ROLE_ORDER`, in that order. */
@@ -132,10 +134,8 @@ export const createMissingScriptSourceTransactionPort = (
       throw new Error(`missingScriptSource ${role} reference absent`);
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<typeof planMissingScriptSourceArtifact>[0]["artifact"],
-  ) =>
-    planMissingScriptSourceArtifact({
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY, {
       artifact,
       contracts: config.contracts,
       prover: config.signer.paymentKeyHash,
@@ -144,10 +144,13 @@ export const createMissingScriptSourceTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "missingScriptSource",
     prepare: async (args) =>
-      await prepareMissingScriptSourceWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact, entries }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "missingScriptSource",
@@ -226,8 +229,10 @@ export const createMissingScriptSourceTransactionPort = (
                 });
                 return;
               }
-              const inclusion =
-                await missingScriptSourceSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,
@@ -263,7 +268,7 @@ export const createMissingScriptSourceTransactionPort = (
             const opened = new Set(
               (plan.paging.isPageStart(role, thread.datum)
                 ? plan.paging.page(role, thread.datum).transitions
-                : [plan.transitionAt(role, thread.datum)]
+                : [plan.paging.transitionAt(role, thread.datum)]
               ).flatMap((transition) => transition.fields),
             );
             const carriage = new Map<number, readonly UTxO[]>();

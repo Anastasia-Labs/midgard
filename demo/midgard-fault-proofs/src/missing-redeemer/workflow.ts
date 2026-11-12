@@ -1,6 +1,10 @@
 /** The `missingRedeemer` family definition and its manifest-bound runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { DIRECT_PURPOSE_FIELDS } from "../direct-purpose-family/custody.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
@@ -19,10 +23,7 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  missingRedeemerSourceInclusion,
-  planMissingRedeemerArtifact,
-} from "./workflow.plan.js";
+import { MISSING_REDEEMER_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createMissingRedeemerTransactionPort,
   type ManifestBoundMissingRedeemerWorkflowConfig,
@@ -59,7 +60,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planMissingRedeemerArtifact({
+  planDirectPurposeArtifact(MISSING_REDEEMER_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: missingRedeemerWorkflowContracts(
       context.binding,
@@ -159,7 +160,12 @@ export const MISSING_REDEEMER_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await missingRedeemerSourceInclusion(admitted)).txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            MISSING_REDEEMER_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

@@ -2,6 +2,10 @@
  * runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
@@ -20,10 +24,7 @@ import {
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
 import { UNUSED_SCRIPT_WITNESS_FIELDS } from "./custody.js";
-import {
-  planUnusedScriptWitnessArtifact,
-  unusedScriptWitnessSourceInclusion,
-} from "./workflow.plan.js";
+import { UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createUnusedScriptWitnessTransactionPort,
   type ManifestBoundUnusedScriptWitnessWorkflowConfig,
@@ -57,7 +58,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planUnusedScriptWitnessArtifact({
+  planDirectPurposeArtifact(UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: unusedScriptWitnessWorkflowContracts(
       context.binding,
@@ -144,8 +145,12 @@ export const UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await unusedScriptWitnessSourceInclusion(admitted))
-          .txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

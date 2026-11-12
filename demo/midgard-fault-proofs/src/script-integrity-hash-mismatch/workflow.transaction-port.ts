@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,18 +50,15 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareScriptIntegrityHashMismatchWorkflowArtifact } from "./artifact.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
   type ScriptIntegrityHashMismatchRole,
 } from "./contracts.js";
 import { scriptIntegrityHashMismatchTerminalFamily } from "./prover.js";
-import {
-  planScriptIntegrityHashMismatchArtifact,
-  scriptIntegrityHashMismatchSourceInclusion,
-} from "./workflow.plan.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY } from "./replay.js";
 
 export type ScriptIntegrityHashMismatchWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER`, in that order. */
@@ -140,12 +142,8 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
       throw new Error(`scriptIntegrityHashMismatch ${role} reference absent`);
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<
-      typeof planScriptIntegrityHashMismatchArtifact
-    >[0]["artifact"],
-  ) =>
-    planScriptIntegrityHashMismatchArtifact({
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY, {
       artifact,
       contracts: config.contracts,
       prover: config.signer.paymentKeyHash,
@@ -154,10 +152,13 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "scriptIntegrityHashMismatch",
     prepare: async (args) =>
-      await prepareScriptIntegrityHashMismatchWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact, entries }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "scriptIntegrityHashMismatch",
@@ -236,8 +237,10 @@ export const createScriptIntegrityHashMismatchTransactionPort = (
                 });
                 return;
               }
-              const inclusion =
-                await scriptIntegrityHashMismatchSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,

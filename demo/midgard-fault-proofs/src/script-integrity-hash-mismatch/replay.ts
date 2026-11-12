@@ -4,6 +4,7 @@
  * the script-integrity phase, is planned through the prover's verdict. */
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../ledger-at.js";
@@ -13,7 +14,11 @@ import {
   CanonicalReplayPrerequisiteError,
   collectReplayFindings,
 } from "../workflow/replay-prerequisite.js";
-import { scriptIntegrityHashMismatchDetection } from "./prover.js";
+import {
+  requireConvictingScriptIntegrityHashMismatchProof,
+  scriptIntegrityHashMismatchDetection,
+  scriptIntegrityHashMismatchPaging,
+} from "./prover.js";
 
 export const SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID =
   "script-integrity-hash-mismatch";
@@ -152,3 +157,22 @@ export const detectScriptIntegrityHashMismatchReplay = async ({
         };
   });
 };
+
+/** The journaled `scriptIntegrityHashMismatch` workflow artifact: the retained
+ * payload, the predecessor ledger and the coordinate, re-planned on every
+ * admission. */
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "scriptIntegrityHashMismatch",
+    artifactVersion:
+      "midgard-script-integrity-hash-mismatch-workflow-artifact-v1",
+    prepare: prepareScriptIntegrityHashMismatchReplay,
+    detect: detectScriptIntegrityHashMismatchReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingScriptIntegrityHashMismatchProof({
+        material: admitted.material,
+        contracts,
+        prover,
+      }),
+    paging: scriptIntegrityHashMismatchPaging,
+  });

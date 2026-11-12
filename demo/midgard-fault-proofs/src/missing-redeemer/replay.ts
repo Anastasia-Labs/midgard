@@ -6,6 +6,7 @@
  * verdict. */
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   DIRECT_PURPOSE_NAMES,
   directPurposeEventKey,
@@ -22,7 +23,10 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { missingRedeemerDetection } from "./prover.js";
+import {
+  missingRedeemerDetection,
+  requireConvictingMissingRedeemerProof,
+} from "./prover.js";
 
 export const MISSING_REDEEMER_VIOLATION_ID = "redeemer-missing";
 
@@ -119,3 +123,19 @@ export const detectMissingRedeemerReplay = async ({
         };
   });
 };
+
+/** The journaled `missingRedeemer` workflow artifact: the retained payload, the
+ * predecessor ledger and the coordinate, re-planned on every admission. */
+export const MISSING_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
+  label: "missingRedeemer",
+  artifactVersion: "midgard-missing-redeemer-workflow-artifact-v1",
+  prepare: prepareMissingRedeemerReplay,
+  detect: detectMissingRedeemerReplay,
+  prove: (admitted, contracts, prover) =>
+    requireConvictingMissingRedeemerProof({
+      material: admitted.material,
+      contracts,
+      prover,
+      ...(admitted.observed === null ? {} : { observed: admitted.observed }),
+    }),
+});

@@ -4,6 +4,7 @@
  * verdict. */
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../ledger-at.js";
@@ -13,7 +14,11 @@ import {
   CanonicalReplayPrerequisiteError,
   collectReplayFindings,
 } from "../workflow/replay-prerequisite.js";
-import { distinctAssetAccumulationLimitDetection } from "./prover.js";
+import {
+  distinctAssetAccumulationLimitDetection,
+  distinctAssetAccumulationLimitPaging,
+  requireConvictingDistinctAssetAccumulationLimitProof,
+} from "./prover.js";
 
 export const DISTINCT_ASSET_ACCUMULATION_LIMIT_VIOLATION_ID =
   "distinct-asset-accumulation-limit";
@@ -153,3 +158,22 @@ export const detectDistinctAssetAccumulationLimitReplay = async ({
         };
   });
 };
+
+/** The journaled `distinctAssetAccumulationLimit` workflow artifact: the
+ * retained payload, the predecessor ledger and the coordinate, re-planned on
+ * every admission. */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "distinctAssetAccumulationLimit",
+    artifactVersion:
+      "midgard-distinct-asset-accumulation-limit-workflow-artifact-v1",
+    prepare: prepareDistinctAssetAccumulationLimitReplay,
+    detect: detectDistinctAssetAccumulationLimitReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingDistinctAssetAccumulationLimitProof({
+        material: admitted.material,
+        contracts,
+        prover,
+      }),
+    paging: distinctAssetAccumulationLimitPaging,
+  });

@@ -6,6 +6,7 @@
  * bytes the replay cannot open yields no finding. */
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   DIRECT_PURPOSE_NAMES,
   directPurposeEventKey,
@@ -19,7 +20,11 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { executionNativeScriptInvalidDetection } from "./prover.js";
+import {
+  executionNativeScriptInvalidDetection,
+  executionNativeScriptInvalidPaging,
+  requireConvictingExecutionNativeScriptInvalidProof,
+} from "./prover.js";
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID =
   "execution-native-script-invalid";
@@ -136,3 +141,23 @@ export const detectExecutionNativeScriptInvalidReplay = async ({
     };
   });
 };
+
+/** The journaled `executionNativeScriptInvalid` workflow artifact: the retained
+ * payload, the predecessor ledger and the coordinate, re-planned on every
+ * admission. */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "executionNativeScriptInvalid",
+    artifactVersion:
+      "midgard-execution-native-script-invalid-workflow-artifact-v1",
+    prepare: prepareExecutionNativeScriptInvalidReplay,
+    detect: detectExecutionNativeScriptInvalidReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingExecutionNativeScriptInvalidProof({
+        material: admitted.material,
+        contracts,
+        prover,
+        entry: admitted.entry,
+      }),
+    paging: executionNativeScriptInvalidPaging,
+  });

@@ -1,6 +1,10 @@
 /** The `receivePurposeLanguage` family definition and its manifest-bound runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { DIRECT_PURPOSE_FIELDS } from "../direct-purpose-family/custody.js";
 import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
@@ -19,10 +23,7 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  planReceivePurposeLanguageArtifact,
-  receivePurposeLanguageSourceInclusion,
-} from "./workflow.plan.js";
+import { RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createReceivePurposeLanguageTransactionPort,
   type ManifestBoundReceivePurposeLanguageWorkflowConfig,
@@ -56,7 +57,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planReceivePurposeLanguageArtifact({
+  planDirectPurposeArtifact(RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: receivePurposeLanguageWorkflowContracts(
       context.binding,
@@ -140,8 +141,12 @@ export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await receivePurposeLanguageSourceInclusion(admitted))
-          .txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

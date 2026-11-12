@@ -12,7 +12,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
-import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  directPurposePaging,
+  withDirectPurposeWalkPages,
+} from "../direct-purpose-family/paging.js";
 import type { RouteInputs } from "../direct-purpose-family/pointer-scan.js";
 import {
   directPurposeInputDescriptorsPresent,
@@ -45,6 +53,7 @@ import {
   executionNativeScriptInvalidEvaluationContext,
   type ExecutionNativeScriptInvalidWalk,
   type ExecutionNativeScriptInvalidWalkBatch,
+  isExecutionNativeScriptInvalidWalkRole,
 } from "./walk.js";
 
 export class ExecutionNativeScriptInvalidHonestLeaf extends Error {
@@ -282,4 +291,57 @@ export const executionNativeScriptInvalidDetection = async (
     if (error instanceof CanonicalReplayPrerequisiteError) throw error;
     return null;
   }
+};
+
+/** The custody as the kit fits it. A shared role continues through the
+ * kit's paging; a signer or evaluation role starts a page at every
+ * transition and continues from the walk state its datum holds, at the
+ * configured page size; every other role continues as planned after the
+ * transition that wrote `datum` (`step01Datum` before the first). */
+export const executionNativeScriptInvalidPaging = (
+  proof: ExecutionNativeScriptInvalidProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const source = directPurposePaging({
+    label: "executionNativeScriptInvalid",
+    transitions: proof.source,
+    first: step01Datum,
+  });
+  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
+    if (isExecutionNativeScriptInvalidWalkRole(role)) {
+      if (proof.walk === null)
+        throw new Error(
+          `executionNativeScriptInvalid ${role}: the route evaluates no native source`,
+        );
+      return proof.walk.transitionAt(role, datum);
+    }
+    if (sourceRoles.has(role)) return source.transitionAt(role, datum);
+    const matches = proof.transitions.filter(
+      (transition, index) =>
+        transition.role === role &&
+        (index === 0
+          ? step01Datum
+          : proof.transitions[index - 1]!.datum
+        ).toLowerCase() === datum.toLowerCase(),
+    );
+    if (matches.length === 1) return matches[0]!;
+    throw new Error(
+      `executionNativeScriptInvalid ${role} thread datum matches ${matches.length.toString()} planned transitions`,
+    );
+  };
+  return withDirectPurposeWalkPages({
+    source,
+    walk:
+      proof.walk === null
+        ? null
+        : {
+            isPaged: isExecutionNativeScriptInvalidWalkRole,
+            page: proof.walk.page,
+          },
+    transitionAt,
+  });
 };

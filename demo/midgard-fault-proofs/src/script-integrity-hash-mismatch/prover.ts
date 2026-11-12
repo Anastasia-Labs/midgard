@@ -22,7 +22,12 @@ import type { DirectPurposeTransition } from "../direct-purpose-family/custody.j
 import type {
   DirectPurposeContracts,
   DirectPurposeFamily,
+  DirectPurposeRole,
 } from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  withDirectPurposeWalkPages,
+} from "../direct-purpose-family/paging.js";
 import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
@@ -41,6 +46,7 @@ import {
 } from "./contracts.js";
 import { scriptIntegrityHashMismatchFieldPlans } from "./custody.js";
 import {
+  isScriptIntegrityHashMismatchPagedRole,
   type ScriptIntegrityHashMismatchWalk,
   type ScriptIntegrityHashMismatchWalkBatch,
   scriptIntegrityHashMismatchWalkTransitions,
@@ -300,4 +306,45 @@ export const scriptIntegrityHashMismatchDetection = async (
   if (bitmap === null) return null;
   const verdict = scriptIntegrityHashMismatchVerdict(material, bitmap);
   return verdict.convicts ? { mismatch: verdict.mismatch } : null;
+};
+
+/** The custody as the kit fits it. A paged walk role starts a page at every
+ * transition and continues from the walk checkpoint its datum holds, at the
+ * configured page size; every other role continues as planned after the
+ * transition that wrote `datum` (`step01Datum` before the first). */
+export const scriptIntegrityHashMismatchPaging = (
+  proof: ScriptIntegrityHashMismatchProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
+    if (
+      isScriptIntegrityHashMismatchPagedRole(role) ||
+      role === "allPurposesSpendResolve"
+    )
+      return proof.walk.transitionAt(role, datum);
+    const matches = proof.transitions.filter(
+      (transition, index) =>
+        transition.role === role &&
+        (index === 0
+          ? step01Datum
+          : proof.transitions[index - 1]!.datum
+        ).toLowerCase() === datum.toLowerCase(),
+    );
+    if (matches.length !== 1)
+      throw new Error(
+        `scriptIntegrityHashMismatch ${role} thread datum matches ${matches.length.toString()} planned transitions`,
+      );
+    return matches[0]!;
+  };
+  return withDirectPurposeWalkPages({
+    source: null,
+    walk: {
+      isPaged: isScriptIntegrityHashMismatchPagedRole,
+      page: proof.walk.page,
+    },
+    transitionAt,
+  });
 };

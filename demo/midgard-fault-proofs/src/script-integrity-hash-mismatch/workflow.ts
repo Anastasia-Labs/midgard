@@ -2,6 +2,10 @@
  * runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
@@ -20,10 +24,7 @@ import {
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_FIELDS } from "./custody.js";
-import {
-  planScriptIntegrityHashMismatchArtifact,
-  scriptIntegrityHashMismatchSourceInclusion,
-} from "./workflow.plan.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createScriptIntegrityHashMismatchTransactionPort,
   type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
@@ -57,7 +58,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planScriptIntegrityHashMismatchArtifact({
+  planDirectPurposeArtifact(SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: scriptIntegrityHashMismatchWorkflowContracts(
       context.binding,
@@ -141,8 +142,12 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await scriptIntegrityHashMismatchSourceInclusion(admitted))
-          .txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

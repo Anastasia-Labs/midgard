@@ -4,6 +4,7 @@
  * inputs have no predecessor descriptor, yields no finding. */
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
@@ -15,7 +16,10 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { executionSourceScriptDecodingDetection } from "./prover.js";
+import {
+  executionSourceScriptDecodingDetection,
+  requireConvictingExecutionSourceScriptDecodingProof,
+} from "./prover.js";
 
 /** Violation id of each recorded arm. */
 const VIOLATION_IDS: Readonly<Record<string, string>> = {
@@ -111,3 +115,20 @@ export const detectExecutionSourceScriptDecodingReplay = async ({
         };
   });
 };
+
+/** The journaled `executionSourceScriptDecoding` workflow artifact: the retained
+ * payload, the predecessor ledger and the coordinate, re-planned on every
+ * admission. */
+export const EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "executionSourceScriptDecoding",
+    artifactVersion:
+      "midgard-execution-source-script-decoding-workflow-artifact-v1",
+    prepare: prepareExecutionSourceScriptDecodingReplay,
+    detect: detectExecutionSourceScriptDecodingReplay,
+    prove: (admitted, _contracts, prover) =>
+      requireConvictingExecutionSourceScriptDecodingProof({
+        material: admitted.material,
+        prover,
+      }),
+  });

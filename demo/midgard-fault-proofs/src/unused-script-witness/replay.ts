@@ -10,6 +10,7 @@ import {
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
@@ -21,7 +22,11 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { unusedScriptWitnessDetection } from "./prover.js";
+import {
+  requireConvictingUnusedScriptWitnessProof,
+  unusedScriptWitnessDetection,
+  unusedScriptWitnessPaging,
+} from "./prover.js";
 
 export const UNUSED_SCRIPT_WITNESS_VIOLATION_ID = "unused-script-witness";
 
@@ -152,3 +157,21 @@ export const detectUnusedScriptWitnessReplay = async ({
         };
   });
 };
+
+/** The journaled `unusedScriptWitness` workflow artifact: the retained payload,
+ * the predecessor ledger and the coordinate, re-planned on every admission. */
+export const UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "unusedScriptWitness",
+    artifactVersion: "midgard-unused-script-witness-workflow-artifact-v1",
+    prepare: prepareUnusedScriptWitnessReplay,
+    detect: detectUnusedScriptWitnessReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingUnusedScriptWitnessProof({
+        material: admitted.material,
+        contracts,
+        prover,
+        scriptIndex: admitted.scriptIndex,
+      }),
+    paging: unusedScriptWitnessPaging,
+  });

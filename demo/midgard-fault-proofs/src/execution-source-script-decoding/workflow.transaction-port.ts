@@ -5,6 +5,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -37,9 +41,8 @@ import type {
 } from "../workflow/family-definition.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareExecutionSourceScriptDecodingWorkflowArtifact } from "./artifact.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY } from "./contracts.js";
-import { planExecutionSourceScriptDecodingArtifact } from "./workflow.plan.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY } from "./replay.js";
 
 const CATEGORY = "executionSourceScriptDecoding";
 
@@ -142,16 +145,22 @@ export const createExecutionSourceScriptDecodingTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: CATEGORY,
     prepare: async (args) =>
-      await prepareExecutionSourceScriptDecodingWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact }) => {
-      const plan = await planExecutionSourceScriptDecodingArtifact({
-        artifact,
-        contracts: config.contracts,
-        prover: config.signer.paymentKeyHash,
-      });
+      const plan = await planDirectPurposeArtifact(
+        EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
+        {
+          artifact,
+          contracts: config.contracts,
+          prover: config.signer.paymentKeyHash,
+        },
+      );
       const { admitted } = plan;
       if (admitted.current.headerHash !== config.binding.definition.headerHash)
         throw new Error(`${CATEGORY} bound header changed`);
@@ -244,7 +253,7 @@ export const createExecutionSourceScriptDecodingTransactionPort = (
             await submitDirectPurposeTransition(
               custody,
               thread,
-              plan.transitionAt(role, thread.datum),
+              plan.paging.transitionAt(role, thread.datum),
             );
           },
         ),

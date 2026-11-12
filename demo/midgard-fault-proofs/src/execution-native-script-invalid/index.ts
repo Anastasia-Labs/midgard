@@ -1,5 +1,4 @@
 export * from "./absent-selection.js";
-export * from "./artifact.js";
 export * from "./contracts.js";
 export * from "./custody.js";
 export * from "./evaluate.js";
@@ -9,5 +8,4 @@ export * from "./routes.js";
 export * from "./signers.js";
 export * from "./walk.js";
 export * from "./workflow.js";
-export * from "./workflow.plan.js";
 export * from "./workflow.transaction-port.js";

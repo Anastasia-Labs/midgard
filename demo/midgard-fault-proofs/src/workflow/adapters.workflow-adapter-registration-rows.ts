@@ -462,7 +462,7 @@ const missingRows: {
   executionSourceScriptDecoding: {
     existingSurface: [
       "execution-source-script-decoding/replay.ts",
-      "execution-source-script-decoding/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "execution-source-script-decoding/workflow.ts",
       "workflow/family-application-registry.ts#EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD",
     ],
@@ -472,7 +472,7 @@ const missingRows: {
   receivePurposeLanguage: {
     existingSurface: [
       "receive-purpose-language/replay.ts",
-      "receive-purpose-language/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "receive-purpose-language/workflow.ts",
       "workflow/family-application-registry.ts#RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD",
     ],
@@ -482,7 +482,7 @@ const missingRows: {
   unusedScriptWitness: {
     existingSurface: [
       "unused-script-witness/replay.ts",
-      "unused-script-witness/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "unused-script-witness/workflow.ts",
       "workflow/family-application-registry.ts#UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD",
     ],
@@ -492,7 +492,7 @@ const missingRows: {
   missingScriptSource: {
     existingSurface: [
       "missing-script-source/replay.ts",
-      "missing-script-source/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "missing-script-source/workflow.ts",
       "workflow/family-application-registry.ts#MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD",
     ],
@@ -502,7 +502,7 @@ const missingRows: {
   missingRedeemer: {
     existingSurface: [
       "missing-redeemer/replay.ts",
-      "missing-redeemer/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "missing-redeemer/workflow.ts",
       "workflow/family-application-registry.ts#MISSING_REDEEMER_FAMILY_APPLICATION_RECORD",
     ],
@@ -512,7 +512,7 @@ const missingRows: {
   unusedRedeemer: {
     existingSurface: [
       "unused-redeemer/replay.ts",
-      "unused-redeemer/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "unused-redeemer/workflow.ts",
       "workflow/family-application-registry.ts#UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD",
     ],
@@ -522,7 +522,7 @@ const missingRows: {
   executionNativeScriptInvalid: {
     existingSurface: [
       "execution-native-script-invalid/replay.ts",
-      "execution-native-script-invalid/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "execution-native-script-invalid/workflow.ts",
       "workflow/family-application-registry.ts#EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD",
     ],
@@ -532,7 +532,7 @@ const missingRows: {
   scriptIntegrityHashMismatch: {
     existingSurface: [
       "script-integrity-hash-mismatch/replay.ts",
-      "script-integrity-hash-mismatch/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "script-integrity-hash-mismatch/workflow.ts",
       "workflow/family-application-registry.ts#SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD",
     ],
@@ -542,7 +542,7 @@ const missingRows: {
   distinctAssetAccumulationLimit: {
     existingSurface: [
       "distinct-asset-accumulation-limit/replay.ts",
-      "distinct-asset-accumulation-limit/artifact.ts",
+      "direct-purpose-family/artifact.ts",
       "distinct-asset-accumulation-limit/workflow.ts",
       "workflow/family-application-registry.ts#DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD",
     ],

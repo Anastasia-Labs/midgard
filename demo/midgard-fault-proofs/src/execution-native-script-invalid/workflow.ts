@@ -2,6 +2,10 @@
  * runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
@@ -20,10 +24,7 @@ import {
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FIELDS } from "./custody.js";
-import {
-  executionNativeScriptInvalidSourceInclusion,
-  planExecutionNativeScriptInvalidArtifact,
-} from "./workflow.plan.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createExecutionNativeScriptInvalidTransactionPort,
   executionNativeScriptInvalidRoleAt,
@@ -57,7 +58,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planExecutionNativeScriptInvalidArtifact({
+  planDirectPurposeArtifact(EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: executionNativeScriptInvalidWorkflowContracts(
       context.binding,
@@ -148,8 +149,12 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await executionNativeScriptInvalidSourceInclusion(admitted))
-          .txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

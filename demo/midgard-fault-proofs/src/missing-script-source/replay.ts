@@ -6,6 +6,7 @@
  * through the prover's verdict. */
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   DIRECT_PURPOSE_NAMES,
   directPurposeEventKey,
@@ -22,7 +23,10 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { missingScriptSourceDetection } from "./prover.js";
+import {
+  missingScriptSourceDetection,
+  requireConvictingMissingScriptSourceProof,
+} from "./prover.js";
 
 export const MISSING_SCRIPT_SOURCE_VIOLATION_ID = "script-source-missing";
 
@@ -120,3 +124,20 @@ export const detectMissingScriptSourceReplay = async ({
         };
   });
 };
+
+/** The journaled `missingScriptSource` workflow artifact: the retained payload,
+ * the predecessor ledger and the coordinate, re-planned on every admission. */
+export const MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY =
+  directPurposeArtifactFamily({
+    label: "missingScriptSource",
+    artifactVersion: "midgard-missing-script-source-workflow-artifact-v1",
+    prepare: prepareMissingScriptSourceReplay,
+    detect: detectMissingScriptSourceReplay,
+    prove: (admitted, contracts, prover) =>
+      requireConvictingMissingScriptSourceProof({
+        material: admitted.material,
+        contracts,
+        prover,
+        ...(admitted.observed === null ? {} : { observed: admitted.observed }),
+      }),
+  });

@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,17 +50,14 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareExecutionNativeScriptInvalidWorkflowArtifact } from "./artifact.js";
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
   type ExecutionNativeScriptInvalidRole,
 } from "./contracts.js";
-import {
-  executionNativeScriptInvalidSourceInclusion,
-  planExecutionNativeScriptInvalidArtifact,
-} from "./workflow.plan.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY } from "./replay.js";
 
 export type ExecutionNativeScriptInvalidWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER`, in that order. */
@@ -139,12 +141,8 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
       throw new Error(`executionNativeScriptInvalid ${role} reference absent`);
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<
-      typeof planExecutionNativeScriptInvalidArtifact
-    >[0]["artifact"],
-  ) =>
-    planExecutionNativeScriptInvalidArtifact({
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY, {
       artifact,
       contracts: config.contracts,
       prover: config.signer.paymentKeyHash,
@@ -153,10 +151,13 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "executionNativeScriptInvalid",
     prepare: async (args) =>
-      await prepareExecutionNativeScriptInvalidWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact, entries }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "executionNativeScriptInvalid",
@@ -235,8 +236,10 @@ export const createExecutionNativeScriptInvalidTransactionPort = (
                 });
                 return;
               }
-              const inclusion =
-                await executionNativeScriptInvalidSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,

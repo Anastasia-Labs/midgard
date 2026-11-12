@@ -1,6 +1,10 @@
 /** The `missingScriptSource` family definition and its manifest-bound runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { DIRECT_PURPOSE_FIELDS } from "../direct-purpose-family/custody.js";
 import { MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
@@ -19,10 +23,7 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  missingScriptSourceSourceInclusion,
-  planMissingScriptSourceArtifact,
-} from "./workflow.plan.js";
+import { MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createMissingScriptSourceTransactionPort,
   type ManifestBoundMissingScriptSourceWorkflowConfig,
@@ -56,7 +57,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planMissingScriptSourceArtifact({
+  planDirectPurposeArtifact(MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: missingScriptSourceWorkflowContracts(
       context.binding,
@@ -157,8 +158,12 @@ export const MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await missingScriptSourceSourceInclusion(admitted))
-          .txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

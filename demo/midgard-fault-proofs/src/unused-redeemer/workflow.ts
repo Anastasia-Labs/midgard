@@ -1,6 +1,10 @@
 /** The `unusedRedeemer` family definition and its manifest-bound runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { DIRECT_PURPOSE_FIELDS } from "../direct-purpose-family/custody.js";
 import { UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
@@ -19,10 +23,7 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  planUnusedRedeemerArtifact,
-  unusedRedeemerSourceInclusion,
-} from "./workflow.plan.js";
+import { UNUSED_REDEEMER_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createUnusedRedeemerTransactionPort,
   type ManifestBoundUnusedRedeemerWorkflowConfig,
@@ -59,7 +60,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planUnusedRedeemerArtifact({
+  planDirectPurposeArtifact(UNUSED_REDEEMER_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: unusedRedeemerWorkflowContracts(
       context.binding,
@@ -146,7 +147,12 @@ export const UNUSED_REDEEMER_FAMILY_DEFINITION = defineFamily({
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);
     return admitted.coordinate.sourceKind === 0
-      ? (await unusedRedeemerSourceInclusion(admitted)).txMembershipProofCbor
+      ? (
+          await directPurposeSourceInclusion(
+            UNUSED_REDEEMER_ARTIFACT_FAMILY,
+            admitted,
+          )
+        ).txMembershipProofCbor
       : null;
   },
 });

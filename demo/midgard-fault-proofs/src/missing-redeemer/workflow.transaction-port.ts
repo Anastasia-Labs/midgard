@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,14 +50,11 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareMissingRedeemerWorkflowArtifact } from "./artifact.js";
 import { MISSING_REDEEMER_FAMILY } from "./contracts.js";
-import {
-  missingRedeemerSourceInclusion,
-  planMissingRedeemerArtifact,
-} from "./workflow.plan.js";
+import { MISSING_REDEEMER_ARTIFACT_FAMILY } from "./replay.js";
 
 export type MissingRedeemerWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.MISSING_REDEEMER_ROLE_ORDER`, in that order. */
@@ -130,10 +132,8 @@ export const createMissingRedeemerTransactionPort = (
       throw new Error(`missingRedeemer ${role} reference absent`);
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<typeof planMissingRedeemerArtifact>[0]["artifact"],
-  ) =>
-    planMissingRedeemerArtifact({
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(MISSING_REDEEMER_ARTIFACT_FAMILY, {
       artifact,
       contracts: config.contracts,
       prover: config.signer.paymentKeyHash,
@@ -142,7 +142,7 @@ export const createMissingRedeemerTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "missingRedeemer",
     prepare: async (args) =>
-      await prepareMissingRedeemerWorkflowArtifact({
+      await prepareDirectPurposeArtifact(MISSING_REDEEMER_ARTIFACT_FAMILY, {
         ...args,
         replayContext: config.replayContext,
       }),
@@ -224,7 +224,10 @@ export const createMissingRedeemerTransactionPort = (
                 });
                 return;
               }
-              const inclusion = await missingRedeemerSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                MISSING_REDEEMER_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,
@@ -260,7 +263,7 @@ export const createMissingRedeemerTransactionPort = (
             const opened = new Set(
               (plan.paging.isPageStart(role, thread.datum)
                 ? plan.paging.page(role, thread.datum).transitions
-                : [plan.transitionAt(role, thread.datum)]
+                : [plan.paging.transitionAt(role, thread.datum)]
               ).flatMap((transition) => transition.fields),
             );
             const carriage = new Map<number, readonly UTxO[]>();

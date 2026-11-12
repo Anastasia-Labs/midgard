@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,14 +50,11 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareReceivePurposeLanguageWorkflowArtifact } from "./artifact.js";
 import { RECEIVE_PURPOSE_LANGUAGE_FAMILY } from "./contracts.js";
-import {
-  planReceivePurposeLanguageArtifact,
-  receivePurposeLanguageSourceInclusion,
-} from "./workflow.plan.js";
+import { RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY } from "./replay.js";
 
 export type ReceivePurposeLanguageWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER`, in that order. */
@@ -134,12 +136,8 @@ export const createReceivePurposeLanguageTransactionPort = (
       throw new Error(`receivePurposeLanguage ${role} reference absent`);
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<
-      typeof planReceivePurposeLanguageArtifact
-    >[0]["artifact"],
-  ) =>
-    planReceivePurposeLanguageArtifact({
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY, {
       artifact,
       contracts: config.contracts,
       prover: config.signer.paymentKeyHash,
@@ -148,10 +146,13 @@ export const createReceivePurposeLanguageTransactionPort = (
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "receivePurposeLanguage",
     prepare: async (args) =>
-      await prepareReceivePurposeLanguageWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact, entries }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "receivePurposeLanguage",
@@ -230,8 +231,10 @@ export const createReceivePurposeLanguageTransactionPort = (
                 });
                 return;
               }
-              const inclusion =
-                await receivePurposeLanguageSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,
@@ -267,7 +270,7 @@ export const createReceivePurposeLanguageTransactionPort = (
             const opened = new Set(
               (plan.paging.isPageStart(role, thread.datum)
                 ? plan.paging.page(role, thread.datum).transitions
-                : [plan.transitionAt(role, thread.datum)]
+                : [plan.paging.transitionAt(role, thread.datum)]
               ).flatMap((transition) => transition.fields),
             );
             const carriage = new Map<number, readonly UTxO[]>();

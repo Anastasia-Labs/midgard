@@ -17,7 +17,15 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
-import type { DirectPurposeContracts } from "../direct-purpose-family/family.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeRole,
+} from "../direct-purpose-family/family.js";
+import {
+  type DirectPurposePaging,
+  directPurposePaging,
+  withDirectPurposeWalkPages,
+} from "../direct-purpose-family/paging.js";
 import { directPurposeInputDescriptorsPresent } from "../direct-purpose-family/script-purposes.js";
 import {
   directPurposeBindTransitions,
@@ -35,6 +43,7 @@ import {
 } from "./contracts.js";
 import { unusedScriptWitnessFieldPlans } from "./custody.js";
 import {
+  isUnusedScriptWitnessPagedRole,
   type UnusedScriptWitnessWalk,
   type UnusedScriptWitnessWalkBatch,
   unusedScriptWitnessWalkTransitions,
@@ -336,4 +345,50 @@ export const unusedScriptWitnessDetection = async (
     material,
     await buildDirectSourceIndexEvidence(material),
   );
+};
+
+/** The custody as the kit fits it. A shared source role continues through
+ * the kit's paging; a paged walk role starts a page at every transition and
+ * continues from the walk checkpoint its datum holds, at the configured page
+ * size; every other role continues as planned after the transition that
+ * wrote `datum` (`step01Datum` before the first). */
+export const unusedScriptWitnessPaging = (
+  proof: UnusedScriptWitnessProofPlan,
+  step01Datum: string,
+): DirectPurposePaging => {
+  const source = directPurposePaging({
+    label: "unusedScriptWitness",
+    transitions: proof.source,
+    first: step01Datum,
+  });
+  const sourceRoles = new Set<string>(proof.source.map(({ role }) => role));
+  const transitionAt = (
+    role: DirectPurposeRole,
+    datum: string,
+  ): DirectPurposeTransition => {
+    if (sourceRoles.has(role)) return source.transitionAt(role, datum);
+    if (
+      isUnusedScriptWitnessPagedRole(role) ||
+      role === "allPurposesSpendResolve"
+    )
+      return proof.walk.transitionAt(role, datum);
+    const matches = proof.transitions.filter(
+      (transition, index) =>
+        transition.role === role &&
+        (index === 0
+          ? step01Datum
+          : proof.transitions[index - 1]!.datum
+        ).toLowerCase() === datum.toLowerCase(),
+    );
+    if (matches.length !== 1)
+      throw new Error(
+        `unusedScriptWitness ${role} thread datum matches ${matches.length.toString()} planned transitions`,
+      );
+    return matches[0]!;
+  };
+  return withDirectPurposeWalkPages({
+    source,
+    walk: { isPaged: isUnusedScriptWitnessPagedRole, page: proof.walk.page },
+    transitionAt,
+  });
 };

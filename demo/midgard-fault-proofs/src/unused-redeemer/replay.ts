@@ -10,6 +10,7 @@ import {
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
@@ -21,7 +22,10 @@ import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { unusedRedeemerDetection } from "./prover.js";
+import {
+  requireConvictingUnusedRedeemerProof,
+  unusedRedeemerDetection,
+} from "./prover.js";
 
 export const UNUSED_REDEEMER_VIOLATION_ID = "unused-redeemer";
 
@@ -140,3 +144,19 @@ export const detectUnusedRedeemerReplay = async ({
         };
   });
 };
+
+/** The journaled `unusedRedeemer` workflow artifact: the retained payload, the
+ * predecessor ledger and the coordinate, re-planned on every admission. */
+export const UNUSED_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
+  label: "unusedRedeemer",
+  artifactVersion: "midgard-unused-redeemer-workflow-artifact-v1",
+  prepare: prepareUnusedRedeemerReplay,
+  detect: detectUnusedRedeemerReplay,
+  prove: (admitted, contracts, prover) =>
+    requireConvictingUnusedRedeemerProof({
+      material: admitted.material,
+      contracts,
+      prover,
+      redeemerIndex: admitted.redeemerIndex,
+    }),
+});

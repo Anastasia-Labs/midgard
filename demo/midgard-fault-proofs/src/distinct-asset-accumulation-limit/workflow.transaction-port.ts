@@ -5,6 +5,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+  prepareDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
+import {
   type DirectPurposeContracts,
   type DirectPurposeRole,
   directPurposeRoleIndex,
@@ -45,17 +50,14 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { prepareDistinctAssetAccumulationLimitWorkflowArtifact } from "./artifact.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
   type DistinctAssetAccumulationLimitRole,
 } from "./contracts.js";
-import {
-  distinctAssetAccumulationLimitSourceInclusion,
-  planDistinctAssetAccumulationLimitArtifact,
-} from "./workflow.plan.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY } from "./replay.js";
 
 export type DistinctAssetAccumulationLimitWorkflowReferenceScripts = Readonly<{
   /** One per role of `SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER`, in that order. */
@@ -141,24 +143,26 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
       );
     return utxo;
   };
-  const planned = (
-    artifact: Parameters<
-      typeof planDistinctAssetAccumulationLimitArtifact
-    >[0]["artifact"],
-  ) =>
-    planDistinctAssetAccumulationLimitArtifact({
-      artifact,
-      contracts: config.contracts,
-      prover: config.signer.paymentKeyHash,
-    });
+  const planned = (artifact: JournalJsonObject) =>
+    planDirectPurposeArtifact(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+      {
+        artifact,
+        contracts: config.contracts,
+        prover: config.signer.paymentKeyHash,
+      },
+    );
   return {
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "distinctAssetAccumulationLimit",
     prepare: async (args) =>
-      await prepareDistinctAssetAccumulationLimitWorkflowArtifact({
-        ...args,
-        replayContext: config.replayContext,
-      }),
+      await prepareDirectPurposeArtifact(
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+        {
+          ...args,
+          replayContext: config.replayContext,
+        },
+      ),
     capture: async ({ action, artifact, entries }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "distinctAssetAccumulationLimit",
@@ -237,8 +241,10 @@ export const createDistinctAssetAccumulationLimitTransactionPort = (
                 });
                 return;
               }
-              const inclusion =
-                await distinctAssetAccumulationLimitSourceInclusion(admitted);
+              const inclusion = await directPurposeSourceInclusion(
+                DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+                admitted,
+              );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
                 address: config.signer.address,

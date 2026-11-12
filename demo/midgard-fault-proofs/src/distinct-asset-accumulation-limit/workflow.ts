@@ -2,6 +2,10 @@
  * runner. */
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
+import {
+  directPurposeSourceInclusion,
+  planDirectPurposeArtifact,
+} from "../direct-purpose-family/artifact.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
@@ -20,10 +24,7 @@ import {
   runOrResumeManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FIELDS } from "./custody.js";
-import {
-  distinctAssetAccumulationLimitSourceInclusion,
-  planDistinctAssetAccumulationLimitArtifact,
-} from "./workflow.plan.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY } from "./replay.js";
 import {
   createDistinctAssetAccumulationLimitTransactionPort,
   distinctAssetAccumulationLimitRoleAt,
@@ -57,7 +58,7 @@ const custodyRole = (input: LinearFamilyPrerequisiteInput) => {
 };
 
 const planned = (context: Context, input: LinearFamilyPrerequisiteInput) =>
-  planDistinctAssetAccumulationLimitArtifact({
+  planDirectPurposeArtifact(DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY, {
     artifact: input.artifact,
     contracts: distinctAssetAccumulationLimitWorkflowContracts(
       context.binding,
@@ -120,8 +121,12 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_DEFINITION = defineFamily(
       if (input.action.input.stage !== "step_01") return null;
       const { admitted } = await planned(context, input);
       return admitted.coordinate.sourceKind === 0
-        ? (await distinctAssetAccumulationLimitSourceInclusion(admitted))
-            .txMembershipProofCbor
+        ? (
+            await directPurposeSourceInclusion(
+              DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+              admitted,
+            )
+          ).txMembershipProofCbor
         : null;
     },
   },

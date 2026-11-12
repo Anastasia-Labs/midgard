@@ -1,3 +1,5 @@
+export * from "./artifact.js";
+export * from "./artifact-family.js";
 export * from "./claim-domains.js";
 export * from "./claim-route.js";
 export * from "./custody.js";
