@@ -14,7 +14,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
@@ -22,10 +21,10 @@ import {
   requireSingletonUtxo,
   resolveTransitionTraceDeploymentContracts,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
-  selectFeeInput,
 } from "../step-support.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
 import { transitionTraceError } from "./errors.js";
@@ -169,10 +168,8 @@ export const submitTransitionTraceProof = async ({
     [threadToken.unit]: 1n,
   };
   let routeLayout: TransitionTraceRouteSpendLayout | undefined;
-  const routeFeeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const routeTx = lucid
-    .newTx()
-    .collectFrom([routeFeeInput])
+  const routeFunding = await fundStep(lucid, { signer });
+  const routeTx = routeFunding.tx
     .collectFrom(
       [threadUtxo],
       makeTransitionTraceRouteSpendRedeemer({
@@ -192,22 +189,23 @@ export const submitTransitionTraceProof = async ({
       finalValidator.spendingScriptAddress,
       { kind: "inline", value: routeDatum },
       routeAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsignedRoute = await routeTx.complete({ localUPLCEval: true });
+    );
+  const signedRoute = await completeStep(routeTx, routeFunding);
   if (routeLayout === undefined) {
     throw transitionTraceError(
       "submissionRejected",
       "BuildTxWithRedeemer did not resolve transition-trace route layout.",
     );
   }
-  const signedRoute = await unsignedRoute.sign.withWallet().complete();
-  const routeTxHash = await signedRoute.submit();
-  const routeOutRef = `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
   // The final transaction must consume the exact authenticated router output.
   // Awaiting this internal hop also prevents providers from selecting a stale
   // initial thread UTxO.
-  await lucid.awaitTx(routeTxHash, DEFAULT_CONFIRMATION_POLL_MS);
+  const routeTxHash = await submitStep(lucid, signedRoute, {
+    label: "transition-trace route",
+    referenceScripts: [],
+    awaitConfirmation: true,
+  });
+  const routeOutRef = `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
   const routedThreadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(routeOutRef, "transition-trace route out-ref"),
@@ -252,7 +250,6 @@ export const submitTransitionTraceProof = async ({
       transitionTraceProofAddress: finalValidator.spendingScriptAddress,
     };
   }
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -305,9 +302,8 @@ export const submitTransitionTraceProof = async ({
     ...fraudProofMintCarriage.referenceInputs,
   ];
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const funding = await fundStep(lucid, { signer });
+  const base = funding.tx
     .collectFrom(
       [routedThreadUtxo],
       makeTransitionTraceFinalSpendRedeemer({
@@ -347,8 +343,7 @@ export const submitTransitionTraceProof = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   for (const item of semanticYields)
     base.withdraw(
       validatorToRewardAddress(network, item.validator.withdrawalScript),
@@ -359,7 +354,7 @@ export const submitTransitionTraceProof = async ({
     computationThreadMintCarriage.attach(base),
   );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -373,11 +368,11 @@ export const submitTransitionTraceProof = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const txHash = await signed.submit();
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const txHash = await submitStep(lucid, signed, {
+    label: "transition-trace proof",
+    referenceScripts: [],
+    awaitConfirmation,
+  });
   return {
     txHash,
     routeTxHash,

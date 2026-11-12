@@ -2,7 +2,6 @@ import { hashBlockHeader } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   parseOutRef,
@@ -11,14 +10,13 @@ import {
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
-  selectFeeInput,
 } from "../step-support.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import { transitionTraceError } from "./errors.js";
@@ -131,9 +129,8 @@ export const submitTransitionTraceRoute = async ({
     signer.paymentKeyHash,
   );
   let layout: TransitionTraceRouteSpendLayout | undefined;
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([selectFeeInput(await lucid.wallet().getUtxos())])
+  const funding = await fundStep(lucid, { signer });
+  const routeTx = funding.tx
     .collectFrom(
       [threadUtxo],
       makeTransitionTraceRouteSpendRedeemer({
@@ -156,18 +153,16 @@ export const submitTransitionTraceRoute = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
+    );
+  const signed = await completeStep(routeTx, funding);
   if (layout === undefined) {
     throw transitionTraceError(
       "submissionRejected",
       "Transition-trace router layout was not resolved.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: "transition-trace route",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -179,17 +174,8 @@ export const submitTransitionTraceRoute = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw transitionTraceError(
-      "submissionRejected",
-      "Transition-trace router provider changed the signed transaction hash.",
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return Object.freeze({
     txHash,
     routeOutRef: `${txHash}#${layout.outputIndex.toString()}`,

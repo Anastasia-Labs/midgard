@@ -32,23 +32,19 @@ import {
 import { fetchCurrentHistory } from "../fabricated-history-witness.js";
 import { fabricatedProofValidity } from "../fabricated-proof-validity.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   requireDeploymentReferenceScript,
   requireSingletonUtxo,
   resolveTransitionTraceDeploymentContracts,
 } from "../runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "../step-support.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { requireComputationThreadToken } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import { governedUserEventAddress } from "../workflow/user-event-address.js";
@@ -239,7 +235,6 @@ const submitTransitionTraceFinalStep = async ({
       "Transition-trace final proof targets another computation thread.",
     );
   }
-  signer.selectWallet(lucid);
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -561,9 +556,8 @@ const submitTransitionTraceFinalStep = async ({
           )
         : encoded;
     }) satisfies BuildTxWithRedeemer;
-    let checkpointBuilder = lucid
-      .newTx()
-      .collectFrom([selectFeeInput(await lucid.wallet().getUtxos())])
+    const checkpointFunding = await fundStep(lucid, { signer });
+    let checkpointBuilder = checkpointFunding.tx
       .collectFrom([threadUtxo], redeemer)
       .readFrom([...fieldStep.referenceInputs]);
     if (depositWitness !== null) {
@@ -591,24 +585,22 @@ const submitTransitionTraceFinalStep = async ({
             .redeemer) satisfies BuildTxWithRedeemer,
       );
     checkpointBuilder = fieldStep.withdraw(checkpointBuilder, planned);
-    const completed = await checkpointBuilder.pay
-      .ToContract(
+    const signed = await completeStep(
+      checkpointBuilder.pay.ToContract(
         threadUtxo.address,
         { kind: "inline", value: nextDatum },
         { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadToken.unit]: 1n },
-      )
-      .addSignerKey(signer.paymentKeyHash)
-      .complete({ localUPLCEval: true })
-      .catch((cause: unknown) => {
-        throw transitionTraceError(
-          "submissionRejected",
-          `Transition checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase} failed: ${formatUnknownError(cause)}`,
-          cause,
-        );
-      });
-    const signed = await completed.sign.withWallet().complete();
-    await reachFraudProofPreSubmitBoundary({
-      signed,
+      ),
+      checkpointFunding,
+    ).catch((cause: unknown) => {
+      throw transitionTraceError(
+        "submissionRejected",
+        `Transition checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase} failed: ${formatUnknownError(cause)}`,
+        cause,
+      );
+    });
+    const txHash = await submitStep(lucid, signed, {
+      label: `transition-trace checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase}`,
       referenceScripts: workflowReferenceScriptsUsedByTransaction({
         signed,
         candidates: [
@@ -630,15 +622,8 @@ const submitTransitionTraceFinalStep = async ({
         ],
       }),
       boundary: preSubmitBoundary,
+      awaitConfirmation: true,
     });
-    const txHash = await signed.submit().catch((cause: unknown) => {
-      throw transitionTraceError(
-        "submissionRejected",
-        `Transition checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase} submission failed: ${formatUnknownError(cause)}`,
-        cause,
-      );
-    });
-    await lucid.awaitTx(txHash);
     if (nextIndex === undefined)
       throw new Error("transition checkpoint layout unresolved");
     return {
@@ -679,10 +664,8 @@ const submitTransitionTraceFinalStep = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "transition-trace fraud-proof mint",
   });
-  const finalFeeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  let base = lucid
-    .newTx()
-    .collectFrom([finalFeeInput])
+  const funding = await fundStep(lucid, { signer });
+  let base = funding.tx
     .collectFrom(
       [threadUtxo],
       makeTransitionTraceFinalSpendRedeemer({
@@ -736,8 +719,7 @@ const submitTransitionTraceFinalStep = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [fraudProofUnit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   if (completedFraud !== undefined) base = completedFraud.apply(base);
   for (const item of semanticYields)
     base.withdraw(
@@ -745,9 +727,10 @@ const submitTransitionTraceFinalStep = async ({
       0n,
       item.redeemer,
     );
-  const unsigned = await fraudProofMintCarriage
-    .attach(computationThreadMintCarriage.attach(base))
-    .complete({ localUPLCEval: true });
+  const signed = await completeStep(
+    fraudProofMintCarriage.attach(computationThreadMintCarriage.attach(base)),
+    funding,
+  );
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -757,9 +740,8 @@ const submitTransitionTraceFinalStep = async ({
       "Transition-trace final layout was not resolved.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: "transition-trace final",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -795,17 +777,8 @@ const submitTransitionTraceFinalStep = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw transitionTraceError(
-      "submissionRejected",
-      "Transition-trace final provider changed the signed transaction hash.",
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   const result = Object.freeze({
     txHash,
     inputIndex: Number(spendLayout.inputIndex),
