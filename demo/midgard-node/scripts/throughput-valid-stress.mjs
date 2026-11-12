@@ -934,10 +934,6 @@ const readCounters = async () => {
     "commit_worker_duration",
   );
   counters.histograms.mergeDuration = extractHistogram(text, "merge_duration");
-  counters.histograms.confirmationDetectionLagMs = extractHistogram(
-    text,
-    "confirmation_detection_lag_ms",
-  );
   counters.l1TipSlot = null;
   if (scenarioClass === "B") {
     try {

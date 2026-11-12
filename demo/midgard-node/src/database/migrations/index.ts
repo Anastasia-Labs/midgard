@@ -34,6 +34,7 @@ import peerSubmitSourceSql from "./sql/0032_peer_submit_source.sql";
 import foreignTxInclusionsSql from "./sql/0033_foreign_tx_inclusions.sql";
 import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
 import admissionTerminalRetentionSql from "./sql/0035_admission_terminal_retention.sql";
+import ownLandedBlocksUnappliedSql from "./sql/0036_own_landed_blocks_unapplied.sql";
 
 export type Migration = {
   readonly version: number;
@@ -287,6 +288,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "admission_terminal_retention",
     checksumSha256: sha256Hex(admissionTerminalRetentionSql),
     sql: admissionTerminalRetentionSql,
+    transactional: true,
+  },
+  {
+    version: 36,
+    name: "own_landed_blocks_unapplied",
+    checksumSha256: sha256Hex(ownLandedBlocksUnappliedSql),
+    sql: ownLandedBlocksUnappliedSql,
     transactional: true,
   },
 ] as const;

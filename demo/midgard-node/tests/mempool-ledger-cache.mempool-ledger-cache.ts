@@ -744,7 +744,8 @@ describe("mempool ledger cache", () => {
           );
 
         // Awaiting -> projected inserts a row, but it is intentionally hidden
-        // until projected_header_hash is assigned by block confirmation.
+        // until projected_header_hash is assigned by the working-ledger
+        // rebase that takes in its landed block.
         let cached = yield* read();
         expect(cached.size).toBe(0);
         expect(cached.size).toBe(retrieveSpendableRows.length);

@@ -47,7 +47,6 @@ export {
 } from "./commit-block-header.commit-explicit-block-header-program.js";
 export {
   type CommitLucidFactory,
-  environmentCommitLucidFactory,
   followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
   shouldHydrateCommitBaseEntries,

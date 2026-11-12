@@ -110,6 +110,7 @@ describe("splitSqlStatements", () => {
       [33, "foreign_tx_inclusions", true],
       [34, "admission_payload_bytes", true],
       [35, "admission_terminal_retention", true],
+      [36, "own_landed_blocks_unapplied", true],
     ]);
   });
 

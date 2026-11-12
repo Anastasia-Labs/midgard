@@ -85,7 +85,11 @@ const requireAll = (table: (typeof TABLES)[number], ids: readonly Buffer[]) =>
       );
   });
 
-/** Projects every event a processed block holds to it. */
+/**
+ * Projects every event a processed block holds to it. A forced transaction
+ * already `finalized` stays so: an own block applied before this release
+ * keeps the forced transactions it finalized then.
+ */
 export const assignChainEvents = (rows: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -107,6 +111,7 @@ export const assignChainEvents = (rows: readonly LandedBlockRow[]) =>
         yield* sql`UPDATE forced_transaction_utxos SET status = 'projected',
           projected_header_hash = ${header}, updated_at = NOW()
           WHERE tx_order_id = ANY(${pg.array(bytea(row.forcedIds))}::bytea[])
+            AND status <> 'finalized'
             AND (status <> 'projected'
               OR projected_header_hash IS DISTINCT FROM ${header})`;
       for (const member of row.withdrawals)

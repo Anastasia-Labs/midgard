@@ -545,15 +545,13 @@ The adapter owns the status transitions:
 - `markSubmitted`: `pending_submission` to
   `submitted_local_finalization_pending`
   ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markLocalFinalizationComplete`:
-  `submitted_local_finalization_pending` to `submitted_unconfirmed`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markObservedWaitingStability`: active states to
   `observed_waiting_stability`
   ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `reviveAbandonedCanonical`: abandoned to observed when L1 proves it canonical
   ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markFinalized`: submitted/observed to `finalized`
+- `markFinalized`: active states to `locally_applied`, by the rebase that
+  applies the landed block
   ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markAbandoned`: active states to `abandoned`
   ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).

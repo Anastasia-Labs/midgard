@@ -120,16 +120,11 @@ Journal states:
 
 At most one active pending-finalization record may exist at a time.
 
-After L1 submission succeeds, the journal first moves to
-`submitted_local_finalization_pending`. Only once the local DB/trie side effects
-finish does it advance to `submitted_unconfirmed`. This keeps crash recovery
-durable: a restart can still distinguish “submitted but local finalization not
-yet complete” from “submitted and locally finalized, only waiting for on-chain
-confirmation”.
-
-The node does not immediately finalize the journal after submit. It waits until
-confirmation processing observes the submitted block and the configured
-stable-L1 condition is satisfied, then finalizes the journal idempotently.
+After L1 submission succeeds, the journal moves to
+`submitted_local_finalization_pending` and stays active. The node applies the
+block locally only once it lands: the working-ledger rebase that takes in the
+landed block writes its local effects and marks the journal `locally_applied`
+in the same transaction, idempotently, as it applies a foreign block.
 
 If the submission is abandoned, deposits remain `(projected, NULL)` and are
 eligible for later inclusion without being reinserted into `mempool_ledger`.
@@ -178,7 +173,7 @@ Expose and alert on:
   `src/services/history-commit-window.ts`.
 - Lifecycle and selection: `src/database/deposits.ts`,
   `src/database/utils/projected-events.ts`, and `src/database/mempoolLedger.ts`.
-- Assignment and recovery: `src/fibers/block-confirmation.ts`,
+- Assignment and recovery: `src/landed-blocks/rebase-events.ts`,
   `src/database/pendingBlockFinalizations.ts`, and the state-correction path.
 
 Use the deposit projection and pending-finalization scenarios in `tests/` for

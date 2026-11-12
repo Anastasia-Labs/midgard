@@ -254,7 +254,7 @@ export const reconcileBlockCommittedProgram = ({
       ],
       nextAction:
         status === "pending"
-          ? "Wait for block confirmation/local finalization worker or inspect state-queue lease."
+          ? "Wait for the block to land and the working-ledger rebase to apply it, or inspect state-queue lease."
           : status === "ambiguous"
             ? "No local journal or canonical state-queue evidence exists for this header."
             : null,

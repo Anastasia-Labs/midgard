@@ -68,7 +68,7 @@ export const provideCommitBlockWorkerServices = <A, E>(
  * The Lucid a commit program builds and submits with. There is no default:
  * every caller chooses, so a role's follower Lucid is never built in a
  * command by omission (option E). The commit worker thread `listen` starts
- * passes `followerCommitLucidFactory`; a command passes its own tool Lucid.
+ * passes `followerCommitLucidFactory`.
  */
 export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;
 
@@ -99,19 +99,6 @@ export const followerCommitLucidFactory: Effect.Effect<
   never,
   Scope.Scope | MidgardContracts | ContractDeploymentIdentity
 > = scopedCommitLucidFactory(FollowerLucidLive);
-
-/** A command's factory: the Lucid service its layers already provide (the
- * tool access `--l1` selects, from `cli-runtime`). */
-export const environmentCommitLucidFactory: Effect.Effect<
-  CommitLucidFactory,
-  never,
-  Lucid
-> = Effect.map(
-  Lucid,
-  (lucid): CommitLucidFactory =>
-    () =>
-      Effect.succeed(lucid),
-);
 
 type PendingUserEventCounts = {
   readonly deposits: number;

@@ -398,7 +398,8 @@ export const buildUnsignedCommitTx = (
           invalidationKey: `commit-block:${newHeaderHash}`,
         },
         // The signed intent is journaled: the own-journal disposition releases
-        // it once its base output is spent, and block confirmation records a landing.
+        // it once its base output is spent, and landed-block processing
+        // records a landing.
         unknownInputsFailFast: true,
       };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(

@@ -132,7 +132,7 @@ describe("commit block worker output handling", () => {
     expect(
       shouldRunPreLeaseSchedulerAlignment({
         status: "proceed",
-        reason: "local_finalization_pending",
+        reason: "scheduler_submit_timing_wait",
         dependencyKey: "dep",
         invalidationKey: "dep",
       }),

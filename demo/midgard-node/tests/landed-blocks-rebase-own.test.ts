@@ -4,10 +4,12 @@
  * owner of `landed-blocks-rebase.fixture.ts`) as a foreign block is:
  *
  * - before the rebase the processed row is unapplied, its journal pending,
- *   no DA payload stored and its withdrawal unassigned; the rebase moves
- *   the working ledger and the native root onto it, writes its DA payload
- *   and that payload's publication outbox, and marks its journal locally
- *   applied, and applying it again writes nothing new;
+ *   its transaction in neither `immutable` nor `blocks`, no DA payload
+ *   stored and its withdrawal unassigned; the rebase moves the working
+ *   ledger and the native root onto it, writes its transaction to
+ *   `immutable` and `blocks` once, its DA payload and that payload's
+ *   publication outbox, and marks its journal locally applied, and
+ *   applying it again writes nothing new;
  * - its withdrawal is `projected` to the block from that rebase, as a
  *   foreign block's is, so it is not yet payout-eligible and refuses a new
  *   classification, and `finalized` only once the block folds;
@@ -19,9 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either, Option } from "effect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,7 @@ import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.events.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
+import { ownJournal } from "./landed-blocks-own-journal.fixture.js";
 import {
   attempt,
   expectRebased,
@@ -55,26 +56,13 @@ import {
   run,
   seed,
 } from "./landed-blocks-rebase.fixture.js";
-import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
 
 const Journals = PendingBlockFinalizationsDB;
-/**
- * The own block's journal, under the hash of the header it commits (its DA
- * payload is built only for that header).
- */
-const journal = (() => {
-  const draft = journalFixture(Buffer.alloc(28));
-  const header = LucidData.from(
-    draft.headerCbor.toString("hex"),
-    SDK.Header,
-  ) as SDK.Header;
-  return {
-    ...draft,
-    headerHash: Buffer.from(Effect.runSync(SDK.hashBlockHeader(header)), "hex"),
-  };
-})();
-const HEADER = journal.headerHash;
-const OWN = HEADER.toString("hex");
+/** The own block's journal, with one transaction `TX` (built before the tests). */
+let journal: PendingBlockFinalizationsDB.PrepareInput;
+let TX: Awaited<ReturnType<typeof ownJournal>>["tx"];
+let HEADER: Buffer;
+let OWN: string;
 const WITHDRAWAL = makeHistoryWithdrawalEntry();
 const WITHDRAWAL_ID = WITHDRAWAL[WithdrawalsDB.Columns.ID];
 const SETTLEMENT = Buffer.from("d87980", "hex");
@@ -91,6 +79,9 @@ const ADMISSION_ORIGIN = Buffer.concat([
 // publication outbox for the manifest's committee.
 let manifestDirectory: string;
 beforeAll(async () => {
+  ({ journal, tx: TX } = await ownJournal());
+  HEADER = journal.headerHash;
+  OWN = HEADER.toString("hex");
   manifestDirectory = await mkdtemp(join(tmpdir(), "landed-own-da-"));
   const manifestPath = join(manifestDirectory, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifestFixture()));
@@ -119,6 +110,7 @@ const landOwn = async (native: Native, abandoned = false) => {
     headerHash: OWN,
     kind: "own",
     applied: false,
+    txIds: [TX.id],
     withdrawals: [
       {
         id: WITHDRAWAL_ID.toString("hex"),
@@ -149,7 +141,10 @@ const landOwn = async (native: Native, abandoned = false) => {
   return globals;
 };
 
-/** The block's journal status, DA payload and withdrawal as stored. */
+/**
+ * The block's journal status, its transaction's `immutable` and `blocks`
+ * rows, DA payload and withdrawal as stored.
+ */
 const shownOwn = (globals: Globals) =>
   run(
     globals,
@@ -159,6 +154,10 @@ const shownOwn = (globals: Globals) =>
         yield* WithdrawalsDB.retrieveByEventId(WITHDRAWAL_ID),
       );
       const sql = yield* SqlClient.SqlClient;
+      const immutable = yield* sql<{ tx: Buffer }>`
+        SELECT tx FROM immutable WHERE tx_id = ${TX.id}`;
+      const blocks = yield* sql<{ header_hash: Buffer }>`
+        SELECT header_hash FROM blocks WHERE tx_id = ${TX.id}`;
       const [outbox] = yield* sql<{ peers: number; announcements: number }>`
         SELECT
           (SELECT COUNT(*)::int FROM da_payload_publications
@@ -170,6 +169,8 @@ const shownOwn = (globals: Globals) =>
           journal,
           (record) => record[Journals.Columns.STATUS],
         ),
+        immutable: immutable.map((row) => row.tx.toString("hex")),
+        blocks: blocks.map((row) => row.header_hash.toString("hex")),
         da: Option.isSome(yield* DaPayloadsDB.retrieveByHeaderHash(HEADER)),
         outbox,
         withdrawal: {
@@ -222,6 +223,8 @@ describe(
       ).toEqual([false]);
       expect(await shownOwn(globals)).toEqual({
         journal: Option.some(Journals.Status.PendingSubmission),
+        immutable: [],
+        blocks: [],
         da: false,
         outbox: { peers: 0, announcements: 0 },
         withdrawal: { status: WithdrawalsDB.Status.Awaiting, header: null },
@@ -232,6 +235,8 @@ describe(
       const applied = await shownOwn(globals);
       expect(applied).toEqual({
         journal: Option.some(Journals.Status.LocallyApplied),
+        immutable: [TX.cbor.toString("hex")],
+        blocks: [OWN],
         da: true,
         outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
         withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },

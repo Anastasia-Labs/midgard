@@ -68,20 +68,10 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
               row.headerHash,
             ),
           );
-        // A transaction `immutable` holds already (this block's, from an
-        // earlier run) is neither inserted nor added to the block again.
-        const committed = new Set(
-          (yield* ImmutableDB.retrieveTxEntriesByHashes(
-            entries.map((entry) => entry[TxColumns.TX_ID]),
-          )).map((entry) => entry[TxColumns.TX_ID].toString("hex")),
-        );
-        const fresh = entries.filter(
-          (entry) => !committed.has(entry[TxColumns.TX_ID].toString("hex")),
-        );
-        yield* ImmutableDB.insertTxsValidatedNative(fresh);
+        yield* ImmutableDB.insertTxsValidatedNative(entries);
         yield* BlocksDB.insert(
           header,
-          fresh.map((entry) => entry[TxColumns.TX_ID]),
+          entries.map((entry) => entry[TxColumns.TX_ID]),
         );
         const payload = yield* buildDaPayloadInsert({ record });
         yield* DaPayloadsDB.upsertAvailable(payload);
