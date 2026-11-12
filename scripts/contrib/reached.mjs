@@ -436,8 +436,9 @@ export const reachIn = ({
       if (target) {
         added.push(module);
         named.add(target);
-        if (relevant.has(target))
-          why.push(`${repoPath(module)} names ${repoPath(target)}`);
+        // Every name edge, not only one to a changed file: a name of a file
+        // the change reaches by import pulls in all that imports the namer.
+        why.push(`${repoPath(module)} names ${repoPath(target)}`);
         continue;
       }
       const built = distOf

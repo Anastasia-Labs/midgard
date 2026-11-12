@@ -384,3 +384,62 @@ test("the probe graphs a real package with Vitest's resolver: imports across pac
   });
   assert.deepEqual(result.files, ["tests/pool.test.ts"]);
 });
+
+test("a source change reaches the tests importing it, directly or not, and no test an absent import would drag in", async (t) => {
+  const vitest = resolve(repository, "demo/node_modules/vitest");
+  if (!existsSync(vitest)) {
+    t.skip("demo/node_modules/vitest is not installed");
+    return;
+  }
+  const root = workspace(t, {
+    "demo/app/package.json": JSON.stringify({ name: "app", type: "module" }),
+    "demo/app/src/x.ts": "export const x = 1;\n",
+    "demo/app/src/y.ts": 'export { x as y } from "./x.js";\n',
+    // Names the worker entry its build writes beside it.
+    "demo/app/src/other.ts":
+      'export const entry = () => new URL("./out.js", import.meta.url);\n',
+    "demo/app/tests/direct.test.ts":
+      'import { test } from "vitest";\nimport { x } from "../src/x.js";\ntest("x", () => x);\n',
+    "demo/app/tests/transitive.test.ts":
+      'import { test } from "vitest";\nimport { y } from "../src/y.js";\ntest("y", () => y);\n',
+    "demo/app/tests/unrelated.test.ts":
+      'import { test } from "vitest";\nimport { entry } from "../src/other.js";\ntest("entry", () => entry());\n',
+    // A worker that loads the unbuilt dist, or a module deliberately absent.
+    "demo/app/tests/loader.mjs":
+      'if (process.env.LOAD_ABSENT) await import("./absent.mjs");\nawait import("../dist/out.js");\n',
+  });
+  mkdirSync(resolve(root, "demo/node_modules"));
+  symlinkSync(realpathSync(vitest), resolve(root, "demo/node_modules/vitest"));
+  const directory = resolve(root, "run");
+  mkdirSync(directory);
+  const app = packageByName(root, "app");
+  const graph = await probeGraph(
+    root,
+    app,
+    { exclude: [], env: {} },
+    { env: process.env, directory },
+  );
+  const result = reachIn({
+    root,
+    pkg: app,
+    graph,
+    changed: ["demo/app/src/x.ts"],
+  });
+  assert.deepEqual(result.files, [
+    "tests/direct.test.ts",
+    "tests/transitive.test.ts",
+  ]);
+  assert.deepEqual(
+    reachIn({ root, pkg: app, graph, changed: ["demo/app/src/other.ts"] })
+      .files,
+    ["tests/unrelated.test.ts"],
+  );
+  // Unresolved imports resolve against their importer, and what is not
+  // there is graphed as importing nothing, not as unanalysable.
+  const a = at(root);
+  assert.deepEqual(graph.edges[a("demo/app/tests/loader.mjs")].sort(), [
+    a("demo/app/dist/out.js"),
+    a("demo/app/tests/absent.mjs"),
+  ]);
+  assert.deepEqual(graph.failed, {});
+});

@@ -19,9 +19,9 @@
 // output: { tests, edges: { file: [dependency] }, failed: { file: why },
 //           spelled: { file: { paths: [token], walks } } }
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const request = JSON.parse(readFileSync(process.argv[2], "utf8"));
@@ -135,6 +135,13 @@ try {
     const visit = async (file) => {
       if (visited.has(file)) return;
       visited.add(file);
+      // An import of a file that is not there (a fixture's deliberate
+      // absence, an unbuilt dist) runs nothing to graph; what builds it is
+      // the reach's build rule.
+      if (!existsSync(file)) {
+        edges[file] ??= [];
+        return;
+      }
       let dependencies;
       try {
         const transformed =
@@ -148,7 +155,11 @@ try {
           .map((dependency) =>
             dependency.startsWith("/@fs/")
               ? dependency.slice(4)
-              : join(project.config.root, dependency),
+              : // An import Vite cannot resolve stays as written, relative
+                // to its importer; a resolved one is relative to the root.
+                dependency.startsWith(".")
+                ? resolve(dirname(file), dependency)
+                : join(project.config.root, dependency),
           );
       } catch (error) {
         // Vitest cannot run this module (a standalone entry with top-level
@@ -190,6 +201,7 @@ try {
 }
 const spelled = {};
 for (const file of Object.keys(edges)) {
+  if (!existsSync(file)) continue;
   try {
     spelled[file] = (await parse(file)).spelled;
   } catch (error) {
