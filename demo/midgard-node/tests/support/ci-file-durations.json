@@ -247,7 +247,6 @@
     "tests/scheduler-refresh.test.ts": 2.9,
     "tests/script-reward-registration.test.ts": 7.2,
     "tests/sdk-abi-fixtures.test.ts": 2.2,
-    "tests/sdk-aiken-schema-parity.test.ts": 2.6,
     "tests/settlement-journal.test.ts": 10,
     "tests/settlement-ownership-handoff.test.ts": 8.4,
     "tests/settlement-tick-reporting.test.ts": 10.4,
