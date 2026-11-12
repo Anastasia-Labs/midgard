@@ -24,7 +24,6 @@ import {
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -34,10 +33,8 @@ import {
   resolveProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   parseSubmitReferenceInputNoIdxReferenceInputsPreimage,
   type ReferenceInputNoIdxStep02Layout,
@@ -54,7 +51,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -137,7 +133,6 @@ export const submitReferenceInputNoIdxStep02 = async ({
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
 
-  signer.selectWallet(lucid);
   // Publish tier-2 field carriage before selecting the final fee input and
   // resolving indices into the complete reference-input set.
   const published =
@@ -173,7 +168,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
     );
   }
 
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -229,10 +224,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const collected = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer);
+  const collected = funding.tx.collectFrom([threadUtxo], redeemer);
   // Without a published witness this step reads nothing, and `readFrom([])`
   // is an error rather than a no-op, so the branch is on whether the carriage
   // produced reference inputs at all.
@@ -240,24 +232,20 @@ export const submitReferenceInputNoIdxStep02 = async ({
     referenceInputs.length === 0
       ? collected
       : collected.readFrom([...referenceInputs])
-  ).pay
-    .ToContract(
-      chain.steps[2].spendingScriptAddress,
-      { kind: "inline", value: step03Datum },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  ).pay.ToContract(
+    chain.steps[2].spendingScriptAddress,
+    { kind: "inline", value: step03Datum },
+    threadAssets,
+  );
   const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const signed = await completeStep(completedTx, funding);
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 02 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -269,16 +257,8 @@ export const submitReferenceInputNoIdxStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `reference-input-no-idx step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

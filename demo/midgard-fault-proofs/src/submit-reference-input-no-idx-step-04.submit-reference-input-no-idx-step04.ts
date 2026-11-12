@@ -22,17 +22,14 @@ import {
   publishFaultProofFieldCarriage,
 } from "./field-opening.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -54,7 +51,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -154,7 +150,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
   });
   const producingTxOutputsHash = planned.commitment;
 
-  signer.selectWallet(lucid);
   // Publish tier-2 field carriage before selecting the final fee input and
   // resolving indices into the complete reference-input set.
   const published =
@@ -227,7 +222,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     );
   }
 
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -243,30 +238,27 @@ export const submitReferenceInputNoIdxStep04 = async ({
   let spendLayout: ReferenceInputNoIdxStep04SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const collected = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom(
-      [threadUtxo],
-      makeReferenceInputNoIdxStep04SpendRedeemer({
-        threadUtxo,
-        fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-        fraudProofPolicyId: contracts.fraudProof.policyId,
-        fraudProofUnit,
-        fraudProofDatum,
-        outputsOpeningFor: (ctx) =>
-          faultProofFieldOpening({
-            planned,
-            referenceInputs: ctx.referenceInputs,
-            certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-            label: "Reference-input-no-idx step 04 outputs",
-          }),
-        grammarRefInputIndex: grammar.grammarRefInputIndex,
-        onLayout: (layout) => {
-          spendLayout = layout;
-        },
-      }),
-    );
+  const collected = funding.tx.collectFrom(
+    [threadUtxo],
+    makeReferenceInputNoIdxStep04SpendRedeemer({
+      threadUtxo,
+      fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+      fraudProofPolicyId: contracts.fraudProof.policyId,
+      fraudProofUnit,
+      fraudProofDatum,
+      outputsOpeningFor: (ctx) =>
+        faultProofFieldOpening({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+          label: "Reference-input-no-idx step 04 outputs",
+        }),
+      grammarRefInputIndex: grammar.grammarRefInputIndex,
+      onLayout: (layout) => {
+        spendLayout = layout;
+      },
+    }),
+  );
   // Without published witnesses this step reads nothing, and `readFrom([])`
   // is an error rather than a no-op, so the branch is on whether the
   // carriages produced reference inputs at all.
@@ -297,13 +289,12 @@ export const submitReferenceInputNoIdxStep04 = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const completedTx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
   );
 
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const signed = await completeStep(completedTx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -316,9 +307,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -340,16 +329,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `reference-input-no-idx step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
