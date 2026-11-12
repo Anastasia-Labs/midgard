@@ -220,7 +220,6 @@ export const processEnvForJournalCheckpoint = ({
   ...spec.process.env,
   NODE_ENV: "emulator",
   LEDGER_MPF_DB_PATH: spec.ledgerMpfDbPath,
-  TRANSACTIONS_MPF_DB_PATH: spec.transactionsMpfDbPath,
   STATE_QUEUE_MUTATION_LEASE_TTL_MS:
     spec.stateQueueMutationLeaseTtlMs.toString(),
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: Math.max(

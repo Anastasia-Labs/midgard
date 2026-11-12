@@ -39,7 +39,6 @@ export const makeNodeSpec = ({
   nodeId,
   postgresIdentity: "shared-test-postgres",
   ledgerMpfDbPath: `/tmp/${nodeId}-ledger-mpf`,
-  transactionsMpfDbPath: `/tmp/${nodeId}-transactions-mpf`,
   stateQueueMutationLeaseTtlMs: 250,
   process: {
     service: "journal-kill-node-probe",

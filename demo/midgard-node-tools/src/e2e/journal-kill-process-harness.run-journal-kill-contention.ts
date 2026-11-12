@@ -63,10 +63,7 @@ export const assertSharedPostgresAndPrivateMpfStores = (
       "Lease-contention nodes must use the same Postgres identity",
     );
   }
-  if (
-    left.ledgerMpfDbPath === right.ledgerMpfDbPath ||
-    left.transactionsMpfDbPath === right.transactionsMpfDbPath
-  ) {
+  if (left.ledgerMpfDbPath === right.ledgerMpfDbPath) {
     throw new Error("Lease-contention nodes must use distinct MPF store paths");
   }
   if (

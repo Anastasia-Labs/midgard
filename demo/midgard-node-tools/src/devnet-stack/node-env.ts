@@ -111,7 +111,6 @@ export const nodeEnvironment = (input: {
     POSTGRES_PASSWORD: run.postgresPassword,
     POSTGRES_DB: run.postgresDatabase,
     LEDGER_MPF_DB_PATH: join(layout.nodeData, "ledger-mpf-db"),
-    TRANSACTIONS_MPF_DB_PATH: join(layout.nodeData, "transactions-mpf-db"),
     MPF_NATIVE_OWNER_BINARY_PATH: artifacts.nativeOwnerBinary,
     MPF_NATIVE_OWNER_BINARY_SHA256: artifacts.nativeOwnerSha256,
     MPF_NATIVE_OWNER_SIDECAR_PATH: join(

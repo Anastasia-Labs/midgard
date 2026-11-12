@@ -76,7 +76,6 @@ export const makeNodeSpec = ({
       requiredIsolatedChildEnv("POSTGRES_DB"),
     ].join(":"),
     ledgerMpfDbPath: join(runDir, label, nodeId, "ledger-mpf"),
-    transactionsMpfDbPath: join(runDir, label, nodeId, "transactions-mpf"),
     stateQueueMutationLeaseTtlMs: ttlMs,
     process: {
       service: "midgard-node-listen",

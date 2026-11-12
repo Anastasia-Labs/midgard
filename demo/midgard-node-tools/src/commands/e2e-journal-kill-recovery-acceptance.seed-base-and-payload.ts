@@ -52,7 +52,6 @@ export const seedBaseAndPayload = async ({
     env: {
       ...seedSpec.process.env,
       LEDGER_MPF_DB_PATH: seedSpec.ledgerMpfDbPath,
-      TRANSACTIONS_MPF_DB_PATH: seedSpec.transactionsMpfDbPath,
       STATE_QUEUE_MUTATION_LEASE_TTL_MS:
         seedSpec.stateQueueMutationLeaseTtlMs.toString(),
       STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: Math.max(

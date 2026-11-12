@@ -10,7 +10,6 @@ export type JournalKillNodeProcessSpec = {
   readonly nodeId: string;
   readonly postgresIdentity: string;
   readonly ledgerMpfDbPath: string;
-  readonly transactionsMpfDbPath: string;
   readonly stateQueueMutationLeaseTtlMs: number;
   readonly process: HostProcessServiceSpec;
 };
