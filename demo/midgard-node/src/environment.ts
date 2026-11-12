@@ -21,9 +21,9 @@ import {
  * This module holds one definition of each. Every function here reads
  * `process.env` and validates; nothing here caches, so a test that mutates the
  * environment sees the change on the next call. Readers that already take an
- * injected `env` parameter (`da/hardening-config.ts`, `e2e/env.ts`,
- * `commands/command-utils.ts`, and the rest) are deliberately left alone —
- * injection is the better shape and they already have it.
+ * injected `env` parameter (`e2e/env.ts`, `commands/command-utils.ts`, and
+ * the rest) are deliberately left alone — injection is the better shape and
+ * they already have it.
  */
 
 /** `undefined` for unset *and* for present-but-blank, which callers all treat alike. */

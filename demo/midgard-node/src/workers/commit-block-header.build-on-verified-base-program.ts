@@ -2,7 +2,6 @@ import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   CommitBuildCalibrationDB,
   MempoolDB,
@@ -339,7 +338,7 @@ export const buildOnVerifiedCommitBaseProgram = (
             safetyFactor: nodeConfig.COMMIT_BUILD_EWMA_SAFETY_FACTOR,
           });
     const daFrameInnerLimit = maxDaPayloadInnerBytes(
-      readDaHardeningConfig().envelopeMode,
+      nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
     );
     const commitBatchBudgetLimits = {
       ...DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,

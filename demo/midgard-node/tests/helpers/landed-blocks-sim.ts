@@ -65,6 +65,7 @@ import {
   landedFrontierPruneFloor,
 } from "../../src/landed-blocks/prune-floor.js";
 import { Frontier, retrieveRows } from "../../src/landed-blocks/store.js";
+import type { NodeConfig } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import {
   correctionCounter,
@@ -119,7 +120,7 @@ export const landedBlocksSimProjection = (
   const seenTerminals = new Set<string>();
   /** The foreign blocks whose included transactions `foreignIncluded` counted. */
   const countedIncludes = new Set<string>();
-  const run = <A, E>(effect: Effect.Effect<A, E, Database>) =>
+  const run = <A, E>(effect: Effect.Effect<A, E, Database | NodeConfig>) =>
     Runtime.runPromise(env.runtime)(effect);
   const { stats, mempool, book } = env;
   const corrections = correctionCounter(stats);

@@ -10,7 +10,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Duration, Effect, Metric } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
-import { readDaHardeningConfig } from "./hardening-config.js";
+import { DEFAULT_DA_PUBLISH_CONCURRENCY } from "./hardening-config.js";
 import {
   publishDaPayloadAnnouncement,
   verifyPayloadHash,
@@ -36,12 +36,15 @@ export const publishDaPayloadInsert = async ({
   manifest,
   transport,
   announcedAtSlot = 0,
+  publishConcurrency = DEFAULT_DA_PUBLISH_CONCURRENCY,
   onPeerResult,
 }: {
   readonly insert: DaPayloadsDB.InsertInput;
   readonly manifest: DaProducerPublicationManifest;
   readonly transport: DaProducerTransport;
   readonly announcedAtSlot?: number;
+  /** The most peers it publishes to at once. */
+  readonly publishConcurrency?: number;
   readonly onPeerResult?: (args: {
     readonly peer: DaProducerCommitteePeer;
     readonly result: DaProducerPeerResult;
@@ -83,10 +86,9 @@ export const publishDaPayloadInsert = async ({
   let nextPeerIndex = 0;
   let activePeers = 0;
   let thresholdReached = false;
-  const configuredConcurrency = readDaHardeningConfig().publishConcurrency;
   const concurrency = Math.max(
     1,
-    Math.min(configuredConcurrency, manifest.committeePeers.length),
+    Math.min(publishConcurrency, manifest.committeePeers.length),
   );
   let resolveDecision!: (reached: boolean) => void;
   let resolveAll!: () => void;

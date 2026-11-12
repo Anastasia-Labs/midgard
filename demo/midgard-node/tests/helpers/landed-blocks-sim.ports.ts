@@ -22,6 +22,7 @@ import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import type { ConfirmedLedgerPosition } from "../../src/landed-blocks/position.js";
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
+import type { NodeConfig } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import type { NativeMpfOwnerService } from "../../src/services/mpf-native-owner/protocol.js";
@@ -173,7 +174,7 @@ export type SimOwner = {
 export type LandedSimEnv = Readonly<{
   universe: SimUniverse;
   registry: SimRegistry;
-  runtime: Runtime.Runtime<Database>;
+  runtime: Runtime.Runtime<Database | NodeConfig>;
   owner: SimOwner;
   mempool: SimMempool;
   stats: LandedSimStats;

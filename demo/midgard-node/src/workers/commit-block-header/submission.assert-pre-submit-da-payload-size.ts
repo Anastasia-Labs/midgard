@@ -1,6 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
-  type DaPayloadEmissionMode,
   daPayloadFramePressureStage,
   maxDaPayloadInnerBytes,
   projectDaPayloadSizes,
@@ -10,7 +9,6 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { readDaHardeningConfig } from "../../da/hardening-config.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -26,6 +24,7 @@ import {
   type RetainedTransitionTraceMember,
   type RetainedValidationTraceMember,
 } from "../../mpf/index.js";
+import { NodeConfig } from "../../services/config.js";
 import type { Database } from "../../services/index.js";
 import {
   type CommitDaFrameMeasurement,
@@ -167,14 +166,13 @@ export const DA_FRAME_REFUSAL_MESSAGE =
 export const assertPreSubmitDaPayloadSize = ({
   headerHash,
   header,
-  envelopeMode = readDaHardeningConfig().envelopeMode,
   ...content
 }: DaPayloadBlockContent & {
   readonly headerHash: string;
   readonly header: SDK.Header;
-  readonly envelopeMode?: DaPayloadEmissionMode;
-}): Effect.Effect<number, DatabaseError> =>
+}): Effect.Effect<number, DatabaseError, NodeConfig> =>
   Effect.gen(function* () {
+    const envelopeMode = (yield* NodeConfig).MIDGARD_DA_PAYLOAD_ENVELOPE;
     const encodedBytes = yield* daPayloadInnerBytes({
       headerHash,
       header,

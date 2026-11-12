@@ -16,8 +16,8 @@ import {
   DaPayloadsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
-import { readDaHardeningConfig } from "./hardening-config.js";
 import {
   publishDaPayloadAnnouncement,
   verifyPayloadHash,
@@ -42,10 +42,14 @@ export const reconcileDaPayloadPeerFromEnv = (
   insert: DaPayloadsDB.InsertInput,
   peerId: string,
   lease?: { readonly owner: string; readonly token: string },
-): Effect.Effect<DaProducerPeerResult | null, DatabaseError, Database> =>
+): Effect.Effect<
+  DaProducerPeerResult | null,
+  DatabaseError,
+  Database | NodeConfig
+> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const config = readDaHardeningConfig();
+    const config = yield* NodeConfig;
     return yield* Effect.tryPromise({
       try: async () => {
         const manifest = await loadDaProducerPublicationManifestFromEnv();
@@ -102,8 +106,8 @@ export const reconcileDaPayloadPeerFromEnv = (
             peer,
             status,
             error: result.error,
-            retryBackoffMs: config.retryBackoffMs,
-            retryBackoffMaxMs: config.retryBackoffMaxMs,
+            retryBackoffMs: config.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS,
+            retryBackoffMaxMs: config.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS,
             lease,
           }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
         );

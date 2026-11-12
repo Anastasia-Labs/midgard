@@ -3,7 +3,6 @@ import { hostname } from "node:os";
 
 import { Effect, Metric, Option, Schedule } from "effect";
 
-import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   type DaProducerCommitteePeer,
   loadDaProducerPublicationManifestFromEnv,
@@ -17,6 +16,7 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 
@@ -110,7 +110,7 @@ export const reconcileDaPublicationsOnce = ({
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
   DatabaseError,
-  Database
+  Database | NodeConfig
 > =>
   Effect.gen(function* () {
     const manifest = yield* Effect.tryPromise({
@@ -132,10 +132,10 @@ export const reconcileDaPublicationsOnce = ({
       };
     }
     const retentionDays = manifest.retentionDays;
-    const hardeningConfig = readDaHardeningConfig();
+    const nodeConfig = yield* NodeConfig;
     const concurrency = Math.max(
       1,
-      Math.min(limit, hardeningConfig.publishConcurrency),
+      Math.min(limit, nodeConfig.MIDGARD_DA_PUBLISH_CONCURRENCY),
     );
     const peerLeaseToken = randomUUID();
     // This scan closes the crash window after da_payloads commit but before
@@ -264,8 +264,9 @@ export const reconcileDaPublicationsOnce = ({
                       ? result.left.message
                       : "gossip publication reached zero recipients",
                 }),
-            retryBackoffMs: hardeningConfig.retryBackoffMs,
-            retryBackoffMaxMs: hardeningConfig.retryBackoffMaxMs,
+            retryBackoffMs: nodeConfig.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS,
+            retryBackoffMaxMs:
+              nodeConfig.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS,
             lease: { owner: leaseOwner, token: announcementLeaseToken },
           });
           if (!recorded) {
@@ -322,7 +323,11 @@ export const reconcileDaPublicationsOnce = ({
 
 export const daPublicationReconcilerFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Database | ContractDeploymentIdentity> =>
+): Effect.Effect<
+  void,
+  never,
+  Database | ContractDeploymentIdentity | NodeConfig
+> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");
     const deploymentIdentityDigest = deploymentIdentityDigestOf(

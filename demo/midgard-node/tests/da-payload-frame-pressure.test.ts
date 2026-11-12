@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 
 import * as DepositsDB from "../src/database/deposits.js";
 import { DatabaseError } from "../src/database/utils/common.js";
+import { NodeConfig } from "../src/services/config.js";
 import { assertPreSubmitDaPayloadSize } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const header: SDK.Header = {
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -74,8 +76,11 @@ const assertSize = (
         transitionTraceMembers: [],
         eventToStepMembers: [],
         validationTraceMembers: [],
-        envelopeMode,
       }).pipe(
+        Effect.provideService(
+          NodeConfig,
+          makeTestNodeConfig({ MIDGARD_DA_PAYLOAD_ENVELOPE: envelopeMode }),
+        ),
         Effect.provide(
           Logger.replace(
             Logger.defaultLogger,

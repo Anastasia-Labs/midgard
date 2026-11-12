@@ -4,7 +4,6 @@ import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
-import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import {
   Columns as LedgerColumns,
   type MinimalEntry,
@@ -17,6 +16,7 @@ import {
   openNativeFrameFixture,
   runNativeFrameDatabase,
 } from "./helpers/commit-additive-native-fixture.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** This drives real signatures, production Phase A/B and native MPF. The
  * ConfirmedState parent is a model authority; no L1 deployment receipt is
@@ -35,7 +35,7 @@ it("keeps a canonical supplier reachable through native building and the actual-
     expect(built.processed.processedMempoolTxs).toHaveLength(1);
     expect(built.builds).toBe(1);
     expect(await h.exact(built.processed, h.root)).toBeLessThanOrEqual(
-      maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode),
+      maxDaPayloadInnerBytes(makeTestNodeConfig().MIDGARD_DA_PAYLOAD_ENVELOPE),
     );
     await h.native.discard(built.handle);
   } finally {
@@ -88,7 +88,7 @@ it("accounts for repeated script references without republishing their program b
     const consumer = h.signed(spend, references, [h.output(balance)]);
     await h.validate(consumer, base);
     const maxInnerBytes = maxDaPayloadInnerBytes(
-      readDaHardeningConfig().envelopeMode,
+      makeTestNodeConfig().MIDGARD_DA_PAYLOAD_ENVELOPE,
     );
     const contributions = commitDaSourceContributions({
       deposits: [],

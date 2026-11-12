@@ -9,7 +9,7 @@ import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../commands/http/submission-capacity.js";
-import { readDaHardeningConfig } from "../da/hardening-config.js";
+import { daHardeningConfig } from "../da/hardening-config.js";
 import {
   VERIFICATION_KEY_HASH_HEX_LENGTH,
   VERIFICATION_KEY_HEX_LENGTH,
@@ -516,7 +516,7 @@ export const makeConfig = Effect.gen(function* () {
       return trimmed;
     }),
   );
-  const daHardeningConfig = readDaHardeningConfig();
+  const daHardening = yield* daHardeningConfig;
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
   );
@@ -905,14 +905,7 @@ export const makeConfig = Effect.gen(function* () {
     DA_THRESHOLD: daThreshold,
     DA_OWNERS_HEX: daOwnersHex,
     DA_COSIGNER_SEED_PHRASE: daCosignerSeedPhrase,
-    MIDGARD_DA_PAYLOAD_ENVELOPE: daHardeningConfig.envelopeMode,
-    MIDGARD_DA_ZSTD_LEVEL: daHardeningConfig.zstdLevel,
-    MIDGARD_DA_PUBLISH_CONCURRENCY: daHardeningConfig.publishConcurrency,
-    MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS:
-      daHardeningConfig.reconcileIntervalMs,
-    MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: daHardeningConfig.retryBackoffMs,
-    MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS:
-      daHardeningConfig.retryBackoffMaxMs,
+    ...daHardening,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,

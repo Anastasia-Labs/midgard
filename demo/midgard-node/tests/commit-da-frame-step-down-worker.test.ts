@@ -3,7 +3,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Logger, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import { TxUtils as TxTable } from "../src/database/index.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
 import { type NativeMpfBuildContext, processMpfs } from "../src/mpf/index.js";
@@ -358,7 +357,7 @@ describe("commit worker DA frame notices", () => {
           acceptedTxCount: 3,
           requiredWorkInnerBytesUpperBound: null,
           effectiveInnerLimit: maxDaPayloadInnerBytes(
-            readDaHardeningConfig().envelopeMode,
+            nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
           ),
         }),
       }),

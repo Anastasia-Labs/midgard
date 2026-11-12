@@ -33,22 +33,6 @@ import {
   runQuietSubmission,
 } from "./helpers/commit-da-frame-fixtures.js";
 
-const sizingMode = vi.hoisted(() => ({
-  mode: "identity" as "identity" | "zstd",
-}));
-vi.mock("../src/da/hardening-config.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/da/hardening-config.js")
-  >("../src/da/hardening-config.js");
-  return {
-    ...actual,
-    readDaHardeningConfig: () => ({
-      ...actual.readDaHardeningConfig(),
-      envelopeMode: sizingMode.mode,
-    }),
-  };
-});
-
 // Reach the exact size check in both production submission paths, then fail
 // the first journal preparation step. No transaction is signed or submitted.
 vi.mock("../src/database/index.js", async () => {
@@ -243,7 +227,6 @@ describe("commit DA frame readiness", () => {
   )(
     "clears exact admission before a later failure, but retains definite overflow (%s, %s)",
     async (mode, source) => {
-      sizingMode.mode = mode;
       const globals = node();
       const notifications: unknown[] = [];
       const afterDaFrameAccepted = Effect.sync(() => {
@@ -318,7 +301,9 @@ describe("commit DA frame readiness", () => {
                   typeof submitTxBackedCommit
                 >[0],
               );
-        return runQuietSubmission(program);
+        return runQuietSubmission(program, {
+          MIDGARD_DA_PAYLOAD_ENVELOPE: mode,
+        });
       };
       const measuredRefusal = commitDaFrameNoticeForOutcome({
         outcome: "no_transactions_to_drop",

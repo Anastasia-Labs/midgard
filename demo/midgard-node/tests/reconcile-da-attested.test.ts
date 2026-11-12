@@ -8,8 +8,9 @@ import {
   classifyCanonicalDaAttestation,
   reconcileDaAttestedProgram,
 } from "../src/commands/reconcile.js";
-import { Lucid, MidgardContracts } from "../src/services/index.js";
+import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
 import { landedStateQueueUTxOs } from "../src/services/landed-state-queue.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // The canonical queue is the landed state queue (P1); the stub stands in for
 // the follower's facts.
@@ -224,6 +225,7 @@ describe("DA-attested reconciliation", () => {
         Effect.provideService(Lucid, lucid),
         Effect.provideService(MidgardContracts, contracts),
         Effect.provideService(SqlClient.SqlClient, sql),
+        Effect.provideService(NodeConfig, makeTestNodeConfig()),
       ),
     );
 

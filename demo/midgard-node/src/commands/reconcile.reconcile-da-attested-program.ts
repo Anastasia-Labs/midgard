@@ -7,7 +7,12 @@ import {
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import {
+  Database,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
   evidence,
@@ -112,7 +117,7 @@ export const reconcileDaAttestedProgram = (options: {
 }): Effect.Effect<
   ReconciliationResult,
   DatabaseError,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | NodeConfig
 > =>
   Effect.gen(function* () {
     const { headerHash, repair } = options;

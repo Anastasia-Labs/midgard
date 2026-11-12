@@ -3,7 +3,6 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric } from "effect";
 
-import { readDaHardeningConfig } from "../../da/hardening-config.js";
 import {
   DaPayloadsDB,
   ForcedTransactionsDB,
@@ -11,6 +10,7 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { encodeTransactionRootValue, type MpfError } from "../../mpf/index.js";
+import { NodeConfig } from "../../services/config.js";
 import {
   bufferEntry,
   computeDaPayloadRoots,
@@ -28,14 +28,13 @@ import {
 
 export const buildDaPayloadInsert = ({
   record,
-  envelope,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
-  readonly envelope?: {
-    readonly mode: "identity" | "zstd";
-    readonly zstdLevel: number;
-  };
-}): Effect.Effect<DaPayloadsDB.InsertInput, DatabaseError | MpfError> =>
+}): Effect.Effect<
+  DaPayloadsDB.InsertInput,
+  DatabaseError | MpfError,
+  NodeConfig
+> =>
   Effect.gen(function* () {
     const header = yield* decodeHeader(record);
     const counts = expectedCounts(record);
@@ -153,18 +152,13 @@ export const buildDaPayloadInsert = ({
     const roots = yield* computeDaPayloadRoots(payload);
     yield* verifyPayloadCommitments({ record, header, payload, roots });
     const innerPayloadCbor = SDK.encodeDaPayload(payload);
-    const envelopeConfig =
-      envelope ??
-      (() => {
-        const config = readDaHardeningConfig();
-        return { mode: config.envelopeMode, zstdLevel: config.zstdLevel };
-      })();
+    const nodeConfig = yield* NodeConfig;
     const compressionStartedAt = Date.now();
     const payloadCbor = yield* Effect.tryPromise({
       try: () =>
         wrapDaPayload(innerPayloadCbor, {
-          mode: envelopeConfig.mode,
-          zstdLevel: envelopeConfig.zstdLevel,
+          mode: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
+          zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
         }),
       catch: (cause) =>
         new DatabaseError({

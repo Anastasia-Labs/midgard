@@ -17,6 +17,7 @@ import {
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import { rebaseTargetOf } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
+import type { NodeConfig } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { makeOutRefCbor } from "../midgard-output-helpers.js";
@@ -37,7 +38,9 @@ import { simDigest, simOutput } from "./landed-blocks-sim.universe.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
-type Run = <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>;
+type Run = <A, E>(
+  effect: Effect.Effect<A, E, Database | NodeConfig>,
+) => Promise<A>;
 
 export const simNode = (env: LandedSimEnv, run: Run) => {
   const { stats, mempool, book } = env;

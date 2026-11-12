@@ -26,6 +26,7 @@ import {
   walkTarget,
 } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
+import type { NodeConfig } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import {
@@ -56,7 +57,9 @@ export type Settled =
   | Readonly<{ error: string }>
   | Readonly<{ hold: DriverHold | undefined; deferred?: true }>;
 
-type Run = <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>;
+type Run = <A, E>(
+  effect: Effect.Effect<A, E, Database | NodeConfig>,
+) => Promise<A>;
 
 /** The settle step; `rebuilds()` counts the working-ledger rebuilds so far. */
 export const simSettler = (
@@ -83,7 +86,7 @@ export const simSettler = (
     );
     const onQueue = new Set([...rooted, ...(queue?.nodes ?? [])]);
     const requested = { value: false };
-    const hook = landedBlockHook({
+    const hook = landedBlockHook<never>({
       store,
       config: SIM_QUEUE_CONFIG,
       ports: simPorts(env, store, faults, served, requested),

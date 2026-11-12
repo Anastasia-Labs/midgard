@@ -9,10 +9,10 @@
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { Data, Effect } from "effect";
 
-import { readDaHardeningConfig } from "../../da/hardening-config.js";
 import type { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import { COMMIT_REJECT_CODE_DA_OVERSIZE } from "../../mpf/commit-rejection.js";
+import { NodeConfig } from "../../services/config.js";
 import { EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES } from "../utils/commit-block-planner.js";
 import { DA_FRAME_REFUSAL_MESSAGE } from "./submission.assert-pre-submit-da-payload-size.js";
 
@@ -46,30 +46,34 @@ export const attributeDaFrameRefusal = (
     readonly includedForcedTransactionEntries: readonly unknown[];
     readonly includedWithdrawalEntries: readonly unknown[];
   },
-  effectiveInnerLimit: number = maxDaPayloadInnerBytes(
-    readDaHardeningConfig().envelopeMode,
-  ),
-): Effect.Effect<never, DatabaseError | CommitDaFrameRefusedNormalTxError> => {
-  const lone = block.processedMempoolTxs[0];
-  if (
-    error.message !== DA_FRAME_REFUSAL_MESSAGE ||
-    lone === undefined ||
-    block.processedMempoolTxs.length !== 1 ||
-    block.includedDepositEntries.length > 0 ||
-    block.includedForcedTransactionEntries.length > 0 ||
-    block.includedWithdrawalEntries.length > 0 ||
-    EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES > effectiveInnerLimit
-  )
-    return Effect.fail(error);
-  return Effect.fail(
-    new CommitDaFrameRefusedNormalTxError({
-      txIdHex: Buffer.from(lone[TxColumns.TX_ID]).toString("hex"),
-      detail: `The block holding only this transaction exceeds the DA frame: ${String(
-        error.cause,
-      )}`,
-    }),
-  );
-};
+): Effect.Effect<
+  never,
+  DatabaseError | CommitDaFrameRefusedNormalTxError,
+  NodeConfig
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const lone = block.processedMempoolTxs[0];
+    if (
+      error.message !== DA_FRAME_REFUSAL_MESSAGE ||
+      lone === undefined ||
+      block.processedMempoolTxs.length !== 1 ||
+      block.includedDepositEntries.length > 0 ||
+      block.includedForcedTransactionEntries.length > 0 ||
+      block.includedWithdrawalEntries.length > 0 ||
+      EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES >
+        maxDaPayloadInnerBytes(nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE)
+    )
+      return yield* Effect.fail(error);
+    return yield* Effect.fail(
+      new CommitDaFrameRefusedNormalTxError({
+        txIdHex: Buffer.from(lone[TxColumns.TX_ID]).toString("hex"),
+        detail: `The block holding only this transaction exceeds the DA frame: ${String(
+          error.cause,
+        )}`,
+      }),
+    );
+  });
 
 /**
  * Runs a commit build; when it fails on a lone normal transaction the DA

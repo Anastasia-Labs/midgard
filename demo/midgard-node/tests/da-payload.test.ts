@@ -25,6 +25,7 @@ import {
   decodeDaPayloadEnvelope,
   unwrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
+import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
@@ -34,6 +35,7 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
+import { NodeConfig } from "../src/services/config.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import { buildJournalFixture } from "./da-payload.build-journal-fixture.js";
@@ -48,6 +50,21 @@ import {
   sourceRoot,
   type TestRoots,
 } from "./da-payload.record.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
+
+/** Runs `effect` on a node whose DA payloads use `envelope`. */
+const runOnNode = <A, E>(
+  effect: Effect.Effect<A, E, NodeConfig>,
+  envelope: DaPayloadEmissionMode = "identity",
+) =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({ MIDGARD_DA_PAYLOAD_ENVELOPE: envelope }),
+      ),
+    ),
+  );
 
 describe("DaPayloadV1 builder", () => {
   it("builds canonical V1 journals with distinct preimage sidecars", async () => {
@@ -79,12 +96,7 @@ describe("DaPayloadV1 builder", () => {
       consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     });
 
-    const insert = await Effect.runPromise(
-      buildDaPayloadInsert({
-        record: pending,
-        envelope: { mode: "identity", zstdLevel: 3 },
-      }),
-    );
+    const insert = await runOnNode(buildDaPayloadInsert({ record: pending }));
     const unwrapped = await unwrapDaPayload(insert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
@@ -118,9 +130,7 @@ describe("DaPayloadV1 builder", () => {
       eventToStepEntries,
     });
 
-    const insert = await Effect.runPromise(
-      buildDaPayloadInsert({ record: pending }),
-    );
+    const insert = await runOnNode(buildDaPayloadInsert({ record: pending }));
     const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
@@ -145,11 +155,9 @@ describe("DaPayloadV1 builder", () => {
       createHash("sha256").update(insert.payload_cbor).digest("hex"),
     );
 
-    const zstdInsert = await Effect.runPromise(
-      buildDaPayloadInsert({
-        record: pending,
-        envelope: { mode: "zstd", zstdLevel: 3 },
-      }),
+    const zstdInsert = await runOnNode(
+      buildDaPayloadInsert({ record: pending }),
+      "zstd",
     );
     const unwrapped = await unwrapDaPayload(zstdInsert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
@@ -180,12 +188,7 @@ describe("DaPayloadV1 builder", () => {
         utxoEntries: ledgerEntries(`size-ledger-${ledgerSize}`, ledgerSize),
         ...events,
       });
-      const insert = await Effect.runPromise(
-        buildDaPayloadInsert({
-          record: pending,
-          envelope: { mode: "identity", zstdLevel: 3 },
-        }),
-      );
+      const insert = await runOnNode(buildDaPayloadInsert({ record: pending }));
       return (
         await unwrapDaPayload(insert.payload_cbor, {
           maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
@@ -215,7 +218,7 @@ describe("DaPayloadV1 builder", () => {
     });
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
-    const summary = await Effect.runPromise(
+    const summary = await runOnNode(
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([pending]),
@@ -249,7 +252,7 @@ describe("DaPayloadV1 builder", () => {
     };
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
-    const summary = await Effect.runPromise(
+    const summary = await runOnNode(
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([incomplete]),
@@ -286,7 +289,7 @@ describe("DaPayloadV1 builder", () => {
         PendingBlockFinalizationsDB.Status.Abandoned,
     };
 
-    const summary = await Effect.runPromise(
+    const summary = await runOnNode(
       backfillMissingDaPayloadsFromFinalizedJournals({
         headerHash,
         deps: {
@@ -336,9 +339,7 @@ describe("DaPayloadV1 builder", () => {
       ),
     };
 
-    const insert = await Effect.runPromise(
-      buildDaPayloadInsert({ record: journal }),
-    );
+    const insert = await runOnNode(buildDaPayloadInsert({ record: journal }));
     const payload = SDK.decodeDaPayload(
       (
         await unwrapDaPayload(insert.payload_cbor, {
@@ -374,7 +375,7 @@ describe("DaPayloadV1 builder", () => {
       ),
     };
 
-    const result = await Effect.runPromise(
+    const result = await runOnNode(
       Effect.either(buildDaPayloadInsert({ record: journal })),
     );
 
@@ -402,7 +403,7 @@ describe("DaPayloadV1 builder", () => {
       },
     });
 
-    const result = await Effect.runPromise(
+    const result = await runOnNode(
       Effect.either(buildDaPayloadInsert({ record: pending })),
     );
 

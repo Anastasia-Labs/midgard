@@ -1,15 +1,24 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { Effect } from "effect";
+import { ConfigProvider, Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { readDaHardeningConfig } from "../src/da/hardening-config.js";
+import { daHardeningConfig } from "../src/da/hardening-config.js";
 import {
   assertDaDeploymentIdentityCompatible,
   assertDaThresholdCompatible,
   runDaIdentityGatedStartupSequence,
 } from "../src/da/startup.js";
+
+const parseDaHardening = (settings: Readonly<Record<string, string>>) =>
+  Effect.runSync(
+    daHardeningConfig.pipe(
+      Effect.withConfigProvider(
+        ConfigProvider.fromMap(new Map(Object.entries(settings))),
+      ),
+    ),
+  );
 
 describe("DA hardening startup and configuration", () => {
   it("runs the required native zstd startup round-trip", async () => {
@@ -88,28 +97,41 @@ describe("DA hardening startup and configuration", () => {
   });
 
   it("parses strict rollout and retry controls from one canonical source", () => {
+    const settings = {
+      MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+      MIDGARD_DA_ZSTD_LEVEL: "7",
+      MIDGARD_DA_PUBLISH_CONCURRENCY: "4",
+      MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: "50",
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: "10",
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: "80",
+    };
+    expect(parseDaHardening(settings)).toEqual({
+      ...settings,
+      MIDGARD_DA_ZSTD_LEVEL: 7,
+      MIDGARD_DA_PUBLISH_CONCURRENCY: 4,
+      MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: 50,
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: 10,
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: 80,
+    });
+    // A blank setting takes its default, as an unset one does.
     expect(
-      readDaHardeningConfig({
-        MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
-        MIDGARD_DA_ZSTD_LEVEL: "7",
-        MIDGARD_DA_PUBLISH_CONCURRENCY: "4",
-        MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: "50",
-        MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: "10",
-        MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: "80",
+      parseDaHardening({
+        MIDGARD_DA_PAYLOAD_ENVELOPE: " ",
+        MIDGARD_DA_ZSTD_LEVEL: "",
       }),
     ).toEqual({
-      envelopeMode: "identity",
-      zstdLevel: 7,
-      publishConcurrency: 4,
-      reconcileIntervalMs: 50,
-      retryBackoffMs: 10,
-      retryBackoffMaxMs: 80,
+      MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+      MIDGARD_DA_ZSTD_LEVEL: 3,
+      MIDGARD_DA_PUBLISH_CONCURRENCY: 8,
+      MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: 30_000,
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: 30_000,
+      MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: 300_000,
     });
     expect(() =>
-      readDaHardeningConfig({ MIDGARD_DA_PAYLOAD_ENVELOPE: "gzip" }),
+      parseDaHardening({ MIDGARD_DA_PAYLOAD_ENVELOPE: "gzip" }),
     ).toThrow(/identity or zstd/);
     expect(() =>
-      readDaHardeningConfig({
+      parseDaHardening({
         MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: "100",
         MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: "10",
       }),

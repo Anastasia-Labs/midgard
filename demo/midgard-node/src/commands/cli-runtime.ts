@@ -266,12 +266,12 @@ export const provideLucidOnlyServices = <A, E>(
   );
 
 export const provideDatabaseServices = <A, E>(
-  effect: Effect.Effect<A, E, Services.Database>,
+  effect: Effect.Effect<A, E, Services.Database | Services.NodeConfig>,
 ): Effect.Effect<
   A,
   E | Services.ConfigError | Services.DatabaseInitializationError,
   never
-> => pipe(effect, Effect.provide(Services.Database.layer));
+> => pipe(effect, Effect.provide(Services.Database.layerWithNodeConfig));
 
 export const provideNodeRuntimeServices = <A, E>(
   effect: Effect.Effect<

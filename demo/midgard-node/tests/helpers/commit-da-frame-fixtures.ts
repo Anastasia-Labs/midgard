@@ -23,7 +23,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "../../src/mpf/transition-cbor.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig, type NodeConfigDep } from "../../src/services/config.js";
 import { assertPreSubmitDaPayloadSize } from "../../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitBatchBudgetLimits,
@@ -231,17 +231,24 @@ export const preSubmit = (
           validationTraceCount: BigInt(txs.length),
         },
         ...blockContentFor(txs, shape),
-        envelopeMode,
-      }).pipe(Effect.provide(Logger.remove(Logger.defaultLogger))),
+      }).pipe(
+        Effect.provide(Logger.remove(Logger.defaultLogger)),
+        Effect.provideService(
+          NodeConfig,
+          makeTestNodeConfig({ MIDGARD_DA_PAYLOAD_ENVELOPE: envelopeMode }),
+        ),
+      ),
     ),
   );
 
 /**
  * A commit submission run without logs, at commit-event depth d = 0 (a
- * fixture without a write permit: the final recheck stores its anchor as given).
+ * fixture without a write permit: the final recheck stores its anchor as given),
+ * with `settings` laid over the test node configuration.
  */
 export const runQuietSubmission = (
   program: Effect.Effect<unknown, unknown, unknown>,
+  settings: Partial<NodeConfigDep> = {},
 ) =>
   Effect.runPromise(
     Effect.either(program).pipe(
@@ -250,6 +257,7 @@ export const runQuietSubmission = (
         NodeConfig,
         makeTestNodeConfig({
           COMMIT_EVENT_DEPTH: 0,
+          ...settings,
         }),
       ),
     ) as Effect.Effect<Either.Either<unknown, unknown>>,

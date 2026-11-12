@@ -25,6 +25,7 @@ import {
 } from "../../src/landed-blocks/confirmed-merges.js";
 import { Frontier } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/index.js";
+import { NodeConfig } from "../../src/services/config.js";
 import { finalizeConfirmedMergeTransaction } from "../../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
@@ -307,14 +308,16 @@ export const registerMpfTests = () => {
               ),
             );
             expect(snapshot.deltaChain).toHaveLength(3);
-            const identityInsert = yield* buildDaPayloadInsert({
-              record: found.value,
-              envelope: { mode: "identity", zstdLevel: 3 },
-            });
-            const zstdInsert = yield* buildDaPayloadInsert({
-              record: found.value,
-              envelope: { mode: "zstd", zstdLevel: 3 },
-            });
+            const nodeConfig = yield* NodeConfig;
+            const insertIn = (envelope: "identity" | "zstd") =>
+              buildDaPayloadInsert({ record: found.value }).pipe(
+                Effect.provideService(NodeConfig, {
+                  ...nodeConfig,
+                  MIDGARD_DA_PAYLOAD_ENVELOPE: envelope,
+                }),
+              );
+            const identityInsert = yield* insertIn("identity");
+            const zstdInsert = yield* insertIn("zstd");
             const identityUnwrapped = yield* Effect.tryPromise({
               try: () =>
                 unwrapDaPayload(identityInsert.payload_cbor, {

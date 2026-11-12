@@ -3,11 +3,11 @@ import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { Effect, Either, Logger } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import { DepositsDB } from "../src/database/index.js";
 import { DatabaseError } from "../src/database/utils/common.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
 import { COMMIT_REJECT_CODE_DA_OVERSIZE } from "../src/mpf/commit-rejection.js";
+import { NodeConfig } from "../src/services/config.js";
 import { buildOnVerifiedCommitBaseProgram } from "../src/workers/commit-block-header.build-on-verified-base-program.js";
 import { databaseOperationsProgram } from "../src/workers/commit-block-header.database-operations-program.js";
 import {
@@ -24,6 +24,7 @@ import {
   REFUSAL,
   runQuietSubmission,
 } from "./helpers/commit-da-frame-fixtures.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // Reach the exact size check of the tx-backed submission, then fail the first
 // journal preparation step. No transaction is signed or submitted.
@@ -85,7 +86,9 @@ vi.mock(
   () => ({ buildOnVerifiedCommitBaseProgram: vi.fn() }),
 );
 
-const LIMIT = maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode);
+const LIMIT = maxDaPayloadInnerBytes(
+  makeTestNodeConfig().MIDGARD_DA_PAYLOAD_ENVELOPE,
+);
 const idHex = (seed: number) => seed.toString(16).padStart(64, "0");
 
 /**
@@ -185,7 +188,7 @@ describe("exact DA frame refusal of a lone normal transaction", () => {
               includedDepositEntries: block.deposits,
               includedForcedTransactionEntries: [],
               includedWithdrawalEntries: [],
-            }),
+            }).pipe(Effect.provideService(NodeConfig, makeTestNodeConfig())),
           ),
         ),
       ).toBe(refusal);

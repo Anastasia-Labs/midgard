@@ -60,6 +60,7 @@ import {
 import { queueTerminalProjection } from "../src/l1-queue-terminals/index.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
+import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
 import {
   encodeNativeMpfEventLog,
@@ -215,7 +216,7 @@ const openOwner = async (): Promise<
 };
 
 const runScenario = (
-  runtime: Runtime.Runtime<Database>,
+  runtime: Runtime.Runtime<Database | NodeConfig>,
   scenario: ForkScenario,
   open: ForkRunOptions["open"],
   stats: LandedSimStats,
@@ -275,13 +276,13 @@ const runScenario = (
 
 const inNode = <A>(
   work: (
-    runtime: Runtime.Runtime<Database>,
-  ) => Effect.Effect<A, unknown, Database>,
+    runtime: Runtime.Runtime<Database | NodeConfig>,
+  ) => Effect.Effect<A, unknown, Database | NodeConfig>,
 ) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const runtime = yield* Effect.runtime<Database>();
+        const runtime = yield* Effect.runtime<Database | NodeConfig>();
         return yield* work(runtime);
       }),
     ),

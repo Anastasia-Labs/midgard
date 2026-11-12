@@ -6,6 +6,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
+import { NodeConfig } from "../../services/config.js";
 import { type Database } from "../../services/database.js";
 import { buildDaPayloadInsert } from "./da-payload.js";
 
@@ -104,7 +105,11 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
   readonly headerHash?: Buffer;
   readonly limit?: number;
   readonly deps?: BackfillDeps<R>;
-} = {}): Effect.Effect<DaPayloadBackfillSummary, DatabaseError, R> =>
+} = {}): Effect.Effect<
+  DaPayloadBackfillSummary,
+  DatabaseError,
+  R | NodeConfig
+> =>
   Effect.gen(function* () {
     const records = yield* deps.retrieveMissingRecords({ headerHash, limit });
     const backfilled: string[] = [];

@@ -160,9 +160,7 @@ const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
  * environment adds `L1_ACCESS` and names the contract manifest, neither of
  * which that parser reads. The hub-oracle nonce and the L1 origin are
  * stand-ins; `listen` parses the real ones when it starts. Reads no file,
- * chain or service. One gap: the parser reads the DA publish settings
- * (`readDaHardeningConfig`) from the process environment, so those come from
- * this controller's environment; the run sets none of them.
+ * chain or service.
  */
 export const preflightNodeConfig = async (
   context: DeployContext,
