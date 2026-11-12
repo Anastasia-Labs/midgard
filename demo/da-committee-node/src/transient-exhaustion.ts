@@ -8,13 +8,11 @@
  * being the backoff. Every other post-start failure keeps the process up and
  * unready under a named reason.
  */
+import { armExitDeadline } from "@al-ft/midgard-l1-follower";
 
 /** The log event of a transient failure that outlived its bound. */
 export const COMMITTEE_TRANSIENT_BUDGET_EXHAUSTED =
   "committee_transient_budget_exhausted";
-
-/** How long the shutdown may take before the process exits anyway. */
-export const EXHAUSTED_SHUTDOWN_DEADLINE_MS = 10_000;
 
 export type TransientExhaustion = Readonly<{
   /** What ran out: `store_instance_lock` or `l1_follower`. */
@@ -27,7 +25,8 @@ export type TransientExhaustion = Readonly<{
 /**
  * Exits the process non-zero on the first exhaustion reported; later ones
  * are ignored. `shutdown` is read when the exhaustion is reported, so it is
- * whatever the process had built by then.
+ * whatever the process had built by then; it has the roles' shared exit
+ * deadline (`armExitDeadline`, 10 s by default) to finish.
  */
 export const transientExhaustionExit = (deps: {
   readonly write: (line: string) => void;
@@ -43,20 +42,16 @@ export const transientExhaustionExit = (deps: {
       `${JSON.stringify({ event: COMMITTEE_TRANSIENT_BUDGET_EXHAUSTED, ...exhaustion, outcome: "a transient failure outlived its bound; the process exits non-zero" })}\n`,
     );
     const shutdown = deps.shutdown();
-    let deadline: ReturnType<typeof setTimeout> | undefined;
-    void Promise.race([
-      Promise.resolve()
-        .then(() => shutdown?.())
-        .catch(() => undefined),
-      new Promise<void>((resolve) => {
-        deadline = setTimeout(
-          resolve,
-          deps.deadlineMs ?? EXHAUSTED_SHUTDOWN_DEADLINE_MS,
-        );
-      }),
-    ]).then(() => {
-      clearTimeout(deadline);
-      deps.exit(1);
+    const disarm = armExitDeadline({
+      exit: deps.exit,
+      code: 1,
+      deadlineMs: deps.deadlineMs,
     });
+    void Promise.resolve()
+      .then(() => shutdown?.())
+      .catch(() => undefined)
+      .then(() => {
+        if (disarm()) deps.exit(1);
+      });
   };
 };

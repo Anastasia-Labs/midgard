@@ -1,4 +1,8 @@
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  armExitDeadline,
+  ROLE_EXIT_DEADLINE_MS,
+} from "@al-ft/midgard-l1-follower";
 
 import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
 import {
@@ -41,20 +45,38 @@ type WatcherCommandDependencies = Readonly<{
       close(): Promise<void>;
     }>
   >;
-  waitForShutdown(): Promise<"SIGINT" | "SIGTERM">;
+  waitForShutdown(stop?: AbortSignal): Promise<"SIGINT" | "SIGTERM">;
+  /**
+   * Exits the process. Without it, as in tests, a failing watcher's close
+   * has no deadline.
+   */
+  exit?: (code: number) => void;
+  /** The close deadline on a failure; the roles' shared one by default. */
+  exitDeadlineMs?: number;
 }>;
 
-const waitForShutdown = async (): Promise<"SIGINT" | "SIGTERM"> =>
+/**
+ * The first SIGINT or SIGTERM. Its listeners are removed once one arrives
+ * or `stop` aborts, so none is left to swallow a later signal.
+ */
+export const waitForShutdown = async (
+  stop?: AbortSignal,
+): Promise<"SIGINT" | "SIGTERM"> =>
   await new Promise((resolve) => {
     const onSigint = () => finish("SIGINT");
     const onSigterm = () => finish("SIGTERM");
-    const finish = (signal: "SIGINT" | "SIGTERM") => {
+    const remove = () => {
       process.off("SIGINT", onSigint);
       process.off("SIGTERM", onSigterm);
+      stop?.removeEventListener("abort", remove);
+    };
+    const finish = (signal: "SIGINT" | "SIGTERM") => {
+      remove();
       resolve(signal);
     };
     process.once("SIGINT", onSigint);
     process.once("SIGTERM", onSigterm);
+    stop?.addEventListener("abort", remove, { once: true });
   });
 
 const productionDependencies: WatcherCommandDependencies = Object.freeze({
@@ -75,6 +97,7 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
     });
   },
   waitForShutdown,
+  exit: (code) => process.exit(code),
 });
 
 const commandStatus = (input: Readonly<Record<string, unknown>>): string =>
@@ -109,6 +132,46 @@ const holdUntilShutdown = async (
   io.writeOutput(commandStatus({ command, state: "stopping", signal }));
   await held.release();
   return WATCHER_COMMAND_FAILURE_EXIT_CODE;
+};
+
+/**
+ * Closes the runtime. On the way to a non-zero exit (`failing`) the close
+ * has the roles' shared exit deadline (`armExitDeadline`): past it the
+ * process names the deadline and exits 70, so a hung close cannot keep a
+ * failed watcher up.
+ */
+const closeRuntime = async (
+  runtime: Readonly<{ close(): Promise<void> }>,
+  failing: boolean,
+  command: WatcherCommand,
+  io: WatcherCommandIo,
+  dependencies: WatcherCommandDependencies,
+): Promise<void> => {
+  const exit = dependencies.exit;
+  const deadlineMs = dependencies.exitDeadlineMs ?? ROLE_EXIT_DEADLINE_MS;
+  const disarm =
+    failing && exit !== undefined
+      ? armExitDeadline({
+          code: WATCHER_COMMAND_FAILURE_EXIT_CODE,
+          deadlineMs,
+          exit: (code) => {
+            io.writeError(
+              commandStatus({
+                command,
+                state: "close_deadline_exceeded",
+                productionReady: false,
+                deadlineMs,
+              }),
+            );
+            exit(code);
+          },
+        })
+      : undefined;
+  try {
+    await runtime.close();
+  } finally {
+    disarm?.();
+  }
 };
 
 const execute = async (
@@ -159,7 +222,7 @@ const execute = async (
     supervisor.phase !== "accepting" ||
     supervisor.recovered !== true
   ) {
-    await runtime.close();
+    await closeRuntime(runtime, true, command, io, dependencies);
     throw new Error("watcher production proof supervision is not ready");
   }
   io.writeOutput(
@@ -176,6 +239,8 @@ const execute = async (
       proofDeadlineHealth: supervisor.deadlineHealth,
     }),
   );
+  const stopWaiting = new AbortController();
+  let failing = true;
   try {
     if (command === "replay") {
       const replayEnd = await Promise.race([
@@ -188,11 +253,12 @@ const execute = async (
         );
       }
       io.writeOutput(commandStatus({ command, state: "caught_up" }));
+      failing = false;
       return 0;
     }
     const stop = await Promise.race([
       runtime.done.then(() => ({ kind: "runtime_stopped" as const })),
-      dependencies.waitForShutdown().then((signal) => ({
+      dependencies.waitForShutdown(stopWaiting.signal).then((signal) => ({
         kind: "operator_shutdown" as const,
         signal,
       })),
@@ -203,9 +269,11 @@ const execute = async (
     io.writeOutput(
       commandStatus({ command, state: "stopping", signal: stop.signal }),
     );
+    failing = false;
     return 0;
   } finally {
-    await runtime.close();
+    stopWaiting.abort();
+    await closeRuntime(runtime, failing, command, io, dependencies);
   }
 };
 

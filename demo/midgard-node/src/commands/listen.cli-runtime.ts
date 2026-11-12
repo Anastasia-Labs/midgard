@@ -1,4 +1,4 @@
-import { Deferred, Effect, pipe } from "effect";
+import { Effect, pipe } from "effect";
 
 import { NodeConfig } from "../services/config.js";
 import * as Services from "../services/index.js";
@@ -8,6 +8,10 @@ import {
   IntentJournalWithoutFollower,
 } from "../services/intent-journal.js";
 import { FollowerLucidAndContracts } from "../services/l1-adapter.follower.js";
+import {
+  NodeProcessExit,
+  untilTransientExhaustion,
+} from "./listen.exit-deadline.js";
 import { runNode } from "./listen.run-node.js";
 import { withStartupHttpServer } from "./listen.startup-http.js";
 import { publicHttpTransport } from "./listen-public-http.js";
@@ -56,7 +60,9 @@ const provideListenRuntimeServices = <A, E>(
 /**
  * Bind after local config, before any provider-dependent service acquisition.
  * A transient failure that outlives its bound (`transient-exhaustion.ts`)
- * ends the node, at startup or later, so that it exits non-zero.
+ * ends the node, at startup or later, so that it exits non-zero; its
+ * teardown has the exit deadline (`listen.exit-deadline.ts`), past which the
+ * process exits anyway.
  */
 export const runListen = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
@@ -67,12 +73,15 @@ export const runListen = (withMonitoring?: boolean) =>
       (startup) =>
         provideListenRuntimeServices(
           Effect.flatMap(Globals, (globals) =>
-            Effect.raceFirst(
+            untilTransientExhaustion(
               runNode(startup, withMonitoring),
-              Deferred.await(globals.TRANSIENT_EXHAUSTION),
+              globals.TRANSIENT_EXHAUSTION,
             ),
           ),
         ),
       transport,
     );
-  }).pipe(Effect.provide(NodeConfig.layer));
+  }).pipe(
+    Effect.provide(NodeConfig.layer),
+    Effect.locally(NodeProcessExit, { exit: (code) => process.exit(code) }),
+  );

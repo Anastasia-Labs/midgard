@@ -27,6 +27,10 @@ import {
 } from "../services/startup-waiting.js";
 import { findTransientBudgetExhausted } from "../services/transient-exhaustion.js";
 import { isSubmitRequest, type SubmitRequestHandler } from "./http/submit.js";
+import {
+  armNodeExitDeadline,
+  nodeFailureExits,
+} from "./listen.exit-deadline.js";
 import type { HttpListenerTransport } from "./listen-http-transport.js";
 
 /** Local startup state: no provider, contract, database or user payload reads. */
@@ -267,8 +271,7 @@ export const withStartupHttpServer = <A, E, R>(
               const step = findStartupStepFailure(cause);
               const spent = findTransientBudgetExhausted(cause);
               const terminal = step?.terminal === true;
-              const exits =
-                spent !== undefined || step?.exhausted === true || terminal;
+              const exits = nodeFailureExits(cause);
               if (current.stage !== "fatal") {
                 const named =
                   spent !== undefined
@@ -297,7 +300,11 @@ export const withStartupHttpServer = <A, E, R>(
                       : `node_startup_failed stage=${current.stage} step=${step.step} reason=${step.reason}; ${outcome}`,
                 );
               }
-              if (exits) return yield* Effect.failCause(cause);
+              if (exits) {
+                // Teardown from here has the exit deadline.
+                yield* armNodeExitDeadline;
+                return yield* Effect.failCause(cause);
+              }
               return yield* Effect.never;
             }),
       ),

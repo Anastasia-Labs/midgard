@@ -50,6 +50,7 @@ import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import type { StartupStepFailedError } from "../services/startup-waiting.js";
 import { acquireSubmitCheckPool } from "../services/submit-check-pool.acquire-submit-check-pool.js";
+import { scopedWithExitDeadline } from "./listen.exit-deadline.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
@@ -395,7 +396,7 @@ export const runNode = (
       );
     }
   }).pipe(
-    Effect.scoped,
+    scopedWithExitDeadline,
     Effect.provide(validationPoolLayer),
     Effect.provide(mempoolLedgerCacheLayer),
   );

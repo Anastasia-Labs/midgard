@@ -62,7 +62,9 @@ budget, a dropped connection, a system error such as a port in use or a file
 not written yet) exits 70. Once the server is bound, any other startup
 failure, a permission or other error that a restart repeats included
 (EACCES, EPERM, EISDIR, EINVAL), holds the process up, unready with
-`startup_failed`, until the operator fixes it and restarts the watcher.
+`startup_failed`, until the operator fixes it and restarts the watcher. On a
+failure that exits, closing the runtime has 10 s; past that the watcher logs
+`close_deadline_exceeded` and exits 70 anyway.
 An L1 read during startup that fails transiently is not a runtime failure: the
 node transport not ready, a sidecar exit, or a query the node did not answer
 in time (`node_timeout`), classified as the L1 follower's provider classifies

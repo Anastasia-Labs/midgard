@@ -224,6 +224,7 @@ export {
   transportLedgerOutputs,
   type TxContentSource,
 } from "./resolve/outputs.js";
+export { armExitDeadline, ROLE_EXIT_DEADLINE_MS } from "./role-exit.js";
 export {
   classifyRoleFailure,
   CONNECTION_ERRNOS,
