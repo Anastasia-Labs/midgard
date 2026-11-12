@@ -71,17 +71,17 @@ export const fundStep = async (
 
 /**
  * Completes `tx` with every script evaluated locally, balancing it from
- * `funding`'s wallet coins, and signs it with the selected wallet. A step
- * with no fee input, such as Init, completes without `funding` and lets coin
- * selection read the wallet.
+ * `funding`'s wallet coins, and signs it with the selected wallet. `funding`
+ * is required: without it coin selection would read the whole wallet and
+ * could spend the prover's own carriage.
  */
 export const completeStep = async (
   tx: TxBuilder,
-  funding?: StepFunding,
+  funding: StepFunding,
 ): Promise<TxSigned> => {
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...funding?.walletInputs,
+    ...funding.walletInputs,
   });
   return await unsigned.sign.withWallet().complete();
 };

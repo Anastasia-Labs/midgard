@@ -118,13 +118,14 @@ const without = (
 
 /**
  * The step digest of `cbor`. `addressOf` resolves a spent input's address and
- * `ordinal` names the lifecycle transaction that produced an output.
+ * `ordinal` names the lifecycle transaction that produced an output. It is
+ * undefined when a spent input does not resolve.
  */
 export const stepDigest = (
   cbor: string,
-  addressOf: (outRef: string) => string,
+  addressOf: (outRef: string) => string | undefined,
   ordinal: (txHash: string) => number | undefined,
-): string => {
+): string | undefined => {
   const tx = CML.Transaction.from_cbor_hex(cbor);
   const json = exactJson(tx.to_json());
   const body = json["body"] as { readonly [key: string]: Json };
@@ -137,16 +138,19 @@ export const stepDigest = (
   const inputs = [...(body["inputs"] as readonly TxInputJson[])].sort(
     ledgerOrder,
   );
+  const spentAddresses = new Map<string, string>();
+  for (const input of inputs) {
+    const address = addressOf(outRef(input));
+    if (address === undefined) return undefined;
+    spentAddresses.set(outRef(input), address);
+  }
   const walletAddresses = new Set(
-    inputs
-      .map((input) => addressOf(outRef(input)))
-      .filter(
-        (address) =>
-          getAddressDetails(address).paymentCredential?.type === "Key",
-      ),
+    [...spentAddresses.values()].filter(
+      (address) => getAddressDetails(address).paymentCredential?.type === "Key",
+    ),
   );
   const isWallet = (input: TxInputJson) =>
-    walletAddresses.has(addressOf(outRef(input)));
+    walletAddresses.has(spentAddresses.get(outRef(input))!);
   const outputs = body["outputs"] as readonly TxOutputJson[];
   const change = outputs.at(-1);
   const stated =
@@ -219,13 +223,16 @@ export const recordStepSubmissions = (seed: string): StepRecording => {
         const addressOf = (ref: string) => {
           const [hash, index] = ref.split("#");
           const key = hash! + index!;
-          const entry = this.ledger[key] ?? this.mempool[key];
-          if (entry === undefined)
-            throw new Error(`spent input ${ref} is not in the emulator ledger`);
-          return entry.utxo.address;
+          return (this.ledger[key] ?? this.mempool[key])?.utxo.address;
         };
         const step = stepDigest(cbor, addressOf, (hash) => ordinals.get(hash));
+        // A transaction spending an input the ledger lacks gets no step
+        // digest: the emulator refuses it with its own error.
         const txHash = await next.call(this, cbor);
+        if (step === undefined)
+          throw new Error(
+            `the emulator accepted ${txHash}, which spends an input missing from its ledger`,
+          );
         ordinals.set(txHash, submitted.length);
         submitted.push({ txHash, cbor: sha256(cbor).toString("hex"), step });
         return txHash;

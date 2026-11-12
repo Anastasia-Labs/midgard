@@ -12,13 +12,19 @@ import {
   Lucid,
   type LucidEvolution,
   type SpendingValidator,
+  type TxBuilder,
   type UTxO,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { resolveProverSigner } from "../src/runtime.js";
-import { completeStep, fundStep, submitStep } from "../src/step-completion.js";
+import {
+  completeStep,
+  fundStep,
+  type StepFunding,
+  submitStep,
+} from "../src/step-completion.js";
 import {
   workflowTransactionCollateralInputOutRefs,
   workflowTransactionInputOutRefs,
@@ -130,6 +136,12 @@ describe("fundStep and completeStep", () => {
     expect(await unspent(lucid, proverUtxos)).toEqual(
       [chunkUtxo!, referenced!].map(label),
     );
+  });
+
+  it("take no completion without the funding fundStep began, so coin selection never reads the whole wallet", () => {
+    expectTypeOf(completeStep).parameters.toEqualTypeOf<
+      [TxBuilder, StepFunding]
+    >();
   });
 
   it("refuse a wallet with no plain coin outside the step's own", async () => {
