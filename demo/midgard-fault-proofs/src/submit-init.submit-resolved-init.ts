@@ -19,7 +19,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   getCompiledScript,
   parseOutRef,
@@ -27,6 +26,7 @@ import {
   requireSingletonUtxo,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import {
   encodePhasMembershipRedeemer,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -39,10 +39,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
 /**
  * The one computation-thread Init transaction: catalogue, hub-oracle and
@@ -198,9 +195,8 @@ export const submitResolvedInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  signer.selectWallet(lucid);
-  const chainedTx = lucid
-    .newTx()
+  const funding = await fundStep(lucid, { signer });
+  const chainedTx = funding.tx
     .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
@@ -217,17 +213,18 @@ export const submitResolvedInit = async ({
       firstStep.spendingScriptAddress,
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await phasMembershipCarriage
-    .attach(computationThreadMintCarriage.attach(chainedTx))
-    .complete({ localUPLCEval: true });
+    );
+  const signed = await completeStep(
+    phasMembershipCarriage.attach(
+      computationThreadMintCarriage.attach(chainedTx),
+    ),
+    funding,
+  );
   if (firstStepOutputIndex === undefined) {
     throw new Error(`${label}: init output index was not resolved.`);
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: `${label} init`,
     referenceScripts: [
       workflowReferenceScript({
         role: referenceScriptRoles.computationThreadMint,
@@ -241,16 +238,8 @@ export const submitResolvedInit = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `${label}: init provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     walletSource: signer.source,
