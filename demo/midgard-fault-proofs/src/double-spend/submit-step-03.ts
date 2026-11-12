@@ -40,10 +40,8 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import { parseHex } from "../json-file.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
@@ -51,6 +49,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
@@ -60,7 +59,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 
@@ -251,7 +249,6 @@ export const submitStep03 = async ({
   const doubleSpentInput =
     tx1SpendInputsWitness.inputs[Number(doubleSpentInputIndex)]!;
 
-  signer.selectWallet(lucid);
   // §8's ladder decides whether anything has to exist on-chain before this
   // transaction can reference it. Tier 1 publishes nothing and the list is empty.
   const carriageUtxos =
@@ -275,7 +272,8 @@ export const submitStep03 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: referenceInputs,
   });
   const step04Datum = Data.to(
@@ -330,38 +328,28 @@ export const submitStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const txWithInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer);
+  const txWithInputs = funding.tx.collectFrom([threadUtxo], redeemer);
   // Tier 1 references nothing, and `readFrom([])` is an error rather than a
   // no-op, so the branch is on whether §8 produced carriage at all.
   const tx = (
     referenceInputs.length === 0
       ? txWithInputs
       : txWithInputs.readFrom([...referenceInputs])
-  ).pay
-    .ToContract(
-      contracts.doubleSpend.steps[3].spendingScriptAddress,
-      {
-        kind: "inline",
-        value: step04Datum,
-      },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  ).pay.ToContract(
+    contracts.doubleSpend.steps[3].spendingScriptAddress,
+    {
+      kind: "inline",
+      value: step04Datum,
+    },
+    threadAssets,
+  );
   const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await completedTx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(completedTx, funding);
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-03",
@@ -370,16 +358,8 @@ export const submitStep03 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

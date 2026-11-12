@@ -17,9 +17,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
@@ -27,6 +25,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -39,7 +38,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -171,7 +169,6 @@ export const submitStep04 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
@@ -205,7 +202,8 @@ export const submitStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: referenceInputs,
   });
   const fraudProofUnit = toUnit(
@@ -230,32 +228,29 @@ export const submitStep04 = async ({
   );
 
   const makeStep04Tx = (): TxBuilder => {
-    const withInputs = lucid
-      .newTx()
-      .collectFrom([feeInput])
-      .collectFrom(
-        [threadUtxo],
-        makeStep04SpendRedeemer({
-          threadUtxo,
-          fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-          fraudProofPolicyId: contracts.fraudProof.policyId,
-          fraudProofUnit,
-          fraudProofDatum,
-          tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
-            faultProofFieldOpening({
-              planned,
-              referenceInputs: ctx.referenceInputs,
-              ...(certificatePolicyId === undefined
-                ? {}
-                : { certificatePolicyId }),
-              label: "Double-spend step 04 tx2 spend-inputs",
-            }),
-          doubleSpentInputIndex,
-          onLayout: (layout) => {
-            spendLayout = layout;
-          },
-        }),
-      );
+    const withInputs = funding.tx.collectFrom(
+      [threadUtxo],
+      makeStep04SpendRedeemer({
+        threadUtxo,
+        fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        fraudProofUnit,
+        fraudProofDatum,
+        tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            ...(certificatePolicyId === undefined
+              ? {}
+              : { certificatePolicyId }),
+            label: "Double-spend step 04 tx2 spend-inputs",
+          }),
+        doubleSpentInputIndex,
+        onLayout: (layout) => {
+          spendLayout = layout;
+        },
+      }),
+    );
     // Tier 1 references nothing, and `readFrom([])` is an error rather than a
     // no-op, so the branch is on whether §8 produced carriage at all.
     const chained = (
@@ -279,17 +274,13 @@ export const submitStep04 = async ({
         contracts.fraudProof.spendingScriptAddress,
         { kind: "inline", value: fraudProofDatum },
         fraudProofAssets,
-      )
-      .addSignerKey(signer.paymentKeyHash);
+      );
     return fraudProofMintCarriage.attach(
       computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
     );
   };
 
-  const unsigned = await makeStep04Tx().complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(makeStep04Tx(), funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -300,9 +291,7 @@ export const submitStep04 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-04",
@@ -321,16 +310,8 @@ export const submitStep04 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
