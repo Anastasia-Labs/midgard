@@ -58,10 +58,11 @@ That field describes this runtime's readiness checks, not public-testnet launch
 approval. Invalid arguments exit 64. A process configuration refused before
 the operations server binds exits 78, since no `/readyz` could name it. A
 startup failure a restart may clear (L1 reads that outlasted the startup
-budget, a system error such as a port in use or a file not written yet)
-exits 70. Once the server is bound, any other startup failure holds the
-process up, unready with `startup_failed`, until the operator fixes it and
-restarts the watcher.
+budget, a dropped connection, a system error such as a port in use or a file
+not written yet) exits 70. Once the server is bound, any other startup
+failure, a permission or other error that a restart repeats included
+(EACCES, EPERM, EISDIR, EINVAL), holds the process up, unready with
+`startup_failed`, until the operator fixes it and restarts the watcher.
 An L1 read during startup that fails transiently is not a runtime failure: the
 node transport not ready, a sidecar exit, or a query the node did not answer
 in time (`node_timeout`), classified as the L1 follower's provider classifies

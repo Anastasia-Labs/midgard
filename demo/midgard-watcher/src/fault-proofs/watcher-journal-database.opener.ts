@@ -15,20 +15,14 @@ export const watcherJournalRetryDelayMs = (attempts: number): number =>
   Math.min(REOPEN_MAX_MS, REOPEN_BASE_MS * 2 ** Math.min(attempts, 5));
 
 /**
- * Whether a journal failure, or one it wraps through `cause`, is one a later
- * attempt can clear on its own: SQLite busy or locked, or an errno the
- * follower classifies as transient (`classifyFailure`). Anything else (a
- * file SQLite cannot open, a full disk, a permission) waits for an operator,
- * so no timer retries it.
+ * Whether a journal failure, or one it wraps, is one a later attempt can
+ * clear on its own: SQLite busy or locked, or an errno the follower
+ * classifies as transient (`classifyFailure`). Anything else (a file SQLite
+ * cannot open, a full disk, a permission) waits for an operator, so no
+ * timer retries it.
  */
-export const isTransientJournalFailure = (error: unknown): boolean => {
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
-    if (classifyFailure(current) === "transient") return true;
-    current = current.cause;
-  }
-  return false;
-};
+export const isTransientJournalFailure = (error: unknown): boolean =>
+  classifyFailure(error) === "transient";
 
 export type WatcherJournalOpener<T> = Readonly<{
   /** The memoized open; a journal failure is retried by the next call. */

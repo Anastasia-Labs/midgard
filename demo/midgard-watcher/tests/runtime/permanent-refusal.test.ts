@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
@@ -204,6 +211,14 @@ describe("permanent refusals: held after the server binds, exit 78 before", () =
     expect(watcherFailureExitCode(failure)).toBe(70);
     // It exits: the server bound for it is closed.
     expect(await readyz(config)).toBeUndefined();
+  });
+
+  it("holds on a deployment authority it cannot read, as a restart repeats it", async () => {
+    const config = await processConfig();
+    await rm(config.deploymentAuthorityPath);
+    await mkdir(config.deploymentAuthorityPath);
+    const failure = await heldRefusal(config);
+    expect(failure.cause).toMatchObject({ code: "EISDIR" });
   });
 
   it("exits on a startup failure a restart may clear, and holds on any other", () => {

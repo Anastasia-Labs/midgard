@@ -1,3 +1,5 @@
+import { classifyRoleFailure } from "@al-ft/midgard-l1-follower";
+
 import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
 import { WatcherL1UnavailableError } from "../l1/transient-retry.js";
 import { startWatcherOperationsHttpServer } from "./operations-http.js";
@@ -19,13 +21,18 @@ export { WatcherStartupHeldError };
 /**
  * Whether a startup failure exits rather than holds (owner ruling
  * 2026-10-09): only one a restart may clear. That is L1 transients that
- * outlasted the startup budget (`WatcherL1UnavailableError`) and a system
- * error (a file not written yet, a port in use), each anywhere on the cause
- * chain. Anything else, deterministic or unknown (a configuration or
+ * outlasted the startup budget (`WatcherL1UnavailableError`), and a failure
+ * the shared table (`classifyRoleFailure`) classes `transient` or `restart`
+ * (a dropped connection, a port in use), each anywhere on the cause chain.
+ * An `unknown` failure carrying an errno (a file not written yet, an I/O
+ * error) exits too: the table does not class those errnos yet. Anything
+ * else, deterministic or unknown (a permission, a configuration or
  * deployment-identity refusal, a malformed read), holds.
  */
 export const watcherStartupFailureExits = (error: unknown): boolean => {
-  if (hasSystemErrorCode(error)) return true;
+  const failure = classifyRoleFailure(error);
+  if (failure === "transient" || failure === "restart") return true;
+  if (failure === "unknown" && hasSystemErrorCode(error)) return true;
   const seen = new Set<unknown>();
   const pending = [error];
   while (pending.length > 0 && seen.size < 16) {

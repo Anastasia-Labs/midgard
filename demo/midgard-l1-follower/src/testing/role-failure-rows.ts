@@ -155,6 +155,10 @@ export const ROLE_FAILURE_ROWS: readonly RoleFailureRow[] = [
   row("a SQLite datatype mismatch", "deterministic", () =>
     sqlite("datatype mismatch", 20),
   ),
+  row("a file not written yet (ENOENT)", "unknown", () =>
+    coded("open ENOENT", "ENOENT", "open"),
+  ),
+  row("an I/O error (EIO)", "unknown", () => coded("read EIO", "EIO", "read")),
   row("a failed password (28P01)", "unknown", () =>
     coded("password authentication failed", "28P01"),
   ),
