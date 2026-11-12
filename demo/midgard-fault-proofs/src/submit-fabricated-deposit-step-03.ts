@@ -34,7 +34,6 @@ import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -43,10 +42,8 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
   type FabricatedDepositContracts,
@@ -54,7 +51,6 @@ import {
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -263,8 +259,7 @@ export const submitFabricatedDepositStep03 = async ({
     openingCbor,
   });
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step04Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: handoff.step04State },
     FabricatedDepositStep04Datum,
@@ -312,11 +307,9 @@ export const submitFabricatedDepositStep03 = async ({
     nodeBlockTime: state.header_block_time,
     now: now(),
   });
-  const tx = lucid
-    .newTx()
+  const tx = funding.tx
     .validFrom(validity.validFrom)
     .validTo(validity.validTo)
-    .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       requireFabricatedReferenceScript({
@@ -333,18 +326,15 @@ export const submitFabricatedDepositStep03 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve fabricated-deposit step 03 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-03",
@@ -353,16 +343,8 @@ export const submitFabricatedDepositStep03 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `fabricated-deposit step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
