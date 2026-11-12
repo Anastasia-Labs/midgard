@@ -1,15 +1,8 @@
 import {
-  decodeMidgardAddressWitnessFieldPreimage,
-  ledgerEd25519SignatureReady,
-} from "@al-ft/midgard-core";
-import {
   type FieldOpening,
-  missingSignatureFieldWalkCheckpoint,
-  missingSignatureVkeyHash,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -31,6 +24,7 @@ import {
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { planSignerWitnessScanTurn } from "../signer-witness-scan/signer-witness-scan.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -48,36 +42,6 @@ import {
   SPEND_INPUT_SIGNER_SCAN_BATCH,
   type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing.js";
-
-const resolveCursor = ({
-  txId,
-  itemCount,
-  totalLength,
-  checkpointHash,
-}: {
-  readonly txId: string;
-  readonly itemCount: number;
-  readonly totalLength: number;
-  readonly checkpointHash: string;
-}) => {
-  for (
-    let cursor = 0;
-    cursor < itemCount || cursor === 0;
-    cursor += SPEND_INPUT_SIGNER_SCAN_BATCH
-  ) {
-    const candidate = missingSignatureFieldWalkCheckpoint({
-      txId,
-      itemCount,
-      totalLength,
-      nextItemIndex: cursor,
-    });
-    if (candidate.checkpointHash === checkpointHash) return candidate;
-    if (itemCount === 0) break;
-  }
-  throw new Error(
-    "spend-input-signer-missing: checkpoint is not on the deterministic 16-item schedule",
-  );
-};
 
 export const submitSpendInputSignerMissingStep04 = async ({
   lucid,
@@ -154,47 +118,18 @@ export const submitSpendInputSignerMissingStep04 = async ({
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
   });
-  const checkpoint = resolveCursor({
+  const turn = planSignerWitnessScanTurn({
+    checkpoints: evidence.checkpoints,
     txId: evidence.subject.transaction_id,
     itemCount: planned.itemCount,
     totalLength: planned.preimage.length,
     checkpointHash: state.checkpoint_hash,
+    batch: SPEND_INPUT_SIGNER_SCAN_BATCH,
   });
-  const nextCursor = Math.min(
-    checkpoint.nextItemIndex + SPEND_INPUT_SIGNER_SCAN_BATCH,
-    planned.itemCount,
-  );
-  const witnesses = decodeMidgardAddressWitnessFieldPreimage(
-    Buffer.from(evidence.addressWitnessFieldPreimageHex, "hex"),
-  );
-  await ledgerEd25519SignatureReady();
-  const signerPresent = witnesses
-    .slice(checkpoint.nextItemIndex, nextCursor)
-    .some((witness) => {
-      const verificationKey = Buffer.from(witness.verificationKey).toString(
-        "hex",
-      );
-      return (
-        verifyAddressWitness({
-          txId: evidence.subject.transaction_id,
-          witness: {
-            verification_key: verificationKey,
-            signature: Buffer.from(witness.signature).toString("hex"),
-          },
-        }) &&
-        missingSignatureVkeyHash(verificationKey) ===
-          evidence.paymentCredentialHex
-      );
-    });
-  const terminal = signerPresent || nextCursor === planned.itemCount;
-  const nextCheckpoint = terminal
-    ? undefined
-    : missingSignatureFieldWalkCheckpoint({
-        txId: evidence.subject.transaction_id,
-        itemCount: planned.itemCount,
-        totalLength: planned.preimage.length,
-        nextItemIndex: nextCursor,
-      });
+  const { checkpoint, nextCursor, signerPresent } = turn;
+  // A present signer ends this family's scan early, as step 04 does on chain.
+  const terminal = signerPresent || turn.exhausted;
+  const nextCheckpoint = terminal ? undefined : turn.nextCheckpoint;
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
     ownOutputs,

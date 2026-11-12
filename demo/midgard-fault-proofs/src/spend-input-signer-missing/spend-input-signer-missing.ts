@@ -12,13 +12,11 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-  missingSignatureVkeyHash,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-  verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -26,6 +24,7 @@ import type {
   AuthenticatedPriorLedgerOutput,
   ResolvedOutputPriorLedgerReplay,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_CATEGORY =
   "spendInputSignerMissing" as const;
@@ -265,45 +264,21 @@ export const prepareSpendInputSignerMissingEvidence = ({
     return direct("script_credential");
   }
   const paymentCredentialHex = address.paymentCredential.hash.toString("hex");
-  const validSignerHashes: string[] = [];
-  const checkpoints: { cursor: number; signerPresent: boolean }[] = [];
-  let signerPresent = false;
-  witnesses.forEach((witness, witnessIndex) => {
-    const verificationKey = Buffer.from(witness.verificationKey).toString(
-      "hex",
-    );
-    if (
-      verifyAddressWitness({
-        txId: subject.transaction_id,
-        witness: {
-          verification_key: verificationKey,
-          signature: Buffer.from(witness.signature).toString("hex"),
-        },
-      })
-    ) {
-      const hash = missingSignatureVkeyHash(verificationKey);
-      validSignerHashes.push(hash);
-      if (hash === paymentCredentialHex) signerPresent = true;
-    }
-    if (
-      (witnessIndex + 1) % SPEND_INPUT_SIGNER_SCAN_BATCH === 0 ||
-      witnessIndex + 1 === witnesses.length
-    )
-      checkpoints.push({ cursor: witnessIndex + 1, signerPresent });
+  const scan = scanSignerWitnesses({
+    transactionId: subject.transaction_id,
+    witnesses,
+    paymentCredentialHex,
+    batch: SPEND_INPUT_SIGNER_SCAN_BATCH,
   });
-  if (witnesses.length === 0)
-    checkpoints.push({ cursor: 0, signerPresent: false });
   const evidence: SpendInputSignerMissingEvidence = Object.freeze({
     ...common,
     route: "witness_scan",
     signerRequired: true,
     resolved,
     paymentCredentialHex,
-    validSignerHashes: Object.freeze(validSignerHashes),
-    signerMissing: !signerPresent,
-    checkpoints: Object.freeze(
-      checkpoints.map((value) => Object.freeze(value)),
-    ),
+    validSignerHashes: scan.validSignerHashes,
+    signerMissing: !scan.signerPresent,
+    checkpoints: scan.checkpoints,
   });
   if (!spendInputSignerMissingEvidenceCloses(evidence))
     return fail("authenticated signer state agrees with the operator verdict");

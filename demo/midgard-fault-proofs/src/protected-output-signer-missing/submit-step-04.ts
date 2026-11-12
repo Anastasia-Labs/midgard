@@ -7,6 +7,7 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { planSignerWitnessScanTurn } from "../signer-witness-scan/signer-witness-scan.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
@@ -103,36 +104,17 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
     witnessSetCompactCbor,
     owner: signer.paymentKeyHash,
   });
-  const candidates: number[] = [];
-  for (
-    let cursor = 0;
-    cursor < planned.itemCount;
-    cursor += PROTECTED_OUTPUT_SIGNER_SCAN_BATCH
-  )
-    candidates.push(cursor);
-  if (planned.itemCount === 0) candidates.push(0);
-  const checkpoint = candidates
-    .map((nextItemIndex) =>
-      missingSignatureFieldWalkCheckpoint({
-        txId: evidence.subject.transaction_id,
-        itemCount: planned.itemCount,
-        totalLength: planned.preimage.length,
-        nextItemIndex,
-      }),
-    )
-    .find(({ checkpointHash }) => checkpointHash === state.checkpoint_hash);
-  if (checkpoint === undefined)
-    throw new Error(
-      "protected-output-signer-missing: scan checkpoint is not on the deterministic frontier",
-    );
-  const nextCursor = Math.min(
-    planned.itemCount,
-    checkpoint.nextItemIndex + PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
-  );
-  const terminal = nextCursor === planned.itemCount;
-  const signerPresent =
-    evidence.checkpoints.find(({ cursor }) => cursor === nextCursor)
-      ?.signerPresent ?? state.signer_present;
+  const { checkpoint, nextCursor, signerPresent, exhausted } =
+    planSignerWitnessScanTurn({
+      checkpoints: evidence.checkpoints,
+      txId: evidence.subject.transaction_id,
+      itemCount: planned.itemCount,
+      totalLength: planned.preimage.length,
+      checkpointHash: state.checkpoint_hash,
+      batch: PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
+    });
+  // This family's scan always runs to the end of the field.
+  const terminal = exhausted;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,

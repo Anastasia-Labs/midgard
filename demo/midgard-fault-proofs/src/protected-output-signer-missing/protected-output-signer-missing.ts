@@ -10,16 +10,15 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-  missingSignatureVkeyHash,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-  verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
 
 export const PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY =
   "protectedOutputSignerMissing" as const;
@@ -220,43 +219,18 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   if (address.paymentCredential.kind !== "PubKey")
     return fail("selected protected output does not use a key credential");
   const paymentCredentialHex = address.paymentCredential.hash.toString("hex");
-  let signerPresent = false;
-  const validSignerHashes: string[] = [];
-  const checkpoints: { cursor: number; signerPresent: boolean }[] = [];
-  witnessItems.forEach((item, index) => {
-    const witness = decodeMidgardAddressWitnessItem(item);
-    const verificationKey = Buffer.from(witness.verificationKey).toString(
-      "hex",
-    );
-    const valid = verifyAddressWitness({
-      txId: subject.transaction_id,
-      witness: {
-        verification_key: verificationKey,
-        signature: Buffer.from(witness.signature).toString("hex"),
-      },
-    });
-    if (valid) {
-      const hash = missingSignatureVkeyHash(verificationKey);
-      validSignerHashes.push(hash);
-      if (hash === paymentCredentialHex) signerPresent = true;
-    }
-    if (
-      (index + 1) % PROTECTED_OUTPUT_SIGNER_SCAN_BATCH === 0 ||
-      index + 1 === witnessItems.length
-    ) {
-      checkpoints.push({ cursor: index + 1, signerPresent });
-    }
+  const scan = scanSignerWitnesses({
+    transactionId: subject.transaction_id,
+    witnesses: witnessItems.map(decodeMidgardAddressWitnessItem),
+    paymentCredentialHex,
+    batch: PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
   });
-  if (witnessItems.length === 0)
-    checkpoints.push({ cursor: 0, signerPresent: false });
   const evidence: ProtectedOutputSignerMissingEvidence = Object.freeze({
     ...common,
     paymentCredentialHex,
-    validSignerHashes: Object.freeze(validSignerHashes),
-    signerPresent,
-    checkpoints: Object.freeze(
-      checkpoints.map((checkpoint) => Object.freeze(checkpoint)),
-    ),
+    validSignerHashes: scan.validSignerHashes,
+    signerPresent: scan.signerPresent,
+    checkpoints: scan.checkpoints,
   });
   if (!protectedOutputSignerMissingEvidenceCloses(evidence))
     return fail("authenticated signer state agrees with the operator verdict");
