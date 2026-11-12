@@ -41,12 +41,12 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
-  makeMissingRedeemerHarness,
-  type MissingRedeemerHarness,
-  publishMissingRedeemerRoles,
-} from "./support/missing-redeemer-emulator.js";
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   honestForcedObserverShape,
   nativeScript,
@@ -90,9 +90,12 @@ const blockEvidence = async (
 type References = DirectWalkReferenceScripts<"missingRedeemer", 39>;
 
 const workflowReferences = async (
-  h: MissingRedeemerHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishMissingRedeemerRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    MISSING_REDEEMER_DIRECT_WALK,
+  );
   const steps = SDK.MISSING_REDEEMER_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -131,7 +134,7 @@ describe("missingRedeemer installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeMissingRedeemerHarness();
+      const h = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
       const scenario = await setupMissingRedeemerScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -154,7 +157,7 @@ describe("missingRedeemer installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.missingRedeemer,
+          contracts: h.direct,
           references,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
         },
@@ -207,11 +210,11 @@ describe("missingRedeemer installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.missingRedeemer.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.missingRedeemer.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -229,7 +232,7 @@ describe("missingRedeemer installed cursor actuator", () => {
             sourceId: "lucid-emulator",
             grade: "security",
           } as const;
-          for (const [index, step] of h.missingRedeemer.steps.entries()) {
+          for (const [index, step] of h.direct.steps.entries()) {
             const outputs = await h.proverLucid.utxosAtWithUnit(
               step.spendingScriptAddress,
               threadUnit,
@@ -246,7 +249,7 @@ describe("missingRedeemer installed cursor actuator", () => {
               } as never;
           }
           const proofs = await h.proverLucid.utxosAtWithUnit(
-            h.missingRedeemer.fraudProof.spendingScriptAddress,
+            h.direct.fraudProof.spendingScriptAddress,
             proofUnit,
           );
           if (proofs.length === 1)
@@ -349,7 +352,7 @@ describe("missingRedeemer installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.missingRedeemer.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -379,7 +382,7 @@ describe("missingRedeemer installed cursor actuator", () => {
   );
 
   it("detects nothing in an honest forced RedeemerMissing rejection", async () => {
-    const h = await makeMissingRedeemerHarness();
+    const h = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const shape = honestForcedObserverShape(5);
     const scenario = await setupMissingRedeemerScenario({
       harness: h,

@@ -17,24 +17,26 @@ import { encodeMidgardValue } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
 import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   DistinctAssetAccumulationLimitHonestLeaf,
+  prepareDistinctAssetAccumulationLimitProof,
   requireConvictingDistinctAssetAccumulationLimitProof,
 } from "../src/distinct-asset-accumulation-limit/index.js";
 import { scriptDecodeLedgerLimits } from "../src/script-decode/record.js";
 import { pathStarts } from "./support/deep-ledger-trie.js";
 import {
+  DIRECT_WALK_STEP_BOUNDS,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  type StepMeasurement,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
+import {
   DEEP_CLUSTER,
   deepLedger,
   HEAVY_SPEND_NONCES,
 } from "./support/distinct-asset-accumulation-limit-emulator.deep-ledger.js";
-import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS,
-  driveDistinctAssetAccumulationLimitThread,
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-  type StepMeasurement,
-  stepTable,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
 import {
   buildDistinctAssetSubject,
   type DistinctAssetSubjectShape,
@@ -137,15 +139,15 @@ const maximumShape = (): Dimensions => {
 const expectWithinBounds = (steps: readonly StepMeasurement[]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -258,16 +260,22 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
   }, 120_000);
 
   it("convicts an accepted transaction whose last mint asset is one past the bound", async () => {
-    const harness = await makeDistinctAssetAccumulationLimitHarness();
-    const references =
-      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     const dimensions = maximumShape();
     const scenario = await setupDistinctAssetScenario({
       harness,
       shape: shapeOf(dimensions, 1),
       source: { kind: "normal" },
     });
-    const run = await driveDistinctAssetAccumulationLimitThread({
+    const run = await driveDirectWalkThread({
+      walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      prepare: prepareDistinctAssetAccumulationLimitProof,
       harness,
       scenario,
       references,
@@ -290,15 +298,19 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("refuses the same shape with the entries at the bound", async () => {
-    const harness = await makeDistinctAssetAccumulationLimitHarness();
-    const references =
-      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     const dimensions = maximumShape();
     const scenario = await setupDistinctAssetScenario({
       harness,
@@ -308,11 +320,13 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
     await expect(
       requireConvictingDistinctAssetAccumulationLimitProof({
         material: scenario.material,
-        contracts: harness.distinctAssetAccumulationLimit,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(DistinctAssetAccumulationLimitHonestLeaf);
-    const run = await driveDistinctAssetAccumulationLimitThread({
+    const run = await driveDirectWalkThread({
+      walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      prepare: prepareDistinctAssetAccumulationLimitProof,
       harness,
       scenario,
       references,
@@ -331,9 +345,13 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
   }, 3_600_000);
 
   it("convicts a crossing in the last spend with the reference-input field at its cap", async () => {
-    const harness = await makeDistinctAssetAccumulationLimitHarness();
-    const references =
-      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     const { inputs: spends } = maximumShape();
     const referenceCount = maximumReferences();
     const { shape, assetIndex } = inputCrossingShape(spends, referenceCount);
@@ -350,7 +368,9 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
       shape,
       source: { kind: "normal" },
     });
-    const run = await driveDistinctAssetAccumulationLimitThread({
+    const run = await driveDirectWalkThread({
+      walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      prepare: prepareDistinctAssetAccumulationLimitProof,
       harness,
       scenario,
       references,
@@ -375,15 +395,19 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("fits each inputs-resolve page with the heavy spends deep in a populated ledger", async () => {
-    const harness = await makeDistinctAssetAccumulationLimitHarness();
-    const references =
-      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     const { inputs: spends } = maximumShape();
     const referenceCount = maximumReferences();
     const crossing = inputCrossingShape(spends, referenceCount);
@@ -401,7 +425,9 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
       shape,
       source: { kind: "normal" },
     });
-    const run = await driveDistinctAssetAccumulationLimitThread({
+    const run = await driveDirectWalkThread({
+      walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      prepare: prepareDistinctAssetAccumulationLimitProof,
       harness,
       scenario,
       references,
@@ -446,7 +472,7 @@ describe("distinct-asset-accumulation-limit consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);

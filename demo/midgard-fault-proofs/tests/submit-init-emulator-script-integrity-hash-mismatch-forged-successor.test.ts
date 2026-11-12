@@ -24,17 +24,21 @@ import {
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
-import { scriptIntegrityHashMismatchContractRoles } from "../src/script-integrity-hash-mismatch/index.js";
+import {
+  prepareScriptIntegrityHashMismatchProof,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  scriptIntegrityHashMismatchContractRoles,
+} from "../src/script-integrity-hash-mismatch/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveScriptIntegrityHashMismatchThread,
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-  type ScriptIntegrityHashMismatchHarness,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildIntegritySubject,
   expectedHash,
@@ -53,14 +57,14 @@ type Scenario = Parameters<typeof setupIntegrityScenario>[0];
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: ScriptIntegrityHashMismatchHarness,
+  harness: DirectWalkHarness,
   scenario: IntegrityScenario,
   reference: UTxO,
   thread: UTxO,
   unit: string,
   forged: string,
 ) => {
-  const contracts = harness.scriptIntegrityHashMismatch;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
     return await submitNativeTxBinding({
@@ -132,13 +136,13 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: ScriptIntegrityHashMismatchHarness,
+  harness: DirectWalkHarness,
   scenario: IntegrityScenario,
   reference: UTxO,
   thread: UTxO,
   unit: string,
 ) => {
-  const contracts = harness.scriptIntegrityHashMismatch;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   const assetName = unit.slice(56);
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, assetName);
@@ -229,8 +233,13 @@ const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
 ): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeScriptIntegrityHashMismatchHarness();
-  const references = await publishScriptIntegrityHashMismatchRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  );
   const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupIntegrityScenario({
     harness,
@@ -238,7 +247,9 @@ const forgeEveryRole = async (
     source,
   });
   const refused: DirectPurposeRole[] = [];
-  const run = await driveScriptIntegrityHashMismatchThread({
+  const run = await driveDirectWalkThread({
+    walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+    prepare: prepareScriptIntegrityHashMismatchProof,
     harness,
     scenario,
     references,

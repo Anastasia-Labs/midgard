@@ -16,9 +16,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";
 import {
   prepareReceivePurposeLanguageProof,
-  RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
 } from "../src/receive-purpose-language/index.js";
 import { forgeEveryDirectPurposeRole } from "./support/direct-purpose-forged-successor.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   buildMissingRedeemerSubject,
   honestForcedObserverShape,
@@ -28,8 +32,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   forcedReceiving,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
 
@@ -50,8 +52,13 @@ const forgeEveryRole = async (
         buildMissingRedeemerSubject(shape).nativeTx,
       ),
     ).toBeNull();
-  const harness = await makeReceivePurposeLanguageHarness();
-  const references = await publishReceivePurposeLanguageRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape,
@@ -59,7 +66,7 @@ const forgeEveryRole = async (
   });
   const refused = await forgeEveryDirectPurposeRole({
     harness,
-    family: RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+    walk: RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
     scenario,
     references,
     prepare: prepareReceivePurposeLanguageProof,

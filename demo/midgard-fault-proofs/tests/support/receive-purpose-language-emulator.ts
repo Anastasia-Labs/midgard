@@ -1,71 +1,26 @@
-/** Real-contract emulator fixtures for the `receivePurposeLanguage` family:
- * the harness, the 21 published role scripts, and a driver from a genuine
- * Init through step-01 and the planned custody to the terminal. Subjects are
- * the direct purpose subjects of `missing-redeemer-emulator.subject.ts`. */
-import * as SDK from "@al-ft/midgard-sdk";
+/** The `receivePurposeLanguage` family's emulator driver: the walk-keyed
+ * driver with the receive purpose to observe, the verdict its forced rows
+ * record, and its receiving subjects. Subjects are the direct purpose
+ * subjects of `missing-redeemer-emulator.subject.ts`. */
+import type * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeRole } from "../../src/direct-purpose-family/index.js";
 import {
   prepareReceivePurposeLanguageProof,
-  RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
   type ReceivePurposeLanguageProofPlan,
 } from "../../src/receive-purpose-language/index.js";
 import {
-  type DirectPurposeHarness,
-  driveDirectPurposeThread,
-  publishDirectPurposeRoles,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
   type RoleReference,
-} from "./direct-purpose-emulator.js";
+} from "./direct-walk-emulator.js";
 import {
   honestForcedObserverShape,
   missingRedeemerLedgerEntries,
   type MissingRedeemerScenario,
   type MissingRedeemerSubjectShape,
 } from "./missing-redeemer-emulator.subject.js";
-import {
-  makeFaultProofEmulatorHarness,
-  registerChunkedVerifyRewardAccount,
-} from "./submit-init-emulator-shared.js";
-
-export {
-  DIRECT_PURPOSE_STEP_BOUNDS as RECEIVE_PURPOSE_LANGUAGE_STEP_BOUNDS,
-  type RoleReference,
-  type StepMeasurement,
-  stepTable,
-} from "./direct-purpose-emulator.js";
-
-/** The emulator harness with the family's real contracts. */
-export const makeReceivePurposeLanguageHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realReceivePurposeLanguage: true,
-      alwaysFraudProofCatalogue: true,
-    },
-    registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
-  });
-  const direct = harness.contracts.receivePurposeLanguage;
-  const category = harness.catalogue.categories.receivePurposeLanguage;
-  if (direct === undefined || category === undefined)
-    throw new Error(
-      "receivePurposeLanguage harness contracts/category omitted",
-    );
-  if (
-    category.categoryId !==
-    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.receivePurposeLanguage
-  )
-    throw new Error("unexpected receivePurposeLanguage category id");
-  return { ...harness, direct, category, receivePurposeLanguage: direct };
-};
-
-export type ReceivePurposeLanguageHarness = DirectPurposeHarness & {
-  readonly receivePurposeLanguage: DirectPurposeHarness["direct"];
-};
-
-/** Publishes every role script once through the signed publication path,
- * which refuses any publication above 15,872 bytes. */
-export const publishReceivePurposeLanguageRoles = (
-  harness: DirectPurposeHarness,
-) => publishDirectPurposeRoles(harness, RECEIVE_PURPOSE_LANGUAGE_FAMILY);
 
 /** Genuine Init, the source-appropriate step-01, and the planned custody up
  * to the terminal's input. Every thread transaction is measured. */
@@ -76,7 +31,7 @@ export const driveReceivePurposeLanguageThread = ({
   observed,
   transitions,
 }: {
-  readonly harness: DirectPurposeHarness;
+  readonly harness: DirectWalkHarness;
   readonly scenario: MissingRedeemerScenario;
   readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   /** The receive purpose to observe; the first convicting one otherwise. */
@@ -86,9 +41,9 @@ export const driveReceivePurposeLanguageThread = ({
     prepared: ReceivePurposeLanguageProofPlan,
   ) => ReceivePurposeLanguageProofPlan["transitions"];
 }) =>
-  driveDirectPurposeThread({
+  driveDirectWalkThread({
     harness,
-    family: RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+    walk: RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
     scenario,
     references,
     prepare: (args) =>

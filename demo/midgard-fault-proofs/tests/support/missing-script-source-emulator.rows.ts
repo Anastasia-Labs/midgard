@@ -4,15 +4,16 @@
 import { expect } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../../src/index.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../../src/missing-script-source/index.js";
+import {
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  publishDirectWalkRoles,
+  stepTable,
+} from "./direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
-import {
-  driveMissingScriptSourceThread,
-  MISSING_SCRIPT_SOURCE_STEP_BOUNDS,
-  type MissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-  stepTable,
-} from "./missing-script-source-emulator.js";
+import { driveMissingScriptSourceThread } from "./missing-script-source-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -25,25 +26,28 @@ export const expectWithinBounds = (
 ): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      MISSING_SCRIPT_SOURCE_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      MISSING_SCRIPT_SOURCE_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(MISSING_SCRIPT_SOURCE_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
 /** Drives a convicting thread to its terminal and checks the token. */
 export const convictAndCheck = async (
-  harness: MissingScriptSourceHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
   label: string,
 ) => {
-  const references = await publishMissingScriptSourceRoles(harness);
+  const references = await publishDirectWalkRoles(
+    harness,
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
   const run = await driveMissingScriptSourceThread({
     harness,
     scenario,
@@ -56,7 +60,7 @@ export const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.missingScriptSource.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   return { run, outcome };
@@ -65,7 +69,7 @@ export const convictAndCheck = async (
 /** The planned custody reaches the terminal, which returns false: no
  * fraud-proof token mints and the thread stays at the terminal. */
 export const expectTerminalRefusal = async (
-  harness: MissingScriptSourceHarness,
+  harness: DirectWalkHarness,
   run: Awaited<ReturnType<typeof driveMissingScriptSourceThread>>,
 ) => {
   expect(run.prepared.convicts).toBe(false);
@@ -76,7 +80,7 @@ export const expectTerminalRefusal = async (
   });
   await expect(
     harness.proverLucid.utxosAtWithUnit(
-      harness.missingScriptSource.steps.at(-1)!.spendingScriptAddress,
+      harness.direct.steps.at(-1)!.spendingScriptAddress,
       run.unit,
     ),
   ).resolves.toHaveLength(1);
@@ -84,7 +88,7 @@ export const expectTerminalRefusal = async (
 
 /** Removes the convicted block and checks it left the state queue. */
 export const removeConvictedBlock = async (
-  harness: MissingScriptSourceHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
 ) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({

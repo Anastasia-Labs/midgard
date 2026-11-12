@@ -1,19 +1,25 @@
-/** Real-contract emulator fixtures shared by the direct purpose families: the
- * harness, the published role scripts, field carriage, and a driver from a
- * genuine Init through step-01 and a planned custody to the terminal. */
+/** Real-contract emulator fixtures shared by the direct-walk families, keyed
+ * by the family's walk: the harness, the published role scripts, field
+ * carriage, and a driver from a genuine Init through step-01 and the planned
+ * custody to the terminal. */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
   DIRECT_PURPOSE_FIELDS,
+  directPurposeArtifactPaging,
   type DirectPurposeContracts,
   type DirectPurposeCustody,
   type DirectPurposeCustodyFamily,
-  type DirectPurposeFamily,
-  directPurposeFieldPlans,
-  directPurposePaging,
+  type DirectPurposeFieldPlan,
+  type DirectPurposePaging,
+  type DirectPurposeReplay,
   type DirectPurposeRole,
+  directPurposeStep01Datum,
   type DirectPurposeTransition,
+  type DirectWalkFamily,
+  type DirectWalkProof,
+  directWalkTerminalFamily,
   fitDirectPurposeTransition,
   submitDirectPurposeInit,
   submitDirectPurposeStep01Accepted,
@@ -22,12 +28,8 @@ import {
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
-import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
-import type { MissingRedeemerScenario as DirectPurposeScenario } from "./missing-redeemer-emulator.subject.js";
+import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
+import { publishDirectWalkCarriage } from "./direct-walk-emulator.carriage.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
@@ -38,25 +40,63 @@ import {
   registerChunkedVerifyRewardAccount,
 } from "./submit-init-emulator-shared.js";
 
-export type DirectPurposeCategory =
+/** The direct-walk families' catalogue categories. */
+export type DirectWalkCategory = Extract<
+  SDK.FraudProofCatalogueCategoryName,
   | "missingRedeemer"
   | "missingScriptSource"
-  | "unusedRedeemer";
+  | "receivePurposeLanguage"
+  | "unusedRedeemer"
+  | "executionSourceScriptDecoding"
+  | "distinctAssetAccumulationLimit"
+  | "executionNativeScriptInvalid"
+  | "scriptIntegrityHashMismatch"
+  | "unusedScriptWitness"
+>;
 
-/** The emulator harness with one direct purpose family's real contracts. */
-export const makeDirectPurposeHarness = async (key: DirectPurposeCategory) => {
+/** A walk of any step count, its finding and proof types inferred. */
+type Walk<
+  Prepared extends DirectPurposeReplay,
+  Proof extends DirectWalkProof,
+> = DirectWalkFamily<DirectWalkCategory, number, Prepared, Proof>;
+
+/** The subject the driver proves: its material, its block's fraudulent
+ * output and the inclusion (accepted) or reconstruction (forced) step-01
+ * binds. */
+export type DirectWalkScenario = Readonly<{
+  material: DirectScriptMaterial;
+  setup: Readonly<{ fraudulentBlockOutRef: string }>;
+  block: Readonly<{
+    txInclusion:
+      | Parameters<typeof submitDirectPurposeStep01Accepted>[0]["txInclusion"]
+      | null;
+    reconstruction: Parameters<
+      typeof submitDirectPurposeStep01Forced
+    >[0]["reconstruction"];
+  }>;
+}>;
+
+type ContractOptions = NonNullable<
+  Parameters<typeof makeFaultProofEmulatorHarness>[0]
+>["contractOptions"];
+
+/** The emulator harness with the walk's real contracts: its category's
+ * `real…` contract flag, checked against the contracts and the catalogue
+ * category it builds. */
+export const makeDirectWalkHarness = async (walk: {
+  readonly spec: { readonly category: DirectWalkCategory };
+}) => {
+  const key = walk.spec.category;
   const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
-      ...(key === "missingRedeemer"
-        ? { realMissingRedeemer: true }
-        : key === "missingScriptSource"
-          ? { realMissingScriptSource: true }
-          : { realUnusedRedeemer: true }),
+      ...({
+        [`real${key.charAt(0).toUpperCase()}${key.slice(1)}`]: true,
+      } as ContractOptions),
       alwaysFraudProofCatalogue: true,
     },
     registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
   });
-  const direct = harness.contracts[key];
+  const direct: DirectPurposeContracts | undefined = harness.contracts[key];
   const category = harness.catalogue.categories[key];
   if (direct === undefined || category === undefined)
     throw new Error(`${key} harness contracts/category were omitted`);
@@ -65,8 +105,8 @@ export const makeDirectPurposeHarness = async (key: DirectPurposeCategory) => {
   return { ...harness, direct, category };
 };
 
-export type DirectPurposeHarness = Awaited<
-  ReturnType<typeof makeDirectPurposeHarness>
+export type DirectWalkHarness = Awaited<
+  ReturnType<typeof makeDirectWalkHarness>
 >;
 
 export type RoleReference = {
@@ -76,11 +116,11 @@ export type RoleReference = {
   readonly publication: CompleteSignedTransactionMeasurement;
 };
 
-/** Publishes every role script once through the signed publication path,
- * which refuses any publication above 15,872 bytes. */
-export const publishDirectPurposeRoles = async (
-  harness: DirectPurposeHarness,
-  family: DirectPurposeCustodyFamily,
+/** Publishes every role script of the walk once through the signed
+ * publication path, which refuses any publication above 15,872 bytes. */
+export const publishDirectWalkRoles = async (
+  harness: DirectWalkHarness,
+  { family }: { readonly family: DirectPurposeCustodyFamily },
 ): Promise<ReadonlyMap<DirectPurposeRole, RoleReference>> => {
   const roles = family.roles(harness.direct);
   const byHash = new Map<string, RoleReference>();
@@ -109,89 +149,11 @@ export const publishDirectPurposeRoles = async (
   return out;
 };
 
-/** Publishes (and, at tier 3, certifies) every planned field that does not
- * travel inline. */
-export const publishDirectPurposeCarriage = async ({
-  harness,
-  label,
-  scenario,
-  plan,
-}: {
-  readonly harness: DirectPurposeHarness;
+/** A fitted page: its role, its first transition's label and its size. */
+export type PageSize = {
+  readonly role: DirectPurposeRole;
   readonly label: string;
-  readonly scenario: DirectPurposeScenario;
-  readonly plan: DirectPurposePlan["plan"];
-}): Promise<{
-  readonly carriage: ReadonlyMap<number, readonly UTxO[]>;
-  readonly measurements: readonly {
-    readonly field: number;
-    readonly tier: string;
-    readonly measurement: CompleteSignedTransactionMeasurement;
-  }[];
-}> => {
-  const carriage = new Map<number, readonly UTxO[]>();
-  const measurements: {
-    field: number;
-    tier: string;
-    measurement: CompleteSignedTransactionMeasurement;
-  }[] = [];
-  const ownOutputs = createOwnOutputJournal();
-  let certificateReference: UTxO | undefined;
-  for (const field of DIRECT_PURPOSE_FIELDS) {
-    const planned = plan(field).openingPlan;
-    const tier = planned.plan.tier;
-    if (tier === "Inline") continue;
-    const published = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
-        ownOutputs,
-        lucid: harness.proverLucid,
-        signer: harness.proverSigner,
-        planned,
-        publisherAddress: harness.proverSigner.address,
-        label: `${label} field ${field.toString()}`,
-      }),
-    );
-    for (const measurement of published.measurements)
-      measurements.push({ field, tier, measurement });
-    const references = [...published.result];
-    if (tier === "Certified") {
-      certificateReference ??= (
-        await publishPlainReferenceScriptUtxo({
-          lucid: harness.proverLucid,
-          script: harness.contracts.fieldPreimageCertificate.mintingScript,
-          label: `${label} field certificate`,
-        })
-      ).utxo;
-      const certified = await captureEmulatorSubmission(harness.emulator, () =>
-        certifyFaultProofFieldCarriage({
-          ownOutputs,
-          lucid: harness.proverLucid,
-          network,
-          signer: harness.proverSigner,
-          planned,
-          certificatePolicyId:
-            harness.contracts.fieldPreimageCertificate.policyId,
-          certificateMintingScript:
-            harness.contracts.fieldPreimageCertificate.mintingScript,
-          certificateReferenceScriptUtxo: certificateReference!,
-          chunkUtxos: references,
-          compactCbor: scenario.material.bound.compact_cbor,
-          witnessSetCompactCbor:
-            scenario.material.material.proofSource.witnessSetCompactCbor.toString(
-              "hex",
-            ),
-        }),
-      );
-      measurements.push({
-        field,
-        tier: "certificate",
-        measurement: certified.measurement,
-      });
-      references.push(certified.result.certificateUtxo);
-    }
-    carriage.set(field, references);
-  }
-  return { carriage, measurements };
+  readonly size: number;
 };
 
 export type StepMeasurement = {
@@ -201,34 +163,46 @@ export type StepMeasurement = {
 
 /** What a family's prover hands the driver: field plans and the custody from
  * `bindEvent` to the terminal's input. */
-export type DirectPurposePlan = {
-  readonly plan: ReturnType<typeof directPurposeFieldPlans>;
+export type DirectWalkPlan = {
+  readonly plan: (field: number) => DirectPurposeFieldPlan;
   readonly transitions: readonly DirectPurposeTransition[];
 };
 
 /** Continues the thread role by role from step-01 to the terminal's input,
  * as the workflow does: each page that opens MPF proofs is sized to the
- * transaction budget. */
+ * transaction budget, and the size of every fitted page is kept. The walk
+ * ends where the planned custody does: at its last transition's successor
+ * role, holding that transition's datum. */
 const continueToTerminalInput = async (
   custody: DirectPurposeCustody,
+  paging: DirectPurposePaging,
   planned: readonly DirectPurposeTransition[],
   start: UTxO,
+  pages: PageSize[],
 ): Promise<UTxO> => {
-  const paging = directPurposePaging({
-    label: custody.family.label,
-    transitions: planned,
-    first: start.datum!,
-  });
   const last = planned.at(-1)!;
+  // The size of the last page each fit built: the page it submits.
+  let fitted: number | undefined;
+  const sized: DirectPurposePaging = {
+    ...paging,
+    page: (...args) => {
+      const page = paging.page(...args);
+      fitted = page.size;
+      return page;
+    },
+  };
   let thread = start;
   let role = planned[0]!.role;
   while (role !== last.next || thread.datum !== last.datum) {
+    fitted = undefined;
     const transition = await fitDirectPurposeTransition({
       custody,
-      paging,
+      paging: sized,
       role,
       thread,
     });
+    if (fitted !== undefined)
+      pages.push({ role, label: transition.label, size: fitted });
     thread = (await submitDirectPurposeTransition(custody, thread, transition))
       .thread;
     role = transition.next;
@@ -238,25 +212,29 @@ const continueToTerminalInput = async (
 
 /** Genuine Init, the source-appropriate step-01, and the planned custody up
  * to the terminal's input. Every thread transaction is measured. */
-export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
+export const driveDirectWalkThread = async <
+  Prepared extends DirectPurposeReplay,
+  Proof extends DirectWalkProof,
+  Plan extends Proof & DirectWalkPlan,
+>({
   harness,
-  family,
+  walk,
   scenario,
   references,
   prepare,
   transitions,
   beforeStep01,
 }: {
-  readonly harness: DirectPurposeHarness;
-  readonly family: DirectPurposeFamily<unknown>;
-  readonly scenario: DirectPurposeScenario;
+  readonly harness: DirectWalkHarness;
+  readonly walk: Walk<Prepared, Proof>;
+  readonly scenario: DirectWalkScenario;
   readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   /** The family's prover over the scenario's material. */
   readonly prepare: (args: {
-    readonly material: DirectPurposeScenario["material"];
+    readonly material: DirectScriptMaterial;
     readonly contracts: DirectPurposeContracts;
     readonly prover: string;
-  }) => Promise<Plan>;
+  }) => Plan | Promise<Plan>;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (prepared: Plan) => Plan["transitions"];
   /** Runs against the Init thread before step-01 spends it (e.g. a forged
@@ -268,16 +246,19 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
   }) => Promise<void>;
 }) => {
   const { proverLucid, direct, proverSigner } = harness;
+  const { family } = walk;
   const steps: StepMeasurement[] = [];
+  const pages: PageSize[] = [];
   const prepared = await prepare({
     material: scenario.material,
     contracts: direct,
     prover: proverSigner.paymentKeyHash,
   });
   const { carriage, measurements: carriageMeasurements } =
-    await publishDirectPurposeCarriage({
+    await publishDirectWalkCarriage({
       harness,
       label: family.label,
+      fields: walk.fields ?? DIRECT_PURPOSE_FIELDS,
       scenario,
       plan: prepared.plan,
     });
@@ -372,17 +353,34 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
   if (start === undefined) throw new Error("step-01 thread output absent");
   const thread =
     transitions === undefined
-      ? await continueToTerminalInput(custody, prepared.transitions, start)
+      ? await continueToTerminalInput(
+          custody,
+          directPurposeArtifactPaging(
+            walk.artifact,
+            prepared,
+            directPurposeStep01Datum(
+              scenario.material,
+              proverSigner.paymentKeyHash,
+            ),
+          ),
+          prepared.transitions,
+          start,
+          pages,
+        )
       : await submitDirectPurposeTransitions(
           custody,
           start,
           transitions(prepared),
         );
+  const terminalFamily = directWalkTerminalFamily(walk, {
+    admitted: { material: scenario.material },
+    proof: prepared,
+  });
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitDirectPurposeTerminal({
-        family,
+        family: terminalFamily,
         lucid: proverLucid,
         contracts: direct,
         categoryId: harness.category.categoryId,
@@ -402,13 +400,14 @@ export const driveDirectPurposeThread = async <Plan extends DirectPurposePlan>({
     thread,
     unit,
     steps,
+    pages,
     carriageMeasurements,
     terminal,
   };
 };
 
 /** Per-step ex-unit and size bounds every thread transaction must meet. */
-export const DIRECT_PURPOSE_STEP_BOUNDS = {
+export const DIRECT_WALK_STEP_BOUNDS = {
   memory: 13_200_000n,
   steps: 8_000_000_000n,
   bytes: 16_384,

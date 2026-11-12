@@ -10,18 +10,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MISSING_REDEEMER_DIRECT_WALK,
   MissingRedeemerHonestLeaf,
   requireConvictingMissingRedeemerProof,
 } from "../src/missing-redeemer/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  MISSING_REDEEMER_STEP_BOUNDS,
-  type MissingRedeemerHarness,
-  publishMissingRedeemerRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/missing-redeemer-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   honestForcedObserverShape,
@@ -37,24 +38,27 @@ import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(MISSING_REDEEMER_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
 const convictAndCheck = async (
-  harness: MissingRedeemerHarness,
+  harness: DirectWalkHarness,
   scenario: Awaited<ReturnType<typeof setupMissingRedeemerScenario>>,
   label: string,
 ) => {
-  const references = await publishMissingRedeemerRoles(harness);
+  const references = await publishDirectWalkRoles(
+    harness,
+    MISSING_REDEEMER_DIRECT_WALK,
+  );
   const run = await driveMissingRedeemerThread({
     harness,
     scenario,
@@ -67,14 +71,14 @@ const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.missingRedeemer.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   return run;
 };
 
 const scenario = async (
-  harness: MissingRedeemerHarness,
+  harness: DirectWalkHarness,
   shape: MissingRedeemerSubjectShape,
   source: MissingRedeemerSource,
 ) => setupMissingRedeemerScenario({ harness, shape, source });
@@ -121,7 +125,7 @@ const referenceReceive = (redeemer: boolean): MissingRedeemerSubjectShape => ({
 
 describe("missing-redeemer purpose-route emulator rows", () => {
   it("F-A spend claim: convicts a forced rejection naming the key-locked spend", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, signedSpend(), forced(0n, 0n)),
@@ -131,7 +135,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A mint claim: convicts a forced rejection naming a mint the transaction lacks", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, signedSpend(), forced(1n, 0n)),
@@ -141,7 +145,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A receive claim: convicts a forced rejection naming a receive purpose the transaction lacks", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, signedSpend(), forced(3n, 0n)),
@@ -151,7 +155,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A spend observed: convicts an admitted transaction whose script spend has no redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, scriptSpend(false), { kind: "normal" }),
@@ -162,7 +166,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A mint observed: convicts an admitted transaction whose mint has no redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, referenceMint(false), { kind: "normal" }),
@@ -173,7 +177,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A receive observed: convicts an admitted transaction whose protected output has no redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const run = await convictAndCheck(
       harness,
       await scenario(harness, referenceReceive(false), { kind: "normal" }),
@@ -184,16 +188,19 @@ describe("missing-redeemer purpose-route emulator rows", () => {
   }, 1_200_000);
 
   it("F-A spend honest: refuses a forced rejection whose claimed spend redeemer is absent", async () => {
-    const harness = await makeMissingRedeemerHarness();
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
     const current = await scenario(harness, scriptSpend(false), forced(0n, 0n));
     await expect(
       requireConvictingMissingRedeemerProof({
         material: current.material,
-        contracts: harness.missingRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingRedeemerHonestLeaf);
-    const references = await publishMissingRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveMissingRedeemerThread({
       harness,
       scenario: current,
@@ -208,7 +215,7 @@ describe("missing-redeemer purpose-route emulator rows", () => {
     });
     await expect(
       harness.proverLucid.utxosAtWithUnit(
-        harness.missingRedeemer.steps.at(-1)!.spendingScriptAddress,
+        harness.direct.steps.at(-1)!.spendingScriptAddress,
         run.unit,
       ),
     ).resolves.toHaveLength(1);

@@ -1,18 +1,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
 import {
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 
 const RELIABILITY_RESERVE_BYTES = 15_872;
 
 describe("distinct-asset-accumulation-limit publication fit", () => {
   it("publishes every applied role validator below the reliability reserve", async () => {
-    const harness = await makeDistinctAssetAccumulationLimitHarness();
-    const references =
-      await publishDistinctAssetAccumulationLimitRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     expect([...references.keys()]).toStrictEqual([
       ...SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
     ]);

@@ -34,7 +34,10 @@ import {
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
-import { RECEIVE_PURPOSE_LANGUAGE_FAMILY } from "../src/receive-purpose-language/index.js";
+import {
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY,
+} from "../src/receive-purpose-language/index.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -43,6 +46,10 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   honestForcedObserverShape,
@@ -53,8 +60,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveReceivePurposeLanguageThread,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
 import {
@@ -92,8 +97,13 @@ const scene = async (subject: {
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
 }) => {
-  const harness = await makeReceivePurposeLanguageHarness();
-  const references = await publishReceivePurposeLanguageRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape: subject.shape,
@@ -157,7 +167,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
     reconstruction: scenario.block.reconstruction,
     eventKey,
   });
-  const next = harness.receivePurposeLanguage.steps[1]!;
+  const next = harness.direct.steps[1]!;
   const nextDatum = Data.to(
     {
       fraud_prover: harness.proverSigner.paymentKeyHash,
@@ -220,7 +230,7 @@ const strangerTransition = async (
   transition: DirectPurposeTransition,
 ) => {
   const { harness, strangerLucid, strangerSigner } = s;
-  const contracts = harness.receivePurposeLanguage;
+  const contracts = harness.direct;
   const next = directPurposeRoleValidator(
     RECEIVE_PURPOSE_LANGUAGE_FAMILY,
     contracts,
@@ -317,7 +327,7 @@ describe("receive-purpose-language steps refuse a party other than the thread's 
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
-      contracts: harness.receivePurposeLanguage,
+      contracts: harness.direct,
       category: harness.category,
       catalogue: {
         policyId: harness.contracts.fraudProofCatalogue.policyId,
@@ -330,8 +340,7 @@ describe("receive-purpose-language steps refuse a party other than the thread's 
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const unit = init.computationThreadUnit;
-    const firstStep =
-      harness.receivePurposeLanguage.steps[0]!.spendingScriptAddress;
+    const firstStep = harness.direct.steps[0]!.spendingScriptAddress;
     const thread = await threadAt(s, firstStep, unit);
     expect(outRefLabel(thread)).toBe(init.nextThreadOutRef);
 
@@ -347,7 +356,7 @@ describe("receive-purpose-language steps refuse a party other than the thread's 
     const step01 = await submitDirectPurposeStep01Forced({
       family: RECEIVE_PURPOSE_LANGUAGE_FAMILY,
       lucid: harness.proverLucid,
-      contracts: harness.receivePurposeLanguage,
+      contracts: harness.direct,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(thread),
@@ -357,7 +366,7 @@ describe("receive-purpose-language steps refuse a party other than the thread's 
     });
     const advanced = await threadAt(
       s,
-      harness.receivePurposeLanguage.steps[1]!.spendingScriptAddress,
+      harness.direct.steps[1]!.spendingScriptAddress,
       unit,
     );
     expect(outRefLabel(advanced)).toBe(step01.nextThreadOutRef);
@@ -410,7 +419,7 @@ describe("receive-purpose-language steps refuse a party other than the thread's 
     expect(outcome.fraudulentHeaderHash).toBe(s.scenario.setup.headerHash);
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({

@@ -43,10 +43,10 @@ import {
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
-  type DistinctAssetAccumulationLimitHarness,
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   type DistinctAssetSubjectShape,
   machineForcedVerdict,
@@ -127,9 +127,12 @@ type References = DirectWalkReferenceScripts<
 >;
 
 const workflowReferences = async (
-  h: DistinctAssetAccumulationLimitHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishDistinctAssetAccumulationLimitRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
   const steps = SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -164,7 +167,9 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeDistinctAssetAccumulationLimitHarness();
+      const h = await makeDirectWalkHarness(
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      );
       const scenario = await setupDistinctAssetScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -188,7 +193,7 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.distinctAssetAccumulationLimit,
+          contracts: h.direct,
           references,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
           replayContext,
@@ -250,11 +255,11 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.distinctAssetAccumulationLimit.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.distinctAssetAccumulationLimit.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -273,10 +278,7 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
               sourceId: "lucid-emulator",
               grade: "security",
             } as const;
-            for (const [
-              index,
-              step,
-            ] of h.distinctAssetAccumulationLimit.steps.entries()) {
+            for (const [index, step] of h.direct.steps.entries()) {
               const outputs = await h.proverLucid.utxosAtWithUnit(
                 step.spendingScriptAddress,
                 threadUnit,
@@ -293,7 +295,7 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
                 } as never;
             }
             const proofs = await h.proverLucid.utxosAtWithUnit(
-              h.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+              h.direct.fraudProof.spendingScriptAddress,
               proofUnit,
             );
             if (proofs.length === 1)
@@ -399,7 +401,7 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -429,7 +431,9 @@ describe("distinctAssetAccumulationLimit installed cursor actuator", () => {
   );
 
   it("detects nothing in an honest forced InputAssetAccumulationLimit rejection", async () => {
-    const h = await makeDistinctAssetAccumulationLimitHarness();
+    const h = await makeDirectWalkHarness(
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    );
     const shape = INPUT_CROSSING;
     // The verdict the node's classifier writes for this subject.
     const verdict = await machineForcedVerdict(shape);

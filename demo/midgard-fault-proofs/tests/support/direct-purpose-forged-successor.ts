@@ -19,9 +19,11 @@ import { expect } from "vitest";
 import {
   buildDirectPurposeTransition,
   type DirectPurposeContracts,
-  type DirectPurposeFamily,
+  type DirectPurposeReplay,
   type DirectPurposeRole,
   directPurposeRoleIndex,
+  type DirectWalkFamily,
+  type DirectWalkProof,
   submitDirectPurposeTransition,
 } from "../../src/direct-purpose-family/index.js";
 import { submitNativeTxBinding } from "../../src/native-tx-binding.js";
@@ -29,18 +31,19 @@ import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import {
-  type DirectPurposeHarness,
-  type DirectPurposePlan,
-  driveDirectPurposeThread,
+  type DirectWalkCategory,
+  type DirectWalkHarness,
+  type DirectWalkPlan,
+  driveDirectWalkThread,
   type RoleReference,
-} from "./direct-purpose-emulator.js";
+} from "./direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
 import { network } from "./submit-init-emulator-shared.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: DirectPurposeHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
   reference: UTxO,
   thread: UTxO,
@@ -122,7 +125,7 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: DirectPurposeHarness,
+  harness: DirectWalkHarness,
   reference: UTxO,
   thread: UTxO,
   unit: string,
@@ -211,27 +214,29 @@ const forgedTerminal = async (
 /** Forges then advances every role of the thread, from step-01 to the
  * terminal, and convicts; returns the roles that refused a forgery. */
 export const forgeEveryDirectPurposeRole = async <
-  Plan extends DirectPurposePlan,
+  Prepared extends DirectPurposeReplay,
+  Proof extends DirectWalkProof,
+  Plan extends Proof & DirectWalkPlan,
 >({
   harness,
-  family,
+  walk,
   scenario,
   references,
   prepare,
 }: {
-  readonly harness: DirectPurposeHarness;
-  readonly family: DirectPurposeFamily<unknown>;
+  readonly harness: DirectWalkHarness;
+  readonly walk: DirectWalkFamily<DirectWalkCategory, number, Prepared, Proof>;
   readonly scenario: MissingRedeemerScenario;
   readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   readonly prepare: Parameters<
-    typeof driveDirectPurposeThread<Plan>
+    typeof driveDirectWalkThread<Prepared, Proof, Plan>
   >[0]["prepare"];
 }): Promise<readonly DirectPurposeRole[]> => {
   const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const refused: DirectPurposeRole[] = [];
-  const run = await driveDirectPurposeThread({
+  const run = await driveDirectWalkThread({
     harness,
-    family,
+    walk,
     scenario,
     references,
     prepare,
@@ -288,8 +293,8 @@ export const forgeEveryDirectPurposeRole = async <
     ).thread;
     refused.push(transition.role);
   }
-  expect(directPurposeRoleIndex(family, "terminal")).toBe(
-    family.roleOrder.length - 1,
+  expect(directPurposeRoleIndex(walk.family, "terminal")).toBe(
+    walk.family.roleOrder.length - 1,
   );
   await expectOnchainRefusal(() =>
     forgedTerminal(harness, reference("terminal"), thread, run.unit),

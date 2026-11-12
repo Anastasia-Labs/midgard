@@ -16,23 +16,24 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
+  prepareScriptIntegrityHashMismatchProof,
   requireConvictingScriptIntegrityHashMismatchProof,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
   ScriptIntegrityHashMismatchHonestLeaf,
 } from "../src/script-integrity-hash-mismatch/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveScriptIntegrityHashMismatchThread,
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS,
-  type ScriptIntegrityHashMismatchHarness,
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildIntegritySubject,
   expectedHash,
   honestForcedShape,
-  type IntegrityScenario,
   type IntegritySource,
   type IntegritySubjectShape,
   machineForcedVerdict,
@@ -53,15 +54,15 @@ import {
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -99,10 +100,7 @@ const admissibleForced = (
   return shape;
 };
 
-const removeBlock = async (
-  harness: ScriptIntegrityHashMismatchHarness,
-  headerHash: string,
-) => {
+const removeBlock = async (harness: DirectWalkHarness, headerHash: string) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -132,17 +130,18 @@ const convictAndCheck = async (
   shape: IntegritySubjectShape,
   source: IntegritySource,
   label: string,
-): Promise<{
-  readonly harness: ScriptIntegrityHashMismatchHarness;
-  readonly scenario: IntegrityScenario;
-  readonly run: Awaited<
-    ReturnType<typeof driveScriptIntegrityHashMismatchThread>
-  >;
-}> => {
-  const harness = await makeScriptIntegrityHashMismatchHarness();
+) => {
+  const harness = await makeDirectWalkHarness(
+    SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  );
   const scenario = await setupIntegrityScenario({ harness, shape, source });
-  const references = await publishScriptIntegrityHashMismatchRoles(harness);
-  const run = await driveScriptIntegrityHashMismatchThread({
+  const references = await publishDirectWalkRoles(
+    harness,
+    SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  );
+  const run = await driveDirectWalkThread({
+    walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+    prepare: prepareScriptIntegrityHashMismatchProof,
     harness,
     scenario,
     references,
@@ -154,14 +153,14 @@ const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   const token = await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.scriptIntegrityHashMismatch.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
   expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
     fraud_prover: harness.proverSigner.paymentKeyHash,
   });
-  for (const step of harness.scriptIntegrityHashMismatch.steps)
+  for (const step of harness.direct.steps)
     await expect(
       harness.proverLucid.utxosAtWithUnit(step.spendingScriptAddress, run.unit),
     ).resolves.toHaveLength(0);
@@ -243,7 +242,9 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
   ])(
     "refuses $name: the terminal returns false",
     async (row) => {
-      const harness = await makeScriptIntegrityHashMismatchHarness();
+      const harness = await makeDirectWalkHarness(
+        SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+      );
       const scenario = await setupIntegrityScenario({
         harness,
         shape: await row.shape(),
@@ -252,12 +253,17 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
       await expect(
         requireConvictingScriptIntegrityHashMismatchProof({
           material: scenario.material,
-          contracts: harness.scriptIntegrityHashMismatch,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
         }),
       ).rejects.toThrow(ScriptIntegrityHashMismatchHonestLeaf);
-      const references = await publishScriptIntegrityHashMismatchRoles(harness);
-      const run = await driveScriptIntegrityHashMismatchThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+        prepare: prepareScriptIntegrityHashMismatchProof,
         harness,
         scenario,
         references,
@@ -271,8 +277,7 @@ describe("script-integrity-hash-mismatch genuine-Init verticals", () => {
       });
       await expect(
         harness.proverLucid.utxosAtWithUnit(
-          harness.scriptIntegrityHashMismatch.steps.at(-1)!
-            .spendingScriptAddress,
+          harness.direct.steps.at(-1)!.spendingScriptAddress,
           run.unit,
         ),
       ).resolves.toHaveLength(1);

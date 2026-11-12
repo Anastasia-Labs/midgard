@@ -25,7 +25,11 @@ import {
   type DirectPurposeTransition,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
-import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY } from "../src/distinct-asset-accumulation-limit/index.js";
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
+  prepareDistinctAssetAccumulationLimitProof,
+} from "../src/distinct-asset-accumulation-limit/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   getCompiledScript,
@@ -35,10 +39,10 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import {
-  driveDistinctAssetAccumulationLimitThread,
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   type DistinctAssetSubjectShape,
   setupDistinctAssetScenario,
@@ -70,14 +74,21 @@ const MINT_CROSSING: DistinctAssetSubjectShape = {
 const refuseStrangerAtEveryRole = async (
   shape: DistinctAssetSubjectShape,
 ): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeDistinctAssetAccumulationLimitHarness();
-  const references = await publishDistinctAssetAccumulationLimitRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
   const scenario = await setupDistinctAssetScenario({
     harness,
     shape,
     source: { kind: "normal" },
   });
-  const run = await driveDistinctAssetAccumulationLimitThread({
+  const run = await driveDirectWalkThread({
+    walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    prepare: prepareDistinctAssetAccumulationLimitProof,
     harness,
     scenario,
     references,
@@ -120,7 +131,7 @@ const refuseStrangerAtEveryRole = async (
   ) => {
     const next = directPurposeRoleValidator(
       DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
-      harness.distinctAssetAccumulationLimit,
+      harness.direct,
       transition.next,
     );
     const label = `stranger ${transition.label}`;
@@ -146,8 +157,7 @@ const refuseStrangerAtEveryRole = async (
             planned: run.prepared.plan(field).openingPlan,
             referenceInputs: ctx.referenceInputs,
             certificatePolicyId:
-              harness.distinctAssetAccumulationLimit
-                .fieldPreimageCertificatePolicyId,
+              harness.direct.fieldPreimageCertificatePolicyId,
             label: `${label} field ${field.toString()}`,
           }),
         ctx,

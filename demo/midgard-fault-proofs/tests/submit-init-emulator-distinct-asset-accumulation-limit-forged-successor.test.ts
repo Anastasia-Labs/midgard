@@ -24,17 +24,21 @@ import {
   type DirectPurposeRole,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
-import { distinctAssetAccumulationLimitContractRoles } from "../src/distinct-asset-accumulation-limit/index.js";
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  distinctAssetAccumulationLimitContractRoles,
+  prepareDistinctAssetAccumulationLimitProof,
+} from "../src/distinct-asset-accumulation-limit/index.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
 import {
-  type DistinctAssetAccumulationLimitHarness,
-  driveDistinctAssetAccumulationLimitThread,
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   buildDistinctAssetSubject,
   type DistinctAssetScenario,
@@ -49,14 +53,14 @@ type Scenario = Parameters<typeof setupDistinctAssetScenario>[0];
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: DistinctAssetAccumulationLimitHarness,
+  harness: DirectWalkHarness,
   scenario: DistinctAssetScenario,
   reference: UTxO,
   thread: UTxO,
   unit: string,
   forged: string,
 ) => {
-  const contracts = harness.distinctAssetAccumulationLimit;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
     return await submitNativeTxBinding({
@@ -128,12 +132,12 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: DistinctAssetAccumulationLimitHarness,
+  harness: DirectWalkHarness,
   reference: UTxO,
   thread: UTxO,
   unit: string,
 ) => {
-  const contracts = harness.distinctAssetAccumulationLimit;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   const assetName = unit.slice(56);
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, assetName);
@@ -220,8 +224,13 @@ const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
 ): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeDistinctAssetAccumulationLimitHarness();
-  const references = await publishDistinctAssetAccumulationLimitRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
   const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupDistinctAssetScenario({
     harness,
@@ -229,7 +238,9 @@ const forgeEveryRole = async (
     source,
   });
   const refused: DirectPurposeRole[] = [];
-  const run = await driveDistinctAssetAccumulationLimitThread({
+  const run = await driveDirectWalkThread({
+    walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    prepare: prepareDistinctAssetAccumulationLimitProof,
     harness,
     scenario,
     references,

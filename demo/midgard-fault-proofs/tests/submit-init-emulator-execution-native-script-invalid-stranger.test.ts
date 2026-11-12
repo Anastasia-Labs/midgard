@@ -29,7 +29,11 @@ import {
   type DirectPurposeTransition,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
-import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY } from "../src/execution-native-script-invalid/index.js";
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
+  prepareExecutionNativeScriptInvalidProof,
+} from "../src/execution-native-script-invalid/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
@@ -39,12 +43,12 @@ import {
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionNativeScriptInvalidThread,
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
-} from "./support/execution-native-script-invalid-emulator.js";
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   admissibleNativeObservers,
   keyLockedEntries,
@@ -72,10 +76,17 @@ const strangerAtEveryRole = async (
   shape: NativeSubjectShape,
   source: NativeSource,
 ) => {
-  const harness = await makeExecutionNativeScriptInvalidHarness();
-  const references = await publishExecutionNativeScriptInvalidRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
   const scenario = await setupNativeScenario({ harness, shape, source });
-  const run = await driveExecutionNativeScriptInvalidThread({
+  const run = await driveDirectWalkThread({
+    walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    prepare: prepareExecutionNativeScriptInvalidProof,
     harness,
     scenario,
     references,
@@ -118,7 +129,7 @@ const strangerAtEveryRole = async (
   ) => {
     const next = directPurposeRoleValidator(
       EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
-      harness.executionNativeScriptInvalid,
+      harness.direct,
       transition.next,
     );
     const label = `stranger ${transition.label}`;
@@ -144,8 +155,7 @@ const strangerAtEveryRole = async (
             planned: run.prepared.plan(field).openingPlan,
             referenceInputs: ctx.referenceInputs,
             certificatePolicyId:
-              harness.executionNativeScriptInvalid
-                .fieldPreimageCertificatePolicyId,
+              harness.direct.fieldPreimageCertificatePolicyId,
             label: `${label} field ${field.toString()}`,
           }),
         ctx,

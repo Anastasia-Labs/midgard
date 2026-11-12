@@ -9,9 +9,14 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   MissingScriptSourceHonestLeaf,
   requireConvictingMissingScriptSourceProof,
 } from "../src/missing-script-source/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   honestForcedObserverShape,
   missingRedeemerLedgerEntries,
@@ -20,11 +25,7 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  driveMissingScriptSourceThread,
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-} from "./support/missing-script-source-emulator.js";
+import { driveMissingScriptSourceThread } from "./support/missing-script-source-emulator.js";
 import {
   convictAndCheck,
   expectTerminalRefusal,
@@ -72,7 +73,9 @@ describe("missing-script-source genuine-Init rows under a later recorded reason"
   ] as const)(
     "reaches a fraud-proof token for a missing source under a recorded %s",
     async (label, shape, verdict) => {
-      const harness = await makeMissingScriptSourceHarness();
+      const harness = await makeDirectWalkHarness(
+        MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape,
@@ -90,7 +93,9 @@ describe("missing-script-source genuine-Init rows under a later recorded reason"
   );
 
   it("refuses a missing source under a reason recorded before the purpose phase", async () => {
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SOURCELESS,
@@ -102,11 +107,14 @@ describe("missing-script-source genuine-Init rows under a later recorded reason"
     await expect(
       requireConvictingMissingScriptSourceProof({
         material: scenario.material,
-        contracts: harness.missingScriptSource,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingScriptSourceHonestLeaf);
-    const references = await publishMissingScriptSourceRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     // The prover finds no route; the observed route is forced through the
     // missing source to show the terminal refuse it.
     const run = await driveMissingScriptSourceThread({

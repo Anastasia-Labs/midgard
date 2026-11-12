@@ -41,12 +41,12 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-  type ScriptIntegrityHashMismatchHarness,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   expectedHash,
   honestForcedShape,
@@ -92,9 +92,12 @@ const blockEvidence = async (
 type References = DirectWalkReferenceScripts<"scriptIntegrityHashMismatch", 21>;
 
 const workflowReferences = async (
-  h: ScriptIntegrityHashMismatchHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishScriptIntegrityHashMismatchRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  );
   const steps = SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -131,7 +134,9 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeScriptIntegrityHashMismatchHarness();
+      const h = await makeDirectWalkHarness(
+        SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+      );
       const scenario = await setupIntegrityScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -154,7 +159,7 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.scriptIntegrityHashMismatch,
+          contracts: h.direct,
           references,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
         },
@@ -212,11 +217,11 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.scriptIntegrityHashMismatch.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.scriptIntegrityHashMismatch.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -235,10 +240,7 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
               sourceId: "lucid-emulator",
               grade: "security",
             } as const;
-            for (const [
-              index,
-              step,
-            ] of h.scriptIntegrityHashMismatch.steps.entries()) {
+            for (const [index, step] of h.direct.steps.entries()) {
               const outputs = await h.proverLucid.utxosAtWithUnit(
                 step.spendingScriptAddress,
                 threadUnit,
@@ -255,7 +257,7 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
                 } as never;
             }
             const proofs = await h.proverLucid.utxosAtWithUnit(
-              h.scriptIntegrityHashMismatch.fraudProof.spendingScriptAddress,
+              h.direct.fraudProof.spendingScriptAddress,
               proofUnit,
             );
             if (proofs.length === 1)
@@ -361,7 +363,7 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.scriptIntegrityHashMismatch.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -391,7 +393,9 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
   );
 
   it("detects nothing in an honest forced ScriptIntegrityHashMismatch rejection", async () => {
-    const h = await makeScriptIntegrityHashMismatchHarness();
+    const h = await makeDirectWalkHarness(
+      SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+    );
     const shape = honestForcedShape(WRONG_HASH);
     // The verdict the node's classifier writes for this subject.
     const verdict = await machineForcedVerdict(shape);

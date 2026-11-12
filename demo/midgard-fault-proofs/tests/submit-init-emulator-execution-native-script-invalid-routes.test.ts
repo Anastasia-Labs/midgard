@@ -17,14 +17,18 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import type { ExecutionNativeScriptInvalidEntry } from "../src/execution-native-script-invalid/index.js";
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  prepareExecutionNativeScriptInvalidProof,
+} from "../src/execution-native-script-invalid/index.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
-  driveExecutionNativeScriptInvalidThread,
-  EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS,
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/execution-native-script-invalid-emulator.js";
+} from "./support/direct-walk-emulator.js";
 import {
   admissibleNativeObservers,
   buildNativeSubject,
@@ -190,7 +194,9 @@ describe("execution-native-script-invalid routes from a genuine Init", () => {
   it.each(ROWS)(
     "R-F: convicts ExecutionNativeScriptFalse recorded at $name",
     async (row) => {
-      const harness = await makeExecutionNativeScriptInvalidHarness();
+      const harness = await makeDirectWalkHarness(
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+      );
       const scenario = await setupNativeScenario({
         harness,
         shape: row.shape(),
@@ -198,9 +204,13 @@ describe("execution-native-script-invalid routes from a genuine Init", () => {
           nativeFalseAt(row.recorded.kind, row.recorded.index),
         ),
       });
-      const references =
-        await publishExecutionNativeScriptInvalidRoles(harness);
-      const run = await driveExecutionNativeScriptInvalidThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+        prepare: prepareExecutionNativeScriptInvalidProof,
         harness,
         scenario,
         references,
@@ -217,23 +227,19 @@ describe("execution-native-script-invalid routes from a genuine Init", () => {
         expect(
           measurement.executionMemory,
           `${label} memory`,
-        ).toBeLessThanOrEqual(
-          EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.memory,
-        );
+        ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.memory);
         expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-          EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.steps,
+          DIRECT_WALK_STEP_BOUNDS.steps,
         );
         expect(
           measurement.completeSignedBytes,
           `${label} bytes`,
-        ).toBeLessThanOrEqual(
-          EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.bytes,
-        );
+        ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
       }
       expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
       await expectSingleUtxoWithUnit(
         harness.proverLucid,
-        harness.executionNativeScriptInvalid.fraudProof.spendingScriptAddress,
+        harness.direct.fraudProof.spendingScriptAddress,
         outcome.fraudProofUnit,
       );
     },

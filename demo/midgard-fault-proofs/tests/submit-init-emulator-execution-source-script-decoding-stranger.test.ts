@@ -22,7 +22,10 @@ import {
   type DirectPurposeTransition,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
-import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY } from "../src/execution-source-script-decoding/index.js";
+import {
+  EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY,
+} from "../src/execution-source-script-decoding/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   getCompiledScript,
@@ -31,12 +34,13 @@ import {
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionSourceScriptDecodingThread,
-  makeExecutionSourceScriptDecodingHarness,
-  publishExecutionSourceScriptDecodingRoles,
-} from "./support/execution-source-script-decoding-emulator.js";
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { prepareExecutionSourceScriptDecodingPlan } from "./support/execution-source-script-decoding-emulator.js";
 import {
   honestForcedObserverShape,
   setupMissingRedeemerScenario,
@@ -47,8 +51,13 @@ const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 
 describe("execution-source-script-decoding steps against a stranger key", () => {
   it("refuses a stranger at the event selection, and the prover's own step lands", async () => {
-    const harness = await makeExecutionSourceScriptDecodingHarness();
-    const references = await publishExecutionSourceScriptDecodingRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: honestForcedObserverShape(5),
@@ -66,7 +75,9 @@ describe("execution-source-script-decoding steps against a stranger key", () => 
         },
       },
     });
-    const run = await driveExecutionSourceScriptDecodingThread({
+    const run = await driveDirectWalkThread({
+      walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      prepare: prepareExecutionSourceScriptDecodingPlan,
       harness,
       scenario,
       references,
@@ -107,7 +118,7 @@ describe("execution-source-script-decoding steps against a stranger key", () => 
     ) => {
       const next = directPurposeRoleValidator(
         EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY,
-        harness.essd,
+        harness.direct,
         transition.next,
       );
       const label = `stranger ${transition.label}`;
@@ -130,7 +141,7 @@ describe("execution-source-script-decoding steps against a stranger key", () => 
               planned: run.custody.plan(field).openingPlan,
               referenceInputs: ctx.referenceInputs,
               certificatePolicyId:
-                harness.essd.fieldPreimageCertificatePolicyId,
+                harness.direct.fieldPreimageCertificatePolicyId,
               label: `${label} field ${field.toString()}`,
             }),
           ctx,

@@ -4,6 +4,13 @@
 import { expect } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../../src/index.js";
+import { UNUSED_REDEEMER_DIRECT_WALK } from "../../src/unused-redeemer/index.js";
+import {
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  publishDirectWalkRoles,
+  stepTable,
+} from "./direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
 import {
@@ -12,40 +19,37 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
-import {
-  driveUnusedRedeemerThread,
-  publishUnusedRedeemerRoles,
-  stepTable,
-  UNUSED_REDEEMER_STEP_BOUNDS,
-  type UnusedRedeemerHarness,
-} from "./unused-redeemer-emulator.js";
+import { driveUnusedRedeemerThread } from "./unused-redeemer-emulator.js";
 
 export const expectWithinBounds = (
   steps: Parameters<typeof stepTable>[0],
 ): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      UNUSED_REDEEMER_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      UNUSED_REDEEMER_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(UNUSED_REDEEMER_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
 /** Drives a convicting thread to its terminal and checks the token. */
 export const convictAndCheck = async (
-  harness: UnusedRedeemerHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
   label: string,
   /** The redeemer to walk; the first convicting one otherwise. */
   redeemerIndex?: bigint,
 ) => {
-  const references = await publishUnusedRedeemerRoles(harness);
+  const references = await publishDirectWalkRoles(
+    harness,
+    UNUSED_REDEEMER_DIRECT_WALK,
+  );
   const run = await driveUnusedRedeemerThread({
     harness,
     scenario,
@@ -59,7 +63,7 @@ export const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.unusedRedeemer.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   return { run, outcome };
@@ -68,7 +72,7 @@ export const convictAndCheck = async (
 /** The planned custody reaches the terminal, which returns false: no
  * fraud-proof token mints and the thread stays at the terminal. */
 export const expectTerminalRefusal = async (
-  harness: UnusedRedeemerHarness,
+  harness: DirectWalkHarness,
   run: Awaited<ReturnType<typeof driveUnusedRedeemerThread>>,
 ) => {
   expect(run.prepared.convicts).toBe(false);
@@ -79,7 +83,7 @@ export const expectTerminalRefusal = async (
   });
   await expect(
     harness.proverLucid.utxosAtWithUnit(
-      harness.unusedRedeemer.steps.at(-1)!.spendingScriptAddress,
+      harness.direct.steps.at(-1)!.spendingScriptAddress,
       run.unit,
     ),
   ).resolves.toHaveLength(1);
@@ -87,7 +91,7 @@ export const expectTerminalRefusal = async (
 
 /** Removes the convicted block and checks it left the state queue. */
 export const removeConvictedBlock = async (
-  harness: UnusedRedeemerHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
 ) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({

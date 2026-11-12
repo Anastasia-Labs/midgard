@@ -11,18 +11,19 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  MISSING_REDEEMER_DIRECT_WALK,
   MissingRedeemerHonestLeaf,
   requireConvictingMissingRedeemerProof,
 } from "../src/missing-redeemer/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  MISSING_REDEEMER_STEP_BOUNDS,
-  publishMissingRedeemerRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   type StepMeasurement,
   stepTable,
-} from "./support/missing-redeemer-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   buildMissingRedeemerSubject,
   type MissingRedeemerSubjectShape,
@@ -105,15 +106,15 @@ const maximumShape = (missing: boolean) => {
 const expectWithinBounds = (steps: readonly StepMeasurement[]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(MISSING_REDEEMER_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -177,8 +178,11 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
   }, 20_000);
 
   it("convicts an accepted transaction whose last observer has no redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
-    const references = await publishMissingRedeemerRoles(harness);
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const dimensions = maximumShape(true);
     const scenario = await setupMissingRedeemerScenario({
       harness,
@@ -201,14 +205,17 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.missingRedeemer.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("refuses the same shape when every observer has its redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
-    const references = await publishMissingRedeemerRoles(harness);
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const dimensions = maximumShape(false);
     const scenario = await setupMissingRedeemerScenario({
       harness,
@@ -218,7 +225,7 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
     await expect(
       requireConvictingMissingRedeemerProof({
         material: scenario.material,
-        contracts: harness.missingRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingRedeemerHonestLeaf);

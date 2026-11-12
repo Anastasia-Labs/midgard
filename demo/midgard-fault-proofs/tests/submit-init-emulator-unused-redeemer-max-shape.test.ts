@@ -16,21 +16,22 @@ import { describe, expect, it } from "vitest";
 
 import {
   requireConvictingUnusedRedeemerProof,
+  UNUSED_REDEEMER_DIRECT_WALK,
   UnusedRedeemerHonestLeaf,
 } from "../src/unused-redeemer/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  type StepMeasurement,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
 import {
   buildMissingRedeemerSubject,
   machineForcedVerdict,
   type MissingRedeemerSubjectShape,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  driveUnusedRedeemerThread,
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
-  type StepMeasurement,
-  stepTable,
-} from "./support/unused-redeemer-emulator.js";
+import { driveUnusedRedeemerThread } from "./support/unused-redeemer-emulator.js";
 import {
   convictAndCheck,
   expectTerminalRefusal,
@@ -86,7 +87,7 @@ describe("unused-redeemer consensus-maximum redeemer shape", () => {
 
   it("convicts an accepted transaction through its last redeemer", async () => {
     const count = maximumCount();
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: shapeOf(count),
@@ -116,7 +117,7 @@ describe("unused-redeemer consensus-maximum redeemer shape", () => {
     expect(verdict).toStrictEqual({
       ForcedTxInvalid: { reason: "EmptyInputs" },
     });
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
@@ -125,11 +126,14 @@ describe("unused-redeemer consensus-maximum redeemer shape", () => {
     await expect(
       requireConvictingUnusedRedeemerProof({
         material: scenario.material,
-        contracts: harness.unusedRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(UnusedRedeemerHonestLeaf);
-    const references = await publishUnusedRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveUnusedRedeemerThread({
       harness,
       scenario,

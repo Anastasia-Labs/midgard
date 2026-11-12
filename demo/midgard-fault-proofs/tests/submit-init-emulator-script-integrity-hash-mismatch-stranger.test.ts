@@ -29,15 +29,19 @@ import {
   phasMembershipRewardAddress,
   resolveProverSigner,
 } from "../src/runtime.js";
-import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY } from "../src/script-integrity-hash-mismatch/index.js";
+import {
+  prepareScriptIntegrityHashMismatchProof,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
+} from "../src/script-integrity-hash-mismatch/index.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveScriptIntegrityHashMismatchThread,
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   nativeScript,
   plutusScript,
@@ -51,8 +55,13 @@ const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 
 describe("script-integrity-hash-mismatch steps against a stranger key", () => {
   it("refuses a stranger at every role after step-01, and the prover's own step lands", async () => {
-    const harness = await makeScriptIntegrityHashMismatchHarness();
-    const references = await publishScriptIntegrityHashMismatchRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+    );
     const spent = plutusScript(31);
     const scenario = await setupIntegrityScenario({
       harness,
@@ -67,7 +76,9 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
       },
       source: { kind: "normal" },
     });
-    const run = await driveScriptIntegrityHashMismatchThread({
+    const run = await driveDirectWalkThread({
+      walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
+      prepare: prepareScriptIntegrityHashMismatchProof,
       harness,
       scenario,
       references,
@@ -110,7 +121,7 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
     ) => {
       const next = directPurposeRoleValidator(
         SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY,
-        harness.scriptIntegrityHashMismatch,
+        harness.direct,
         transition.next,
       );
       const label = `stranger ${transition.label}`;
@@ -136,8 +147,7 @@ describe("script-integrity-hash-mismatch steps against a stranger key", () => {
               planned: run.prepared.plan(field).openingPlan,
               referenceInputs: ctx.referenceInputs,
               certificatePolicyId:
-                harness.scriptIntegrityHashMismatch
-                  .fieldPreimageCertificatePolicyId,
+                harness.direct.fieldPreimageCertificatePolicyId,
               label: `${label} field ${field.toString()}`,
             }),
           ctx,

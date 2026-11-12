@@ -29,25 +29,22 @@ import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
 import {
   type DirectWalkCategory,
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import {
   type DirectWalkScene,
   type DirectWalkSceneFamily,
   driveDirectWalkLifecycle,
   recordDirectWalkTranscript,
 } from "./support/direct-walk-transcript.js";
 import {
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
-import {
   referenceEntries,
   rejectedFor as distinctAssetRejectedFor,
   setupDistinctAssetScenario,
   spentEntries,
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
-import {
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
-} from "./support/execution-native-script-invalid-emulator.js";
 import {
   admissibleNativeObservers,
   native,
@@ -57,14 +54,6 @@ import {
   sig,
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import {
-  makeExecutionSourceScriptDecodingHarness,
-  publishExecutionSourceScriptDecodingRoles,
-} from "./support/execution-source-script-decoding-emulator.js";
-import {
-  makeMissingRedeemerHarness,
-  publishMissingRedeemerRoles,
-} from "./support/missing-redeemer-emulator.js";
-import {
   honestForcedObserverShape,
   type MissingRedeemerSource,
   type MissingRedeemerSubjectShape,
@@ -73,21 +62,11 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-  scriptSourceMissingVerdict,
-} from "./support/missing-script-source-emulator.js";
+import { scriptSourceMissingVerdict } from "./support/missing-script-source-emulator.js";
 import {
   forcedReceiving,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
-import {
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
 import {
   expectedHash,
   plutusScript as integrityPlutusScript,
@@ -95,15 +74,7 @@ import {
   setupIntegrityScenario,
   WRONG_HASH,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import {
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
-  unusedRedeemerVerdict,
-} from "./support/unused-redeemer-emulator.js";
-import {
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-} from "./support/unused-script-witness-emulator.js";
+import { unusedRedeemerVerdict } from "./support/unused-redeemer-emulator.js";
 import {
   admissibleForcedWith,
   everyPurposeWith,
@@ -154,95 +125,75 @@ const familyCases = <
   }));
 };
 
-/** A family's scene builder: its harness, block setup and role publication,
- * and the predecessor its lifecycle replays over, where it replays over one. */
+/** A family's scene builder: its walk's harness, block setup and role
+ * publication, and the predecessor its lifecycle replays over, where it
+ * replays over one. */
 const scenes =
-  <Harness extends DirectWalkScene["harness"], Shape>(family: {
-    readonly harness: () => Promise<Harness>;
+  <Shape>(family: {
+    readonly walk: Parameters<typeof makeDirectWalkHarness>[0] &
+      Parameters<typeof publishDirectWalkRoles>[1];
     readonly setup: (args: {
-      readonly harness: Harness;
+      readonly harness: DirectWalkHarness;
       readonly shape: Shape;
       readonly source: Source;
     }) => Promise<DirectWalkScene["scenario"]>;
-    readonly contracts: (harness: Harness) => DirectWalkScene["contracts"];
-    readonly publishRoles: (
-      harness: Harness,
-    ) => ReturnType<DirectWalkScene["publishRoles"]>;
     readonly predecessor?: (shape: Shape) => readonly LedgerEntry[];
   }) =>
   (shape: Shape, source: Source) =>
   async (): Promise<DirectWalkScene> => {
-    const h = await family.harness();
+    const h = await makeDirectWalkHarness(family.walk);
     return {
       harness: h,
-      contracts: family.contracts(h),
+      contracts: h.direct,
       scenario: await family.setup({ harness: h, shape, source }),
       ...(family.predecessor === undefined
         ? {}
         : { predecessor: family.predecessor(shape) }),
-      publishRoles: () => family.publishRoles(h),
+      publishRoles: () => publishDirectWalkRoles(h, family.walk),
     };
   };
 
 const missingRedeemer = scenes({
-  harness: makeMissingRedeemerHarness,
+  walk: MISSING_REDEEMER_DIRECT_WALK,
   setup: setupMissingRedeemerScenario,
-  contracts: (h) => h.missingRedeemer,
-  publishRoles: publishMissingRedeemerRoles,
 });
 const missingScriptSource = scenes({
-  harness: makeMissingScriptSourceHarness,
+  walk: MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   setup: setupMissingRedeemerScenario,
-  contracts: (h) => h.missingScriptSource,
-  publishRoles: publishMissingScriptSourceRoles,
   predecessor: inputsOf,
 });
 const receivePurposeLanguage = scenes({
-  harness: makeReceivePurposeLanguageHarness,
+  walk: RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
   setup: setupMissingRedeemerScenario,
-  contracts: (h) => h.receivePurposeLanguage,
-  publishRoles: publishReceivePurposeLanguageRoles,
   predecessor: (shape) => [...inputsOf(shape), ...(shape.padding ?? [])],
 });
 const unusedRedeemer = scenes({
-  harness: makeUnusedRedeemerHarness,
+  walk: UNUSED_REDEEMER_DIRECT_WALK,
   setup: setupMissingRedeemerScenario,
-  contracts: (h) => h.unusedRedeemer,
-  publishRoles: publishUnusedRedeemerRoles,
   predecessor: inputsOf,
 });
 const executionSourceScriptDecoding = scenes({
-  harness: makeExecutionSourceScriptDecodingHarness,
+  walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
   setup: setupMissingRedeemerScenario,
-  contracts: (h) => h.essd,
-  publishRoles: publishExecutionSourceScriptDecodingRoles,
   predecessor: inputsOf,
 });
 const distinctAsset = scenes({
-  harness: makeDistinctAssetAccumulationLimitHarness,
+  walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   setup: setupDistinctAssetScenario,
-  contracts: (h) => h.distinctAssetAccumulationLimit,
-  publishRoles: publishDistinctAssetAccumulationLimitRoles,
   predecessor: (shape) => [...spentEntries(shape), ...referenceEntries(shape)],
 });
 const nativeInvalid = scenes({
-  harness: makeExecutionNativeScriptInvalidHarness,
+  walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
   setup: setupNativeScenario,
-  contracts: (h) => h.executionNativeScriptInvalid,
-  publishRoles: publishExecutionNativeScriptInvalidRoles,
   predecessor: inputsOf,
 });
 const integrityMismatch = scenes({
-  harness: makeScriptIntegrityHashMismatchHarness,
+  walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
   setup: setupIntegrityScenario,
-  contracts: (h) => h.scriptIntegrityHashMismatch,
-  publishRoles: publishScriptIntegrityHashMismatchRoles,
 });
 const unusedWitness = scenes({
-  harness: makeUnusedScriptWitnessHarness,
+  walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
   setup: setupIntegrityScenario,
-  contracts: (h) => h.unusedScriptWitness,
-  publishRoles: publishUnusedScriptWitnessRoles,
   predecessor: inputsOf,
 });
 

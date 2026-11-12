@@ -15,19 +15,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   distinctAssetAccumulationLimitDetection,
   DistinctAssetAccumulationLimitHonestLeaf,
+  prepareDistinctAssetAccumulationLimitProof,
   requireConvictingDistinctAssetAccumulationLimitProof,
 } from "../src/distinct-asset-accumulation-limit/index.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS,
-  type DistinctAssetAccumulationLimitHarness,
-  driveDistinctAssetAccumulationLimitThread,
-  makeDistinctAssetAccumulationLimitHarness,
-  publishDistinctAssetAccumulationLimitRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/distinct-asset-accumulation-limit-emulator.js";
+} from "./support/direct-walk-emulator.js";
 import {
   buildDistinctAssetBlock,
   buildDistinctAssetSubject,
@@ -83,15 +85,15 @@ const AT_BOUND: DistinctAssetSubjectShape = {
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(DISTINCT_ASSET_ACCUMULATION_LIMIT_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -114,10 +116,7 @@ const crossingOf = async (shape: DistinctAssetSubjectShape) => {
   return distinctAssetAccumulationLimitDetection(built.material)?.crossing;
 };
 
-const removeBlock = async (
-  harness: DistinctAssetAccumulationLimitHarness,
-  headerHash: string,
-) => {
+const removeBlock = async (harness: DirectWalkHarness, headerHash: string) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -148,14 +147,21 @@ const convictAndCheck = async (
   source: DistinctAssetSource,
   label: string,
 ) => {
-  const harness = await makeDistinctAssetAccumulationLimitHarness();
+  const harness = await makeDirectWalkHarness(
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
   const scenario = await setupDistinctAssetScenario({
     harness,
     shape,
     source,
   });
-  const references = await publishDistinctAssetAccumulationLimitRoles(harness);
-  const run = await driveDistinctAssetAccumulationLimitThread({
+  const references = await publishDirectWalkRoles(
+    harness,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+  );
+  const run = await driveDirectWalkThread({
+    walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+    prepare: prepareDistinctAssetAccumulationLimitProof,
     harness,
     scenario,
     references,
@@ -167,14 +173,14 @@ const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   const token = await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.distinctAssetAccumulationLimit.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
   expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
     fraud_prover: harness.proverSigner.paymentKeyHash,
   });
-  for (const step of harness.distinctAssetAccumulationLimit.steps)
+  for (const step of harness.direct.steps)
     await expect(
       harness.proverLucid.utxosAtWithUnit(step.spendingScriptAddress, run.unit),
     ).resolves.toHaveLength(0);
@@ -334,7 +340,9 @@ describe("distinct-asset-accumulation-limit genuine-Init verticals", () => {
   ])(
     "refuses $name: the terminal returns false",
     async (row) => {
-      const harness = await makeDistinctAssetAccumulationLimitHarness();
+      const harness = await makeDirectWalkHarness(
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      );
       const scenario = await setupDistinctAssetScenario({
         harness,
         shape: row.shape,
@@ -343,13 +351,17 @@ describe("distinct-asset-accumulation-limit genuine-Init verticals", () => {
       await expect(
         requireConvictingDistinctAssetAccumulationLimitProof({
           material: scenario.material,
-          contracts: harness.distinctAssetAccumulationLimit,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
         }),
       ).rejects.toThrow(DistinctAssetAccumulationLimitHonestLeaf);
-      const references =
-        await publishDistinctAssetAccumulationLimitRoles(harness);
-      const run = await driveDistinctAssetAccumulationLimitThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
+        prepare: prepareDistinctAssetAccumulationLimitProof,
         harness,
         scenario,
         references,
@@ -362,8 +374,7 @@ describe("distinct-asset-accumulation-limit genuine-Init verticals", () => {
       });
       await expect(
         harness.proverLucid.utxosAtWithUnit(
-          harness.distinctAssetAccumulationLimit.steps.at(-1)!
-            .spendingScriptAddress,
+          harness.direct.steps.at(-1)!.spendingScriptAddress,
           run.unit,
         ),
       ).resolves.toHaveLength(1);

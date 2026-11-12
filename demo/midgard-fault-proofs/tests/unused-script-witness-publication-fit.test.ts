@@ -1,17 +1,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
 import {
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-} from "./support/unused-script-witness-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 
 const RELIABILITY_RESERVE_BYTES = 15_872;
 
 describe("unused-script-witness publication fit", () => {
   it("publishes every applied role validator below the reliability reserve", async () => {
-    const harness = await makeUnusedScriptWitnessHarness();
-    const references = await publishUnusedScriptWitnessRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    );
     expect([...references.keys()]).toStrictEqual([
       ...SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
     ]);

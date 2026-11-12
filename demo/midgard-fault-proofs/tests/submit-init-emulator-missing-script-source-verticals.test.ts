@@ -15,9 +15,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   MissingScriptSourceHonestLeaf,
   requireConvictingMissingScriptSourceProof,
 } from "../src/missing-script-source/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   buildMissingRedeemerSubject,
@@ -30,8 +35,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveMissingScriptSourceThread,
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
   scriptSourceMissingVerdict,
 } from "./support/missing-script-source-emulator.js";
 import {
@@ -61,7 +64,9 @@ const SOURCELESS: MissingRedeemerSubjectShape = {
 
 describe("missing-script-source genuine-Init verticals", () => {
   it("A-N: convicts an accepted transaction whose required observer has no source and removes its block", async () => {
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: {
@@ -79,14 +84,14 @@ describe("missing-script-source genuine-Init verticals", () => {
     );
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.missingScriptSource.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
       fraud_prover: harness.proverSigner.paymentKeyHash,
     });
-    for (const step of harness.missingScriptSource.steps)
+    for (const step of harness.direct.steps)
       await expect(
         harness.proverLucid.utxosAtWithUnit(
           step.spendingScriptAddress,
@@ -110,7 +115,9 @@ describe("missing-script-source genuine-Init verticals", () => {
     await expect(machineForcedVerdict(UNSOURCED_SPEND)).resolves.toStrictEqual(
       scriptSourceMissingVerdict(0n, 0n),
     );
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: UNSOURCED_SPEND,
@@ -129,7 +136,9 @@ describe("missing-script-source genuine-Init verticals", () => {
 
   it("R-F: convicts a forced rejection whose ScriptSourceMissing names a sourced observer", async () => {
     const shape = honestForcedObserverShape(5);
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
@@ -144,7 +153,9 @@ describe("missing-script-source genuine-Init verticals", () => {
     await expect(machineForcedVerdict(SOURCELESS)).resolves.toStrictEqual(
       scriptSourceMissingVerdict(2n, 0n),
     );
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SOURCELESS,
@@ -153,11 +164,14 @@ describe("missing-script-source genuine-Init verticals", () => {
     await expect(
       requireConvictingMissingScriptSourceProof({
         material: scenario.material,
-        contracts: harness.missingScriptSource,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingScriptSourceHonestLeaf);
-    const references = await publishMissingScriptSourceRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const run = await driveMissingScriptSourceThread({
       harness,
       scenario,

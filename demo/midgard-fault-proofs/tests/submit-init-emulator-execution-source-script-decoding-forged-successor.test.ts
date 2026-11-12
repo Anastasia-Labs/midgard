@@ -23,17 +23,19 @@ import {
   type DirectPurposeRole,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
-import type { DirectPurposeHarness } from "./support/direct-purpose-emulator.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionSourceScriptDecodingThread,
-  makeExecutionSourceScriptDecodingHarness,
-  publishExecutionSourceScriptDecodingRoles,
-} from "./support/execution-source-script-decoding-emulator.js";
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { prepareExecutionSourceScriptDecodingPlan } from "./support/execution-source-script-decoding-emulator.js";
 import {
   honestForcedObserverShape,
   type MissingRedeemerScenario,
@@ -43,7 +45,7 @@ import { network } from "./support/submit-init-emulator-shared.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: DirectPurposeHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
   reference: UTxO,
   thread: UTxO,
@@ -125,7 +127,7 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: DirectPurposeHarness,
+  harness: DirectWalkHarness,
   reference: UTxO,
   thread: UTxO,
   unit: string,
@@ -219,9 +221,13 @@ describe("execution-source-script-decoding forged successor refusal", () => {
   ] as const)(
     "refuses a forged successor at every role of a rejection recording %s",
     async (arm) => {
-      const harness = await makeExecutionSourceScriptDecodingHarness();
-      const references =
-        await publishExecutionSourceScriptDecodingRoles(harness);
+      const harness = await makeDirectWalkHarness(
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
+      const references = await publishDirectWalkRoles(
+        harness,
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
       const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
       const scenario = await setupMissingRedeemerScenario({
         harness,
@@ -238,7 +244,9 @@ describe("execution-source-script-decoding forged successor refusal", () => {
         },
       });
       const refused: DirectPurposeRole[] = [];
-      const run = await driveExecutionSourceScriptDecodingThread({
+      const run = await driveDirectWalkThread({
+        walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+        prepare: prepareExecutionSourceScriptDecodingPlan,
         harness,
         scenario,
         references,

@@ -10,25 +10,33 @@
  * refused at the source lookup after the same source walk and selection.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   buildDirectPurposeTransition,
   directPurposeBindTransitions,
+  directPurposeClaimRoute,
   directPurposeFieldPlans,
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
 } from "../src/direct-purpose-family/index.js";
 import { buildDirectSourceIndexEvidence } from "../src/direct-script-derivation/index.js";
 import {
-  MISSING_SCRIPT_SOURCE_FAMILY,
+  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   missingScriptSourceContractRoles,
   MissingScriptSourceHonestLeaf,
   missingScriptSourceObservedRoute,
   requireConvictingMissingScriptSourceProof,
 } from "../src/missing-script-source/index.js";
-import { driveDirectPurposeThread } from "./support/direct-purpose-emulator.js";
+import {
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  type StepMeasurement,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildMissingRedeemerSubject,
@@ -36,12 +44,6 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-  type StepMeasurement,
-  stepTable,
-} from "./support/missing-script-source-emulator.js";
 import { convictAndCheck } from "./support/missing-script-source-emulator.rows.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
@@ -169,7 +171,9 @@ describe("missing-script-source consensus-maximum observer shape", () => {
   }, 20_000);
 
   it("convicts an accepted transaction whose last observer has no source", async () => {
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const dimensions = maximumShape();
     const scenario = await setupMissingRedeemerScenario({
       harness,
@@ -194,7 +198,9 @@ describe("missing-script-source consensus-maximum observer shape", () => {
     expect(at.witnesses).toBeLessThanOrEqual(FIELD_CAP);
     expect(at.redeemers).toBeLessThanOrEqual(FIELD_CAP);
     expect(dimensions.count).toBe(maximumShape().count);
-    const harness = await makeMissingScriptSourceHarness();
+    const harness = await makeDirectWalkHarness(
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
@@ -203,32 +209,43 @@ describe("missing-script-source consensus-maximum observer shape", () => {
     await expect(
       requireConvictingMissingScriptSourceProof({
         material: scenario.material,
-        contracts: harness.missingScriptSource,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingScriptSourceHonestLeaf);
-    const references = await publishMissingScriptSourceRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+    );
     // The prover finds no route; the observed route is planned through the
     // last observer as if its source were absent, up to the source lookup.
     const last = { kind: 2n, index: BigInt(dimensions.count - 1) };
-    const run = await driveDirectPurposeThread({
+    const run = await driveDirectWalkThread({
       harness,
-      family: MISSING_SCRIPT_SOURCE_FAMILY,
+      walk: MISSING_SCRIPT_SOURCE_DIRECT_WALK,
       scenario,
       references,
       prepare: async ({ material, contracts, prover }) => {
         const roles = missingScriptSourceContractRoles(contracts);
         const evidence = await buildDirectSourceIndexEvidence(material);
         const plan = directPurposeFieldPlans(material, prover);
-        const route = await missingScriptSourceObservedRoute(
-          { material, evidence: claimingAbsent(evidence), prover, plan },
-          last,
-        );
+        const absent = {
+          material,
+          evidence: claimingAbsent(evidence),
+          prover,
+          plan,
+        };
+        const route = await missingScriptSourceObservedRoute(absent, last);
+        const { final } = await directPurposeClaimRoute(absent, route.context);
         const at = route.transitions.findIndex(
           ({ role }) => role === "sourceLookup",
         );
+        // The prover's plan for the shape as if the source were absent.
         return {
+          evidence: absent.evidence,
           plan,
+          final,
+          convicts: SDK.directClaimConvicts(final),
           lookup: route.transitions[at]!,
           // The thread is driven up to the lookup.
           transitions: [

@@ -40,7 +40,14 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { UNUSED_REDEEMER_FAMILY } from "../src/unused-redeemer/index.js";
+import {
+  UNUSED_REDEEMER_DIRECT_WALK,
+  UNUSED_REDEEMER_FAMILY,
+} from "../src/unused-redeemer/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   honestForcedObserverShape,
@@ -55,8 +62,6 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import {
   driveUnusedRedeemerThread,
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
   unusedRedeemerVerdict,
 } from "./support/unused-redeemer-emulator.js";
 
@@ -94,8 +99,11 @@ const scene = async (subject: {
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
 }) => {
-  const harness = await makeUnusedRedeemerHarness();
-  const references = await publishUnusedRedeemerRoles(harness);
+  const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
+  const references = await publishDirectWalkRoles(
+    harness,
+    UNUSED_REDEEMER_DIRECT_WALK,
+  );
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape: subject.shape,
@@ -159,7 +167,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
     reconstruction: scenario.block.reconstruction,
     eventKey,
   });
-  const next = harness.unusedRedeemer.steps[1]!;
+  const next = harness.direct.steps[1]!;
   const nextDatum = Data.to(
     {
       fraud_prover: harness.proverSigner.paymentKeyHash,
@@ -222,7 +230,7 @@ const strangerTransition = async (
   transition: DirectPurposeTransition,
 ) => {
   const { harness, strangerLucid, strangerSigner } = s;
-  const contracts = harness.unusedRedeemer;
+  const contracts = harness.direct;
   const next = directPurposeRoleValidator(
     UNUSED_REDEEMER_FAMILY,
     contracts,
@@ -316,7 +324,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
-      contracts: harness.unusedRedeemer,
+      contracts: harness.direct,
       category: harness.category,
       catalogue: {
         policyId: harness.contracts.fraudProofCatalogue.policyId,
@@ -329,7 +337,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const unit = init.computationThreadUnit;
-    const firstStep = harness.unusedRedeemer.steps[0]!.spendingScriptAddress;
+    const firstStep = harness.direct.steps[0]!.spendingScriptAddress;
     const thread = await threadAt(s, firstStep, unit);
     expect(outRefLabel(thread)).toBe(init.nextThreadOutRef);
 
@@ -345,7 +353,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
     const step01 = await submitDirectPurposeStep01Forced({
       family: UNUSED_REDEEMER_FAMILY,
       lucid: harness.proverLucid,
-      contracts: harness.unusedRedeemer,
+      contracts: harness.direct,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(thread),
@@ -355,7 +363,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
     });
     const advanced = await threadAt(
       s,
-      harness.unusedRedeemer.steps[1]!.spendingScriptAddress,
+      harness.direct.steps[1]!.spendingScriptAddress,
       unit,
     );
     expect(outRefLabel(advanced)).toBe(step01.nextThreadOutRef);
@@ -407,7 +415,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
     expect(outcome.fraudulentHeaderHash).toBe(s.scenario.setup.headerHash);
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.unusedRedeemer.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({

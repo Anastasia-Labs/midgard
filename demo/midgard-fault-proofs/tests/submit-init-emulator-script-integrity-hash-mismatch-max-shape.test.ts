@@ -24,20 +24,22 @@ import { describe, expect, it } from "vitest";
 
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
+  prepareScriptIntegrityHashMismatchProof,
   requireConvictingScriptIntegrityHashMismatchProof,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
   ScriptIntegrityHashMismatchHonestLeaf,
 } from "../src/script-integrity-hash-mismatch/index.js";
 import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
-  driveScriptIntegrityHashMismatchThread,
-  makeScriptIntegrityHashMismatchHarness,
-  publishScriptIntegrityHashMismatchRoles,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS,
+  DIRECT_WALK_STEP_BOUNDS,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   type StepMeasurement,
   stepTable,
-} from "./support/script-integrity-hash-mismatch-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   buildIntegritySubject,
   expectedHash,
@@ -292,15 +294,15 @@ const pageSizes = (steps: readonly StepMeasurement[], prefix: string) =>
 const expectWithinBounds = (steps: readonly StepMeasurement[]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(SCRIPT_INTEGRITY_HASH_MISMATCH_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -319,6 +321,27 @@ const summary = (steps: readonly StepMeasurement[]) => {
   };
 };
 
+/** A genuine Init over the shape committed as accepted, every role script
+ * published, and the planned custody driven to the terminal's input. */
+const driveShape = async (shape: IntegritySubjectShape) => {
+  const walk = SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK;
+  const harness = await makeDirectWalkHarness(walk);
+  const references = await publishDirectWalkRoles(harness, walk);
+  const scenario = await setupIntegrityScenario({
+    harness,
+    shape,
+    source: { kind: "normal" },
+  });
+  const run = await driveDirectWalkThread({
+    walk,
+    prepare: prepareScriptIntegrityHashMismatchProof,
+    harness,
+    scenario,
+    references,
+  });
+  return { harness, scenario, run };
+};
+
 describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () => {
   it("fills every purpose field to its cap, with witnesses and redeemers within theirs", () => {
     const dimensions = maximumShape();
@@ -332,19 +355,10 @@ describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () =>
   }, 120_000);
 
   it("convicts an accepted transaction carrying a wrong hash", async () => {
-    const harness = await makeScriptIntegrityHashMismatchHarness();
-    const references = await publishScriptIntegrityHashMismatchRoles(harness);
     const dimensions = maximumShape();
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape: shapeOf(dimensions, WRONG_HASH),
-      source: { kind: "normal" },
-    });
-    const run = await driveScriptIntegrityHashMismatchThread({
-      harness,
-      scenario,
-      references,
-    });
+    const { harness, scenario, run } = await driveShape(
+      shapeOf(dimensions, WRONG_HASH),
+    );
     expect(run.prepared.convicts).toBe(true);
     expect(run.prepared.final.facts.language_bitmap).toBe(1n);
     const outcome = await run.terminal();
@@ -356,14 +370,12 @@ describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () =>
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.scriptIntegrityHashMismatch.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("fits every page to the budget over a deep ledger and source map, and convicts", async () => {
-    const harness = await makeScriptIntegrityHashMismatchHarness();
-    const references = await publishScriptIntegrityHashMismatchRoles(harness);
     const dimensions = maximumShape();
     const shape = deepShapeOf(dimensions, WRONG_HASH);
     const tx = buildIntegritySubject(shape);
@@ -376,16 +388,7 @@ describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () =>
       tx.witnessSet.redeemerTxWitsPreimageCbor,
     ])
       expect(bytes.length).toBeLessThanOrEqual(FIELD_CAP);
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
-    });
-    const run = await driveScriptIntegrityHashMismatchThread({
-      harness,
-      scenario,
-      references,
-    });
+    const { harness, scenario, run } = await driveShape(shape);
     expect(run.prepared.convicts).toBe(true);
     const { ledger } = scenario.material;
     const ledgerDepths = (
@@ -459,32 +462,23 @@ describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () =>
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.scriptIntegrityHashMismatch.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("refuses the same shape carrying the expected hash", async () => {
-    const harness = await makeScriptIntegrityHashMismatchHarness();
-    const references = await publishScriptIntegrityHashMismatchRoles(harness);
     const dimensions = maximumShape();
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape: shapeOf(dimensions, expectedHash("PlutusV3")),
-      source: { kind: "normal" },
-    });
+    const { harness, scenario, run } = await driveShape(
+      shapeOf(dimensions, expectedHash("PlutusV3")),
+    );
     await expect(
       requireConvictingScriptIntegrityHashMismatchProof({
         material: scenario.material,
-        contracts: harness.scriptIntegrityHashMismatch,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(ScriptIntegrityHashMismatchHonestLeaf);
-    const run = await driveScriptIntegrityHashMismatchThread({
-      harness,
-      scenario,
-      references,
-    });
     expect(run.prepared.convicts).toBe(false);
     console.log(
       "SIHM max-shape honest",

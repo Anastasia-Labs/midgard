@@ -14,12 +14,13 @@ import {
   type DirectPurposeRole,
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  publishMissingRedeemerRoles,
-} from "./support/missing-redeemer-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   honestForcedObserverShape,
   plutusScript,
@@ -49,8 +50,11 @@ const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
 ): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeMissingRedeemerHarness();
-  const references = await publishMissingRedeemerRoles(harness);
+  const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
+  const references = await publishDirectWalkRoles(
+    harness,
+    MISSING_REDEEMER_DIRECT_WALK,
+  );
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape,

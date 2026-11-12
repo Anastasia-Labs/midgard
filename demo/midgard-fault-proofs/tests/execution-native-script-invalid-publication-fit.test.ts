@@ -1,17 +1,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
 import {
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
-} from "./support/execution-native-script-invalid-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 
 const RELIABILITY_RESERVE_BYTES = 15_872;
 
 describe("execution-native-script-invalid publication fit", () => {
   it("publishes every applied role validator below the reliability reserve", async () => {
-    const harness = await makeExecutionNativeScriptInvalidHarness();
-    const references = await publishExecutionNativeScriptInvalidRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    );
     expect([...references.keys()]).toStrictEqual([
       ...SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER,
     ]);

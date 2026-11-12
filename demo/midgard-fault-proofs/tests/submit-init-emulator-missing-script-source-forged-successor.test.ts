@@ -14,9 +14,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";
-import { MISSING_SCRIPT_SOURCE_FAMILY } from "../src/missing-script-source/contracts.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
 import { prepareMissingScriptSourceProof } from "../src/missing-script-source/prover.js";
 import { forgeEveryDirectPurposeRole } from "./support/direct-purpose-forged-successor.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   honestForcedObserverShape,
@@ -25,11 +29,7 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-  scriptSourceMissingVerdict,
-} from "./support/missing-script-source-emulator.js";
+import { scriptSourceMissingVerdict } from "./support/missing-script-source-emulator.js";
 
 type Scenario = Parameters<typeof setupMissingRedeemerScenario>[0];
 
@@ -42,8 +42,13 @@ const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
 ): Promise<ReadonlySet<DirectPurposeRole>> => {
-  const harness = await makeMissingScriptSourceHarness();
-  const references = await publishMissingScriptSourceRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape,
@@ -51,7 +56,7 @@ const forgeEveryRole = async (
   });
   const refused = await forgeEveryDirectPurposeRole({
     harness,
-    family: MISSING_SCRIPT_SOURCE_FAMILY,
+    walk: MISSING_SCRIPT_SOURCE_DIRECT_WALK,
     scenario,
     references,
     prepare: prepareMissingScriptSourceProof,

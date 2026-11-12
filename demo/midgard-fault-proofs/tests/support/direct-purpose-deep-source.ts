@@ -10,10 +10,10 @@ import { expect } from "vitest";
 import { keyValuePhasMembershipProofs } from "../../src/transition-trace/phas.js";
 import { clusterPadding, intoCluster } from "./deep-ledger-trie.js";
 import {
-  DIRECT_PURPOSE_STEP_BOUNDS,
+  DIRECT_WALK_STEP_BOUNDS,
   type StepMeasurement,
   stepTable,
-} from "./direct-purpose-emulator.js";
+} from "./direct-walk-emulator.js";
 import {
   missingRedeemerLedgerEntries,
   type MissingRedeemerScenario,
@@ -251,15 +251,15 @@ export const expectDeepSourceWithinBounds = (
 ): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      DIRECT_PURPOSE_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      DIRECT_PURPOSE_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(DIRECT_PURPOSE_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 

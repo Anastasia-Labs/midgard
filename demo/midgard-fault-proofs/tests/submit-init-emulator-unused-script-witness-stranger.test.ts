@@ -31,7 +31,16 @@ import {
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { UNUSED_SCRIPT_WITNESS_FAMILY } from "../src/unused-script-witness/index.js";
+import {
+  prepareUnusedScriptWitnessProof,
+  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  UNUSED_SCRIPT_WITNESS_FAMILY,
+} from "../src/unused-script-witness/index.js";
+import {
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   expectedHash,
@@ -41,18 +50,18 @@ import {
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { network } from "./support/submit-init-emulator-shared.js";
-import {
-  driveUnusedScriptWitnessThread,
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-} from "./support/unused-script-witness-emulator.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 
 describe("unused-script-witness steps against a stranger key", () => {
   it("refuses a stranger at every role after step-01, and the prover's own step lands", async () => {
-    const harness = await makeUnusedScriptWitnessHarness();
-    const references = await publishUnusedScriptWitnessRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    );
     const spent = plutusScript(31);
     const scenario = await setupIntegrityScenario({
       harness,
@@ -67,7 +76,9 @@ describe("unused-script-witness steps against a stranger key", () => {
       },
       source: { kind: "normal" },
     });
-    const run = await driveUnusedScriptWitnessThread({
+    const run = await driveDirectWalkThread({
+      walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+      prepare: prepareUnusedScriptWitnessProof,
       harness,
       scenario,
       references,
@@ -110,7 +121,7 @@ describe("unused-script-witness steps against a stranger key", () => {
     ) => {
       const next = directPurposeRoleValidator(
         UNUSED_SCRIPT_WITNESS_FAMILY,
-        harness.unusedScriptWitness,
+        harness.direct,
         transition.next,
       );
       const label = `stranger ${transition.label}`;
@@ -136,7 +147,7 @@ describe("unused-script-witness steps against a stranger key", () => {
               planned: run.prepared.plan(field).openingPlan,
               referenceInputs: ctx.referenceInputs,
               certificatePolicyId:
-                harness.unusedScriptWitness.fieldPreimageCertificatePolicyId,
+                harness.direct.fieldPreimageCertificatePolicyId,
               label: `${label} field ${field.toString()}`,
             }),
           ctx,

@@ -5,15 +5,16 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../../src/index.js";
+import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../../src/receive-purpose-language/index.js";
+import {
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  publishDirectWalkRoles,
+  stepTable,
+} from "./direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
-import {
-  driveReceivePurposeLanguageThread,
-  publishReceivePurposeLanguageRoles,
-  RECEIVE_PURPOSE_LANGUAGE_STEP_BOUNDS,
-  type ReceivePurposeLanguageHarness,
-  stepTable,
-} from "./receive-purpose-language-emulator.js";
+import { driveReceivePurposeLanguageThread } from "./receive-purpose-language-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -26,27 +27,30 @@ export const expectWithinBounds = (
 ): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      RECEIVE_PURPOSE_LANGUAGE_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      RECEIVE_PURPOSE_LANGUAGE_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(RECEIVE_PURPOSE_LANGUAGE_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
 /** Drives a convicting thread to its terminal and checks the token. */
 export const convictAndCheck = async (
-  harness: ReceivePurposeLanguageHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
   label: string,
   /** The receive purpose to observe; the first convicting one otherwise. */
   observed?: SDK.DirectPurposeCoordinate,
 ) => {
-  const references = await publishReceivePurposeLanguageRoles(harness);
+  const references = await publishDirectWalkRoles(
+    harness,
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
   const run = await driveReceivePurposeLanguageThread({
     harness,
     scenario,
@@ -60,7 +64,7 @@ export const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   return { run, outcome };
@@ -69,7 +73,7 @@ export const convictAndCheck = async (
 /** The planned custody reaches the terminal, which returns false: no
  * fraud-proof token mints and the thread stays at the terminal. */
 export const expectTerminalRefusal = async (
-  harness: ReceivePurposeLanguageHarness,
+  harness: DirectWalkHarness,
   run: Awaited<ReturnType<typeof driveReceivePurposeLanguageThread>>,
 ) => {
   expect(run.prepared.convicts).toBe(false);
@@ -80,7 +84,7 @@ export const expectTerminalRefusal = async (
   });
   await expect(
     harness.proverLucid.utxosAtWithUnit(
-      harness.receivePurposeLanguage.steps.at(-1)!.spendingScriptAddress,
+      harness.direct.steps.at(-1)!.spendingScriptAddress,
       run.unit,
     ),
   ).resolves.toHaveLength(1);
@@ -88,7 +92,7 @@ export const expectTerminalRefusal = async (
 
 /** Removes the convicted block and checks it left the state queue. */
 export const removeConvictedBlock = async (
-  harness: ReceivePurposeLanguageHarness,
+  harness: DirectWalkHarness,
   scenario: MissingRedeemerScenario,
 ) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({

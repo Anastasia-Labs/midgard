@@ -43,12 +43,12 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
-  type ExecutionNativeScriptInvalidHarness,
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
-} from "./support/execution-native-script-invalid-emulator.js";
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   admissibleNativeObservers,
   machineNativeVerdict,
@@ -102,9 +102,12 @@ type References = DirectWalkReferenceScripts<
 >;
 
 const workflowReferences = async (
-  h: ExecutionNativeScriptInvalidHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishExecutionNativeScriptInvalidRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
   const steps = SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -138,7 +141,9 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeExecutionNativeScriptInvalidHarness();
+      const h = await makeDirectWalkHarness(
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+      );
       const scenario = await setupNativeScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -171,7 +176,7 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.executionNativeScriptInvalid,
+          contracts: h.direct,
           references,
           replayContext,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -231,11 +236,11 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.executionNativeScriptInvalid.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.executionNativeScriptInvalid.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -254,10 +259,7 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
               sourceId: "lucid-emulator",
               grade: "security",
             } as const;
-            for (const [
-              index,
-              step,
-            ] of h.executionNativeScriptInvalid.steps.entries()) {
+            for (const [index, step] of h.direct.steps.entries()) {
               const outputs = await h.proverLucid.utxosAtWithUnit(
                 step.spendingScriptAddress,
                 threadUnit,
@@ -274,7 +276,7 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
                 } as never;
             }
             const proofs = await h.proverLucid.utxosAtWithUnit(
-              h.executionNativeScriptInvalid.fraudProof.spendingScriptAddress,
+              h.direct.fraudProof.spendingScriptAddress,
               proofUnit,
             );
             if (proofs.length === 1)
@@ -380,7 +382,7 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.executionNativeScriptInvalid.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -410,7 +412,9 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
   );
 
   it("detects nothing in the node's own ExecutionNativeScriptFalse rejection", async () => {
-    const h = await makeExecutionNativeScriptInvalidHarness();
+    const h = await makeDirectWalkHarness(
+      EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    );
     const shape = admissibleNativeObservers([NOT_YET], { validityStart: 0n });
     // The verdict the node's classifier writes for this subject.
     const verdict = await machineNativeVerdict(shape);

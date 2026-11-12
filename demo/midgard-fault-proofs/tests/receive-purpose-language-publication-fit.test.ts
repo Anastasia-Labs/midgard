@@ -6,17 +6,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
 import {
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
-} from "./support/receive-purpose-language-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 
 const SIGNED_PUBLICATION_BOUND = 15_872;
 
 describe("receivePurposeLanguage signed publication fit", () => {
   it("publishes every fully applied role within the signed publication bound", async () => {
-    const harness = await makeReceivePurposeLanguageHarness();
-    const published = await publishReceivePurposeLanguageRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
+    const published = await publishDirectWalkRoles(
+      harness,
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     expect([...published.keys()]).toStrictEqual([
       ...SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
     ]);

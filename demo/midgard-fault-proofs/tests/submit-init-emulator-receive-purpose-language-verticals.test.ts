@@ -21,9 +21,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
   ReceivePurposeLanguageHonestLeaf,
   requireConvictingReceivePurposeLanguageProof,
 } from "../src/receive-purpose-language/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   buildMissingRedeemerSubject,
   honestForcedObserverShape,
@@ -35,8 +40,6 @@ import {
 import {
   driveReceivePurposeLanguageThread,
   forcedReceiving,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receiveCoordinate,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
@@ -61,7 +64,9 @@ const claimKind = (claim: SDK.DirectClaimedPredicateFact): string =>
 
 describe("receive-purpose-language genuine-Init verticals", () => {
   it("A-N: convicts an accepted transaction executing a PlutusV3 receive purpose with a redeemer and removes its block", async () => {
-    const harness = await makeReceivePurposeLanguageHarness();
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: receiving(plutusScript(3), { redeemer: true }),
@@ -74,14 +79,14 @@ describe("receive-purpose-language genuine-Init verticals", () => {
     ).toStrictEqual(receiveCoordinate(0n));
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
       fraud_prover: harness.proverSigner.paymentKeyHash,
     });
-    for (const step of harness.receivePurposeLanguage.steps)
+    for (const step of harness.direct.steps)
       await expect(
         harness.proverLucid.utxosAtWithUnit(
           step.spendingScriptAddress,
@@ -138,7 +143,9 @@ describe("receive-purpose-language genuine-Init verticals", () => {
           buildMissingRedeemerSubject(shape).nativeTx,
         ),
       ).toBeNull();
-      const harness = await makeReceivePurposeLanguageHarness();
+      const harness = await makeDirectWalkHarness(
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape,
@@ -161,7 +168,9 @@ describe("receive-purpose-language genuine-Init verticals", () => {
   );
 
   it("refuses an accepted transaction's native receive purpose with a redeemer", async () => {
-    const harness = await makeReceivePurposeLanguageHarness();
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: receiving(nativeScript(7n), { redeemer: true }),
@@ -170,11 +179,14 @@ describe("receive-purpose-language genuine-Init verticals", () => {
     await expect(
       requireConvictingReceivePurposeLanguageProof({
         material: scenario.material,
-        contracts: harness.receivePurposeLanguage,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(ReceivePurposeLanguageHonestLeaf);
-    const references = await publishReceivePurposeLanguageRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const run = await driveReceivePurposeLanguageThread({
       harness,
       scenario,
@@ -192,7 +204,9 @@ describe("receive-purpose-language genuine-Init verticals", () => {
         buildMissingRedeemerSubject(shape).nativeTx,
       ),
     ).toBeNull();
-    const harness = await makeReceivePurposeLanguageHarness();
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
@@ -202,11 +216,14 @@ describe("receive-purpose-language genuine-Init verticals", () => {
     await expect(
       requireConvictingReceivePurposeLanguageProof({
         material: scenario.material,
-        contracts: harness.receivePurposeLanguage,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(ReceivePurposeLanguageHonestLeaf);
-    const references = await publishReceivePurposeLanguageRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const run = await driveReceivePurposeLanguageThread({
       harness,
       scenario,

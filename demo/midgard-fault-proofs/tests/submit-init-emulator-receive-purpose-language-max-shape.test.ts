@@ -20,9 +20,16 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
   ReceivePurposeLanguageHonestLeaf,
   requireConvictingReceivePurposeLanguageProof,
 } from "../src/receive-purpose-language/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  type StepMeasurement,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
 import {
   buildMissingRedeemerSubject,
   machineForcedVerdict,
@@ -32,11 +39,7 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveReceivePurposeLanguageThread,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receiveCoordinate,
-  type StepMeasurement,
-  stepTable,
 } from "./support/receive-purpose-language-emulator.js";
 import {
   convictAndCheck,
@@ -142,7 +145,9 @@ describe("receive-purpose-language consensus-maximum receive shape", () => {
   }, 60_000);
 
   it("convicts an accepted transaction at its last receive purpose", async () => {
-    const harness = await makeReceivePurposeLanguageHarness();
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const dimensions = maximumShape();
     const scenario = await setupMissingRedeemerScenario({
       harness,
@@ -171,7 +176,9 @@ describe("receive-purpose-language consensus-maximum receive shape", () => {
         buildMissingRedeemerSubject(shape).nativeTx,
       ),
     ).not.toBeNull();
-    const harness = await makeReceivePurposeLanguageHarness();
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape,
@@ -180,11 +187,14 @@ describe("receive-purpose-language consensus-maximum receive shape", () => {
     await expect(
       requireConvictingReceivePurposeLanguageProof({
         material: scenario.material,
-        contracts: harness.receivePurposeLanguage,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(ReceivePurposeLanguageHonestLeaf);
-    const references = await publishReceivePurposeLanguageRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const last = receiveCoordinate(BigInt(dimensions.count - 1));
     const run = await driveReceivePurposeLanguageThread({
       harness,

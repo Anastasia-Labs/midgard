@@ -28,7 +28,6 @@ import {
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
-  type DirectPurposePlannedArtifact,
   directPurposeSourceInclusion,
   planDirectPurposeArtifact,
 } from "./artifact.js";
@@ -58,6 +57,12 @@ import {
 export type DirectWalkProof = DirectPurposeProof &
   Readonly<{ plan?: (field: number) => DirectPurposeFieldPlan }>;
 
+/** What a walk's terminal verdict is built from. */
+export type DirectWalkTerminalInput<Proof extends DirectWalkProof> = Readonly<{
+  admitted: Pick<DirectPurposeReplay, "material">;
+  proof: Proof;
+}>;
+
 export type DirectWalkFamily<
   Category extends FamilyCategory,
   StepCount extends number,
@@ -83,9 +88,10 @@ export type DirectWalkFamily<
       }>
     | Readonly<{
         family: DirectPurposeCustodyFamily;
-        /** The terminal's family, its verdict built from the proof. */
+        /** The terminal's family, its verdict built from the admitted
+         * material and the proof. */
         terminal: (
-          plan: DirectPurposePlannedArtifact<Prepared, Proof>,
+          input: DirectWalkTerminalInput<Proof>,
         ) => DirectPurposeFamily<unknown>;
       }>
   );

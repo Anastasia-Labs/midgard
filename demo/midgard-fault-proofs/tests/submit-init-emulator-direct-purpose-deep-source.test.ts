@@ -10,6 +10,7 @@
 import { hashMidgardVersionedScript } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import {
   DEEP_SOURCE_REFERENCES as REFERENCES,
   DEEP_SOURCE_SPENDS as SPENDS,
@@ -20,10 +21,10 @@ import {
   expectDeepSourceWithinBounds as expectWithinBounds,
 } from "./support/direct-purpose-deep-source.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  publishMissingRedeemerRoles,
-} from "./support/missing-redeemer-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   type MissingRedeemerSubjectShape,
   plutusScript,
@@ -42,8 +43,11 @@ const deepSourceShape = (): MissingRedeemerSubjectShape => ({
 
 describe("direct purpose source walk over a deep ledger", () => {
   it("fits each source page to the budget and convicts a missing observer redeemer", async () => {
-    const harness = await makeMissingRedeemerHarness();
-    const references = await publishMissingRedeemerRoles(harness);
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const shape = deepSourceShape();
     const scenario = await setupMissingRedeemerScenario({
       harness,
@@ -84,7 +88,7 @@ describe("direct purpose source walk over a deep ledger", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.missingRedeemer.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     // The observer's only source is the reference input it was ground with.

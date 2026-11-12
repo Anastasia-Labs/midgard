@@ -42,6 +42,11 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   buildMissingRedeemerSubject,
@@ -51,12 +56,7 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  makeMissingScriptSourceHarness,
-  type MissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-  scriptSourceMissingVerdict,
-} from "./support/missing-script-source-emulator.js";
+import { scriptSourceMissingVerdict } from "./support/missing-script-source-emulator.js";
 import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -93,9 +93,12 @@ const blockEvidence = async (
 type References = DirectWalkReferenceScripts<"missingScriptSource", 37>;
 
 const workflowReferences = async (
-  h: MissingScriptSourceHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishMissingScriptSourceRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
   const steps = SDK.MISSING_SCRIPT_SOURCE_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -147,7 +150,7 @@ describe("missingScriptSource installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeMissingScriptSourceHarness();
+      const h = await makeDirectWalkHarness(MISSING_SCRIPT_SOURCE_DIRECT_WALK);
       const scenario = await setupMissingRedeemerScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -181,7 +184,7 @@ describe("missingScriptSource installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.missingScriptSource,
+          contracts: h.direct,
           references,
           replayContext,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -238,11 +241,11 @@ describe("missingScriptSource installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.missingScriptSource.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.missingScriptSource.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -260,7 +263,7 @@ describe("missingScriptSource installed cursor actuator", () => {
             sourceId: "lucid-emulator",
             grade: "security",
           } as const;
-          for (const [index, step] of h.missingScriptSource.steps.entries()) {
+          for (const [index, step] of h.direct.steps.entries()) {
             const outputs = await h.proverLucid.utxosAtWithUnit(
               step.spendingScriptAddress,
               threadUnit,
@@ -277,7 +280,7 @@ describe("missingScriptSource installed cursor actuator", () => {
               } as never;
           }
           const proofs = await h.proverLucid.utxosAtWithUnit(
-            h.missingScriptSource.fraudProof.spendingScriptAddress,
+            h.direct.fraudProof.spendingScriptAddress,
             proofUnit,
           );
           if (proofs.length === 1)
@@ -383,7 +386,7 @@ describe("missingScriptSource installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.missingScriptSource.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -413,7 +416,7 @@ describe("missingScriptSource installed cursor actuator", () => {
   );
 
   it("detects nothing in the node's own forced ScriptSourceMissing rejection", async () => {
-    const h = await makeMissingScriptSourceHarness();
+    const h = await makeDirectWalkHarness(MISSING_SCRIPT_SOURCE_DIRECT_WALK);
     const shape = {
       ...honestForcedObserverShape(5),
       observers: [{ script: plutusScript(5), witness: false, redeemer: false }],

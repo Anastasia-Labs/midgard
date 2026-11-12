@@ -14,8 +14,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   requireConvictingUnusedRedeemerProof,
+  UNUSED_REDEEMER_DIRECT_WALK,
   UnusedRedeemerHonestLeaf,
 } from "../src/unused-redeemer/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   honestForcedObserverShape,
   type MissingRedeemerSubjectShape,
@@ -23,8 +28,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveUnusedRedeemerThread,
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
   unusedRedeemerVerdict,
 } from "./support/unused-redeemer-emulator.js";
 import {
@@ -67,7 +70,7 @@ describe("unused-redeemer genuine-Init rows under a later recorded reason", () =
   ] as const)(
     "reaches a fraud-proof token through the first unused redeemer under a recorded %s",
     async (label, shape, verdict) => {
-      const harness = await makeUnusedRedeemerHarness();
+      const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape,
@@ -86,7 +89,7 @@ describe("unused-redeemer genuine-Init rows under a later recorded reason", () =
   ] as const)(
     "refuses the first unused redeemer under %s",
     async (_label, verdict) => {
-      const harness = await makeUnusedRedeemerHarness();
+      const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape: purposeless(1),
@@ -95,11 +98,14 @@ describe("unused-redeemer genuine-Init rows under a later recorded reason", () =
       await expect(
         requireConvictingUnusedRedeemerProof({
           material: scenario.material,
-          contracts: harness.unusedRedeemer,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
         }),
       ).rejects.toThrow(UnusedRedeemerHonestLeaf);
-      const references = await publishUnusedRedeemerRoles(harness);
+      const references = await publishDirectWalkRoles(
+        harness,
+        UNUSED_REDEEMER_DIRECT_WALK,
+      );
       const run = await driveUnusedRedeemerThread({
         harness,
         scenario,

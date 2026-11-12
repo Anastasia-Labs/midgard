@@ -31,18 +31,22 @@ import {
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import type { ExecutionNativeScriptInvalidRole } from "../src/execution-native-script-invalid/index.js";
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  prepareExecutionNativeScriptInvalidProof,
+} from "../src/execution-native-script-invalid/index.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionNativeScriptInvalidThread,
-  type ExecutionNativeScriptInvalidHarness,
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
-} from "./support/execution-native-script-invalid-emulator.js";
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   admissibleNativeObservers,
   keyLockedEntries,
@@ -62,14 +66,14 @@ import { network } from "./support/submit-init-emulator-shared.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: ExecutionNativeScriptInvalidHarness,
+  harness: DirectWalkHarness,
   scenario: NativeScenario,
   reference: UTxO,
   thread: UTxO,
   unit: string,
   forged: string,
 ) => {
-  const contracts = harness.executionNativeScriptInvalid;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
     return await submitNativeTxBinding({
@@ -144,12 +148,12 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: ExecutionNativeScriptInvalidHarness,
+  harness: DirectWalkHarness,
   reference: UTxO,
   thread: UTxO,
   unit: string,
 ) => {
-  const contracts = harness.executionNativeScriptInvalid;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   const assetName = unit.slice(56);
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, assetName);
@@ -239,13 +243,20 @@ const forgeEveryRole = async (
   shape: NativeSubjectShape,
   source: NativeSource,
 ): Promise<ReadonlySet<DirectPurposeRole>> => {
-  const harness = await makeExecutionNativeScriptInvalidHarness();
-  const references = await publishExecutionNativeScriptInvalidRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
   const reference = (role: ExecutionNativeScriptInvalidRole) =>
     references.get(role)!.utxo;
   const scenario = await setupNativeScenario({ harness, shape, source });
   const refused: DirectPurposeRole[] = [];
-  const run = await driveExecutionNativeScriptInvalidThread({
+  const run = await driveDirectWalkThread({
+    walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    prepare: prepareExecutionNativeScriptInvalidProof,
     harness,
     scenario,
     references,

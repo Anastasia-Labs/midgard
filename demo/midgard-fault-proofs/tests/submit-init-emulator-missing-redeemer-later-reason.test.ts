@@ -10,17 +10,18 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  MISSING_REDEEMER_DIRECT_WALK,
   MissingRedeemerHonestLeaf,
   requireConvictingMissingRedeemerProof,
 } from "../src/missing-redeemer/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  MISSING_REDEEMER_STEP_BOUNDS,
-  publishMissingRedeemerRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/missing-redeemer-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   honestForcedObserverShape,
   setupMissingRedeemerScenario,
@@ -30,20 +31,20 @@ import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      MISSING_REDEEMER_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(MISSING_REDEEMER_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
 const rejectedFor = async (reason: SDK.RejectionReason) => {
-  const harness = await makeMissingRedeemerHarness();
+  const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
   const scenario = await setupMissingRedeemerScenario({
     harness,
     shape: honestForcedObserverShape(5),
@@ -63,7 +64,10 @@ describe("missing-redeemer genuine-Init rows under a later recorded reason", () 
     "reaches a fraud-proof token for a missing redeemer under a recorded %s",
     async (label, reason) => {
       const { harness, scenario } = await rejectedFor(reason);
-      const references = await publishMissingRedeemerRoles(harness);
+      const references = await publishDirectWalkRoles(
+        harness,
+        MISSING_REDEEMER_DIRECT_WALK,
+      );
       const run = await driveMissingRedeemerThread({
         harness,
         scenario,
@@ -81,7 +85,7 @@ describe("missing-redeemer genuine-Init rows under a later recorded reason", () 
       expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
       await expectSingleUtxoWithUnit(
         harness.proverLucid,
-        harness.missingRedeemer.fraudProof.spendingScriptAddress,
+        harness.direct.fraudProof.spendingScriptAddress,
         outcome.fraudProofUnit,
       );
     },
@@ -95,11 +99,14 @@ describe("missing-redeemer genuine-Init rows under a later recorded reason", () 
     await expect(
       requireConvictingMissingRedeemerProof({
         material: scenario.material,
-        contracts: harness.missingRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingRedeemerHonestLeaf);
-    const references = await publishMissingRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveMissingRedeemerThread({
       harness,
       scenario,
@@ -117,7 +124,7 @@ describe("missing-redeemer genuine-Init rows under a later recorded reason", () 
     });
     await expect(
       harness.proverLucid.utxosAtWithUnit(
-        harness.missingRedeemer.steps.at(-1)!.spendingScriptAddress,
+        harness.direct.steps.at(-1)!.spendingScriptAddress,
         run.unit,
       ),
     ).resolves.toHaveLength(1);

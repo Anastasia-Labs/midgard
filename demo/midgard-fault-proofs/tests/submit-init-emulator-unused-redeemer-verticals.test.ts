@@ -15,8 +15,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   requireConvictingUnusedRedeemerProof,
+  UNUSED_REDEEMER_DIRECT_WALK,
   UnusedRedeemerHonestLeaf,
 } from "../src/unused-redeemer/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   honestForcedObserverShape,
@@ -29,8 +34,6 @@ import {
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
   driveUnusedRedeemerThread,
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
   unusedRedeemerVerdict,
 } from "./support/unused-redeemer-emulator.js";
 import {
@@ -55,7 +58,7 @@ const SOURCELESS: MissingRedeemerSubjectShape = {
 
 describe("unused-redeemer genuine-Init verticals", () => {
   it("A-N: convicts an accepted transaction carrying a redeemer with no purpose and removes its block", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: { ...CONSUMED, paddingRedeemers: [DATA] },
@@ -72,14 +75,14 @@ describe("unused-redeemer genuine-Init verticals", () => {
     });
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.unusedRedeemer.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
       fraud_prover: harness.proverSigner.paymentKeyHash,
     });
-    for (const step of harness.unusedRedeemer.steps)
+    for (const step of harness.direct.steps)
       await expect(
         harness.proverLucid.utxosAtWithUnit(
           step.spendingScriptAddress,
@@ -93,7 +96,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("A-N: convicts an accepted transaction carrying a native purpose's pointer", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: { observers: [{ script: nativeScript(5n), redeemer: true }] },
@@ -105,7 +108,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("A-N: convicts an accepted transaction repeating a pointer, decided by the walk", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: {
@@ -130,7 +133,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("R-F: convicts a forced rejection naming an UnusedRedeemer the transaction does not carry", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SOURCELESS,
@@ -144,7 +147,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("refuses the walk to an honest transaction's consumed redeemer", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: CONSUMED,
@@ -153,11 +156,14 @@ describe("unused-redeemer genuine-Init verticals", () => {
     await expect(
       requireConvictingUnusedRedeemerProof({
         material: scenario.material,
-        contracts: harness.unusedRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(UnusedRedeemerHonestLeaf);
-    const references = await publishUnusedRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveUnusedRedeemerThread({
       harness,
       scenario,
@@ -169,7 +175,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("refuses the walk to an honest transaction's consumed Spend redeemer", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: {
@@ -187,11 +193,14 @@ describe("unused-redeemer genuine-Init verticals", () => {
     await expect(
       requireConvictingUnusedRedeemerProof({
         material: scenario.material,
-        contracts: harness.unusedRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(UnusedRedeemerHonestLeaf);
-    const references = await publishUnusedRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveUnusedRedeemerThread({
       harness,
       scenario,
@@ -207,7 +216,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("A-N: convicts an accepted transaction's Spend pointer at a key-locked input", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: {
@@ -228,7 +237,7 @@ describe("unused-redeemer genuine-Init verticals", () => {
   }, 1_200_000);
 
   it("A-F: an admitted forced transaction carries no redeemer; the prover finds nothing and the terminal refuses the walk", async () => {
-    const harness = await makeUnusedRedeemerHarness();
+    const harness = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SOURCELESS,
@@ -238,11 +247,14 @@ describe("unused-redeemer genuine-Init verticals", () => {
     await expect(
       requireConvictingUnusedRedeemerProof({
         material: scenario.material,
-        contracts: harness.unusedRedeemer,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(UnusedRedeemerHonestLeaf);
-    const references = await publishUnusedRedeemerRoles(harness);
+    const references = await publishDirectWalkRoles(
+      harness,
+      UNUSED_REDEEMER_DIRECT_WALK,
+    );
     const run = await driveUnusedRedeemerThread({
       harness,
       scenario,

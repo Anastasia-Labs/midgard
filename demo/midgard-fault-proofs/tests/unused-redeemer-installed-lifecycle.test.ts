@@ -43,6 +43,11 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   buildMissingRedeemerSubject,
@@ -57,12 +62,7 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
-import {
-  makeUnusedRedeemerHarness,
-  publishUnusedRedeemerRoles,
-  type UnusedRedeemerHarness,
-  unusedRedeemerVerdict,
-} from "./support/unused-redeemer-emulator.js";
+import { unusedRedeemerVerdict } from "./support/unused-redeemer-emulator.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -95,9 +95,12 @@ const blockEvidence = async (
 type References = DirectWalkReferenceScripts<"unusedRedeemer", 25>;
 
 const workflowReferences = async (
-  h: UnusedRedeemerHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishUnusedRedeemerRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    UNUSED_REDEEMER_DIRECT_WALK,
+  );
   const steps = SDK.UNUSED_REDEEMER_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -150,7 +153,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeUnusedRedeemerHarness();
+      const h = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
       const scenario = await setupMissingRedeemerScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -184,7 +187,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.unusedRedeemer,
+          contracts: h.direct,
           references,
           replayContext,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -240,11 +243,11 @@ describe("unusedRedeemer installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.unusedRedeemer.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.unusedRedeemer.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -262,7 +265,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
             sourceId: "lucid-emulator",
             grade: "security",
           } as const;
-          for (const [index, step] of h.unusedRedeemer.steps.entries()) {
+          for (const [index, step] of h.direct.steps.entries()) {
             const outputs = await h.proverLucid.utxosAtWithUnit(
               step.spendingScriptAddress,
               threadUnit,
@@ -279,7 +282,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
               } as never;
           }
           const proofs = await h.proverLucid.utxosAtWithUnit(
-            h.unusedRedeemer.fraudProof.spendingScriptAddress,
+            h.direct.fraudProof.spendingScriptAddress,
             proofUnit,
           );
           if (proofs.length === 1)
@@ -382,7 +385,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.unusedRedeemer.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -412,7 +415,7 @@ describe("unusedRedeemer installed cursor actuator", () => {
   );
 
   it("detects nothing in the node's own rejection of an admitted forced transaction", async () => {
-    const h = await makeUnusedRedeemerHarness();
+    const h = await makeDirectWalkHarness(UNUSED_REDEEMER_DIRECT_WALK);
     const shape = {
       ...honestForcedObserverShape(5),
       observers: [{ script: plutusScript(5), witness: false, redeemer: false }],

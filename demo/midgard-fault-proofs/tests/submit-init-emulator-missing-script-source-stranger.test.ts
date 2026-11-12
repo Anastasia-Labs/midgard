@@ -31,7 +31,10 @@ import {
   submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
-import { MISSING_SCRIPT_SOURCE_FAMILY } from "../src/missing-script-source/index.js";
+import {
+  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  MISSING_SCRIPT_SOURCE_FAMILY,
+} from "../src/missing-script-source/index.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -40,6 +43,10 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -47,11 +54,7 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  driveMissingScriptSourceThread,
-  makeMissingScriptSourceHarness,
-  publishMissingScriptSourceRoles,
-} from "./support/missing-script-source-emulator.js";
+import { driveMissingScriptSourceThread } from "./support/missing-script-source-emulator.js";
 import {
   expectSingleUtxoWithUnit,
   network,
@@ -63,8 +66,13 @@ const SIGNED_BY_PROVER = /fraud_prover \|> has_signed\(extra_signatories\)/u;
 
 /** An honest prover's harness and committed subject, and a funded stranger. */
 const scene = async () => {
-  const harness = await makeMissingScriptSourceHarness();
-  const references = await publishMissingScriptSourceRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    MISSING_SCRIPT_SOURCE_DIRECT_WALK,
+  );
   // A spend of an output locked by a Plutus script nothing sources,
   // committed as an admitted forced leaf.
   const scenario = await setupMissingRedeemerScenario({
@@ -137,7 +145,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
     reconstruction: scenario.block.reconstruction,
     eventKey,
   });
-  const next = harness.missingScriptSource.steps[1]!;
+  const next = harness.direct.steps[1]!;
   const nextDatum = Data.to(
     {
       fraud_prover: harness.proverSigner.paymentKeyHash,
@@ -200,7 +208,7 @@ const strangerTransition = async (
   transition: DirectPurposeTransition,
 ) => {
   const { harness, strangerLucid, strangerSigner } = s;
-  const contracts = harness.missingScriptSource;
+  const contracts = harness.direct;
   const next = directPurposeRoleValidator(
     MISSING_SCRIPT_SOURCE_FAMILY,
     contracts,
@@ -293,7 +301,7 @@ describe("missing-script-source steps refuse a party other than the thread's pro
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
-      contracts: harness.missingScriptSource,
+      contracts: harness.direct,
       category: harness.category,
       catalogue: {
         policyId: harness.contracts.fraudProofCatalogue.policyId,
@@ -306,8 +314,7 @@ describe("missing-script-source steps refuse a party other than the thread's pro
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const unit = init.computationThreadUnit;
-    const firstStep =
-      harness.missingScriptSource.steps[0]!.spendingScriptAddress;
+    const firstStep = harness.direct.steps[0]!.spendingScriptAddress;
     const thread = await threadAt(s, firstStep, unit);
     expect(outRefLabel(thread)).toBe(init.nextThreadOutRef);
 
@@ -323,7 +330,7 @@ describe("missing-script-source steps refuse a party other than the thread's pro
     const step01 = await submitDirectPurposeStep01Forced({
       family: MISSING_SCRIPT_SOURCE_FAMILY,
       lucid: harness.proverLucid,
-      contracts: harness.missingScriptSource,
+      contracts: harness.direct,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(thread),
@@ -333,7 +340,7 @@ describe("missing-script-source steps refuse a party other than the thread's pro
     });
     const advanced = await threadAt(
       s,
-      harness.missingScriptSource.steps[1]!.spendingScriptAddress,
+      harness.direct.steps[1]!.spendingScriptAddress,
       unit,
     );
     expect(outRefLabel(advanced)).toBe(step01.nextThreadOutRef);
@@ -383,7 +390,7 @@ describe("missing-script-source steps refuse a party other than the thread's pro
     expect(outcome.fraudulentHeaderHash).toBe(s.scenario.setup.headerHash);
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.missingScriptSource.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({

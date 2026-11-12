@@ -12,7 +12,6 @@
  */
 import { createHash } from "node:crypto";
 
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { layerMethod } from "@al-ft/midgard-test-support/method-layer";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
@@ -44,6 +43,7 @@ import {
 } from "../../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { observeEmulatorSubmissions } from "./cross-block-raw-emulator.js";
+import type { DirectWalkCategory } from "./direct-walk-emulator.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import {
   type FaultProofEmulatorHarness,
@@ -124,20 +124,6 @@ export const recordDirectWalkTranscript = async (
     random.restore();
   }
 };
-
-/** The direct-walk families' catalogue categories. */
-export type DirectWalkCategory = Extract<
-  FraudProofCatalogueCategoryName,
-  | "missingRedeemer"
-  | "missingScriptSource"
-  | "receivePurposeLanguage"
-  | "unusedRedeemer"
-  | "executionSourceScriptDecoding"
-  | "distinctAssetAccumulationLimit"
-  | "executionNativeScriptInvalid"
-  | "scriptIntegrityHashMismatch"
-  | "unusedScriptWitness"
->;
 
 /** What a family's installed lifecycle stands up before its cursor runs. */
 export type DirectWalkScene = Readonly<{

@@ -33,7 +33,6 @@ import type {
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
-  type DirectPurposePlannedArtifact,
   directPurposeSourceInclusion,
   planDirectPurposeArtifact,
   prepareDirectPurposeArtifact,
@@ -56,7 +55,11 @@ import {
   submitDirectPurposeTransition,
 } from "./submit.js";
 import { submitDirectPurposeTerminal } from "./terminal.js";
-import type { DirectWalkFamily, DirectWalkProof } from "./walk-family.js";
+import type {
+  DirectWalkFamily,
+  DirectWalkProof,
+  DirectWalkTerminalInput,
+} from "./walk-family.js";
 
 export type DirectWalkReferenceScripts<
   Category extends FamilyCategory,
@@ -136,14 +139,14 @@ export const directWalkFieldPlan =
 
 /** The family the terminal is judged by: the walk's own, or the one its
  * proof builds. */
-const terminalFamily = <
+export const directWalkTerminalFamily = <
   Prepared extends DirectPurposeReplay,
   Proof extends DirectWalkProof,
 >(
   walk: DirectWalkFamily<FamilyCategory, number, Prepared, Proof>,
-  plan: DirectPurposePlannedArtifact<Prepared, Proof>,
+  input: DirectWalkTerminalInput<Proof>,
 ): DirectPurposeFamily<unknown> =>
-  walk.terminal === undefined ? walk.family : walk.terminal(plan);
+  walk.terminal === undefined ? walk.family : walk.terminal(input);
 
 const threadAt = async (
   category: string,
@@ -305,7 +308,7 @@ export const createDirectWalkTransactionPort = <
             if (role === "terminal") {
               await submitDirectPurposeTerminal({
                 ...common,
-                family: terminalFamily(walk, plan),
+                family: directWalkTerminalFamily(walk, plan),
                 witnessReferenceScripts: config.references.witnesses,
               });
               return;

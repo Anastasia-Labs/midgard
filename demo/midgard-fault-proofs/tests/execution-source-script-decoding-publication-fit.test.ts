@@ -1,17 +1,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
 import {
-  makeExecutionSourceScriptDecodingHarness,
-  publishExecutionSourceScriptDecodingRoles,
-} from "./support/execution-source-script-decoding-emulator.js";
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 
 const RELIABILITY_RESERVE_BYTES = 15_872;
 
 describe("execution-source-script-decoding publication fit", () => {
   it("publishes every applied role validator below the reliability reserve", async () => {
-    const harness = await makeExecutionSourceScriptDecodingHarness();
-    const references = await publishExecutionSourceScriptDecodingRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
     expect([...references.keys()]).toStrictEqual([
       ...SDK.EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER,
     ]);

@@ -14,12 +14,21 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
+  prepareUnusedScriptWitnessProof,
   requireConvictingUnusedScriptWitnessProof,
+  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
   UnusedScriptWitnessHonestLeaf,
 } from "../src/unused-script-witness/index.js";
+import {
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  type IntegrityScenario,
   type IntegritySource,
   type IntegritySubjectShape,
   machineForcedVerdict,
@@ -34,14 +43,6 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  driveUnusedScriptWitnessThread,
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-  stepTable,
-  UNUSED_SCRIPT_WITNESS_STEP_BOUNDS,
-  type UnusedScriptWitnessHarness,
-} from "./support/unused-script-witness-emulator.js";
-import {
   admissibleForcedWith,
   EVERY_PURPOSE_FIRST_EXTRA,
   everyPurposeWith,
@@ -52,15 +53,15 @@ import {
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -68,10 +69,7 @@ const witnessReason = (script_index: bigint): SDK.RejectionReason => ({
   UnusedScriptWitness: { script_index },
 });
 
-const removeBlock = async (
-  harness: UnusedScriptWitnessHarness,
-  headerHash: string,
-) => {
+const removeBlock = async (harness: DirectWalkHarness, headerHash: string) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -101,15 +99,18 @@ const convictAndCheck = async (
   shape: IntegritySubjectShape,
   source: IntegritySource,
   label: string,
-): Promise<{
-  readonly harness: UnusedScriptWitnessHarness;
-  readonly scenario: IntegrityScenario;
-  readonly run: Awaited<ReturnType<typeof driveUnusedScriptWitnessThread>>;
-}> => {
-  const harness = await makeUnusedScriptWitnessHarness();
+) => {
+  const harness = await makeDirectWalkHarness(
+    UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  );
   const scenario = await setupIntegrityScenario({ harness, shape, source });
-  const references = await publishUnusedScriptWitnessRoles(harness);
-  const run = await driveUnusedScriptWitnessThread({
+  const references = await publishDirectWalkRoles(
+    harness,
+    UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  );
+  const run = await driveDirectWalkThread({
+    walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    prepare: prepareUnusedScriptWitnessProof,
     harness,
     scenario,
     references,
@@ -121,14 +122,14 @@ const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   const token = await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.unusedScriptWitness.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
   expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
     fraud_prover: harness.proverSigner.paymentKeyHash,
   });
-  for (const step of harness.unusedScriptWitness.steps)
+  for (const step of harness.direct.steps)
     await expect(
       harness.proverLucid.utxosAtWithUnit(step.spendingScriptAddress, run.unit),
     ).resolves.toHaveLength(0);
@@ -231,7 +232,9 @@ describe("unused-script-witness genuine-Init verticals", () => {
   ])(
     "refuses $name: the terminal returns false",
     async (row) => {
-      const harness = await makeUnusedScriptWitnessHarness();
+      const harness = await makeDirectWalkHarness(
+        UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+      );
       const scenario = await setupIntegrityScenario({
         harness,
         shape: row.shape(),
@@ -240,17 +243,25 @@ describe("unused-script-witness genuine-Init verticals", () => {
       await expect(
         requireConvictingUnusedScriptWitnessProof({
           material: scenario.material,
-          contracts: harness.unusedScriptWitness,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
           scriptIndex: row.scriptIndex,
         }),
       ).rejects.toThrow(UnusedScriptWitnessHonestLeaf);
-      const references = await publishUnusedScriptWitnessRoles(harness);
-      const run = await driveUnusedScriptWitnessThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+        prepare: (input) =>
+          prepareUnusedScriptWitnessProof({
+            ...input,
+            scriptIndex: row.scriptIndex,
+          }),
         harness,
         scenario,
         references,
-        scriptIndex: row.scriptIndex,
       });
       expect(run.prepared.convicts).toBe(false);
       expect(run.prepared.unused).toBe(row.unused);
@@ -261,7 +272,7 @@ describe("unused-script-witness genuine-Init verticals", () => {
       });
       await expect(
         harness.proverLucid.utxosAtWithUnit(
-          harness.unusedScriptWitness.steps.at(-1)!.spendingScriptAddress,
+          harness.direct.steps.at(-1)!.spendingScriptAddress,
           run.unit,
         ),
       ).resolves.toHaveLength(1);

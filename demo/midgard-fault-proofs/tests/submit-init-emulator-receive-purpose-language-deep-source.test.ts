@@ -9,6 +9,7 @@ import { hashMidgardVersionedScript } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
 import {
   DEEP_SOURCE_REFERENCES,
   DEEP_SOURCE_SPENDS,
@@ -19,14 +20,16 @@ import {
   expectDeepSourceWithinBounds,
 } from "./support/direct-purpose-deep-source.js";
 import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
+import {
   type MissingRedeemerSubjectShape,
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveReceivePurposeLanguageThread,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receiveCoordinate,
 } from "./support/receive-purpose-language-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
@@ -45,8 +48,13 @@ const deepSourceReceiveShape = (): MissingRedeemerSubjectShape => ({
 
 describe("receive-purpose-language source walk over a deep ledger", () => {
   it("fits each source page to the budget and convicts an accepted PlutusV3 receive execution", async () => {
-    const harness = await makeReceivePurposeLanguageHarness();
-    const references = await publishReceivePurposeLanguageRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: deepSourceReceiveShape(),
@@ -93,7 +101,7 @@ describe("receive-purpose-language source walk over a deep ledger", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     // The receiver's only source is the reference input it was ground with.

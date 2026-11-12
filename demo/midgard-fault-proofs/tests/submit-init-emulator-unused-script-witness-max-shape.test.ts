@@ -23,9 +23,19 @@ import { describe, expect, it } from "vitest";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import {
+  prepareUnusedScriptWitnessProof,
   requireConvictingUnusedScriptWitnessProof,
+  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
   UnusedScriptWitnessHonestLeaf,
 } from "../src/unused-script-witness/index.js";
+import {
+  DIRECT_WALK_STEP_BOUNDS,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+  type StepMeasurement,
+  stepTable,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -47,14 +57,6 @@ import {
   LEDGER_CLUSTER,
   pathStarts,
 } from "./support/unused-script-witness-emulator.deep.js";
-import {
-  driveUnusedScriptWitnessThread,
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-  type StepMeasurement,
-  stepTable,
-  UNUSED_SCRIPT_WITNESS_STEP_BOUNDS,
-} from "./support/unused-script-witness-emulator.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 
@@ -270,15 +272,15 @@ const deepShapeOf = (dimensions: Dimensions) => {
 const expectWithinBounds = (steps: readonly StepMeasurement[]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(UNUSED_SCRIPT_WITNESS_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -312,6 +314,32 @@ const kinds = (steps: readonly StepMeasurement[]) => {
   return counts;
 };
 
+/** A genuine Init over the shape committed as accepted, every role script
+ * published, and the custody auditing `scriptIndex` driven to the
+ * terminal's input. */
+const driveShape = async (
+  shape: IntegritySubjectShape,
+  scriptIndex: bigint,
+) => {
+  const walk = UNUSED_SCRIPT_WITNESS_DIRECT_WALK;
+  const harness = await makeDirectWalkHarness(walk);
+  const references = await publishDirectWalkRoles(harness, walk);
+  const scenario = await setupIntegrityScenario({
+    harness,
+    shape,
+    source: { kind: "normal" },
+  });
+  const run = await driveDirectWalkThread({
+    walk,
+    prepare: (input) =>
+      prepareUnusedScriptWitnessProof({ ...input, scriptIndex }),
+    harness,
+    scenario,
+    references,
+  });
+  return { harness, scenario, run };
+};
+
 describe("unused-script-witness consensus-maximum shape", () => {
   it("fills every purpose field and field 6 to their caps", () => {
     const dimensions = maximumShape();
@@ -340,24 +368,12 @@ describe("unused-script-witness consensus-maximum shape", () => {
   }, 120_000);
 
   it("convicts the last witness of a capped field 6 over a deep ledger and source map", async () => {
-    const harness = await makeUnusedScriptWitnessHarness();
-    const references = await publishUnusedScriptWitnessRoles(harness);
     const dimensions = maximumShape();
     const { shape, audited, received } = deepShapeOf(dimensions);
     for (const bytes of Object.values(fieldBytes(shape)))
       expect(bytes).toBeLessThanOrEqual(FIELD_CAP);
     const scriptIndex = BigInt(witnessCount(shape) - 1);
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
-    });
-    const run = await driveUnusedScriptWitnessThread({
-      harness,
-      scenario,
-      references,
-      scriptIndex,
-    });
+    const { harness, scenario, run } = await driveShape(shape, scriptIndex);
     expect(run.prepared.scriptIndex).toBe(scriptIndex);
     expect(run.prepared.unused).toBe(true);
     expect(run.prepared.convicts).toBe(true);
@@ -408,14 +424,12 @@ describe("unused-script-witness consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.unusedScriptWitness.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("convicts an unused witness as large as field 6 admits at the audited index", async () => {
-    const harness = await makeUnusedScriptWitnessHarness();
-    const references = await publishUnusedScriptWitnessRoles(harness);
     const fits = (bytes: number) =>
       fieldBytes(withUnused(bytes)).witnesses <= FIELD_CAP;
     const size = largest(2, FIELD_CAP, fits);
@@ -423,17 +437,7 @@ describe("unused-script-witness consensus-maximum shape", () => {
     const field6Bytes = fieldBytes(shape).witnesses;
     expect(FIELD_CAP - field6Bytes).toBeLessThan(4);
     const scriptIndex = BigInt(witnessCount(shape) - 1);
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
-    });
-    const run = await driveUnusedScriptWitnessThread({
-      harness,
-      scenario,
-      references,
-      scriptIndex,
-    });
+    const { harness, scenario, run } = await driveShape(shape, scriptIndex);
     expect(run.prepared).toMatchObject({ scriptIndex, unused: true });
     expect(run.prepared.convicts).toBe(true);
     const outcome = await run.terminal();
@@ -444,36 +448,24 @@ describe("unused-script-witness consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.unusedScriptWitness.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("refuses the same purposes when every witness is used, auditing the last", async () => {
-    const harness = await makeUnusedScriptWitnessHarness();
-    const references = await publishUnusedScriptWitnessRoles(harness);
     const dimensions = maximumShape();
     const shape = honestMaximum(dimensions);
     const scriptIndex = BigInt(witnessCount(shape) - 1);
-    const scenario = await setupIntegrityScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
-    });
+    const { harness, scenario, run } = await driveShape(shape, scriptIndex);
     await expect(
       requireConvictingUnusedScriptWitnessProof({
         material: scenario.material,
-        contracts: harness.unusedScriptWitness,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
         scriptIndex,
       }),
     ).rejects.toThrow(UnusedScriptWitnessHonestLeaf);
-    const run = await driveUnusedScriptWitnessThread({
-      harness,
-      scenario,
-      references,
-      scriptIndex,
-    });
     expect(run.prepared.unused).toBe(false);
     expect(run.prepared.convicts).toBe(false);
     console.log(

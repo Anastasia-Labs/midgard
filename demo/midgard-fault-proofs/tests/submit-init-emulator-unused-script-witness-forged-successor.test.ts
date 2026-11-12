@@ -26,8 +26,18 @@ import {
 import { submitNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { unusedScriptWitnessContractRoles } from "../src/unused-script-witness/index.js";
+import {
+  prepareUnusedScriptWitnessProof,
+  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  unusedScriptWitnessContractRoles,
+} from "../src/unused-script-witness/index.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
+import {
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildIntegritySubject,
@@ -40,12 +50,6 @@ import {
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
-  driveUnusedScriptWitnessThread,
-  makeUnusedScriptWitnessHarness,
-  publishUnusedScriptWitnessRoles,
-  type UnusedScriptWitnessHarness,
-} from "./support/unused-script-witness-emulator.js";
-import {
   admissibleForcedWith,
   holdingNativeScript,
 } from "./support/unused-script-witness-emulator.subject.js";
@@ -54,14 +58,14 @@ type Scenario = Parameters<typeof setupIntegrityScenario>[0];
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
-  harness: UnusedScriptWitnessHarness,
+  harness: DirectWalkHarness,
   scenario: IntegrityScenario,
   reference: UTxO,
   thread: UTxO,
   unit: string,
   forged: string,
 ) => {
-  const contracts = harness.unusedScriptWitness;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
     return await submitNativeTxBinding({
@@ -133,13 +137,13 @@ const forgedStep01 = async (
 /** The terminal from `thread`, minting the fraud-proof token to an output
  * whose datum names another prover. */
 const forgedTerminal = async (
-  harness: UnusedScriptWitnessHarness,
+  harness: DirectWalkHarness,
   selection: SDK.UnusedScriptWitnessSelection | null,
   reference: UTxO,
   thread: UTxO,
   unit: string,
 ) => {
-  const contracts = harness.unusedScriptWitness;
+  const contracts = harness.direct;
   const signer = harness.proverSigner;
   const assetName = unit.slice(56);
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, assetName);
@@ -227,8 +231,13 @@ const forgeEveryRole = async (
   shape: Scenario["shape"],
   source: Scenario["source"],
 ): Promise<readonly DirectPurposeRole[]> => {
-  const harness = await makeUnusedScriptWitnessHarness();
-  const references = await publishUnusedScriptWitnessRoles(harness);
+  const harness = await makeDirectWalkHarness(
+    UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  );
+  const references = await publishDirectWalkRoles(
+    harness,
+    UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+  );
   const reference = (role: DirectPurposeRole) => references.get(role)!.utxo;
   const scenario = await setupIntegrityScenario({
     harness,
@@ -236,7 +245,9 @@ const forgeEveryRole = async (
     source,
   });
   const refused: DirectPurposeRole[] = [];
-  const run = await driveUnusedScriptWitnessThread({
+  const run = await driveDirectWalkThread({
+    walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
+    prepare: prepareUnusedScriptWitnessProof,
     harness,
     scenario,
     references,

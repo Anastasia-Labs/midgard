@@ -14,25 +14,26 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
   ExecutionNativeScriptInvalidHonestLeaf,
+  prepareExecutionNativeScriptInvalidProof,
   requireConvictingExecutionNativeScriptInvalidProof,
 } from "../src/execution-native-script-invalid/index.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionNativeScriptInvalidThread,
-  EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS,
-  type ExecutionNativeScriptInvalidHarness,
-  makeExecutionNativeScriptInvalidHarness,
-  publishExecutionNativeScriptInvalidRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/execution-native-script-invalid-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   admissibleNativeObservers,
   machineNativeVerdict,
   native,
   nativeFalseAt,
-  type NativeScenario,
   type NativeSource,
   type NativeSubjectShape,
   PAYER,
@@ -51,15 +52,15 @@ import {
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -92,10 +93,7 @@ const twoOfThreeShape = () =>
 
 const OBSERVER = { kind: 2n, index: 0n };
 
-const removeBlock = async (
-  harness: ExecutionNativeScriptInvalidHarness,
-  headerHash: string,
-) => {
+const removeBlock = async (harness: DirectWalkHarness, headerHash: string) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -125,17 +123,18 @@ const convictAndCheck = async (
   shape: NativeSubjectShape,
   source: NativeSource,
   label: string,
-): Promise<{
-  readonly harness: ExecutionNativeScriptInvalidHarness;
-  readonly scenario: NativeScenario;
-  readonly run: Awaited<
-    ReturnType<typeof driveExecutionNativeScriptInvalidThread>
-  >;
-}> => {
-  const harness = await makeExecutionNativeScriptInvalidHarness();
+) => {
+  const harness = await makeDirectWalkHarness(
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
   const scenario = await setupNativeScenario({ harness, shape, source });
-  const references = await publishExecutionNativeScriptInvalidRoles(harness);
-  const run = await driveExecutionNativeScriptInvalidThread({
+  const references = await publishDirectWalkRoles(
+    harness,
+    EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  );
+  const run = await driveDirectWalkThread({
+    walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+    prepare: prepareExecutionNativeScriptInvalidProof,
     harness,
     scenario,
     references,
@@ -147,14 +146,14 @@ const convictAndCheck = async (
   expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
   const token = await expectSingleUtxoWithUnit(
     harness.proverLucid,
-    harness.executionNativeScriptInvalid.fraudProof.spendingScriptAddress,
+    harness.direct.fraudProof.spendingScriptAddress,
     outcome.fraudProofUnit,
   );
   expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
   expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
     fraud_prover: harness.proverSigner.paymentKeyHash,
   });
-  for (const step of harness.executionNativeScriptInvalid.steps)
+  for (const step of harness.direct.steps)
     await expect(
       harness.proverLucid.utxosAtWithUnit(step.spendingScriptAddress, run.unit),
     ).resolves.toHaveLength(0);
@@ -242,7 +241,9 @@ describe("execution-native-script-invalid genuine-Init verticals", () => {
   ])(
     "refuses $name: the terminal returns false",
     async (row) => {
-      const harness = await makeExecutionNativeScriptInvalidHarness();
+      const harness = await makeDirectWalkHarness(
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+      );
       const scenario = await setupNativeScenario({
         harness,
         shape: row.shape(),
@@ -251,18 +252,25 @@ describe("execution-native-script-invalid genuine-Init verticals", () => {
       await expect(
         requireConvictingExecutionNativeScriptInvalidProof({
           material: scenario.material,
-          contracts: harness.executionNativeScriptInvalid,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
           entry: { Observe: OBSERVER },
         }),
       ).rejects.toThrow(ExecutionNativeScriptInvalidHonestLeaf);
-      const references =
-        await publishExecutionNativeScriptInvalidRoles(harness);
-      const run = await driveExecutionNativeScriptInvalidThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+        prepare: (input) =>
+          prepareExecutionNativeScriptInvalidProof({
+            ...input,
+            entry: { Observe: OBSERVER },
+          }),
         harness,
         scenario,
         references,
-        entry: { Observe: OBSERVER },
       });
       expect(run.prepared.convicts).toBe(false);
       expect(run.prepared.final.fact).toStrictEqual(evaluated(row.satisfied));
@@ -273,8 +281,7 @@ describe("execution-native-script-invalid genuine-Init verticals", () => {
       });
       await expect(
         harness.proverLucid.utxosAtWithUnit(
-          harness.executionNativeScriptInvalid.steps.at(-1)!
-            .spendingScriptAddress,
+          harness.direct.steps.at(-1)!.spendingScriptAddress,
           run.unit,
         ),
       ).resolves.toHaveLength(1);

@@ -20,21 +20,24 @@ import type { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
+  type ExecutionNativeScriptInvalidEntry,
   ExecutionNativeScriptInvalidHonestLeaf,
+  prepareExecutionNativeScriptInvalidProof,
   requireConvictingExecutionNativeScriptInvalidProof,
 } from "../src/execution-native-script-invalid/index.js";
 import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import { clusterPadding, intoCluster } from "./support/deep-ledger-trie.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionNativeScriptInvalidThread,
-  EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS,
-  makeExecutionNativeScriptInvalidHarness,
+  DIRECT_WALK_STEP_BOUNDS,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
   type PageSize,
-  publishExecutionNativeScriptInvalidRoles,
+  publishDirectWalkRoles,
   type StepMeasurement,
   stepTable,
-} from "./support/execution-native-script-invalid-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildNativeSubject,
   keyHashOf,
@@ -318,15 +321,15 @@ const maximumShape = (extra: bigint) => {
 const expectWithinBounds = (steps: readonly StepMeasurement[]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(EXECUTION_NATIVE_SCRIPT_INVALID_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -379,6 +382,31 @@ const ledgerDepths = async (
 
 const OBSERVER = { kind: 2n, index: 0n };
 
+/** A genuine Init over the accepted shape, every role script published, and
+ * the custody at `entry` (else the first convicting route) to the terminal. */
+const driveShape = async (
+  shape: NativeSubjectShape,
+  entry?: ExecutionNativeScriptInvalidEntry,
+) => {
+  const walk = EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK;
+  const harness = await makeDirectWalkHarness(walk);
+  const references = await publishDirectWalkRoles(harness, walk);
+  const scenario = await setupNativeScenario({
+    harness,
+    shape,
+    source: { kind: "normal" },
+  });
+  const run = await driveDirectWalkThread({
+    walk,
+    prepare: (input) =>
+      prepareExecutionNativeScriptInvalidProof({ ...input, entry }),
+    harness,
+    scenario,
+    references,
+  });
+  return { harness, scenario, run };
+};
+
 describe("execution-native-script-invalid consensus-maximum shape", () => {
   it("fills field 7 and field 6 to their caps", () => {
     const { shape, signers, absentCount, required } = maximumShape(1n);
@@ -400,22 +428,11 @@ describe("execution-native-script-invalid consensus-maximum shape", () => {
   }, 600_000);
 
   it("convicts an accepted transaction whose capped source is false over a deep ledger", async () => {
-    const harness = await makeExecutionNativeScriptInvalidHarness();
-    const references = await publishExecutionNativeScriptInvalidRoles(harness);
     const { shape, signerCount, absentCount } = maximumShape(1n);
-    const scenario = await setupNativeScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
-    });
+    const { harness, scenario, run } = await driveShape(shape);
     const depths = await ledgerDepths(scenario.material);
     expect(depths).toHaveLength(SPENDS.length + REFERENCES.length);
     expect(Math.min(...depths)).toBeGreaterThanOrEqual(5);
-    const run = await driveExecutionNativeScriptInvalidThread({
-      harness,
-      scenario,
-      references,
-    });
     expect(run.prepared.entry).toStrictEqual({ Observe: OBSERVER });
     expect(run.prepared.final.fact).toStrictEqual({
       Evaluated: { coordinate: OBSERVER, satisfied: false },
@@ -440,34 +457,24 @@ describe("execution-native-script-invalid consensus-maximum shape", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.executionNativeScriptInvalid.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
   }, 3_600_000);
 
   it("refuses the same shape when its source holds", async () => {
-    const harness = await makeExecutionNativeScriptInvalidHarness();
-    const references = await publishExecutionNativeScriptInvalidRoles(harness);
     const { shape, signerCount, absentCount } = maximumShape(0n);
-    const scenario = await setupNativeScenario({
-      harness,
-      shape,
-      source: { kind: "normal" },
+    const { harness, scenario, run } = await driveShape(shape, {
+      Observe: OBSERVER,
     });
     await expect(
       requireConvictingExecutionNativeScriptInvalidProof({
         material: scenario.material,
-        contracts: harness.executionNativeScriptInvalid,
+        contracts: harness.direct,
         prover: harness.proverSigner.paymentKeyHash,
         entry: { Observe: OBSERVER },
       }),
     ).rejects.toThrow(ExecutionNativeScriptInvalidHonestLeaf);
-    const run = await driveExecutionNativeScriptInvalidThread({
-      harness,
-      scenario,
-      references,
-      entry: { Observe: OBSERVER },
-    });
     expect(run.prepared.convicts).toBe(false);
     expect(run.prepared.final.fact).toStrictEqual({
       Evaluated: { coordinate: OBSERVER, satisfied: true },

@@ -13,19 +13,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
   ExecutionSourceScriptDecodingHonestLeaf,
   requireConvictingExecutionSourceScriptDecodingProof,
 } from "../src/execution-source-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  driveExecutionSourceScriptDecodingThread,
-  EXECUTION_SOURCE_SCRIPT_DECODING_STEP_BOUNDS,
-  type ExecutionSourceScriptDecodingHarness,
-  makeExecutionSourceScriptDecodingHarness,
-  publishExecutionSourceScriptDecodingRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  type DirectWalkHarness,
+  driveDirectWalkThread,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/execution-source-script-decoding-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { prepareExecutionSourceScriptDecodingPlan } from "./support/execution-source-script-decoding-emulator.js";
 import {
   honestForcedObserverShape,
   machineForcedVerdict,
@@ -42,15 +44,15 @@ import {
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {
     expect(measurement.executionMemory, `${label} memory`).toBeLessThanOrEqual(
-      EXECUTION_SOURCE_SCRIPT_DECODING_STEP_BOUNDS.memory,
+      DIRECT_WALK_STEP_BOUNDS.memory,
     );
     expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-      EXECUTION_SOURCE_SCRIPT_DECODING_STEP_BOUNDS.steps,
+      DIRECT_WALK_STEP_BOUNDS.steps,
     );
     expect(
       measurement.completeSignedBytes,
       `${label} bytes`,
-    ).toBeLessThanOrEqual(EXECUTION_SOURCE_SCRIPT_DECODING_STEP_BOUNDS.bytes);
+    ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
   }
 };
 
@@ -65,10 +67,7 @@ const rejected = (reason: SDK.RejectionReason): MissingRedeemerSource => ({
 
 const coordinate = { purpose_kind: 2n, purpose_index: 0n };
 
-const removeBlock = async (
-  harness: ExecutionSourceScriptDecodingHarness,
-  headerHash: string,
-) => {
+const removeBlock = async (harness: DirectWalkHarness, headerHash: string) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
@@ -101,16 +100,22 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
   ] as const)(
     "R-F: convicts a forced rejection recording %s",
     async (arm, remove) => {
-      const harness = await makeExecutionSourceScriptDecodingHarness();
-      const references =
-        await publishExecutionSourceScriptDecodingRoles(harness);
+      const harness = await makeDirectWalkHarness(
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
+      const references = await publishDirectWalkRoles(
+        harness,
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape: SHAPE,
         source: rejected({ [arm]: coordinate } as SDK.RejectionReason),
       });
       expect(scenario.block.txInclusion).toBeNull();
-      const run = await driveExecutionSourceScriptDecodingThread({
+      const run = await driveDirectWalkThread({
+        walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+        prepare: prepareExecutionSourceScriptDecodingPlan,
         harness,
         scenario,
         references,
@@ -129,14 +134,14 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
       expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
       const token = await expectSingleUtxoWithUnit(
         harness.proverLucid,
-        harness.essd.fraudProof.spendingScriptAddress,
+        harness.direct.fraudProof.spendingScriptAddress,
         outcome.fraudProofUnit,
       );
       expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
       expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
         fraud_prover: harness.proverSigner.paymentKeyHash,
       });
-      for (const step of harness.essd.steps)
+      for (const step of harness.direct.steps)
         await expect(
           harness.proverLucid.utxosAtWithUnit(
             step.spendingScriptAddress,
@@ -160,8 +165,13 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
   );
 
   it("R-F: convicts a forced rejection recording ExecutionNativeScriptMalformed over inputs with no predecessor descriptor", async () => {
-    const harness = await makeExecutionSourceScriptDecodingHarness();
-    const references = await publishExecutionSourceScriptDecodingRoles(harness);
+    const harness = await makeDirectWalkHarness(
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
+    const references = await publishDirectWalkRoles(
+      harness,
+      EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SHAPE,
@@ -171,7 +181,9 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
     expect(scenario.block.header.prevUtxosRoot).toBe(
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );
-    const run = await driveExecutionSourceScriptDecodingThread({
+    const run = await driveDirectWalkThread({
+      walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      prepare: prepareExecutionSourceScriptDecodingPlan,
       harness,
       scenario,
       references,
@@ -182,7 +194,7 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     const token = await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.essd.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
     expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
@@ -217,7 +229,9 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
   ])(
     "refuses $name: the terminal returns false",
     async (row) => {
-      const harness = await makeExecutionSourceScriptDecodingHarness();
+      const harness = await makeDirectWalkHarness(
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape: SHAPE,
@@ -229,9 +243,13 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
           prover: harness.proverSigner.paymentKeyHash,
         }),
       ).toThrow(ExecutionSourceScriptDecodingHonestLeaf);
-      const references =
-        await publishExecutionSourceScriptDecodingRoles(harness);
-      const run = await driveExecutionSourceScriptDecodingThread({
+      const references = await publishDirectWalkRoles(
+        harness,
+        EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+      );
+      const run = await driveDirectWalkThread({
+        walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
+        prepare: prepareExecutionSourceScriptDecodingPlan,
         harness,
         scenario,
         references,
@@ -244,7 +262,7 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
       });
       await expect(
         harness.proverLucid.utxosAtWithUnit(
-          harness.essd.steps.at(-1)!.spendingScriptAddress,
+          harness.direct.steps.at(-1)!.spendingScriptAddress,
           run.unit,
         ),
       ).resolves.toHaveLength(1);

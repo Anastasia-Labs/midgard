@@ -17,18 +17,19 @@ import { describe, expect, it } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
+import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
-  driveMissingRedeemerThread,
-  makeMissingRedeemerHarness,
-  MISSING_REDEEMER_STEP_BOUNDS,
-  publishMissingRedeemerRoles,
+  DIRECT_WALK_STEP_BOUNDS,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
   stepTable,
-} from "./support/missing-redeemer-emulator.js";
+} from "./support/direct-walk-emulator.js";
+import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   buildMissingRedeemerBlock,
@@ -120,8 +121,11 @@ describe("missing-redeemer accepted forced transaction", () => {
   });
 
   it("A-F: convicts it committed as accepted from a genuine Init and removes its block", async () => {
-    const harness = await makeMissingRedeemerHarness();
-    const references = await publishMissingRedeemerRoles(harness);
+    const harness = await makeDirectWalkHarness(MISSING_REDEEMER_DIRECT_WALK);
+    const references = await publishDirectWalkRoles(
+      harness,
+      MISSING_REDEEMER_DIRECT_WALK,
+    );
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: SHAPE,
@@ -145,19 +149,19 @@ describe("missing-redeemer accepted forced transaction", () => {
       expect(
         measurement.executionMemory,
         `${label} memory`,
-      ).toBeLessThanOrEqual(MISSING_REDEEMER_STEP_BOUNDS.memory);
+      ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.memory);
       expect(measurement.executionSteps, `${label} cpu`).toBeLessThanOrEqual(
-        MISSING_REDEEMER_STEP_BOUNDS.steps,
+        DIRECT_WALK_STEP_BOUNDS.steps,
       );
       expect(
         measurement.completeSignedBytes,
         `${label} bytes`,
-      ).toBeLessThanOrEqual(MISSING_REDEEMER_STEP_BOUNDS.bytes);
+      ).toBeLessThanOrEqual(DIRECT_WALK_STEP_BOUNDS.bytes);
     }
     expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
-      harness.missingRedeemer.fraudProof.spendingScriptAddress,
+      harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
 

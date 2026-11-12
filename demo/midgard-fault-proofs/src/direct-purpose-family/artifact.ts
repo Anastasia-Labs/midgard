@@ -160,6 +160,23 @@ export type DirectPurposePlannedArtifact<
   fieldsOf: (role: DirectPurposeRole) => readonly number[];
 }>;
 
+/** The custody of `proof` as the kit fits it, `first` the step-01 datum:
+ * the family's own paging, or its planned transitions paged by the kit. */
+export const directPurposeArtifactPaging = <
+  Prepared extends DirectPurposeReplay,
+  Proof extends DirectPurposeProof,
+>(
+  family: DirectPurposeArtifactFamily<Prepared, Proof>,
+  proof: Proof,
+  first: string,
+): DirectPurposePaging =>
+  family.paging?.(proof, first) ??
+  directPurposePaging({
+    label: family.label,
+    transitions: proof.transitions,
+    first,
+  });
+
 const plan = async <
   Prepared extends DirectPurposeReplay,
   Proof extends DirectPurposeProof,
@@ -181,13 +198,7 @@ const plan = async <
   return Object.freeze({
     admitted,
     proof,
-    paging:
-      family.paging?.(proof, first) ??
-      directPurposePaging({
-        label: family.label,
-        transitions: proof.transitions,
-        first,
-      }),
+    paging: directPurposeArtifactPaging(family, proof, first),
     fieldsOf: (role) => [...(fields.get(role) ?? [])].sort((l, r) => l - r),
   });
 };

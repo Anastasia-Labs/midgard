@@ -47,6 +47,11 @@ import {
 } from "../src/workflow/journal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
+import {
+  type DirectWalkHarness,
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
   buildMissingRedeemerSubject,
@@ -60,9 +65,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   forcedReceiving,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
-  type ReceivePurposeLanguageHarness,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
 import {
@@ -101,9 +103,12 @@ const blockEvidence = async (
 type References = DirectWalkReferenceScripts<"receivePurposeLanguage", 21>;
 
 const workflowReferences = async (
-  h: ReceivePurposeLanguageHarness,
+  h: DirectWalkHarness,
 ): Promise<References> => {
-  const published = await publishReceivePurposeLanguageRoles(h);
+  const published = await publishDirectWalkRoles(
+    h,
+    RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+  );
   const steps = SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER.map(
     (role) => published.get(role)!.utxo,
   ) as unknown as References["steps"];
@@ -162,7 +167,9 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
   ])(
     "captures, journals and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
-      const h = await makeReceivePurposeLanguageHarness();
+      const h = await makeDirectWalkHarness(
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness: h,
         shape: scenarioCase.shape,
@@ -197,7 +204,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
           binding: binding as never,
           lucid: h.proverLucid,
           signer: h.proverSigner,
-          contracts: h.receivePurposeLanguage,
+          contracts: h.direct,
           references,
           replayContext,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -257,11 +264,11 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
         artifactDigest: journalJsonDigest(artifact),
       });
       const threadUnit = toUnit(
-        h.receivePurposeLanguage.computationThread.policyId,
+        h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const proofUnit = toUnit(
-        h.receivePurposeLanguage.fraudProof.policyId,
+        h.direct.fraudProof.policyId,
         h.category.categoryId + setup.headerHash,
       );
       const outRef = (utxo: UTxO) =>
@@ -279,10 +286,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
             sourceId: "lucid-emulator",
             grade: "security",
           } as const;
-          for (const [
-            index,
-            step,
-          ] of h.receivePurposeLanguage.steps.entries()) {
+          for (const [index, step] of h.direct.steps.entries()) {
             const outputs = await h.proverLucid.utxosAtWithUnit(
               step.spendingScriptAddress,
               threadUnit,
@@ -299,7 +303,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
               } as never;
           }
           const proofs = await h.proverLucid.utxosAtWithUnit(
-            h.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+            h.direct.fraudProof.spendingScriptAddress,
             proofUnit,
           );
           if (proofs.length === 1)
@@ -405,7 +409,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
       expect(stages.at(-1)).toBe("remove");
       expect(
         await h.proverLucid.utxosAtWithUnit(
-          h.receivePurposeLanguage.fraudProof.spendingScriptAddress,
+          h.direct.fraudProof.spendingScriptAddress,
           proofUnit,
         ),
       ).toHaveLength(1);
@@ -435,7 +439,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
   );
 
   it("detects nothing in the node's own rejection of an admitted forced transaction", async () => {
-    const h = await makeReceivePurposeLanguageHarness();
+    const h = await makeDirectWalkHarness(RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK);
     // Both Plutus sources resolve from reference inputs, as an admitted
     // forced transaction's must.
     const shape = {

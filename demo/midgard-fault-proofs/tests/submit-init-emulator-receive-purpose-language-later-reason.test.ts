@@ -13,9 +13,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
   ReceivePurposeLanguageHonestLeaf,
   requireConvictingReceivePurposeLanguageProof,
 } from "../src/receive-purpose-language/index.js";
+import {
+  makeDirectWalkHarness,
+  publishDirectWalkRoles,
+} from "./support/direct-walk-emulator.js";
 import {
   type MissingRedeemerSubjectShape,
   plutusScript,
@@ -23,8 +28,6 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
   driveReceivePurposeLanguageThread,
-  makeReceivePurposeLanguageHarness,
-  publishReceivePurposeLanguageRoles,
   receiveCoordinate,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
@@ -66,7 +69,9 @@ describe("receive-purpose-language genuine-Init rows under a later recorded reas
   ] as const)(
     "reaches a fraud-proof token through the first forbidden execution under a recorded %s",
     async (label, shape, verdict) => {
-      const harness = await makeReceivePurposeLanguageHarness();
+      const harness = await makeDirectWalkHarness(
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape,
@@ -90,7 +95,9 @@ describe("receive-purpose-language genuine-Init rows under a later recorded reas
   ] as const)(
     "refuses the forbidden execution under %s",
     async (_label, verdict) => {
-      const harness = await makeReceivePurposeLanguageHarness();
+      const harness = await makeDirectWalkHarness(
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+      );
       const scenario = await setupMissingRedeemerScenario({
         harness,
         shape: forbidden(1),
@@ -99,11 +106,14 @@ describe("receive-purpose-language genuine-Init rows under a later recorded reas
       await expect(
         requireConvictingReceivePurposeLanguageProof({
           material: scenario.material,
-          contracts: harness.receivePurposeLanguage,
+          contracts: harness.direct,
           prover: harness.proverSigner.paymentKeyHash,
         }),
       ).rejects.toThrow(ReceivePurposeLanguageHonestLeaf);
-      const references = await publishReceivePurposeLanguageRoles(harness);
+      const references = await publishDirectWalkRoles(
+        harness,
+        RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
+      );
       const run = await driveReceivePurposeLanguageThread({
         harness,
         scenario,
