@@ -3,7 +3,11 @@ import { Config } from "effect";
 
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
-import { integerConfig, positiveSafeIntegerConfig } from "./config.parse.js";
+import {
+  integerConfig,
+  positiveSafeIntegerConfig,
+  stringConfig,
+} from "./config.parse.js";
 import {
   NATIVE_LEDGER_SETTING_NAMES,
   parseNativeLedgerSettings,
@@ -27,7 +31,7 @@ export const l1Config = Config.all([
       Object.fromEntries(
         NATIVE_LEDGER_SETTING_NAMES.map((name) => [
           name,
-          Config.string(name).pipe(Config.withDefault("")),
+          stringConfig(name, ""),
         ]),
       ) as Record<
         (typeof NATIVE_LEDGER_SETTING_NAMES)[number],

@@ -6,9 +6,10 @@ import {
 } from "../artifact-schema.js";
 
 /**
- * The value shapes the node settings tables share. Each reads one setting,
- * takes `defaultValue` when it is unset and refuses config load, naming the
- * setting, when its value is out of range.
+ * The value shapes the node settings tables share. Each reads one setting and
+ * takes `defaultValue` when it is unset. `integerConfig` and `stringConfig`
+ * check only the value's type; the others also refuse config load, naming the
+ * setting, when the value is out of range.
  */
 
 export const integerConfig = (name: string, defaultValue: number) =>

@@ -19,7 +19,9 @@ const positiveInteger = (name: string, fallback: number) =>
 
 /**
  * The DA payload envelope and publication settings. `makeConfig` parses them
- * once with the rest of the node configuration.
+ * once with the rest of the node configuration. The other DA settings (the
+ * committee, owners, threshold and cosigner) are in `deploymentConfig`,
+ * src/services/config.deployment.ts.
  */
 export const daHardeningConfig = Config.all({
   MIDGARD_DA_PAYLOAD_ENVELOPE: Config.string(

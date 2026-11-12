@@ -94,6 +94,8 @@ export const deploymentConfig = Config.all({
   OPERATOR_SLASHING_PENALTY_LOVELACE: profileLovelace(
     "OPERATOR_SLASHING_PENALTY_LOVELACE",
   ),
+  // The other DA settings (payload envelope, publication) are in
+  // `daHardeningConfig`, src/da/hardening-config.ts.
   // Q63 (F04 §4) governed floors are enforced in `deriveOperatorDaParams`,
   // not here. Config load only rejects values that are malformed no matter
   // what the policy is.
