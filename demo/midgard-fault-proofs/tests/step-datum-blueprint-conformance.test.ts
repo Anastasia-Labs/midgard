@@ -1,29 +1,22 @@
 import { isDeepStrictEqual } from "node:util";
 
 import {
-  type DeploymentContract,
-  deploymentValidatorTitle,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
   type BlueprintMismatch,
-  parseBlueprintAbi,
   refines,
 } from "@al-ft/midgard-sdk/blueprint-abi";
 import { describe, expect, it } from "vitest";
 
-import {
-  type FamilyCategory,
-  type FamilyDefinition,
-  familyStepContractNames,
+import type {
+  FamilyCategory,
+  FamilyDefinition,
 } from "../src/workflow/family-definition.js";
 import { STEP_DATUM_ALLOWANCES } from "./step-datum-blueprint-conformance.allowances.js";
-import {
-  readBlueprint,
-  realBlueprintPath,
-} from "./support/emulator/blueprints.js";
 import { REGISTERED_FAMILY_DEFINITIONS } from "./support/registered-family-definitions.js";
-
-const blueprintAbi = parseBlueprintAbi(readBlueprint(realBlueprintPath));
+import {
+  allowedMismatches,
+  stepValidators,
+  unreachedAllowances,
+} from "./support/registered-step-validators.js";
 
 type StepDatumPair = Readonly<{
   category: FamilyCategory;
@@ -41,37 +34,24 @@ type StepDatumPair = Readonly<{
 const stepDatumPairs = (
   definition: FamilyDefinition<FamilyCategory>,
 ): readonly StepDatumPair[] => {
-  const contracts = familyStepContractNames(definition);
+  const validators = stepValidators(definition);
   const schemas = definition.stepDatumSchemas as readonly unknown[];
-  if (schemas.length !== contracts.length) {
+  if (schemas.length !== validators.length) {
     throw new Error(`${definition.category} step datums and contracts differ`);
   }
-  return schemas.map((schema, step) => {
-    const contract = contracts[step]!;
-    const title: unknown = deploymentValidatorTitle(
-      contract as DeploymentContract,
-    );
-    if (typeof title !== "string") {
-      throw new Error(`${contract} deploys no compiled validator`);
-    }
-    const datum = blueprintAbi.validator(title).datum?.$ref;
-    if (datum === undefined) {
-      throw new Error(`${title} declares no datum definition`);
-    }
-    return {
-      category: definition.category,
-      step,
-      title,
-      mismatches: refines(schema, blueprintAbi.ref(datum)),
-    };
-  });
+  return validators.map(({ category, step, title, abi }) => ({
+    category,
+    step,
+    title,
+    mismatches: refines(schemas[step], abi.datum()),
+  }));
 };
 
-const allowedMismatches = (title: string): readonly BlueprintMismatch[] =>
-  STEP_DATUM_ALLOWANCES.get(title)?.mismatches ?? [];
+const allowed = (title: string): readonly BlueprintMismatch[] =>
+  allowedMismatches(STEP_DATUM_ALLOWANCES, { title });
 
 const unexpected = ({ title, mismatches }: StepDatumPair): boolean =>
-  !isDeepStrictEqual(mismatches, allowedMismatches(title));
+  !isDeepStrictEqual(mismatches, allowed(title));
 
 const PAIRS = [...REGISTERED_FAMILY_DEFINITIONS.values()].flatMap(
   stepDatumPairs,
@@ -90,7 +70,7 @@ describe("registered step datum schemas against the blueprint", () => {
   it.each(PAIRS.map((pair) => [pair.category, pair.step, pair.title, pair]))(
     "%s step %i refines the datum of %s",
     (_category, _step, title, { mismatches }) => {
-      expect(mismatches).toEqual(allowedMismatches(title));
+      expect(mismatches).toEqual(allowed(title));
     },
   );
 
@@ -100,10 +80,7 @@ describe("registered step datum schemas against the blueprint", () => {
   });
 
   it("allows only titles a registered step still reaches", () => {
-    const reached = new Set(PAIRS.map(({ title }) => title));
-    expect(
-      [...STEP_DATUM_ALLOWANCES.keys()].filter((title) => !reached.has(title)),
-    ).toEqual([]);
+    expect(unreachedAllowances(STEP_DATUM_ALLOWANCES, PAIRS)).toEqual([]);
   });
 
   it("refuses a family whose step datums are declared out of order", () => {

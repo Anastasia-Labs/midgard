@@ -1,14 +1,9 @@
 import { existsSync, readdirSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
-import {
-  type DeploymentContract,
-  deploymentValidatorTitle,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type BlueprintMismatch,
-  parseBlueprintAbi,
   refines,
 } from "@al-ft/midgard-sdk/blueprint-abi";
 import { describe, expect, it } from "vitest";
@@ -27,19 +22,18 @@ import * as ScriptIntegrityHashMissing from "../src/script-integrity-hash-missin
 import * as SpendInputSignerMissing from "../src/spend-input-signer-missing/schemas.js";
 import * as TransactionOutputNonCanonical from "../src/transaction-output-non-canonical/schemas.js";
 import * as ValueNotPreserved from "../src/value-not-preserved/schemas.js";
-import { familyStepContractNames } from "../src/workflow/family-definition.js";
+import type { FamilyCategory } from "../src/workflow/family-definition.js";
 import * as ZeroInput from "../src/zero-input/schemas.js";
 import {
   STEP_REDEEMER_ALLOWANCES,
   UNPAIRED_STEP_REDEEMER_GROUPS,
 } from "./step-redeemer-blueprint-conformance.allowances.js";
 import {
-  readBlueprint,
-  realBlueprintPath,
-} from "./support/emulator/blueprints.js";
-import { REGISTERED_FAMILY_DEFINITIONS } from "./support/registered-family-definitions.js";
-
-const blueprintAbi = parseBlueprintAbi(readBlueprint(realBlueprintPath));
+  allowedMismatches,
+  REGISTERED_STEP_VALIDATORS,
+  type RegisteredStepValidator,
+  unreachedAllowances,
+} from "./support/registered-step-validators.js";
 
 type Exports = Readonly<Record<string, unknown>>;
 
@@ -115,57 +109,96 @@ const conventionTwins = (
   ];
 };
 
-/** Every registered step validator title, each lookup throwing on a gap. */
+/**
+ * Families whose step redeemers are one ordered array rather than named
+ * exports: entry `i` is step `i`'s redeemer, as `stepDatumSchemas` is for
+ * datums.
+ */
+const ORDERED_REDEEMER_TWINS: ReadonlyMap<
+  FamilyCategory,
+  Readonly<{ name: string; schemas: readonly unknown[] }>
+> = new Map([
+  [
+    "scriptIntegrityHashMissing",
+    {
+      name: "ScriptIntegritySpendRedeemers",
+      schemas: ScriptIntegrityHashMissing.ScriptIntegritySpendRedeemers,
+    },
+  ],
+]);
+
+const orderedTwins = ({
+  category,
+  step,
+}: RegisteredStepValidator): readonly RedeemerTwin[] => {
+  const ordered = ORDERED_REDEEMER_TWINS.get(category);
+  if (ordered === undefined) return [];
+  if (step >= ordered.schemas.length) {
+    throw new Error(`${ordered.name} has no redeemer for step ${step}`);
+  }
+  return [
+    {
+      twin: `${ordered.name}[${step.toString()}]`,
+      schema: ordered.schemas[step],
+    },
+  ];
+};
+
+const twinsOf = (
+  validator: RegisteredStepValidator,
+  sources?: TwinSources,
+): readonly RedeemerTwin[] => [
+  ...conventionTwins(validator.title, sources),
+  ...orderedTwins(validator),
+];
+
 const TITLES = [
-  ...new Set(
-    [...REGISTERED_FAMILY_DEFINITIONS.values()].flatMap((definition) =>
-      familyStepContractNames(definition).map((contract) => {
-        const title: unknown = deploymentValidatorTitle(
-          contract as DeploymentContract,
-        );
-        if (typeof title !== "string") {
-          throw new Error(`${contract} deploys no compiled validator`);
-        }
-        return title;
-      }),
-    ),
-  ),
+  ...new Set(REGISTERED_STEP_VALIDATORS.map(({ title }) => title)),
 ].sort();
 
 const redeemerMismatches = (
-  title: string,
+  validator: RegisteredStepValidator,
   schema: unknown,
-): readonly BlueprintMismatch[] => {
-  const redeemer = blueprintAbi.validator(title).redeemer?.$ref;
-  if (redeemer === undefined) {
-    throw new Error(`${title} declares no redeemer definition`);
-  }
-  return refines(schema, blueprintAbi.ref(redeemer));
-};
+): readonly BlueprintMismatch[] => refines(schema, validator.abi.redeemer());
 
-const allowedMismatches = (
-  title: string,
-  twin: string,
-): readonly BlueprintMismatch[] => {
-  const allowance = STEP_REDEEMER_ALLOWANCES.get(title);
-  return allowance?.twin === twin ? allowance.mismatches : [];
-};
+const allowed = (title: string, twin: string): readonly BlueprintMismatch[] =>
+  allowedMismatches(STEP_REDEEMER_ALLOWANCES, { title, twin });
 
-const PAIRS = TITLES.flatMap((title) =>
-  conventionTwins(title).map(({ twin, schema }) => ({
-    title,
-    twin,
-    mismatches: redeemerMismatches(title, schema),
-  })),
-);
+/** Each (title, twin) once, though several families may share a validator. */
+const PAIRS = [
+  ...new Map(
+    REGISTERED_STEP_VALIDATORS.flatMap((validator) =>
+      twinsOf(validator).map(
+        ({ twin, schema }) =>
+          [
+            `${validator.title} ${twin}`,
+            {
+              title: validator.title,
+              twin,
+              mismatches: redeemerMismatches(validator, schema),
+            },
+          ] as const,
+      ),
+    ),
+  ).values(),
+];
 
 const UNPAIRED_TITLES = UNPAIRED_STEP_REDEEMER_GROUPS.flatMap(
   ({ titles }) => titles,
 );
 
-/** Registered titles with no convention twin, under the given sources. */
-const titlesWithoutTwins = (sources?: TwinSources): readonly string[] =>
-  TITLES.filter((title) => conventionTwins(title, sources).length === 0);
+/** Registered titles with no twin, under the given convention sources. */
+const titlesWithoutTwins = (sources?: TwinSources): readonly string[] => {
+  const paired = new Set(
+    REGISTERED_STEP_VALIDATORS.filter(
+      (validator) => twinsOf(validator, sources).length > 0,
+    ).map(({ title }) => title),
+  );
+  return TITLES.filter((title) => !paired.has(title));
+};
+
+const validatorTitled = (title: string): RegisteredStepValidator =>
+  REGISTERED_STEP_VALIDATORS.find((validator) => validator.title === title)!;
 
 describe("registered step redeemer twins against the blueprint", () => {
   it("pairs a twin from the SDK and from fault-proofs", () => {
@@ -173,13 +206,23 @@ describe("registered step redeemer twins against the blueprint", () => {
     const twins = PAIRS.map(({ twin }) => twin);
     expect(twins).toContain("ZeroInputStep01SpendRedeemerSchema");
     expect(twins).toContain("ZeroInputStep01RedeemerSchema");
+    expect(twins).toContain("ScriptIntegritySpendRedeemers[0]");
     expect(PAIRS.length).toBeGreaterThan(130);
+  });
+
+  it("pairs every entry of an ordered redeemer array with a step", () => {
+    for (const [category, { schemas }] of ORDERED_REDEEMER_TWINS) {
+      const steps = REGISTERED_STEP_VALIDATORS.filter(
+        (validator) => validator.category === category,
+      );
+      expect(schemas.length).toBe(steps.length);
+    }
   });
 
   it.each(PAIRS.map((pair) => [pair.twin, pair.title, pair]))(
     "%s refines the redeemer of %s",
     (twin, title, { mismatches }) => {
-      expect(mismatches).toEqual(allowedMismatches(title, twin));
+      expect(mismatches).toEqual(allowed(title, twin));
     },
   );
 
@@ -190,18 +233,13 @@ describe("registered step redeemer twins against the blueprint", () => {
 
   it("keeps the allowance lists from growing", () => {
     // Lower these with every entry deleted; never raise them.
-    expect(UNPAIRED_TITLES.length).toBe(98);
+    expect(UNPAIRED_TITLES.length).toBe(91);
     expect(new Set(UNPAIRED_TITLES).size).toBe(UNPAIRED_TITLES.length);
     expect(STEP_REDEEMER_ALLOWANCES.size).toBe(6);
   });
 
   it("allows only reports a convention pair still reaches", () => {
-    const reached = new Set(PAIRS.map(({ title, twin }) => `${title} ${twin}`));
-    expect(
-      [...STEP_REDEEMER_ALLOWANCES].filter(
-        ([title, { twin }]) => !reached.has(`${title} ${twin}`),
-      ),
-    ).toEqual([]);
+    expect(unreachedAllowances(STEP_REDEEMER_ALLOWANCES, PAIRS)).toEqual([]);
   });
 
   it("searches every fault-proofs family schema module", () => {
@@ -233,14 +271,14 @@ describe("registered step redeemer twins against the blueprint", () => {
 
   it("refuses a twin paired with another step's redeemer", () => {
     const mismatches = redeemerMismatches(
-      "fraud_proofs/zero_input/step_01.main.spend",
+      validatorTitled("fraud_proofs/zero_input/step_01.main.spend"),
       SDK.ZeroInputStep02SpendRedeemerSchema,
     );
     expect(mismatches).not.toEqual([]);
     expect(
       isDeepStrictEqual(
         mismatches,
-        allowedMismatches(
+        allowed(
           "fraud_proofs/zero_input/step_01.main.spend",
           "ZeroInputStep01SpendRedeemerSchema",
         ),

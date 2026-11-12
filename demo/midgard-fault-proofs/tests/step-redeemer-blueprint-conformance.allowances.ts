@@ -187,13 +187,6 @@ export const UNPAIRED_STEP_REDEEMER_GROUPS: readonly Readonly<{
     reason: "the family exports no TypeScript redeemer schema",
     titles: [
       "fraud_proofs/execution_source_script_decoding/terminal.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/redeemer_grammar.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/script_grammar.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/script_scan.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/step_02.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/step_03.main.spend",
-      "fraud_proofs/script_integrity_hash_missing/step_04.main.spend",
     ],
   },
 ];
