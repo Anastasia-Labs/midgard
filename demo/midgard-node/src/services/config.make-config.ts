@@ -47,7 +47,7 @@ import {
  * Loads and normalizes the node's runtime configuration from environment
  * variables.
  */
-const makeConfig = Effect.gen(function* () {
+export const makeConfig = Effect.gen(function* () {
   const nativeLedgerValues = yield* Config.all(
     Object.fromEntries(
       NATIVE_LEDGER_SETTING_NAMES.map((name) => [

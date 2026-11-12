@@ -9,11 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { nodeFibers } from "../src/commands/listen.node-fibers.js";
 import { Globals } from "../src/services/globals.js";
-import type { NodeConfigDep } from "../src/services/index.js";
 import {
   FIBER_HALT_SOURCES,
   type HeldFiber,
 } from "../src/services/liveness-halt.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // The sources each held roster entry, once run, asked to be held under.
 const held = vi.hoisted(() => ({
@@ -86,14 +86,14 @@ vi.mock("../src/fibers/index.js", async (importOriginal) => {
   };
 });
 
-const nodeConfig = {
+const nodeConfig = makeTestNodeConfig({
   ADMISSION_BACKLOG_REFRESH_MS: 1_000,
   MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: 1_000,
   WAIT_BETWEEN_BLOCK_COMMITMENT: 1_000,
   WAIT_BETWEEN_RETENTION_SWEEPS: 1_000,
   WAIT_BETWEEN_MERGE_TXS: 1_000,
   TX_QUEUE_POLL_INTERVAL_MS: 1_000,
-} as unknown as NodeConfigDep;
+});
 
 // The roster's scheduled bodies are mocked above; their other service
 // requirements are unreachable in these tests. Keep the existing test boundary

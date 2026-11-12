@@ -11,7 +11,7 @@ import "./helpers/follower-emulator-installed.js";
 
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
-import { type Context, Effect, Layer, Ref } from "effect";
+import { Effect, Layer, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makeOperatorWatchdogTick } from "../src/fibers/operator-watchdog.js";
@@ -42,6 +42,7 @@ import {
   initOperatorInactivityFixture,
   submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { resetApplicationTables } from "./utils.js";
 
 const SOURCE = "operator_watchdog_manifest";
@@ -111,10 +112,13 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
                 MidgardContracts,
                 fixture.contracts as unknown as MidgardContracts,
               ),
-              Layer.succeed(NodeConfig, {
-                OPERATOR_WATCHDOG_ENABLED: true,
-                OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
-              } as unknown as Context.Tag.Service<typeof NodeConfig>),
+              Layer.succeed(
+                NodeConfig,
+                makeTestNodeConfig({
+                  OPERATOR_WATCHDOG_ENABLED: true,
+                  OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
+                }),
+              ),
             ),
           ),
         ),

@@ -26,6 +26,7 @@ import {
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import type { NativeMpfOwnerDiagnostics } from "../src/services/mpf-native-owner/protocol.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 /**
@@ -55,7 +56,7 @@ const diagnostics: NativeMpfOwnerDiagnostics = {
 
 // Only the settings /readyz reads. Fresh exact provider evidence keeps the
 // handler off Lucid and the contracts, so those are never dereferenced.
-const routerConfig = {
+const routerConfig = makeTestNodeConfig({
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: 60_000,
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,
   READINESS_MAX_HEARTBEAT_AGE_MS: 60_000,
@@ -66,7 +67,7 @@ const routerConfig = {
   STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS: 600_000,
   WAIT_BETWEEN_MERGE_TXS: 10_000,
   MIN_QUEUE_LENGTH_FOR_MERGING: 1,
-} satisfies Partial<NodeConfig["Type"]> as unknown as NodeConfig["Type"];
+});
 
 /** The owner the served node holds; `diagnostics` rejects when unhealthy. */
 let ownerHealthy = true;
@@ -176,10 +177,13 @@ afterAll(async () => {
 const observe = (port: number, nodeUrl?: string) =>
   Effect.runPromise(
     readNativeRoot(nodeUrl === undefined ? {} : { nodeUrl }).pipe(
-      Effect.provideService(NodeConfig, {
-        PORT: port,
-        LEDGER_MPF_DB_PATH: levelPath,
-      } satisfies Partial<NodeConfig["Type"]> as unknown as NodeConfig["Type"]),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({
+          PORT: port,
+          LEDGER_MPF_DB_PATH: levelPath,
+        }),
+      ),
     ),
   );
 

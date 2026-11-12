@@ -33,6 +33,7 @@ import {
   type SubmitCheckPool,
   type SubmitCheckPoolOptions,
 } from "../../src/services/submit-check-pool.js";
+import { makeTestNodeConfig } from "./test-node-config.js";
 
 export const MEDIA = "application/vnd.midgard.v1+cbor";
 export const CLIENT = "198.51.100.7";
@@ -83,20 +84,24 @@ export const lucidLayer = Layer.succeed(Lucid, {
 } as never);
 
 export const configLayer = (policy: HttpRateLimitPolicy) =>
-  Layer.succeed(NodeConfig, {
-    NETWORK: "Preprod",
-    MIN_FEE_A: RULES.minFeeA,
-    MIN_FEE_B: RULES.minFeeB,
-    HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
-    HTTP_RATE_LIMITS: policy,
-    MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
-    MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
-    SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
-      MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
-    SUBMIT_INGRESS_WORKER_POOL_SIZE: 1,
-    SUBMIT_INGRESS_WORKER_QUEUE: 256,
-    MAX_SUBMIT_TX_CBOR_BYTES: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
-  } as never);
+  Layer.succeed(
+    NodeConfig,
+    makeTestNodeConfig({
+      NETWORK: "Preprod",
+      MIN_FEE_A: RULES.minFeeA,
+      MIN_FEE_B: RULES.minFeeB,
+      HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
+      HTTP_RATE_LIMITS: policy,
+      MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
+      MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
+      SUBMIT_INGRESS_WORKER_POOL_SIZE: 1,
+      SUBMIT_INGRESS_WORKER_QUEUE: 256,
+      MAX_SUBMIT_TX_CBOR_BYTES:
+        MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+    }),
+  );
 
 const checkConfig = submissionCheckConfig(
   {

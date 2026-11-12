@@ -20,6 +20,7 @@ import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateLimitPolicy,
 } from "../src/services/http-rate-limits.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 export type Reply = {
   readonly status: number;
@@ -67,9 +68,12 @@ export const serve = async (
     Effect.runSync(
       NodeHttpServer.makeHandler(
         withHttpIngress(handler, ingress).pipe(
-          Effect.provideService(NodeConfig, {
-            HTTP_TRUSTED_PROXY_PEERS: options.trustedProxyPeers ?? [],
-          } as never),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              HTTP_TRUSTED_PROXY_PEERS: options.trustedProxyPeers ?? [],
+            }),
+          ),
         ),
       ),
     ),

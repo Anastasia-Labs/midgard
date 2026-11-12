@@ -99,15 +99,19 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
   const { IntentJournalWithoutFollower } = await import(
     "../src/services/intent-journal.js"
   );
+  const { makeTestNodeConfig } = await import("./helpers/test-node-config.js");
   return {
     ...original,
     provideTxServices: (effect: Effect.Effect<unknown, unknown, never>) =>
       effect.pipe(
         E.provide(IntentJournalWithoutFollower),
-        E.provideService(Services.NodeConfig, {
-          NETWORK: "Preprod",
-          HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE_TX,
-        } as never),
+        E.provideService(
+          Services.NodeConfig,
+          makeTestNodeConfig({
+            NETWORK: "Preprod",
+            HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE_TX,
+          }),
+        ),
         E.provideService(
           Services.Lucid,
           untouchable("lucid", { api: untouchable("lucid.api") }) as never,

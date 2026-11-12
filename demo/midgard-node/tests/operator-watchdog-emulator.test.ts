@@ -17,7 +17,7 @@ import {
   Lucid as makeLucid,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { type Context, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { operatorWatchdogTick } from "../src/fibers/operator-watchdog.js";
@@ -41,6 +41,7 @@ import {
   initOperatorInactivityFixture,
   submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { resetApplicationTables } from "./utils.js";
 
 describe("operator watchdog wallet selection", () => {
@@ -161,10 +162,13 @@ describe("operator watchdog wallet selection", () => {
               MidgardContracts,
               fixture.contracts as unknown as MidgardContracts,
             ),
-            Layer.succeed(NodeConfig, {
-              OPERATOR_WATCHDOG_ENABLED: true,
-              OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
-            } as unknown as Context.Tag.Service<typeof NodeConfig>),
+            Layer.succeed(
+              NodeConfig,
+              makeTestNodeConfig({
+                OPERATOR_WATCHDOG_ENABLED: true,
+                OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
+              }),
+            ),
           ),
         ),
       ),

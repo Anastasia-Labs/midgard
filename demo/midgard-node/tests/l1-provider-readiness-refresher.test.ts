@@ -31,11 +31,12 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 // Only the settings /readyz reads. None of these cases reaches the direct
 // provider preflight: evidence is either fresh or blocked on exact evidence.
-const nodeConfig = {
+const nodeConfig = makeTestNodeConfig({
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: 30_000,
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,
   READINESS_MAX_HEARTBEAT_AGE_MS: 60_000,
@@ -45,7 +46,7 @@ const nodeConfig = {
   VALIDATION_WORKER_JOB_TIMEOUT_MS: 60_000,
   STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS: 600_000,
   MIN_QUEUE_LENGTH_FOR_MERGING: 1,
-} as unknown as NodeConfig["Type"];
+});
 
 const slot = () => ({
   source: "l1_node_tip" as const,

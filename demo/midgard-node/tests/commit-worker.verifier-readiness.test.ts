@@ -41,6 +41,7 @@ import type {
   WorkerInput,
   WorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** The verifier initialisation each run sees, when the test sets one. */
 const injected = vi.hoisted(() => ({
@@ -83,7 +84,7 @@ const run = captureCommitWorkerFailure(
     Effect.provideService(MidgardContracts, {} as never),
     Effect.provideService(ContractDeploymentIdentity, {} as never),
     Effect.provideService(SqlClient.SqlClient, {} as never),
-    Effect.provideService(NodeConfig, {} as never),
+    Effect.provideService(NodeConfig, makeTestNodeConfig()),
   ),
 );
 

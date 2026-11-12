@@ -6,7 +6,6 @@ import {
 import { describe, expect, it } from "vitest";
 
 import type { SettlementAttempt } from "../src/database/settlement.js";
-import type { NodeConfigDep } from "../src/services/config.js";
 import {
   canExpireSettlementAttempt,
   inspectSettlementAttempt,
@@ -14,6 +13,7 @@ import {
   settlementNextPhase,
   settlementWalletAddress,
 } from "../src/services/settlement.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // These tests pin the new scheduler's replay boundary, which the synchronous
 // reserve/payout builder tests do not exercise.
@@ -59,13 +59,13 @@ describe("automatic settlement recovery", () => {
       merge = generateSeedPhrase(),
       refs = generateSeedPhrase(),
       settlement = generateSeedPhrase();
-    const config = {
+    const config = makeTestNodeConfig({
       NETWORK: "Preprod",
       L1_OPERATOR_SEED_PHRASE: main,
       L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: merge,
       L1_REFERENCE_SCRIPT_SEED_PHRASE: refs,
       L1_SETTLEMENT_SEED_PHRASE: settlement,
-    } as NodeConfigDep;
+    });
     expect(settlementWalletAddress(config)).toBe(
       walletFromSeed(settlement, { network: "Preprod" }).address,
     );

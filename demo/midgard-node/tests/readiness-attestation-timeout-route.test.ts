@@ -17,13 +17,14 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const TICK_MS = 10_000;
 
 // Only the settings /readyz reads. Fresh exact provider evidence keeps the
 // handler off Lucid and the contracts, so those are never dereferenced.
-const nodeConfig = {
+const nodeConfig = makeTestNodeConfig({
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: 60_000,
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,
   READINESS_MAX_HEARTBEAT_AGE_MS: 60_000,
@@ -34,7 +35,7 @@ const nodeConfig = {
   STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS: 600_000,
   WAIT_BETWEEN_MERGE_TXS: TICK_MS,
   MIN_QUEUE_LENGTH_FOR_MERGING: 1,
-} as unknown as NodeConfig["Type"];
+});
 
 type ReadyzResult = {
   readonly status: number;

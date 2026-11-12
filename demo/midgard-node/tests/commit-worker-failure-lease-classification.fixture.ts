@@ -33,6 +33,7 @@ import {
   submitTxBackedCommit,
 } from "../src/workers/commit-block-header/submission.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /**
  * A structurally complete V1 header, so the production pre-submit DA sizing
@@ -179,7 +180,7 @@ const processedMempoolTxs = [
 ] as never;
 
 /** The final recheck reads the commit-event depth (a fixture has no permit). */
-const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
+const depthConfig = makeTestNodeConfig({ COMMIT_EVENT_DEPTH: 0 });
 
 const runDepositOnlyCommit = () =>
   Effect.runPromise(

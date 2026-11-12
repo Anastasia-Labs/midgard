@@ -52,6 +52,7 @@ import {
 } from "./helpers/intent-journal-replay.expect.js";
 import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -168,9 +169,20 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
           ),
         } as never),
         Effect.provideService(MidgardContracts, contracts as never),
-        Effect.provideService(NodeConfig, {
-          GENESIS_UTXOS: [{ address: operatorAddress }],
-        } as never),
+        Effect.provideService(
+          NodeConfig,
+          makeTestNodeConfig({
+            // The genesis deposit reads only the first entry's address.
+            GENESIS_UTXOS: [
+              {
+                txHash: "00".repeat(32),
+                outputIndex: 0,
+                address: operatorAddress,
+                assets: {},
+              },
+            ],
+          }),
+        ),
       ),
     );
 

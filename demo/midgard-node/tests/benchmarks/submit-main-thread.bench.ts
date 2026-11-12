@@ -79,6 +79,7 @@ import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
 import { Globals, NodeConfig } from "../../src/services/index.js";
 import { createSubmitCheckPool } from "../../src/services/submit-check-pool.js";
+import { makeTestNodeConfig } from "../helpers/test-node-config.js";
 
 const RATE = Number(process.env.SUBMIT_MAIN_THREAD_RATE ?? "1000");
 const SECONDS = Number(process.env.SUBMIT_MAIN_THREAD_SECONDS ?? "10");
@@ -124,12 +125,15 @@ const RULES: SubmittedTxRules = {
   slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
 };
 // The fields the submit route and the ingress read.
-const benchConfig = Layer.succeed(NodeConfig, {
-  HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
-  HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
-  MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
-  MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
-} as never);
+const benchConfig = Layer.succeed(
+  NodeConfig,
+  makeTestNodeConfig({
+    HTTP_TRUSTED_PROXY_PEERS: ["127.0.0.1"],
+    HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
+    MAX_DURABLE_ADMISSION_BACKLOG: Number.MAX_SAFE_INTEGER,
+    MAX_DURABLE_ADMISSION_BACKLOG_BYTES: Number.MAX_SAFE_INTEGER,
+  }),
+);
 
 describe("submit main-thread cost (M2)", () => {
   it("measures main-thread CPU per /submit request", async () => {

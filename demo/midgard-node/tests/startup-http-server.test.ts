@@ -9,6 +9,7 @@ import { runNode } from "../src/commands/listen.run-node.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const nativeStartup = vi.hoisted(() => ({
   entered: undefined as (() => void) | undefined,
@@ -95,9 +96,12 @@ describe("node HTTP startup boundary", () => {
       withStartupHttpServer(port, (startup) =>
         runNode(startup).pipe(
           Effect.provide(provider),
-          Effect.provideService(NodeConfig, {
-            PORT: port,
-          } as NodeConfig["Type"]),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              PORT: port,
+            }),
+          ),
           Effect.provide(Globals.Default),
         ),
       ) as Effect.Effect<void, unknown>,
@@ -143,9 +147,12 @@ describe("node HTTP startup boundary", () => {
     const fiber = Effect.runFork(
       withStartupHttpServer(port, (startup) =>
         runNode(startup).pipe(
-          Effect.provideService(NodeConfig, {
-            PORT: port,
-          } as NodeConfig["Type"]),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              PORT: port,
+            }),
+          ),
           Effect.provide(Globals.Default),
         ),
       ) as Effect.Effect<void, unknown>,

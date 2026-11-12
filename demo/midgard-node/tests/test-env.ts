@@ -78,7 +78,7 @@ export const testDatabaseNames = (poolIds: number): readonly string[] => {
   return names.map(testDatabaseNameForShard);
 };
 
-const TEST_ENV_DEFAULTS: Record<string, string> = {
+export const TEST_ENV_DEFAULTS: Readonly<Record<string, string>> = {
   L1_OPERATOR_SEED_PHRASE:
     "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX:

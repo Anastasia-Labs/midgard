@@ -21,6 +21,7 @@ import {
   type ValidationPoolService,
   ValidationWorkerError,
 } from "../src/services/index.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const SLOT_CONFIG = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 
@@ -55,7 +56,10 @@ const post = (
         withPhaseBLock: (effect) => effect,
         currentState: Effect.succeed(new Map(draft.state)),
       } as Partial<MempoolLedgerCacheService> as MempoolLedgerCacheService),
-      Effect.provideService(NodeConfig, { NETWORK: "Preprod" } as never),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({ NETWORK: "Preprod" }),
+      ),
       Effect.provideService(Lucid, {
         api: { config: () => ({ slotConfig: SLOT_CONFIG }) },
       } as never),

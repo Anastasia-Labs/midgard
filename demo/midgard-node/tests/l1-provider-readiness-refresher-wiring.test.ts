@@ -12,6 +12,7 @@ import { L1LedgerBehindError } from "../src/services/l1-provider.js";
 import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // Records each production probe call, so the test sees exactly what the
 // refresher runNode starts reads and with which arguments.
@@ -82,7 +83,7 @@ afterAll(async () => {
 
 // Every interval the fiber set schedules on, plus what the refresher reads.
 const nodeConfigWith = (preflightTimeoutMs: number) =>
-  ({
+  makeTestNodeConfig({
     ADMISSION_BACKLOG_REFRESH_MS: 1_000,
     MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: 1_000,
     WAIT_BETWEEN_BLOCK_COMMITMENT: 1_000,
@@ -90,7 +91,7 @@ const nodeConfigWith = (preflightTimeoutMs: number) =>
     WAIT_BETWEEN_MERGE_TXS: 1_000,
     TX_QUEUE_POLL_INTERVAL_MS: 1_000,
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: preflightTimeoutMs,
-  }) as unknown as NodeConfig["Type"];
+  });
 
 // Stand-ins for the fibers runNode builds from its startup state.
 const startupFibers = {

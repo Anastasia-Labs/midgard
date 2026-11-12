@@ -25,7 +25,6 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { loadDeploymentRunState } from "../src/e2e/run-state.js";
 import { hubOracleReadinessProbe } from "../src/fibers/l1-provider-readiness-refresher.js";
-import type { NodeConfigDep } from "../src/services/config.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
 import {
   configuredProtocolDeploymentKeys,
@@ -37,6 +36,7 @@ import { registerOperatorProgram } from "../src/transactions/register-active-ope
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { stateOf, utxoAnswer } from "./helpers/follower-emulator.ledger.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {
   EMULATOR_REQUIRED_BOND_LOVELACE,
   initEmulatorLucid,
@@ -277,13 +277,16 @@ describe("protocol deployment status by exact outref", () => {
         viewSlot: () => Effect.sync(() => emulator.slot),
       } as unknown as Lucid),
       Layer.succeed(MidgardContracts, contracts as unknown as MidgardContracts),
-      Layer.succeed(NodeConfig, {
-        NETWORK: "Preprod",
-        HUB_ORACLE_ONE_SHOT_TX_HASH: nonce.txHash,
-        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonce.outputIndex,
-        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
-        DA_COSIGNER_SEED_PHRASE: TEST_DA_COSIGNER_SEED_PHRASE,
-      } as unknown as NodeConfigDep),
+      Layer.succeed(
+        NodeConfig,
+        makeTestNodeConfig({
+          NETWORK: "Preprod",
+          HUB_ORACLE_ONE_SHOT_TX_HASH: nonce.txHash,
+          HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonce.outputIndex,
+          L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+          DA_COSIGNER_SEED_PHRASE: TEST_DA_COSIGNER_SEED_PHRASE,
+        }),
+      ),
     );
     const initialize = () =>
       runWithoutFollower(

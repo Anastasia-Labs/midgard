@@ -28,6 +28,7 @@ import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "./helpers/mutation-lease.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {
   header,
   journalFixture,
@@ -83,10 +84,10 @@ vi.mock("../src/lucid-time.js", async (importOriginal) => ({
   }),
 }));
 
-const config = {
+const config = makeTestNodeConfig({
   MPF_NATIVE_OWNER_BINARY_SHA256: "",
   VALIDATION_LEDGER_DELTA_LOG_MAX: 1,
-} as unknown as NodeConfig["Type"];
+});
 
 /** The tick's own lease, taken after its predecessor's ended. */
 const TICK_LEASE = "next-tick-lease";

@@ -14,9 +14,7 @@ import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
-
-const configOf = (config: Partial<NodeConfigDep>) =>
-  ({ NETWORK: "Preprod", ...config }) as NodeConfigDep;
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** The role's follower adapter over the always-succeeds scaffold, which
  * has no event lists. */
@@ -47,7 +45,7 @@ const openChainParameters = (config: Partial<NodeConfigDep>) =>
   Effect.runPromise(
     Effect.scoped(
       Effect.flatMap(L1ChainParameters, (parameters) =>
-        parameters.open(configOf(config)),
+        parameters.open(makeTestNodeConfig(config)),
       ),
     ).pipe(Effect.provide(FollowerL1ChainParametersLive), Effect.flip),
   );
@@ -55,7 +53,9 @@ const openChainParameters = (config: Partial<NodeConfigDep>) =>
 const openFollower = (config: Partial<NodeConfigDep>) =>
   Effect.runPromise(
     Effect.scoped(
-      Effect.flatMap(L1Adapter, (adapter) => adapter.open(configOf(config))),
+      Effect.flatMap(L1Adapter, (adapter) =>
+        adapter.open(makeTestNodeConfig(config)),
+      ),
     ).pipe(Effect.provide(scaffoldAdapter), Effect.flip),
   );
 

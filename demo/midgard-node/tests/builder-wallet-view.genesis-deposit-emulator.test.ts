@@ -57,6 +57,7 @@ import {
 } from "./helpers/intent-journal-emulator.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -186,9 +187,20 @@ const initializedNode = async () => {
             ),
           } as never),
           Effect.provideService(MidgardContracts, contracts as never),
-          Effect.provideService(NodeConfig, {
-            GENESIS_UTXOS: [{ address: operator.address }],
-          } as never),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              // The genesis deposit reads only the first entry's address.
+              GENESIS_UTXOS: [
+                {
+                  txHash: "00".repeat(32),
+                  outputIndex: 0,
+                  address: operator.address,
+                  assets: {},
+                },
+              ],
+            }),
+          ),
           Effect.provide(journal),
         ),
       ),

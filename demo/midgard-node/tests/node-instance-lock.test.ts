@@ -48,6 +48,7 @@ import {
   scopes,
   steppedSleep,
 } from "./helpers/node-instance-lock.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const after = vi.hoisted(() => ({
   entered: undefined as (() => void) | undefined,
@@ -287,10 +288,13 @@ describe("runNode's instance-lock stage", { concurrent: false }, () => {
     const fiber = Effect.runFork(
       withStartupHttpServer(port, (startup) =>
         runNode(startup).pipe(
-          Effect.provideService(NodeConfig, {
-            PORT: port,
-            ...database,
-          } as unknown as NodeConfig["Type"]),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              PORT: port,
+              ...database,
+            }),
+          ),
           Effect.provide(Globals.Default),
         ),
       ) as Effect.Effect<void, unknown>,

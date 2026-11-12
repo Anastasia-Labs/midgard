@@ -16,6 +16,7 @@ import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-h
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Startup retires a killed node's ledger MPF lease only under the node-process
@@ -114,10 +115,10 @@ vi.mock(
   },
 );
 
-const config = {
+const config = makeTestNodeConfig({
   MPF_NATIVE_OWNER_BINARY_SHA256: "",
   VALIDATION_LEDGER_DELTA_LOG_MAX: 1,
-} as unknown as NodeConfig["Type"];
+});
 
 /** Runs `site` with fresh globals holding an open native owner, and every
  * other service it reads stubbed or on the node database: nothing past the

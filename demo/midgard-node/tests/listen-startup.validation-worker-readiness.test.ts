@@ -53,6 +53,7 @@ import { Globals } from "../src/services/globals.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { findStartupStepFailure } from "../src/services/startup-waiting.js";
 import { ValidationWorkerError } from "../src/services/validation-pool.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** Every validation worker the node started, and whether it has exited. */
 const spawned = vi.hoisted(() => ({
@@ -102,7 +103,7 @@ const INJECTED = "injected worker libsodium initialisation failure";
 
 // The configuration a node is started with: one validation worker, and no
 // settlement wallet, so `local_preflight` holds the node.
-const startupConfig = {
+const startupConfig = makeTestNodeConfig({
   PORT: 0,
   VALIDATION_WORKER_POOL_SIZE: 1,
   VALIDATION_WORKER_JOB_TIMEOUT_MS: JOB_TIMEOUT_MS,
@@ -112,7 +113,7 @@ const startupConfig = {
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
   IMPORT_CHECK: DEFAULT_IMPORT_CHECK_CONFIG,
   L1_SETTLEMENT_SEED_PHRASE: "",
-} as unknown as NodeConfig["Type"];
+});
 
 /** The shared test Postgres the node's runtime services connect to. */
 const testPostgres = PgClient.layer({

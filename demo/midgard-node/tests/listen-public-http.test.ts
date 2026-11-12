@@ -44,6 +44,7 @@ import {
 } from "../src/services/config.node-config-dep.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import { ValidationWorkerError } from "../src/services/validation-pool.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const directory = mkdtempSync(join(tmpdir(), "midgard-r7-http-"));
 const configPath = join(directory, "config.yaml");
@@ -54,7 +55,7 @@ const socketPath = join(socketDirectory, "node.sock");
 const operator = generateMnemonic();
 const merge = generateMnemonic();
 const reference = generateMnemonic();
-const config = {
+const settings = {
   ADMIN_API_KEY: "0123456789abcdef".repeat(4),
   POSTGRES_PASSWORD: "r7-testing-password-with-private-entropy",
   L1_OPERATOR_SEED_PHRASE: operator,
@@ -68,7 +69,8 @@ const config = {
   VALIDATION_WORKER_POOL_SIZE: 2,
   HTTP_SOCKET_PATH: socketPath,
   HTTP_TRUSTED_PROXY_PEERS: [],
-} as unknown as NodeConfigDep;
+} satisfies Partial<NodeConfigDep>;
+const config = makeTestNodeConfig(settings);
 // Fixture identities replace the public allow-list only inside this injected profile test.
 const profile: PublicHttpProfile = {
   ...DEPLOYMENT_PROFILES["preprod-public"],
@@ -100,8 +102,9 @@ const mount = (value = config) =>
     JSON.stringify(
       Object.fromEntries(
         Object.entries(value)
-          // The HTTP listener settings come from the environment, not the mount.
-          .filter(([key]) => !key.startsWith("HTTP_"))
+          // The mount holds the settings stated above; the HTTP listener
+          // settings come from the environment, not the mount.
+          .filter(([key]) => key in settings && !key.startsWith("HTTP_"))
           .map(([key, entry]) => [key, String(entry)]),
       ),
     ),

@@ -45,13 +45,14 @@ import {
   INJECTED_LIBSODIUM_FAILURE,
   libsodiumReadyReads,
 } from "./helpers/ledger-signature-verifier-fails.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // Every check in the local preflight before the verifier passes: one
 // validation worker that answers its readiness job within the verifier's own
 // bound, four distinct wallets and a pinned native owner. The node's own
 // database is a port no one listens on, so the instance lock, which connects
 // to it, waits.
-const startupConfig = {
+const startupConfig = makeTestNodeConfig({
   PORT: 0,
   VALIDATION_WORKER_POOL_SIZE: 1,
   VALIDATION_WORKER_JOB_TIMEOUT_MS: LEDGER_ED25519_READY_TIMEOUT_MS,
@@ -72,7 +73,7 @@ const startupConfig = {
   POSTGRES_USER: "midgard",
   POSTGRES_PASSWORD: "midgard",
   POSTGRES_DB: "midgard",
-} as unknown as NodeConfig["Type"];
+});
 
 /** The shared test Postgres the node's runtime services connect to. */
 const testPostgres = PgClient.layer({

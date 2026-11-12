@@ -85,6 +85,7 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
   const { IntentJournalWithoutFollower } = await import(
     "../src/services/intent-journal.js"
   );
+  const { makeTestNodeConfig } = await import("./helpers/test-node-config.js");
   return {
     ...original,
     provideLucidOnlyServices: (
@@ -92,9 +93,10 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
     ) =>
       effect.pipe(
         E.provide(IntentJournalWithoutFollower),
-        E.provideService(Services.NodeConfig, {
-          NETWORK: "Preprod",
-        } as never),
+        E.provideService(
+          Services.NodeConfig,
+          makeTestNodeConfig({ NETWORK: "Preprod" }),
+        ),
         E.provideService(Services.Lucid, seen.lucid as never),
       ),
     runCliEffect: (effect: Effect.Effect<unknown, unknown>) => {

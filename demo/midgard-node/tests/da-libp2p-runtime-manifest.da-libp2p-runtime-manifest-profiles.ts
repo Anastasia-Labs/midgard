@@ -17,7 +17,6 @@ import { prepareDaHardeningStartup } from "../src/da/startup.js";
 import {
   ContractDeploymentIdentity,
   NodeConfig,
-  type NodeConfigDep,
 } from "../src/services/index.js";
 import {
   COMMITTEE_KEY,
@@ -28,6 +27,7 @@ import {
   tempDirs,
   writeFinalizedDeploymentInfo,
 } from "./da-libp2p-runtime-manifest.write-finalized-deployment-info.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 describe("DA libp2p runtime manifest profiles", () => {
   it("emits host.docker.internal committee addresses for producer-container-to-host runs", async () => {
@@ -167,9 +167,12 @@ describe("DA libp2p runtime manifest profiles", () => {
     try {
       const startup = Effect.runPromise(
         prepareDaHardeningStartup.pipe(
-          Effect.provideService(NodeConfig, {
-            MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
-          } as NodeConfigDep),
+          Effect.provideService(
+            NodeConfig,
+            makeTestNodeConfig({
+              MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+            }),
+          ),
           Effect.provideService(
             ContractDeploymentIdentity,
             new ContractDeploymentIdentity({
@@ -197,9 +200,12 @@ describe("DA libp2p runtime manifest profiles", () => {
       const startup = await Effect.runPromise(
         Effect.either(
           prepareDaHardeningStartup.pipe(
-            Effect.provideService(NodeConfig, {
-              MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
-            } as NodeConfigDep),
+            Effect.provideService(
+              NodeConfig,
+              makeTestNodeConfig({
+                MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+              }),
+            ),
             Effect.provideService(
               ContractDeploymentIdentity,
               new ContractDeploymentIdentity({

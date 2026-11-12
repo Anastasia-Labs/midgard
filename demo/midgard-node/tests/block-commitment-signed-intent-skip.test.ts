@@ -60,12 +60,13 @@ import {
   blockCommitmentAction,
   SKIPPED_ACTIVE_PENDING_FINALIZATION,
 } from "../src/fibers/block-commitment.block-commitment-action.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
-const nodeConfig = {
+const nodeConfig = makeTestNodeConfig({
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
   COMMIT_EVENT_DEPTH: 0,
-} as unknown as NodeConfig["Type"];
+});
 
 const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
   Effect.runPromise(

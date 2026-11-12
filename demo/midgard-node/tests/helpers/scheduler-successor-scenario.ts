@@ -56,6 +56,7 @@ import {
   initOperatorInactivityFixture,
   type OperatorInactivityFixture,
 } from "./operator-inactivity.js";
+import { makeTestNodeConfig } from "./test-node-config.js";
 
 export const activeOperator = (
   datum: SDK.SchedulerDatum,
@@ -341,9 +342,12 @@ export const runCommitmentTicks = async (
         }
         return observations;
       }).pipe(
-        Effect.provideService(NodeConfig, {
-          COMMIT_EVENT_DEPTH: 0,
-        } as unknown as NodeConfig["Type"]),
+        Effect.provideService(
+          NodeConfig,
+          makeTestNodeConfig({
+            COMMIT_EVENT_DEPTH: 0,
+          }),
+        ),
         Effect.provideService(Lucid, {
           api: lucid,
           referenceScriptsAddress: fixture.referenceScriptsAddress,

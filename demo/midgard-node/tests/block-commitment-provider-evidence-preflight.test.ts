@@ -120,6 +120,7 @@ vi.mock(
 
 import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const snapshot = {
   snapshotId: "commit-preflight:root#0:tail#0",
@@ -139,11 +140,11 @@ const alignmentRequiredPlan = {
   invalidationKey: "scheduler=scheduler#0,current_operator=operator",
 };
 
-const fakeConfig = {
+const fakeConfig = makeTestNodeConfig({
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
   COMMIT_EVENT_DEPTH: 0,
-};
+});
 
 const switchToOperatorsMainWalletMock = vi.fn();
 const fakeLucid = lucidServiceStub({
@@ -172,7 +173,7 @@ const runAction = (
         pipelinePhase: yield* globals.COMMIT_PIPELINE_PHASE,
       };
     }).pipe(
-      Effect.provideService(NodeConfig, fakeConfig as never),
+      Effect.provideService(NodeConfig, fakeConfig),
       Effect.provideService(LucidService, fakeLucid),
       Effect.provideService(MidgardContracts, fakeContracts as never),
       Effect.provide(Globals.Default),

@@ -19,7 +19,7 @@ import "./helpers/follower-emulator-installed.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
-import { type Context, Effect, Layer, Ref } from "effect";
+import { Effect, Layer, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { operatorWatchdogTick } from "../src/fibers/operator-watchdog.js";
@@ -59,6 +59,7 @@ import {
   submitInactivityStrike,
 } from "./helpers/operator-inactivity.js";
 import { BUILDER_PREFLIGHT_MARKERS } from "./helpers/operator-inactivity.prepare-inactivity-strike.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { resetApplicationTables } from "./utils.js";
 
 // The fixture deployment's economics; the watchdog reads them from the
@@ -132,10 +133,13 @@ const nodeHarness = (fixture: Fixture) => {
               MidgardContracts,
               fixture.contracts as unknown as MidgardContracts,
             ),
-            Layer.succeed(NodeConfig, {
-              OPERATOR_WATCHDOG_ENABLED: true,
-              OPERATOR_WATCHDOG_PATIENCE_MS: PATIENCE_MS,
-            } as unknown as Context.Tag.Service<typeof NodeConfig>),
+            Layer.succeed(
+              NodeConfig,
+              makeTestNodeConfig({
+                OPERATOR_WATCHDOG_ENABLED: true,
+                OPERATOR_WATCHDOG_PATIENCE_MS: PATIENCE_MS,
+              }),
+            ),
           ),
         ),
       ),

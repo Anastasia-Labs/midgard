@@ -21,10 +21,8 @@ import {
   runPhaseAForBatch,
   withAdmissionLeaseRecovery,
 } from "../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
-import type {
-  NodeConfigDep,
-  ValidationPoolService,
-} from "../src/services/index.js";
+import type { ValidationPoolService } from "../src/services/index.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const injected = vi.hoisted(() => ({ fault: undefined as Error | undefined }));
 
@@ -51,7 +49,7 @@ afterEach(() => {
   injected.fault = undefined;
 });
 
-const config = {
+const config = makeTestNodeConfig({
   NETWORK: "Preprod",
   MIN_FEE_A: 0n,
   MIN_FEE_B: 0n,
@@ -59,7 +57,7 @@ const config = {
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
   VALIDATION_WORKER_INLINE_THRESHOLD: 1_000,
   VALIDATION_WORKER_CHUNK_SIZE: 1_000,
-} as unknown as NodeConfigDep;
+});
 
 const pool = {
   poolSize: 0,

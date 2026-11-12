@@ -60,6 +60,7 @@ import {
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const MAX_ATTEMPTS = 4;
 const PREPROD = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
@@ -205,18 +206,21 @@ const runCheck = async (
   const reported: [string, readonly string[]][] = [];
   const exit = await Effect.runPromiseExit(
     ensureProtocolInitializedOnStartup.pipe(
-      Effect.provideService(NodeConfig, {
-        NETWORK: "Preprod",
-        L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS:
-          manifest.referenceScriptDeployAddress,
-        HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE.txHash,
-        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: NONCE.outputIndex,
-        DEPLOYMENT_ECONOMICS_PROFILE: manifest.economics.profile,
-        // A bootstrapping node: it still never deploys.
-        RUN_GENESIS_ON_STARTUP: true,
-        STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
-        STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
-      } as unknown as NodeConfig["Type"]),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({
+          NETWORK: "Preprod",
+          L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS:
+            manifest.referenceScriptDeployAddress,
+          HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE.txHash,
+          HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: NONCE.outputIndex,
+          DEPLOYMENT_ECONOMICS_PROFILE: manifest.economics.profile,
+          // A bootstrapping node: it still never deploys.
+          RUN_GENESIS_ON_STARTUP: true,
+          STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
+          STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
+        }),
+      ),
       Effect.provideService(Lucid, lucidServiceStub({ api: lucid })),
       Effect.provideService(ContractDeploymentIdentity, {
         kind: "manifest",

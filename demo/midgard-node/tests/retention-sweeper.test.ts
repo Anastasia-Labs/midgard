@@ -24,6 +24,7 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { makeRetentionL1Queue } from "./helpers/retention-l1-view.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const SWEEP_MS = 1_000;
@@ -88,11 +89,14 @@ const runSweeper = (options: {
       );
       return { exit, reasons: reasons() };
     }).pipe(
-      Effect.provideService(NodeConfig, {
-        RETENTION_DAYS: 0,
-        WAIT_BETWEEN_RETENTION_SWEEPS: options.sweepMs ?? SWEEP_MS,
-        L1_VIEW_FATAL_MS: options.fatalMs ?? FATAL_MS,
-      } as never),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({
+          RETENTION_DAYS: 0,
+          WAIT_BETWEEN_RETENTION_SWEEPS: options.sweepMs ?? SWEEP_MS,
+          L1_VIEW_FATAL_MS: options.fatalMs ?? FATAL_MS,
+        }),
+      ),
       Effect.provideService(SqlClient.SqlClient, sql as never),
       Effect.provideService(ContractDeploymentIdentity, {} as never),
       Effect.provideService(Lucid, {} as never),

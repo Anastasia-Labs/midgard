@@ -29,6 +29,7 @@ import {
   type CommitBatchBudgetLimits,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
 } from "../../src/workers/utils/commit-block-planner.js";
+import { makeTestNodeConfig } from "./test-node-config.js";
 
 // A canonical V1 transaction: the pre-submit check re-derives its source
 // value, so the bytes must decode.
@@ -245,9 +246,12 @@ export const runQuietSubmission = (
   Effect.runPromise(
     Effect.either(program).pipe(
       Effect.provide(Logger.remove(Logger.defaultLogger)),
-      Effect.provideService(NodeConfig, {
-        COMMIT_EVENT_DEPTH: 0,
-      } as never),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({
+          COMMIT_EVENT_DEPTH: 0,
+        }),
+      ),
     ) as Effect.Effect<Either.Either<unknown, unknown>>,
   );
 

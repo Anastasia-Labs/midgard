@@ -29,8 +29,9 @@ import { HTTP_LIVENESS_MAX_ENTRIES } from "../src/commands/listen-http-rate-limi
 import { encodeReadPage } from "../src/commands/listen-read-page.js";
 import { stateQueueHeaderPage } from "../src/commands/listen-state-queue-page.js";
 import { NodeConfig } from "../src/services/config.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
-const config = { ADMIN_API_KEY: "01".repeat(32) } as never;
+const config = makeTestNodeConfig({ ADMIN_API_KEY: "01".repeat(32) });
 const session = async (configuration = config) => {
   const result = await Effect.runPromise(
     getAdminSessionHandler.pipe(
@@ -287,7 +288,7 @@ describe("HTTP admission quotas and admin replay", () => {
     const handle = Effect.runSync(
       NodeHttpServer.makeHandler(
         withHttpIngress(handler, createHttpIngress({ now: () => 0 })).pipe(
-          Effect.provideService(NodeConfig, {} as never),
+          Effect.provideService(NodeConfig, makeTestNodeConfig()),
         ),
       ),
     );
@@ -340,9 +341,13 @@ describe("HTTP admission quotas and admin replay", () => {
     }
   });
   it("refuses unsigned mutation before the effect and consumes a signed claim before failure", async () => {
-    const id = await session({ ADMIN_API_KEY: "01".repeat(32) } as never);
+    const id = await session(
+      makeTestNodeConfig({ ADMIN_API_KEY: "01".repeat(32) }),
+    );
     let invoked = 0;
-    const configuration = { ADMIN_API_KEY: "01".repeat(32) } as never;
+    const configuration = makeTestNodeConfig({
+      ADMIN_API_KEY: "01".repeat(32),
+    });
     const current = await session(configuration);
     const request = (headers: Record<string, string>, method = "POST") =>
       HttpServerRequest.fromWeb(

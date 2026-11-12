@@ -15,6 +15,7 @@ import {
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 vi.mock("../src/database/index.js", async () => {
   const actual = await vi.importActual<
@@ -239,7 +240,7 @@ const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
 
 describe("canonical V1 commit profile", () => {
   it("fails closed without worker slot mapping and passes the node mapping to processMpfs", async () => {
-    const nodeConfig = {
+    const nodeConfig = makeTestNodeConfig({
       MPF_PAYLOAD_ROOT_CHECK: "off",
       MPF_RECORD_CORPUS: "",
       MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
@@ -248,12 +249,11 @@ describe("canonical V1 commit profile", () => {
       COMMIT_MAX_LEDGER_OP_COUNT: 100,
       COMMIT_MAX_TRANSITION_STEP_COUNT: 100,
       BLOCK_EX_UNITS_BUDGET: { memory: 33_000_000n, steps: 20_000_000_000n },
-      NETWORK: "Testnet",
       MIN_FEE_A: 0n,
       MIN_FEE_B: 0n,
       VALIDATION_G4_BUCKET_CONCURRENCY: 1,
       COMMIT_EVENT_DEPTH: 0,
-    } as never;
+    });
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",
       deploymentMarker,

@@ -18,7 +18,7 @@ import "./helpers/follower-emulator-installed.js";
 import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
-import { type Context, Effect, Layer, Ref } from "effect";
+import { Effect, Layer, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -50,6 +50,7 @@ import {
   submitNeglectedDeposit,
   submitUnauthenticatedHistoryNodeCopy,
 } from "./helpers/operator-inactivity.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { resetApplicationTables } from "./utils.js";
 
 describe("operator watchdog strike evidence", () => {
@@ -167,10 +168,13 @@ describe("operator watchdog strike evidence", () => {
               MidgardContracts,
               fixture.contracts as unknown as MidgardContracts,
             ),
-            Layer.succeed(NodeConfig, {
-              OPERATOR_WATCHDOG_ENABLED: true,
-              OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
-            } as unknown as Context.Tag.Service<typeof NodeConfig>),
+            Layer.succeed(
+              NodeConfig,
+              makeTestNodeConfig({
+                OPERATOR_WATCHDOG_ENABLED: true,
+                OPERATOR_WATCHDOG_PATIENCE_MS: 120_000,
+              }),
+            ),
           ),
         ),
       ),

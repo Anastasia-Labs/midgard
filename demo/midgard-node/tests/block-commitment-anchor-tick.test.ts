@@ -15,6 +15,7 @@ import {
   writeFollowerTip,
 } from "./helpers/follower-view.js";
 import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /** One commitment tick that does nothing past its readiness publication: a
@@ -33,9 +34,12 @@ const tickReasons = (depth: number) =>
         yield* blockCommitmentAction;
         return yield* activeLivenessReasons(globals);
       }).pipe(
-        Effect.provideService(NodeConfig, {
-          COMMIT_EVENT_DEPTH: depth,
-        } as unknown as NodeConfig["Type"]),
+        Effect.provideService(
+          NodeConfig,
+          makeTestNodeConfig({
+            COMMIT_EVENT_DEPTH: depth,
+          }),
+        ),
         Effect.provideService(Lucid, {} as Lucid),
         Effect.provideService(MidgardContracts, {} as MidgardContracts),
         Effect.provide(Globals.Default),

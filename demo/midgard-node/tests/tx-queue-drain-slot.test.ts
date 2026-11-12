@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { txQueueProcessorDrainOnce } from "../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // Each case fails or stalls right after the slot claim, so the drain loop and
 // the services only it uses never run.
@@ -19,9 +20,12 @@ const runDrain = <A, E>(
       };
     }).pipe(
       Effect.provide(Globals.Default),
-      Effect.provideService(NodeConfig, {
-        VALIDATION_DRAIN_LOOPS: 2,
-      } as unknown as NodeConfig["Type"]),
+      Effect.provideService(
+        NodeConfig,
+        makeTestNodeConfig({
+          VALIDATION_DRAIN_LOOPS: 2,
+        }),
+      ),
     ),
   );
 

@@ -21,7 +21,6 @@ import {
   vi,
 } from "vitest";
 
-import type { NodeConfig } from "../src/services/config.js";
 import type { NativeLedgerSettings } from "../src/services/native-ledger.js";
 import {
   type DerivedDeployment,
@@ -57,14 +56,13 @@ vi.mock("../src/services/config.js", async (importOriginal) => {
   Object.defineProperty(original.NodeConfig, "layer", {
     value: Layer.effect(
       original.NodeConfig,
-      Effect.sync(
-        () =>
-          ({
-            PORT: 0,
-            NETWORK: "Custom",
-            L1_NATIVE_LEDGER: seen.nativeLedger,
-            L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 100,
-          }) as NodeConfig["Type"],
+      Effect.sync(() =>
+        makeTestNodeConfig({
+          PORT: 0,
+          NETWORK: "Custom",
+          L1_NATIVE_LEDGER: seen.nativeLedger,
+          L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 100,
+        }),
       ),
     ),
   });
@@ -97,6 +95,7 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
 import "../src/index.registration-2.js";
 
 import { program } from "../src/index.registration.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const CLEARED = [
   "L1_ACCESS",
