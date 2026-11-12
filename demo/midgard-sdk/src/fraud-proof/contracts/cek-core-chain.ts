@@ -8,22 +8,58 @@
 import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 /**
+ * What each hop writes into the bound it carries on, past the binder: a
+ * stage whose row names `facts` writes them, and every other hop keeps the
+ * last written, none before the first.
+ *
+ * - `builtinRoots`: a direct builtin's argument, result and builtin roots;
+ * - `semanticArguments`: a semantic builtin's compacted arguments with their
+ *   roots;
+ * - `semanticResult`: those arguments' builtin roots, with the compacted
+ *   arguments and result;
+ * - `mapStartArguments`: a map conversion's compacted arguments and result;
+ * - `mapStartBudget`: those, with the builtin's budget.
+ */
+export type CekCoreFacts =
+  | "builtinRoots"
+  | "semanticArguments"
+  | "semanticResult"
+  | "mapStartArguments"
+  | "mapStartBudget";
+
+/** Where group 7's roots route a builtin failure: the material hop, the
+ * staged failure hop or the writeBits loop. */
+export type CekCoreFailureRoute = "material" | "staged" | "loop";
+
+/**
  * Where a stage hands a step on to, which is what it is applied to before
  * the computation-thread policy:
  *
  * - `settle`: the settle itself, applied to the award hash and the hop
  *   counts;
- * - `next`: one stage;
+ * - `next`: one stage, the hop writing `facts` when the row names them;
  * - `semantics`: the semantics list a budget hop picks from by the
  *   builtin's semantics group, in group order;
- * - `branch`: group 7's roots, which go on to the material hop, the staged
- *   failure hop or the writeBits loop.
+ * - `branch`: group 7's roots, which take the builtins below `tags` and
+ *   route those in a `stagedTags` range (inclusive) to the staged failure
+ *   hop, `loopTag` among them to the writeBits loop when its input is a
+ *   semantic constant of at most `loopInputWords` words, and the rest to the
+ *   material hop.
  */
 export type CekCoreSuccessor<Role extends string = CekCoreRole> =
   | Readonly<{ kind: "settle" }>
-  | Readonly<{ kind: "next"; to: Role }>
+  | Readonly<{ kind: "next"; to: Role; facts?: CekCoreFacts }>
   | Readonly<{ kind: "semantics"; to: readonly Role[] }>
-  | Readonly<{ kind: "branch"; material: Role; staged: Role; loop: Role }>;
+  | Readonly<{
+      kind: "branch";
+      material: Role;
+      staged: Role;
+      loop: Role;
+      tags: bigint;
+      stagedTags: readonly (readonly [bigint, bigint])[];
+      loopTag: bigint;
+      loopInputWords: bigint;
+    }>;
 
 const SETTLES = { kind: "next", to: "settle" } as const;
 
@@ -37,8 +73,16 @@ const ROWS = {
   directStructured: SETTLES,
   directScalarBudget: { kind: "semantics", to: ["directScalar"] },
   directStructuredBudget: { kind: "semantics", to: ["directStructured"] },
-  directScalarRoots: { kind: "next", to: "directScalarBudget" },
-  directStructuredRoots: { kind: "next", to: "directStructuredBudget" },
+  directScalarRoots: {
+    kind: "next",
+    to: "directScalarBudget",
+    facts: "builtinRoots",
+  },
+  directStructuredRoots: {
+    kind: "next",
+    to: "directStructuredBudget",
+    facts: "builtinRoots",
+  },
   semanticPair: SETTLES,
   semanticListConstruct: SETTLES,
   semanticListSelect: SETTLES,
@@ -71,17 +115,41 @@ const ROWS = {
       "stagedWriteBitsLoop",
     ],
   },
-  semanticResult: { kind: "next", to: "semanticBudget" },
-  semanticRoots: { kind: "next", to: "semanticResult" },
+  semanticResult: {
+    kind: "next",
+    to: "semanticBudget",
+    facts: "semanticResult",
+  },
+  semanticRoots: {
+    kind: "next",
+    to: "semanticResult",
+    facts: "semanticArguments",
+  },
   mapStartNodes: SETTLES,
-  mapStartBudget: { kind: "next", to: "mapStartNodes" },
-  mapStartRoots: { kind: "next", to: "mapStartBudget" },
+  mapStartBudget: {
+    kind: "next",
+    to: "mapStartNodes",
+    facts: "mapStartBudget",
+  },
+  mapStartRoots: {
+    kind: "next",
+    to: "mapStartBudget",
+    facts: "mapStartArguments",
+  },
   semanticFailureMaterial: SETTLES,
   semanticFailureRoots: {
     kind: "branch",
     material: "semanticFailureMaterial",
     staged: "stagedFailure",
     loop: "stagedWriteBitsLoop",
+    tags: 87n,
+    stagedTags: [
+      [0n, 25n],
+      [52n, 53n],
+      [71n, 86n],
+    ],
+    loopTag: 80n,
+    loopInputWords: 512n,
   },
   blsFinal: SETTLES,
   blsRoots: { kind: "next", to: "blsFinal" },
@@ -91,7 +159,7 @@ const ROWS = {
   failureBlsUncompress: { kind: "next", to: "failureBudget" },
   typeFailureKinds: SETTLES,
   typeFailureRoots: { kind: "next", to: "typeFailureKinds" },
-  pv11Roots: { kind: "next", to: "pv11Budget" },
+  pv11Roots: { kind: "next", to: "pv11Budget", facts: "builtinRoots" },
   pv11Budget: { kind: "next", to: "pv11Semantics" },
   pv11Semantics: SETTLES,
 } as const;
@@ -100,8 +168,9 @@ const ROWS = {
 export type CekCoreRole = keyof typeof ROWS;
 
 /** Each stage's successor, one row a role. */
-export const CEK_CORE_CHAIN: Readonly<Record<CekCoreRole, CekCoreSuccessor>> =
-  Object.freeze(ROWS);
+export const CEK_CORE_CHAIN = Object.freeze(ROWS) satisfies Readonly<
+  Record<CekCoreRole, CekCoreSuccessor>
+>;
 
 /** The entry stage of each core group, by group: the stage the binder hands
  * a step of that group to. */
@@ -201,6 +270,85 @@ const HOPS_TO_SETTLE = hopsToSettle();
 export const CEK_CORE_ARM_HOP_COUNTS: readonly bigint[] = Object.freeze(
   CEK_CORE_GROUP_ENTRIES.map((role) => BigInt(HOPS_TO_SETTLE.get(role)!)),
 );
+
+/** The choices a step makes along its group's chain: the semantics group a
+ * semantics list picks by, and the route group 7's roots take. */
+export type CekCoreChoice = Readonly<{
+  semantics?: number;
+  failure?: CekCoreFailureRoute;
+}>;
+
+/** The stage `successor` hands a step on to under `choice`: null at the
+ * settle or at a pick `choice` leaves open, and undefined for a semantics
+ * group the list has no stage for. */
+const nextStage = (
+  successor: CekCoreSuccessor,
+  choice: CekCoreChoice,
+): CekCoreRole | null | undefined => {
+  switch (successor.kind) {
+    case "settle":
+      return null;
+    case "next":
+      return successor.to;
+    case "semantics":
+      if (successor.to.length === 1) return successor.to[0];
+      return choice.semantics === undefined
+        ? null
+        : successor.to[choice.semantics];
+    case "branch":
+      return choice.failure === undefined ? null : successor[choice.failure];
+  }
+};
+
+/**
+ * The stages a step of core group `group` visits from its entry towards the
+ * settle, in order, a loop once: a semantics list of one stage is followed,
+ * a longer one by `choice.semantics` and group 7's roots by
+ * `choice.failure`, and the route ends before the settle or at a pick
+ * `choice` leaves open. Undefined for no such group, or a semantics group
+ * the list has no stage for.
+ */
+export const cekCoreRoute = (
+  group: number,
+  choice: CekCoreChoice = {},
+): readonly Exclude<CekCoreRole, "settle">[] | undefined => {
+  const route: Exclude<CekCoreRole, "settle">[] = [];
+  let stage: CekCoreRole | null | undefined = CEK_CORE_GROUP_ENTRIES[group];
+  while (stage !== null && stage !== "settle") {
+    if (stage === undefined) return undefined;
+    route.push(stage);
+    stage = nextStage(CEK_CORE_CHAIN[stage], choice);
+  }
+  return Object.freeze(route);
+};
+
+const FAILURE_BRANCH = CEK_CORE_CHAIN.semanticFailureRoots;
+
+/** The builtins group 7's roots route to the staged failure hop. */
+const STAGED_FAILURE_TAGS: ReadonlySet<bigint> = new Set(
+  FAILURE_BRANCH.stagedTags.flatMap(([low, high]) =>
+    Array.from({ length: Number(high - low) + 1 }, (_, at) => low + BigInt(at)),
+  ),
+);
+
+/**
+ * `semantic_failure_roots` (cek-semantic-chain): where group 7's roots route
+ * a failure of builtin `tag` whose first argument is a semantic constant of
+ * `inputWords` words (null for any other argument), or undefined for a tag
+ * the roots refuse.
+ */
+export const cekCoreFailureRoute = (
+  tag: bigint,
+  inputWords: bigint | null,
+): CekCoreFailureRoute | undefined => {
+  if (tag < 0n || tag >= FAILURE_BRANCH.tags) return undefined;
+  if (!STAGED_FAILURE_TAGS.has(tag)) return "material";
+  return tag === FAILURE_BRANCH.loopTag &&
+    inputWords !== null &&
+    inputWords <= FAILURE_BRANCH.loopInputWords
+    ? "loop"
+    : "staged";
+};
 
 const MODE = {
   compute: 0n,

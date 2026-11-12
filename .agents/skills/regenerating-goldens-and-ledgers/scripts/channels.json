@@ -679,7 +679,7 @@
     {
       "id": "cek-core-routing-v1",
       "kind": "golden",
-      "summary": "CEK core routing (the core group a step's mode and arm witness select, and the semantics group of a builtin tag) given by the TypeScript twins cekCoreGroup (midgard-sdk) and midgardCekSemanticGroup: JSON fixture of routed and refused rows plus a whole generated Aiken module holding cek_semantic_chain.core_group and semantic_group to each row.",
+      "summary": "CEK core routing (the core group a step's mode and arm witness select, the semantics group of a builtin tag, and the hop group 7's roots hand a builtin failure on to by its tag and the size of its first argument) given by the TypeScript twins cekCoreGroup and cekCoreFailureRoute (midgard-sdk) and midgardCekSemanticGroup: JSON fixture of routed and refused rows plus a whole generated Aiken module holding cek_semantic_chain.core_group, semantic_group and the cek_core_semantic_failure_roots validator to each row.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs"
       ],

@@ -2,14 +2,27 @@
 //// Do not edit; regenerate with
 //// `pnpm --dir demo/midgard-validation run fixtures:cek-core-routing-v1:sync`.
 ////
-//// The CEK core routing of the TypeScript twins (`cekCoreGroup` in
-//// midgard-sdk, `midgardCekSemanticGroup` in midgard-validation): each
-//// routed row must route to the twin's group here, and each refused row must
-//// fail.
+//// The CEK core routing of the TypeScript twins (`cekCoreGroup` and
+//// `cekCoreFailureRoute` in midgard-sdk, `midgardCekSemanticGroup` in
+//// midgard-validation): each routed row must route to the twin's group or
+//// hop here, and each refused row must fail.
 
 use aiken/builtin
 use aiken/collection/list
+use cardano/transaction.{Transaction}
+use fraud_proofs/validation_trace/cek_core_semantic_failure_roots as failure_roots
+use midgard/cek_builtin_v1.{SemanticConstantValue, ValueWitnessV1}
+use midgard/cek_cost_v1 as cost
+use midgard/cek_data_v1
+use midgard/cek_machine_v1 as machine
+use midgard/cek_proof_v1 as proof
 use midgard/cek_semantic_chain as chain
+use midgard/cek_staged_arm_v1.{StagedMaterialV1}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/cek_staged_fixture_v1.{
+  bytes_type_cbor, failure_step_at, integer_value, no_staging,
+}
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
 /// A witness of constructor `arm`; the builtin arms 30 and 38 carry `tag`
 /// where `core_group` reads it.
@@ -32,6 +45,100 @@ fn routes_core(rows: List<(Int, Int, Int, Int)>) -> Bool {
     fn(row) {
       let (mode, arm, tag, group) = row
       chain.core_group(mode, witness(arm, tag)) == group
+    },
+  )
+}
+
+/// The hop group 7's roots hand a failure on to.
+type Route {
+  Material
+  Staged
+  Loop
+}
+
+/// A script hash no hop of the fixture's has.
+const other_hash = #"5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f"
+
+/// A failure's first argument: a byte string's semantic constant of `words`
+/// words, the size the roots route writeBits by, or an integer for None.
+fn first_argument(words: Option<Int>) -> ValueWitnessV1 {
+  when words is {
+    Some(words) ->
+      SemanticConstantValue {
+        type_cbor: bytes_type_cbor,
+        payload: cek_data_v1.bytes_data_summary_v1(
+          8 * words,
+          #"0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+        memory: words,
+      }
+    None -> integer_value(0)
+  }
+}
+
+/// Group 7's roots over an arm 36 failure of builtin `tag` over
+/// `arguments`, with the material, staged failure and writeBits loop hops at
+/// the hashes given; the step hands on to the fixture's next step.
+fn roots_hand_on(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  material: ByteArray,
+  staged: ByteArray,
+  loop: ByteArray,
+) -> Bool {
+  let Pair(root, count) = cek_builtin_v1.arguments_root_v1(arguments)
+  let step_material: Data = StagedMaterialV1 {
+    runs: no_staging().runs,
+    sources: [],
+  }
+  let step = failure_step_at(tag, arguments, step_material, [], 36, 7, 0)
+  expect Some(datum) = step.datum
+  expect Some(bound) = datum.data
+  let pre = machine.MachineStateV1 {
+    ..bound.pre,
+    focus_root: proof.hash_builtin_value_v1(tag, 0, count, root),
+  }
+  let at_roots = chain.CoreBound { ..bound, pre }
+  let next: Data = chain.CoreBound { ..at_roots, progress: 1 }
+  failure_roots.main.spend(
+    material,
+    staged,
+    loop,
+    fixture.computation_thread_policy_id,
+    Some(ct.StepDatum { ..datum, data: Some(at_roots) }),
+    step.redeemer,
+    fixture.own_out_ref(),
+    Transaction {
+      ..step.transaction,
+      outputs: fixture.continue_mid_step_l1_tx_v1("cek-core-staged", next).outputs,
+    },
+  )
+}
+
+/// Each row's failure, its first argument of the row's size and the rest
+/// integers, handed on to the row's hop only.
+fn routes_failure(rows: List<(Int, Option<Int>, Route)>) -> Bool {
+  list.all(
+    rows,
+    fn(row) {
+      let (tag, words, route) = row
+      let at = fn(hop) {
+        if hop == route {
+          fixture.next_step_script_hash
+        } else {
+          other_hash
+        }
+      }
+      roots_hand_on(
+        tag,
+        [
+          first_argument(words),
+          ..list.repeat(integer_value(0), cost.pv10_argument_count_v1(tag) - 1)
+        ],
+        at(Material),
+        at(Staged),
+        at(Loop),
+      )
     },
   )
 }
@@ -404,4 +511,589 @@ test semantic_group_refuses_tag_81() fail {
 
 test semantic_group_refuses_tag_87() fail {
   chain.semantic_group(87) >= 0
+}
+
+test failure_roots_route_tags_0_to_1() {
+  routes_failure(
+    [
+      (0, None, Staged),
+      (0, Some(512), Staged),
+      (0, Some(513), Staged),
+      (1, None, Staged),
+      (1, Some(512), Staged),
+      (1, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_2_to_3() {
+  routes_failure(
+    [
+      (2, None, Staged),
+      (2, Some(512), Staged),
+      (2, Some(513), Staged),
+      (3, None, Staged),
+      (3, Some(512), Staged),
+      (3, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_4_to_5() {
+  routes_failure(
+    [
+      (4, None, Staged),
+      (4, Some(512), Staged),
+      (4, Some(513), Staged),
+      (5, None, Staged),
+      (5, Some(512), Staged),
+      (5, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_6_to_7() {
+  routes_failure(
+    [
+      (6, None, Staged),
+      (6, Some(512), Staged),
+      (6, Some(513), Staged),
+      (7, None, Staged),
+      (7, Some(512), Staged),
+      (7, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_8_to_9() {
+  routes_failure(
+    [
+      (8, None, Staged),
+      (8, Some(512), Staged),
+      (8, Some(513), Staged),
+      (9, None, Staged),
+      (9, Some(512), Staged),
+      (9, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_10_to_11() {
+  routes_failure(
+    [
+      (10, None, Staged),
+      (10, Some(512), Staged),
+      (10, Some(513), Staged),
+      (11, None, Staged),
+      (11, Some(512), Staged),
+      (11, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_12_to_13() {
+  routes_failure(
+    [
+      (12, None, Staged),
+      (12, Some(512), Staged),
+      (12, Some(513), Staged),
+      (13, None, Staged),
+      (13, Some(512), Staged),
+      (13, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_14_to_15() {
+  routes_failure(
+    [
+      (14, None, Staged),
+      (14, Some(512), Staged),
+      (14, Some(513), Staged),
+      (15, None, Staged),
+      (15, Some(512), Staged),
+      (15, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_16_to_17() {
+  routes_failure(
+    [
+      (16, None, Staged),
+      (16, Some(512), Staged),
+      (16, Some(513), Staged),
+      (17, None, Staged),
+      (17, Some(512), Staged),
+      (17, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_18_to_19() {
+  routes_failure(
+    [
+      (18, None, Staged),
+      (18, Some(512), Staged),
+      (18, Some(513), Staged),
+      (19, None, Staged),
+      (19, Some(512), Staged),
+      (19, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_20_to_21() {
+  routes_failure(
+    [
+      (20, None, Staged),
+      (20, Some(512), Staged),
+      (20, Some(513), Staged),
+      (21, None, Staged),
+      (21, Some(512), Staged),
+      (21, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_22_to_23() {
+  routes_failure(
+    [
+      (22, None, Staged),
+      (22, Some(512), Staged),
+      (22, Some(513), Staged),
+      (23, None, Staged),
+      (23, Some(512), Staged),
+      (23, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_24_to_25() {
+  routes_failure(
+    [
+      (24, None, Staged),
+      (24, Some(512), Staged),
+      (24, Some(513), Staged),
+      (25, None, Staged),
+      (25, Some(512), Staged),
+      (25, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_26_to_27() {
+  routes_failure(
+    [
+      (26, None, Material),
+      (26, Some(512), Material),
+      (26, Some(513), Material),
+      (27, None, Material),
+      (27, Some(512), Material),
+      (27, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_28_to_29() {
+  routes_failure(
+    [
+      (28, None, Material),
+      (28, Some(512), Material),
+      (28, Some(513), Material),
+      (29, None, Material),
+      (29, Some(512), Material),
+      (29, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_30_to_31() {
+  routes_failure(
+    [
+      (30, None, Material),
+      (30, Some(512), Material),
+      (30, Some(513), Material),
+      (31, None, Material),
+      (31, Some(512), Material),
+      (31, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_32_to_33() {
+  routes_failure(
+    [
+      (32, None, Material),
+      (32, Some(512), Material),
+      (32, Some(513), Material),
+      (33, None, Material),
+      (33, Some(512), Material),
+      (33, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_34_to_35() {
+  routes_failure(
+    [
+      (34, None, Material),
+      (34, Some(512), Material),
+      (34, Some(513), Material),
+      (35, None, Material),
+      (35, Some(512), Material),
+      (35, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_36_to_37() {
+  routes_failure(
+    [
+      (36, None, Material),
+      (36, Some(512), Material),
+      (36, Some(513), Material),
+      (37, None, Material),
+      (37, Some(512), Material),
+      (37, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_38_to_39() {
+  routes_failure(
+    [
+      (38, None, Material),
+      (38, Some(512), Material),
+      (38, Some(513), Material),
+      (39, None, Material),
+      (39, Some(512), Material),
+      (39, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_40_to_41() {
+  routes_failure(
+    [
+      (40, None, Material),
+      (40, Some(512), Material),
+      (40, Some(513), Material),
+      (41, None, Material),
+      (41, Some(512), Material),
+      (41, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_42_to_43() {
+  routes_failure(
+    [
+      (42, None, Material),
+      (42, Some(512), Material),
+      (42, Some(513), Material),
+      (43, None, Material),
+      (43, Some(512), Material),
+      (43, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_44_to_45() {
+  routes_failure(
+    [
+      (44, None, Material),
+      (44, Some(512), Material),
+      (44, Some(513), Material),
+      (45, None, Material),
+      (45, Some(512), Material),
+      (45, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_46_to_47() {
+  routes_failure(
+    [
+      (46, None, Material),
+      (46, Some(512), Material),
+      (46, Some(513), Material),
+      (47, None, Material),
+      (47, Some(512), Material),
+      (47, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_48_to_49() {
+  routes_failure(
+    [
+      (48, None, Material),
+      (48, Some(512), Material),
+      (48, Some(513), Material),
+      (49, None, Material),
+      (49, Some(512), Material),
+      (49, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_50_to_51() {
+  routes_failure(
+    [
+      (50, None, Material),
+      (50, Some(512), Material),
+      (50, Some(513), Material),
+      (51, None, Material),
+      (51, Some(512), Material),
+      (51, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_52_to_53() {
+  routes_failure(
+    [
+      (52, None, Staged),
+      (52, Some(512), Staged),
+      (52, Some(513), Staged),
+      (53, None, Staged),
+      (53, Some(512), Staged),
+      (53, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_54_to_55() {
+  routes_failure(
+    [
+      (54, None, Material),
+      (54, Some(512), Material),
+      (54, Some(513), Material),
+      (55, None, Material),
+      (55, Some(512), Material),
+      (55, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_56_to_57() {
+  routes_failure(
+    [
+      (56, None, Material),
+      (56, Some(512), Material),
+      (56, Some(513), Material),
+      (57, None, Material),
+      (57, Some(512), Material),
+      (57, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_58_to_59() {
+  routes_failure(
+    [
+      (58, None, Material),
+      (58, Some(512), Material),
+      (58, Some(513), Material),
+      (59, None, Material),
+      (59, Some(512), Material),
+      (59, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_60_to_61() {
+  routes_failure(
+    [
+      (60, None, Material),
+      (60, Some(512), Material),
+      (60, Some(513), Material),
+      (61, None, Material),
+      (61, Some(512), Material),
+      (61, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_62_to_63() {
+  routes_failure(
+    [
+      (62, None, Material),
+      (62, Some(512), Material),
+      (62, Some(513), Material),
+      (63, None, Material),
+      (63, Some(512), Material),
+      (63, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_64_to_65() {
+  routes_failure(
+    [
+      (64, None, Material),
+      (64, Some(512), Material),
+      (64, Some(513), Material),
+      (65, None, Material),
+      (65, Some(512), Material),
+      (65, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_66_to_67() {
+  routes_failure(
+    [
+      (66, None, Material),
+      (66, Some(512), Material),
+      (66, Some(513), Material),
+      (67, None, Material),
+      (67, Some(512), Material),
+      (67, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_68_to_69() {
+  routes_failure(
+    [
+      (68, None, Material),
+      (68, Some(512), Material),
+      (68, Some(513), Material),
+      (69, None, Material),
+      (69, Some(512), Material),
+      (69, Some(513), Material),
+    ],
+  )
+}
+
+test failure_roots_route_tags_70_to_71() {
+  routes_failure(
+    [
+      (70, None, Material),
+      (70, Some(512), Material),
+      (70, Some(513), Material),
+      (71, None, Staged),
+      (71, Some(512), Staged),
+      (71, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_72_to_73() {
+  routes_failure(
+    [
+      (72, None, Staged),
+      (72, Some(512), Staged),
+      (72, Some(513), Staged),
+      (73, None, Staged),
+      (73, Some(512), Staged),
+      (73, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_74_to_75() {
+  routes_failure(
+    [
+      (74, None, Staged),
+      (74, Some(512), Staged),
+      (74, Some(513), Staged),
+      (75, None, Staged),
+      (75, Some(512), Staged),
+      (75, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_76_to_77() {
+  routes_failure(
+    [
+      (76, None, Staged),
+      (76, Some(512), Staged),
+      (76, Some(513), Staged),
+      (77, None, Staged),
+      (77, Some(512), Staged),
+      (77, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_78_to_79() {
+  routes_failure(
+    [
+      (78, None, Staged),
+      (78, Some(512), Staged),
+      (78, Some(513), Staged),
+      (79, None, Staged),
+      (79, Some(512), Staged),
+      (79, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_80_to_81() {
+  routes_failure(
+    [
+      (80, None, Staged),
+      (80, Some(512), Loop),
+      (80, Some(513), Staged),
+      (81, None, Staged),
+      (81, Some(512), Staged),
+      (81, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_82_to_83() {
+  routes_failure(
+    [
+      (82, None, Staged),
+      (82, Some(512), Staged),
+      (82, Some(513), Staged),
+      (83, None, Staged),
+      (83, Some(512), Staged),
+      (83, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_84_to_85() {
+  routes_failure(
+    [
+      (84, None, Staged),
+      (84, Some(512), Staged),
+      (84, Some(513), Staged),
+      (85, None, Staged),
+      (85, Some(512), Staged),
+      (85, Some(513), Staged),
+    ],
+  )
+}
+
+test failure_roots_route_tags_86_to_86() {
+  routes_failure(
+    [(86, None, Staged), (86, Some(512), Staged), (86, Some(513), Staged)],
+  )
+}
+
+test failure_roots_refuse_tag_minus_1() fail {
+  roots_hand_on(
+    -1,
+    [integer_value(1)],
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
+  )
+}
+
+test failure_roots_refuse_tag_87() fail {
+  roots_hand_on(
+    87,
+    [integer_value(1)],
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
+  )
 }

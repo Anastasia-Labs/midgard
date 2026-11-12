@@ -34,7 +34,19 @@ export {
   cekCoreEntryHashes,
   type CekCoreStages,
 } from "./cek-core.js";
-export { cekCoreGroup } from "./cek-core-chain.js";
+export {
+  CEK_CORE_CHAIN,
+  CEK_CORE_GROUP_ENTRIES,
+  CEK_CORE_ROLES,
+  type CekCoreChoice,
+  cekCoreContractName,
+  type CekCoreFacts,
+  type CekCoreFailureRoute,
+  cekCoreFailureRoute,
+  cekCoreGroup,
+  type CekCoreRole,
+  cekCoreRoute,
+} from "./cek-core-chain.js";
 export {
   buildCanonicalDecodabilityFaultProofContracts,
   type BuildCanonicalDecodabilityFaultProofContractsParams,

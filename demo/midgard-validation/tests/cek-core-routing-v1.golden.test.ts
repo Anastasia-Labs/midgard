@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { cekCoreGroup } from "@al-ft/midgard-sdk";
+import { cekCoreFailureRoute, cekCoreGroup } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { midgardCekSemanticGroup } from "../src/cek-semantic-group.js";
@@ -17,7 +17,8 @@ import {
  * drives through `dist/`, and compared with the checked-in fixture. The
  * generated Aiken module
  * (`onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak`)
- * holds `cek_semantic_chain.core_group` and `semantic_group` to the same rows.
+ * holds `cek_semantic_chain.core_group`, `semantic_group` and group 7's roots
+ * (`cek_core_semantic_failure_roots`) to the same rows.
  * Regenerate both with `pnpm run fixtures:cek-core-routing-v1:sync`.
  */
 
@@ -33,15 +34,17 @@ const golden = JSON.parse(
 const rows = routingRows({
   coreGroup: cekCoreGroup,
   semanticGroup: midgardCekSemanticGroup,
+  failureRoute: cekCoreFailureRoute,
 });
 
 describe("CEK core routing golden vectors", () => {
   it("routes and refuses each row as the fixture records", () => {
     expect(rows.coreGroup).toEqual(golden.coreGroup);
     expect(rows.semanticGroup).toEqual(golden.semanticGroup);
+    expect(rows.failureRoute).toEqual(golden.failureRoute);
   });
 
-  it("routes each core group and each semantics group somewhere", () => {
+  it("routes each core group, each semantics group and each failure route somewhere", () => {
     expect(
       [...new Set(rows.coreGroup.routed.map(({ group }) => group))].sort(
         (left, right) => left - right,
@@ -52,5 +55,8 @@ describe("CEK core routing golden vectors", () => {
         (left, right) => left - right,
       ),
     ).toEqual(Array.from({ length: 13 }, (_, group) => group));
+    expect(
+      [...new Set(rows.failureRoute.routed.map(({ route }) => route))].sort(),
+    ).toEqual(["loop", "material", "staged"]);
   });
 });

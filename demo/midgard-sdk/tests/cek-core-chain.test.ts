@@ -13,6 +13,7 @@ import {
   CEK_CORE_STAGE_TITLES,
   cekCoreContractName,
   type CekCoreRole,
+  cekCoreRoute,
   cekCoreSuccessors,
 } from "../src/fraud-proof/contracts/cek-core-chain.js";
 
@@ -108,5 +109,38 @@ describe("the CEK core chain's table", () => {
       ),
     );
     expect(family).toHaveLength(CEK_CORE_ROLES.length);
+  });
+});
+
+describe("a CEK core group's route", () => {
+  it("runs from the group's entry to before the settle, a semantics list of one followed", () => {
+    expect(cekCoreRoute(0)).toEqual(["compute"]);
+    expect(cekCoreRoute(3)).toEqual([
+      "directScalarRoots",
+      "directScalarBudget",
+      "directScalar",
+    ]);
+  });
+
+  it("follows group 5's budget hop and group 7's roots by the choice, and stops at a pick it leaves open", () => {
+    expect(cekCoreRoute(5)).toEqual([
+      "semanticRoots",
+      "semanticResult",
+      "semanticBudget",
+    ]);
+    expect(cekCoreRoute(5, { semantics: 0 })?.at(-1)).toBe("semanticPair");
+    expect(cekCoreRoute(7)).toEqual(["semanticFailureRoots"]);
+    expect(cekCoreRoute(7, { failure: "loop" })).toEqual([
+      "semanticFailureRoots",
+      "stagedWriteBitsLoop",
+    ]);
+  });
+
+  it("is undefined for no such group and for a semantics group the list has no stage for", () => {
+    expect(cekCoreRoute(CEK_CORE_GROUP_ENTRIES.length)).toBeUndefined();
+    expect(cekCoreRoute(-1)).toBeUndefined();
+    expect(
+      cekCoreRoute(5, { semantics: CEK_CORE_CHAIN.semanticBudget.to.length }),
+    ).toBeUndefined();
   });
 });

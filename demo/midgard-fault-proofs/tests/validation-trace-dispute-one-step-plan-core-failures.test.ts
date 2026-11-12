@@ -1,13 +1,15 @@
 /** Our plan of the two builtin failures of core group 7 (arm 36) that read
  * more than one hop's carriage: a writeBits failure over an input of at
  * most 512 words, which the semantic failure roots route to the writeBits
- * loop and the loop walks to the index outside the input, and a staged
+ * loop and the loop walks to the index outside the input (at the end of the
+ * list, and mid-list over the longest input), and a staged
  * builtin failure whose operand is past the staging chunk, whose evidence
  * names the staging outputs that hold it, as a staged builtin step's does
  * (validation-trace-dispute-one-step-plan-staged.test.ts). */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
   type MidgardCekCoreStepWitness,
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
@@ -25,6 +27,7 @@ import type { ValidationTraceStagingLookup } from "../src/validation-trace-dispu
 import {
   DECODE_UTF8_FAILURE_SCRIPT,
   WRITE_BITS_FAILURE_SCRIPT,
+  WRITE_BITS_WIDE_FAILURE_SCRIPT,
 } from "./support/validation-trace-dispute-loop-scripts.js";
 import {
   failingScriptMaterial,
@@ -144,6 +147,53 @@ describe("our plan of a writeBits failure", () => {
       2n,
     ]);
     expect(visits.map(({ facts }) => facts)).toEqual(plan.core.hops.facts);
+  });
+});
+
+describe("our plan of a writeBits failure over the loop's longest input, outside it mid-list", () => {
+  let plan: ValidationTraceCoreStepPlan;
+  let witness: Extract<
+    MidgardCekCoreStepWitness,
+    { readonly kind: "executeBuiltinWriteBitsFailure" }
+  >;
+
+  beforeAll(async () => {
+    const material = await failingScriptMaterial(
+      WRITE_BITS_WIDE_FAILURE_SCRIPT,
+    );
+    const step = await lastStepOf(material, "executeBuiltinWriteBitsFailure");
+    witness = step.witness;
+    plan = await planCoreStep(material, step.stateIndex);
+  });
+
+  it("takes an input of 512 words, the most group 7's roots route to the writeBits loop", () => {
+    const [input] = witness.arguments;
+    expect(witness.input).toHaveLength(4_096);
+    expect(input?.kind === "semanticConstant" && input.witness.memory).toBe(
+      MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
+    );
+    expect(witness.indices).toHaveLength(200);
+  });
+
+  it("walks the loop from a first hop that reveals the whole input to a last that opens the index outside it, the rest of the list its tail", () => {
+    const { holders, loops } = plan.core.hops;
+    // The hop budget fits the 121 indices up to the one outside the input in
+    // two hops, the first also hashing the whole input.
+    expect(holders).toEqual([
+      "semanticFailureRoots",
+      ...Array<string>(2).fill("stagedWriteBitsLoop"),
+    ]);
+    const walked = loops!.slice(1).map((loop) => loop!);
+    const hop = (at: number) => walked.at(at)!.hop as Constr<Data>;
+    const start = hop(0).fields[0] as Constr<Constr<Data>>;
+    expect(start.index).toBe(0);
+    expect(start.fields[0]!.fields[0]).toBe(
+      Buffer.from(witness.input).toString("hex"),
+    );
+    expect(walked.at(-1)).toMatchObject({ end: 121, state: null });
+    const tail = hop(-1).fields[2] as Constr<Data>;
+    expect(tail.fields[1]).toBe(79n);
+    expect(walk(plan).map(({ holder }) => holder)).toEqual(holders);
   });
 });
 

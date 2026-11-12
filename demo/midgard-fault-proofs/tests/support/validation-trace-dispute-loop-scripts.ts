@@ -206,6 +206,25 @@ export const WRITE_BITS_FAILURE_SCRIPT = failing(
   ),
 );
 
+/** STEP: `[(builtin writeBits) B L True]`, B the 4,096 bytes of the 64-byte
+ * pattern built at run time, the longest input the writeBits loop takes
+ * (512 words), and L a list constant of 200 indices inside B's 32,768 bits
+ * but the 121st, 32,768: writeBits fails, and group 7 proves it by the
+ * writeBits loop's walk, whose first hop reveals all of B and whose last
+ * opens that index mid-list, the 79 after it the hop's tail. */
+export const WRITE_BITS_WIDE_FAILURE_SCRIPT = failing(
+  call(
+    WRITE_BITS,
+    builtBytes(4_096),
+    ints(
+      Array.from({ length: 200 }, (_, index) =>
+        index === 120 ? 32_768n : BigInt((index * 4_099) % 32_768),
+      ),
+    ),
+    bool(true),
+  ),
+);
+
 /** STEP: `[(builtin decodeUtf8) B]`, B the 16,384 bytes of the 64-byte
  * pattern built at run time, whose 20th byte, 0x86, is no UTF-8: decodeUtf8
  * fails, and group 7's staged failure hop proves it from B's bytes, a

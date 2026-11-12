@@ -31,7 +31,10 @@ import {
 } from "../../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../../src/validation-trace-dispute/move-fee.js";
 import { VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
-import type { CekCoreGroup } from "../../src/validation-trace-dispute/one-step-core-chains.js";
+import type {
+  CekCoreGroup,
+  ValidationTraceArmHolder,
+} from "../../src/validation-trace-dispute/one-step-core-chains.js";
 import { validationTraceOneStepHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
@@ -131,25 +134,30 @@ export const LONGEST_FAILING_BUILTIN_SCRIPTS = Object.freeze({
   ),
 });
 
-/** The holders each driven CEK core group's arm chain visits, in order. */
-const ARMS_OF = {
-  0: ["compute"],
-  1: ["machine"],
-  3: ["directScalarRoots", "directScalarBudget", "directScalar"],
-  5: [
-    "semanticRoots",
-    "semanticResult",
-    "semanticBudget",
-    "semanticDataScalar",
-  ],
-  6: ["mapStartRoots", "mapStartBudget", "mapStartNodes"],
-  9: ["failureKnown", "failureBudget"],
-  12: ["failureBlsUncompress", "failureBudget"],
-  13: ["pv11Roots", "pv11Budget", "pv11Semantics"],
-  14: ["pv11Budget", "pv11Semantics"],
-} as const satisfies Partial<Record<CekCoreGroup, readonly string[]>>;
+/** The CEK core groups the deepest trace drives, each with the choice its
+ * step makes along the group's chain: group 5's builtin is of semantics
+ * group 5. */
+const DRIVEN = {
+  0: {},
+  1: {},
+  3: {},
+  5: { semantics: 5 },
+  6: {},
+  9: {},
+  12: {},
+  13: {},
+  14: {},
+} as const satisfies Partial<Record<CekCoreGroup, SDK.CekCoreChoice>>;
 
-type DrivenGroup = keyof typeof ARMS_OF;
+/** The holders each driven CEK core group's arm chain visits, in order. */
+const ARMS_OF = Object.fromEntries(
+  Object.entries(DRIVEN).map(([group, choice]) => [
+    group,
+    SDK.cekCoreRoute(Number(group), choice)!,
+  ]),
+) as Readonly<Record<keyof typeof DRIVEN, readonly ValidationTraceArmHolder[]>>;
+
+type DrivenGroup = keyof typeof DRIVEN;
 
 /** Where the successor's thread disputes our trace: the redeemer field's
  * canonical-decode step, the field `fieldBytes` long, or the last CEK core

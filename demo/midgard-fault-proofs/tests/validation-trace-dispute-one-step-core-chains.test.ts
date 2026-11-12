@@ -1,10 +1,14 @@
 /** Group 7's arm chain: the roots hop goes on to the writeBits loop for
  * writeBits over an input of at most 512 words, to the staged failure hop
  * for a byte-string, string, signature, integer or bitwise builtin and to
- * the material hop for the rest, as the on-chain roots route them by tag;
- * and the staged semantic stage the budget hop routes a staged builtin to. */
+ * the material hop for the rest of the protocol version 10 builtins, as the
+ * on-chain roots route them by tag, and refuses a later builtin; and the staged semantic stage the budget hop routes a staged builtin to. */
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation";
+import { CEK_CORE_CHAIN } from "@al-ft/midgard-sdk";
+import {
+  MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
+  type MidgardCekCoreStepWitness,
+} from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -57,7 +61,7 @@ describe("group 7's arm chain", () => {
     expect(hops.facts).toHaveLength(2);
   });
 
-  it.each([26n, 30n, 51n, 54n, 70n, 87n])(
+  it.each([26n, 30n, 51n, 54n, 70n])(
     "takes builtin %s from the roots to the material hop",
     (tag) => {
       expect(cekCoreArmHops(7, stagedFailure(tag), ROOT).holders).toEqual([
@@ -72,6 +76,21 @@ describe("group 7's arm chain", () => {
       cekCoreArmHops(7, stagedFailure(25n, [Buffer.alloc(5_000)]), ROOT)
         .holders,
     ).toEqual(["semanticFailureRoots", "stagedFailure"]);
+  });
+
+  it.each([87n, 128n])(
+    "refuses builtin %s, past the protocol version 10 builtins the roots take",
+    (tag) => {
+      expect(() => cekCoreArmHops(7, stagedFailure(tag), ROOT)).toThrow(
+        /refuse builtin/u,
+      );
+    },
+  );
+
+  it("routes writeBits to the loop over the inputs the loop's walk takes", () => {
+    expect(CEK_CORE_CHAIN.semanticFailureRoots.loopInputWords).toBe(
+      MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
+    );
   });
 
   it("refuses a witness of another arm", () => {
