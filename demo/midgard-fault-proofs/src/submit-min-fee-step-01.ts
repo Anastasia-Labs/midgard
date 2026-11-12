@@ -23,7 +23,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
@@ -34,13 +33,13 @@ import {
 import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
 import { type PublishedProofChunk } from "./proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import {
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
@@ -50,7 +49,6 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -220,13 +218,11 @@ export const submitMinFeeStep01 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  signer.selectWallet(lucid);
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: chunks.map(({ utxo }) => utxo),
   });
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(inclusionCarriage.referenceInputs)
     .pay.ToContract(
@@ -236,16 +232,13 @@ export const submitMinFeeStep01 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = inclusionCarriage.attachWithdrawal(base);
-  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
+  const signed = await completeStep(tx, funding);
   if (resolved === undefined) {
     throw minFeeSubmitError("step-01 layout was not resolved.");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -258,16 +251,8 @@ export const submitMinFeeStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw minFeeSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
