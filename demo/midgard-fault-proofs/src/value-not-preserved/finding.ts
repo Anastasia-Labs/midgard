@@ -10,9 +10,10 @@
  *
  * Fail-closed edges, straight from the plan:
  *
- * - a REJECTED commitment (`TxIsInvalid`) is never searchable: the honest
- *   machine records it without applying it, so no imbalance in its body is a
- *   fault (§1.4) — the search refuses rather than returns `balanced`;
+ * - a REJECTED commitment (`TxIsInvalid`) is never searchable: a normal
+ *   leaf claims acceptance, so a rejected one is itself a fault that
+ *   l2TxMistag convicts, and this family declines it rather than convict the
+ *   same leaf twice — the search refuses rather than returns `balanced`;
  * - a spend input whose pre-state value cannot be resolved (created inside
  *   the same block, §7.4) makes every verdict unprovable under the v1
  *   pre-state-membership evidence model — the search says so explicitly
@@ -86,7 +87,7 @@ export const findValueNotPreserved = ({
 }): ValueNotPreservedFinding => {
   if (validity !== "TxIsValid") {
     throw new Error(
-      `${VALUE_NOT_PRESERVED_CATEGORY_LABEL} finding: refusing to search a rejected commitment — an honest no-op recording never convicts (§1.4)`,
+      `${VALUE_NOT_PRESERVED_CATEGORY_LABEL} finding: refusing to search a rejected commitment — l2TxMistag convicts a rejected normal leaf, not this family`,
     );
   }
   const gaps = spentValues.filter(

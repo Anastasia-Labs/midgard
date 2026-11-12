@@ -1,5 +1,4 @@
 import {
-  computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
   decodeMidgardMintPolicyItem,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -13,7 +12,7 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import {
   keyValuePhasProof,
@@ -68,14 +67,16 @@ const eventLedger = async (
       { key: Buffer.from(outRef), value: Buffer.from(output) },
     ]),
   );
+  // Each leaf as the ledger root commits it, including the descriptor of an
+  // output whose native script does not decode.
   const root = async () =>
     await keyValuePhasRootWithCount(
       [...outputs.values()].map((entry) => ({
         key: entry.key,
-        value: buildCanonicalMidgardLedgerEntryOutputMaterial({
-          outRef: entry.key,
-          outputCbor: entry.value,
-        }).descriptorCbor,
+        value: ledgerEntryLeaf(
+          { outRef: entry.key, output: entry.value },
+          "value conservation",
+        ).leaf,
       })),
     );
   let ledger = await root();
@@ -116,6 +117,12 @@ const eventLedger = async (
           ? event.entry.value.verdict === "ForcedTxValid"
           : event.entry.validity === "TxIsValid";
       if (valid) {
+        const transactionId = Buffer.from(
+          event.phase === "ForcedTransaction"
+            ? event.entry.value.tx_id
+            : event.entry.txId,
+          "hex",
+        );
         const transaction = (
           event.phase === "ForcedTransaction"
             ? decodeMidgardForcedTxFullFromCanonicalCbor
@@ -135,7 +142,7 @@ const eventLedger = async (
           transaction.body.outputsPreimageCbor,
         ).entries()) {
           const key = encodeMidgardSpendInputItem({
-            txId: computeMidgardNativeTxId(transaction),
+            txId: transactionId,
             outputIndex,
           });
           outputs.set(key.toString("hex"), { key, value });

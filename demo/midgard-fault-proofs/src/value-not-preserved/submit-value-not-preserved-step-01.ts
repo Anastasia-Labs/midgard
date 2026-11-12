@@ -10,9 +10,10 @@
  * before it costs anything:
  *
  * - the state-queue block's header hash must be the thread NFT's;
- * - the acceptance gate: a `validity_code != 0` leaf is an honest no-op
- *   recording, outside this family's domain (§1.4) — refused here exactly as
- *   the validator refuses it;
+ * - the acceptance gate: a `validity_code != 0` leaf is outside this
+ *   family's domain — a normal leaf claims acceptance, so l2TxMistag
+ *   convicts it and this family declines it rather than convict the same
+ *   leaf twice — refused here exactly as the validator refuses it;
  * - the claim must be well-formed (28-byte policy, ≤32-byte name);
  * - the forwarded state's `committed_fee` and `prev_utxos_root` must be the
  *   root-committed fee and the challenged header's pre-state ledger root —
@@ -180,12 +181,12 @@ export const submitValueNotPreservedStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  // §1.4 acceptance gate: only an operator-ACCEPTED transaction is in this
-  // family's domain. An invalid transaction honestly recorded as a no-op is
-  // correct block production and must never reach the fold.
+  // Acceptance gate: only an operator-ACCEPTED transaction is in this
+  // family's domain. A normal leaf with a non-zero validity code is itself
+  // a fault that l2TxMistag convicts, and it never reaches this fold.
   if (txInclusion.nativeTx.validity_code !== 0n) {
     throw valueNotPreservedSubmitError(
-      `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is an honest no-op recording — outside this family's domain.`,
+      `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is l2TxMistag's fault — outside this family's domain.`,
     );
   }
   if (!claimedAssetIsWellFormed(claimedAsset)) {

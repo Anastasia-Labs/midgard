@@ -12,7 +12,10 @@
  *   (tests/replay-prerequisite.withdrawal-replay-prerequisites.ts:73,93);
  * - a step out of phase order wants its transition proof, which the
  *   transition-trace phase band discharges
- *   (tests/transition-trace-phase-band.test.ts:115);
+ *   (tests/transition-trace-phase-band.test.ts:115); a misplaced deposit's
+ *   band fault is structural, so the header classifier seals it before any
+ *   family replays the block
+ *   (tests/header-classifier.transition-trace-structural-route.test.ts:318);
  * - an output the ledger already holds is refused by name.
  */
 import * as SDK from "@al-ft/midgard-sdk";
@@ -20,128 +23,60 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { createEventLedgerWalk } from "../src/event-ledger.js";
+import {
+  createEventLedgerWalk,
+  reconstructionEventLedgerWalk,
+} from "../src/event-ledger.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import { nativeScriptDecodingPriorLedger } from "../src/native-script-decoding/replay.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
-import { transitionTraceCanonicalDetections } from "../src/transition-trace/replay-authority.canonical-detections.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
-  type CompleteCanonicalReplay,
-  completeCanonicalReplayPredecessorLedger,
-  createCompleteCanonicalReplayUnion,
+  isStructurallyInconsistent,
+  transitionTraceCanonicalDetections,
+} from "../src/transition-trace/replay-authority.canonical-detections.js";
+import {
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
-import {
-  assertReplayPrerequisiteCovered,
-  CanonicalReplayPrerequisiteError,
-} from "../src/workflow/replay-prerequisite.js";
+import { assertReplayPrerequisiteCovered } from "../src/workflow/replay-prerequisite.js";
 import {
   authenticatedHeaderObservation,
   buildFixtureTransaction,
   type FixtureTransactionInput,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { committedL2BlockFixture } from "./helpers/committed-l2-block-fixture.js";
+import {
+  block,
+  NATIVE,
+  OTHER,
+  prerequisites,
+  SPENT,
+  type Step,
+} from "./helpers/event-ledger-committed-steps.js";
 import {
   hex,
   outRef,
-  undecodableNativeOutput,
   withdrawalOf,
 } from "./helpers/event-ledger-seeded-blocks.js";
 import { inputExistenceChronologyFixture } from "./helpers/input-existence-chronology-fixture.js";
 import { buildForcedAndL2Block } from "./support/transition-trace-phase-band.forced-and-l2-block.js";
-
-const NATIVE: LedgerEntry = {
-  outRef: outRefCbor(0xa1, 0n),
-  output: undecodableNativeOutput,
-};
-const SPENT: LedgerEntry = {
-  outRef: outRefCbor(0xa2, 0n),
-  output: makeOutput(2_000_000n),
-};
-const OTHER: LedgerEntry = {
-  outRef: outRefCbor(0xa3, 0n),
-  output: makeOutput(3_000_000n),
-};
-
-type Step = Readonly<{
-  input: FixtureTransactionInput;
-  /** Whether the operator's committed root applies the step's effects. */
-  applied: boolean;
-}>;
-
-/** The steps over `predecessor`, committed with the operator's roots. */
-const block = async (
-  steps: readonly Step[],
-  predecessor: readonly LedgerEntry[] = [NATIVE, SPENT, OTHER],
-) => {
-  const txs = steps.map(({ input }) => buildFixtureTransaction(input));
-  const ledger = new Map(
-    predecessor.map((entry) => [hex(entry.outRef), entry]),
-  );
-  const roots = [await ledgerEntriesRoot(predecessor)];
-  for (const [index, { input, applied }] of steps.entries()) {
-    if (applied) {
-      for (const key of input.spendInputs) ledger.delete(hex(key));
-      for (const [outputIndex, output] of (input.outputs ?? []).entries()) {
-        const key = outRef(txs[index]!.txId, outputIndex);
-        ledger.set(hex(key), { outRef: key, output });
-      }
-    }
-    roots.push(await ledgerEntriesRoot([...ledger.values()]));
-  }
-  const fixture = await committedL2BlockFixture({
-    predecessorEntries: predecessor,
-    txs,
-    steps: txs.map((_, index) => ({
-      pre: roots[index]!,
-      post: roots[index + 1]!,
-    })),
-  });
-  return {
-    ...fixture,
-    txs,
-    key: (index: number): SDK.EventKey => ({
-      L2TransactionEventKey: { tx_id: txs[index]!.txId },
-    }),
-    /** Step `index`'s transactions-root position, which findings name. */
-    position: (index: number) =>
-      BigInt(
-        fixture.evidence.reconstruction.transactions.findIndex(
-          ({ txId }) => txId === txs[index]!.txId,
-        ),
-      ),
-    walk: () =>
-      createEventLedgerWalk({
-        block: fixture.evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
-      }),
-    replay: async (members: readonly CompleteCanonicalReplay[]) => {
-      const replayer =
-        members.length === 1
-          ? members[0]!
-          : createCompleteCanonicalReplayUnion(members);
-      const { detections } = await replayer.replay(
-        fixture.evidence,
-        fixture.context,
-      );
-      return {
-        detections,
-        classification: await classifyCanonicalBlockViolations({
-          evidence: fixture.evidence,
-          detections,
-          minimumConfirmationDepth: 1,
-        }),
-      };
-    },
-  };
-};
+import {
+  buildPayloadFixture,
+  depositEventKey,
+  reconstruct,
+  withdrawalEventKey,
+} from "./transition-trace-challenger.build-payload-fixture.js";
+import {
+  depositInfo,
+  encodedEntry,
+  eventToStepEntry,
+  outRef as sourceRef,
+  withdrawalInfo,
+} from "./transition-trace-challenger.native-material.js";
 
 /** An accepted transaction whose reference input carries a native script
  * that does not decode: a native-script-decoding wrongful acceptance. */
@@ -159,24 +94,6 @@ const rejected = (applied: boolean): Step => ({
   input: { validity: "TxIsInvalid", spendInputs: [OTHER.outRef], fee: 5n },
   applied,
 });
-
-/** The distinct prerequisites a replay leaves undischarged: each candidate
- * of a refused event names its own. */
-const prerequisites = async (run: () => Promise<unknown>) => {
-  const error = await run().then(
-    () => undefined,
-    (cause: unknown) => cause,
-  );
-  if (!(error instanceof CanonicalReplayPrerequisiteError))
-    throw new Error(`expected a prerequisite, got ${String(error)}`);
-  const distinct = new Map(
-    error.failures.map(({ eventKeyCbor, prerequisite }) => [
-      `${eventKeyCbor}:${prerequisite}`,
-      { eventKey: Data.from(eventKeyCbor, SDK.EventKey), prerequisite },
-    ]),
-  );
-  return [...distinct.values()];
-};
 
 describe("a rejected normal step in the event ledger", () => {
   it("changes nothing, so a later native fault stays challengeable, and l2TxMistag convicts the step", async () => {
@@ -401,5 +318,66 @@ describe("a step out of phase order in the event ledger", () => {
         band,
       ),
     ).not.toThrow();
+  });
+});
+
+describe("a deposit stepped before an earlier phase's event", () => {
+  it("wants the deposit's transition proof, and its phase-band fault is structural", async () => {
+    const [withdrawalId, depositId] = [sourceRef(21), sourceRef(22)];
+    const events = [
+      [depositEventKey(depositId), "Deposit"],
+      [withdrawalEventKey(withdrawalId), "Withdrawal"],
+    ] as const;
+    const reconstruction = await reconstruct(
+      await buildPayloadFixture({
+        withdrawals: [
+          encodedEntry({
+            key: withdrawalId,
+            keySchema: SDK.OutputReference as never,
+            value: withdrawalInfo(20),
+            valueSchema: SDK.WithdrawalInfoSchema,
+          }),
+        ],
+        deposits: [
+          encodedEntry({
+            key: depositId,
+            keySchema: SDK.OutputReference as never,
+            value: depositInfo(40),
+            valueSchema: SDK.DepositInfoSchema,
+          }),
+        ],
+        steps: events.map(([event_key, phase], index) => ({
+          schema_version: 1n,
+          step_index: BigInt(index),
+          event_key,
+          phase,
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        })),
+        eventToStep: events.map(([eventKey, phase], index) =>
+          eventToStepEntry(eventKey, { step_index: BigInt(index), phase }),
+        ),
+      }),
+    );
+    const [deposit, withdrawal] = events.map(([eventKey]) => eventKey);
+    await expect(
+      reconstructionEventLedgerWalk(reconstruction).before(withdrawal!, 1n),
+    ).rejects.toMatchObject({ reason: "phase_order_changed", step: 0n });
+    expect(
+      await prerequisites(() =>
+        nativeScriptDecodingPriorLedger(reconstruction, 1n),
+      ),
+    ).toEqual([{ eventKey: deposit, prerequisite: "prior_transition_effect" }]);
+    // Each step lies in the other's band. Such a block never reaches the
+    // replay union: the header classifier seals the band fault first.
+    const detections = await detectTransitionTraceFaults(reconstruction);
+    expect(
+      detections
+        .filter(({ invariant }) => invariant === "event_to_step_phase_band")
+        .map(({ kind, buildable }) => ({ kind, buildable })),
+    ).toEqual(
+      [0, 1].map(() => ({ kind: "eventToStepMismatch", buildable: true })),
+    );
+    expect(isStructurallyInconsistent(detections)).toBe(true);
   });
 });

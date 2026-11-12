@@ -70,7 +70,9 @@ export const findNetworkIdFaults = ({
 }): readonly NetworkIdFaultClaim[] => {
   const expected = expectNetwork(expectedNetworkId, "expected network id");
   const inspected = exactCanonicalTransaction(evidence);
-  // TxIsInvalid is an honest no-op, not a block fault.
+  // A normal leaf claims acceptance, so a rejected one is itself a block
+  // fault that l2TxMistag convicts; this family declines it rather than
+  // convict the same leaf twice.
   if (inspected.tx.validity !== "TxIsValid") return [];
 
   const faults: NetworkIdFaultClaim[] = [];
