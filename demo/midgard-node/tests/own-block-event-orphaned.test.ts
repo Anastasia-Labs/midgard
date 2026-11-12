@@ -86,6 +86,7 @@ import {
   FRONTIER,
   land,
   processOf,
+  R1,
   run,
   seed,
 } from "./landed-blocks-rebase.fixture.js";
@@ -125,6 +126,13 @@ const projectedDeposit = async (): Promise<ProjectedEvent> => {
   return read.value[0]!;
 };
 
+/**
+ * One node process whose native MPF is at the own chain's end root (C's),
+ * as the rebase that applied A, B and C left it: a durable root away from
+ * it would make the recompute rebase the working ledger.
+ */
+const ownChainProcess = () => processOf({ ...freshNative(), durableRoot: R1 });
+
 /** A, B and C land as processed own blocks, built locally (applied). */
 const landOwnChain = async (
   globals: Globals,
@@ -153,7 +161,7 @@ const landOwnChain = async (
 const arrangeDeposit = async (relands: boolean) => {
   const deposit = await projectedDeposit();
   const eventId = Buffer.from(deposit.idCbor, "hex");
-  const globals = await processOf(freshNative());
+  const globals = await ownChainProcess();
   await landOwnChain(globals, { depositIds: [eventId] });
   const view = { events: [deposit] as readonly ProjectedEvent[] };
   const plan = Effect.suspend(() =>
@@ -206,7 +214,7 @@ const arrangeDeposit = async (relands: boolean) => {
  * longer holds (its key is not in `l1_event_keys`).
  */
 const arrangeWithdrawal = async () => {
-  const globals = await processOf(freshNative());
+  const globals = await ownChainProcess();
   await landOwnChain(globals);
   await run(
     globals,
