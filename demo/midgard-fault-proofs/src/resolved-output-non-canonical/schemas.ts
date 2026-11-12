@@ -12,20 +12,19 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ResolvedOutputVerdictSubjectSchema = VerdictSubjectSchema;
 export const ResolvedOutputBoundInputSchema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   source_kind: Data.Integer(),
   input_index: Data.Integer(),
   prior_root: Data.Bytes(),
 });
 export const ResolvedOutputAuthenticatedOutRefSchema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   prior_root: Data.Bytes(),
   out_ref: OutputReferenceSchema,
 });
 export const ResolvedOutputCanonicalVerdictSchema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   output_is_non_canonical: Data.Boolean(),
 });
 export const ResolvedOutputScanControlSchema = Data.Object({
@@ -54,13 +53,12 @@ export const ResolvedOutputScanControlSchema = Data.Object({
   reference_script_length: Data.Integer(),
 });
 export const ResolvedOutputReconstructionSchema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   descriptor_cbor: Data.Bytes(),
   control: ResolvedOutputScanControlSchema,
 });
-export const ResolvedOutputStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const ResolvedOutputStep01ArgsSchema = Data.Object({
-  source: ResolvedOutputStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   source_kind: Data.Integer(),
   input_index: Data.Integer(),
 });
@@ -110,9 +108,8 @@ export const ResolvedOutputStep04ArgsSchema = Data.Object({
 export const ResolvedOutputStep04RedeemerSchema = faultProofStepRedeemerSchema(
   ResolvedOutputStep04ArgsSchema,
 );
-export const ResolvedOutputStreamFrameSchema = StreamFrameSchema;
 export const ResolvedOutputDatumVerdictStateSchema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   item_commitment: Data.Bytes(),
   datum_start: Data.Integer(),
   datum_end: Data.Integer(),
@@ -127,7 +124,7 @@ export const ResolvedOutputStep04DatumArgsSchema = Data.Object({
   output_index: Data.Integer(),
   chunk_proof: BoundedItemChunkProofSchema,
   next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
-  revealed: Data.Array(ResolvedOutputStreamFrameSchema),
+  revealed: Data.Array(StreamFrameSchema),
   tail_root: Data.Bytes(),
   node_budget: Data.Integer(),
 });

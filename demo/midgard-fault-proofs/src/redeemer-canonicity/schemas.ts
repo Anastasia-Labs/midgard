@@ -27,8 +27,6 @@ export const RedeemerCanonicityTerminalSchema = Data.Object({
   canonical: Data.Boolean(),
 });
 
-export const RedeemerCanonicityStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
 /**
  * The step-01 source as retained in the workflow artifact, which keeps the
  * full forced-transaction membership.
@@ -47,7 +45,7 @@ export const RedeemerCanonicityStep01SourceArtifactSchema = Data.Enum([
   }),
 ]);
 export const RedeemerCanonicityStep01ArgsSchema = Data.Object({
-  source: RedeemerCanonicityStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   redeemer_index: Data.Integer(),
 });
 export const RedeemerCanonicityStep01RedeemerSchema =
@@ -63,7 +61,6 @@ export const RedeemerCanonicityStep02ArgsSchema = Data.Object({
 });
 export const RedeemerCanonicityStep02RedeemerSchema =
   faultProofStepRedeemerSchema(RedeemerCanonicityStep02ArgsSchema);
-export const RedeemerCanonicityStreamFrameSchema = StreamFrameSchema;
 export const RedeemerCanonicityDataScanStateSchema = Data.Object({
   bound: RedeemerCanonicityBoundSchema,
   data_length: Data.Integer(),
@@ -77,7 +74,7 @@ export const RedeemerCanonicityStep02DataArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   window: Data.Bytes(),
-  revealed: Data.Array(RedeemerCanonicityStreamFrameSchema),
+  revealed: Data.Array(StreamFrameSchema),
   tail_root: Data.Bytes(),
   node_budget: Data.Integer(),
 });

@@ -16,4 +16,3 @@ export const StreamFrameSchema = Data.Enum([
     }),
   }),
 ]);
-export type StreamFrame = Data.Static<typeof StreamFrameSchema>;

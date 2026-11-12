@@ -7,9 +7,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ProtectedOutputSignerVerdictSubjectSchema = VerdictSubjectSchema;
 export const ProtectedOutputSignerBoundSchema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   output_index: Data.Integer(),
 });
 export const ProtectedOutputSignerStep02StateSchema = Data.Object({
@@ -17,7 +16,7 @@ export const ProtectedOutputSignerStep02StateSchema = Data.Object({
   witness_set_hash: Data.Bytes(),
 });
 export const ProtectedOutputSignerCredentialSchema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   transaction_id: Data.Bytes(),
   witness_set_hash: Data.Bytes(),
   output_index: Data.Integer(),
@@ -29,16 +28,14 @@ export const ProtectedOutputSignerScanSchema = Data.Object({
   signer_present: Data.Boolean(),
 });
 export const ProtectedOutputSignerVerdictSchema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   signer_required: Data.Boolean(),
   signer_present: Data.Boolean(),
 });
-export const ProtectedOutputSignerStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
 export const ProtectedOutputSignerStep01RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
-      source: ProtectedOutputSignerStep01SourceSchema,
+      source: ProofThreadSubjectSourceSchema,
       output_index: Data.Integer(),
     }),
   );

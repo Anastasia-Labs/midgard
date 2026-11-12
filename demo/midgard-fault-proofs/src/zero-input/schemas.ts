@@ -9,11 +9,10 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { ZeroInputStateSchema } from "./family.js";
 
-export const ZeroInputStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const ZeroInputForcedSourcePayloadSchema =
   ProofThreadForcedSourcePayloadSchema;
 export const ZeroInputStep01ArgsSchema = Data.Object({
-  source: ZeroInputStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
 });
 export const ZeroInputStep01RedeemerSchema = faultProofStepRedeemerSchema(
   ZeroInputStep01ArgsSchema,

@@ -12,11 +12,8 @@ import {
   ObserverOrderInvalidScanStateSchema,
 } from "./family.js";
 
-export const ObserverOrderInvalidStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
-
 export const ObserverOrderInvalidStep01ArgsSchema = Data.Object({
-  source: ObserverOrderInvalidStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   observer_index: Data.Integer(),
 });
 export const ObserverOrderInvalidStep01RedeemerSchema =

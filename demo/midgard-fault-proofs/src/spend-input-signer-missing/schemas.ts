@@ -8,15 +8,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const SpendInputSignerVerdictSubjectSchema = VerdictSubjectSchema;
 export const SpendInputSignerBoundSchema = Data.Object({
-  subject: SpendInputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   input_index: Data.Integer(),
   prior_root: Data.Bytes(),
   witness_set_hash: Data.Bytes(),
 });
 export const SpendInputSignerAuthenticatedSchema = Data.Object({
-  subject: SpendInputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   transaction_id: Data.Bytes(),
   witness_set_hash: Data.Bytes(),
   payment_credential: Data.Bytes(),
@@ -26,16 +25,14 @@ export const SpendInputSignerScanSchema = Data.Object({
   checkpoint_hash: Data.Bytes(),
 });
 export const SpendInputSignerVerdictSchema = Data.Object({
-  subject: SpendInputSignerVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   signer_required: Data.Boolean(),
   signer_missing: Data.Boolean(),
 });
-export const SpendInputSignerStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
 export const SpendInputSignerStep01RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
-      source: SpendInputSignerStep01SourceSchema,
+      source: ProofThreadSubjectSourceSchema,
       input_index: Data.Integer(),
     }),
   );

@@ -10,9 +10,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const OutputReferenceVerdictSubjectSchema = VerdictSubjectSchema;
 export const OutputReferenceBoundOutputSchema = Data.Object({
-  subject: OutputReferenceVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   output_index: Data.Integer(),
   accused_class: Data.Integer(),
 });
@@ -58,10 +57,9 @@ export const OutputReferenceScanStateSchema = Data.Object({
   checkpoint_hash: Data.Bytes(),
   result_class: Data.Integer(),
 });
-export const OutputReferenceStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const OutputReferenceStep01RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
-    source: OutputReferenceStep01SourceSchema,
+    source: ProofThreadSubjectSourceSchema,
     output_index: Data.Integer(),
   }),
 );

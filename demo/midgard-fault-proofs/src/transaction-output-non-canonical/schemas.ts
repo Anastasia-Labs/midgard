@@ -15,10 +15,8 @@ import {
 
 export const TransactionOutputScanControlSchema = MinAdaOutputScanControlSchema;
 
-export const TransactionOutputStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
 export const TransactionOutputStep01ArgsSchema = Data.Object({
-  source: TransactionOutputStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   output_index: Data.Integer(),
 });
 export const TransactionOutputStep01RedeemerSchema =
@@ -64,7 +62,6 @@ export const TransactionOutputStep04ArgsSchema = Data.Object({
 });
 export const TransactionOutputStep04RedeemerSchema =
   faultProofStepRedeemerSchema(TransactionOutputStep04ArgsSchema);
-export const TransactionOutputStreamFrameSchema = StreamFrameSchema;
 export const TransactionOutputDatumScanStateSchema = Data.Object({
   scan: TransactionOutputScanStateSchema,
   cursor: Data.Integer(),
@@ -76,7 +73,7 @@ export const TransactionOutputStep03DatumArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   window: Data.Bytes(),
-  revealed: Data.Array(TransactionOutputStreamFrameSchema),
+  revealed: Data.Array(StreamFrameSchema),
   tail_root: Data.Bytes(),
   node_budget: Data.Integer(),
 });

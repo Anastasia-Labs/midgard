@@ -19,9 +19,8 @@ export const MintItemScanControlSchema = Data.Object({
   previous_asset: Data.Nullable(Data.Bytes()),
 });
 
-export const MintItemStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const MintItemStep01ArgsSchema = Data.Object({
-  source: MintItemStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   item_index: Data.Integer(),
 });
 export const MintItemStep01RedeemerSchema = faultProofStepRedeemerSchema(

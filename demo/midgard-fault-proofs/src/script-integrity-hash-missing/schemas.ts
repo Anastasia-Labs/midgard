@@ -11,18 +11,17 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ScriptIntegrityVerdictSubjectSchema = VerdictSubjectSchema;
 export const ScriptIntegrityBindStateSchema = Data.Enum([
   Data.Object({
     BoundAccepted: Data.Object({
-      subject: ScriptIntegrityVerdictSubjectSchema,
+      subject: VerdictSubjectSchema,
       witness_set_hash: Data.Bytes(),
     }),
   }),
   Data.Literal("PendingForced"),
 ]);
 export const ScriptIntegritySubjectStateSchema = Data.Object({
-  subject: ScriptIntegrityVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   witness_set_hash: Data.Bytes(),
 });
 export const ScriptIntegrityStagedPhaseSchema = Data.Enum([
@@ -46,13 +45,13 @@ export const ScriptIntegrityStagedPhaseSchema = Data.Enum([
   }),
 ]);
 export const ScriptIntegrityStagedStateSchema = Data.Object({
-  subject: ScriptIntegrityVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   witness_set_hash: Data.Bytes(),
   script_integrity_hash: Data.Bytes(),
   phase: ScriptIntegrityStagedPhaseSchema,
 });
 export const ScriptIntegrityDecisionStateSchema = Data.Object({
-  subject: ScriptIntegrityVerdictSubjectSchema,
+  subject: VerdictSubjectSchema,
   script_integrity_hash: Data.Bytes(),
   contains_non_native_script: Data.Boolean(),
   has_redeemers: Data.Boolean(),

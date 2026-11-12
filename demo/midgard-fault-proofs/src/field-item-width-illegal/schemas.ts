@@ -11,9 +11,8 @@ import {
   FieldItemWidthBoundCoordinateSchema,
 } from "./field-item-width-illegal.js";
 
-export const FieldItemWidthStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const FieldItemWidthStep01ArgsSchema = Data.Object({
-  source: FieldItemWidthStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   field_index: Data.Integer(),
   item_index: Data.Integer(),
 });

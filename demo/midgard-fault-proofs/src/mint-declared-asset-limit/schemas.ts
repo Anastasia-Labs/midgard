@@ -12,11 +12,8 @@ import {
   MintDeclaredAssetLimitFoldStateSchema,
 } from "./family.js";
 
-export const MintDeclaredAssetLimitStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
-
 export const MintDeclaredAssetLimitStep01ArgsSchema = Data.Object({
-  source: MintDeclaredAssetLimitStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
   policy_index: Data.Integer(),
 });
 export const MintDeclaredAssetLimitStep01RedeemerSchema =

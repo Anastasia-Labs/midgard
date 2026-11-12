@@ -8,10 +8,8 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { ObserversForbiddenStateSchema } from "./family.js";
 
-export const ObserversForbiddenStep01SourceSchema =
-  ProofThreadSubjectSourceSchema;
 export const ObserversForbiddenStep01ArgsSchema = Data.Object({
-  source: ObserversForbiddenStep01SourceSchema,
+  source: ProofThreadSubjectSourceSchema,
 });
 export const ObserversForbiddenStep01RedeemerSchema =
   faultProofStepRedeemerSchema(ObserversForbiddenStep01ArgsSchema);
