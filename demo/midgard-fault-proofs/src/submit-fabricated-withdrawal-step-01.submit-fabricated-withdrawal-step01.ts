@@ -26,7 +26,6 @@ import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { readJsonFile } from "./json-file.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -36,10 +35,10 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
-  selectFeeInput,
 } from "./step-support.js";
 import {
   deriveFabricatedWithdrawalStep01Handoff,
@@ -54,7 +53,6 @@ import {
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -151,8 +149,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
     nodeBlockTime: stateQueueNode.block_time,
     now: now(),
   });
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step02State },
@@ -214,9 +211,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const tx = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
@@ -232,19 +227,16 @@ export const submitFabricatedWithdrawalStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
     .validFrom(validity.validFrom)
     .validTo(validity.validTo);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve fabricated-withdrawal step 01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-01",
@@ -253,16 +245,8 @@ export const submitFabricatedWithdrawalStep01 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `fabricated-withdrawal step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
