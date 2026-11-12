@@ -14,11 +14,8 @@ import {
   lucidOwnOutputReader,
 } from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  fetchUtxoByOutRef,
-  type ResolvedProverSigner,
-} from "./runtime.js";
+import { fetchUtxoByOutRef, type ResolvedProverSigner } from "./runtime.js";
+import { submitStep } from "./step-completion.js";
 import {
   claimOwnOutputs,
   type OwnOutputJournal,
@@ -26,7 +23,6 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -151,8 +147,8 @@ export const certifyFaultProofFieldCarriage = async ({
     );
   }
   ownOutputs?.claim(key, claim!.outRef);
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: "field-preimage certification",
     referenceScripts: [
       workflowReferenceScript({
         role: "field-preimage-certificate-mint",
@@ -161,16 +157,8 @@ export const certifyFaultProofFieldCarriage = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   const certificateUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: { txHash, outputIndex: 0 },

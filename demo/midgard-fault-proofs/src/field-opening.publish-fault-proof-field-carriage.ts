@@ -16,11 +16,8 @@ import {
   lucidOwnOutputReader,
 } from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  fetchUtxoByOutRef,
-  type ResolvedProverSigner,
-} from "./runtime.js";
+import { fetchUtxoByOutRef, type ResolvedProverSigner } from "./runtime.js";
+import { submitStep } from "./step-completion.js";
 import {
   claimOwnOutputs,
   type OwnOutputJournal,
@@ -28,10 +25,7 @@ import {
   readOwnOutputs,
   resolveOwnOutputs,
 } from "./workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-} from "./workflow/transaction-boundary.js";
+import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
 /**
  * The §8 carriage as the step's redeemer must spell it, with every positional
@@ -243,18 +237,12 @@ export const publishFaultProofFieldCarriage = async ({
     const signed = await unsigned.sign.withWallet().complete();
     const [claim] = claimOwnOutputs({ signed, slots: [slot] });
     ownOutputs.claim(key, claim!.outRef);
-    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-      signed,
+    const txHash = await submitStep(lucid, signed, {
+      label: `${label} §8 carriage publication`,
       referenceScripts: [],
       boundary: preSubmitBoundary,
+      awaitConfirmation: true,
     });
-    const txHash = await signed.submit();
-    if (txHash !== expectedTxHash) {
-      throw new Error(
-        `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-      );
-    }
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
     await publicationConfirmed?.(txHash);
     published.push(
       await fetchUtxoByOutRef({
