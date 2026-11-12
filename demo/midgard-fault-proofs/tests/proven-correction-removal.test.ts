@@ -1,16 +1,18 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   generateEmulatorAccount,
   Lucid,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   driveProvenCorrectionRemoval,
   excludeReservedFunding,
+  type HoldWalletInputs,
   resolveProverSigner,
 } from "../src/index.js";
 import {
@@ -99,11 +101,84 @@ const otherCaller = async (fixture: ProvedDoubleSpendFixture) => {
   };
 };
 
+/** A signed transaction's inputs and collateral at `address`. */
+const walletCoinsOf = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  cbor: string,
+  address: string,
+) => {
+  const body = CML.Transaction.from_cbor_hex(cbor).body();
+  const outRefs = (inputs: CML.TransactionInputList | undefined) =>
+    Array.from({ length: inputs?.len() ?? 0 }, (_, index) => {
+      const input = inputs!.get(index);
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex: Number(input.index()),
+      };
+    });
+  const spent = await lucid.utxosByOutRef([
+    ...outRefs(body.inputs()),
+    ...outRefs(body.collateral_inputs()),
+  ]);
+  return {
+    collateral: outRefs(body.collateral_inputs()).map(outRefLabel),
+    wallet: [
+      ...new Set(
+        spent.filter((utxo) => utxo.address === address).map(outRefLabel),
+      ),
+    ].sort(),
+  };
+};
+
+/** The removal's wallet holds and submissions, in the order they happen. */
+const walletEvents = (
+  fixture: ProvedDoubleSpendFixture,
+  refuse?: (outRefs: readonly string[]) => Error | undefined,
+) => {
+  const events: (
+    | Readonly<{
+        kind: "hold";
+        outRefs: readonly string[];
+        release: () => void;
+      }>
+    | Readonly<{
+        kind: "submit";
+        coins: Awaited<ReturnType<typeof walletCoinsOf>>;
+      }>
+  )[] = [];
+  /** Records every submission from now on, with the wallet coins it
+   * spends while they are unspent. */
+  const watch = (
+    lucid: Awaited<ReturnType<typeof Lucid>>,
+    walletAddress: string,
+  ) => {
+    const submit = fixture.emulator.submitTx.bind(fixture.emulator);
+    vi.spyOn(fixture.emulator, "submitTx").mockImplementation(async (cbor) => {
+      events.push({
+        kind: "submit",
+        coins: await walletCoinsOf(lucid, cbor, walletAddress),
+      });
+      return await submit(cbor);
+    });
+  };
+  const hold: HoldWalletInputs = ({ outRefs, untilMs }) => {
+    expect(untilMs).toBeGreaterThan(Date.now());
+    const refused = refuse?.(outRefs);
+    if (refused !== undefined) throw refused;
+    const release = vi.fn();
+    events.push({ kind: "hold", outRefs, release });
+    return release;
+  };
+  return { events, hold, watch };
+};
+
 const finish = async (
   fixture: ProvedDoubleSpendFixture,
   correction: Parameters<typeof driveProvenCorrectionRemoval>[0]["correction"],
+  wallet?: ReturnType<typeof walletEvents>,
 ) => {
   const caller = await otherCaller(fixture);
+  wallet?.watch(caller.lucid, caller.signer.address);
   const now = BigInt(fixture.emulator.now());
   const result = await driveProvenCorrectionRemoval({
     lucid: caller.lucid,
@@ -112,6 +187,7 @@ const finish = async (
     network,
     signer: caller.signer,
     correction,
+    holdWalletInputs: wallet?.hold ?? (() => () => undefined),
     validFrom: now - 120_000n,
     validTo: now + 300_000n,
   });
@@ -127,12 +203,31 @@ describe("driving a proven fraud-proof correction from L1", () => {
       fraudProofAssetName: fixture.step04Result.fraudProofAssetName,
     };
 
-    const { result: started } = await finish(fixture, correction);
+    const wallet = walletEvents(fixture);
+    const { result: started } = await finish(fixture, correction, wallet);
     if (started.kind !== "proven") throw new Error(started.kind);
     expect(started.fraudProofOutRef).toBe(outRefLabel(fixture.fraudProofUtxo));
     expect((await started.removal).fraudProver).toBe(
       fixture.proverPaymentKeyHash,
     );
+    // Each peel held its own wallet coins, collateral included, before it
+    // was submitted; the confirmed removal released every hold.
+    expect(wallet.events.map(({ kind }) => kind)).toEqual([
+      "hold",
+      "submit",
+      "hold",
+      "submit",
+    ]);
+    for (let index = 0; index < wallet.events.length; index += 2) {
+      const [held, submitted] = wallet.events.slice(index, index + 2);
+      if (held?.kind !== "hold" || submitted?.kind !== "submit")
+        throw new Error("a submission was not held first");
+      const { collateral, wallet: coins } = submitted.coins;
+      expect(collateral.length).toBeGreaterThan(0);
+      expect(coins).toEqual(expect.arrayContaining(collateral));
+      expect([...held.outRefs].sort()).toEqual(coins);
+      expect(held.release).toHaveBeenCalledOnce();
+    }
 
     expect(await lockDatum(fixture)).toBe("Idle");
     await expectStateQueueHeaderOrder({
@@ -172,6 +267,24 @@ describe("driving a proven fraud-proof correction from L1", () => {
     });
     // The finalized view still shows the lock; the live one has moved on.
     expect((await finish(fixture, lock)).result.kind).toBe("finished");
+  }, 240_000);
+
+  it("submits nothing when a wallet coin of the removal is already taken", async () => {
+    const { fixture, lock } = await interruptedRemoval();
+    const before = await lockDatum(fixture);
+    const wallet = walletEvents(fixture, (outRefs) =>
+      outRefs.length === 0 ? undefined : new Error("prover coin is reserved"),
+    );
+    const { result: started } = await finish(fixture, lock, wallet);
+    if (started.kind !== "proven") throw new Error(started.kind);
+    await expect(started.removal).rejects.toThrow("prover coin is reserved");
+    expect(wallet.events).toEqual([]);
+    expect(await lockDatum(fixture)).toEqual(before);
+    await expectStateQueueHeaderOrder({
+      lucid: fixture.funderLucid,
+      contracts: fixture.contracts,
+      expectedHeaderHashes: [fixture.headerHash],
+    });
   }, 240_000);
 
   it("submits nothing for a correction no proven record names", async () => {

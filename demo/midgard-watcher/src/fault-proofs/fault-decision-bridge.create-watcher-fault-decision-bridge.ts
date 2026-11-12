@@ -6,6 +6,7 @@ import {
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { WatcherProverFundingReservationStore } from "../funding/prover-funding-reservation.js";
 import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
@@ -44,8 +45,11 @@ export const createWatcherFaultDecisionBridge = async (input: {
   /** The 32-byte key the fault-proof journals' rows are authenticated with. */
   readonly authenticationKey: Uint8Array;
   readonly maximumClassificationConcurrency: number;
-  /** The wallet out-refs prover funding reservations hold right now. */
-  readonly reservedFundingOutRefs: () => Promise<readonly string[]>;
+  /** The prover wallet's coins funding reservations lease or removals hold. */
+  readonly walletLeases: Pick<
+    WatcherProverFundingReservationStore,
+    "readReservedOutRefs" | "holdWalletInputs"
+  >;
   readonly operationsSink?: WatcherOperationsSink;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
@@ -106,7 +110,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
       driveProvenRemoval: async ({ headerHash, fraudProofAssetName }) =>
         await input.application.driveProvenCorrection({
           correction: { targetHeaderHash: headerHash, fraudProofAssetName },
-          reservedOutRefs: input.reservedFundingOutRefs,
+          walletLeases: input.walletLeases,
         }),
       requestProgress: input.supervisor.requestProgress,
       revokeAuthority: input.supervisor.revokeAuthority,

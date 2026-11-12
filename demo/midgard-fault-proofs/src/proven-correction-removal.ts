@@ -9,7 +9,7 @@
  * ordinary builder, holding no admitted decision and no journal. The
  * record's prover is paid, whoever submits.
  */
-import { outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type CorrectionLockDatum,
   fetchCorrectionLockUTxOProgram,
@@ -31,6 +31,7 @@ import {
   selectOwnFraudProofRecord,
 } from "./fraud-proof-record-selection.js";
 import { buildRemovalContracts } from "./remove-fraudulent-block.assemble-removal-contracts.js";
+import { STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import { loadStateQueueTopology } from "./remove-fraudulent-block.load-state-queue-topology.js";
 import type {
   StateQueueMutationLeaseCoordinator,
@@ -39,6 +40,11 @@ import type {
 import { submitRemoveFraudulentBlock } from "./remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "./runtime.js";
 import { balanceCbor } from "./workflow/funding-reservation-permit.apply-transition.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  workflowTransactionCollateralInputOutRefs,
+  workflowTransactionInputOutRefs,
+} from "./workflow/transaction-boundary.js";
 
 /** A fraud-proof correction: the queued header a proven record convicts,
  * and that record's asset name. */
@@ -146,12 +152,25 @@ export const excludeReservedFunding = ({
     },
   });
 
+/** Holds wallet coins outside any funding reservation until `untilMs`
+ * (wall clock) or the returned release; throws when one is taken. */
+export type HoldWalletInputs = (input: {
+  readonly outRefs: readonly string[];
+  readonly untilMs: number;
+}) => () => void;
+
 /**
  * Starts the removal of a proven correction's header, or finishes the one a
  * lock Locked under it is waiting for, citing a proven record of it: the
  * signer's own when it holds one, else the lowest out-ref. Nothing is
  * submitted when no such record is on L1, the live lock is Locked under
  * another correction, or the lock is Idle and the header is no longer queued.
+ *
+ * Before each removal transaction is submitted, the signer's coins it spends
+ * or offers as collateral are held through `holdWalletInputs` until its
+ * validity ends; a hold refused fails the removal before that submission.
+ * The holds are released once the removal is confirmed. A failed removal
+ * leaves them to expire, as its last transaction may still land.
  */
 export const driveProvenCorrectionRemoval = async ({
   lucid,
@@ -161,6 +180,7 @@ export const driveProvenCorrectionRemoval = async ({
   signer,
   stateQueueMutationLeaseCoordinator,
   correction,
+  holdWalletInputs,
   validFrom,
   validTo,
 }: {
@@ -171,6 +191,7 @@ export const driveProvenCorrectionRemoval = async ({
   readonly signer: ResolvedProverSigner;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   readonly correction: ProvenFraudProofCorrection;
+  readonly holdWalletInputs: HoldWalletInputs;
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
 }): Promise<ProvenCorrectionRemoval> => {
@@ -221,6 +242,26 @@ export const driveProvenCorrectionRemoval = async ({
       return Object.freeze({ kind: "finished" });
   } else if (!namesCorrection(live.datum, correction))
     return Object.freeze({ kind: "finished" });
+  const releases: (() => void)[] = [];
+  const holdOwnCoins: FraudProofPreSubmitBoundary = async ({ signed }) => {
+    // Collateral may be a spent input too.
+    const spent = await lucid.utxosByOutRef(
+      [
+        ...new Set([
+          ...workflowTransactionInputOutRefs(signed),
+          ...workflowTransactionCollateralInputOutRefs(signed),
+        ]),
+      ].map(parseOutRefLabel),
+    );
+    releases.push(
+      holdWalletInputs({
+        outRefs: spent
+          .filter(({ address }) => address === signer.address)
+          .map(outRefLabel),
+        untilMs: Date.now() + Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS),
+      }),
+    );
+  };
   return Object.freeze({
     kind: "proven",
     fraudProofOutRef,
@@ -240,6 +281,10 @@ export const driveProvenCorrectionRemoval = async ({
         : { stateQueueMutationLeaseCoordinator }),
       ...(validFrom === undefined ? {} : { validFrom }),
       ...(validTo === undefined ? {} : { validTo }),
+      preSubmitBoundary: holdOwnCoins,
+    }).then((result) => {
+      for (const release of releases) release();
+      return result;
     }),
   });
 };

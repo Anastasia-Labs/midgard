@@ -371,8 +371,7 @@ export const startWatcherRuntime = async (
       journalDirectory: input.config.workflowJournalDirectory,
       authenticationKey: rollbackAuthenticationKey,
       maximumClassificationConcurrency: 16,
-      reservedFundingOutRefs: async () =>
-        await fundingRuntime.store.store.readReservedOutRefs({}),
+      walletLeases: fundingRuntime.store.store,
       operationsSink,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });

@@ -23,9 +23,10 @@ import {
  * an Idle lock or finished from a Locked one. Its only authority is the
  * verified deployment and what L1 holds: the lock, the queue and the
  * record. It is paid from the prover wallet's coins no funding reservation
- * holds, so it never takes another action's inputs; a shortfall fails the
- * attempt and the next pass tries again. An application that only observes
- * starts nothing and says so.
+ * leases and no other removal holds, so it never takes another action's
+ * inputs, and it holds the coins it spends until it confirms, so no
+ * reservation takes them; a shortfall fails the attempt and the next pass
+ * tries again. An application that only observes starts nothing and says so.
  */
 export const driveProvenCorrectionFrom =
   ({
@@ -45,7 +46,7 @@ export const driveProvenCorrectionFrom =
     readonly dependencies: WatcherFaultProofApplicationDependencies;
     readonly environment: NodeJS.ProcessEnv;
   }): WatcherFaultProofApplication["driveProvenCorrection"] =>
-  async ({ correction, reservedOutRefs }) => {
+  async ({ correction, walletLeases }) => {
     if (!isExecutable()) return Object.freeze({ kind: "observing" });
     const [binding, secret] = await Promise.all([
       bindWatcherDeploymentAuthority({
@@ -77,9 +78,10 @@ export const driveProvenCorrectionFrom =
           network: watcherConfig.targetNetwork,
           secret,
         }),
-        reservedOutRefs,
+        reservedOutRefs: async () => await walletLeases.readReservedOutRefs({}),
       }),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
       correction,
+      holdWalletInputs: walletLeases.holdWalletInputs,
     });
   };

@@ -36,6 +36,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { WatcherProverFundingReservationStore } from "../funding/prover-funding-reservation.js";
 import { type WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
@@ -246,13 +247,17 @@ export type WatcherFaultProofApplication = Readonly<{
   /**
    * Starts the removal of a proven correction's header from an Idle lock, or
    * finishes the one a Locked lock waits for, from the proven record on L1,
-   * paid from coins no funding reservation holds. `observing`: this
-   * application only observes and started nothing.
+   * paid from coins `walletLeases` neither leases nor holds, and holding the
+   * coins it spends there until it confirms. `observing`: this application
+   * only observes and started nothing.
    */
   driveProvenCorrection(
     input: Readonly<{
       correction: ProvenFraudProofCorrection;
-      reservedOutRefs: () => Promise<readonly string[]>;
+      walletLeases: Pick<
+        WatcherProverFundingReservationStore,
+        "readReservedOutRefs" | "holdWalletInputs"
+      >;
     }>,
   ): Promise<ProvenCorrectionRemoval | Readonly<{ kind: "observing" }>>;
   close(): Promise<void>;
