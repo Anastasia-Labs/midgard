@@ -30,7 +30,6 @@ const TX_STATUS_KINDS: ReadonlySet<string> = new Set([
   "accepted",
   "committed",
   "pending_commit",
-  "awaiting_local_recovery",
   "not_found",
   "rejected",
 ]);

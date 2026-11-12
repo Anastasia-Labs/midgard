@@ -1117,7 +1117,6 @@ const waitForAcceptedTx = async (txIdHex, label) => {
     if (
       status === "accepted" ||
       status === "pending_commit" ||
-      status === "awaiting_local_recovery" ||
       status === "committed"
     ) {
       return status;

@@ -274,7 +274,6 @@ export const parseTxStatus = (payload: unknown, endpoint: string): TxStatus => {
     status === "committed" ||
     status === "accepted" ||
     status === "pending_commit" ||
-    status === "awaiting_local_recovery" ||
     status === "validating" ||
     status === "queued" ||
     status === "not_found"

@@ -137,14 +137,7 @@ describe("midgard-user withdraw", () => {
     expect(existsSync(join(root, harness.manifest.manifestId))).toBe(false);
   };
 
-  it.each([
-    "accepted",
-    "pending_commit",
-    "awaiting_local_recovery",
-    "validating",
-    "queued",
-    "rejected",
-  ])(
+  it.each(["accepted", "pending_commit", "validating", "queued", "rejected"])(
     "refuses an output whose producing L2 tx is %s until it commits",
     async (status) => {
       await refusedBeforeAnyRecord(

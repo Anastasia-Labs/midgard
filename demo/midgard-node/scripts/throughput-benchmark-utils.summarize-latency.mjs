@@ -3,7 +3,6 @@ export const BENCHMARK_WINDOWS_MS = [1_000, 5_000, 30_000];
 export const terminalStatuses = new Set([
   "accepted",
   "pending_commit",
-  "awaiting_local_recovery",
   "committed",
   "rejected",
 ]);
@@ -11,7 +10,6 @@ export const terminalStatuses = new Set([
 export const acceptedStatuses = new Set([
   "accepted",
   "pending_commit",
-  "awaiting_local_recovery",
   "committed",
 ]);
 

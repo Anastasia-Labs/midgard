@@ -70,7 +70,6 @@ export const txStatusFromBody = (body: unknown): string | null => {
 const isAcceptedOrLaterTxStatus = (status: string | null): boolean =>
   status === "accepted" ||
   status === "pending_commit" ||
-  status === "awaiting_local_recovery" ||
   status === "committed";
 
 export const pollUntilAccepted = async ({

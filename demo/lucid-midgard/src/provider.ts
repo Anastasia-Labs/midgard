@@ -85,7 +85,6 @@ type AcknowledgedTx = {
 const settledTxStatusKinds: ReadonlySet<TxStatus["kind"]> = new Set([
   "accepted",
   "pending_commit",
-  "awaiting_local_recovery",
   "committed",
   "rejected",
 ]);
@@ -99,7 +98,6 @@ const heldTxAdmissionStatus: Partial<
   validating: "validating",
   accepted: "accepted",
   pending_commit: "accepted",
-  awaiting_local_recovery: "accepted",
   committed: "accepted",
 };
 

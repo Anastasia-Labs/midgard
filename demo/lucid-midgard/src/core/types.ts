@@ -189,7 +189,6 @@ export type TxStatus =
         | "accepted"
         | "committed"
         | "pending_commit"
-        | "awaiting_local_recovery"
         | "not_found";
       readonly txId: string;
     }

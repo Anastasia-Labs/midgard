@@ -16,7 +16,6 @@ export const acceptedTxStatuses = new Set([
   "accepted",
   "committed",
   "confirmed",
-  "awaiting_local_recovery",
 ]);
 
 export const rejectedTxStatuses = new Set(["rejected", "failed"]);
@@ -27,7 +26,6 @@ export const consolidationPendingTxStatuses = new Set([
   "validating",
   "accepted",
   "pending_commit",
-  "awaiting_local_recovery",
 ]);
 
 export const nextFanoutPollDelayMs = ({

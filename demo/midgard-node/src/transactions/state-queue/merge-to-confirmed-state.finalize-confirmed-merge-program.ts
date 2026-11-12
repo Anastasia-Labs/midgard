@@ -51,7 +51,8 @@ export type ConfirmedMergeNativeOwnerObservation = {
  * - `already_folded`: the frontier is at the block, or a retained fold holds
  *   it (landed-block processing folded it first);
  * - `deferred`: the frontier is elsewhere (behind, waiting on a foreign
- *   block, or past it), so landed-block processing folds it in order.
+ *   block, or past it), so landed-block processing folds it in order; or
+ *   the rebase has not applied the block yet, and it folds once it has.
  */
 export type ConfirmedMergeLedgerStep = "folded" | "already_folded" | "deferred";
 
@@ -92,6 +93,14 @@ const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
     )
       return "already_folded" satisfies ConfirmedMergeLedgerStep;
     if (frontier.headerHash !== base.headerHash)
+      return "deferred" satisfies ConfirmedMergeLedgerStep;
+    // A block the rebase has not applied yet folds once it has, as
+    // landed-block processing folds only an applied row. The rebase marks
+    // the journal and the row applied in one transaction.
+    if (
+      journal[PendingBlockFinalizationsDB.Columns.STATUS] !==
+      PendingBlockFinalizationsDB.Status.LocallyApplied
+    )
       return "deferred" satisfies ConfirmedMergeLedgerStep;
     // A frontier at the base header with another root is refused here.
     yield* foldMerge(ownFoldRow(journal), null);

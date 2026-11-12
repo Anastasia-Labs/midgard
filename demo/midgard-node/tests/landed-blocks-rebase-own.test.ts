@@ -13,8 +13,12 @@
  * - its withdrawal is `projected` to the block from that rebase, as a
  *   foreign block's is, so it is not yet payout-eligible and refuses a new
  *   classification, and `finalized` only once the block folds;
+ * - a rebase that fails after the block's transaction is written leaves
+ *   nothing of it, and its retry applies the block as one clean rebase;
  * - a block whose journal was abandoned before it landed is revived and
- *   applied by the same rebase.
+ *   applied by the same rebase;
+ * - a merge of it on L1 while the rebase is held defers its fold, and folds
+ *   it once the rebase has applied it.
  */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -34,9 +38,15 @@ import { setSettlementInfoForEventIds } from "../src/database/withdrawals.set-se
 import { foldToRoot } from "../src/landed-blocks/fold.js";
 import { applyOwnBlocks } from "../src/landed-blocks/own-blocks.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
-import { retrieveRows } from "../src/landed-blocks/store.js";
+import {
+  Frontier,
+  type LandedBlockRow,
+  retrieveRows,
+} from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import type { Globals } from "../src/services/globals.js";
+import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
+import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import {
   manifestFixture,
   PRODUCER_PRIVATE_KEY_SOURCE,
@@ -48,13 +58,18 @@ import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { ownJournal } from "./landed-blocks-own-journal.fixture.js";
 import {
   attempt,
+  E0,
+  E1,
+  expectHeld,
   expectRebased,
   freshNative,
   type Native,
   processOf,
   R1,
+  root,
   run,
   seed,
+  sqlRun,
 } from "./landed-blocks-rebase.fixture.js";
 
 const Journals = PendingBlockFinalizationsDB;
@@ -101,12 +116,24 @@ const foldPorts = {
 
 /**
  * The processed own block `OWN` (the seeded block's place, spending E0 for
- * E1, withdrawing `WITHDRAWAL`) and its journal; `abandoned` abandons the
- * journal before the block lands.
+ * E1, withdrawing `WITHDRAWAL`) and its journal `own`, with the landed
+ * row's fields `row`; `abandoned` abandons the journal before the block lands.
  */
-const landOwn = async (native: Native, abandoned = false) => {
+const landOwn = async (
+  native: Native,
+  {
+    abandoned = false,
+    own = journal,
+    row = {},
+  }: {
+    readonly abandoned?: boolean;
+    readonly own?: PendingBlockFinalizationsDB.PrepareInput;
+    readonly row?: Partial<LandedBlockRow>;
+  } = {},
+) => {
   const globals = await processOf(native);
   await seed(globals, {
+    ...row,
     headerHash: OWN,
     kind: "own",
     applied: false,
@@ -133,7 +160,7 @@ const landOwn = async (native: Native, abandoned = false) => {
         yield* sql`UPDATE withdrawal_utxos SET l1_event_key = ${ADMISSION_KEY},
             l1_origin_outref = ${ADMISSION_ORIGIN}
           WHERE event_id = ${WITHDRAWAL_ID}`;
-        yield* prepareUnderTestLease(journal);
+        yield* prepareUnderTestLease(own);
         if (abandoned) yield* Journals.markUnsubmittedAbandoned(HEADER);
       }),
     ),
@@ -184,6 +211,16 @@ const shownOwn = (globals: Globals) =>
     }),
   );
 
+/** What one clean application of the block stores. */
+const appliedOwn = () => ({
+  journal: Option.some(Journals.Status.LocallyApplied),
+  immutable: [TX.cbor.toString("hex")],
+  blocks: [OWN],
+  da: true,
+  outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
+  withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },
+});
+
 /**
  * A classification of the withdrawal at its current revision, as the
  * follower writes one.
@@ -233,14 +270,7 @@ describe(
       expectRebased(await attempt(globals));
       expect(native.durableRoot).toBe(R1);
       const applied = await shownOwn(globals);
-      expect(applied).toEqual({
-        journal: Option.some(Journals.Status.LocallyApplied),
-        immutable: [TX.cbor.toString("hex")],
-        blocks: [OWN],
-        da: true,
-        outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
-        withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },
-      });
+      expect(applied).toEqual(appliedOwn());
 
       // Applying the block again writes nothing new.
       const [row] = await run(globals, retrieveRows);
@@ -250,6 +280,39 @@ describe(
       );
       expectRebased(await attempt(globals));
       expect(await shownOwn(globals)).toEqual(applied);
+    });
+
+    it("leaves nothing of a rebase that fails after the block's transaction is written, and applies it once at the retry", async () => {
+      const globals = await landOwn(freshNative());
+      const landed = await shownOwn(globals);
+      // The DA payload write, after the `immutable` and `blocks` writes and
+      // before the outbox and the journal's mark, fails.
+      await sqlRun(globals, (sql) =>
+        sql.unsafe(`CREATE FUNCTION refuse_da_payload() RETURNS trigger
+          LANGUAGE plpgsql AS $refuse$
+          BEGIN RAISE EXCEPTION 'injected DA payload write failure'; END
+          $refuse$`),
+      );
+      await sqlRun(
+        globals,
+        (sql) => sql`CREATE TRIGGER refuse_da_payload BEFORE INSERT
+          ON da_payloads FOR EACH ROW EXECUTE FUNCTION refuse_da_payload()`,
+      );
+      try {
+        expectHeld(await attempt(globals), /injected DA payload write failure/);
+      } finally {
+        await sqlRun(
+          globals,
+          (sql) => sql`DROP TRIGGER refuse_da_payload ON da_payloads`,
+        );
+        await sqlRun(globals, (sql) =>
+          sql.unsafe(`DROP FUNCTION refuse_da_payload()`),
+        );
+      }
+      expect(await shownOwn(globals)).toEqual(landed);
+
+      expectRebased(await attempt(globals));
+      expect(await shownOwn(globals)).toEqual(appliedOwn());
     });
 
     it("leaves its withdrawal projected, not payout-eligible, until the block folds, then finalized", async () => {
@@ -291,7 +354,7 @@ describe(
 
     it("revives a block whose journal was abandoned before it landed and applies it at the same rebase", async () => {
       const native = freshNative();
-      const globals = await landOwn(native, true);
+      const globals = await landOwn(native, { abandoned: true });
       expect((await shownOwn(globals)).journal).toEqual(
         Option.some(Journals.Status.Abandoned),
       );
@@ -302,6 +365,71 @@ describe(
         da: true,
         outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
         withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },
+      });
+    });
+
+    it("defers the fold of a merge of it while the rebase is held, and folds it once the rebase applies it", async () => {
+      // The block on its journal's base and root, its journal's delta the
+      // landed row's.
+      const base = {
+        headerHash: journal.metadata.baseTailHeaderHash.toString("hex"),
+        utxosRoot: journal.metadata.baseRoots.utxosRoot,
+      };
+      const reached = journal.metadata.expectedRoots.utxosRoot;
+      const native: Native = {
+        ...freshNative(),
+        durableRoot: root(0x99),
+        retainsNothing: true,
+      };
+      const globals = await landOwn(native, {
+        own: {
+          ...journal,
+          ledgerDelta: { spent: [E0.outref], produced: [E1] },
+        },
+        row: {
+          parentHeaderHash: base.headerHash,
+          parentUtxosRoot: base.utxosRoot,
+          utxosRoot: reached,
+        },
+      });
+      await run(globals, testWrite(Frontier.upsert(base)));
+      expectHeld(
+        await attempt(globals),
+        /retains no root of the processed landed chain/,
+        MPF_CLOSURE_MISSING,
+      );
+      // The merge fiber's step, on the journal as it reads it.
+      const merge = () =>
+        run(
+          globals,
+          testWrite(
+            Effect.flatMap(Journals.retrieveByHeaderHash(HEADER), (found) =>
+              finalizeConfirmedMergeTransaction({
+                journal: Option.getOrThrow(found),
+              }),
+            ),
+          ),
+        );
+      const folded = () =>
+        run(
+          globals,
+          Effect.all({
+            rows: Effect.map(retrieveRows, (rows) =>
+              rows.map((row) => [row.headerHash, row.applied]),
+            ),
+            frontier: Frontier.retrieve,
+          }),
+        );
+
+      expect(await merge()).toBe("deferred");
+      expect(await folded()).toEqual({ rows: [[OWN, false]], frontier: base });
+
+      native.retainsNothing = false;
+      expectRebased(await attempt(globals));
+      expect(await merge()).toBe("folded");
+      expect(await folded()).toEqual({
+        rows: [],
+        frontier: { headerHash: OWN, utxosRoot: reached },
       });
     });
   },

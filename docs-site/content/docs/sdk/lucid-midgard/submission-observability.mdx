@@ -40,19 +40,18 @@ post the canonical proof-submission envelope, containing the version and
 
 ## The status lifecycle
 
-`TxStatus` has eight kinds, reported by `GET /tx-status` and normalized in
+`TxStatus` has seven kinds, reported by `GET /tx-status` and normalized in
 `src/builder/status.ts`:
 
-| Status                    | Meaning                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `queued`                  | Durably admitted. Not yet validated.                                                              |
-| `validating`              | Being validated by the node's Phase A / Phase B pipeline.                                         |
-| `accepted`                | Validated and admitted into the mempool ledger.                                                   |
-| `committed`               | Present in the immutable local transaction table; L1 confirmation and merge are separate.         |
-| `pending_commit`          | Present in the processed mempool and absent from immutable state, without local pending recovery. |
-| `awaiting_local_recovery` | Present in the processed mempool while a local pending commitment requires reconciliation.        |
-| `not_found`               | The node has no record of this transaction id.                                                    |
-| `rejected`                | Validation failed. Carries the node's `code` and a nullable `detail`.                             |
+| Status           | Meaning                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| `queued`         | Durably admitted. Not yet validated.                                                      |
+| `validating`     | Being validated by the node's Phase A / Phase B pipeline.                                 |
+| `accepted`       | Validated and admitted into the mempool ledger.                                           |
+| `committed`      | Present in the immutable local transaction table; L1 confirmation and merge are separate. |
+| `pending_commit` | Present in the processed mempool and absent from immutable state.                         |
+| `not_found`      | The node has no record of this transaction id.                                            |
+| `rejected`       | Validation failed. Carries the node's `code` and a nullable `detail`.                     |
 
 Only the `rejected` variant carries `code` and `detail`. The other kinds carry the
 transaction id alone. The raw HTTP response can include header/merge and
@@ -103,7 +102,7 @@ The node answers `/submit` from memory: a `202` means it accepted the
 transaction, not that it stored it, and a node crash can lose it.
 `MidgardNodeProvider` keeps the bytes of each transaction the node
 acknowledged until its status settles (`accepted`, `pending_commit`,
-`awaiting_local_recovery`, `committed` or `rejected`), for at most 1,024
+`committed` or `rejected`), for at most 1,024
 transactions, oldest dropped first. When `/tx-status` reports `not_found` for
 one of them, `getTxStatus`, and so `status()` and `awaitStatus()`, resubmits it
 once and reads the status again. A resubmission refused with a retryable error

@@ -334,7 +334,6 @@ export class JourneyUserSubmissions extends JourneyRuntime {
       "validating",
       "accepted",
       "pending_commit",
-      "awaiting_local_recovery",
       "committed",
     ];
     let lastSubmitted = Date.now();

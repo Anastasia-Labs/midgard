@@ -184,10 +184,10 @@ describe("journey submissions stop at a failure no retry can repair", () => {
 });
 
 describe("journey waits know every status", () => {
-  it("counts awaiting_local_recovery as past accepted and short of committed", async () => {
+  it("counts pending_commit as past accepted and short of committed", async () => {
     const answers = [
-      json(200, { status: "awaiting_local_recovery" }),
-      json(200, { status: "awaiting_local_recovery" }),
+      json(200, { status: "pending_commit" }),
+      json(200, { status: "pending_commit" }),
       json(200, { status: "committed" }),
     ];
     const fetch = (async () =>
@@ -196,7 +196,7 @@ describe("journey waits know every status", () => {
     await expect(
       journey.waitTx("t1", "accepted", 1_000),
     ).resolves.toMatchObject({
-      status: "awaiting_local_recovery",
+      status: "pending_commit",
     });
     await expect(
       journey.waitTx("t1", "committed", 1_000),
