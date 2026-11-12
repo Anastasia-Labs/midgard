@@ -88,7 +88,9 @@ retried with backoff for at most 15 minutes in a row, under
 the backoff. The startup first waits for the ledger's Ed25519 verifier
 (libsodium) to initialise, for at most 10 s; if it does not, the process exits
 non-zero at once with `committee_startup_verifier_unavailable`, and the
-supervisor's restart is the retry. Any other failure, such as a store holding another deployment's
+supervisor's restart is the retry. A system error a restart may clear, such
+as a port in use (the libp2p listener's included), exits non-zero at once
+with `committee_startup_system_error`. Any other failure, such as a store holding another deployment's
 state (`stale_deployment_state_requires_fresh_redeploy`), bad credentials, a
 configuration or key-material refusal or an error it does not recognise, is
 one no restart is known to repair: the process logs `committee_startup_held`

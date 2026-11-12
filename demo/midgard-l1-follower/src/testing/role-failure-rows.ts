@@ -113,6 +113,27 @@ export const ROLE_FAILURE_ROWS: readonly RoleFailureRow[] = [
       }),
     }),
   ),
+  row("libp2p's listen address in use (message only)", "restart", () =>
+    Object.assign(
+      new Error(
+        "Some configured addresses failed to be listened on, you may need to remove one or more listen addresses from your configuration or set `transportManager.faultTolerance` to NO_FATAL:\n\n  /ip4/127.0.0.1/tcp/4001: listen EADDRINUSE: address already in use 127.0.0.1:4001\n",
+      ),
+      { name: "UnsupportedListenAddressesError" },
+    ),
+  ),
+  row("libp2p's listen address refused for another reason", "unknown", () =>
+    Object.assign(
+      new Error(
+        "Some configured addresses failed to be listened on:\n\n  /ip4/10.9.9.9/tcp/4001: listen EADDRNOTAVAIL: address not available 10.9.9.9:4001\n",
+      ),
+      { name: "UnsupportedListenAddressesError" },
+    ),
+  ),
+  row(
+    "EADDRINUSE in the message of an unrelated error",
+    "unknown",
+    () => new Error("peer reported EADDRINUSE on its side"),
+  ),
   ...["EACCES", "EPERM", "EISDIR", "EINVAL"].map((errno) =>
     row(`a file failing ${errno}`, "deterministic", () =>
       coded(`open ${errno}`, errno, "open"),

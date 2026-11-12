@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
-import { classifyFailure } from "@al-ft/midgard-l1-follower";
+import { classifyRoleFailure } from "@al-ft/midgard-l1-follower";
 
 import { isInstanceLockHeldElsewhere } from "./store/postgres.instance-lock.js";
 
@@ -18,40 +18,28 @@ export const STARTUP_RETRY_MAX_MS = 30_000;
 export const STARTUP_TRANSIENT_BUDGET_MS = 15 * 60_000;
 
 /**
- * How the startup treats a failed attempt:
+ * How the startup treats a failed attempt, by its class in the shared table
+ * (`classifyRoleFailure`):
  * - `waiting`: another live process holds the store's instance lock. That is
  *   another actor's progress, retried without a deadline.
- * - `transient`: a dependency that is down or still starting (a refused,
- *   reset or timed-out connection, a Postgres connection-class error, a
- *   Unix socket not created yet), retried for at most the budget.
- * - `fatal`: anything else, including any failure not recognised, which no
- *   retry is known to repair. The startup fails at once.
+ * - `transient`: a dependency that is down or still starting, or contended,
+ *   retried for at most the budget.
+ * - `restart`: a system error a restart may clear (a port in use, the
+ *   libp2p listener's included). The startup fails at once and the process
+ *   exits non-zero.
+ * - `fatal`: anything else, deterministic or not recognised, which no retry
+ *   is known to repair. The startup fails at once and holds.
  */
-export type StartupFailureClass = "waiting" | "transient" | "fatal";
-
-/** The error and every `cause` it wraps, outermost first. */
-const causeChain = (error: unknown): unknown[] => {
-  const chain: unknown[] = [];
-  let current: unknown = error;
-  while (current !== undefined && current !== null && chain.length < 8) {
-    chain.push(current);
-    current = (current as { cause?: unknown }).cause;
-  }
-  return chain;
-};
+export type StartupFailureClass = "waiting" | "transient" | "restart" | "fatal";
 
 export const classifyStartupFailure = (error: unknown): StartupFailureClass => {
   if (isInstanceLockHeldElsewhere(error)) return "waiting";
-  for (const link of causeChain(error)) {
-    if (classifyFailure(link) === "transient") return "transient";
-    const { code, syscall } = (link ?? {}) as {
-      code?: unknown;
-      syscall?: unknown;
-    };
-    // A Unix socket whose server has not created it yet.
-    if (code === "ENOENT" && syscall === "connect") return "transient";
-  }
-  return "fatal";
+  const failure = classifyRoleFailure(error);
+  return failure === "transient" || failure === "contention"
+    ? "transient"
+    : failure === "restart"
+      ? "restart"
+      : "fatal";
 };
 
 /** The readiness reason a failed startup attempt reports. */
@@ -60,29 +48,35 @@ export const startupReason = (error: unknown): string =>
     ? "starting:store_instance_lock_held"
     : `starting:${error instanceof Error ? error.message : String(error)}`;
 
+/** What each reason a committee startup fails under says, before its cause. */
+const STARTUP_FAILURE_TEXT = {
+  committee_startup_dependency_unavailable:
+    "a dependency stayed unavailable past the startup budget",
+  committee_startup_verifier_unavailable:
+    "the ledger's Ed25519 verifier is unavailable in this process",
+  committee_startup_system_error: "a system error a restart may clear",
+  committee_startup_failed: "a failure no retry is known to repair",
+} as const;
+
 /**
  * The committee startup failed: a failure that is not transient, transient
- * failures that outlasted the budget, or the ledger's Ed25519 verifier
- * unavailable in this process. `cause` is the last attempt's error.
- * `startupFailureOutcome` says what the process does on it.
+ * failures that outlasted the budget, a system error a restart may clear,
+ * or the ledger's Ed25519 verifier unavailable in this process. `cause` is
+ * the last attempt's error. `startupFailureOutcome` says what the process
+ * does on it.
  */
 export class CommitteeStartupFailedError extends Error {
   constructor(
-    readonly reason:
-      | "committee_startup_dependency_unavailable"
-      | "committee_startup_verifier_unavailable"
-      | "committee_startup_failed",
+    readonly reason: keyof typeof STARTUP_FAILURE_TEXT,
     readonly attempts: number,
     override readonly cause: unknown,
   ) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    super(
+    const after =
       reason === "committee_startup_dependency_unavailable"
-        ? `${reason}: a dependency stayed unavailable past the startup budget after ${attempts.toString()} attempts: ${detail}`
-        : reason === "committee_startup_verifier_unavailable"
-          ? `${reason}: the ledger's Ed25519 verifier is unavailable in this process: ${detail}`
-          : `${reason}: a failure no retry is known to repair: ${detail}`,
-    );
+        ? ` after ${attempts.toString()} attempts`
+        : "";
+    super(`${reason}: ${STARTUP_FAILURE_TEXT[reason]}${after}: ${detail}`);
   }
 }
 
@@ -92,13 +86,14 @@ export class CommitteeStartupFailedError extends Error {
  * Each failure is classified (`classify`, default `classifyStartupFailure`):
  * a wait on another live process is retried without a deadline; a transient
  * failure is retried while consecutive transient failures last less than
- * `budgetMs`; anything else, or the budget running out, fails the startup
- * with `CommitteeStartupFailedError`. The ledger's Ed25519 verifier
- * unavailable (the attempt's first wait, bounded where it is defined) fails
- * it at once as `committee_startup_verifier_unavailable`: its outcome is
- * settled for the life of the process, so no retry in it can repair it. A
- * one-shot run classifies every failure as fatal. A failed attempt must
- * release whatever it opened before it throws.
+ * `budgetMs`; a system error a restart may clear, anything else, or the
+ * budget running out, fails the startup with `CommitteeStartupFailedError`.
+ * The ledger's Ed25519 verifier unavailable (the attempt's first wait,
+ * bounded where it is defined) fails it at once as
+ * `committee_startup_verifier_unavailable`: its outcome is settled for the
+ * life of the process, so no retry in it can repair it. A one-shot run
+ * classifies every failure as fatal. A failed attempt must release whatever
+ * it opened before it throws.
  */
 export const retryStartup = async <T>(args: {
   readonly attempt: () => Promise<T>;
@@ -131,9 +126,11 @@ export const retryStartup = async <T>(args: {
           error,
         );
       const failure = classify(error);
-      if (failure === "fatal")
+      if (failure === "fatal" || failure === "restart")
         throw new CommitteeStartupFailedError(
-          "committee_startup_failed",
+          failure === "fatal"
+            ? "committee_startup_failed"
+            : "committee_startup_system_error",
           attempt,
           error,
         );
@@ -165,10 +162,11 @@ export const COMMITTEE_STARTUP_FAILED = "committee_startup_failed";
 /**
  * What the process does on a failed startup (owner ruling 2026-10-09):
  * - `exit`: transient failures outlasted the startup budget
- *   (`committee_startup_dependency_unavailable`), or the ledger's Ed25519
- *   verifier did not become ready within its bound in this process
- *   (`committee_startup_verifier_unavailable`). The process exits non-zero
- *   and its supervisor's restart is the backoff.
+ *   (`committee_startup_dependency_unavailable`), a system error a restart
+ *   may clear, such as a port in use (`committee_startup_system_error`), or
+ *   the ledger's Ed25519 verifier did not become ready within its bound in
+ *   this process (`committee_startup_verifier_unavailable`). The process
+ *   exits non-zero and its supervisor's restart is the backoff.
  * - `hold`: any other failure, deterministic or unknown (a configuration,
  *   key material or stored-state refusal). No restart is known to repair it,
  *   so the process stays up, unready with `committee_startup_failed`, until

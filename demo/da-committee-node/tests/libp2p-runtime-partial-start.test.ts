@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { createLibp2p } from "libp2p";
+import { version as libp2pVersion } from "libp2p/version";
 import { describe, expect, it } from "vitest";
 
 import type { Libp2pDaTransportConfig } from "../src/config.js";
@@ -10,6 +11,11 @@ import {
   DaLibp2pNode,
   type DaLibp2pRuntimeNode,
 } from "../src/da/libp2p/DaLibp2pNode.js";
+import {
+  classifyStartupFailure,
+  retryStartup,
+  startupFailureOutcome,
+} from "../src/startup.js";
 import { reserveLoopbackPort } from "./libp2p-attestation-exchange.state-queue-record.js";
 
 const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
@@ -113,5 +119,49 @@ describe("DA libp2p committee node partial start", () => {
       await retried.stop();
     }
     expect(await probePort(port)).toBe("free");
+  });
+
+  it("fails start on a listen port in use with libp2p's message-only error, on which the committee's startup exits", async () => {
+    // The shape the shared table matches by name and message: a change of
+    // libp2p must re-pin it here.
+    expect(libp2pVersion).toBe("3.3.4");
+    const port = await reserveLoopbackPort();
+    const occupant = createServer();
+    await new Promise<void>((resolve) =>
+      occupant.listen(port, "127.0.0.1", resolve),
+    );
+    try {
+      const node = new DaLibp2pNode({
+        config: await loopbackConfig(port),
+        privateKeySource: KEY_SOURCE,
+      });
+      const failure = await node.start().then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await node.stop();
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toMatchObject({
+        name: "UnsupportedListenAddressesError",
+        message: expect.stringMatching(/\bEADDRINUSE\b/u) as unknown,
+      });
+      expect(failure).not.toHaveProperty("code");
+      expect((failure as Error).cause).toBeUndefined();
+      expect(classifyStartupFailure(failure)).toBe("restart");
+      const startup = await retryStartup({
+        attempt: () => Promise.reject(failure),
+        onFailure: () => undefined,
+        write: () => undefined,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(startup).toMatchObject({
+        reason: "committee_startup_system_error",
+      });
+      expect(startupFailureOutcome(startup)).toBe("exit");
+    } finally {
+      await new Promise<void>((resolve) => occupant.close(() => resolve()));
+    }
   });
 });

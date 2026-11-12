@@ -86,17 +86,36 @@ const ROLE_FAILURE_TABLE: ReadonlyMap<string, RoleFailureClass> = new Map<
   ["SQLITE:20", "deterministic"],
 ]);
 
-/** pg's own connection failures carry no SQLSTATE; `timeout expired` is
- * pg.Client's connect bound (`connectionTimeoutMillis`). */
-const PG_CONNECTION_MESSAGE =
-  /connection terminated|connection error|not queryable|timeout exceeded when trying to connect|^timeout expired$/iu;
+/** Failures that carry their class only in their name and message. */
+const MESSAGE_TABLE: readonly Readonly<{
+  name?: string;
+  message: RegExp;
+  class: RoleFailureClass;
+}>[] = [
+  // pg's own connection failures carry no SQLSTATE; `timeout expired` is
+  // pg.Client's connect bound (`connectionTimeoutMillis`).
+  {
+    message:
+      /connection terminated|connection error|not queryable|timeout exceeded when trying to connect|^timeout expired$/iu,
+    class: "transient",
+  },
+  // libp2p 3.3.4 reports a listen address in use as an
+  // UnsupportedListenAddressesError with no `code` and no `cause`: the
+  // EADDRINUSE is only in its message.
+  {
+    name: "UnsupportedListenAddressesError",
+    message: /\bEADDRINUSE\b/u,
+    class: "restart",
+  },
+];
 
 /** The class one error says by itself, ignoring what it wraps. */
 const classOfLink = (link: object): RoleFailureClass | undefined => {
-  const { code, errcode, syscall, message } = link as {
+  const { code, errcode, syscall, name, message } = link as {
     code?: unknown;
     errcode?: unknown;
     syscall?: unknown;
+    name?: unknown;
     message?: unknown;
   };
   if (code === "ERR_SQLITE_ERROR" && typeof errcode === "number")
@@ -110,9 +129,12 @@ const classOfLink = (link: object): RoleFailureClass | undefined => {
     if (/^[0-9A-Z]{5}$/u.test(code))
       return ROLE_FAILURE_TABLE.get(code.slice(0, 2));
   }
-  return typeof message === "string" && PG_CONNECTION_MESSAGE.test(message)
-    ? "transient"
-    : undefined;
+  if (typeof message !== "string") return undefined;
+  return MESSAGE_TABLE.find(
+    (rule) =>
+      (rule.name === undefined || rule.name === name) &&
+      rule.message.test(message),
+  )?.class;
 };
 
 /** When links disagree, the first class here that any link has wins. */
