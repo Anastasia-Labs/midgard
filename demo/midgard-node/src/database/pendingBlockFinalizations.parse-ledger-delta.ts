@@ -102,11 +102,11 @@ export type PendingBlockFinalization = {
 };
 
 /**
- * What the journal insert did. `prepared`: the journal row is in. `held`: an
- * abandoned journal whose commit was signed already holds this header hash
- * (identical content on the same base, built in the same scheduler window).
- * Its signed bytes can still land and be revived from that journal, so it is
- * never replaced and nothing is written; the commit waits for the next window,
+ * What the journal insert did. `prepared`: the journal row is in. `held`: a
+ * journal whose commit was signed already holds this header hash (identical
+ * content on the same base, built in the same scheduler window). Its signed
+ * bytes can still land, and landing takes that journal in, so it is never
+ * replaced and nothing is written; the commit waits for the next window,
  * whose block end time gives the replacement another header.
  */
 export type PreparedPendingSubmission =

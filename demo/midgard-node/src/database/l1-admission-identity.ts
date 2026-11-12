@@ -11,6 +11,11 @@
 import type { SqlClient } from "@effect/sql";
 
 import type { LandedBlockKind } from "../landed-blocks/store.js";
+import {
+  deadHeader,
+  type DeadHeaders,
+  notAppliedOrFolded,
+} from "./pendingBlockFinalizations.derived-status.js";
 
 export type AdmissionKind = "deposit" | "withdrawal";
 
@@ -89,39 +94,50 @@ export const canonicalForcedAdmission = (
       WHERE o.order_tx_hash = ${sql(alias)}.tx_order_l1_tx_hash
         AND o.order_output_index = ${sql(alias)}.tx_order_l1_output_index))`;
 
-/** SQL condition: the forced row aliased `alias` is a member of a block journal neither finalized nor abandoned. */
-export const forcedInActiveBlock = (sql: SqlClient.SqlClient, alias: string) =>
+/**
+ * SQL condition: the forced row aliased `alias` is a member of a block
+ * journal neither applied nor folded that is not one of `dead`, the dead
+ * own journals (`deadJournals`) the caller read in its transaction.
+ */
+export const forcedInPendingJournal = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+  dead: DeadHeaders,
+) =>
   sql`EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
     JOIN pending_block_finalizations p ON p.header_hash = m.header_hash
     WHERE m.member_id = ${sql(alias)}.tx_order_id
-      AND p.status NOT IN ('locally_applied', 'abandoned'))`;
+      AND ${notAppliedOrFolded(sql, "p")}
+      AND NOT ${deadHeader(sql, "p.header_hash", dead)})`;
 
 /**
  * SQL condition: the forced row aliased `alias` has no header, its order is
- * gone, and no unfinished block journal holds it. The forced-order hook
- * deletes such a row.
+ * gone, and no pending block journal (over `dead`) holds it. The forced-order
+ * hook deletes such a row.
  */
 export const abandonedForcedAdmission = (
   sql: SqlClient.SqlClient,
   alias: string,
+  dead: DeadHeaders,
 ) =>
   sql`${sql(alias)}.projected_header_hash IS NULL
     AND NOT ${canonicalForcedAdmission(sql, alias)}
-    AND NOT ${forcedInActiveBlock(sql, alias)}`;
+    AND NOT ${forcedInPendingJournal(sql, alias, dead)}`;
 
 /**
  * SQL condition: the forced row aliased `alias` has no header and its order
- * is gone, but an unfinished block journal holds it: an orphan for the
- * event-history recovery, as a deposit or withdrawal orphan is. A row with
- * a header is its header's to settle.
+ * is gone, but a pending block journal (over `dead`) holds it: an orphan for
+ * the event-history recovery, as a deposit or withdrawal orphan is. A row
+ * with a header is its header's to settle.
  */
 export const orphanedForcedAdmission = (
   sql: SqlClient.SqlClient,
   alias: string,
+  dead: DeadHeaders,
 ) =>
   sql`${sql(alias)}.projected_header_hash IS NULL
     AND NOT ${canonicalForcedAdmission(sql, alias)}
-    AND ${forcedInActiveBlock(sql, alias)}`;
+    AND ${forcedInPendingJournal(sql, alias, dead)}`;
 
 /**
  * SQL condition: the row aliased `alias` is assigned to a processed landed

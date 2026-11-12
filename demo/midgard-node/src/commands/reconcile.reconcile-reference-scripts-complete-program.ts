@@ -267,7 +267,7 @@ export const reconcileTxCommittedProgram = ({
     const inMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHash]);
     const inProcessedMempool =
       yield* ProcessedMempoolDB.retrieveTxCborsByHashes([txHash]);
-    const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+    const live = yield* PendingBlockFinalizationsDB.retrieveLive();
     const status = resolveTxStatus({
       txIdHex: txHash.toString("hex"),
       rejection:
@@ -297,7 +297,15 @@ export const reconcileTxCommittedProgram = ({
       target: { txHash: txHash.toString("hex") },
       status: milestoneStatus,
       safeToRetryOriginalStep: false,
-      evidence: [evidence("tx_status", status), optionRecordEvidence(active)],
+      evidence: [
+        evidence("tx_status", status),
+        optionRecordEvidence(
+          live,
+          Option.isSome(live)
+            ? PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded
+            : undefined,
+        ),
+      ],
       nextAction:
         milestoneStatus === "pending"
           ? "Wait for tx processing/commit workers or inspect readiness and pending finalization state."

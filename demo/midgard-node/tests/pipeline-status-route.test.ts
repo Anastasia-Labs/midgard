@@ -7,92 +7,70 @@ import { describe, expect, it } from "vitest";
 import {
   buildListenRouter,
   encodePipelineStatusOldestActive,
-  PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "../src/commands/listen-router.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { BatchSql } from "../src/services/database.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/index.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import {
+  insertOwnJournal,
+  simCommitTxHash,
+} from "./helpers/landed-blocks-sim.own.js";
+import { land, ownLandedRow } from "./helpers/own-block-facts.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-/**
- * Independent definition of "active": every journal status that is not one of
- * the two terminal ones. Derived from the status enum by exclusion rather than
- * copied from the route's own tuple, so a status added to the enum is active
- * here until someone deliberately marks it terminal.
- */
-const TERMINAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
-  PendingBlockFinalizationsDB.Status.LocallyApplied,
-  PendingBlockFinalizationsDB.Status.Abandoned,
-];
-const EXPECTED_ACTIVE_STATUSES = Object.values(
-  PendingBlockFinalizationsDB.Status,
-).filter((status) => !TERMINAL_STATUSES.includes(status));
-
-const EMPTY_MERKLE_ROOT =
-  "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 const ZERO_ROOT = "00".repeat(32);
+const S = PendingBlockFinalizationsDB.OwnBlockStatus;
+const FRONTIER = "0f".repeat(28);
+const APPLIED = "aa".repeat(28);
+const DEAD = "ab".repeat(28);
+const OUTSTANDING = "11".repeat(28);
 
 /**
- * The smallest row the schema accepts, so the route's real query runs against
- * real rows. Only the columns the route reads vary per scenario.
+ * The signed journal of own block `headerHash` on `base`, written
+ * `minutesAgo` back, and its landed row if it landed. Its status is
+ * derived from these facts, as the route reads it.
  */
-const journalRow = ({
-  headerHash,
-  status,
-  createdAt,
-  submittedTxHash,
-}: {
-  readonly headerHash: string;
-  readonly status: PendingBlockFinalizationsDB.Status;
-  readonly createdAt: Date;
-  readonly submittedTxHash: string | null;
-}) => ({
-  header_hash: Buffer.from(headerHash, "hex"),
-  submitted_tx_hash:
-    submittedTxHash === null ? null : Buffer.from(submittedTxHash, "hex"),
-  block_end_time: createdAt,
-  block_time: createdAt,
-  status,
-  observed_confirmed_at_ms: null,
-  created_at: createdAt,
-  updated_at: createdAt,
-  state_queue_lease_token: `pipeline-status-test:${headerHash.slice(0, 8)}`,
-  base_snapshot_id: "pipeline-status-test",
-  base_tail_out_ref: "base#0",
-  base_tail_header_hash: Buffer.from("bb".repeat(28), "hex"),
-  base_tail_datum_cbor: "d87980",
-  base_utxos_root: ZERO_ROOT,
-  base_transactions_root: ZERO_ROOT,
-  base_deposits_root: ZERO_ROOT,
-  base_withdrawals_root: ZERO_ROOT,
-  block_start_time: createdAt,
-  expected_utxos_root: ZERO_ROOT,
-  expected_transactions_root: ZERO_ROOT,
-  expected_deposits_root: ZERO_ROOT,
-  expected_withdrawals_root: ZERO_ROOT,
-  base_forced_transactions_root: ZERO_ROOT,
-  expected_forced_transactions_root: ZERO_ROOT,
-  header_cbor: Buffer.from("a0", "hex"),
-  format_version: 1,
-  replay_kind: "ledger_delta_v1",
-  deployment_marker_schema_version: "midgard-deployment-marker-v1",
-  deployment_manifest_id: "de".repeat(32),
-  expected_transition_trace_root: ZERO_ROOT,
-  expected_event_to_step_root: ZERO_ROOT,
-  expected_withdrawal_count: 0n,
-  expected_forced_transaction_count: 0n,
-  expected_l2_transaction_count: 0n,
-  expected_deposit_count: 0n,
-  expected_total_event_count: 0n,
-  expected_transition_step_count: 0n,
-  consensus_profile_id: "midgard-consensus-v1",
-  expected_validation_traces_root: EMPTY_MERKLE_ROOT,
-  expected_validation_trace_count: 0n,
-  ledger_delta_spent: "[]",
-  ledger_delta_produced: "[]",
-});
+const ownBlock = (
+  headerHash: string,
+  base: string,
+  minutesAgo: number,
+  landed?: { readonly applied: boolean },
+) =>
+  Effect.gen(function* () {
+    yield* withFollowerWrite(
+      Frontier.upsert({ headerHash: FRONTIER, utxosRoot: ZERO_ROOT }),
+    );
+    yield* insertOwnJournal({
+      headerHash,
+      baseHeaderHash: base,
+      baseUtxosRoot: ZERO_ROOT,
+      expectedUtxosRoot: ZERO_ROOT,
+      spent: [],
+      produced: [],
+      txIds: [],
+      at: new Date(Date.now() - minutesAgo * 60_000),
+    });
+    if (landed !== undefined)
+      yield* land(ownLandedRow(headerHash, base, landed));
+  });
+
+/**
+ * A folded journal (the frontier's block), an applied one on the frontier,
+ * one dead by the applied block's taking its base slot, and, given its age
+ * in minutes, an outstanding one built on the applied block.
+ */
+const ownChain = (outstandingMinutesAgo?: number) =>
+  Effect.gen(function* () {
+    yield* ownBlock(FRONTIER, "0e".repeat(28), 90);
+    yield* ownBlock(APPLIED, FRONTIER, 60, { applied: true });
+    yield* ownBlock(DEAD, FRONTIER, 30);
+    if (outstandingMinutesAgo !== undefined)
+      yield* ownBlock(OUTSTANDING, APPLIED, outstandingMinutesAgo);
+  });
 
 const getPipelineStatus = Effect.gen(function* () {
   const response = (yield* buildListenRouter().pipe(
@@ -107,6 +85,7 @@ const getPipelineStatus = Effect.gen(function* () {
   const body = (yield* Effect.promise(() => webResponse.json())) as {
     readonly pendingBlockFinalizations: {
       readonly countsByStatus: Record<string, string>;
+      readonly live: string;
       readonly oldestActive: Record<string, unknown> | null;
     };
     readonly settlement: {
@@ -152,130 +131,84 @@ const runAgainstShard = <A, E, R>(
   );
 
 describe("GET /pipeline-status pending-finalization reporting", () => {
-  it("binds exactly the non-terminal journal statuses", () => {
-    expect(
-      [...PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES].sort(),
-    ).toEqual([...EXPECTED_ACTIVE_STATUSES].sort());
-  });
-
-  it("reports the active journal through the real query even when older terminal journals exist", async () => {
+  it("counts every journal under its derived status and reports the outstanding one even when older folded, applied and dead journals exist", async () => {
     // Anchored ten minutes back so the reported age is checked against a
     // wide, unambiguous band: a scheduling hiccup cannot move it, but an age
     // taken from the wrong column, the wrong row, or the wrong sign falls
     // outside it.
     const ACTIVE_AGE_MS = 600_000;
-    const activeCreatedAt = new Date(Date.now() - ACTIVE_AGE_MS);
     const result = await runAgainstShard(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
-          journalRow({
-            headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
-            createdAt: new Date(Date.now() - 3_600_000),
-            submittedTxHash: "cc".repeat(32),
-          }),
-          journalRow({
-            headerHash: "ab".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Abandoned,
-            createdAt: new Date(Date.now() - 1_800_000),
-            submittedTxHash: null,
-          }),
-          journalRow({
-            headerHash: "11".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-            createdAt: activeCreatedAt,
-            submittedTxHash: "22".repeat(32),
-          }),
-        ] as never)}`;
+        yield* ownChain(ACTIVE_AGE_MS / 60_000);
         return yield* getPipelineStatus;
       }),
     );
 
     expect(result.status).toBe(200);
-    expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      locally_applied: "1",
-      abandoned: "1",
-      submitted_unconfirmed: "1",
+    const counts = result.body.pendingBlockFinalizations.countsByStatus;
+    expect(counts).toEqual({
+      [S.Unlanded]: "2",
+      [S.Landed]: "0",
+      [S.Applied]: "1",
+      [S.Folded]: "1",
     });
+    expect(
+      Object.values(counts).reduce((sum, count) => sum + Number(count), 0),
+    ).toBe(4);
+    expect(result.body.pendingBlockFinalizations.live).toBe("1");
     const oldestActive = result.body.pendingBlockFinalizations.oldestActive;
     expect(oldestActive).toMatchObject({
-      headerHash: "11".repeat(28),
-      submittedTxHash: "22".repeat(32),
-      status: PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-      createdAt: activeCreatedAt.toISOString(),
-      observedConfirmedAt: null,
+      headerHash: OUTSTANDING,
+      intendedTxHash: simCommitTxHash(Buffer.from(OUTSTANDING, "hex")).toString(
+        "hex",
+      ),
+      status: S.Unlanded,
     });
     expect(Number(oldestActive?.ageMs)).toBeGreaterThanOrEqual(ACTIVE_AGE_MS);
     expect(Number(oldestActive?.ageMs)).toBeLessThan(ACTIVE_AGE_MS + 60_000);
   });
 
-  it("reports no active journal when only terminal journals remain", async () => {
+  it("reports no outstanding journal when only folded, applied and dead journals remain", async () => {
     const result = await runAgainstShard(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
-          journalRow({
-            headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
-            createdAt: new Date(Date.now() - 3_600_000),
-            submittedTxHash: "cc".repeat(32),
-          }),
-          journalRow({
-            headerHash: "ab".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Abandoned,
-            createdAt: new Date(Date.now() - 1_800_000),
-            submittedTxHash: null,
-          }),
-        ] as never)}`;
+        yield* ownChain();
         return yield* getPipelineStatus;
       }),
     );
 
     expect(result.status).toBe(200);
     expect(result.body.pendingBlockFinalizations.oldestActive).toBeNull();
+    expect(result.body.pendingBlockFinalizations.live).toBe("0");
     expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      locally_applied: "1",
-      abandoned: "1",
+      [S.Unlanded]: "1",
+      [S.Landed]: "0",
+      [S.Applied]: "1",
+      [S.Folded]: "1",
     });
   });
 
-  // Driven by the independent derivation, not by the route's own tuple: a
-  // status dropped from the route must fail here as a journal the route stops
-  // reporting, not merely as a case that stops being generated.
-  it.each(EXPECTED_ACTIVE_STATUSES)(
-    "reports an active %s journal rather than nothing",
-    async (status) => {
-      const result = await runAgainstShard(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
-            journalRow({
-              headerHash: "11".repeat(28),
-              status,
-              createdAt: new Date(Date.now() - 1_000),
-              submittedTxHash: null,
-            }),
-          ] as never)}`;
-          return yield* getPipelineStatus;
-        }),
-      );
+  it("reports a landed journal the rebase has not applied yet as outstanding, and not live", async () => {
+    const result = await runAgainstShard(
+      Effect.gen(function* () {
+        yield* ownBlock(OUTSTANDING, FRONTIER, 1, { applied: false });
+        return yield* getPipelineStatus;
+      }),
+    );
 
-      expect(result.body.pendingBlockFinalizations.oldestActive).toMatchObject({
-        headerHash: "11".repeat(28),
-        status,
-      });
-    },
-  );
+    expect(result.body.pendingBlockFinalizations.oldestActive).toMatchObject({
+      headerHash: OUTSTANDING,
+      status: S.Landed,
+    });
+    expect(result.body.pendingBlockFinalizations.live).toBe("0");
+  });
 
-  it("derives ageMs and observedConfirmedAt from the stored row", () => {
+  it("derives ageMs from the stored row", () => {
     const row: PipelineStatusOldestActiveRow = {
       header_hash: "11".repeat(28),
-      submitted_tx_hash: "22".repeat(32),
-      status: PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+      intended_tx_hash: "22".repeat(32),
+      status: S.Landed,
       created_at: new Date("2026-07-29T00:00:00.000Z"),
       updated_at: new Date("2026-07-29T00:00:01.000Z"),
-      observed_confirmed_at_ms: Date.parse("2026-07-29T00:00:02.000Z"),
     };
 
     expect(
@@ -285,12 +218,11 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
       ),
     ).toStrictEqual({
       headerHash: "11".repeat(28),
-      submittedTxHash: "22".repeat(32),
-      status: PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+      intendedTxHash: "22".repeat(32),
+      status: S.Landed,
       ageMs: 5_000,
       createdAt: "2026-07-29T00:00:00.000Z",
       updatedAt: "2026-07-29T00:00:01.000Z",
-      observedConfirmedAt: "2026-07-29T00:00:02.000Z",
     });
   });
 

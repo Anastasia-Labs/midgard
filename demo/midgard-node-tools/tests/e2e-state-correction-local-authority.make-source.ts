@@ -133,7 +133,6 @@ export const makeSource = (
     height: 30,
   })),
   observeDatabase: vi.fn(async () => ({
-    unfinishedMutationJobs: 0,
     pendingFinalizations: 0,
   })),
   ...overrides,
@@ -174,7 +173,6 @@ export const finalInput = {
   manifestId: hash(4),
   observedAt: acceptedTip,
   stateQueueDepth: 0,
-  unfinishedMutationJobs: 0,
   pendingFinalizations: 0,
   retainedProofTokens: [{ unit, outRef: `${hash(6)}#0` }],
   economics: [

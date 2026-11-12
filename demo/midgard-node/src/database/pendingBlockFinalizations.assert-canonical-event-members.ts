@@ -11,12 +11,9 @@ import { commitAnchorCanonical } from "./commit-anchor.js";
 import * as DepositsDB from "./deposits.js";
 import { canonicalForcedAdmission } from "./l1-admission-identity.js";
 import {
-  ACTIVE_STATUSES,
   Columns,
   MemberColumns,
   type MemberRecord,
-  type Row,
-  Status,
   tableName,
 } from "./pendingBlockFinalizations.columns.js";
 import { validateSignedIntent } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
@@ -189,11 +186,9 @@ export const recordSignedIntent = <J = never>(
         );
         yield* assertCanonicalEventMembers(record.value);
         const rows = yield* sql`UPDATE ${sql(tableName)}
-        SET intended_tx_hash = ${txHash}, signed_tx_cbor = ${signedCbor}, updated_at = clock_timestamp()
-        WHERE header_hash = ${headerHash} AND status = ${Status.PendingSubmission}
-          AND submitted_tx_hash IS NULL AND prepared_tx_hash = ${txHash}
-          AND ((intended_tx_hash IS NULL AND signed_tx_cbor IS NULL)
-            OR (intended_tx_hash = ${txHash} AND signed_tx_cbor = ${signedCbor}))
+        SET intended_tx_hash = ${txHash}, updated_at = clock_timestamp()
+        WHERE header_hash = ${headerHash} AND prepared_tx_hash = ${txHash}
+          AND (intended_tx_hash IS NULL OR intended_tx_hash = ${txHash})
         RETURNING header_hash`;
         if (rows.length !== 1)
           return yield* Effect.fail(
@@ -209,86 +204,5 @@ export const recordSignedIntent = <J = never>(
     sqlErrorToDatabaseError(
       tableName,
       "Failed to persist signed intent before broadcast",
-    ),
-  );
-
-export const markSubmitted = (
-  headerHash: Buffer,
-  submittedTxHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const owned = yield* inRuntimeFollowerWrite;
-    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash},
-          ${sql(Columns.STATUS)} = CASE WHEN ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
-            THEN ${Status.SubmittedLocalFinalizationPending} ELSE ${sql(Columns.STATUS)} END,
-          ${sql(Columns.UPDATED_AT)} = NOW()
-      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} IN ${sql.in([...ACTIVE_STATUSES, Status.LocallyApplied])}
-        AND (${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash} OR (${sql(Columns.INTENDED_TX_HASH)} IS NULL AND ${!owned}))
-        AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash})
-      RETURNING *`;
-    if (rows.length !== 1) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message: "Failed to mark pending block as submitted",
-          cause: `header_hash=${headerHash.toString("hex")}`,
-        }),
-      );
-    }
-  }).pipe(
-    withFollowerWrite,
-    Effect.withLogSpan(`markSubmitted ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark pending block as submitted",
-    ),
-  );
-
-export const markObservedWaitingStability = (
-  headerHash: Buffer,
-  observedConfirmedAtMs: bigint,
-  submittedTxHash?: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.SUBMITTED_TX_HASH)} = COALESCE(
-            ${sql(Columns.SUBMITTED_TX_HASH)},
-            ${submittedTxHash ?? null}
-          ),
-          ${sql(Columns.STATUS)} = ${Status.ObservedWaitingStability},
-          ${sql(Columns.OBSERVED_CONFIRMED_AT_MS)} = COALESCE(
-            ${sql(Columns.OBSERVED_CONFIRMED_AT_MS)},
-            ${observedConfirmedAtMs}
-          ),
-          ${sql(Columns.UPDATED_AT)} = NOW()
-      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} IN (
-          ${Status.PendingSubmission},
-          ${Status.SubmittedLocalFinalizationPending},
-          ${Status.SubmittedUnconfirmed},
-          ${Status.ObservedWaitingStability}
-        )
-        AND (${submittedTxHash ?? null}::bytea IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash ?? null})
-        AND (${submittedTxHash ?? null}::bytea IS NULL OR ${sql(Columns.INTENDED_TX_HASH)} IS NULL OR ${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash ?? null})
-      RETURNING *`;
-    if (rows.length !== 1) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message: "Failed to mark pending block as observed waiting stability",
-          cause: `header_hash=${headerHash.toString("hex")}`,
-        }),
-      );
-    }
-  }).pipe(
-    withFollowerWrite,
-    Effect.withLogSpan(`markObservedWaitingStability ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark pending block as observed waiting stability",
     ),
   );

@@ -24,7 +24,13 @@
  * `rollback_beyond_k` with no fact, landed row, frontier, native root or
  * cursor changed. The queue-terminal projection's rows (`removed` for a
  * landed correction, `merged` for a merge) equal a fresh derivation from
- * the canonical chain after every event, rollbacks and prunes included. A fork onto another header with
+ * the canonical chain after every event, rollbacks and prunes included.
+ * Own blocks (§8.2, §8.3): each journal's derived status equals a fresh
+ * derivation at every settled check (a fold the prune deleted by its merged
+ * queue terminal), and its row is never written after
+ * its commit, rollbacks included; an applied own block a rollback took out
+ * is unlanded again and applied when it relands, a dead one that lands
+ * anyway is applied, and the live journal is never a dead one. A fork onto another header with
  * the frontier's root (`equalRootUnfolds`) is counted but not required: the
  * corpus does not reliably build one, so the deterministic
  * `confirmed-ledger-temporal.test.ts` pins it.
@@ -332,6 +338,10 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "ownResolutions",
     "ownOnRemovedBase",
     "ownRevivals",
+    "ownRolledBack",
+    "ownRelanded",
+    "ownStatusChecks",
+    "ownPrunedFolds",
     "revivalUnrejected",
     "unrejectedRestored",
     "offlineChecks",

@@ -145,7 +145,6 @@ export const fullConsolidationReadiness = () => ({
     reasons: [],
     durableAdmissionBacklog: "0",
     mempoolTxCount: "0",
-    unfinishedLocalMutationJobs: "0",
     unresolvedBlockSubmissionAgeMs: 0,
     providerQueryHealthy: true,
     stateQueueMutationLease: { status: "idle", pendingFinalizations: [] },

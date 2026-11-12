@@ -1,4 +1,4 @@
-import "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 
 import { Effect, Option } from "effect";
 
@@ -16,19 +16,20 @@ import {
   validationTracesTableName,
   withdrawalsTableName,
 } from "./pendingBlockFinalizations.columns.js";
-import { retrieveActive } from "./pendingBlockFinalizations.retrieve-record.js";
+import { retrieveLive } from "./pendingBlockFinalizations.retrieve-record.js";
 import { clearTable, DatabaseError } from "./utils/common.js";
 
-export const assertActiveJournalPayloadsComplete: Effect.Effect<
+/** The live journal, if any, holds every payload its block needs. */
+export const assertLiveJournalPayloadsComplete: Effect.Effect<
   void,
   DatabaseError,
   Database
 > = Effect.gen(function* () {
-  const active = yield* retrieveActive();
-  if (Option.isNone(active)) {
+  const live = yield* retrieveLive();
+  if (Option.isNone(live)) {
     return;
   }
-  const record = active.value;
+  const record = live.value;
   const hasIncompletePayload = (members: readonly MemberRecord[]): boolean =>
     members.some(
       (member) =>
@@ -53,12 +54,12 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
       new DatabaseError({
         table: tableName,
         message:
-          "Active pending-finalization journal has incomplete durable payload members",
+          "Live own-block journal has incomplete durable payload members",
         cause: `header_hash=${record[Columns.HEADER_HASH].toString("hex")}`,
       }),
     );
   }
-}).pipe(Effect.withLogSpan(`assertActiveJournalPayloadsComplete ${tableName}`));
+}).pipe(Effect.withLogSpan(`assertLiveJournalPayloadsComplete ${tableName}`));
 
 export const clear = Effect.all(
   [

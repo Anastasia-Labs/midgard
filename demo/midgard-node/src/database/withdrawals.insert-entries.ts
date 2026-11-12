@@ -101,18 +101,6 @@ const projectedEventsTable = {
   entityPlural: "withdrawals",
   idLabel: "event_id",
   touchUpdatedAt: true,
-  validateHeaderAssignment: (row, idHex) =>
-    row[Columns.SETTLEMENT_EVENT_INFO] === null ||
-    row[Columns.VALIDITY] === null
-      ? Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to assign projected header because the withdrawal has not been classified",
-            cause: `event_id=${idHex}`,
-          }),
-        )
-      : Effect.void,
 } as const satisfies ProjectedEvents.ProjectedEventTable;
 
 export const projectedEventAdapter =
@@ -129,10 +117,6 @@ export const projectedEventAdapter =
         "Failed to retrieve projected withdrawals awaiting header assignment",
       markAwaitingAsProjected:
         "Failed to mark awaiting withdrawals as projected",
-      markProjectedByEventIds:
-        "Failed to mark withdrawals as assigned to the given header",
-      clearProjectedHeaderAssignmentByEventIds:
-        "Failed to clear projected header assignments for withdrawals",
     },
   });
 

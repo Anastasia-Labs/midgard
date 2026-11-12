@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import {
   DaPayloadsDB,
@@ -30,10 +30,10 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
-  readonly retrieveJournalByHeaderHash?: (
+  readonly retrieveJournalStatus?: (
     headerHash: Buffer,
   ) => Effect.Effect<
-    Option.Option<PendingBlockFinalizationsDB.Record>,
+    PendingBlockFinalizationsDB.OwnBlockStatus | undefined,
     DatabaseError,
     R
   >;
@@ -44,8 +44,8 @@ type BackfillDeps<R> = {
 
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
-    PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
-  retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
+    PendingBlockFinalizationsDB.retrieveAppliedMissingDaPayloads,
+  retrieveJournalStatus: PendingBlockFinalizationsDB.retrieveStatusByHeaderHash,
   upsertAvailable: DaPayloadsDB.upsertAvailable,
 };
 
@@ -97,7 +97,7 @@ const journalHasIncompletePayloads = (
   BigInt(record.validationTraceMembers.length) !==
     record[PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT];
 
-export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
+export const backfillMissingDaPayloadsFromAppliedJournals = <R = Database>({
   headerHash,
   limit,
   deps = defaultDeps as BackfillDeps<R>,
@@ -117,18 +117,17 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
     if (records.length === 0) {
       if (
         headerHash !== undefined &&
-        deps.retrieveJournalByHeaderHash !== undefined
+        deps.retrieveJournalStatus !== undefined
       ) {
-        const journal = yield* deps.retrieveJournalByHeaderHash(headerHash);
-        if (Option.isSome(journal)) {
-          const status =
-            journal.value[PendingBlockFinalizationsDB.Columns.STATUS];
+        const status = yield* deps.retrieveJournalStatus(headerHash);
+        if (status !== undefined) {
           skipped.push({
             headerHash: headerHash.toString("hex"),
             reason:
-              status === PendingBlockFinalizationsDB.Status.LocallyApplied
-                ? "finalized journal already has a DA payload or is not missing DA payload backfill"
-                : `journal excluded by status: ${status}; revive and complete local finalization before DA payload backfill`,
+              status === PendingBlockFinalizationsDB.OwnBlockStatus.Applied ||
+              status === PendingBlockFinalizationsDB.OwnBlockStatus.Folded
+                ? "applied journal already has a DA payload or is not missing DA payload backfill"
+                : `journal excluded by status: ${status}; its block is backfilled once it is applied`,
           });
         }
       }

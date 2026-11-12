@@ -19,7 +19,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 import {
-  ACTIVE_JOURNAL_STATUSES,
   CARDANO_OUT_REF,
   check,
   exactKeys,
@@ -350,8 +349,7 @@ const validateDatabaseState = (reasons, value, label) => {
           "headerHash",
           "headerCbor",
           "journalPayloadIdentity",
-          "submittedTxHash",
-          "status",
+          "intendedTxHash",
           "baseTailHeaderHash",
           "baseTailOutRef",
           "baseTailDatumCbor",
@@ -377,14 +375,8 @@ const validateDatabaseState = (reasons, value, label) => {
       );
       check(
         reasons,
-        journal.submittedTxHash === null ||
-          HASH_32.test(journal.submittedTxHash),
-        `${label}.activeJournal.submittedTxHash must be null or 64 lowercase hex`,
-      );
-      check(
-        reasons,
-        ACTIVE_JOURNAL_STATUSES.has(journal.status),
-        `${label}.activeJournal.status is not active`,
+        journal.intendedTxHash === null || HASH_32.test(journal.intendedTxHash),
+        `${label}.activeJournal.intendedTxHash must be null or 64 lowercase hex`,
       );
       check(
         reasons,

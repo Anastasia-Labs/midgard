@@ -78,9 +78,9 @@ export const seedBaseAndPayload = async ({
       120_000,
     );
     const baseState = await captureDatabaseState();
-    if (baseState.activeJournal?.submittedTxHash === null) {
+    if (baseState.activeJournal?.intendedTxHash === null) {
       throw new Error(
-        `${label}: submitted base journal is missing its tx hash`,
+        `${label}: submitted base journal is missing its signed commit`,
       );
     }
     baseHeaderHash = baseState.activeJournal?.headerHash;

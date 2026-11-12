@@ -1,5 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+import { PendingBlockFinalizationsDB } from "midgard-node/database/index";
 import { percentileOfSorted } from "midgard-node/percentile";
 
 import {
@@ -9,6 +10,24 @@ import {
 
 /** Nearest-rank percentile over an already-sorted sample set. */
 export const percentile = percentileOfSorted;
+
+/**
+ * An own block's journal columns the commit metrics read, for the journal
+ * aliased `pending`: its derived status, when it was written, and when the
+ * node processed its landing (null before, and once its fold dropped the
+ * landed row).
+ */
+export const ownCommitColumns = (sql: SqlClient.SqlClient) =>
+  sql`${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "pending")} AS status,
+    pending.created_at,
+    (SELECT (EXTRACT(EPOCH FROM landed.processed_at) * 1000)::bigint
+      FROM node_landed_blocks landed
+      WHERE landed.header_hash = pending.header_hash
+        AND landed.state = 'processed') AS observed_confirmed_at_ms`;
+
+/** SQL condition: the journal aliased `pending` is applied or folded. */
+const finalized = (sql: SqlClient.SqlClient) =>
+  PendingBlockFinalizationsDB.appliedOrFolded(sql, "pending");
 
 export type StageWindowQuery = {
   readonly windowStart: string;
@@ -252,9 +271,7 @@ export const collectGroundTruthMetricsFromSql = (
         sql<L1CommitWindowRow>`SELECT
             encode(member.member_id, 'hex') AS tx_hash,
             encode(pending.header_hash, 'hex') AS header_hash,
-            pending.status,
-            pending.created_at,
-            pending.observed_confirmed_at_ms
+            ${ownCommitColumns(sql)}
           FROM pending_block_finalization_txs AS member
           JOIN pending_block_finalizations AS pending
             ON pending.header_hash = member.header_hash
@@ -273,11 +290,11 @@ export const collectGroundTruthMetricsFromSql = (
           FROM processed_mempool
           WHERE time_stamp_tz BETWEEN ${start} AND ${end}`,
         sql<PendingStatusRow>`SELECT
-            encode(header_hash, 'hex') AS header_hash,
-            status
-          FROM pending_block_finalizations
-          WHERE created_at BETWEEN ${start} AND ${end}
-            AND status <> 'locally_applied'`,
+            encode(pending.header_hash, 'hex') AS header_hash,
+            ${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "pending")} AS status
+          FROM pending_block_finalizations pending
+          WHERE pending.created_at BETWEEN ${start} AND ${end}
+            AND NOT ${finalized(sql)}`,
       ],
       { concurrency: "unbounded" },
     );

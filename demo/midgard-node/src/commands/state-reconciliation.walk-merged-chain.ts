@@ -32,19 +32,20 @@ export type StateReconciliationInput = {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-export const JOURNAL_STATUS = PendingBlockFinalizationsDB.Status;
+const JOURNAL_STATUS = PendingBlockFinalizationsDB.OwnBlockStatus;
 
-export const ACTIVE_JOURNAL_STATUSES: ReadonlySet<string> = new Set([
-  JOURNAL_STATUS.PendingSubmission,
-  JOURNAL_STATUS.SubmittedLocalFinalizationPending,
-  JOURNAL_STATUS.SubmittedUnconfirmed,
-  JOURNAL_STATUS.ObservedWaitingStability,
-]);
+/** The journal's block is applied or folded. */
+export const isAppliedJournal = (journal: JournalSummary): boolean =>
+  journal.status === JOURNAL_STATUS.Applied ||
+  journal.status === JOURNAL_STATUS.Folded;
 
-export const LOCALLY_FINALIZED_ACTIVE_STATUSES: ReadonlySet<string> = new Set([
-  JOURNAL_STATUS.SubmittedUnconfirmed,
-  JOURNAL_STATUS.ObservedWaitingStability,
-]);
+/** The journal is the node's live journal: unlanded and not dead. */
+export const isLiveJournal = (journal: JournalSummary): boolean =>
+  journal.status === JOURNAL_STATUS.Unlanded && journal.deadCause === null;
+
+/** The journal is live, or landed and not applied yet. */
+export const isUnappliedJournal = (journal: JournalSummary): boolean =>
+  isLiveJournal(journal) || journal.status === JOURNAL_STATUS.Landed;
 
 export const toHex = (value: unknown): string => {
   if (Buffer.isBuffer(value)) return value.toString("hex");
@@ -165,8 +166,8 @@ type MergedWalk = {
   /** True when the walk reached the genesis sentinel. */
   readonly complete: boolean;
   readonly stopReason: string;
-  /** Journals marked abandoned that the confirmed chain nevertheless passes through. */
-  readonly abandonedOnChain: readonly string[];
+  /** Dead journals the confirmed chain nevertheless passes through. */
+  readonly deadOnChain: readonly string[];
 };
 
 export type Context = {
@@ -188,7 +189,7 @@ const walkMergedChain = (
   journals: ReadonlyMap<string, JournalSummary>,
 ): MergedWalk => {
   const headers = new Set<string>();
-  const abandonedOnChain: string[] = [];
+  const deadOnChain: string[] = [];
   let current = confirmedHeaderHash;
   const limit = journals.size + 2;
   for (let step = 0; step <= limit; step += 1) {
@@ -197,7 +198,7 @@ const walkMergedChain = (
         headers,
         complete: true,
         stopReason: "reached genesis",
-        abandonedOnChain,
+        deadOnChain,
       };
     }
     if (headers.has(current)) {
@@ -205,15 +206,13 @@ const walkMergedChain = (
         headers,
         complete: false,
         stopReason: `cycle at ${current}`,
-        abandonedOnChain,
+        deadOnChain,
       };
     }
     headers.add(current);
     const journal = journals.get(current);
     if (journal !== undefined) {
-      if (journal.status === JOURNAL_STATUS.Abandoned) {
-        abandonedOnChain.push(current);
-      }
+      if (journal.deadCause !== null) deadOnChain.push(current);
       current = journal.baseTailHeaderHash;
       continue;
     }
@@ -221,14 +220,14 @@ const walkMergedChain = (
       headers,
       complete: false,
       stopReason: `history before ${current} is not known locally`,
-      abandonedOnChain,
+      deadOnChain,
     };
   }
   return {
     headers,
     complete: false,
     stopReason: "walk exceeded the number of known headers",
-    abandonedOnChain,
+    deadOnChain,
   };
 };
 

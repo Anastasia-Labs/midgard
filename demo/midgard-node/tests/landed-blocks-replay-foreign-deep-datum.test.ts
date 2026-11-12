@@ -23,7 +23,6 @@ import {
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { reconcileFollowerEvents } from "../src/database/follower-events.js";
 import { WithdrawalsDB } from "../src/database/index.js";
 import { EVENT_UNDECODABLE } from "../src/l1-events/driver.js";
 import { eventKeyCbor } from "../src/mpf/trace-events.js";
@@ -38,6 +37,7 @@ import {
 } from "../src/services/follower-write-gate.js";
 import { countsFromLengths } from "./da-payload.record.js";
 import { rebind } from "./foreign-block-import.fixture.js";
+import { reconcileOverDead } from "./helpers/follower-view.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import { admissionTx, eventOrder, listOf } from "./helpers/l1-events-chain.js";
 import {
@@ -91,7 +91,7 @@ const ingestedDeposits = async (store: FactStore) => {
   if (read.kind !== "ok") throw new Error(`eventsAt: ${read.kind}`);
   const outcome = await inNode(
     withFollowerWrite(
-      reconcileFollowerEvents(
+      reconcileOverDead(
         { view, events: read.value },
         {
           network: NETWORK,

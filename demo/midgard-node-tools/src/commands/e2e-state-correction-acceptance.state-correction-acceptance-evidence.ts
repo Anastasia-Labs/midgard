@@ -135,8 +135,6 @@ export const stateCorrectionAcceptanceEvidence = ({
         details: {
           ...details,
           stateQueueDepth: evidence.finalState.stateQueueDepth.toString(),
-          unfinishedMutationJobs:
-            evidence.finalState.unfinishedMutationJobs.toString(),
           pendingFinalizations:
             evidence.finalState.pendingFinalizations.toString(),
           watcherReady: evidence.finalState.watcherReady.toString(),

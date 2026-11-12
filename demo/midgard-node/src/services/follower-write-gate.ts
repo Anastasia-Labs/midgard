@@ -356,6 +356,12 @@ export const assertFollowerWrite = (permit: FollowerWritePermit | undefined) =>
       : Effect.provideService(FollowerWrite, permit),
   );
 
+/** Whether no producer runs and no recompute is pending in this process. */
+export const followerWriteQuiet = Effect.map(
+  Effect.flatMap(Globals, (globals) => Ref.get(globals.FOLLOWER_WRITE_GATE)),
+  (local) => !local.recomputing && local.producers.size === 0,
+);
+
 /**
  * Runs a producer's whole lifetime under a permit at the view the driver
  * last applied. Refused (a named hold, `isFollowerWriteHeld`) while this

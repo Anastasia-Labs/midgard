@@ -89,7 +89,7 @@ describe("pruning ended state-queue mutation leases", () => {
       Effect.gen(function* () {
         // The journal fixture names "lease-token", ended since.
         yield* journals([
-          { label: "named", status: "locally_applied", endedAgoMs: DAY_MS },
+          { label: "named", status: "folded", endedAgoMs: DAY_MS },
         ]);
         yield* insertLease({
           token: "lease-token",

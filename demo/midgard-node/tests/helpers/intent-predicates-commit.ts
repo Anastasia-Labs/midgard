@@ -19,19 +19,16 @@ const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 export const BLOCK = Buffer.alloc(28, 0x7e);
 
-/** A block journal row for `BLOCK` in `status`, with its commit anchor. */
-export const journalRow = (status: string, anchor: CommitAnchor | null) =>
+/** A block journal row for `BLOCK`, with its commit anchor. */
+export const journalRow = (anchor: CommitAnchor | null) =>
   db(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const at = new Date(1_000_000);
       yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
         header_hash: BLOCK,
-        submitted_tx_hash: null,
         block_end_time: at,
         block_time: at,
-        status,
-        observed_confirmed_at_ms: null,
         state_queue_lease_token: "predicate-test",
         base_snapshot_id: "predicate-test",
         base_tail_out_ref: "base#0",

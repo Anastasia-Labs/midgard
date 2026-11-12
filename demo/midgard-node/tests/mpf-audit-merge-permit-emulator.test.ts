@@ -19,7 +19,6 @@ import {
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { mergeAction } from "../src/fibers/merge.js";
@@ -297,10 +296,10 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     );
   const evidenceDetail = (result: ReconciliationResult, kind: string) =>
     result.evidence.find((entry) => entry.kind === kind)?.detail;
-  const mergeJob = (headerHash: string) =>
+  const ownStatus = (headerHash: string) =>
     run(
-      MutationJobsDB.retrieveByJobId(
-        MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
+      PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+        Buffer.from(headerHash, "hex"),
       ),
     );
   const levelDbAt = async (name: string, entries: LedgerEntries) => {
@@ -327,7 +326,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   // The journal fields the multi-operator and rewind cases rewrite, so each
   // case restores exactly what it changed.
   type JournalFields = {
-    readonly status: string;
     readonly base_tail_header_hash: Buffer;
     readonly base_utxos_root: string;
     readonly mpf_replay_base_root: Buffer | null;
@@ -336,7 +334,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   const journalFields = async (headerHash: string) =>
     (
       await sqlRun(
-        (sql) => sql<JournalFields>`SELECT status, base_tail_header_hash,
+        (sql) => sql<JournalFields>`SELECT base_tail_header_hash,
           base_utxos_root, mpf_replay_base_root,
           ledger_delta_produced::text AS ledger_delta_produced
           FROM pending_block_finalizations
@@ -346,11 +344,17 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   const writeJournalFields = (headerHash: string, fields: JournalFields) =>
     sqlRun(
       (sql) => sql`UPDATE pending_block_finalizations SET
-        status = ${fields.status},
         base_tail_header_hash = ${fields.base_tail_header_hash},
         base_utxos_root = ${fields.base_utxos_root},
         mpf_replay_base_root = ${fields.mpf_replay_base_root},
         ledger_delta_produced = ${fields.ledger_delta_produced}::text::jsonb
+        WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
+    );
+  /** Sets the state of `headerHash`'s landed row: a landed transaction
+   * removed the block (`removed`), or it is processed again. */
+  const setLandedState = (headerHash: string, state: "processed" | "removed") =>
+    sqlRun(
+      (sql) => sql`UPDATE node_landed_blocks SET state = ${state}
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
   /** The recompute the follower write gate holds writes for, if any. */
@@ -471,22 +475,19 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     });
     await acknowledgeCleanAudit();
 
-    const firstFields = await journalFields(first.headerHash);
     const secondFields = await journalFields(second.headerHash);
-    expect(firstFields.status).toBe(
-      PendingBlockFinalizationsDB.Status.LocallyApplied,
+    expect(await ownStatus(first.headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
     );
     expect(secondFields.base_tail_header_hash.toString("hex")).toBe(
       first.headerHash,
     );
     expect(secondFields.base_utxos_root).toBe(tipRoot);
 
-    // A correction rewind abandons the removed block's journal and resets the
-    // native root to its base: the tip is the surviving journal again.
-    await writeJournalFields(second.headerHash, {
-      ...secondFields,
-      status: PendingBlockFinalizationsDB.Status.Abandoned,
-    });
+    // A correction removes the second block (its journal is no longer
+    // applied) and resets the native root to its base: the tip is the
+    // surviving journal again.
+    await setLandedState(second.headerHash, "removed");
     expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
       matchedPoint: "tip",
       recomputedRoot: tipRoot,
@@ -495,19 +496,16 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
     expect(await auditHealthy()).toBe(true);
-    // A native root still at the abandoned block's post-state diverges.
+    // A native root still at the removed block's post-state diverges.
     expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
       recomputedRoot: tipRoot,
       diverged: true,
     });
-    await writeJournalFields(second.headerHash, secondFields);
+    await setLandedState(second.headerHash, "processed");
     await acknowledgeCleanAudit();
 
-    // A base journal that is no longer finalized cannot anchor its child.
-    await writeJournalFields(first.headerHash, {
-      ...firstFields,
-      status: PendingBlockFinalizationsDB.Status.Abandoned,
-    });
+    // A base journal that is no longer applied cannot anchor its child.
+    await setLandedState(first.headerHash, "removed");
     const orphaned = await auditWithNativeRoot(twoBlockTip);
     expect(orphaned).toMatchObject({
       skippedReason: "tip_unverifiable",
@@ -515,7 +513,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
     expect(orphaned.tipUnverifiable).toContain(tipRoot);
-    await writeJournalFields(first.headerHash, firstFields);
+    await setLandedState(first.headerHash, "processed");
     await acknowledgeCleanAudit();
 
     // A tampered ledger delta does not fold to its journal's root.
@@ -645,7 +643,9 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       "E_MERGE_PRODUCER_UNAVAILABLE",
     );
     expect((await queue()).blockCount).toBe(2);
-    expect(await mergeJob(first.headerHash)).toBeUndefined();
+    expect(await ownStatus(first.headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+    );
 
     // A driver recompute holds the gate after the merge registered: the
     // pre-submit check under the lease refuses before the transaction leaves,
@@ -688,7 +688,9 @@ it("audits the native MPF root at the committed tip, and merges manually only un
         formatUnknownError(revoked.left, { includeCause: true }),
     ).toContain(DRIVER_RECOMPUTE_PENDING);
     expect((await queue()).blockCount).toBe(2);
-    expect(await mergeJob(first.headerHash)).toBeUndefined();
+    expect(await ownStatus(first.headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+    );
     expect(await gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
     // A node whose gate is held blocks the repair with evidence.
     const notReady = await reconcile(first.headerHash, true);
@@ -722,9 +724,9 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(confirmedFinalizations).toEqual([
       { headerHash: first.headerHash, succeeded: true },
     ]);
-    expect(await mergeJob(first.headerHash)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-    });
+    expect(await ownStatus(first.headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+    );
     expect((await queue()).blockCount).toBe(1);
     expect(await reconcile(first.headerHash, false)).toMatchObject({
       status: "satisfied",
@@ -743,7 +745,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await writeJournalFields(second.headerHash, secondFields);
     // The admin merge of the second block is interrupted (as the L1 control
     // plane's hold timeout would) after the L1 confirmation, while its local
-    // finalization is running: the finalization still completes.
+    // finalization observes the native owner after its fold: the
+    // finalization still completes.
     const liveOwner = await Effect.runPromise(
       Ref.get(globals.NATIVE_MPF_OWNER),
     );
@@ -760,10 +763,9 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       get(target, property) {
         if (property === "diagnostics")
           return async () => {
-            const job = await mergeJob(second.headerHash);
             if (
-              job?.[MutationJobsDB.Columns.STATUS] ===
-              MutationJobsDB.Status.Running
+              (await ownStatus(second.headerHash)) ===
+              PendingBlockFinalizationsDB.OwnBlockStatus.Folded
             ) {
               signalFinalizing();
               await finalizationReleased;
@@ -822,9 +824,9 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       await Effect.runPromise(Ref.set(globals.NATIVE_MPF_OWNER, liveOwner));
     }
     await h.synchronize();
-    expect(await mergeJob(second.headerHash)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-    });
+    expect(await ownStatus(second.headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+    );
     expect(
       await run(
         BlocksDB.retrieveTxHashesByHeaderHash(

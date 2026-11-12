@@ -3,7 +3,6 @@ import { Effect, Option, Ref } from "effect";
 
 import {
   MempoolDB,
-  MutationJobsDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
 } from "../database/index.js";
@@ -258,14 +257,12 @@ export const mergeActionWithL1ControlPlaneHeld = (
             resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,
-            unfinishedMutationJobs,
           ] = yield* Effect.all(
             [
               Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
               Ref.get(globals.RESET_IN_PROGRESS),
               TxAdmissionsDB.countBacklog,
               MempoolDB.retrieveTxCount,
-              MutationJobsDB.countUnfinished,
             ],
             { concurrency: "unbounded" },
           );
@@ -278,7 +275,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
             resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,
-            unfinishedMutationJobs,
           });
           if (preflight.status !== "ready") {
             if (preflight.status === "tail_eligible_final_merge") {

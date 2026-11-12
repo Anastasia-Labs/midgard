@@ -205,7 +205,6 @@ export const record = ({
       makeDeploymentMarker("de".repeat(32)).manifestId,
     [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
       consensusProfileId,
-    [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: null,
     [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",
     [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]: "snapshot",
     [PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF]: "base#0",
@@ -262,9 +261,6 @@ export const record = ({
         outref: outref.toString("hex"),
         output: output.toString("hex"),
       })),
-    [PendingBlockFinalizationsDB.Columns.STATUS]:
-      PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-    [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
     [PendingBlockFinalizationsDB.Columns.CREATED_AT]: blockStart,
     [PendingBlockFinalizationsDB.Columns.UPDATED_AT]: blockStart,
     depositEventIds: depositMembers.map(

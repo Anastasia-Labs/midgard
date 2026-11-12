@@ -10,7 +10,6 @@ import "../sha256.js";
 import "./daPayloads.js";
 import "./deposits.js";
 import "./forcedTransactions.js";
-import "./mutationJobs.js";
 import "./utils/common.js";
 import "./utils/exact-record.js";
 import "./utils/tx.js";
@@ -20,22 +19,22 @@ import "./pendingBlockFinalizations.parse-ledger-delta.js";
 import "./pendingBlockFinalizations.parse-pending-block-finalization-metadata.js";
 import "./pendingBlockFinalizations.parse-pending-block-finalization.js";
 import "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
+import "./pendingBlockFinalizations.derived-status.js";
 import "./pendingBlockFinalizations.retrieve-record.js";
-import "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import "./pendingBlockFinalizations.prepare-pending-submission.js";
 import "./pendingBlockFinalizations.assert-canonical-event-members.js";
-import "./pendingBlockFinalizations.delete-superseded-abandoned-unsubmitted-journals.js";
-import "./pendingBlockFinalizations.assert-active-journal-payloads-complete.js";
-export {
-  assertActiveJournalPayloadsComplete,
-  clear,
-} from "./pendingBlockFinalizations.assert-active-journal-payloads-complete.js";
+import "./pendingBlockFinalizations.discard-unsigned-journal.js";
+import "./pendingBlockFinalizations.tx-member-to-entry.js";
+import "./pendingBlockFinalizations.assert-live-journal-payloads-complete.js";
 export {
   assertCanonicalEventMembers,
-  markObservedWaitingStability,
-  markSubmitted,
   recordSignedIntent,
 } from "./pendingBlockFinalizations.assert-canonical-event-members.js";
+export {
+  assertLiveJournalPayloadsComplete,
+  clear,
+} from "./pendingBlockFinalizations.assert-live-journal-payloads-complete.js";
 export {
   Columns,
   MemberColumns,
@@ -44,7 +43,6 @@ export {
   PendingBlockFinalizationReplayKind,
   type RetainedRootMemberInput,
   type Row,
-  Status,
   tableName,
   UtxoColumns,
   type UtxoInput,
@@ -53,14 +51,23 @@ export {
 } from "./pendingBlockFinalizations.columns.js";
 export { validateForcedTransactionJournalMembers } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 export {
-  deleteSupersededAbandonedUnsubmitted,
-  markAbandoned,
-  markCorrectedAfterStateQueueRemoval,
-  markFinalized,
-  markUnsubmittedAbandoned,
-  reviveAbandonedCanonical,
-  txMemberToEntry,
-} from "./pendingBlockFinalizations.delete-superseded-abandoned-unsubmitted-journals.js";
+  appliedOrFolded,
+  deadHeader,
+  type DeadHeaders,
+  deadHeadersOf,
+  type DeadJournals,
+  deadJournals,
+  LIVE_JOURNAL_REFUSAL,
+  notAppliedOrFolded,
+  OWN_BLOCK_STATUSES,
+  OwnBlockStatus,
+  ownBlockStatusSql,
+  retrieveStatusByHeaderHash,
+} from "./pendingBlockFinalizations.derived-status.js";
+export {
+  discardUnsignedJournal,
+  discardUnsignedJournals,
+} from "./pendingBlockFinalizations.discard-unsigned-journal.js";
 export {
   type LedgerDeltaInput,
   type NativeMpfReplayInput,
@@ -74,15 +81,17 @@ export { parsePendingBlockFinalization } from "./pendingBlockFinalizations.parse
 export { preparePendingSubmission } from "./pendingBlockFinalizations.prepare-pending-submission.js";
 export {
   assertNoUnreconciledSignedSubmission,
+  type LeaseJournal,
+  retrieveAppliedMissingDaPayloads,
   retrieveByStateQueueLeaseToken,
-  retrieveFinalizedMissingDaPayloads,
-} from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+} from "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 export {
-  hasActive,
-  retrieveActive,
-  retrieveActiveByStateQueueLeaseToken,
+  hasLive,
+  retrieveAppliedByHeaderHash,
   retrieveByHeaderHash,
-  retrieveFinalizedByHeaderHash,
-  retrieveNewestFinalized,
-  retrieveNewestFinalizedWithExpectedRoot,
+  retrieveLive,
+  retrieveLiveOver,
+  retrieveNewestApplied,
+  retrieveNewestAppliedWithExpectedRoot,
 } from "./pendingBlockFinalizations.retrieve-record.js";
+export { txMemberToEntry } from "./pendingBlockFinalizations.tx-member-to-entry.js";

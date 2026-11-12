@@ -128,22 +128,20 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       );
       expect(projectedUtxosBeforeLanding.utxoCount).toEqual(0);
 
-      const activePendingAfterSubmission = await runNodeDatabaseEffect(
-        PendingBlockFinalizationsDB.retrieveActive(),
+      // Submitted, not landed. This lifecycle submits unjournaled
+      // (`IntentJournalWithoutFollower`), so S6 holds no intent for the
+      // commit and its journal is not live here.
+      const submittedHeaderHash = Buffer.from(
+        commitOutput.submittedHeaderHash,
+        "hex",
       );
-      expect(activePendingAfterSubmission._tag).toBe("Some");
-      if (activePendingAfterSubmission._tag !== "Some") {
-        throw new Error(
-          "Expected an active pending-finalization journal record",
-        );
-      }
       expect(
-        activePendingAfterSubmission.value[
-          PendingBlockFinalizationsDB.Columns.STATUS
-        ],
-      ).toBe(
-        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
-      );
+        await runNodeDatabaseEffect(
+          PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+            submittedHeaderHash,
+          ),
+        ),
+      ).toBe(PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded);
 
       const expectedDepositsRoot = await expectedAuthenticatedEventRoot(
         SDK.ROOT_DOMAINS.deposits,
@@ -234,10 +232,13 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         DepositsDB.Status.Projected,
       );
 
-      const activePendingFinalization = await runNodeDatabaseEffect(
-        PendingBlockFinalizationsDB.retrieveActive(),
-      );
-      expect(activePendingFinalization._tag).toBe("None");
+      expect(
+        await runNodeDatabaseEffect(
+          PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+            submittedHeaderHash,
+          ),
+        ),
+      ).toBe(PendingBlockFinalizationsDB.OwnBlockStatus.Applied);
 
       // A cold start seeds the local block boundary from the landed block.
       h = await initial.restartRuntime();

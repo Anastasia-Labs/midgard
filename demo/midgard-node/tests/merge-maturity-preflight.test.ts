@@ -92,10 +92,6 @@ vi.mock("../src/database/index.js", async (importOriginal) => {
       ...actual.MempoolDB,
       retrieveTxCount: EffectModule.succeed(0n),
     },
-    MutationJobsDB: {
-      ...actual.MutationJobsDB,
-      countUnfinished: EffectModule.succeed(0n),
-    },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
       countBacklog: EffectModule.succeed(0n),

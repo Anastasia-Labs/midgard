@@ -193,7 +193,7 @@ describe("the commit gate under a follower write permit", () => {
     ]);
     const pending = await pendingIntent(env, headerHash);
     expect(pending?.intended_tx_hash?.toString("hex")).toBe(txHash);
-    expect(pending?.signed_tx_cbor?.toString("hex")).toBe(direct[0]);
+    expect(pending?.intent_tx_cbor?.toString("hex")).toBe(direct[0]);
     expect(env.journal.holds()).toEqual([]);
     // S6 follows the sent commit to its landing.
     env.emulator.awaitBlock(1);
@@ -238,7 +238,7 @@ describe("the commit gate under a follower write permit", () => {
     expect(await journaled(env)).toEqual([]);
     expect(await pendingIntent(env, headerHash)).toMatchObject({
       intended_tx_hash: null,
-      signed_tx_cbor: null,
+      intent_tx_cbor: null,
     });
     // The gate's own refusal is the commit worker's failure, not a hold.
     expect(env.journal.holds()).toEqual([]);
@@ -277,7 +277,7 @@ describe("the commit gate under a follower write permit", () => {
     expect(await journaled(env)).toEqual([]);
     expect(await pendingIntent(env, headerHash)).toMatchObject({
       intended_tx_hash: null,
-      signed_tx_cbor: null,
+      intent_tx_cbor: null,
     });
     expect(env.journal.holds().map(({ reason }) => reason)).toEqual([
       INTENT_INPUT_UNTRACKED,

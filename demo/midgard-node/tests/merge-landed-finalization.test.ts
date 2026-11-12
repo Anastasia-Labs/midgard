@@ -5,7 +5,7 @@ import { describe, expect } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { processRow } from "../src/landed-blocks/settlements.js";
-import { Frontier } from "../src/landed-blocks/store.js";
+import { CONFIRMED_MERGE_JOURNAL_UNBOUND } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import {
   type Block,
@@ -20,6 +20,7 @@ import {
   foreignRow,
   isolatedDb,
   journal,
+  ownRow,
 } from "./merge-landed-finalization.fixtures.js";
 
 /**
@@ -30,7 +31,7 @@ import {
 
 describe("landed-merge finalization walk", () => {
   it.effect(
-    "finalizes the landed merges up to the confirmed header oldest first, stopping at a completed one and never reaching an unlanded one",
+    "finalizes the landed merges up to the confirmed header oldest first, stopping at a folded one and never reaching an unlanded one",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -42,17 +43,17 @@ describe("landed-merge finalization walk", () => {
           expect(
             yield* finalizeMergesLandedThrough(confirmedAtBlock(a)),
           ).toEqual([a.headerHash]);
-          yield* expectFinalized(a.headerHash, 1);
+          yield* expectFinalized(a.headerHash);
           yield* expectUntouched(b.headerHash);
 
-          // A's job completed, so the walk from C stops there and does not
+          // A is folded, so the walk from C stops there and does not
           // run A's finalization again; the block past C has not landed.
           expect(
             yield* finalizeMergesLandedThrough(confirmedAtBlock(c)),
           ).toEqual([b.headerHash, c.headerHash]);
-          yield* expectFinalized(a.headerHash, 1);
-          yield* expectFinalized(b.headerHash, 1);
-          yield* expectFinalized(c.headerHash, 1);
+          yield* expectFinalized(a.headerHash);
+          yield* expectFinalized(b.headerHash);
+          yield* expectFinalized(c.headerHash);
           yield* expectUntouched(unlanded.headerHash);
           expect(
             yield* finalizeMergesLandedThrough(confirmedAtBlock(c)),
@@ -89,7 +90,7 @@ describe("landed-merge finalization walk", () => {
           expect(
             yield* finalizeMergesLandedThrough(confirmedAt(foreign, 2_999n)),
           ).toEqual([a.headerHash]);
-          yield* expectFinalized(a.headerHash, 1);
+          yield* expectFinalized(a.headerHash);
 
           // A header no journal and no landed row names ends the walk.
           const b = yield* block(2, SDK.GENESIS_HEADER_HASH);
@@ -105,31 +106,7 @@ describe("landed-merge finalization walk", () => {
   );
 
   it.effect(
-    "finalizes this node's merge below another operator's block whose fold already took its landed row",
-    () =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const a = yield* block(1, SDK.GENESIS_HEADER_HASH);
-          yield* finalizedJournal(a);
-          const foreign = foreignRow("f2".repeat(28), a.headerHash);
-          yield* processRow(foreign);
-          yield* Frontier.upsert({
-            headerHash: a.headerHash,
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          });
-          yield* fold(foreign);
-          expect(
-            yield* finalizeMergesLandedThrough(
-              confirmedAt(foreign.headerHash, 2_999n),
-            ),
-          ).toEqual([a.headerHash]);
-          yield* expectFinalized(a.headerHash, 1);
-        }),
-      ),
-  );
-
-  it.effect(
-    "stops at this node's completed merge above another operator's folded block",
+    "defers this node's merge above another operator's block that has not folded, and finalizes it once that block folds",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -139,28 +116,33 @@ describe("landed-merge finalization walk", () => {
           const foreign = foreignRow("f2".repeat(28), a.headerHash);
           const b = yield* block(3, foreign.headerHash);
           yield* finalizedJournal(b);
-          // B's merge finalizes while F is not processed yet, so the walk
-          // from B ends at F and B's job completes without A.
+          // F is not processed yet: the walk from B ends at F, and B's
+          // fold waits for its base.
           expect(
             yield* finalizeMergesLandedThrough(confirmedAtBlock(b)),
           ).toEqual([b.headerHash]);
+          yield* expectUntouched(b.headerHash);
+          yield* expectUntouched(a.headerHash);
+          // Landed-block processing folds A, then F, oldest first.
           yield* processRow(foreign);
-          yield* Frontier.upsert({
-            headerHash: a.headerHash,
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          });
+          yield* fold(ownRow(a));
           yield* fold(foreign);
-          // Another operator's block on B: the walk from it passes it and
-          // stops at B, never reaching F's fold or A.
+          // Another operator's block on B: the walk from it passes it, folds
+          // B on F's fold, and stops at A's fold.
           const above = foreignRow("f4".repeat(28), b.headerHash);
           yield* processRow(above);
           expect(
             yield* finalizeMergesLandedThrough(
               confirmedAt(above.headerHash, 4_999n),
             ),
+          ).toEqual([b.headerHash]);
+          yield* expectFinalized(b.headerHash);
+          yield* expectFinalized(a.headerHash);
+          expect(
+            yield* finalizeMergesLandedThrough(
+              confirmedAt(above.headerHash, 4_999n),
+            ),
           ).toEqual([]);
-          yield* expectFinalized(b.headerHash, 1);
-          yield* expectUntouched(a.headerHash);
         }),
       ),
   );
@@ -175,7 +157,21 @@ describe("landed-merge finalization walk", () => {
           journal({
             headerHash: landed.headerHash,
             stored: forged.header,
-            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
+            status: PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+          }),
+          confirmedAtBlock(landed),
+        ),
+    },
+    {
+      name: "a journal whose base is not its header's parent",
+      message: CONFIRMED_MERGE_JOURNAL_UNBOUND,
+      arrange: (landed: Block) =>
+        Effect.as(
+          journal({
+            headerHash: landed.headerHash,
+            stored: landed.header,
+            status: PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+            base: "ff".repeat(28),
           }),
           confirmedAtBlock(landed),
         ),
@@ -191,15 +187,15 @@ describe("landed-merge finalization walk", () => {
         ),
     },
     {
-      name: "a landed block that is not locally finalized yet",
+      name: "a landed block that is not applied yet",
       message:
-        "A landed merge's block is not locally finalized yet, so its merge cannot be finalized",
+        "A landed merge's block is not applied yet, so its merge cannot be finalized",
       arrange: (landed: Block) =>
         Effect.as(
           journal({
             headerHash: landed.headerHash,
             stored: landed.header,
-            status: PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+            status: PendingBlockFinalizationsDB.OwnBlockStatus.Landed,
           }),
           confirmedAtBlock(landed),
         ),
@@ -241,7 +237,7 @@ describe("landed-merge finalization walk", () => {
           const interrupter = yield* Effect.fork(Fiber.interrupt(walk));
           yield* Deferred.succeed(release, undefined);
           yield* Fiber.join(interrupter);
-          yield* expectFinalized(landed.headerHash, 1);
+          yield* expectFinalized(landed.headerHash);
         }),
         async () => {
           Effect.runSync(Deferred.succeed(reached, undefined));

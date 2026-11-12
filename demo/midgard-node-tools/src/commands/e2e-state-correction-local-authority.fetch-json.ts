@@ -67,7 +67,6 @@ export interface LocalKupmiosStateCorrectionSource {
   }): Promise<{ readonly depth: number }>;
   observeTip(): Promise<LiveTip>;
   observeDatabase(): Promise<{
-    readonly unfinishedMutationJobs: number;
     readonly pendingFinalizations: number;
   }>;
 }

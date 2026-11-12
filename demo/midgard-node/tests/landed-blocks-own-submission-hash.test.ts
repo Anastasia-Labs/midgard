@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Fiber, Option, Ref, Schedule } from "effect";
+import { Deferred, Effect, Fiber, Ref, Schedule } from "effect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
@@ -153,15 +153,13 @@ afterAll(async () => {
   await rm(manifestDirectory, { recursive: true, force: true });
 });
 
-/** The unresolved submission, the journal's status and the row's `applied`. */
+/** The unresolved submission, the journal's derived status and the row's
+ * `applied`. */
 const shown = Effect.gen(function* () {
   const globals = yield* Globals;
   return {
     hash: yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-    journal: Option.map(
-      yield* Journals.retrieveByHeaderHash(HEADER),
-      (record) => record[Journals.Columns.STATUS],
-    ),
+    journal: yield* Journals.retrieveStatusByHeaderHash(HEADER),
     applied: (yield* retrieveRows).map((row) => row.applied),
   };
 });
@@ -187,8 +185,7 @@ describe("the unresolved submission of an own block that lands while its tick ru
           });
           const sql = yield* SqlClient.SqlClient;
           yield* sql`UPDATE pending_block_finalizations
-            SET intended_tx_hash = ${Buffer.from(COMMIT, "hex")},
-              signed_tx_cbor = ${SIGNED}
+            SET intended_tx_hash = ${Buffer.from(COMMIT, "hex")}
             WHERE header_hash = ${HEADER}`;
         }),
       ),
@@ -253,7 +250,7 @@ describe("the unresolved submission of an own block that lands while its tick ru
     // While the tick runs, the rebase has not applied the landed block.
     expect(outcome.whileRunning).toEqual({
       hash: "",
-      journal: Option.some(Journals.Status.PendingSubmission),
+      journal: Journals.OwnBlockStatus.Landed,
       applied: [false],
     });
     // The tick took the worker's output: the branch that sets the hash ran.
@@ -263,7 +260,7 @@ describe("the unresolved submission of an own block that lands while its tick ru
     expect(outcome.hold).toBeUndefined();
     expect(outcome.after).toEqual({
       hash: "",
-      journal: Option.some(Journals.Status.LocallyApplied),
+      journal: Journals.OwnBlockStatus.Applied,
       applied: [true],
     });
   });

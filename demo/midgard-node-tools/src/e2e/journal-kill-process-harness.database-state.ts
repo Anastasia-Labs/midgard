@@ -31,8 +31,7 @@ export type JournalKillDatabaseState = {
         readonly produced: readonly unknown[];
       };
     };
-    readonly submittedTxHash: string | null;
-    readonly status: PendingBlockFinalizationsDB.Status;
+    readonly intendedTxHash: string | null;
     readonly baseTailHeaderHash: string | null;
     readonly baseTailOutRef: string | null;
     readonly baseTailDatumCbor: string | null;

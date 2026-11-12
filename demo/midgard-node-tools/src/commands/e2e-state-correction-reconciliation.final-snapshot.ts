@@ -59,7 +59,6 @@ export interface StateCorrectionIndependentAuthority {
     readonly manifestId: string;
     readonly observedAt: ChainPoint & { readonly confirmationDepth: number };
     readonly stateQueueDepth: number;
-    readonly unfinishedMutationJobs: number;
     readonly pendingFinalizations: number;
     readonly retainedProofTokens: readonly {
       readonly unit: string;
@@ -172,7 +171,6 @@ export type FinalSnapshot = {
     readonly fraudulentHeaderHashes: readonly string[];
   };
   readonly jobs: {
-    readonly unfinishedMutationJobs: number;
     readonly pendingFinalizations: number;
   };
   readonly watcher: {

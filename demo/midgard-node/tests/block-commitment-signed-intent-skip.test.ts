@@ -1,21 +1,26 @@
 import { inspect } from "node:util";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
 import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "./helpers/mutation-lease.js";
 import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+  insertCommitIntent,
+  land,
+  ownLandedRow,
+} from "./helpers/own-block-facts.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const prepared = vi.hoisted(() => ({ count: 0 }));
@@ -85,27 +90,45 @@ const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
     ) as Effect.Effect<A, unknown, never>,
   );
 
-/** A journal holding a signed commit intent nothing has resolved yet. */
+/** The journals' base, on the confirmed frontier. */
+const BASE = journalFixture(header("base")).metadata.baseTailHeaderHash;
+
+/** Puts the journals' base on the frontier: their blocks can land. */
+const baseOnFrontier = Frontier.upsert({
+  headerHash: BASE.toString("hex"),
+  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+});
+
+/** A prepare anchored at the follower's tip: on the frontier's base, its
+ * journal is the node's live journal, unless another one is. */
+const anchored = { beforeJournalInsert: Effect.orDie(simCommitAnchor) };
+
+/** A live journal holding a signed commit intent nothing has resolved yet. */
 const signedIntentJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const txHash = Buffer.alloc(32, 9);
-    yield* prepareUnderTestLease({
-      ...journalFixture(headerHash),
-      preparedTxHash: txHash,
-    });
+    yield* baseOnFrontier;
+    yield* prepareUnderTestLease(
+      { ...journalFixture(headerHash), preparedTxHash: txHash },
+      anchored,
+    );
     const sql = yield* SqlClient.SqlClient;
     yield* sql`UPDATE pending_block_finalizations
-      SET intended_tx_hash = ${txHash}, signed_tx_cbor = ${Buffer.from("84a0a0f5f6", "hex")}
-      WHERE header_hash = ${headerHash}`;
+      SET intended_tx_hash = ${txHash} WHERE header_hash = ${headerHash}`;
+    yield* insertCommitIntent(
+      headerHash,
+      txHash,
+      Buffer.from("84a0a0f5f6", "hex"),
+    );
   });
 
 const counts = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [leases] = yield* sql<{ n: number }>`SELECT COUNT(*)::int AS n
     FROM state_queue_mutation_leases`;
-  const [pending] = yield* sql<{ n: number }>`SELECT COUNT(*)::int AS n
-    FROM pending_block_finalizations WHERE status = 'pending_submission'`;
-  return { leases: leases?.n ?? -1, pendingSubmissions: pending?.n ?? -1 };
+  const [journals] = yield* sql<{ n: number }>`SELECT COUNT(*)::int AS n
+    FROM pending_block_finalizations`;
+  return { leases: leases?.n ?? -1, journals: journals?.n ?? -1 };
 });
 
 const collectLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -163,11 +186,18 @@ describe("block commitment over an unreconciled signed intent", () => {
         const whileSigned = yield* counts;
         const workerCallsWhileSigned = buildAndSubmitMock.mock.calls.length;
 
-        // The landed-block rebase disposes of the intent's journal.
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE pending_block_finalizations
-          SET status = 'abandoned', updated_at = NOW()
-          WHERE header_hash = ${signed}`;
+        // Another operator's block takes the slot after its base: the
+        // journal is dead, and the intent resolved.
+        yield* land(
+          ownLandedRow(
+            header("foreign-block").toString("hex"),
+            BASE.toString("hex"),
+            {
+              kind: "foreign",
+              applied: true,
+            },
+          ),
+        );
         const resumed = yield* collectLogs(blockCommitmentAction);
         return {
           skippedLogs: skipped.logs,
@@ -182,7 +212,7 @@ describe("block commitment over an unreconciled signed intent", () => {
     );
 
     expect(result.workerCallsWhileSigned).toBe(0);
-    expect(result.whileSigned).toEqual({ leases: 0, pendingSubmissions: 1 });
+    expect(result.whileSigned).toEqual({ leases: 0, journals: 1 });
     const skipLines = result.skippedLogs.filter((line) =>
       line.includes(SKIPPED_ACTIVE_PENDING_FINALIZATION),
     );
@@ -197,7 +227,8 @@ describe("block commitment over an unreconciled signed intent", () => {
 
     expect(result.workerCalls).toBe(1);
     expect(prepared.count).toBe(1);
-    expect(result.afterClear).toEqual({ leases: 1, pendingSubmissions: 1 });
+    // The dead journal stays; the worker prepared the next one.
+    expect(result.afterClear).toEqual({ leases: 1, journals: 2 });
     expect(
       result.resumedLogs.some((line) =>
         line.includes(
@@ -207,11 +238,13 @@ describe("block commitment over an unreconciled signed intent", () => {
     ).toBe(true);
   });
 
-  it("still runs the worker for an active journal without a signed intent", async () => {
+  it("still runs the worker for a live journal without a signed intent", async () => {
     const result = await runWithNode(
       Effect.gen(function* () {
+        yield* baseOnFrontier;
         yield* prepareUnderTestLease(
           journalFixture(header("unsigned-pending")),
+          anchored,
         );
         const outcome = yield* Effect.either(blockCommitmentAction);
         return {
@@ -225,22 +258,27 @@ describe("block commitment over an unreconciled signed intent", () => {
     // The worker ran and the prepare guard, unchanged, refused its block.
     expect(result.workerCalls).toBe(1);
     expect(result.outcome).toBe("Left");
-    expect(result.counts).toEqual({ leases: 1, pendingSubmissions: 1 });
+    expect(result.counts).toEqual({ leases: 1, journals: 1 });
   });
 
-  it("lets only one of two concurrent prepares create a pending journal", async () => {
+  it("lets only one of two concurrent prepares under one lease create a live journal", async () => {
     const result = await runWithNode(
       Effect.gen(function* () {
+        yield* baseOnFrontier;
+        // Each prepare holds the lease row FOR UPDATE: the second waits for
+        // the first to commit, then finds its journal live.
         const outcomes = yield* Effect.all(
           [
             Effect.either(
               PendingBlockFinalizationsDB.preparePendingSubmission(
                 journalFixture(header("planner-a")),
+                anchored,
               ),
             ),
             Effect.either(
               PendingBlockFinalizationsDB.preparePendingSubmission(
                 journalFixture(header("planner-b")),
+                anchored,
               ),
             ),
           ],
@@ -265,8 +303,8 @@ describe("block commitment over an unreconciled signed intent", () => {
 
     expect(result.tags).toEqual(["Left", "Right"]);
     expect(result.refusal[0]).toContain(
-      "Refusing to prepare a new pending block while another active pending-finalization record exists",
+      PendingBlockFinalizationsDB.LIVE_JOURNAL_REFUSAL,
     );
-    expect(result.counts.pendingSubmissions).toBe(1);
+    expect(result.counts.journals).toBe(1);
   });
 });

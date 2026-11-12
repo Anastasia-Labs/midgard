@@ -21,10 +21,10 @@ import {
  * Records a commit through its production pre-broadcast gate: the
  * worker's `submitWithDurableIntent` seam, whose gate's history write
  * owns the transaction the journal's insert runs in. Its pending block
- * is put back as it stood when the worker signed it (prepared, nothing
- * signed or submitted, its state-queue mutation lease held), then
- * restored as the flow left it once the gate has run, so S6 reads the
- * flow's rows. Its anchor is first rebound to the replay's chain when
+ * is put back as it stood when the worker signed it (prepared, no
+ * intended commit, its state-queue mutation lease held), then restored as
+ * the flow left it once the gate has run, so S6 reads the flow's rows.
+ * Its anchor is first rebound to the replay's chain when
  * `emulatorHeightOf` is given.
  */
 export const recordCommitThroughGate = async ({
@@ -45,26 +45,23 @@ export const recordCommitThroughGate = async ({
   if (emulatorHeightOf !== undefined)
     await rebindCommitAnchor({ runtime, sql, header, emulatorHeightOf });
   type Signed = {
-    readonly status: string;
-    readonly submitted_tx_hash: Buffer | null;
     readonly intended_tx_hash: Buffer | null;
-    readonly signed_tx_cbor: Buffer | null;
+    readonly intent_tx_cbor: Buffer | null;
     readonly state_queue_lease_token: string;
   };
   const signedOf = (pending: SqlClient.SqlClient) =>
-    pending<Signed>`SELECT status, submitted_tx_hash, intended_tx_hash,
-        signed_tx_cbor, state_queue_lease_token
-      FROM pending_block_finalizations
-      WHERE header_hash = ${header}`.pipe(Effect.map((rows) => rows[0]));
+    pending<Signed>`SELECT p.intended_tx_hash, intent.tx_cbor AS intent_tx_cbor,
+        p.state_queue_lease_token
+      FROM pending_block_finalizations p
+      LEFT JOIN l1_intents intent ON intent.tx_hash = p.intended_tx_hash
+      WHERE p.header_hash = ${header}`.pipe(Effect.map((rows) => rows[0]));
   const flowLeft = await runtime.runPromise(signedOf(sql));
   if (flowLeft === undefined)
     throw new Error(
       `commit ${entry.txHash} has no pending block ${header.toString("hex")}`,
     );
   await runtime.runPromise(sql`UPDATE pending_block_finalizations
-    SET status = 'pending_submission', submitted_tx_hash = NULL,
-      intended_tx_hash = NULL, signed_tx_cbor = NULL
-    WHERE header_hash = ${header}`);
+    SET intended_tx_hash = NULL WHERE header_hash = ${header}`);
   const lease = flowLeft.state_queue_lease_token;
   await runtime.runPromise(sql`INSERT INTO state_queue_mutation_leases
       (token, scope, holder, status, expires_at)
@@ -101,15 +98,12 @@ export const recordCommitThroughGate = async ({
     sql`DELETE FROM state_queue_mutation_leases WHERE token = ${lease}`,
   );
   await runtime.runPromise(sql`UPDATE pending_block_finalizations
-    SET status = ${flowLeft.status},
-      submitted_tx_hash = ${flowLeft.submitted_tx_hash},
-      intended_tx_hash = ${flowLeft.intended_tx_hash},
-      signed_tx_cbor = ${flowLeft.signed_tx_cbor}
+    SET intended_tx_hash = ${flowLeft.intended_tx_hash}
     WHERE header_hash = ${header}`);
   return {
     outcome,
     gated:
       written?.intended_tx_hash?.toString("hex") === entry.txHash &&
-      written.signed_tx_cbor?.toString("hex") === entry.signedTxCbor,
+      written.intent_tx_cbor?.toString("hex") === entry.signedTxCbor,
   };
 };

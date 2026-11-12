@@ -35,7 +35,7 @@ import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "./helpers/mutation-lease.js";
-import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
+import { journalFixture } from "./helpers/own-journal-fixture.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,

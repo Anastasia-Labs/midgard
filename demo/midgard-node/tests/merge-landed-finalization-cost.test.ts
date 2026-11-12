@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import { processRow } from "../src/landed-blocks/settlements.js";
-import { Frontier, type LandedBlockRow } from "../src/landed-blocks/store.js";
+import type { LandedBlockRow } from "../src/landed-blocks/store.js";
 import { finalizeMergesLandedThrough } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import {
   block,
@@ -13,7 +13,6 @@ import {
   expectFinalized,
   expectUntouched,
   finalizedJournal,
-  fold,
   foreignRow,
   isolatedDb,
 } from "./merge-landed-finalization.fixtures.js";
@@ -126,24 +125,19 @@ describe("landed-merge finalization walk cost", () => {
   );
 
   it.effect(
-    "finalizes this node's merge below a long run of another operator's blocks, folded and processed",
+    "finalizes this node's merge below a long run of another operator's processed blocks",
     () =>
       isolatedDb(
         Effect.gen(function* () {
           const a = yield* block(1, SDK.GENESIS_HEADER_HASH);
           yield* finalizedJournal(a);
           const run = yield* foreignRun(a.headerHash, RUN);
-          yield* Frontier.upsert({
-            headerHash: a.headerHash,
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          });
-          for (const row of run.slice(0, RUN / 2)) yield* fold(row);
           expect(
             yield* finalizeMergesLandedThrough(
               confirmedAt(run.at(-1)!.headerHash, 1_000_000n),
             ),
           ).toEqual([a.headerHash]);
-          yield* expectFinalized(a.headerHash, 1);
+          yield* expectFinalized(a.headerHash);
         }),
       ),
   );

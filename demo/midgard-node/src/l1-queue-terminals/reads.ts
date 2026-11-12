@@ -7,6 +7,7 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
+import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
 import {
@@ -100,26 +101,25 @@ export const removedHeader = (sql: SqlClient.SqlClient, headerColumn: string) =>
  * The SQL condition under which the DA payload aliased `payload` is still owed
  * to committee peers and announcements. It is not once a landed tx removed
  * its header from the state queue (the newest terminal row is a removal), or
- * while its journal is abandoned under a named cause (the replacement digest
- * the landed-block rebase records when it disposes of an own block). A
- * rollback of the removal deletes the terminal row, and a journal revived
- * after all clears its digest, so the payload is owed again.
+ * while its header is one of `dead`, the dead own journals
+ * (`deadJournals`) the caller read in its transaction. A rollback of the
+ * removal deletes the terminal row, and a dead block that lands after all
+ * is no longer dead, so the payload is owed again.
  * `deploymentIdentityDigest` is the verified manifest ID; a node running a
- * derived contract bundle consults only the journal arm.
+ * derived contract bundle consults only the dead journals.
  */
 export const owedPayload = (
   sql: SqlClient.SqlClient,
   deploymentIdentityDigest: Buffer | undefined,
+  dead: readonly Buffer[],
 ) => {
   const removed =
     deploymentIdentityDigest === undefined
       ? sql`FALSE`
       : removedHeader(sql, "payload.header_hash");
-  return sql`NOT ${removed} AND NOT EXISTS (
-    SELECT 1 FROM pending_block_finalizations journal
-    WHERE journal.header_hash = payload.header_hash
-      AND journal.status = 'abandoned'
-      AND journal.correction_transition_digest IS NOT NULL)`;
+  return sql`NOT ${removed} AND NOT payload.header_hash = ANY(${(
+    sql as PgClient
+  ).array(dead.map((header) => `\\x${header.toString("hex")}`))}::bytea[])`;
 };
 
 /**

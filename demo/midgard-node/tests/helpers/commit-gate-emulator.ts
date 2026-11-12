@@ -176,6 +176,8 @@ export const submitCommit = async (
   };
 };
 
+/** `headerHash`'s journal link to its signed commit, and the bytes the
+ * intent journal holds for it. */
 export const pendingIntent = async (
   env: IntentEmulator,
   headerHash: Buffer,
@@ -183,9 +185,11 @@ export const pendingIntent = async (
   const [row] = await env.runtime.runPromise(
     env.sql<{
       intended_tx_hash: Buffer | null;
-      signed_tx_cbor: Buffer | null;
-    }>`SELECT intended_tx_hash, signed_tx_cbor FROM pending_block_finalizations
-      WHERE header_hash = ${headerHash}`,
+      intent_tx_cbor: Buffer | null;
+    }>`SELECT p.intended_tx_hash, intent.tx_cbor AS intent_tx_cbor
+      FROM pending_block_finalizations p
+      LEFT JOIN l1_intents intent ON intent.tx_hash = p.intended_tx_hash
+      WHERE p.header_hash = ${headerHash}`,
   );
   return row;
 };

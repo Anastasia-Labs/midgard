@@ -37,7 +37,6 @@ const idle = {
     unconfirmedSubmittedBlockTxHash: null,
   },
   pendingBlockFinalizations: { oldestActive: null },
-  localMutationJobs: { unfinished: "0" },
   settlement: { unfinishedJobs: "0", failingJobs: [] },
 };
 const unpayable = "No spendable reserve UTxO can fund the payout of event-cc#0";

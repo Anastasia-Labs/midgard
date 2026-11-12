@@ -29,7 +29,7 @@ import {
 import { Columns as TxColumns } from "../src/database/utils/tx.js";
 import { encodeTransactionRootValue } from "../src/mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
-import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
+import { journalFixture } from "./helpers/own-journal-fixture.js";
 
 const emptyList = Buffer.from([0x80]);
 

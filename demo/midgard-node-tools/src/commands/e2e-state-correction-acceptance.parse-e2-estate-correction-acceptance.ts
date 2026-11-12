@@ -66,7 +66,6 @@ const parseFinalState = (
     candidate,
     [
       "stateQueueDepth",
-      "unfinishedMutationJobs",
       "pendingFinalizations",
       "watcherReady",
       "watcherVerificationResumed",
@@ -80,11 +79,6 @@ const parseFinalState = (
       candidate.stateQueueDepth,
       0,
       `${field}.stateQueueDepth`,
-    ),
-    unfinishedMutationJobs: literal(
-      candidate.unfinishedMutationJobs,
-      0,
-      `${field}.unfinishedMutationJobs`,
     ),
     pendingFinalizations: literal(
       candidate.pendingFinalizations,

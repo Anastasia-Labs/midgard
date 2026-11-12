@@ -15,20 +15,22 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
+import { Frontier } from "../../src/landed-blocks/store.js";
 import { makeCardanoSignedMapOutputTxBytes } from ".././helpers/cardano-native-fixtures.js";
 import { provideDatabaseLayers } from ".././utils.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import { simCommitAnchor } from "../helpers/landed-blocks-sim.own.js";
 import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "../helpers/mutation-lease.js";
+import { insertCommitIntent } from "../helpers/own-block-facts.js";
 import { databaseTestDirectory } from "./finalization.database-test-directory.js";
 import {
   bundleChildProcessHelper,
   collectChildProcess,
   databaseChildProcessEnv,
   databaseFixtureBytes,
-  databaseTxHash,
   isolatedDb,
   makeDepositEntry,
 } from "./fixtures.js";
@@ -114,8 +116,26 @@ export const registerFinalizationTests = () => {
         },
       };
     };
+    // A journal the commit worker writes stores its commit anchor and
+    // builds on a base on the landed chain (here the frontier); without
+    // either the journal is dead (`deadJournals`) and never live.
+    const anchored = {
+      beforeJournalInsert: Effect.orDie(
+        Effect.zipRight(
+          Frontier.upsert({
+            headerHash: databaseFixtureBytes("base-tail-header", 28).toString(
+              "hex",
+            ),
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          }),
+          simCommitAnchor,
+        ),
+      ),
+    };
+    const Journals = PendingBlockFinalizationsDB;
+
     it.effect(
-      "retains durable signed intent across cleanup, conflicting writes and duplicate acknowledgement",
+      "records a signed intent once, only under the journal's lease, and never replaces the signed journal",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -129,103 +149,63 @@ export const registerFinalizationTests = () => {
             hash.free();
             body.free();
             tx.free();
-            yield* prepareUnderTestLease({
-              ...input,
-              preparedTxHash: txHash,
-            });
+            yield* prepareUnderTestLease(
+              { ...input, preparedTxHash: txHash },
+              anchored,
+            );
             const sql = yield* SqlClient.SqlClient;
             expect(
               (yield* Effect.either(
                 sql.withTransaction(
-                  PendingBlockFinalizationsDB.recordSignedIntent(
-                    headerHash,
-                    txHash,
-                    cbor,
-                  ),
+                  Journals.recordSignedIntent(headerHash, txHash, cbor),
                 ),
               ))._tag,
             ).toBe("Left");
-            const signUnderLease = (signedTxHash: Buffer) =>
-              PendingBlockFinalizationsDB.recordSignedIntent(
+            const signUnderLease = (
+              signedTxHash: Buffer,
+              journalInsert?: Effect.Effect<void, DatabaseError>,
+            ) =>
+              Journals.recordSignedIntent(
                 headerHash,
                 signedTxHash,
                 cbor,
+                journalInsert,
               ).pipe(
                 withTestMutationLease(input.metadata.stateQueueLeaseToken),
               );
-            yield* signUnderLease(txHash);
+            yield* signUnderLease(
+              txHash,
+              insertCommitIntent(headerHash, txHash, cbor).pipe(
+                Effect.orDie,
+                Effect.provideService(SqlClient.SqlClient, sql),
+              ),
+            );
             yield* signUnderLease(txHash);
             expect(
               (yield* Effect.either(signUnderLease(Buffer.alloc(32, 3))))._tag,
             ).toBe("Left");
-            expect(
-              yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
-                headerHash,
-              ),
-            ).toBe(false);
-            expect(
-              (yield* Effect.either(
-                PendingBlockFinalizationsDB.markAbandoned(headerHash),
-              ))._tag,
-            ).toBe("Left");
-            expect(
-              (yield* Effect.either(prepareUnderTestLease(input)))._tag,
-            ).toBe("Left");
-            expect(
-              (yield* Effect.either(
-                PendingBlockFinalizationsDB.markSubmitted(
-                  headerHash,
-                  Buffer.alloc(32, 4),
-                ),
-              ))._tag,
-            ).toBe("Left");
-            // Canonical header observation need not prove the original transaction hash:
-            // a later list append may already have recreated its current node.
-            yield* PendingBlockFinalizationsDB.markObservedWaitingStability(
-              headerHash,
-              1n,
+            // A signed journal's commit may be on L1: it is neither discarded
+            // nor replaced by a prepare of its header.
+            expect(yield* Journals.discardUnsignedJournal(headerHash)).toBe(
+              false,
             );
-            let record = Option.getOrThrow(
-              yield* PendingBlockFinalizationsDB.retrieveActive(),
-            );
-            expect(
-              record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
-            ).toBeNull();
-            expect(
-              record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH],
-            ).toEqual(txHash);
-            expect(
-              record[PendingBlockFinalizationsDB.Columns.SIGNED_TX_CBOR],
-            ).toEqual(cbor);
-            yield* PendingBlockFinalizationsDB.markSubmitted(
-              headerHash,
-              txHash,
-            );
-            expect(
-              Option.getOrThrow(
-                yield* PendingBlockFinalizationsDB.retrieveActive(),
-              )[PendingBlockFinalizationsDB.Columns.STATUS],
-            ).toBe(PendingBlockFinalizationsDB.Status.ObservedWaitingStability);
-            yield* PendingBlockFinalizationsDB.markFinalized(headerHash);
-            yield* PendingBlockFinalizationsDB.markSubmitted(
-              headerHash,
-              txHash,
-            );
-            record = Option.getOrThrow(
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                headerHash,
-              ),
-            );
-            expect(record[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
-              PendingBlockFinalizationsDB.Status.LocallyApplied,
+            expect(yield* prepareUnderTestLease(input, anchored)).toEqual({
+              kind: "held",
+              heldHeaderHash: headerHash,
+            });
+            const live = Option.getOrThrow(yield* Journals.retrieveLive());
+            expect(live[Journals.Columns.HEADER_HASH]).toEqual(headerHash);
+            expect(live[Journals.Columns.INTENDED_TX_HASH]).toEqual(txHash);
+            expect(yield* Journals.retrieveStatusByHeaderHash(headerHash)).toBe(
+              Journals.OwnBlockStatus.Unlanded,
             );
           }),
         ),
     );
 
     it.effect(
-      "can abandon and replace no-submission pending journals for retry recovery",
-      (_) =>
+      "discards an unsigned journal, and a prepare of its header supersedes it",
+      () =>
         isolatedDb(
           Effect.gen(function* () {
             const headerHash = databaseFixtureBytes(
@@ -234,49 +214,61 @@ export const registerFinalizationTests = () => {
             );
             const input = pendingSubmissionFixture(headerHash);
 
-            yield* prepareUnderTestLease(input);
+            yield* prepareUnderTestLease(input, anchored);
+            expect(yield* Journals.discardUnsignedJournal(headerHash)).toBe(
+              true,
+            );
             expect(
-              yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
-                headerHash,
-              ),
+              Option.isNone(yield* Journals.retrieveByHeaderHash(headerHash)),
             ).toBe(true);
-            let active = yield* PendingBlockFinalizationsDB.retrieveActive();
-            expect(active._tag).toBe("None");
+            expect(Option.isNone(yield* Journals.retrieveLive())).toBe(true);
 
-            yield* prepareUnderTestLease(input);
-            yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
-            active = yield* PendingBlockFinalizationsDB.retrieveActive();
-            expect(active._tag).toBe("None");
-
-            yield* prepareUnderTestLease(input);
-            active = yield* PendingBlockFinalizationsDB.retrieveActive();
-            expect(active._tag).toBe("Some");
-            if (active._tag === "Some") {
-              expect(
-                active.value[PendingBlockFinalizationsDB.Columns.STATUS],
-              ).toBe(PendingBlockFinalizationsDB.Status.PendingSubmission);
-              expect(
-                typeof active.value[
-                  PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT
-                ],
-              ).toBe("bigint");
-              expect(
-                active.value[
-                  PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT
-                ],
-              ).toBe(0n);
-              expect(
-                active.value[
-                  PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-                ],
-              ).toBeNull();
-            }
+            yield* prepareUnderTestLease(input, anchored);
+            expect(yield* prepareUnderTestLease(input, anchored)).toEqual({
+              kind: "prepared",
+            });
+            const live = Option.getOrThrow(yield* Journals.retrieveLive());
+            expect(live[Journals.Columns.HEADER_HASH]).toEqual(headerHash);
+            expect(
+              live[Journals.Columns.EXPECTED_TOTAL_EVENT_COUNT],
+            ).toStrictEqual(0n);
+            expect(live[Journals.Columns.INTENDED_TX_HASH]).toBeNull();
           }),
         ),
     );
 
+    it.effect("refuses a second prepare while another journal is live", () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const first = pendingSubmissionFixture(
+            databaseFixtureBytes("single-live-first-header", 28),
+          );
+          const second = pendingSubmissionFixture(
+            databaseFixtureBytes("single-live-second-header", 28),
+          );
+          yield* prepareUnderTestLease(first, anchored);
+          const refused = yield* Effect.either(
+            prepareUnderTestLease(second, anchored),
+          );
+          expect(refused._tag).toBe("Left");
+          if (refused._tag === "Left")
+            expect(refused.left.message).toBe(Journals.LIVE_JOURNAL_REFUSAL);
+          expect(
+            Option.isNone(
+              yield* Journals.retrieveByHeaderHash(second.headerHash),
+            ),
+          ).toBe(true);
+          // Once the first is gone, the second prepares.
+          yield* Journals.discardUnsignedJournal(first.headerHash);
+          expect(yield* prepareUnderTestLease(second, anchored)).toEqual({
+            kind: "prepared",
+          });
+        }),
+      ),
+    );
+
     it.effect(
-      "rejects startup recovery when an active journal omits committed validation traces",
+      "rejects startup recovery when the live journal omits committed validation traces",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -284,33 +276,23 @@ export const registerFinalizationTests = () => {
               "missing-validation-trace-header",
               28,
             );
-            yield* prepareUnderTestLease(pendingSubmissionFixture(headerHash));
+            yield* prepareUnderTestLease(
+              pendingSubmissionFixture(headerHash),
+              anchored,
+            );
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`UPDATE ${sql(PendingBlockFinalizationsDB.tableName)}
-            SET ${sql(
-              PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT,
-            )} = 1,
+            yield* sql`UPDATE ${sql(Journals.tableName)}
+            SET ${sql(Journals.Columns.EXPECTED_L2_TRANSACTION_COUNT)} = 1,
+            ${sql(Journals.Columns.EXPECTED_TOTAL_EVENT_COUNT)} = 1,
+            ${sql(Journals.Columns.EXPECTED_TRANSITION_STEP_COUNT)} = 1,
             ${sql(
-              PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT,
-            )} = 1,
-            ${sql(
-              PendingBlockFinalizationsDB.Columns
-                .EXPECTED_TRANSITION_STEP_COUNT,
-            )} = 1,
-            ${sql(
-              PendingBlockFinalizationsDB.Columns
-                .EXPECTED_VALIDATION_TRACES_ROOT,
+              Journals.Columns.EXPECTED_VALIDATION_TRACES_ROOT,
             )} = ${"11".repeat(32)},
-            ${sql(
-              PendingBlockFinalizationsDB.Columns
-                .EXPECTED_VALIDATION_TRACE_COUNT,
-            )} = 1
-            WHERE ${sql(
-              PendingBlockFinalizationsDB.Columns.HEADER_HASH,
-            )} = ${headerHash}`;
+            ${sql(Journals.Columns.EXPECTED_VALIDATION_TRACE_COUNT)} = 1
+            WHERE ${sql(Journals.Columns.HEADER_HASH)} = ${headerHash}`;
 
             const exit = yield* Effect.exit(
-              PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete,
+              Journals.assertLiveJournalPayloadsComplete,
             );
             expect(exit._tag).toBe("Failure");
           }),
@@ -318,7 +300,7 @@ export const registerFinalizationTests = () => {
     );
 
     it.effect(
-      "retrieves lease-token journal evidence across active and abandoned statuses",
+      "retrieves a lease token's journals with their derived status, dead or not",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -328,43 +310,48 @@ export const registerFinalizationTests = () => {
               28,
             );
             const input = pendingSubmissionFixture(headerHash);
-            yield* prepareUnderTestLease({
-              ...input,
-              metadata: {
-                ...input.metadata,
-                stateQueueLeaseToken: leaseToken,
+            yield* prepareUnderTestLease(
+              {
+                ...input,
+                metadata: {
+                  ...input.metadata,
+                  stateQueueLeaseToken: leaseToken,
+                },
               },
-            });
-
-            const pending =
-              yield* PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
-                leaseToken,
+              anchored,
+            );
+            const byToken = (token: string) =>
+              Journals.retrieveByStateQueueLeaseToken(token).pipe(
+                Effect.map((journals) =>
+                  journals.map(({ row, status, dead }) => ({
+                    headerHash: row[Journals.Columns.HEADER_HASH],
+                    status,
+                    dead,
+                  })),
+                ),
               );
-            expect(pending).toHaveLength(1);
-            expect(
-              pending[0]?.[PendingBlockFinalizationsDB.Columns.STATUS],
-            ).toBe(PendingBlockFinalizationsDB.Status.PendingSubmission);
+            expect(yield* byToken(leaseToken)).toEqual([
+              {
+                headerHash,
+                status: Journals.OwnBlockStatus.Unlanded,
+                dead: false,
+              },
+            ]);
 
-            yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
-            expect(
-              yield* PendingBlockFinalizationsDB.retrieveActiveByStateQueueLeaseToken(
-                leaseToken,
-              ),
-            ).toEqual([]);
-
-            const allStatuses =
-              yield* PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
-                leaseToken,
-              );
-            expect(allStatuses).toHaveLength(1);
-            expect(
-              allStatuses[0]?.[PendingBlockFinalizationsDB.Columns.STATUS],
-            ).toBe(PendingBlockFinalizationsDB.Status.Abandoned);
-            expect(
-              yield* PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
-                "missing-lease-token",
-              ),
-            ).toEqual([]);
+            // Its commit anchor leaves the chain: the journal is dead, and
+            // nothing is written to it.
+            const anchor = yield* simCommitAnchor;
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM l1_blocks WHERE hash = ${anchor.hash}`;
+            expect(yield* byToken(leaseToken)).toEqual([
+              {
+                headerHash,
+                status: Journals.OwnBlockStatus.Unlanded,
+                dead: true,
+              },
+            ]);
+            expect(Option.isNone(yield* Journals.retrieveLive())).toBe(true);
+            expect(yield* byToken("missing-lease-token")).toEqual([]);
           }),
         ),
     );
@@ -402,19 +389,17 @@ export const registerFinalizationTests = () => {
               ]),
               eventCount: 2,
             };
-            yield* prepareUnderTestLease({
-              ...input,
-              nativeMpfReplay: replay,
-            });
-            const active = yield* PendingBlockFinalizationsDB.retrieveActive();
-            expect(active._tag).toBe("Some");
-            if (Option.isSome(active)) {
-              expect(active.value.nativeMpfReplay).toEqual(replay);
+            yield* prepareUnderTestLease(
+              { ...input, nativeMpfReplay: replay },
+              anchored,
+            );
+            const live = yield* Journals.retrieveLive();
+            expect(live._tag).toBe("Some");
+            if (Option.isSome(live)) {
+              expect(live.value.nativeMpfReplay).toEqual(replay);
             }
 
-            yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
-              headerHash,
-            );
+            yield* Journals.discardUnsignedJournal(headerHash);
             const invalid = yield* Effect.either(
               prepareUnderTestLease({
                 ...pendingSubmissionFixture(
@@ -427,81 +412,6 @@ export const registerFinalizationTests = () => {
               }),
             );
             expect(invalid._tag).toBe("Left");
-          }),
-        ),
-    );
-
-    it.effect(
-      "only abandons pending-submission journals that still have no submitted tx hash",
-      (_) =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const submittedHeaderHash = databaseFixtureBytes(
-              "submitted-cas-pending-header",
-              28,
-            );
-            const unsubmittedHeaderHash = databaseFixtureBytes(
-              "unsubmitted-cas-pending-header",
-              28,
-            );
-            const submittedTxHash = databaseTxHash("submitted-cas-tx");
-
-            yield* prepareUnderTestLease(
-              pendingSubmissionFixture(unsubmittedHeaderHash),
-            );
-            const unsubmittedAbandoned =
-              yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
-                unsubmittedHeaderHash,
-              );
-            expect(unsubmittedAbandoned).toBe(true);
-
-            const unsubmitted =
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                unsubmittedHeaderHash,
-              );
-            expect(unsubmitted._tag).toBe("Some");
-            if (unsubmitted._tag === "Some") {
-              expect(
-                unsubmitted.value[PendingBlockFinalizationsDB.Columns.STATUS],
-              ).toBe(PendingBlockFinalizationsDB.Status.Abandoned);
-              expect(
-                unsubmitted.value[
-                  PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-                ],
-              ).toBeNull();
-            }
-
-            yield* prepareUnderTestLease(
-              pendingSubmissionFixture(submittedHeaderHash),
-            );
-            yield* PendingBlockFinalizationsDB.markSubmitted(
-              submittedHeaderHash,
-              submittedTxHash,
-            );
-            const submittedAbandoned =
-              yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
-                submittedHeaderHash,
-              );
-            expect(submittedAbandoned).toBe(false);
-
-            const submitted =
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                submittedHeaderHash,
-              );
-            expect(submitted._tag).toBe("Some");
-            if (submitted._tag === "Some") {
-              expect(
-                submitted.value[PendingBlockFinalizationsDB.Columns.STATUS],
-              ).toBe(
-                PendingBlockFinalizationsDB.Status
-                  .SubmittedLocalFinalizationPending,
-              );
-              expect(
-                submitted.value[
-                  PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-                ],
-              ).toEqual(submittedTxHash);
-            }
           }),
         ),
     );

@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { SqlClient } from "@effect/sql";
 import { Effect, Runtime } from "effect";
+import { PendingBlockFinalizationsDB } from "midgard-node/database/index";
 import type { Database } from "midgard-node/services/database";
 
 import {
@@ -117,8 +118,7 @@ export const finalizeE2ESummaryProgram = (
     const volatileResidue =
       (counts.get("mempool") ?? 0n) +
       (counts.get("processed_mempool") ?? 0n) +
-      (counts.get("blocks") ?? 0n) +
-      (counts.get("local_mutation_jobs_unfinished") ?? 0n);
+      (counts.get("blocks") ?? 0n);
     const finalized = counts.get("pending_finalizations_finalized") ?? 0n;
     const txBearingHeaders =
       counts.get("pending_finalization_tx_headers") ?? 0n;
@@ -159,14 +159,11 @@ export const finalizeE2ESummaryProgram = (
               ...stateCorrectionDeployment,
               observeDatabase: async () => {
                 const [row] = await Effect.runPromise(sql<{
-                  readonly unfinished_mutation_jobs: number | bigint | string;
                   readonly pending_finalizations: number | bigint | string;
                 }>`
-                  SELECT
-                    (SELECT COUNT(*) FROM local_mutation_jobs
-                      WHERE status <> 'completed') AS unfinished_mutation_jobs,
-                    (SELECT COUNT(*) FROM pending_block_finalizations
-                      WHERE status <> 'locally_applied') AS pending_finalizations
+                  SELECT COUNT(*) AS pending_finalizations
+                    FROM pending_block_finalizations f
+                    WHERE ${PendingBlockFinalizationsDB.notAppliedOrFolded(sql, "f")}
                 `);
                 if (row === undefined) {
                   throw new Error(
@@ -174,9 +171,6 @@ export const finalizeE2ESummaryProgram = (
                   );
                 }
                 return {
-                  unfinishedMutationJobs: Number(
-                    countValue(row.unfinished_mutation_jobs),
-                  ),
                   pendingFinalizations: Number(
                     countValue(row.pending_finalizations),
                   ),
@@ -287,7 +281,6 @@ export const finalizeE2ESummaryProgram = (
                 "mempool",
                 "processed_mempool",
                 "blocks",
-                "local_mutation_jobs_unfinished",
               ].map((label) => [label, (counts.get(label) ?? 0n).toString()]),
             ),
           },

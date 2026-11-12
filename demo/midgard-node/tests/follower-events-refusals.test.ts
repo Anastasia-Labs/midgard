@@ -20,10 +20,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import {
-  type FollowerIngestionOutcome,
-  reconcileFollowerEvents,
-} from "../src/database/follower-events.js";
+import type { FollowerIngestionOutcome } from "../src/database/follower-events.js";
 import { assertCanonicalEventMembers } from "../src/database/pendingBlockFinalizations.js";
 import { EVENT_UNDECODABLE } from "../src/l1-events/driver.js";
 import {
@@ -32,6 +29,7 @@ import {
 } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
 import {
+  reconcileOverDead,
   rewindFollowerKey,
   writeFollowerView,
 } from "./helpers/follower-view.js";
@@ -76,11 +74,11 @@ const nonceRef = (): OutRef => {
 
 /** The driver's sink under the follower write gate's fixture capability. */
 const ingest = (
-  plan: Parameters<typeof reconcileFollowerEvents>[0],
+  plan: Parameters<typeof reconcileOverDead>[0],
   cutoffMs: number,
 ) =>
   withFollowerWrite(
-    reconcileFollowerEvents(plan, {
+    reconcileOverDead(plan, {
       network: "Preprod",
       slotToUnixTime: (slot: number) => slot * 1000,
       cutoffMs,

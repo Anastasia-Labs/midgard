@@ -357,7 +357,6 @@ describe("journey accounting", () => {
         unconfirmedSubmittedBlockTxHash: null,
       },
       pendingBlockFinalizations: { oldestActive: null },
-      localMutationJobs: { unfinished: "0" },
       settlement: { unfinishedJobs: "0", failingJobs: [] },
     };
     expect(drained(idle)).toBe(true);

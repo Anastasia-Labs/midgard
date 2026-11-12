@@ -20,11 +20,10 @@
  * and the rest is applied forward. Each step is idempotent, so a crash
  * between them resumes from the root the owner holds.
  *
- * SQL, in one transaction under the driver's capability: the own journals the
- * target disposes of are abandoned and their members made pending again,
- * and the abandoned ones whose block landed are revived (`own-journals.ts`);
- * every event a removed block, a disposed-of journal or an unknown header
- * held goes back to `awaiting`; every event a processed block holds is
+ * SQL, in one transaction under the driver's capability: the dead own
+ * journals with an effect pending are disposed of, their members pending
+ * again (`own-journals.ts`); every event a removed block, a dead journal or
+ * an unknown header held goes back to `awaiting`; every event a processed block holds is
  * projected to it; the shared working-ledger recompute
  * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger; an
  * own block the working ledger did not hold yet gets its local effects
@@ -32,7 +31,7 @@
  * applied, and the ledger-store root stamp moves to the target.
  *
  * Once that commits, the commit path's globals follow: a commit that
- * landed is no longer awaiting confirmation.
+ * landed, or whose journal is dead, is no longer awaiting confirmation.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Ref } from "effect";
@@ -50,13 +49,17 @@ import { sha256Hex } from "../sha256.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "./holds.js";
 import { depositOutputs } from "./ledger.js";
 import { applyOwnBlocks } from "./own-blocks.js";
-import { disposeJournals, reviveJournals } from "./own-journals.js";
+import { disposeJournals } from "./own-journals.js";
 import {
   assignChainEvents,
   resetUnheldEvents,
   settleChainDeposits,
 } from "./rebase-events.js";
-import { type RebaseTarget, walkTarget } from "./rebase-target.js";
+import {
+  nativeRootDrift,
+  type RebaseTarget,
+  walkTarget,
+} from "./rebase-target.js";
 import {
   LandedChainRootNotRetained,
   restoreRefusalHold,
@@ -101,9 +104,10 @@ export const moveNativeRoot = (
   preparation: RebaseGuard,
 ) =>
   Effect.gen(function* () {
+    const drift = yield* nativeRootDrift(owner, target);
+    if (drift === undefined) return;
+    const { durableRoot } = drift;
     const { roots, events } = walkTarget(target);
-    const { durableRoot } = yield* promise(() => owner.diagnostics());
-    if (durableRoot === roots.at(-1)) return;
     let from = roots.lastIndexOf(durableRoot);
     for (let index = roots.length - 1; from < 0 && index >= 0; index--) {
       yield* preparation.assertCurrent;
@@ -176,7 +180,7 @@ export const moveNativeRoot = (
 export const rebaseSql = (target: RebaseTarget) =>
   Effect.gen(function* () {
     const { ledger, roots } = walkTarget(target);
-    const { dispose, revive } = target.journals;
+    const { dispose, dead, deadCommits } = target.journals;
     // Every processed row, foreign or this node's own: one path applies
     // both.
     const chained = target.steps.flatMap((step) =>
@@ -196,12 +200,11 @@ export const rebaseSql = (target: RebaseTarget) =>
     ];
     const deposits = yield* depositOutputs(depositIds);
     const removed = target.rows.filter((row) => row.state === "removed");
-    yield* disposeJournals(dispose);
+    yield* disposeJournals(dispose, dead);
     yield* resetUnheldEvents(target, [
       ...removed.map((row) => row.headerHash),
-      ...dispose.map((disposal) => disposal.headerHash),
+      ...dead.map((header) => header.toString("hex")),
     ]);
-    yield* reviveJournals(revive);
     yield* assignChainEvents(chained);
     // A processed (landed) row marks the transactions it includes in the
     // pending tables; the live own block has not landed.
@@ -233,20 +236,20 @@ export const rebaseSql = (target: RebaseTarget) =>
     return {
       ...rebuilt,
       landedCommits: new Set(landedCommits),
-      disposedActive: dispose.some((disposal) => disposal.active),
+      deadCommits,
     };
   });
 
 /**
  * The commit path's globals once a rebase committed: a commit of this
- * node's that landed is no longer awaiting confirmation, nor is any once
- * the unfinished journal was disposed of.
+ * node's that landed, or whose journal is dead, is no longer awaiting
+ * confirmation.
  */
 export const followJournals = (
   globals: Globals,
   outcome: Readonly<{
     landedCommits: ReadonlySet<string>;
-    disposedActive: boolean;
+    deadCommits: ReadonlySet<string>;
   }>,
 ) =>
   Effect.gen(function* () {
@@ -255,7 +258,8 @@ export const followJournals = (
     );
     if (
       awaiting === "" ||
-      (!outcome.disposedActive && !outcome.landedCommits.has(awaiting))
+      (!outcome.landedCommits.has(awaiting) &&
+        !outcome.deadCommits.has(awaiting))
     )
       return;
     yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");

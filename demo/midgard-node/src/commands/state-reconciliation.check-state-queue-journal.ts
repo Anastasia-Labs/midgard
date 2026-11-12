@@ -3,11 +3,11 @@ import {
   type ReconciliationCheck,
 } from "./state-reconciliation.compares.js";
 import {
-  ACTIVE_JOURNAL_STATUSES,
   type Context,
   finishCheck,
+  isAppliedJournal,
   isMerged,
-  JOURNAL_STATUS,
+  isUnappliedJournal,
   newAccumulator,
   plural,
   rootsDiff,
@@ -64,10 +64,10 @@ export const checkStateQueueJournal = (
           `${label}: journal base tail ${journal.baseTailHeaderHash} differs from the header's prevHeaderHash ${header.prevHeaderHash}`,
         );
       }
-      if (journal.status === JOURNAL_STATUS.LocallyApplied) continue;
-      if (journal.status === JOURNAL_STATUS.Abandoned) {
+      if (isAppliedJournal(journal)) continue;
+      if (journal.deadCause !== null) {
         acc.failures.push(
-          `${label}: its journal is marked abandoned (correction digest ${journal.correctionTransitionDigest ?? "<none>"}) but the header is still on L1`,
+          `${label}: its journal is dead (${journal.deadCause}) but the header is still on L1`,
         );
         continue;
       }
@@ -79,23 +79,19 @@ export const checkStateQueueJournal = (
     acc.failures.push(`${label}: no journal exists for this on-chain header`);
   }
 
-  for (const hash of merged.abandonedOnChain) {
+  for (const hash of merged.deadOnChain) {
     acc.failures.push(
-      `header ${hash} is on the merged L1 chain but its journal is marked abandoned`,
+      `header ${hash} is on the merged L1 chain but its journal is dead`,
     );
   }
 
   for (const journal of ctx.sql.journals) {
     const onChain = ctx.onChainUnmerged.has(journal.headerHash);
     const isMergedHeader = merged.headers.has(journal.headerHash);
-    if (
-      journal.status === JOURNAL_STATUS.LocallyApplied &&
-      !onChain &&
-      !isMergedHeader
-    ) {
+    if (isAppliedJournal(journal) && !onChain && !isMergedHeader) {
       if (ctx.settlementHeaders.has(journal.headerHash)) {
         acc.notes.push(
-          `finalized journal ${journal.headerHash} is merged per its settlement (merged walk: ${merged.stopReason})`,
+          `applied journal ${journal.headerHash} is merged per its settlement (merged walk: ${merged.stopReason})`,
         );
       } else if (
         !merged.complete &&
@@ -103,22 +99,22 @@ export const checkStateQueueJournal = (
         journal.endTimeMs <= ctx.l1.confirmed.endTimeMs
       ) {
         acc.notes.push(
-          `finalized journal ${journal.headerHash} lies beyond the locally known merged chain (${merged.stopReason}) and ends at or before the confirmed state; treated as merged`,
+          `applied journal ${journal.headerHash} lies beyond the locally known merged chain (${merged.stopReason}) and ends at or before the confirmed state; treated as merged`,
         );
       } else {
         acc.failures.push(
-          `finalized journal ${journal.headerHash} is neither on the L1 queue nor merged (merged walk: ${merged.stopReason})`,
+          `applied journal ${journal.headerHash} is neither on the L1 queue nor merged (merged walk: ${merged.stopReason})`,
         );
       }
     }
-    if (ACTIVE_JOURNAL_STATUSES.has(journal.status) && !onChain) {
+    if (isUnappliedJournal(journal) && !onChain) {
       if (isMergedHeader) {
         acc.failures.push(
           `journal ${journal.headerHash} is still ${journal.status} but its header is already merged on L1`,
         );
       } else {
         acc.notes.push(
-          `active journal ${journal.headerHash} (${journal.status}) is not on L1 yet${journal.submittedTxHash === null ? " (not submitted)" : ` (submitted in ${journal.submittedTxHash})`}`,
+          `active journal ${journal.headerHash} (${journal.status}) is not on L1 yet${journal.intendedTxHash === null ? " (not signed)" : ` (signed commit ${journal.intendedTxHash})`}`,
         );
       }
     }
@@ -137,7 +133,7 @@ export const checkStateQueueJournal = (
     const journal = ctx.journals.get(removal.headerHash);
     if (journal === undefined) {
       acc.notes.push(`${label}: no local journal (not produced by this node)`);
-    } else if (journal.status !== JOURNAL_STATUS.Abandoned) {
+    } else if (journal.deadCause === null) {
       acc.inFlight.push(
         `${label}: journal is still ${journal.status}; the landed-block rebase has not disposed of it yet`,
       );

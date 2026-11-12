@@ -48,6 +48,7 @@ import {
   canonicalAdmission,
 } from "./l1-admission-identity.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
+import type { DeadHeaders } from "./pendingBlockFinalizations.derived-status.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import { backfillWithdrawalLedgerOutRefs } from "./withdrawal-ledger-outref.backfill.js";
 import * as Withdrawals from "./withdrawals.js";
@@ -326,7 +327,8 @@ export type ViewTime = (slot: number) => number;
  * Ingests `plan` in the caller's transaction: the follower-change driver's
  * gated transaction (`withFollowerWrite` under `FollowerDriverWrite`).
  * `cutoffMs` bounds the deposit projection; the driver passes the view's
- * time.
+ * time. `dead` is the dead own journals (`deadJournals`) the caller read in
+ * that transaction.
  */
 export const reconcileFollowerEvents = (
   plan: IngestionPlan,
@@ -334,6 +336,7 @@ export const reconcileFollowerEvents = (
     network: Network;
     slotToUnixTime: ViewTime;
     cutoffMs: number;
+    dead: DeadHeaders;
   }>,
 ) =>
   Effect.gen(function* () {
@@ -362,7 +365,7 @@ export const reconcileFollowerEvents = (
           unassociated[0]!.event_id.toString("hex"),
         );
     }
-    const orphans = yield* countOrphansAwaitingRecovery;
+    const orphans = yield* countOrphansAwaitingRecovery(input.dead);
     const spendableUpserts = yield* reconcileAlreadyProjectedDeposits;
     const projected = yield* projectAwaitingDeposits(new Date(input.cutoffMs));
     yield* backfillWithdrawalLedgerOutRefs;

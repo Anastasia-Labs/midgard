@@ -105,7 +105,6 @@ const acceptanceFixture = (): E2EStateCorrectionAcceptance => {
     })),
     finalState: {
       stateQueueDepth: 0,
-      unfinishedMutationJobs: 0,
       pendingFinalizations: 0,
       watcherReady: true,
       watcherVerificationResumed: true,

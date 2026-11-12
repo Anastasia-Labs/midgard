@@ -23,15 +23,15 @@
  *    parent's ledger, or it holds the local-fault
  *    `landed_block_own_journal_mismatch`). It is adopted unapplied, as a
  *    foreign block is, and the rebase applies it: one path for both kinds,
- *    and one whose journal was abandoned (whichever lands wins) is revived
- *    by the same rebase. A foreign block is
+ *    and one whose journal was dead (whichever lands wins) is taken in like
+ *    any other. A foreign block is
  *    replayed on its parent's ledger and must reach its header's root. A
  *    block that does not is never recorded: it holds `landed_block_invalid`
  *    and nothing after it is processed. A mismatch never feeds a fault-proof
  *    path.
  * 4. A row the working ledger does not hold yet (any new one), or a removed
  *    row, runs the rebase (the driver's recompute, which
- *    also disposes of the own journals that cannot land). One that cannot
+ *    also disposes of the dead own journals). One that cannot
  *    finish yet holds its reason (`landed_block_rebase_pending` and its
  *    detail, or `landed_block_rebase_failed` with the failure), and the
  *    driver retries it on its backoff.
@@ -211,7 +211,7 @@ const newRow = <R>(
         } satisfies Step;
       // The rebase applies it, as it does a foreign block: it projects its
       // events (the withdrawals with its journal's classification) and
-      // writes its local effects; an abandoned one it revives first.
+      // writes its local effects, whether or not its journal was dead.
       return {
         kind: "row",
         row: {

@@ -28,15 +28,7 @@
  * emulator come from `openPublishedLifecycle`.
  */
 import { SqlClient } from "@effect/sql";
-import {
-  Effect,
-  Exit,
-  Layer,
-  ManagedRuntime,
-  Option,
-  Ref,
-  Scope,
-} from "effect";
+import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
 import { expect, vi } from "vitest";
 
 import { initializeNodeDatabase } from "../../src/commands/listen-startup.initialize-database.js";
@@ -366,22 +358,18 @@ export const openProductionLifecycle = async (
      * Own block `headerHash`, its commit on L1, taken in as the node takes
      * it: the synchronization's landed-block processing and the rebase that
      * applies it; the hook, run again at the applied view, then holds
-     * nothing, and the block's journal is locally applied.
+     * nothing, and the block is applied.
      */
     const applyLanded = async (headerHash: string) => {
       await synchronize();
       expect(await processLanded()).toBeUndefined();
-      const journal = await runtime.runPromise(
-        PendingBlockFinalizationsDB.retrieveByHeaderHash(
-          Buffer.from(headerHash, "hex"),
-        ),
-      );
       expect(
-        Option.map(
-          journal,
-          (record) => record[PendingBlockFinalizationsDB.Columns.STATUS],
+        await runtime.runPromise(
+          PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+            Buffer.from(headerHash, "hex"),
+          ),
         ),
-      ).toEqual(Option.some(PendingBlockFinalizationsDB.Status.LocallyApplied));
+      ).toBe(PendingBlockFinalizationsDB.OwnBlockStatus.Applied);
     };
     const handle = {
       ...recorded,

@@ -13,6 +13,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { land, ownLandedRow } from "./helpers/own-block-facts.js";
 import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
   deterministicFixtureBytes,
@@ -111,23 +112,15 @@ const ZERO_ROOT = "00".repeat(32);
 const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 
-/** A committed block's journal row for `headerHash`. */
-const insertJournal = (
-  headerHash: Buffer,
-  status: PendingBlockFinalizationsDB.Status,
-  correctionTransitionDigest: string | null,
-) =>
+/** A committed block's journal row for `headerHash`, dead: it has no commit anchor. */
+const insertDeadJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const at = new Date();
     yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
       header_hash: headerHash,
-      submitted_tx_hash: null,
       block_end_time: at,
       block_time: at,
-      status,
-      correction_transition_digest: correctionTransitionDigest,
-      observed_confirmed_at_ms: null,
       created_at: at,
       updated_at: at,
       state_queue_lease_token: `da-removed:${headerHash.toString("hex").slice(0, 8)}`,
@@ -204,8 +197,6 @@ const owedNow = (token: string) =>
       SET lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL`;
     return publications;
   });
-
-const CORRECTION_DIGEST = "c0".repeat(32);
 
 describe("DA reconciliation of removed headers", () => {
   it("neither republishes, re-announces nor counts a removed header's payload, and resumes when the removal is revoked", async () => {
@@ -314,25 +305,20 @@ describe("DA reconciliation of removed headers", () => {
     );
   });
 
-  it("neither republishes nor counts a header abandoned under a named correction, owes one abandoned without one, and owes it again once its journal is revived", async () => {
+  it("neither republishes nor counts a header whose own journal is dead, and owes it again once its block lands after all", async () => {
     await run(
       Effect.gen(function* () {
-        const [released, abandoned, live] = yield* seedPayloads([
-          "released",
-          "abandoned-without-correction",
-          "live",
-        ]);
-        const Status = PendingBlockFinalizationsDB.Status;
-        // A signed-intent release (or a rewind) abandons its journal under the
-        // digest that proves it; another abandonment names nothing.
-        yield* insertJournal(released!, Status.Abandoned, CORRECTION_DIGEST);
-        yield* insertJournal(abandoned!, Status.Abandoned, null);
-        expect(yield* owedNow("abandoned")).toEqual(
-          [abandoned!, live!].map((hash) => hash.toString("hex")).sort(),
-        );
+        const [dead, live] = yield* seedPayloads(["dead", "live"]);
+        yield* insertDeadJournal(dead!);
+        expect(
+          (yield* PendingBlockFinalizationsDB.deadJournals).causes.has(
+            dead!.toString("hex"),
+          ),
+        ).toBe(true);
+        expect(yield* owedNow("dead")).toEqual([live!.toString("hex")]);
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE da_payload_publications SET status = 'conflict'
-          WHERE header_hash = ${released!}`;
+          WHERE header_hash = ${dead!}`;
         expect(
           yield* DaPayloadPublicationsDB.conflictCount(
             RETENTION_DAYS,
@@ -340,18 +326,13 @@ describe("DA reconciliation of removed headers", () => {
           ),
         ).toBe(0);
         yield* sql`UPDATE da_payload_publications SET status = 'pending'
-          WHERE header_hash = ${released!}`;
+          WHERE header_hash = ${dead!}`;
 
-        // The released journal is revived as canonical (the column change of
-        // `reviveAbandonedCanonical`); its correction digest stays, and its
-        // payload is owed again.
-        yield* sql`UPDATE pending_block_finalizations
-          SET status = ${Status.ObservedWaitingStability}
-          WHERE header_hash = ${released!} AND status = ${Status.Abandoned}`;
-        expect(yield* owedNow("revived")).toEqual(
-          [released!, abandoned!, live!]
-            .map((hash) => hash.toString("hex"))
-            .sort(),
+        // Its block lands after all: the journal is landed, not dead, and
+        // its payload is owed again.
+        yield* land(ownLandedRow(dead!.toString("hex"), "bb".repeat(28)));
+        expect(yield* owedNow("landed")).toEqual(
+          [dead!, live!].map((hash) => hash.toString("hex")).sort(),
         );
       }),
     );

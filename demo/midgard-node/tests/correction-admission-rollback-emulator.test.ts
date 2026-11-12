@@ -82,10 +82,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     const applied = await observe(h, b1);
     const b1Root = expectOneRoot(applied);
     expect(b1Root).not.toBe(base);
-    expect(applied.journal).toMatchObject({
-      status: "locally_applied",
-      corrected: false,
-    });
+    expect(applied.journal).toEqual({ status: "applied", dead: false });
     expect(applied.deposits).toEqual([
       { status: "projected", projectedHeader: b1 },
     ]);
@@ -110,7 +107,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     // becomes unspendable until assigned to a landed header again.
     expect(admitted.workingRoot).toBe(applied.workingRoot);
     expect(admitted.workingRoot).not.toBe(admitted.sqlRoot);
-    expect(admitted.journal).toMatchObject({ status: "abandoned" });
+    expect(admitted.journal).toEqual({ status: "unlanded", dead: true });
     // D1 is pending again: released to awaiting, and at once re-projected
     // (it is due) with no header, for the next block to carry.
     expect(admitted.deposits).toEqual([
@@ -161,10 +158,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     // Revived and applied again by the rebase that took B1 in. B1 is still
     // past its DA attestation deadline, so the next append pauses until
     // correction removes the expired suffix: a refusal, never a halt.
-    expect(revived.journal).toMatchObject({
-      status: "locally_applied",
-      corrected: true,
-    });
+    expect(revived.journal).toEqual({ status: "applied", dead: false });
     await h.applyLanded(b1);
     await expect(attemptAppend(h)).rejects.toThrow(
       "Commit paused until expired unattested suffix is corrected",
@@ -182,7 +176,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     const readmitted = await observe(h, b1);
     expect(expectOneRoot(readmitted)).toBe(base);
     expect(readmitted.workingRoot).toBe(admitted.workingRoot);
-    expect(readmitted.journal).toMatchObject({ status: "abandoned" });
+    expect(readmitted.journal).toEqual({ status: "unlanded", dead: true });
     expect(readmitted.deposits).toEqual(admitted.deposits);
     expect(readmitted.landed).toEqual(admitted.landed);
     expect(
@@ -211,7 +205,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     const settled = await observe(h, b2);
     expect(settled.liveness).toEqual([]);
     expect(settled.landedHold).toBeUndefined();
-    expect(settled.journal).toMatchObject({ status: "locally_applied" });
+    expect(settled.journal).toEqual({ status: "folded", dead: false });
     expect(settled.landedTip).toBe(b2);
     expect(settled.deposits.map((row) => row.projectedHeader)).toEqual([b2]);
     // The ledger root equals a fresh replay, and the root L1 accepted for B2.

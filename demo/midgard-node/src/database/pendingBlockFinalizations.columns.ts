@@ -30,11 +30,8 @@ export enum Columns {
   DEPLOYMENT_MARKER_SCHEMA_VERSION = "deployment_marker_schema_version",
   DEPLOYMENT_MANIFEST_ID = "deployment_manifest_id",
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
-  SUBMITTED_TX_HASH = "submitted_tx_hash",
   PREPARED_TX_HASH = "prepared_tx_hash",
   INTENDED_TX_HASH = "intended_tx_hash",
-  SIGNED_TX_CBOR = "signed_tx_cbor",
-  CORRECTION_TRANSITION_DIGEST = "correction_transition_digest",
   STATE_QUEUE_LEASE_TOKEN = "state_queue_lease_token",
   BASE_SNAPSHOT_ID = "base_snapshot_id",
   BASE_TAIL_OUT_REF = "base_tail_out_ref",
@@ -73,8 +70,6 @@ export enum Columns {
   MPF_REPLAY_EVENT_LOG_DIGEST = "mpf_replay_event_log_digest",
   MPF_REPLAY_EVENT_ROOTS = "mpf_replay_event_roots",
   MPF_REPLAY_EVENT_COUNT = "mpf_replay_event_count",
-  STATUS = "status",
-  OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
   COMMIT_ANCHOR_HASH = "commit_anchor_hash",
   COMMIT_ANCHOR_HEIGHT = "commit_anchor_height",
   COMMIT_ANCHOR_SLOT = "commit_anchor_slot",
@@ -105,28 +100,6 @@ export enum UtxoColumns {
   OUTPUT = "output",
 }
 
-export const Status = {
-  PendingSubmission: "pending_submission",
-  SubmittedLocalFinalizationPending: "submitted_local_finalization_pending",
-  SubmittedUnconfirmed: "submitted_unconfirmed",
-  ObservedWaitingStability: "observed_waiting_stability",
-  /**
-   * The node applied the block locally (plan §13.1: formerly `finalized`).
-   * Whether it is final on L1 is derived from the follower's facts.
-   */
-  LocallyApplied: "locally_applied",
-  Abandoned: "abandoned",
-} as const;
-
-export type Status = (typeof Status)[keyof typeof Status];
-
-export const ACTIVE_STATUSES: readonly Status[] = [
-  Status.PendingSubmission,
-  Status.SubmittedLocalFinalizationPending,
-  Status.SubmittedUnconfirmed,
-  Status.ObservedWaitingStability,
-];
-
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
   [Columns.HEADER_CBOR]: Buffer;
@@ -135,11 +108,8 @@ export type Row = {
   [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
   [Columns.DEPLOYMENT_MANIFEST_ID]: string;
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
-  [Columns.SUBMITTED_TX_HASH]: Buffer | null;
   [Columns.PREPARED_TX_HASH]?: Buffer | null;
   [Columns.INTENDED_TX_HASH]?: Buffer | null;
-  [Columns.SIGNED_TX_CBOR]?: Buffer | null;
-  [Columns.CORRECTION_TRANSITION_DIGEST]?: string | null;
   [Columns.STATE_QUEUE_LEASE_TOKEN]: string;
   [Columns.BASE_SNAPSHOT_ID]: string;
   [Columns.BASE_TAIL_OUT_REF]: string;
@@ -178,8 +148,6 @@ export type Row = {
   [Columns.MPF_REPLAY_EVENT_LOG_DIGEST]?: Buffer | null;
   [Columns.MPF_REPLAY_EVENT_ROOTS]?: Buffer | null;
   [Columns.MPF_REPLAY_EVENT_COUNT]?: number | null;
-  [Columns.STATUS]: Status;
-  [Columns.OBSERVED_CONFIRMED_AT_MS]: bigint | null;
   /** The commit anchor (see `commit-anchor.ts`); all three or none. */
   [Columns.COMMIT_ANCHOR_HASH]?: Buffer | null;
   [Columns.COMMIT_ANCHOR_HEIGHT]?: PgBigInt | null;
@@ -201,7 +169,6 @@ export type RawRow = Omit<
   | Columns.EXPECTED_VALIDATION_TRACE_COUNT
   | Columns.MPF_OWNER_SCHEMA
   | Columns.MPF_REPLAY_EVENT_COUNT
-  | Columns.OBSERVED_CONFIRMED_AT_MS
 > & {
   [Columns.EXPECTED_WITHDRAWAL_COUNT]: PgBigInt;
   [Columns.EXPECTED_FORCED_TRANSACTION_COUNT]: PgBigInt;
@@ -212,7 +179,6 @@ export type RawRow = Omit<
   [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: PgBigInt;
   [Columns.MPF_OWNER_SCHEMA]?: PgBigInt | null;
   [Columns.MPF_REPLAY_EVENT_COUNT]?: PgBigInt | null;
-  [Columns.OBSERVED_CONFIRMED_AT_MS]: PgBigInt | null;
 };
 
 export type MemberRecord = {
@@ -287,10 +253,6 @@ export const normalizeRow = (row: RawRow): Row => ({
   [Columns.MPF_REPLAY_EVENT_COUNT]: toSafeNumber(
     row[Columns.MPF_REPLAY_EVENT_COUNT],
   ),
-  [Columns.OBSERVED_CONFIRMED_AT_MS]:
-    row[Columns.OBSERVED_CONFIRMED_AT_MS] === null
-      ? null
-      : toBigInt(row[Columns.OBSERVED_CONFIRMED_AT_MS]),
 });
 
 export const PENDING_BLOCK_FINALIZATION_VERSION = 1 as const;

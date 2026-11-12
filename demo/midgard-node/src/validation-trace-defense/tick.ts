@@ -31,7 +31,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Cause, Effect, Either, Option, Ref } from "effect";
 
-import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { Globals } from "../services/index.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import {

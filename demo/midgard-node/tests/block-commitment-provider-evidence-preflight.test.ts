@@ -57,16 +57,8 @@ vi.mock("../src/database/index.js", async () => {
     PendingBlockFinalizationsDB: {
       Columns: {
         HEADER_HASH: "header_hash",
-        STATUS: "status",
-        SUBMITTED_TX_HASH: "submitted_tx_hash",
       },
-      Status: {
-        ObservedWaitingStability: "observed_waiting_stability",
-        SubmittedLocalFinalizationPending:
-          "submitted_local_finalization_pending",
-        SubmittedUnconfirmed: "submitted_unconfirmed",
-      },
-      retrieveActive: () => EffectModule.die("unexpected journal lookup"),
+      retrieveLive: () => EffectModule.die("unexpected journal lookup"),
     },
     StateQueueMutationLeasesDB: {
       describeActiveLease: () => "holder=test,status=active",
@@ -80,12 +72,12 @@ vi.mock("../src/database/index.js", async () => {
 
 // No signed commit intent awaits reconciliation.
 vi.mock(
-  "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js",
+  "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js",
   async (importOriginal) => {
     const { Effect: EffectModule } = await import("effect");
     return {
       ...(await importOriginal<
-        typeof import("../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js")
+        typeof import("../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js")
       >()),
       retrieveUnreconciledSignedSubmission: EffectModule.succeed(undefined),
     };

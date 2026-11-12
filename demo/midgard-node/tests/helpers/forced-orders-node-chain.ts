@@ -10,7 +10,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 
-import { countOrphansAwaitingRecovery } from "../../src/database/follower-orphan-repair.js";
 import { ForcedTransactionsDB } from "../../src/database/index.js";
 import {
   forcedOrderHorizon,
@@ -18,6 +17,7 @@ import {
   forcedOrderTrackedSet,
 } from "../../src/forced-orders/index.js";
 import { resetApplicationTables } from "../utils.js";
+import { orphansAwaitingRecovery } from "./follower-view.js";
 import {
   FORCED_CONFIG,
   inlineOrderMaterial,
@@ -100,6 +100,6 @@ export const rows = () =>
   );
 
 export const horizon = () => db(forcedOrderHorizon);
-export const orphans = () => db(countOrphansAwaitingRecovery);
+export const orphans = () => db(orphansAwaitingRecovery);
 
 export const label = (order: SimTx) => `${simTxHash(order).toString("hex")}#0`;

@@ -31,9 +31,7 @@ export {
 } from "./withdrawals.restore-corrected-classification.js";
 export {
   assertClassificationSnapshots,
-  clearProjectedHeaderAssignmentByEventIds,
   markAwaitingAsProjected,
-  markProjectedByEventIds,
   retrieveByCardanoTxHash,
   retrieveByEventIds,
   retrieveByProjectedHeaderHash,

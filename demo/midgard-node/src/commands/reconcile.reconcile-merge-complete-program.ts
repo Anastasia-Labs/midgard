@@ -3,7 +3,6 @@ import { Effect, Option } from "effect";
 
 import {
   BlocksDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
@@ -40,8 +39,7 @@ export const reconcileMergeCompleteProgram = ({
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
     const target = { headerHash: headerHashHex };
-    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(headerHashHex);
-    const observed = yield* observeMergeCompletion(headerHash, jobId);
+    const observed = yield* observeMergeCompletion(headerHash);
     const repairActions: string[] = [];
     if (repair && observed.canonical) {
       // The state queue merges strictly oldest-first, so only the oldest queued
@@ -52,7 +50,7 @@ export const reconcileMergeCompleteProgram = ({
           milestone: "merge-complete",
           target,
           status: "blocked",
-          evidence: mergeCompletionEvidence(jobId, observed),
+          evidence: mergeCompletionEvidence(observed),
           repairActions,
           nextAction: `Only the oldest queued block can be merged; reconcile merge-complete for ${String(oldest)} first.`,
         });
@@ -81,7 +79,7 @@ export const reconcileMergeCompleteProgram = ({
                 },
               )}`,
             }),
-            ...mergeCompletionEvidence(jobId, observed),
+            ...mergeCompletionEvidence(observed),
           ],
           repairActions,
           nextAction:
@@ -90,7 +88,7 @@ export const reconcileMergeCompleteProgram = ({
       }
       const { mergeResult } = attempt;
       repairActions.push("merge_action");
-      const after = yield* observeMergeCompletion(headerHash, jobId);
+      const after = yield* observeMergeCompletion(headerHash);
       const verdict = mergeCompletionVerdict(after);
       return result({
         milestone: "merge-complete",
@@ -103,7 +101,7 @@ export const reconcileMergeCompleteProgram = ({
               : "failed",
         evidence: [
           mergeResultEvidence(mergeResult),
-          ...mergeCompletionEvidence(jobId, after),
+          ...mergeCompletionEvidence(after),
         ],
         repairActions,
         nextAction:
@@ -121,7 +119,7 @@ export const reconcileMergeCompleteProgram = ({
       target,
       status: verdict.status,
       evidence: [
-        ...mergeCompletionEvidence(jobId, observed),
+        ...mergeCompletionEvidence(observed),
         evidence(
           "state_queue_lease",
           StateQueueMutationLeasesDB.encodeInspectionJson(
@@ -134,33 +132,16 @@ export const reconcileMergeCompleteProgram = ({
     });
   });
 
-const confirmedMergeFinalizationJobEvidence = (
-  jobId: string,
-  job: MutationJobsDB.Entry | undefined,
-): ReconciliationEvidence =>
-  evidence(
-    "confirmed_merge_finalization_job",
-    job === undefined
-      ? { present: false, jobId }
-      : {
-          present: true,
-          jobId,
-          status: job[MutationJobsDB.Columns.STATUS],
-          attempts: job[MutationJobsDB.Columns.ATTEMPTS],
-          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
-          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
-        },
-  );
-
 export type MergeCompletionObservation = {
   readonly canonicalHeaders: readonly string[];
   readonly canonical: boolean;
   readonly txCount: number;
-  readonly job: MutationJobsDB.Entry | undefined;
+  /** The derived status of the header's journal, if this node built it. */
+  readonly status: PendingBlockFinalizationsDB.OwnBlockStatus | undefined;
   readonly journal: Option.Option<PendingBlockFinalizationsDB.Record>;
 };
 
-export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
+export const observeMergeCompletion = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
@@ -168,7 +149,10 @@ export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
       canonicalHeaders,
       canonical: canonicalHeaders.includes(headerHash.toString("hex")),
       txCount: txHashes.length,
-      job: yield* MutationJobsDB.retrieveByJobId(jobId),
+      status:
+        yield* PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+          headerHash,
+        ),
       journal:
         yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
     } satisfies MergeCompletionObservation;
@@ -176,10 +160,10 @@ export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
 
 /**
  * A merge is complete only when the header has left the state queue AND its
- * confirmed-merge local finalization job completed. The block's rows prove
- * neither: they stay until its fold is final (`releaseFinalFolds`), well
- * after its merge completed, and a block without L2 transactions never had
- * rows.
+ * block is folded into `confirmed_ledger` (its journal derives `folded`).
+ * The block's rows prove neither: they stay until its fold is final
+ * (`releaseFinalFolds`), well after its merge completed, and a block
+ * without L2 transactions never had rows.
  */
 export const mergeCompletionVerdict = (
   observed: MergeCompletionObservation,
@@ -193,23 +177,26 @@ export const mergeCompletionVerdict = (
       nextAction:
         "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied.",
     };
-  const jobStatus = observed.job?.[MutationJobsDB.Columns.STATUS];
-  if (jobStatus === MutationJobsDB.Status.Completed)
+  if (observed.status === PendingBlockFinalizationsDB.OwnBlockStatus.Folded)
     return { status: "satisfied", nextAction: null };
-  if (observed.job !== undefined)
+  if (
+    observed.status === PendingBlockFinalizationsDB.OwnBlockStatus.Applied ||
+    observed.status === PendingBlockFinalizationsDB.OwnBlockStatus.Landed
+  )
     return {
       status: "blocked",
-      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; the running node's merge fiber retries it before every merge while the follower-change driver's view is published, and no merge proceeds until it succeeds. If it keeps failing, inspect the job's last_error.`,
+      nextAction: `The header left the state queue but its block is ${observed.status}, not folded; the running node's merge fiber finalizes a landed merge before every merge while the follower-change driver's view is published, and landed-block processing folds it in queue order. If it stays unfolded, inspect the node's landed-block holds.`,
     };
   return {
     status: "ambiguous",
     nextAction:
-      "The header is not queued and this database holds no confirmed-merge finalization job for it: its merge landed and the running node's merge fiber has not finalized it yet (it does so before its next merge once the follower-change driver's view is published), it was merged before this database existed, or it was removed by state-queue correction; inspect pending_block_finalization.",
+      observed.status === undefined
+        ? "The header is not queued and this database holds no journal for it: another operator built it, it was merged before this database existed, or it was removed by state-queue correction; inspect node_confirmed_merges and node_landed_blocks."
+        : "The header is not queued and its block is unlanded in this database: it was removed by state-queue correction, or the follower has not processed its landing yet; inspect node_landed_blocks and the queue terminals.",
   };
 };
 
 export const mergeCompletionEvidence = (
-  jobId: string,
   observed: MergeCompletionObservation,
 ): readonly ReconciliationEvidence[] => [
   evidence("canonical_state_queue", {
@@ -217,8 +204,8 @@ export const mergeCompletionEvidence = (
     headers: observed.canonicalHeaders,
   }),
   evidence("local_block_rows", { txCount: observed.txCount }),
-  confirmedMergeFinalizationJobEvidence(jobId, observed.job),
-  optionRecordEvidence(observed.journal),
+  evidence("own_block_status", { status: observed.status ?? null }),
+  optionRecordEvidence(observed.journal, observed.status),
 ];
 
 /** The merge outcome as plain JSON: the reconciliation artifact rejects the

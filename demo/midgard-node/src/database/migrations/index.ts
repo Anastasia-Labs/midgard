@@ -35,6 +35,7 @@ import foreignTxInclusionsSql from "./sql/0033_foreign_tx_inclusions.sql";
 import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
 import admissionTerminalRetentionSql from "./sql/0035_admission_terminal_retention.sql";
 import ownLandedBlocksUnappliedSql from "./sql/0036_own_landed_blocks_unapplied.sql";
+import ownBlockDerivedStatusSql from "./sql/0037_own_block_derived_status.sql";
 
 export type Migration = {
   readonly version: number;
@@ -297,6 +298,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: ownLandedBlocksUnappliedSql,
     transactional: true,
   },
+  {
+    version: 37,
+    name: "own_block_derived_status",
+    checksumSha256: sha256Hex(ownBlockDerivedStatusSql),
+    sql: ownBlockDerivedStatusSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -357,7 +365,6 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_validation_traces",
   "tx_admissions",
   "tx_admission_payloads",
-  "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
   "da_payload_publications",
@@ -407,15 +414,12 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_mempool_ledger_source_event_id",
   "idx_tx_rejections_tx_id",
   "idx_tx_rejections_created_at",
-  "uniq_pending_block_finalizations_single_active",
-  "idx_pending_block_finalizations_status",
   "idx_tx_admissions_lease",
   "idx_tx_admissions_active_lease",
   "idx_tx_admissions_queued_arrival",
   "idx_tx_admissions_terminal",
   "uniq_tx_rejections_tx_id",
   "idx_tx_rejection_causes_cause",
-  "idx_local_mutation_jobs_status_updated",
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",

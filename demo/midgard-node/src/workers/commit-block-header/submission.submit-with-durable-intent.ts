@@ -7,9 +7,9 @@ import type { WorkerOutput } from "../utils/commit-block-header.js";
 
 /** Why a prepared journal makes the commit wait for the next window. */
 export const HELD_HEADER_DETAIL =
-  "an abandoned journal whose commit was signed holds this header hash; its signed bytes can still land, so the journal is kept";
+  "a dead journal whose commit was signed holds this header hash; its signed bytes can still land, so the journal is kept";
 
-/** The commit's output when a signed abandoned journal holds its header
+/** The commit's output when a signed dead journal holds its header
  * (`preparePendingSubmission` returned `held`, writing nothing): it waits for
  * the next scheduler window, whose block end time gives it another header. */
 export const awaitNextCommitWindow = (heldHeaderHash: Buffer) =>

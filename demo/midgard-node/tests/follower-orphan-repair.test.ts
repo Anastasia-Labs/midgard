@@ -3,7 +3,7 @@
  * withdrawal row whose follower admission left the chain (its key is gone
  * from `l1_event_keys`) is deleted when nothing holds it, and kept while it
  * is assigned to a header, finalized, or named by a block journal that is
- * not abandoned. A canonical withdrawal is never touched. Deleting one
+ * not dead. A canonical withdrawal is never touched. Deleting one
  * re-runs classification of the unassigned withdrawals that stay.
  *
  * A held orphan is of the kind of its header, finalized or not: own-landed
@@ -26,10 +26,11 @@ import {
   deleteUnheldOrphans,
   describeOrphansAwaitingRecovery,
 } from "../src/database/follower-orphan-repair.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {
   insertOwnJournal,
-  JournalStatus,
+  simCommitTxHash,
 } from "./helpers/landed-blocks-sim.own.js";
 import {
   BLOCK,
@@ -122,12 +123,26 @@ const rowsOf = Effect.gen(function* () {
   );
 });
 
+/** `read` over the dead own journals, as a follower-gated write reads them. */
+const overDead = <A, E, R>(
+  read: (
+    dead: PendingBlockFinalizationsDB.DeadHeaders,
+  ) => Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(PendingBlockFinalizationsDB.deadJournals, (dead) =>
+    read(PendingBlockFinalizationsDB.deadHeadersOf(dead)),
+  );
+
+const deleteOrphans = overDead(deleteUnheldOrphans);
+const journalOrphans = overDead(countJournalOrphans);
+const awaitingRecovery = overDead(countOrphansAwaitingRecovery);
+
 const kinds = Effect.gen(function* () {
   return {
-    journal: yield* countJournalOrphans,
-    ownLanded: yield* countOwnLandedOrphans,
-    foreignLanded: yield* countForeignLandedOrphans,
-    awaiting: yield* countOrphansAwaitingRecovery,
+    journal: yield* journalOrphans,
+    ownLanded: yield* overDead(countOwnLandedOrphans),
+    foreignLanded: yield* overDead(countForeignLandedOrphans),
+    awaiting: yield* awaitingRecovery,
   };
 });
 
@@ -144,7 +159,7 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
       { label: "orphan", canonical: false },
       { label: "canonical", canonical: true, classified: true },
     ]);
-    const deleted = await run(globals, deleteUnheldOrphans);
+    const deleted = await run(globals, deleteOrphans);
     expect(deleted).toBe(1);
     const rows = await run(globals, rowsOf);
     expect(rows.has(digest("orphan").toString("hex"))).toBe(false);
@@ -153,8 +168,8 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
       status: "awaiting",
       validity: null,
     });
-    expect(await run(globals, countJournalOrphans)).toBe(0);
-    expect(await run(globals, countOrphansAwaitingRecovery)).toBe(0);
+    expect(await run(globals, journalOrphans)).toBe(0);
+    expect(await run(globals, awaitingRecovery)).toBe(0);
   });
 
   it("keeps an orphaned withdrawal assigned to a header or finalized, counting it as held", async () => {
@@ -175,7 +190,7 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
         classified: true,
       },
     ]);
-    expect(await run(globals, deleteUnheldOrphans)).toBe(0);
+    expect(await run(globals, deleteOrphans)).toBe(0);
     const rows = await run(globals, rowsOf);
     expect(rows.size).toBe(2);
     expect(rows.get(digest("headed").toString("hex"))?.status).toBe(
@@ -241,8 +256,10 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
     );
   });
 
-  it("keeps an orphaned withdrawal a live block journal names, and deletes it once that journal is abandoned", async () => {
+  it("keeps an orphaned withdrawal a live block journal names, and deletes it once that journal is dead", async () => {
     const globals = await arrange([{ label: "member", canonical: false }]);
+    // The journal's base is a processed landed block, so it can land.
+    await land(globals, {});
     await run(
       globals,
       testWrite(
@@ -259,21 +276,22 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
       ),
     );
     await run(globals, insertJournalMember("member"));
-    expect(await run(globals, deleteUnheldOrphans)).toBe(0);
+    expect(await run(globals, deleteOrphans)).toBe(0);
     expect((await run(globals, rowsOf)).size).toBe(1);
-    expect(await run(globals, countJournalOrphans)).toBe(1);
+    expect(await run(globals, journalOrphans)).toBe(1);
 
+    // Its signed commit's intent is pruned: its block can no longer land.
     await run(
       globals,
       Effect.flatMap(
         SqlClient.SqlClient,
         (sql) =>
-          sql`UPDATE pending_block_finalizations SET status = ${JournalStatus.Abandoned}
-            WHERE header_hash = ${Buffer.from(JOURNAL, "hex")}`,
+          sql`DELETE FROM l1_intents
+            WHERE tx_hash = ${simCommitTxHash(Buffer.from(JOURNAL, "hex"))}`,
       ),
     );
-    expect(await run(globals, deleteUnheldOrphans)).toBe(1);
+    expect(await run(globals, deleteOrphans)).toBe(1);
     expect((await run(globals, rowsOf)).size).toBe(0);
-    expect(await run(globals, countJournalOrphans)).toBe(0);
+    expect(await run(globals, journalOrphans)).toBe(0);
   });
 });

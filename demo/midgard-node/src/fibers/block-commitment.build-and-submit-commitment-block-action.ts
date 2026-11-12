@@ -23,8 +23,8 @@ import {
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
-import { abandonUnsignedActiveJournal } from "./block-commitment.abandon-unsigned-journal.js";
 import { extendCommitmentHoldForBacklog } from "./block-commitment.commit-hold-budget.js";
+import { discardStoppedUnsignedJournals } from "./block-commitment.discard-unsigned-journals.js";
 import { promoteCommitWorkerNativeResult } from "./block-commitment.native-result.js";
 import {
   commitBlockCounter,
@@ -34,7 +34,7 @@ import {
   commitWorkerDurationTimer,
   type CommitWorkerMessage,
   publishFullMempoolLedgerReload,
-  recoverNativeMpfFromActiveJournalAfterWorkerFailure,
+  recoverNativeMpfFromLiveJournalAfterWorkerFailure,
   takeCommitWorkerOutput,
   totalTxSizeGauge,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
@@ -58,8 +58,8 @@ export const buildAndSubmitCommitmentBlockAction = (
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     // The worker below prepares and signs under this lease, so an unsigned
-    // journal still active now was left by an attempt that stopped first.
-    yield* abandonUnsignedActiveJournal;
+    // journal still present now was left by an attempt that stopped first.
+    yield* discardStoppedUnsignedJournals;
     const snapshot = yield* landedStateQueueSnapshot(
       contracts.stateQueue,
       "commit_preflight",
@@ -156,13 +156,11 @@ export const buildAndSubmitCommitmentBlockAction = (
         ),
       ),
       Effect.catchAll((workerError) =>
-        recoverNativeMpfFromActiveJournalAfterWorkerFailure(
-          nativeMpfOwner,
-        ).pipe(
+        recoverNativeMpfFromLiveJournalAfterWorkerFailure(nativeMpfOwner).pipe(
           Effect.tap((recovered) =>
             recovered
               ? Effect.logWarning(
-                  "Architecture G recovered the submitted native generation from the durable journal after the commit worker failed before returning its promotion handle.",
+                  "Architecture G recovered the signed native generation from the durable journal after the commit worker failed before returning its promotion handle.",
                 )
               : Effect.void,
           ),

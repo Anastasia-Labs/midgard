@@ -28,7 +28,7 @@ import {
 import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -37,7 +37,7 @@ import {
 } from "../src/database/index.js";
 import { NodeConfig } from "../src/services/config.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
+import { backfillMissingDaPayloadsFromAppliedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import { buildJournalFixture } from "./da-payload.build-journal-fixture.js";
 import {
   countsFromLengths,
@@ -219,7 +219,7 @@ describe("DaPayloadV1 builder", () => {
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
     const summary = await runOnNode(
-      backfillMissingDaPayloadsFromFinalizedJournals({
+      backfillMissingDaPayloadsFromAppliedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([pending]),
           upsertAvailable: (input) =>
@@ -253,7 +253,7 @@ describe("DaPayloadV1 builder", () => {
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
     const summary = await runOnNode(
-      backfillMissingDaPayloadsFromFinalizedJournals({
+      backfillMissingDaPayloadsFromAppliedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([incomplete]),
           upsertAvailable: (input) =>
@@ -278,24 +278,19 @@ describe("DaPayloadV1 builder", () => {
   });
 
   it("reports requested journals excluded from DA payload backfill by status", async () => {
-    const { pending, headerHash } = await buildJournalFixture({
+    const { headerHash } = await buildJournalFixture({
       depositEntries: [
         [fixture("backfill-excluded-deposit", 34), fixture("info", 48)],
       ],
     });
-    const abandoned = {
-      ...pending,
-      [PendingBlockFinalizationsDB.Columns.STATUS]:
-        PendingBlockFinalizationsDB.Status.Abandoned,
-    };
 
     const summary = await runOnNode(
-      backfillMissingDaPayloadsFromFinalizedJournals({
+      backfillMissingDaPayloadsFromAppliedJournals({
         headerHash,
         deps: {
           retrieveMissingRecords: () => Effect.succeed([]),
-          retrieveJournalByHeaderHash: () =>
-            Effect.succeed(Option.some(abandoned)),
+          retrieveJournalStatus: () =>
+            Effect.succeed(PendingBlockFinalizationsDB.OwnBlockStatus.Landed),
           upsertAvailable: () => Effect.void,
         },
       }),
@@ -308,7 +303,7 @@ describe("DaPayloadV1 builder", () => {
         {
           headerHash: headerHash.toString("hex"),
           reason:
-            "journal excluded by status: abandoned; revive and complete local finalization before DA payload backfill",
+            "journal excluded by status: landed; its block is backfilled once it is applied",
         },
       ],
     });

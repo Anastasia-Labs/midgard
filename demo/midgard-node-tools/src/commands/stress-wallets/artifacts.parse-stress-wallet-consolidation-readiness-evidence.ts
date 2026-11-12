@@ -90,7 +90,6 @@ export const parseStressWalletConsolidationReadinessEvidence = (
         "reasons",
         "durableAdmissionBacklog",
         "mempoolTxCount",
-        "unfinishedLocalMutationJobs",
         "unresolvedBlockSubmissionAgeMs",
         "providerQueryHealthy",
         "leaseStatus",
@@ -147,7 +146,6 @@ export const parseStressWalletConsolidationReadinessEvidence = (
     [
       "durableAdmissionBacklog",
       "mempoolTxCount",
-      "unfinishedLocalMutationJobs",
       "unresolvedBlockSubmissionAgeMs",
       "pendingFinalizationCount",
     ].forEach((name) =>

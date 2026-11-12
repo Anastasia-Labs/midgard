@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { RejectCodes } from "@al-ft/midgard-validation";
 import { describe, expect, it, vi } from "vitest";
 
-import { MutationJobsDB, TxRejectionsDB } from "../src/database/index.js";
+import { TxRejectionsDB } from "../src/database/index.js";
 import { ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT } from "../src/fibers/tx-queue-processor.js";
 import { COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT } from "../src/mpf/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
@@ -66,7 +66,6 @@ import {
   runMergeUntilMerged,
   runNodeDatabaseEffect,
   SDK,
-  SqlClient,
   stateQueueFetchConfig,
   submitWithdrawalWithDiagnostics,
   toUnit,
@@ -241,7 +240,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     }
   }, 900_000);
 
-  it("merges three queued blocks oldest-first on the scheduled path and holds the final tail while a failed local mutation job remains", async () => {
+  it("merges three queued blocks oldest-first on the scheduled path, then merges the final tail", async () => {
     const h = await openProductionLifecycle();
     const { fixture, lucidService, globals, production } = h;
     try {
@@ -335,30 +334,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           h,
         );
       }
-
-      // A failed local mutation job is unfinished local work: the final tail
-      // must wait (the tail may still have a successor to build on it).
-      const failedJobId = `${MutationJobsDB.Kind.ConfirmedMergeFinalization}:sweep-failed-job`;
-      await runNodeDatabaseEffect(
-        MutationJobsDB.start({
-          jobId: failedJobId,
-          kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
-        }).pipe(
-          Effect.zipRight(MutationJobsDB.markFailed(failedJobId, "injected")),
-        ),
-      );
-      await expect(
-        runMergeUntilMerged({ ...harness, force: false, nodeConfig }),
-      ).rejects.toThrow(/skipped_pending_local_work/);
-      expect((await confirmedHeaderHash()).confirmed.headerHash).toBe(
-        queuedHeaderHashes[1],
-      );
-      await runNodeDatabaseEffect(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`DELETE FROM ${sql(MutationJobsDB.tableName)} WHERE job_id = ${failedJobId}`;
-        }),
-      );
 
       const tail = await runMergeUntilMerged({
         ...harness,

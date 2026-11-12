@@ -17,7 +17,6 @@ export * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 export * as Migrations from "./migrations/index.js";
 export * as MigrationRunner from "./migrations/runner.js";
 export * as MpfEngineStateDB from "./mpfEngineState.js";
-export * as MutationJobsDB from "./mutationJobs.js";
 export * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
 export * as ProcessedMempoolDB from "./processedMempool.js";
 export * as StateQueueMutationLeasesDB from "./stateQueueMutationLeases.js";

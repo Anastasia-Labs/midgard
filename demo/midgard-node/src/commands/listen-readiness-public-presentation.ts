@@ -39,11 +39,9 @@ const observedEnums: ReadonlySet<string> = new Set([
   "ready",
   "active",
   "released",
-  "pending_submission",
-  "submitted_local_finalization_pending",
-  "submitted_unconfirmed",
-  "observed_waiting_stability",
-  "locally_applied",
+  "unlanded",
+  "applied",
+  "folded",
   "abandoned",
   "retired",
   "unconfigured",
@@ -108,9 +106,9 @@ const observedEnums: ReadonlySet<string> = new Set([
 const enumField =
   /^(?:status|state|mode|kind|phase|source|rescue|holder|type|level|commitPipelinePhase|protocolInit|providerQueryMode|providerQueryEvidenceKind|providerQueryLastObservationKind|providerQueryLastExactObservationKind)$/u;
 const identityField =
-  /^(?:deploymentFingerprint|manifestId|headerHash|baseHeaderHash|baseUtxosRoot|hash|root|durableRoot|eventId|event_id|submittedTxHash|txHash|ownerEpoch)$/u;
+  /^(?:deploymentFingerprint|manifestId|headerHash|baseHeaderHash|baseUtxosRoot|hash|root|durableRoot|eventId|event_id|intendedTxHash|submittedTxHash|txHash|ownerEpoch)$/u;
 const pipelineCountPath =
-  /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|localMutationJobs\.unfinished|settlement\.unfinishedJobs|pendingBlockFinalizations\.countsByStatus\.(?:pending_submission|submitted_local_finalization_pending|submitted_unconfirmed|observed_waiting_stability|locally_applied|abandoned))$/u;
+  /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|settlement\.unfinishedJobs|pendingBlockFinalizations\.live|pendingBlockFinalizations\.countsByStatus\.(?:unlanded|landed|applied|folded))$/u;
 
 /** Public presentation only: readiness decisions and typed observation fields are unchanged.
  * Free-form diagnostic fields and mutation tokens are not public authority facts.
@@ -187,9 +185,7 @@ export const publicReadinessPresentation = (
       )
         return safe;
       if (
-        /^(?:durableAdmissionBacklog|mempoolTxCount|unfinishedLocalMutationJobs)$/u.test(
-          key,
-        ) &&
+        /^(?:durableAdmissionBacklog|mempoolTxCount)$/u.test(key) &&
         /^[0-9]{1,40}$/u.test(safe)
       )
         return safe;

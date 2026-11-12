@@ -65,8 +65,8 @@ type LeaseOptions = {
 
 export type PendingFinalizationLeaseInspection = {
   readonly headerHash: string;
-  readonly submittedTxHash: string | null;
-  readonly status: PendingBlockFinalizationsDB.Status;
+  readonly intendedTxHash: string | null;
+  readonly status: PendingBlockFinalizationsDB.OwnBlockStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -105,7 +105,7 @@ export const encodeInspectionJson = (inspection: LeaseInspection) => ({
   activeLease: encodeLeaseJson(inspection.activeLease, inspection.dbNow),
   pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
     headerHash: entry.headerHash,
-    submittedTxHash: entry.submittedTxHash,
+    intendedTxHash: entry.intendedTxHash,
     status: entry.status,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
@@ -180,16 +180,17 @@ export const describeActiveLease = (activeLease: Entry | undefined): string =>
         activeLease[Columns.TOKEN]
       },active_expires_at=${activeLease[Columns.EXPIRES_AT].toISOString()}`;
 
-const encodePendingFinalizationLeaseInspection = (
-  row: PendingBlockFinalizationsDB.Row,
-): PendingFinalizationLeaseInspection => ({
+const encodePendingFinalizationLeaseInspection = ({
+  row,
+  status,
+}: PendingBlockFinalizationsDB.LeaseJournal): PendingFinalizationLeaseInspection => ({
   headerHash:
     row[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
-  submittedTxHash:
-    row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
+  intendedTxHash:
+    row[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]?.toString(
       "hex",
     ) ?? null,
-  status: row[PendingBlockFinalizationsDB.Columns.STATUS],
+  status,
   createdAt: row[PendingBlockFinalizationsDB.Columns.CREATED_AT],
   updatedAt: row[PendingBlockFinalizationsDB.Columns.UPDATED_AT],
 });
@@ -225,9 +226,17 @@ export const inspect = ({
     const pendingFinalizations =
       activeLease === undefined
         ? []
-        : (yield* PendingBlockFinalizationsDB.retrieveActiveByStateQueueLeaseToken(
+        : (yield* PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
             activeLease[Columns.TOKEN],
-          )).map(encodePendingFinalizationLeaseInspection);
+          ))
+            .filter(
+              ({ status, dead }) =>
+                !dead &&
+                (status ===
+                  PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded ||
+                  status === PendingBlockFinalizationsDB.OwnBlockStatus.Landed),
+            )
+            .map(encodePendingFinalizationLeaseInspection);
     return {
       dbNow,
       activeLease,

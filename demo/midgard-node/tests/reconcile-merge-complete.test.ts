@@ -5,26 +5,11 @@ import {
   type MergeCompletionObservation,
   mergeCompletionVerdict,
 } from "../src/commands/reconcile.js";
-import { MutationJobsDB } from "../src/database/index.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
 const HEADER_HASH = "11".repeat(28);
 const OTHER_HEADER_HASH = "22".repeat(28);
-
-const job = (status: MutationJobsDB.Status): MutationJobsDB.Entry => ({
-  [MutationJobsDB.Columns.JOB_ID]:
-    MutationJobsDB.confirmedMergeFinalizationJobId(HEADER_HASH),
-  [MutationJobsDB.Columns.KIND]: MutationJobsDB.Kind.ConfirmedMergeFinalization,
-  [MutationJobsDB.Columns.STATUS]: status,
-  [MutationJobsDB.Columns.PLAN_HASH]: null,
-  [MutationJobsDB.Columns.PAYLOAD]: {},
-  [MutationJobsDB.Columns.ATTEMPTS]: 1,
-  [MutationJobsDB.Columns.LAST_ERROR]:
-    status === MutationJobsDB.Status.Failed ? "finalization failed" : null,
-  [MutationJobsDB.Columns.CREATED_AT]: new Date(0),
-  [MutationJobsDB.Columns.UPDATED_AT]: new Date(0),
-  [MutationJobsDB.Columns.COMPLETED_AT]:
-    status === MutationJobsDB.Status.Completed ? new Date(0) : null,
-});
+const Status = PendingBlockFinalizationsDB.OwnBlockStatus;
 
 const observed = (
   override: Partial<MergeCompletionObservation> = {},
@@ -32,13 +17,13 @@ const observed = (
   canonicalHeaders: [OTHER_HEADER_HASH],
   canonical: false,
   txCount: 0,
-  job: job(MutationJobsDB.Status.Completed),
+  status: Status.Folded,
   journal: Option.none(),
   ...override,
 });
 
 describe("merge-complete reconciliation verdict", () => {
-  it("is satisfied only once the header left the queue and its confirmed-merge finalization completed", () => {
+  it("is satisfied only once the header left the queue and its block is folded", () => {
     expect(mergeCompletionVerdict(observed())).toEqual({
       status: "satisfied",
       nextAction: null,
@@ -47,23 +32,28 @@ describe("merge-complete reconciliation verdict", () => {
 
   it("keeps a still-queued header pending whatever the local rows say", () => {
     for (const txCount of [0, 3])
-      expect(
-        mergeCompletionVerdict(
-          observed({
-            canonicalHeaders: [HEADER_HASH],
-            canonical: true,
-            txCount,
-            job: undefined,
-          }),
-        ).status,
-      ).toBe("pending");
+      for (const status of [
+        undefined,
+        ...PendingBlockFinalizationsDB.OWN_BLOCK_STATUSES,
+      ])
+        expect(
+          mergeCompletionVerdict(
+            observed({
+              canonicalHeaders: [HEADER_HASH],
+              canonical: true,
+              txCount,
+              status,
+            }),
+          ).status,
+        ).toBe("pending");
   });
 
   it("reads an unqueued header's block rows as neither completion nor its absence", () => {
-    // The block's rows stay until its fold is final, after its merge's local
-    // finalization completed: only the job decides.
+    // The block's rows stay until its fold is final, after its merge
+    // completed: only the derived status decides.
     expect(
-      mergeCompletionVerdict(observed({ txCount: 3, job: undefined })).status,
+      mergeCompletionVerdict(observed({ txCount: 3, status: Status.Unlanded }))
+        .status,
     ).toBe("ambiguous");
     expect(mergeCompletionVerdict(observed({ txCount: 3 }))).toEqual({
       status: "satisfied",
@@ -71,24 +61,22 @@ describe("merge-complete reconciliation verdict", () => {
     });
   });
 
-  it("does not treat an empty row set without a finalization job as proof", () => {
-    // A block without L2 transactions never had rows.
-    expect(mergeCompletionVerdict(observed({ job: undefined }))).toMatchObject({
+  it("does not treat a header without a journal here as proof", () => {
+    // Another operator built it, or a block without L2 transactions never
+    // had rows.
+    expect(
+      mergeCompletionVerdict(observed({ status: undefined })),
+    ).toMatchObject({
       status: "ambiguous",
-      nextAction: expect.stringContaining("no confirmed-merge finalization"),
+      nextAction: expect.stringContaining("holds no journal"),
     });
   });
 
-  it("blocks when the confirmed-merge finalization failed or never finished", () => {
-    for (const status of [
-      MutationJobsDB.Status.Failed,
-      MutationJobsDB.Status.Running,
-    ])
-      expect(
-        mergeCompletionVerdict(observed({ job: job(status) })),
-      ).toMatchObject({
+  it("blocks while an unqueued header's block is landed or applied but not folded", () => {
+    for (const status of [Status.Landed, Status.Applied])
+      expect(mergeCompletionVerdict(observed({ status }))).toMatchObject({
         status: "blocked",
-        nextAction: expect.stringContaining(status),
+        nextAction: expect.stringContaining(`its block is ${status}`),
       });
   });
 });

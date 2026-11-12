@@ -2,9 +2,8 @@
  * Event statuses on the rebase target (plan §7.3, N3, ruling E-N3-1):
  *
  * - an event a removed block or a disposed-of own journal held, or one
- *   projected to a header that is neither a processed landed block nor one
- *   of this node's unabandoned journals, goes back to `awaiting` (a
- *   withdrawal also loses its classification);
+ *   projected to a header no processed landed block holds, goes back to
+ *   `awaiting` (a withdrawal also loses its classification);
  * - every event a processed block holds, foreign or this node's own, is
  *   projected to it, a withdrawal with the classification its replay (or
  *   its journal) gave; a deposit is `consumed` once its output left the
@@ -33,8 +32,9 @@ const TABLES = [
 ] as const;
 
 /**
- * Every event of the blocks `released` (removed or disposed of), or of an
- * unknown header, back to awaiting.
+ * Every event of the blocks `released` (removed, or a dead journal's), or
+ * of a header no processed row holds, back to awaiting: an event is
+ * projected to a block once it lands, never to an unlanded journal.
  */
 export const resetUnheldEvents = (
   target: RebaseTarget,
@@ -48,17 +48,14 @@ export const resetUnheldEvents = (
         .filter((row) => row.state === "processed")
         .map((row) => Buffer.from(row.headerHash, "hex")),
     );
-    const removedHeaders = bytea(
+    const releasedHeaders = bytea(
       released.map((headerHash) => Buffer.from(headerHash, "hex")),
     );
     const unheld = (alias: string) => sql`(
-      ${sql(alias)}.projected_header_hash = ANY(${pg.array(removedHeaders)}::bytea[])
+      ${sql(alias)}.projected_header_hash = ANY(${pg.array(releasedHeaders)}::bytea[])
       OR (${sql(alias)}.status = 'projected'
         AND ${sql(alias)}.projected_header_hash IS NOT NULL
-        AND NOT ${sql(alias)}.projected_header_hash = ANY(${pg.array(held)}::bytea[])
-        AND NOT EXISTS (SELECT 1 FROM pending_block_finalizations j
-          WHERE j.header_hash = ${sql(alias)}.projected_header_hash
-            AND j.status <> 'abandoned')))`;
+        AND NOT ${sql(alias)}.projected_header_hash = ANY(${pg.array(held)}::bytea[])))`;
     yield* sql`UPDATE deposits_utxos d SET status = 'awaiting',
       projected_header_hash = NULL WHERE ${unheld("d")}`;
     yield* sql`UPDATE forced_transaction_utxos d SET status = 'awaiting',

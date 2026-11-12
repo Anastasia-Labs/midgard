@@ -5,10 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Metric, Option } from "effect";
 
-import {
-  MutationJobsDB,
-  PendingBlockFinalizationsDB,
-} from "../../database/index.js";
+import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
@@ -62,17 +59,16 @@ const landedParentOf = (headerHash: Buffer) =>
 
 /**
  * Whether the walk to `confirmedState` can stop at a journal of this node
- * whose confirmed-merge job has not completed (to return it or to refuse
- * it); every other header it passes without stopping, so without one there
- * is nothing to walk for. Such a journal is reachable only if it is the
- * confirmed header, or if it ends no later than the confirmed header (each
- * header starts where its parent ends, and ends after it starts) and a
- * header the walk can step from names it as parent: a processed landed row,
- * a retained fold, or a locally applied journal whose job has not completed
- * (its base is its header's parent; finalization refuses one where it is
- * not). So a run of another operator's blocks is walked only while a merge
- * of this node below it can still be finalized, and costs nothing once
- * there is none.
+ * that is not folded (to return it or to refuse it); every other header it
+ * passes without stopping, so without one there is nothing to walk for.
+ * Such a journal is reachable only if it is the confirmed header, or if it
+ * ends no later than the confirmed header (each header starts where its
+ * parent ends, and ends after it starts) and a header the walk can step
+ * from names it as parent: a processed landed row, a retained fold, or an
+ * applied journal that is not folded (its base is its header's parent;
+ * finalization refuses one where it is not). So a run of another
+ * operator's blocks is walked only while a merge of this node below it can
+ * still be finalized, and costs nothing once there is none.
  */
 const unfinishedMergeReachable = (
   confirmedState: SDK.ConfirmedState,
@@ -80,19 +76,14 @@ const unfinishedMergeReachable = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const J = PendingBlockFinalizationsDB.Columns;
-    const Job = MutationJobsDB.Columns;
     const confirmedHeaderHash = Buffer.from(confirmedState.headerHash, "hex");
     const rows = yield* sql<{ header_hash: Buffer; header_cbor: Buffer }>`
       WITH unfinished AS (
-        SELECT j.${sql(J.HEADER_HASH)}, j.${sql(J.HEADER_CBOR)},
-          j.${sql(J.STATUS)}, j.${sql(J.BASE_TAIL_HEADER_HASH)}
-        FROM ${sql(PendingBlockFinalizationsDB.tableName)} j
-        WHERE NOT EXISTS (
-          SELECT 1 FROM ${sql(MutationJobsDB.tableName)} job
-          WHERE job.${sql(Job.JOB_ID)} =
-              ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
-              encode(j.${sql(J.HEADER_HASH)}, 'hex')
-            AND job.${sql(Job.STATUS)} = ${MutationJobsDB.Status.Completed}))
+        SELECT * FROM (SELECT j.${sql(J.HEADER_HASH)}, j.${sql(J.HEADER_CBOR)},
+            j.${sql(J.BASE_TAIL_HEADER_HASH)},
+            ${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "j")} AS status
+          FROM ${sql(PendingBlockFinalizationsDB.tableName)} j) journal
+        WHERE journal.status <> ${PendingBlockFinalizationsDB.OwnBlockStatus.Folded})
       SELECT u.${sql(J.HEADER_HASH)} AS header_hash,
         u.${sql(J.HEADER_CBOR)} AS header_cbor
       FROM unfinished u
@@ -104,7 +95,7 @@ const unfinishedMergeReachable = (
           WHERE m.parent_header_hash = u.${sql(J.HEADER_HASH)})
         OR EXISTS (SELECT 1 FROM unfinished child
           WHERE child.${sql(J.BASE_TAIL_HEADER_HASH)} = u.${sql(J.HEADER_HASH)}
-            AND child.${sql(J.STATUS)} = ${PendingBlockFinalizationsDB.Status.LocallyApplied})`;
+            AND child.status = ${PendingBlockFinalizationsDB.OwnBlockStatus.Applied})`;
     return rows.some((row) => {
       if (Buffer.from(row.header_hash).equals(confirmedHeaderHash)) return true;
       try {
@@ -129,9 +120,9 @@ const unfinishedMergeReachable = (
  * The merges L1 has confirmed that this database has not finalized, oldest
  * first. The walk starts at the header L1's confirmed state names and follows
  * each header's authenticated predecessor through the local journals. It stops
- * at genesis, at a header whose confirmed-merge job completed (every earlier
- * one did too, since a merge is built only after this walk from the confirmed
- * state it spends has finalized everything), or at a header this database
+ * at genesis, at a journal that is folded (every earlier one is too, since
+ * a merge is built only after this walk from the confirmed state it spends
+ * has finalized everything), or at a header this database
  * holds neither a journal nor a landed row for. Another operator's block has
  * no journal here: the walk passes it through its landed row's parent, so
  * this node's own merges below it (merged by any operator) are finalized
@@ -162,7 +153,7 @@ const landedUnfinalizedMerges = (
       if (pending.length >= MAX_LANDED_MERGE_CATCH_UP) {
         return yield* Effect.fail(
           new DatabaseError({
-            table: MutationJobsDB.tableName,
+            table: PendingBlockFinalizationsDB.tableName,
             message:
               "Landed-merge catch-up exceeded its bound without reaching a finalized merge",
             cause: `max_headers=${MAX_LANDED_MERGE_CATCH_UP.toString()},header_hash=${current}`,
@@ -170,13 +161,11 @@ const landedUnfinalizedMerges = (
         );
       }
       const headerHash = Buffer.from(current, "hex");
-      const job = yield* MutationJobsDB.retrieveByJobId(
-        MutationJobsDB.confirmedMergeFinalizationJobId(current),
-      );
-      if (
-        job?.[MutationJobsDB.Columns.STATUS] === MutationJobsDB.Status.Completed
-      )
-        break;
+      const status =
+        yield* PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+          headerHash,
+        );
+      if (status === PendingBlockFinalizationsDB.OwnBlockStatus.Folded) break;
       const journal =
         yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
       if (Option.isNone(journal)) {
@@ -212,18 +201,15 @@ const landedUnfinalizedMerges = (
           }),
         );
       }
-      if (
-        journal.value[PendingBlockFinalizationsDB.Columns.STATUS] !==
-        PendingBlockFinalizationsDB.Status.LocallyApplied
-      ) {
-        // Its block's own local finalization (its bodies, its included
-        // rows) has not run yet; the merge finalizes after it.
+      if (status !== PendingBlockFinalizationsDB.OwnBlockStatus.Applied) {
+        // Its block is not applied yet (its bodies, its included rows); the
+        // merge finalizes after it.
         return yield* Effect.fail(
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,
             message:
-              "A landed merge's block is not locally finalized yet, so its merge cannot be finalized",
-            cause: `header_hash=${current},journal_status=${journal.value[PendingBlockFinalizationsDB.Columns.STATUS]}`,
+              "A landed merge's block is not applied yet, so its merge cannot be finalized",
+            cause: `header_hash=${current},journal_status=${status ?? "none"}`,
           }),
         );
       }

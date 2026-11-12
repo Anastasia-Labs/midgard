@@ -22,7 +22,7 @@ import {
   program,
 } from "./index.registration.js";
 import { NodeConfig } from "./services/index.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "./workers/commit-block-header/da-payload-backfill.js";
+import { backfillMissingDaPayloadsFromAppliedJournals } from "./workers/commit-block-header/da-payload-backfill.js";
 
 program
   .command("db:verify")
@@ -76,7 +76,7 @@ program
     }
 
     const mainEffect = provideDatabaseServices(
-      backfillMissingDaPayloadsFromFinalizedJournals({
+      backfillMissingDaPayloadsFromAppliedJournals({
         headerHash:
           headerHash === undefined ? undefined : Buffer.from(headerHash, "hex"),
         limit,

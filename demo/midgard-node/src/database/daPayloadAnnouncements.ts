@@ -3,6 +3,10 @@ import { Effect } from "effect";
 
 import { owedPayload } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
+import {
+  deadHeadersOf,
+  deadJournals,
+} from "./pendingBlockFinalizations.derived-status.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_announcements";
@@ -66,7 +70,7 @@ export const seedRecentPayloads = (
     ),
   );
 
-/** Removed or abandoned headers are not re-announced; see the publication claim. */
+/** Removed headers and dead own journals are not re-announced; see the publication claim. */
 export const claimDue = ({
   retentionDays,
   limit,
@@ -86,6 +90,7 @@ export const claimDue = ({
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     return yield* sql<Row>`
       WITH due AS (
         SELECT announcement.header_hash
@@ -99,7 +104,7 @@ export const claimDue = ({
             OR announcement.lease_expires_at <= NOW()
           )
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-          AND ${owedPayload(sql, deploymentIdentityDigest)}
+          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
         ORDER BY announcement.next_retry_at ASC, announcement.header_hash ASC
         FOR UPDATE OF announcement SKIP LOCKED
         LIMIT ${limit}
@@ -245,13 +250,14 @@ export const backlogCount = (
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} announcement
       INNER JOIN da_payloads payload ON payload.header_hash = announcement.header_hash
       WHERE announcement.status IN ('pending', 'failed')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest)}
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

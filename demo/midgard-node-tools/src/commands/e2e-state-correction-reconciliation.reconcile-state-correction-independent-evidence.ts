@@ -535,7 +535,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     manifestId: manifest.manifestId,
     observedAt: derivedFinalObservedAt,
     stateQueueDepth: nodeDatabaseExport.stateQueue.depth,
-    unfinishedMutationJobs: nodeDatabaseExport.jobs.unfinishedMutationJobs,
     pendingFinalizations: nodeDatabaseExport.jobs.pendingFinalizations,
     retainedProofTokens: expectedRetainedProofTokens,
     economics: finalSnapshot.economics.map((entry) => ({
@@ -579,7 +578,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   if (
     finalSnapshot.stateQueue.depth !== 0 ||
     finalSnapshot.stateQueue.fraudulentHeaderHashes.length !== 0 ||
-    finalSnapshot.jobs.unfinishedMutationJobs !== 0 ||
     finalSnapshot.jobs.pendingFinalizations !== 0
   ) {
     throw new Error("final chain/queue state is not drained and corrected");

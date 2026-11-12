@@ -24,10 +24,7 @@ import {
   type ValidationTraceDefenseHealth,
 } from "../src/validation-trace-defense/health.js";
 import { recordDefendFirstDue } from "../src/validation-trace-defense/tick.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const buildAndSubmitMock = vi.hoisted(() => vi.fn());

@@ -219,7 +219,6 @@ export const parseReconciliationResult = (
           "register_phas_membership_reward_account",
           "ensure_node_runtime_reference_scripts",
           "backfill_missing_da_payload",
-          "recover_local_finalization",
           "merge_action",
         ]),
     ),
@@ -282,6 +281,7 @@ export const bufferHex = (value: Buffer | null | undefined): string | null =>
 
 export const optionRecordEvidence = (
   record: Option.Option<PendingBlockFinalizationsDB.Record>,
+  status: PendingBlockFinalizationsDB.OwnBlockStatus | undefined,
 ): ReconciliationEvidence =>
   evidence(
     "pending_block_finalization",
@@ -293,10 +293,10 @@ export const optionRecordEvidence = (
             record.value[
               PendingBlockFinalizationsDB.Columns.HEADER_HASH
             ].toString("hex"),
-          submittedTxHash: bufferHex(
-            record.value[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
+          intendedTxHash: bufferHex(
+            record.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH],
           ),
-          status: record.value[PendingBlockFinalizationsDB.Columns.STATUS],
+          status: status ?? null,
           depositEventIds: record.value.depositEventIds.map((id) =>
             id.toString("hex"),
           ),

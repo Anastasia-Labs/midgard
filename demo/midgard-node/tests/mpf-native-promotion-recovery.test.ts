@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   recoverNativeMpfAfterCommitWorkerFailure,
-  recoverNativeMpfFromSubmittedJournal,
+  recoverNativeMpfFromSignedJournal,
 } from "../src/fibers/block-commitment.js";
 import type {
   NativeMpfGenerationHandle,
@@ -29,35 +29,35 @@ const replay: PersistedNativeMpfReplay = {
 };
 
 describe("Architecture G post-submit promotion recovery", () => {
-  it("replays the exact submitted journal after the owner epoch changes", async () => {
+  it("replays the exact signed journal after the owner epoch changes", async () => {
     const recover = vi.fn().mockResolvedValue(undefined);
     const owner = { recover } as unknown as NativeMpfOwnerService;
-    await recoverNativeMpfFromSubmittedJournal({
+    await recoverNativeMpfFromSignedJournal({
       owner,
       handle,
-      submitted: true,
+      signed: true,
       replay,
     });
     expect(recover).toHaveBeenCalledOnce();
     expect(recover).toHaveBeenCalledWith(replay);
   });
 
-  it("fails closed for an unsubmitted or different-base journal", async () => {
+  it("fails closed for an unsigned or different-base journal", async () => {
     const recover = vi.fn().mockResolvedValue(undefined);
     const owner = { recover } as unknown as NativeMpfOwnerService;
     await expect(
-      recoverNativeMpfFromSubmittedJournal({
+      recoverNativeMpfFromSignedJournal({
         owner,
         handle,
-        submitted: false,
+        signed: false,
         replay,
       }),
     ).rejects.toThrow(/journal mismatch/);
     await expect(
-      recoverNativeMpfFromSubmittedJournal({
+      recoverNativeMpfFromSignedJournal({
         owner,
         handle,
-        submitted: true,
+        signed: true,
         replay: { ...replay, baseRoot: "55".repeat(32) },
       }),
     ).rejects.toThrow(/journal mismatch/);
@@ -71,7 +71,7 @@ describe("Architecture G post-submit promotion recovery", () => {
     await expect(
       recoverNativeMpfAfterCommitWorkerFailure({
         owner,
-        submitted: true,
+        signed: true,
         replay,
       }),
     ).resolves.toBe(true);
@@ -82,7 +82,7 @@ describe("Architecture G post-submit promotion recovery", () => {
     await expect(
       recoverNativeMpfAfterCommitWorkerFailure({
         owner,
-        submitted: false,
+        signed: false,
         replay,
       }),
     ).resolves.toBe(false);
@@ -91,7 +91,7 @@ describe("Architecture G post-submit promotion recovery", () => {
     await expect(
       recoverNativeMpfAfterCommitWorkerFailure({
         owner,
-        submitted: true,
+        signed: true,
         replay: undefined,
       }),
     ).rejects.toThrow(/missing native replay data/);

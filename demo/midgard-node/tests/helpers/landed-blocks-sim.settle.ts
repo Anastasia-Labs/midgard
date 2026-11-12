@@ -2,11 +2,9 @@
  * The landed-block fork simulator's settle step (N3, I3): the node's
  * landed-block hook at the follower's view, then the driver's recompute it
  * holds for (the rebase, which applies landed own blocks and disposes of
- * and revives own journals), and S6 deriving a commit dead whose base left
- * without a rebase,
- * until nothing is left to do. A rebase is deferred now and then, and
- * every third one crashes after the native move and resumes after a
- * reopen.
+ * dead own journals), until nothing is left to do. A rebase is deferred
+ * now and then, and every third one crashes after the native move and
+ * resumes after a reopen.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";
@@ -18,11 +16,11 @@ import {
   LANDED_BLOCK_REPLAY_FAILED,
 } from "../../src/landed-blocks/holds.js";
 import { landedBlockHook } from "../../src/landed-blocks/hook.js";
+import { ownJournalDisposition } from "../../src/landed-blocks/own-journals.js";
 import { rebaseNeeded } from "../../src/landed-blocks/process.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import {
   rebasePlan,
-  rebaseTargetOf,
   walkTarget,
 } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
@@ -51,8 +49,6 @@ export const holdNames = (
 /** The simulated follower's depth parameters, for the published level. */
 const SIM_DEPTH = { confirmationDepth: 2, securityParameter: 6 } as const;
 
-const AWAITING_OWN = "awaiting own journal resolution";
-
 export type Settled =
   | Readonly<{ error: string }>
   | Readonly<{ hold: DriverHold | undefined; deferred?: true }>;
@@ -68,7 +64,7 @@ export const simSettler = (
   run: Run,
   served: Set<string>,
 ) => {
-  const { stats, book } = env;
+  const { stats } = env;
   let rebuilds = 0;
   // A rollback's rebase is held back for the next few events now and then,
   // so the blocks it removed can reland before it runs.
@@ -125,34 +121,17 @@ export const simSettler = (
         stats.transientHeld += 1;
         continue;
       }
-      const plan = await run(rebasePlan);
-      if (plan.kind === "blocked") {
-        if (!plan.detail.startsWith(AWAITING_OWN) || book.active === undefined)
-          return { error: `rebase blocked: ${plan.detail}` };
-        await node.abandonActive(onQueue);
-        const moved = await node.rebaseOnto();
-        if (typeof moved === "string") return { error: moved };
-        rebuilds += 1;
-        continue;
-      }
+      const plan = await run(rebasePlan());
+      if (plan.kind === "blocked")
+        return { error: `rebase blocked: ${plan.detail}` };
       if (plan.kind === "none") {
-        // A base that left the tip without a rebase is resolved here too.
-        const target = await run(Effect.flatMap(retrieveRows, rebaseTargetOf));
-        if (
-          target.kind === "blocked" &&
-          target.detail.startsWith(AWAITING_OWN) &&
-          book.active !== undefined
-        ) {
-          await node.abandonActive(onQueue);
-          const moved = await node.rebaseOnto();
-          if (typeof moved === "string") return { error: moved };
-          rebuilds += 1;
-          continue;
-        }
+        // A journal can die with nothing to dispose of (its block never
+        // landed), so no rebase follows its death.
+        await node.followRebase(await run(ownJournalDisposition), onQueue);
         return { hold };
       }
-      // A rebase due only for journals to dispose of is asked for after S6
-      // derived the commits' statuses, not by processing.
+      // A rebase due only for dead journals to dispose of is asked for by
+      // the driver's due check, not by processing.
       const disposalOnly =
         plan.target.journals.dispose.length > 0 &&
         !rebaseNeeded(await run(retrieveRows));
@@ -182,7 +161,7 @@ export const simSettler = (
         continue;
       }
       await run(withFollowerWrite(rebaseSql(plan.target)));
-      await node.followDisposition(plan.target.journals, onQueue);
+      await node.followRebase(plan.target.journals, onQueue);
       rebuilds += 1;
     }
     return { error: "landed-block processing did not settle" };

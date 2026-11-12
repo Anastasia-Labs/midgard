@@ -2,6 +2,7 @@ import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { followerCoveredTipHeight } from "../l1-queue-terminals/index.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { settlementDepthParameters } from "../services/settlement.status.js";
@@ -17,13 +18,12 @@ export type TxStatusMergeEvidence = Readonly<{
   confirmedLedgerFinalized: boolean;
 }>;
 
-/** Commit finalization is not merge finalization. Read the completed local
- * merge job (its id names the header, and it starts only once the header's
- * root matches the journal, so its payload is not re-read) together with the
- * merge tx the queue-terminal projection
- * (`node_l1_queue_terminals`) holds for the header, once it is `safe` (at
- * least cd deep at the follower's covered tip). A rollback of the merge tx
- * deletes its row; completed jobs alone survive it. The same statement
+/** Commit finalization is not merge finalization. An own block's merge is
+ * finalized once its journal derives `folded` (`ownBlockStatusSql`) and the
+ * merge tx the queue-terminal projection (`node_l1_queue_terminals`) holds
+ * for the header is `safe` (at least cd deep at the follower's covered
+ * tip). A rollback of the merge tx deletes its row. A dead journal (its
+ * block can no longer land) holds no tx. The same statement
  * requires the follower write gate (plan §8.1) to hold an applied view with
  * no driver recompute pending, so a recompute under way cannot publish old
  * evidence. Missing retained evidence cannot assert completion, including
@@ -57,9 +57,14 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
     const safeThroughHeight = heightAtDepth(tipHeight, confirmationDepth);
     const sql = yield* SqlClient.SqlClient;
     return yield* Effect.gen(function* () {
-      // One statement observes membership, job, terminal projection and
-      // the write gate together, rather than mixing independently read
-      // snapshots.
+      // A dead journal is only ever unlanded, so the dead set read here
+      // bounds which unlanded journals are reported, never a merge.
+      const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+        yield* PendingBlockFinalizationsDB.deadJournals,
+      );
+      // One statement observes membership, derived status, terminal
+      // projection and the write gate together, rather than mixing
+      // independently read snapshots.
       const rows = yield* sql<{
         inclusion: "own_block" | "landed_block";
         tx_hash: string;
@@ -78,20 +83,20 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
             WHERE ${sql.in("tx_id", [...txIds])} AND included_by IS NOT NULL)
         SELECT 'own_block' AS inclusion,
           encode(member.member_id, 'hex') AS tx_hash,
-          encode(member.header_hash, 'hex') AS header_hash, pending.status,
-          (pending.status = 'locally_applied' AND EXISTS (
-            SELECT 1 FROM local_mutation_jobs job
-            JOIN node_l1_queue_terminals outcome
-              ON outcome.header_hash = pending.header_hash
-            WHERE job.job_id = 'confirmed_merge_finalization:' || encode(pending.header_hash, 'hex')
-              AND job.kind = 'confirmed_merge_finalization'
-              AND job.status = 'completed'
+          encode(member.header_hash, 'hex') AS header_hash, own.status,
+          (own.status = 'folded' AND EXISTS (
+            SELECT 1 FROM node_l1_queue_terminals outcome
+            WHERE outcome.header_hash = own.header_hash
               AND outcome.terminal_outcome = 'merged'
               AND outcome.height <= ${safeThroughHeight}
           ) AND (SELECT open FROM gate)) AS merged
           FROM pending_block_finalization_txs member
-          JOIN pending_block_finalizations pending ON pending.header_hash = member.header_hash
-          WHERE ${sql.in("member.member_id", [...txIds])} AND pending.status <> 'abandoned'
+          JOIN LATERAL (SELECT pending.header_hash,
+              ${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "pending")} AS status
+            FROM pending_block_finalizations pending
+            WHERE pending.header_hash = member.header_hash) own ON TRUE
+          WHERE ${sql.in("member.member_id", [...txIds])}
+            AND NOT ${PendingBlockFinalizationsDB.deadHeader(sql, "member.header_hash", dead)}
         UNION ALL
         SELECT 'landed_block' AS inclusion,
           encode(marked.tx_id, 'hex') AS tx_hash,

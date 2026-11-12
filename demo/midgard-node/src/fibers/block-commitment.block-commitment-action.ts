@@ -5,7 +5,7 @@ import { StateQueueMutationLeasesDB } from "../database/index.js";
 import {
   PENDING_FINALIZATION_AGE_BOUND_MS,
   retrieveUnreconciledSignedSubmission,
-} from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+} from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
   ContractDeploymentIdentity,
@@ -38,9 +38,10 @@ let reportedHeaderHex: string | undefined;
 let reportedOverBound = false;
 
 /**
- * True while a signed commit intent is unresolved (S6 derives its status;
- * the landed-block rebase disposes of it once it is dead): the commit worker
- * would only refuse at its signed-submission preflight, so the tick takes
+ * True while the node's live journal holds a signed commit intent, which is
+ * unresolved until its block lands or the journal is dead (`deadJournals`,
+ * which reads S6's status of the commit): the commit worker would only
+ * refuse at its signed-submission preflight, so the tick takes
  * neither the L1 control plane nor the state-queue lease and spawns no
  * worker. Logged once per journal, again once it outlives the bound, and once
  * when it resolves.

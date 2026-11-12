@@ -5,15 +5,15 @@ import { beforeAll, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
-import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { pruneFoldedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
+import { journalFixture } from "./helpers/own-journal-fixture.js";
 import { insertLiveQueueNode } from "./helpers/queue-terminal-rows.js";
-import { recordMergeJob } from "./history-retention-prune.fixtures.js";
-import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
+import { setJournalStatus } from "./history-retention-prune.fixtures.js";
 import {
   daPayloadFixture,
   deploymentManifest,
@@ -68,9 +68,8 @@ it.each(["pre-rollback", "restored"] as const)(
               ...daPayloadFixture("stable-aged-unrelated-payload", OLD),
               [DaPayloadsDB.Columns.HEADER_HASH]: unrelatedHeader,
             });
-            // Producer journals survive confirmation and their completed
-            // merge jobs. A later finalized journal is the newest-boundary
-            // hold.
+            // Producer journals survive their fold. A later folded journal
+            // is the newest-boundary hold.
             const laterHeaderHash = deterministicFixtureBytes(
               "later-head-before-rollback",
               28,
@@ -87,11 +86,11 @@ it.each(["pre-rollback", "restored"] as const)(
                   baseTailOutRef: `${hash.toString("hex")}#0`,
                 },
               });
-              yield* sql`UPDATE pending_block_finalizations SET status = 'locally_applied',
+              yield* sql`UPDATE pending_block_finalizations SET
         block_end_time = ${new Date(NOW.getTime() - ageDays * RETENTION_MS_PER_DAY)},
         block_time = ${new Date(NOW.getTime() - ageDays * RETENTION_MS_PER_DAY)}
         WHERE header_hash = ${hash}`;
-              yield* recordMergeJob(hash, "completed");
+              yield* setJournalStatus(hash, "folded");
             }
             // The view read before the rollback excludes the formerly merged
             // header.
@@ -112,13 +111,11 @@ it.each(["pre-rollback", "restored"] as const)(
               view,
               deploymentIdentityDigest: identity(),
             });
-            const journalsDeleted = yield* pruneFinalizedBeyondChallengeability(
-              {
-                challengeableCutoff: computeChallengeableCutoff(NOW),
-                view,
-                deploymentIdentityDigest: identity(),
-              },
-            );
+            const journalsDeleted = yield* pruneFoldedBeyondChallengeability({
+              challengeableCutoff: computeChallengeableCutoff(NOW),
+              view,
+              deploymentIdentityDigest: identity(),
+            });
             const journals =
               yield* sql`SELECT header_hash FROM pending_block_finalizations WHERE header_hash = ${seeded.headerHash}`;
             return {

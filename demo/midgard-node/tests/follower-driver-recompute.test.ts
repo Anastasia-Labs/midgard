@@ -38,7 +38,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Either, Ref } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { reconcileFollowerEvents } from "../src/database/follower-events.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import {
   EVENTS_ORPHAN_RECOVERY,
   type IngestionPlan,
@@ -62,6 +62,7 @@ import {
 import {
   FOLLOWER_GENERATION,
   modelSlotTime,
+  reconcileOverDead,
   rewindFollowerKey,
   writeFollowerTip,
   writeFollowerView,
@@ -77,11 +78,8 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
-import {
-  insertOwnJournal,
-  JournalStatus,
-  journalStatuses,
-} from "./helpers/landed-blocks-sim.own.js";
+import { insertOwnJournal } from "./helpers/landed-blocks-sim.own.js";
+import { ownBlockStatuses } from "./helpers/own-block-facts.js";
 import {
   BLOCK,
   freshNative,
@@ -227,9 +225,10 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
   /**
    * The rebase is due (processed foreign block BLOCK waits unapplied on the
    * frontier) and the follower admitted one deposit at the view. Its holder
-   * is `"journal"`: own block C, live on BLOCK, names it as a member and
+   * is `"journal"`: own block C, built on BLOCK, names it as a member and
    * holds it by header; or `"landed"`: BLOCK includes it. Then the follower
-   * rewinds past the deposit's admission, orphaning it.
+   * rewinds past the deposit's admission, orphaning it (and taking C's
+   * commit anchor, so C is dead).
    */
   const arrange = async (holder: "journal" | "landed") => {
     const deposit = await projectedDeposit();
@@ -245,7 +244,7 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
       testWrite(
         Effect.gen(function* () {
           const at: IngestionPlan = yield* plan;
-          yield* reconcileFollowerEvents(at, {
+          yield* reconcileOverDead(at, {
             network: "Preprod",
             slotToUnixTime: modelSlotTime,
             cutoffMs: modelSlotTime(DRIVER_TEST_SLOT),
@@ -311,7 +310,10 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
             deposits,
             working: Number(working[0]!.count),
             applied: applied.map((row) => row.applied),
-            journal: (yield* journalStatuses).get(C),
+            journal: (yield* ownBlockStatuses).get(C),
+            dead: (yield* PendingBlockFinalizationsDB.deadJournals).causes.has(
+              C,
+            ),
             gate: yield* readFollowerWriteGate,
           };
         }),
@@ -319,13 +321,16 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
     return { globals, plan, deposit, view, rows };
   };
 
-  it("disposes of the live own journal holding an orphan and removes the orphan and its working-ledger row, in one run", async () => {
+  it("removes the orphan a dead own journal holds, and its working-ledger row, in one run", async () => {
     const { globals, plan, rows } = await arrange("journal");
     const before = await rows();
     expect(before.deposits).toMatchObject([{ status: "projected" }]);
     expect(before.working).toBe(1);
     expect(before.applied).toEqual([false]);
-    expect(before.journal).toBe(JournalStatus.SubmittedUnconfirmed);
+    expect(before.journal).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded,
+    );
+    expect(before.dead).toBe(true);
     const outcome = await run(
       globals,
       Effect.flatMap(testDriverRecompute({ plan }), (recompute) =>
@@ -335,7 +340,10 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
     expect(outcome).toMatchObject({ published: true, hold: undefined });
     const after = await rows();
     expect(after.applied).toEqual([true]);
-    expect(after.journal).toBe(JournalStatus.Abandoned);
+    expect(after.journal).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded,
+    );
+    expect(after.dead).toBe(true);
     expect(after.deposits).toEqual([]);
     expect(after.working).toBe(0);
     expect(after.gate.pending).toBeUndefined();

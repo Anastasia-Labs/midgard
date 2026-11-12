@@ -4,9 +4,8 @@ import { SqlClient } from "@effect/sql";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { CommitAnchor } from "../../src/database/commit-anchor.js";
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
-import * as Pending from "../../src/database/pendingBlockFinalizations.js";
-import { signedIntentReplacementDigest } from "../../src/services/canonical-journal-recovery.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -14,25 +13,25 @@ import {
 } from "../utils.js";
 
 /**
- * Shared SQL model of the journal recovery suites: journals of this node,
- * written directly.
+ * SQL model of the journal recovery suite: journals of this node, written
+ * directly.
  */
 
-export const bytes = (label: string, length = 32) =>
+const bytes = (label: string, length = 32) =>
   deterministicFixtureBytes(`before-ttl:${label}`, length);
-export const hex = (label: string) => bytes(label).toString("hex");
+const hex = (label: string) => bytes(label).toString("hex");
 
-export const BASE_TX = hex("base-tx");
+const BASE_TX = hex("base-tx");
 export const BASE_OUT = `${BASE_TX}#0`;
 export const BASE_HEADER = bytes("base-header", 28);
 export const UTXOS_ROOT = hex("utxos-root");
-export const TTL = 1_000;
-export const ZERO_ROOT = "00".repeat(32);
-export const EMPTY_MERKLE_ROOT =
+const TTL = 1_000;
+const ZERO_ROOT = "00".repeat(32);
+const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 
 /** A signed commit spending `spent` with validity upper bound `ttl`. */
-export const signedCommit = (spent: string, ttl: number) => {
+const signedCommit = (spent: string, ttl: number) => {
   const [txHash, index] = spent.split("#");
   const inputs = CML.TransactionInputList.new();
   inputs.add(
@@ -69,7 +68,7 @@ const FIXTURE_HEADER_CBOR = new Map<string, Buffer>();
  * records by its own header bytes, as the commit worker writes them; any
  * other header hash is journaled with header bytes that bind nothing.
  */
-export const fixtureHeader = (
+const fixtureHeader = (
   label: string,
   base: Buffer,
   baseRoot: string = UTXOS_ROOT,
@@ -118,41 +117,29 @@ export const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
     provideDatabaseLayers(effect) as Effect.Effect<A, E, never>,
   );
 
+/**
+ * The journal of own block `header` on `baseHeader`, signed for `commit`
+ * unless it is undefined, anchored at `anchor`.
+ */
 export const insertJournal = (input: {
   readonly header: Buffer;
-  readonly status: Pending.Status;
-  readonly commit: { readonly hash: string; readonly cbor: Buffer };
+  readonly commit?: { readonly hash: string; readonly cbor: Buffer };
+  readonly anchor: CommitAnchor;
   readonly baseOut: string;
   readonly baseHeader: Buffer;
   readonly createdAt: Date;
-  /** Why an abandoned journal was abandoned (unattributed by default). */
-  readonly abandonment?: "replacement" | "correction";
 }) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const at = input.createdAt;
-    const txHash = Buffer.from(input.commit.hash, "hex");
-    const correctionDigest =
-      input.abandonment === "replacement"
-        ? signedIntentReplacementDigest({
-            [Pending.Columns.HEADER_HASH]: input.header,
-            [Pending.Columns.INTENDED_TX_HASH]: txHash,
-            [Pending.Columns.SIGNED_TX_CBOR]: input.commit.cbor,
-          })!
-        : input.abandonment === "correction"
-          ? hex(`correction:${input.header.toString("hex")}`)
-          : null;
+    const txHash =
+      input.commit === undefined ? null : Buffer.from(input.commit.hash, "hex");
     yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
       header_hash: input.header,
-      submitted_tx_hash: null,
       prepared_tx_hash: txHash,
       intended_tx_hash: txHash,
-      signed_tx_cbor: input.commit.cbor,
       block_end_time: at,
       block_time: at,
-      status: input.status,
-      correction_transition_digest: correctionDigest,
-      observed_confirmed_at_ms: null,
       created_at: at,
       updated_at: at,
       state_queue_lease_token: `before-ttl:${input.header.toString("hex").slice(0, 8)}`,
@@ -189,6 +176,9 @@ export const insertJournal = (input: {
       consensus_profile_id: MIDGARD_CONSENSUS_PROFILE_ID,
       expected_validation_traces_root: EMPTY_MERKLE_ROOT,
       expected_validation_trace_count: 0n,
+      commit_anchor_hash: input.anchor.hash,
+      commit_anchor_height: input.anchor.height,
+      commit_anchor_slot: input.anchor.slot,
       ledger_delta_spent: "[]",
       ledger_delta_produced: "[]",
     } as never)}`;

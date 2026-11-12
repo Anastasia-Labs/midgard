@@ -59,11 +59,10 @@ Sources:
   that stays raised after its cause is gone, stops the journey there.
 - Node `/readyz` reasons you will meet at startup include
   `l1_follower_view_unapplied`, `l1_driver_recompute_pending`,
-  `l1_follower_catching_up`, `provider_query_unhealthy:l1-provider`,
-  `native_mpf_owner_unavailable` and `unfinished_local_mutation_jobs:<n>`, on
-  top of the worker-heartbeat, backlog and database checks. Each is explained
-  in the next section. `/readyz` never checks that blocks are committing; that
-  is bar 4.
+  `l1_follower_catching_up`, `provider_query_unhealthy:l1-provider` and
+  `native_mpf_owner_unavailable`, on top of the worker-heartbeat, backlog and
+  database checks. Each is explained in the next section. `/readyz` never
+  checks that blocks are committing; that is bar 4.
 
 ## Node `/readyz` reasons
 
@@ -284,9 +283,6 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
   of the named settlement attempt has failed `SETTLEMENT_JOB_FAILURE_CAP`
   times in a row, and no new
   settlement work starts until it resolves. Read the named error.
-- `unfinished_local_mutation_jobs:<n>`: local mutation journals are not
-  finished. Usually transient at start while recovery replays them; if it
-  stays, read the mutation-job log lines.
 - `da_publication_conflict:<n>`: a DA committee member answered `conflict`
   for a retained payload this node owes. Read `last_error` on the
   `da_payload_publications` rows with status `conflict`.

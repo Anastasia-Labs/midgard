@@ -2,13 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { inspect } from "node:util";
 
-import { SqlClient } from "@effect/sql";
 import { coreToTxOutput } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
-import { Database } from "../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -31,7 +29,12 @@ import {
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
+import { openNodeServices } from "./helpers/commit-replacement-state-queue.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
+import {
+  expectSignedCommit,
+  readSignedCommitJournal,
+} from "./helpers/signed-commit-journal.js";
 import {
   signedIntentContinuationChildEvents,
   signedIntentContinuationChildRoots,
@@ -60,37 +63,6 @@ it("retains the original signed intent through landing and an accepted queue poi
         headerHash: string;
       }
     | undefined;
-
-  // A separate Effect/SQL connection proves the intent transaction has committed
-  // before provider submission, rather than observing an inherited transaction.
-  const readIntent = (txHash: string) =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const rows =
-          yield* sql<Pending.Row>`SELECT * FROM pending_block_finalizations
-        WHERE intended_tx_hash = ${Buffer.from(txHash, "hex")}`;
-        expect(rows).toHaveLength(1);
-        return rows[0]!;
-      }).pipe(Effect.provide(Database.layer)),
-    );
-  const assertIntent = (
-    row: Pending.Row,
-    txHash: string,
-    signedCbor: string,
-  ) => {
-    expect(row[Pending.Columns.PREPARED_TX_HASH]?.toString("hex")).toBe(txHash);
-    expect(row[Pending.Columns.INTENDED_TX_HASH]?.toString("hex")).toBe(txHash);
-    expect(row[Pending.Columns.SIGNED_TX_CBOR]?.toString("hex")).toBe(
-      signedCbor,
-    );
-    expect(
-      CML.hash_transaction(
-        CML.Transaction.from_cbor_hex(signedCbor).body(),
-      ).to_hex(),
-    ).toBe(txHash);
-    expect(row[Pending.Columns.STATUS]).not.toBe(Pending.Status.Abandoned);
-  };
 
   try {
     await advanceEmulatorPastLatestBlockEndTime(fixture);
@@ -153,12 +125,10 @@ it("retains the original signed intent through landing and an accepted queue poi
       providerCalls += 1;
       expect(providerCalls).toBe(1);
       const txHash = CML.hash_transaction(body).to_hex();
-      const row = await readIntent(txHash);
-      assertIntent(row, txHash, signedCbor);
-      expect(row[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-      expect(row[Pending.Columns.STATUS]).toBe(
-        Pending.Status.PendingSubmission,
-      );
+      const journal = await readSignedCommitJournal(txHash);
+      expectSignedCommit(journal, txHash, signedCbor);
+      expect(journal.status).toBe(Pending.OwnBlockStatus.Unlanded);
+      const { row } = journal;
       const headerHash = row[Pending.Columns.HEADER_HASH].toString("hex");
       const unit =
         fixture.contracts.stateQueue.policyId +
@@ -203,6 +173,10 @@ it("retains the original signed intent through landing and an accepted queue poi
 
     // Due scheduler work is aligned before the next owned worker attempt;
     // no state-queue mint reaches the provider before that re-run.
+    // The node's services as `runNode` provides them: the follower's
+    // journal records the commit's signed bytes before they reach the
+    // provider, over the wallet view the node signs with.
+    const node = await openNodeServices(h);
     let output: Awaited<ReturnType<typeof runCommitWorker>>;
     const dueWorkOutputs: unknown[] = [];
     try {
@@ -212,11 +186,12 @@ it("retains the original signed intent through landing and an accepted queue poi
         receiptsBefore = h.receipts.length;
         output = await runCommitWorker(
           fixture.contracts,
-          lucidService,
+          node.nodeLucid,
           latestBefore,
           production.nodeConfig,
           fixture.runtimeOverrides!.deploymentIdentity,
           { ...production, globals },
+          node.journal,
         );
         if (output.type !== "RegisteredDueWorkOutput") break;
         expect(providerCalls).toBe(0);
@@ -233,6 +208,7 @@ it("retains the original signed intent through landing and an accepted queue poi
       }
     } finally {
       fixture.emulator.submitTx = observingSubmit;
+      await node.close();
     }
     diagnostic.dueWorkOutputs = dueWorkOutputs;
     diagnostic.workerOutput = output;
@@ -247,12 +223,9 @@ it("retains the original signed intent through landing and an accepted queue poi
       "Signed commit intent retained for canonical reconciliation",
     );
     expect(output.error).toContain(responseLoss);
-    const pending = await readIntent(accepted.txHash);
-    assertIntent(pending, accepted.txHash, accepted.signedCbor);
-    expect(pending[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(pending[Pending.Columns.STATUS]).toBe(
-      Pending.Status.PendingSubmission,
-    );
+    const pending = await readSignedCommitJournal(accepted.txHash);
+    expectSignedCommit(pending, accepted.txHash, accepted.signedCbor);
+    expect(pending.status).toBe(Pending.OwnBlockStatus.Unlanded);
     expect(h.receipts).toHaveLength(receiptsBefore);
     expect(h.observer.pendingCount()).toBe(1);
     expect((await lucid.transactionStatus(accepted.txHash)).status).toBe(
@@ -281,12 +254,13 @@ it("retains the original signed intent through landing and an accepted queue poi
     );
     // The lost response never recorded the submission: the journal keeps
     // its signed intent, and landing applied it.
-    const priorToContinuation = await readIntent(accepted.txHash);
-    assertIntent(priorToContinuation, accepted.txHash, accepted.signedCbor);
-    expect(priorToContinuation[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(priorToContinuation[Pending.Columns.STATUS]).toBe(
-      Pending.Status.LocallyApplied,
+    const priorToContinuation = await readSignedCommitJournal(accepted.txHash);
+    expectSignedCommit(
+      priorToContinuation,
+      accepted.txHash,
+      accepted.signedCbor,
     );
+    expect(priorToContinuation.status).toBe(Pending.OwnBlockStatus.Applied);
     const nativeBefore = await Effect.runPromise(
       Ref.get(globals.NATIVE_MPF_OWNER),
     );
@@ -310,8 +284,8 @@ it("retains the original signed intent through landing and an accepted queue poi
     await h.synchronize();
     // At the parent's TTL the follower driver leaves the applied journal
     // and its signed intent as they are.
-    const recordedAtTtl = await readIntent(accepted.txHash);
-    assertIntent(recordedAtTtl, accepted.txHash, accepted.signedCbor);
+    const recordedAtTtl = await readSignedCommitJournal(accepted.txHash);
+    expectSignedCommit(recordedAtTtl, accepted.txHash, accepted.signedCbor);
     expect(recordedAtTtl).toEqual(priorToContinuation);
     // The child takes the latest planner end allowed by the Q61 attestation
     // fence, history horizon, submit validity and current scheduler window.
@@ -437,8 +411,8 @@ it("retains the original signed intent through landing and an accepted queue poi
     });
     expect(childHeader.endTime).toBeGreaterThan(accepted.header.endTime);
     expect(childNode.datum.next).toBe("Empty");
-    const afterChild = await readIntent(accepted.txHash);
-    assertIntent(afterChild, accepted.txHash, accepted.signedCbor);
+    const afterChild = await readSignedCommitJournal(accepted.txHash);
+    expectSignedCommit(afterChild, accepted.txHash, accepted.signedCbor);
     expect(afterChild).toEqual(recordedAtTtl);
     expect((await nativeBefore!.diagnostics()).durableRoot).toBe(
       nativeBeforeContinuation.durableRoot,
@@ -463,26 +437,25 @@ it("retains the original signed intent through landing and an accepted queue poi
     const l2 = await h.command(utxosProgram(address));
     expect(l2.utxoCount).toBe(1);
     expect(l2.totals.lovelace).toBe(12_000_000n);
-    expect(await readIntent(accepted.txHash)).toEqual(recordedAtTtl);
+    expect(await readSignedCommitJournal(accepted.txHash)).toEqual(
+      recordedAtTtl,
+    );
     const native = await Effect.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
     expect(native).toBeDefined();
     expect((await native!.diagnostics()).durableRoot).toBe(
       accepted.header.utxosRoot,
     );
     diagnostic.afterChild = {
-      journal: await readIntent(accepted.txHash),
+      journal: await readSignedCommitJournal(accepted.txHash),
       native: await native!.diagnostics(),
       l2,
     };
 
-    const finalRow = await readIntent(accepted.txHash);
-    assertIntent(finalRow, accepted.txHash, accepted.signedCbor);
+    const finalRow = await readSignedCommitJournal(accepted.txHash);
+    expectSignedCommit(finalRow, accepted.txHash, accepted.signedCbor);
     // The lost response never recorded the submission, and the recreated
     // outref names the child: the journal keeps its intended hash only.
-    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(finalRow[Pending.Columns.STATUS]).toBe(
-      Pending.Status.LocallyApplied,
-    );
+    expect(finalRow.status).toBe(Pending.OwnBlockStatus.Applied);
     expect(
       h.receipts.filter(
         ({ transaction }) => transaction.txHash === accepted!.txHash,

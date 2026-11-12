@@ -1,10 +1,10 @@
 /**
  * This node's own blocks in the landed-block fork simulator (N3): the block
  * journals the node keeps for blocks it committed, written as the commit
- * leaves them (one active journal at a time, its ledger delta and the
- * mempool transactions it included), and their status moves (locally
- * applied when the block lands, abandoned when its base leaves the queue,
- * revived when it lands anyway).
+ * leaves them (one live journal at a time, its ledger delta and the
+ * mempool transactions it included, its signed commit in the intent
+ * journal), and their derived statuses. Nothing writes a journal after
+ * its commit: landing, a rollback and its death are read from the facts.
  */
 import { createHash } from "node:crypto";
 
@@ -13,10 +13,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import type { CommitAnchor } from "../../src/database/commit-anchor.js";
-import {
-  MempoolDB,
-  PendingBlockFinalizationsDB,
-} from "../../src/database/index.js";
+import { MempoolDB } from "../../src/database/index.js";
 import type * as Ledger from "../../src/database/utils/ledger.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import type { SimPendingTx } from "./landed-blocks-sim.mempool.js";
@@ -26,6 +23,7 @@ import {
   type SimRegistry,
 } from "./landed-blocks-sim.traffic.js";
 import type { SimUniverse } from "./landed-blocks-sim.universe.js";
+import { insertCommitIntent } from "./own-block-facts.js";
 
 const ZERO_ROOT = "00".repeat(32);
 const EMPTY_MERKLE_ROOT =
@@ -45,9 +43,13 @@ export type SimOwnJournal = Readonly<{
   at: Date;
   /** The commit anchor; by default `simCommitAnchor`. */
   anchor?: CommitAnchor;
+  /** Whether its commit was signed (by default it was). */
+  signed?: boolean;
 }>;
 
-export const JournalStatus = PendingBlockFinalizationsDB.Status;
+/** The signed commit tx hash of own block `header`. */
+export const simCommitTxHash = (header: Buffer) =>
+  sha256(Buffer.concat([Buffer.from("landed-sim:commit-tx:"), header]));
 
 /**
  * The commit anchor a journal built now stores at d = 0: the follower's top
@@ -73,70 +75,83 @@ export const simCommitAnchor = Effect.gen(function* () {
   return { hash, height: 0, slot: 0 } satisfies CommitAnchor;
 });
 
-/** Writes the active journal of an own block the node just committed. */
+/**
+ * The journal row of own block `journal` anchored at `anchor`, as the commit
+ * writes it; signed (by default) under `simCommitTxHash`.
+ */
+export const simJournalRow = (journal: SimOwnJournal, anchor: CommitAnchor) => {
+  const header = Buffer.from(journal.headerHash, "hex");
+  const signed = journal.signed ?? true;
+  const txHash = simCommitTxHash(header);
+  return {
+    header_hash: header,
+    prepared_tx_hash: signed ? txHash : null,
+    intended_tx_hash: signed ? txHash : null,
+    block_end_time: new Date(journal.at.getTime() + 1_000),
+    block_time: new Date(journal.at.getTime() + 1_000),
+    created_at: journal.at,
+    updated_at: journal.at,
+    state_queue_lease_token: `landed-sim:${journal.headerHash}`,
+    base_snapshot_id: "landed-sim",
+    base_tail_out_ref: "base#0",
+    base_tail_header_hash: Buffer.from(journal.baseHeaderHash, "hex"),
+    base_tail_datum_cbor: "d87980",
+    base_utxos_root: journal.baseUtxosRoot,
+    base_transactions_root: ZERO_ROOT,
+    base_deposits_root: ZERO_ROOT,
+    base_withdrawals_root: ZERO_ROOT,
+    block_start_time: journal.at,
+    expected_utxos_root: journal.expectedUtxosRoot,
+    expected_transactions_root: ZERO_ROOT,
+    expected_deposits_root: ZERO_ROOT,
+    expected_withdrawals_root: ZERO_ROOT,
+    base_forced_transactions_root: ZERO_ROOT,
+    expected_forced_transactions_root: ZERO_ROOT,
+    header_cbor: Buffer.from("a0", "hex"),
+    format_version: 1,
+    replay_kind: "ledger_delta_v1",
+    deployment_marker_schema_version: "midgard-deployment-marker-v1",
+    deployment_manifest_id: "de".repeat(32),
+    expected_transition_trace_root: ZERO_ROOT,
+    expected_event_to_step_root: ZERO_ROOT,
+    expected_withdrawal_count: 0n,
+    expected_forced_transaction_count: 0n,
+    expected_l2_transaction_count: 0n,
+    expected_deposit_count: 0n,
+    expected_total_event_count: 0n,
+    expected_transition_step_count: 0n,
+    consensus_profile_id: "midgard-consensus-v1",
+    expected_validation_traces_root: EMPTY_MERKLE_ROOT,
+    expected_validation_trace_count: 0n,
+    commit_anchor_hash: anchor.hash,
+    commit_anchor_height: anchor.height,
+    commit_anchor_slot: anchor.slot,
+    ledger_delta_spent: JSON.stringify(journal.spent.map(hex)),
+    ledger_delta_produced: JSON.stringify(
+      journal.produced.map((entry) => ({
+        outref: hex(entry.outref),
+        output: hex(entry.output),
+      })),
+    ),
+  };
+};
+
+/** Writes the journal of an own block the node just committed and signed. */
 export const insertOwnJournal = (journal: SimOwnJournal) =>
   withFollowerWrite(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const header = Buffer.from(journal.headerHash, "hex");
       const anchor = journal.anchor ?? (yield* simCommitAnchor);
-      yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
-        header_hash: header,
-        // Submitted, as the status says: a journal that never carried a
-        // transaction cannot land (the landing deletes such an abandoned
-        // journal superseded by the block it applies).
-        submitted_tx_hash: sha256(
-          Buffer.concat([Buffer.from("landed-sim:commit-tx:"), header]),
-        ),
-        block_end_time: new Date(journal.at.getTime() + 1_000),
-        block_time: new Date(journal.at.getTime() + 1_000),
-        status: JournalStatus.SubmittedUnconfirmed,
-        observed_confirmed_at_ms: null,
-        created_at: journal.at,
-        updated_at: journal.at,
-        state_queue_lease_token: `landed-sim:${journal.headerHash}`,
-        base_snapshot_id: "landed-sim",
-        base_tail_out_ref: "base#0",
-        base_tail_header_hash: Buffer.from(journal.baseHeaderHash, "hex"),
-        base_tail_datum_cbor: "d87980",
-        base_utxos_root: journal.baseUtxosRoot,
-        base_transactions_root: ZERO_ROOT,
-        base_deposits_root: ZERO_ROOT,
-        base_withdrawals_root: ZERO_ROOT,
-        block_start_time: journal.at,
-        expected_utxos_root: journal.expectedUtxosRoot,
-        expected_transactions_root: ZERO_ROOT,
-        expected_deposits_root: ZERO_ROOT,
-        expected_withdrawals_root: ZERO_ROOT,
-        base_forced_transactions_root: ZERO_ROOT,
-        expected_forced_transactions_root: ZERO_ROOT,
-        header_cbor: Buffer.from("a0", "hex"),
-        format_version: 1,
-        replay_kind: "ledger_delta_v1",
-        deployment_marker_schema_version: "midgard-deployment-marker-v1",
-        deployment_manifest_id: "de".repeat(32),
-        expected_transition_trace_root: ZERO_ROOT,
-        expected_event_to_step_root: ZERO_ROOT,
-        expected_withdrawal_count: 0n,
-        expected_forced_transaction_count: 0n,
-        expected_l2_transaction_count: 0n,
-        expected_deposit_count: 0n,
-        expected_total_event_count: 0n,
-        expected_transition_step_count: 0n,
-        consensus_profile_id: "midgard-consensus-v1",
-        expected_validation_traces_root: EMPTY_MERKLE_ROOT,
-        expected_validation_trace_count: 0n,
-        commit_anchor_hash: anchor.hash,
-        commit_anchor_height: anchor.height,
-        commit_anchor_slot: anchor.slot,
-        ledger_delta_spent: JSON.stringify(journal.spent.map(hex)),
-        ledger_delta_produced: JSON.stringify(
-          journal.produced.map((entry) => ({
-            outref: hex(entry.outref),
-            output: hex(entry.output),
-          })),
-        ),
-      } as never)}`;
+      if (journal.signed ?? true)
+        yield* insertCommitIntent(
+          header,
+          simCommitTxHash(header),
+          Buffer.concat([Buffer.from("landed-sim:commit-cbor:"), header]),
+        );
+      yield* sql`INSERT INTO pending_block_finalizations ${sql.insert(
+        simJournalRow(journal, anchor) as never,
+      )}`;
       for (const [ordinal, txId] of journal.txIds.entries()) {
         const payload = Buffer.concat([Buffer.from("landed-sim-tx:"), txId]);
         yield* sql`INSERT INTO pending_block_finalization_txs ${sql.insert({
@@ -153,29 +168,6 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
     }),
   );
 
-export const setJournalStatus = (
-  headerHash: string,
-  status: PendingBlockFinalizationsDB.Status,
-) =>
-  withFollowerWrite(
-    Effect.flatMap(
-      SqlClient.SqlClient,
-      (sql) => sql`UPDATE pending_block_finalizations SET status = ${status}
-        WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
-    ),
-  );
-
-/** Every journal's status, by hex header hash. */
-export const journalStatuses = Effect.flatMap(SqlClient.SqlClient, (sql) =>
-  sql<{ header_hash: Buffer; status: string }>`
-    SELECT header_hash, status FROM pending_block_finalizations`.pipe(
-    Effect.map(
-      (rows) =>
-        new Map(rows.map((row) => [hex(row.header_hash), row.status] as const)),
-    ),
-  ),
-);
-
 /** An own block the node committed. */
 export type SimOwnBlock = Readonly<{
   headerHash: string;
@@ -186,16 +178,14 @@ export type SimOwnBlock = Readonly<{
   at: Date;
 }>;
 
-/** The node's own blocks: every one it committed, and its active journal. */
+/** The node's own blocks: every one it committed. */
 export type SimOwnBook = {
   blocks: Map<string, SimOwnBlock>;
-  active: string | undefined;
   committed: number;
 };
 
 export const newSimOwnBook = (): SimOwnBook => ({
   blocks: new Map(),
-  active: undefined,
   committed: 0,
 });
 

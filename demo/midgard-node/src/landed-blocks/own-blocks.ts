@@ -5,7 +5,11 @@
  * native MPF there. What only an own block has is written here, from its
  * journal, in the rebase's transaction: its transactions in `immutable` and
  * `blocks` (what the merge of the block reads), its DA payload and that
- * payload's publication outbox, and the journal marked locally applied.
+ * payload's publication outbox. Its transactions are in a landed block, so
+ * a rejection recorded for one while its journal was dead is deleted, with
+ * every rejection whose recorded causes are all deleted ones
+ * (`TxRejectionsDB.deleteWithTracedRejections`). The journal is not
+ * written: it derives landed, then applied, from the landed row.
  *
  * Each write is idempotent by header: a rebase that runs again over the
  * same block writes nothing new.
@@ -20,8 +24,8 @@ import {
   MempoolDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
+  TxRejectionsDB,
 } from "../database/index.js";
-import { ACTIVE_STATUSES } from "../database/pendingBlockFinalizations.columns.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { Columns as TxColumns } from "../database/utils/tx.js";
 import { buildDaPayloadInsert } from "../workers/commit-block-header/da-payload.js";
@@ -43,7 +47,7 @@ const blockEntries = (record: PendingBlockFinalizationsDB.Record) =>
 
 /**
  * Writes the local effects of each own row of `rows` (see above). Returns
- * the hashes of the commits that landed them (hex).
+ * the hashes of the signed commits that landed them (hex).
  */
 export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
   Effect.forEach(
@@ -76,15 +80,14 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
         const payload = yield* buildDaPayloadInsert({ record });
         yield* DaPayloadsDB.upsertAvailable(payload);
         yield* seedDaPayloadPublicationOutboxFromEnv(payload);
-        if (
-          (ACTIVE_STATUSES as readonly string[]).includes(
-            record[Journals.Columns.STATUS],
-          )
-        )
-          yield* Journals.markFinalized(header);
-        return [
-          record[Journals.Columns.INTENDED_TX_HASH],
-          record[Journals.Columns.SUBMITTED_TX_HASH],
-        ].flatMap((hash) => (hash == null ? [] : [hash.toString("hex")]));
+        const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
+          entries.map((entry) => entry[TxColumns.TX_ID]),
+        );
+        if (cleared.length > 0)
+          yield* Effect.logWarning(
+            `Own block ${row.headerHash} landed: deleted ${cleared.length.toString()} rejections of its transactions and of transactions rejected after them.`,
+          );
+        const intended = record[Journals.Columns.INTENDED_TX_HASH];
+        return intended == null ? [] : [intended.toString("hex")];
       }),
   ).pipe(Effect.map((hashes) => hashes.flat()));

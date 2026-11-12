@@ -18,9 +18,11 @@
  *    the working-ledger recompute: under the ledger store lease, the native
  *    MPF moves to the target's root, then step 5 runs. Otherwise the native
  *    owner starts if it is not running, then step 5 runs.
- * 5. Under the cache's recovery locks, in one gated transaction: the events
- *    at the view are ingested, the rebase SQL (`rebaseSql`) runs on the
- *    target, unheld orphans are deleted (`follower-orphan-repair.ts`) and,
+ * 5. Under the cache's recovery locks, in one gated transaction, over the
+ *    dead own journals read once in it (the rebase target's, or the
+ *    transaction holds `landed_block_rebase_pending` and runs again): the
+ *    events at the view are ingested, the rebase SQL (`rebaseSql`) runs on
+ *    the target, unheld orphans are deleted (`follower-orphan-repair.ts`) and,
  *    when any were, the events are ingested again and the working ledger
  *    recomputed again, so the transactions that spent them are rejected.
  *    The cache reloads; the gate then publishes the view as applied and
@@ -51,7 +53,10 @@ import {
   deleteUnheldOrphans,
   describeOrphansAwaitingRecovery,
 } from "../database/follower-orphan-repair.js";
-import { MpfEngineStateDB } from "../database/index.js";
+import {
+  MpfEngineStateDB,
+  PendingBlockFinalizationsDB,
+} from "../database/index.js";
 import {
   type DriverHold,
   type EventRefusal,
@@ -63,12 +68,15 @@ import {
 } from "../l1-events/driver.js";
 import {
   blockedRebaseHold,
+  deadJournalsFor,
   failureHold,
   followJournals,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REBASE_SOURCE,
   moveNativeRoot,
+  ownJournalDisposition,
   rebasePlan,
+  rebasePlanOf,
   rebaseSql,
   type RebaseTarget,
   rebaseTargetOf,
@@ -88,6 +96,7 @@ import {
   FollowerDriverWrite,
   followerWriteHeld,
   followerWriteHoldOf,
+  followerWriteQuiet,
   withFollowerWrite,
 } from "./follower-write-gate.js";
 import { Globals } from "./globals.globals.js";
@@ -240,11 +249,22 @@ export const makeDriverRecompute = <R = never>(options: {
         const target = yield* asDriver(
           withFollowerWrite(
             Effect.gen(function* () {
-              const due = yield* rebasePlan;
-              if (due.kind === "ready") return due.target;
+              const journals = yield* ownJournalDisposition;
+              const due = yield* rebasePlanOf(
+                journals,
+                yield* Ref.get(globals.NATIVE_MPF_OWNER),
+              );
+              if (due.kind === "ready") {
+                if (due.drift !== undefined)
+                  yield* Effect.logWarning(
+                    `landed-block rebase: the native MPF's durable root ${due.drift.durableRoot} is not the target's root ${due.drift.targetRoot}`,
+                  );
+                return due.target;
+              }
               if (due.kind === "blocked") return undefined;
-              if ((yield* countOrphansAwaitingRecovery) === 0) return undefined;
-              const on = yield* rebaseTargetOf(yield* retrieveRows);
+              if ((yield* countOrphansAwaitingRecovery(journals.dead)) === 0)
+                return undefined;
+              const on = yield* rebaseTargetOf(yield* retrieveRows, journals);
               return on.kind === "ready" ? on.target : undefined;
             }),
           ),
@@ -263,24 +283,27 @@ export const makeDriverRecompute = <R = never>(options: {
             heldOrphansDetail =
               yield* describeOrphansAwaitingRecovery(heldOrphans);
         });
-        const ingest = Effect.gen(function* () {
-          const outcome = yield* reconcileFollowerEvents(plan, {
-            network: config.NETWORK,
-            slotToUnixTime: lucid.api.slotToUnixTime,
-            cutoffMs: lucid.api.slotToUnixTime(view.point.slot),
+        const ingest = (dead: PendingBlockFinalizationsDB.DeadHeaders) =>
+          Effect.gen(function* () {
+            const outcome = yield* reconcileFollowerEvents(plan, {
+              network: config.NETWORK,
+              slotToUnixTime: lucid.api.slotToUnixTime,
+              cutoffMs: lucid.api.slotToUnixTime(view.point.slot),
+              dead,
+            });
+            if (outcome.kind === "stale")
+              return yield* Effect.fail(
+                followerWriteHeld(
+                  FOLLOWER_VIEW_STALE,
+                  "the follower view moved during the recompute",
+                ),
+              );
+            return outcome.ingestion;
           });
-          if (outcome.kind === "stale")
-            return yield* Effect.fail(
-              followerWriteHeld(
-                FOLLOWER_VIEW_STALE,
-                "the follower view moved during the recompute",
-              ),
-            );
-          return outcome.ingestion;
-        });
         const repair = (on: RebaseTarget | undefined) =>
           Effect.gen(function* () {
-            const first = yield* ingest;
+            const dead = yield* deadJournalsFor(on);
+            const first = yield* ingest(dead);
             ingested.inserted = first.inserted;
             ingested.refused = [...first.refused];
             if (on === undefined) {
@@ -289,9 +312,12 @@ export const makeDriverRecompute = <R = never>(options: {
               return undefined;
             }
             const rebased = yield* rebaseSql(on);
-            if ((yield* deleteUnheldOrphans) > 0) {
-              yield* ingest;
-              const again = yield* rebaseTargetOf(yield* retrieveRows);
+            if ((yield* deleteUnheldOrphans(dead)) > 0) {
+              yield* ingest(dead);
+              const again = yield* rebaseTargetOf(
+                yield* retrieveRows,
+                on.journals,
+              );
               if (again.kind !== "ready")
                 return yield* Effect.fail(
                   new Error(
@@ -300,10 +326,10 @@ export const makeDriverRecompute = <R = never>(options: {
                 );
               yield* rebaseSql(again.target);
             }
-            // The rebase released its abandoned journals' events to
-            // awaiting; the due ones are projected again at once, for the
-            // next block to carry.
-            heldOrphans = (yield* ingest).orphans;
+            // The rebase released its dead journals' events to awaiting;
+            // the due ones are projected again at once, for the next block
+            // to carry.
+            heldOrphans = (yield* ingest(dead)).orphans;
             yield* describeHeld;
             return rebased;
           });
@@ -432,10 +458,24 @@ export const makeDriverRecompute = <R = never>(options: {
           Effect.provide(runtime),
         );
 
+    // From a commit's journal insert to the promotion after its worker, the
+    // live journal's root is ahead of the native MPF's while the commit's
+    // producer runs; the recompute drains producers before it reads the
+    // plan. Native root drift alone is due here only with none running.
     const rebaseIfDue = (reason: string) =>
       Effect.gen(function* () {
-        const due = yield* rebasePlan;
+        const globals = yield* Globals;
+        const owner = (yield* followerWriteQuiet)
+          ? yield* Ref.get(globals.NATIVE_MPF_OWNER)
+          : undefined;
+        const due = yield* rebasePlan(owner);
         if (due.kind === "none") return undefined;
+        if (
+          due.kind === "ready" &&
+          due.drift !== undefined &&
+          !(yield* followerWriteQuiet)
+        )
+          return undefined;
         if (due.kind === "blocked") return blockedRebaseHold(due);
         return (yield* run(reason)).hold;
       }).pipe(

@@ -116,7 +116,7 @@ export const retainSubmittedHeaderPayload = async ({
         );
       expect(
         pending.value[
-          PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+          PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH
         ]?.toString("hex"),
       ).toBe(submittedTxHash);
       const payload = yield* buildDaPayloadInsert({

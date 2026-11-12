@@ -34,7 +34,7 @@ import type { TxSignBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Duration, Effect } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
-import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { Globals, withL1ControlPlane } from "../services/index.js";
 import {
   IntentJournal,

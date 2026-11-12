@@ -240,10 +240,6 @@ export const projectedEventAdapter =
         "Failed to retrieve projected forced transactions awaiting header assignment",
       markAwaitingAsProjected:
         "Failed to mark awaiting forced transactions as projected",
-      markProjectedByEventIds:
-        "Failed to mark forced transactions as assigned to the given header",
-      clearProjectedHeaderAssignmentByEventIds:
-        "Failed to clear projected header assignments for forced transactions",
     },
   });
 

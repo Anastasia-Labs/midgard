@@ -8,7 +8,6 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { spendableUtxoPage } from "../../src/database/http-read-pages.js";
 import { MempoolLedgerDB, WithdrawalsDB } from "../../src/database/index.js";
 import {
@@ -21,7 +20,11 @@ import {
 import { decodeWithdrawalLedgerOutRef } from "../../src/database/withdrawal-ledger-outref.decode.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { insertWithdrawals } from "../helpers/event-rows.js";
-import { modelSlotTime, writeFollowerView } from "../helpers/follower-view.js";
+import {
+  modelSlotTime,
+  reconcileOverDead,
+  writeFollowerView,
+} from "../helpers/follower-view.js";
 import {
   address1,
   databaseFixtureBytes,
@@ -169,18 +172,16 @@ export const registerWalletViewTests = () => {
                 yield* sql`SELECT * FROM follower_event_ingestion`;
               const held = yield* Effect.either(
                 withFollowerWrite(
-                  reconcileFollowerEvents(plan, {
+                  reconcileOverDead(plan, {
                     network: "Custom",
                     slotToUnixTime: modelSlotTime,
                     cutoffMs: modelSlotTime(100),
                   }),
                 ),
               );
-              expect(held._tag).toBe("Left");
-              if (held._tag === "Left")
-                expect(held.left.message).toBe(
-                  "E_WITHDRAWAL_READ_BACKFILL_INPUT_LIMIT",
-                );
+              expect(held._tag === "Left" && held.left.message).toBe(
+                "E_WITHDRAWAL_READ_BACKFILL_INPUT_LIMIT",
+              );
               expect(
                 yield* sql`SELECT * FROM withdrawal_utxos ORDER BY event_id`,
               ).toEqual(before);

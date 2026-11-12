@@ -638,45 +638,6 @@ export const registerHistoryTests = () => {
     );
 
     it.effect(
-      "assigns and clears a projected header hash for a projected deposit",
-      (_) =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const deposit = makeDepositEntry();
-            const headerHash = databaseFixtureBytes(
-              "deposits.projected-header",
-              28,
-            );
-            yield* insertDeposits([deposit]);
-            yield* DepositsDB.markAwaitingAsProjected([
-              deposit[DepositsDB.Columns.ID],
-            ]);
-            yield* DepositsDB.markProjectedByEventIds(
-              [deposit[DepositsDB.Columns.ID]],
-              headerHash,
-            );
-
-            const assignedRows = yield* DepositsDB.retrieveAllEntries();
-            expect(
-              assignedRows[0]?.[
-                DepositsDB.Columns.PROJECTED_HEADER_HASH
-              ]?.equals(headerHash),
-            ).toEqual(true);
-
-            yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
-              [deposit[DepositsDB.Columns.ID]],
-              headerHash,
-            );
-
-            const clearedRows = yield* DepositsDB.retrieveAllEntries();
-            expect(
-              clearedRows[0]?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
-            ).toBeNull();
-          }),
-        ),
-    );
-
-    it.effect(
       "treats projection claiming as idempotent once a deposit is already projected",
       (_) =>
         isolatedDb(

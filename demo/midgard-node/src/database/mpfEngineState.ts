@@ -5,6 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
 import { Database } from "../services/database.js";
+import { appliedOrFolded } from "./pendingBlockFinalizations.derived-status.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
@@ -346,12 +347,13 @@ export const ledgerAuditIsDue = ({
     ) {
       return true;
     }
+    // Own blocks built since the last audit that the working ledger took in.
     const [row] = yield* sql<{
-      readonly finalized_count: bigint | string;
-    }>`SELECT COUNT(*) AS finalized_count
-       FROM pending_block_finalizations
-       WHERE status = 'locally_applied' AND updated_at > ${lastAuditAt}`;
-    return BigInt(row?.finalized_count ?? 0) >= BigInt(intervalBlocks);
+      readonly applied_count: bigint | string;
+    }>`SELECT COUNT(*) AS applied_count
+       FROM pending_block_finalizations p
+       WHERE p.created_at > ${lastAuditAt} AND ${appliedOrFolded(sql, "p")}`;
+    return BigInt(row?.applied_count ?? 0) >= BigInt(intervalBlocks);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to determine MPF audit cadence"),
   );

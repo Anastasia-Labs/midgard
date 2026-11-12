@@ -6,6 +6,7 @@
 import { Cause, Data, Effect, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
 import {
   EVENTS_INGESTION_FAILED,
   type FollowerChange,
@@ -66,6 +67,9 @@ export const driverSink = (recompute: DriverRecompute) =>
               network: config.NETWORK,
               slotToUnixTime: lucid.api.slotToUnixTime,
               cutoffMs: lucid.api.slotToUnixTime(plan.view.point.slot),
+              dead: PendingBlockFinalizationsDB.deadHeadersOf(
+                yield* PendingBlockFinalizationsDB.deadJournals,
+              ),
             });
             if (outcome.kind === "stale") return outcome;
             if (outcome.ingestion.orphans > 0)

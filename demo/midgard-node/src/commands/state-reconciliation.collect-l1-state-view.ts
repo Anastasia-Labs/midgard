@@ -280,8 +280,7 @@ export type JournalRow = {
   readonly expected_withdrawals_root: string;
   readonly expected_forced_transactions_root: string;
   readonly expected_transactions_root: string;
-  readonly correction_transition_digest: string | null;
-  readonly submitted_tx_hash: Buffer | string | null;
+  readonly intended_tx_hash: Buffer | string | null;
   readonly header_cbor: Buffer | null;
 };
 

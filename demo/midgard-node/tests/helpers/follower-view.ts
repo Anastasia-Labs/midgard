@@ -12,6 +12,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
+import { countOrphansAwaitingRecovery } from "../../src/database/follower-orphan-repair.js";
+import { PendingBlockFinalizationsDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import type { IngestionPlan } from "../../src/l1-events/driver.js";
 import {
@@ -113,6 +115,30 @@ export const modelAnchorClock = (depth: number) => ({
 });
 
 /**
+ * `reconcileFollowerEvents` over the dead own journals read in the same
+ * follower-gated transaction, as the driver's sink calls it.
+ */
+export const reconcileOverDead = (
+  plan: IngestionPlan,
+  options: Omit<Parameters<typeof reconcileFollowerEvents>[1], "dead">,
+) =>
+  Effect.flatMap(PendingBlockFinalizationsDB.deadJournals, (dead) =>
+    reconcileFollowerEvents(plan, {
+      ...options,
+      dead: PendingBlockFinalizationsDB.deadHeadersOf(dead),
+    }),
+  );
+
+/** `countOrphansAwaitingRecovery` over the dead own journals read now. */
+export const orphansAwaitingRecovery = Effect.flatMap(
+  PendingBlockFinalizationsDB.deadJournals,
+  (dead) =>
+    countOrphansAwaitingRecovery(
+      PendingBlockFinalizationsDB.deadHeadersOf(dead),
+    ),
+);
+
+/**
  * The follower-change driver's ingestion of `events` at a follower view at
  * `slot`, without a running driver (the gate's fixture capability); model
  * slots are 1 s from zero and no deposit is projected.
@@ -126,7 +152,7 @@ export const ingestFollowerViewUnowned = (
   Effect.gen(function* () {
     const plan = yield* writeFollowerView(slot, events, generation, height);
     const outcome = yield* withFollowerWrite(
-      reconcileFollowerEvents(plan, {
+      reconcileOverDead(plan, {
         network: "Preprod",
         slotToUnixTime: modelSlotTime,
         cutoffMs: 0,

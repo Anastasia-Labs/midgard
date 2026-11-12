@@ -21,7 +21,7 @@ import * as AuditLeases from "./mpf-audit-leases.js";
 /**
  * Which independently recomputed ledger point the persisted MPF root matched.
  *
- * - `tip`: the confirmed ledger plus the ledger deltas of every finalized but
+ * - `tip`: the confirmed ledger plus the ledger deltas of every applied but
  *   not-yet-merged journal, i.e. the committed tip. The native owner persists
  *   the committed tip, so this is the only point a clean audit can match.
  */
@@ -49,7 +49,7 @@ export type MpfAuditResult = {
   readonly tipUnverifiable?: string;
   /**
    * The root of the native committed point: the expected UTxO root of this
-   * node's newest finalized journal, or the target root of a native move
+   * node's newest applied journal, or the target root of a native move
    * (correction rewind or landed-block rebase) applied after it.
    */
   readonly tipCommittedRoot?: string;
@@ -59,7 +59,7 @@ export type MpfAuditResult = {
   readonly diverged: boolean;
   readonly durationMs: number;
   readonly skippedReason?:
-    | "active_pending_submission"
+    | "live_journal"
     | "state_queue_busy"
     | "store_busy"
     | "tip_unverifiable";
@@ -92,7 +92,7 @@ const headerHex = (record: PendingBlockFinalizationsDB.Record) =>
   record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
 
 /**
- * The finalized journal whose post-state `record` was built on. A block built
+ * The applied journal whose post-state `record` was built on. A block built
  * on this node's own block names that journal as its base tail. A block built
  * on a foreign block has no journal for its tail; the foreign block's ledger is
  * then locally known only if its UTxO root is one this node itself reached,
@@ -101,11 +101,11 @@ const headerHex = (record: PendingBlockFinalizationsDB.Record) =>
 const resolveBaseJournal = (record: PendingBlockFinalizationsDB.Record) =>
   Effect.gen(function* () {
     const linked =
-      yield* PendingBlockFinalizationsDB.retrieveFinalizedByHeaderHash(
+      yield* PendingBlockFinalizationsDB.retrieveAppliedByHeaderHash(
         record[PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH],
       );
     if (Option.isSome(linked)) return linked;
-    return yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
+    return yield* PendingBlockFinalizationsDB.retrieveNewestAppliedWithExpectedRoot(
       {
         expectedUtxosRoot:
           record[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT],
@@ -114,7 +114,7 @@ const resolveBaseJournal = (record: PendingBlockFinalizationsDB.Record) =>
     );
   });
 
-/** The native committed point: its root and the finalized journal of this
+/** The native committed point: its root and the applied journal of this
  * node whose post-state it is. */
 type CommittedPoint = {
   readonly root: string;
@@ -124,36 +124,37 @@ type CommittedPoint = {
 
 /**
  * Where the native committed root is. Only this node's own commits advance it,
- * to the committed block's expected root, so this node's newest finalized
+ * to the committed block's expected root, so this node's newest applied
  * journal fixes it.
  */
 const resolveCommittedPoint = Effect.gen(function* () {
-  const newest = yield* PendingBlockFinalizationsDB.retrieveNewestFinalized();
+  const newest = yield* PendingBlockFinalizationsDB.retrieveNewestApplied();
   return Option.map(
     newest,
     (tip): CommittedPoint => ({
       root: tip[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
       anchor: tip,
-      source: `newest finalized journal header_hash=${headerHex(tip)}`,
+      source: `newest applied journal header_hash=${headerHex(tip)}`,
     }),
   );
 });
 
 /**
  * Recompute the committed tip ledger independently of any MPF store: the
- * confirmed ledger plus the recorded ledger deltas of this node's finalized
+ * confirmed ledger plus the recorded ledger deltas of this node's applied
  * blocks that have not been merged yet, each step checked against the
  * journal's own expected root.
  *
  * The committed point is found by `resolveCommittedPoint`. Its unmerged suffix
  * is walked back to the confirmed ledger through each block's base journal,
  * bridging a foreign tail by UTxO root (see `resolveBaseJournal`). The walk
- * stops at the confirmed boundary, the newest finalized journal whose post-state
+ * stops at the confirmed boundary, the newest applied journal whose post-state
  * is the confirmed ledger: a journal that ended at or before it is merged and
  * cannot bridge to the confirmed ledger, so no audit reads past it.
  *
- * A base no local journal reached and a merged base are unverifiable, not divergent: the node cannot
- * reconstruct a ledger it never held (or no longer holds). A loaded suffix that
+ * A base no local journal reached and a merged base are unverifiable, not
+ * divergent: the node cannot reconstruct a ledger it never held (or no
+ * longer holds). A loaded suffix that
  * does not fold to the tip (a delta that does not apply, a root that disagrees
  * with its journal, a cycle) is an integrity failure the caller must treat as a
  * divergence. Storage errors propagate unchanged, so a transient read failure
@@ -183,9 +184,9 @@ export const recomputeCommittedTip = ({
       reason: `${point.value.source}: ${reason}`,
     });
     const boundary =
-      yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
-        { expectedUtxosRoot: confirmedRoot },
-      );
+      yield* PendingBlockFinalizationsDB.retrieveNewestAppliedWithExpectedRoot({
+        expectedUtxosRoot: confirmedRoot,
+      });
 
     // Load the unmerged suffix, newest first. Every read happens here, so the
     // fold below is pure and any failure it reports is an integrity failure.
@@ -196,7 +197,7 @@ export const recomputeCommittedTip = ({
       const headerHashHex = headerHex(current);
       if (seen.has(headerHashHex)) {
         return integrityFailure(
-          `finalized journal chain contains a cycle at header_hash=${headerHashHex}`,
+          `applied journal chain contains a cycle at header_hash=${headerHashHex}`,
         );
       }
       seen.add(headerHashHex);
@@ -226,7 +227,7 @@ export const recomputeCommittedTip = ({
             PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH
           ].toString(
             "hex",
-          )} at base root ${baseRoot}, which is neither the confirmed ledger root ${confirmedRoot} nor the post-state of a finalized block of this node`,
+          )} at base root ${baseRoot}, which is neither the confirmed ledger root ${confirmedRoot} nor the post-state of an applied block of this node`,
         );
       }
       current = base.value;
@@ -317,8 +318,8 @@ export const runMpfAudit = ({
       leases.stateQueueHolder,
       (stateQueueLeaseToken) =>
         Effect.gen(function* () {
-          if (yield* PendingBlockFinalizationsDB.hasActive) {
-            return skipped(startedAt, "active_pending_submission");
+          if (yield* PendingBlockFinalizationsDB.hasLive) {
+            return skipped(startedAt, "live_journal");
           }
 
           const leaseOwner = leases.ledgerStoreOwner();

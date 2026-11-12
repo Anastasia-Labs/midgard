@@ -4,6 +4,10 @@ import { Effect } from "effect";
 import type { DaProducerCommitteePeer } from "../da/libp2p-producer.js";
 import { owedPayload } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
+import {
+  deadHeadersOf,
+  deadJournals,
+} from "./pendingBlockFinalizations.derived-status.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_publications";
@@ -245,13 +249,12 @@ export const recordAttempt = ({
   );
 
 /**
- * A header a landed tx removed from the state queue, or whose journal is
- * abandoned under a named cause (the replacement digest of an own block the
- * landed-block rebase disposed of; see `owedPayload`), is no longer part of
- * the chain the committee must serve, so its payload is neither republished
- * nor counted as owed. The filter is evaluated per claim: a rollback of the
- * removal, or the revival of a disposed journal whose block landed after
- * all, makes the payload due again without any row rewrite.
+ * A header a landed tx removed from the state queue, or whose own journal
+ * is dead (see `owedPayload`), is no longer part of the chain the committee
+ * must serve, so its payload is neither republished nor counted as owed.
+ * The filter is evaluated per claim: a rollback of the removal, or a dead
+ * block that lands after all, makes the payload due again without any row
+ * rewrite.
  */
 export const claimDue = ({
   retentionDays,
@@ -272,6 +275,7 @@ export const claimDue = ({
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     return yield* sql<Row>`
       WITH due AS (
         SELECT publication.header_hash, publication.peer_id
@@ -282,7 +286,7 @@ export const claimDue = ({
           AND publication.next_retry_at <= NOW()
           AND (publication.lease_expires_at IS NULL OR publication.lease_expires_at <= NOW())
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-          AND ${owedPayload(sql, deploymentIdentityDigest)}
+          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
         ORDER BY publication.next_retry_at ASC,
           publication.header_hash ASC,
           publication.peer_id ASC
@@ -313,6 +317,7 @@ export const backlogCount = (
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} publication
@@ -320,7 +325,7 @@ export const backlogCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status IN ('pending', 'rejected', 'transport_error')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest)}
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(
@@ -368,6 +373,7 @@ export const conflictCount = (
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} publication
@@ -375,7 +381,7 @@ export const conflictCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status = 'conflict'
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest)}
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

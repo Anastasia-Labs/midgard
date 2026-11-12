@@ -102,8 +102,8 @@ export type ReplayedIntent = Readonly<{
   outcome: string;
   /**
    * A commit only: whether its production pre-broadcast gate
-   * (`submitWithDurableIntent`) wrote the signed bytes to its pending block
-   * in the transaction that journaled them.
+   * (`submitWithDurableIntent`) linked its pending block to the signed
+   * bytes (`intended_tx_hash`) in the transaction that journaled them.
    */
   gated?: boolean;
   /** A refusal's message, and where each spent outref came from. */

@@ -75,12 +75,12 @@ node must then log, in this order:
 
 1. `Skipping block commitment trigger because the state-queue mutation lease is busy`
    while the killed winner's lease is still live;
-2. `Abandoned unsigned pending block journal`
+2. `Discarded unsigned pending block journal`
    once it takes the expired lease over;
 3. `Block submitted; landed-block processing applies it once it lands.`
    for its own block.
 
-After the run, Postgres must hold exactly one active journal (the survivor's)
+After the run, Postgres must hold exactly one live journal (the survivor's)
 and a `failed` lease record whose error is `lease expired before release`.
 
 Raw process logs and `summary.json` are written to the selected run directory.

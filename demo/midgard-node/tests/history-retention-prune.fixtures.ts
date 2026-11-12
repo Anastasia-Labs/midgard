@@ -1,12 +1,9 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { MutationJobsDB } from "../src/database/index.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+import { land, ownLandedRow, retainFold } from "./helpers/own-block-facts.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -30,32 +27,38 @@ export const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     ) as Effect.Effect<A, unknown, never>,
   );
 
+/** The derived status a spec's journal is given. */
+export type JournalStatus = "folded" | "applied" | "landed" | "unlanded";
+
 export type JournalSpec = {
   readonly label: string;
-  readonly status: "locally_applied" | "abandoned" | "pending_submission";
+  readonly status: JournalStatus;
   readonly endedAgoMs: number;
-  /** The journal's confirmed-merge finalization job; a locally applied journal's
-   * merge has completed unless said otherwise. */
-  readonly mergeJob?: "completed" | "running" | "none";
 };
 
-export const recordMergeJob = (
-  headerHash: Buffer,
-  status: "completed" | "running",
-) =>
+/**
+ * Writes the facts the journal of `headerHash` derives `status` from, on
+ * the base its row names: a retained fold, a processed landed row (applied
+ * or not), or neither (it has no commit anchor, so it is dead).
+ */
+export const setJournalStatus = (headerHash: Buffer, status: JournalStatus) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
-      headerHash.toString("hex"),
-    );
-    yield* sql`INSERT INTO local_mutation_jobs (job_id, kind, status, completed_at)
-      VALUES (${jobId}, 'confirmed_merge_finalization', ${status},
-        ${status === "completed" ? sql`NOW()` : null})
-      ON CONFLICT (job_id) DO UPDATE SET status = EXCLUDED.status,
-        completed_at = EXCLUDED.completed_at`;
+    const [row] = yield* sql<{ base_tail_header_hash: Buffer }>`
+      SELECT base_tail_header_hash FROM pending_block_finalizations
+      WHERE header_hash = ${headerHash}`;
+    const header = headerHash.toString("hex");
+    const base = row!.base_tail_header_hash.toString("hex");
+    yield* sql`DELETE FROM node_confirmed_merges WHERE header_hash = ${headerHash}`;
+    yield* sql`DELETE FROM node_landed_blocks WHERE header_hash = ${headerHash}`;
+    if (status === "folded") yield* retainFold(header, base);
+    if (status === "applied" || status === "landed")
+      yield* land(
+        ownLandedRow(header, base, { applied: status === "applied" }),
+      );
   });
 
-/** One journal per spec, each moved to its status before the next is
+/** One journal per spec, each given its status before the next is
  * prepared, ending `endedAgoMs` before now. */
 export const journals = (specs: readonly JournalSpec[]) =>
   Effect.gen(function* () {
@@ -72,14 +75,10 @@ export const journals = (specs: readonly JournalSpec[]) =>
         },
       });
       yield* sql`UPDATE pending_block_finalizations
-        SET status = ${spec.status},
-          block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000}),
+        SET block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000}),
           block_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000})
         WHERE header_hash = ${headerHash}`;
-      const mergeJob =
-        spec.mergeJob ??
-        (spec.status === "locally_applied" ? "completed" : "none");
-      if (mergeJob !== "none") yield* recordMergeJob(headerHash, mergeJob);
+      yield* setJournalStatus(headerHash, spec.status);
     }
   });
 

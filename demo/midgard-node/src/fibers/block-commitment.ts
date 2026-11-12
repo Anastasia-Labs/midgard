@@ -17,7 +17,7 @@ import "./queue-metrics.js";
 import "./resolve-worker-entry.js";
 import "./slot-aware-due-work.js";
 import "./worker-lifecycle.js";
-import "./block-commitment.abandon-unsigned-journal.js";
+import "./block-commitment.discard-unsigned-journals.js";
 import "./block-commitment.promote-or-recover-native-mpf.js";
 import "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import "./block-commitment.should-skip-for-registered-commit-due-work.js";
@@ -33,7 +33,7 @@ export {
   promoteOrRecoverNativeMpf,
   publishFullMempoolLedgerReload,
   recoverNativeMpfAfterCommitWorkerFailure,
-  recoverNativeMpfFromSubmittedJournal,
+  recoverNativeMpfFromSignedJournal,
   takeCommitWorkerOutput,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
 export {

@@ -25,7 +25,7 @@ import {
   StateQueueMutationLeasesDB,
   TxRejectionsDB,
 } from "../database/index.js";
-import { pruneFinalizedBeyondChallengeability } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { pruneFoldedBeyondChallengeability } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import {
   computeChallengeableCutoff,
   computeHousekeepingCutoff,
@@ -288,7 +288,7 @@ export const retentionSweepAction = (
               const deadlineMs =
                 (yield* Clock.currentTimeMillis) +
                 RETENTION_HISTORY_PRUNE_BUDGET_MS;
-              return yield* pruneFinalizedBeyondChallengeability({
+              return yield* pruneFoldedBeyondChallengeability({
                 challengeableCutoff: cutoff,
                 view,
                 deploymentIdentityDigest,

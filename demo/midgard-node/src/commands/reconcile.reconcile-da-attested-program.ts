@@ -13,7 +13,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { backfillMissingDaPayloadsFromAppliedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
   evidence,
   optionRecordEvidence,
@@ -126,7 +126,7 @@ export const reconcileDaAttestedProgram = (options: {
     const repairActions: string[] = [];
     let backfillSkipped: readonly { readonly reason: string }[] = [];
     if (Option.isNone(localPayload) && repair) {
-      const backfill = yield* backfillMissingDaPayloadsFromFinalizedJournals({
+      const backfill = yield* backfillMissingDaPayloadsFromAppliedJournals({
         headerHash,
         limit: 1,
       });
@@ -210,14 +210,7 @@ export const reconcileDaAttestedProgram = (options: {
       status: decision.status,
       evidence: evidenceEntries,
       repairActions,
-      nextAction:
-        decision.status === "satisfied"
-          ? null
-          : backfillSkipped.some((entry) =>
-                entry.reason.includes("journal excluded by status: abandoned"),
-              )
-            ? "Canonical journal is abandoned locally; revive it through confirmation recovery and complete local finalization before DA payload backfill."
-            : decision.nextAction,
+      nextAction: decision.status === "satisfied" ? null : decision.nextAction,
     });
   });
 
@@ -236,14 +229,14 @@ export const reconcileBlockCommittedProgram = ({
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
     const canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
     const canonical = canonicalHeaders.includes(headerHashHex);
-    const journalStatus = Option.isSome(journal)
-      ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
-      : null;
+    const journalStatus =
+      yield* PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(headerHash);
     const status: ReconciliationStatus =
       canonical ||
-      journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied
+      journalStatus === PendingBlockFinalizationsDB.OwnBlockStatus.Applied ||
+      journalStatus === PendingBlockFinalizationsDB.OwnBlockStatus.Folded
         ? "satisfied"
-        : journalStatus === null
+        : journalStatus === undefined
           ? "ambiguous"
           : "pending";
     return result({
@@ -255,7 +248,7 @@ export const reconcileBlockCommittedProgram = ({
           containsHeader: canonical,
           headers: canonicalHeaders,
         }),
-        optionRecordEvidence(journal),
+        optionRecordEvidence(journal, journalStatus),
       ],
       nextAction:
         status === "pending"

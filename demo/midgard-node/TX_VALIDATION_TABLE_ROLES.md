@@ -24,7 +24,6 @@ Covered tables:
 - `pending_block_finalization_txs`
 - `tx_admissions`
 - `tx_admission_payloads`
-- `local_mutation_jobs`
 - `schema_migrations`
 - `schema_migration_events`
 
@@ -47,8 +46,7 @@ application tables and indexes that must exist
 The application schema is deliberately squashed into one migration
 ([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
 It includes durable transaction admissions, immutable admission payloads,
-local mutation jobs, withdrawal and forced-transaction events, pending
-finalization journals, state-queue leases, and DA tables. The authoritative
+withdrawal and forced-transaction events, pending finalization journals, state-queue leases, and DA tables. The authoritative
 manifest is `MIGRATIONS` in
 [`migrations/index.ts`](src/database/migrations/index.ts); documentation must
 not refer to pre-squash migration files that are no longer shipped.
@@ -71,7 +69,6 @@ The migration runner creates `schema_migrations` and
 | `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                              |
 | `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                     |
 | `tx_admission_payloads`               | Canonical bytes of a queued or validating admission; the terminal mark deletes the row.                                            |
-| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                              |
 | `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                  |
 | `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                    |
 
@@ -457,13 +454,13 @@ transaction as the rejections (`TxRejectionsDB.insertCauses`,
 [working-ledger-recompute.reject-closure.ts](src/services/working-ledger-recompute.reject-closure.ts)).
 A rejection with no row here is not traced to another transaction.
 
-When a landed own block's abandoned journal is revived, its members'
+When the rebase applies a landed own block, dead or not, its members'
 rejections are deleted, and so is every rejection whose recorded causes are
 all deleted ones, transitively (`TxRejectionsDB.deleteWithTracedRejections`,
-called from `reviveJournals` in
-[own-journals.ts](src/landed-blocks/own-journals.ts)). A rejection that also
+called from `applyOwnBlocks` in
+[own-blocks.ts](src/landed-blocks/own-blocks.ts)). A rejection that also
 has a cause still rejected stays. A cause row lives as long as its rejection:
-it is deleted with it, by the revival or by retention pruning.
+it is deleted with it, by that application or by retention pruning.
 
 ### Invariants And Gaps
 
@@ -485,85 +482,73 @@ Known gaps:
 
 ### Purpose
 
-`pending_block_finalizations` is the durable journal for a block that has been
-prepared, submitted, observed, finalized, or abandoned. It is the main SQL
-state machine tying together:
+`pending_block_finalizations` is the durable journal of a block this node
+committed: what it built (header, base, expected roots, members and ledger
+delta) and the signed commit it intends to submit. Nothing writes a journal
+after its commit; its status is derived from the facts, never stored
+(`ownBlockStatusSql`,
+[pendingBlockFinalizations.derived-status.ts](src/database/pendingBlockFinalizations.derived-status.ts)):
 
-- local block construction;
-- L1 submission and confirmation;
-- local SQL/MPT finalization;
-- crash recovery after submission or confirmation.
+- `folded`: it is the confirmed-ledger frontier or a retained fold, or,
+  once its fold was pruned, the state queue merged it and no landed row
+  holds it;
+- `applied`: a processed landed row holds it and the working ledger took it
+  in;
+- `landed`: a processed landed row holds it, not applied yet;
+- `unlanded`: none of these; a rollback that takes its landing off the
+  chain makes it unlanded again.
 
-At most one active pending-finalization record may exist at a time
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
+An unlanded journal is dead when its block can no longer land
+(`deadJournals`): a landed transaction removed it from the state queue, its
+commit anchor left the chain, its base left the landed chain, another block
+took the slot after its base, or its signed commit's intent was pruned or is
+dead. The node's live journal is its newest unlanded journal that is not
+dead; at most one exists.
 
 ### Stored Information
 
-Principal lifecycle columns:
+Principal columns:
 
 - `header_hash BYTEA PRIMARY KEY`
 - `header_cbor BYTEA NOT NULL`
-- `submitted_tx_hash BYTEA UNIQUE`
+- `prepared_tx_hash` and `intended_tx_hash`: the commit transaction built
+  and the one signed (its bytes are in the intent journal, `l1_intents`)
+- `commit_anchor_hash`, `commit_anchor_height`, `commit_anchor_slot`: the
+  follower block the commit was built at
 - `state_queue_lease_token`, base snapshot/tail identity, and base root columns
 - expected UTxO, forced-transaction, transaction, deposit, withdrawal,
   transition-trace, and event-to-step roots
 - expected per-source, total-event, and transition-step counts
+- `ledger_delta_spent`, `ledger_delta_produced`
 - `block_start_time TIMESTAMPTZ NOT NULL`
 - `block_end_time TIMESTAMPTZ NOT NULL`
-- `status TEXT NOT NULL`
-- `observed_confirmed_at_ms BIGINT`
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
-Allowed statuses:
+The complete table is defined by the migrations in `MIGRATIONS`
+([migrations/index.ts](src/database/migrations/index.ts)); `0037` derived
+the status and dropped the stored one.
 
-- `pending_submission`
-- `submitted_local_finalization_pending`
-- `submitted_unconfirmed`
-- `observed_waiting_stability`
-- `finalized`
-- `abandoned`
+### Writers
 
-Indexes:
+- `preparePendingSubmission` creates the journal before signing and inserts
+  the full ordered source-event, L2 transaction, UTxO, transition-trace, and
+  event-to-step snapshot
+  ([pendingBlockFinalizations.prepare-pending-submission.ts](src/database/pendingBlockFinalizations.prepare-pending-submission.ts));
+- `recordSignedIntent` records the signed commit in the intent journal and
+  its hash in `intended_tx_hash`
+  ([pendingBlockFinalizations.assert-canonical-event-members.ts](src/database/pendingBlockFinalizations.assert-canonical-event-members.ts));
+- `discardUnsignedJournals` deletes an unsigned journal a later lease
+  holder finds: it was never broadcast
+  ([pendingBlockFinalizations.discard-unsigned-journal.ts](src/database/pendingBlockFinalizations.discard-unsigned-journal.ts));
+- `pruneFoldedBeyondChallengeability` deletes folded journals past the
+  challenge window, from the retention sweeper
+  ([retention-sweeper.ts](src/fibers/retention-sweeper.ts)).
 
-- partial unique index `uniq_pending_block_finalizations_single_active` for
-  active statuses;
-- `idx_pending_block_finalizations_status`.
-
-The complete current table, including snapshot, payload, forced-root,
-trace-root, header-CBOR, and count commitments, is defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
-
-### Writers And Transitions
-
-The adapter owns the status transitions:
-
-- `preparePendingSubmission`: creates a pending record before submission and
-  inserts the full ordered source-event, L2 transaction, UTxO, transition-trace,
-  and event-to-step snapshot
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markSubmitted`: `pending_submission` to
-  `submitted_local_finalization_pending`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markObservedWaitingStability`: active states to
-  `observed_waiting_stability`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `reviveAbandonedCanonical`: abandoned to observed when L1 proves it canonical
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markFinalized`: active states to `locally_applied`, by the rebase that
-  applies the landed block
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
-- `markAbandoned`: active states to `abandoned`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
-
-Commit construction prepares the journal before signing/submission
-([commit-block-header.ts](src/workers/commit-block-header.ts),
-[commit-block-header.ts](src/workers/commit-block-header.ts)).
-Submission success marks it submitted
-([commit-block-header.ts](src/workers/commit-block-header.ts)).
-Landed-block processing applies its block once it lands and marks it locally
-applied ([own-blocks.ts](src/landed-blocks/own-blocks.ts)), and disposes of it
-when a rollback removes it ([own-journals.ts](src/landed-blocks/own-journals.ts)).
+Landed-block processing applies an own block once it lands
+([own-blocks.ts](src/landed-blocks/own-blocks.ts)) and disposes of a dead
+journal's effects ([own-journals.ts](src/landed-blocks/own-journals.ts));
+neither writes the journal.
 
 ### Readers
 
@@ -571,42 +556,41 @@ Readers include:
 
 - landed-block processing, which takes an own block's delta, events and base
   from its journal ([journal.ts](src/landed-blocks/journal.ts));
-- startup, which hydrates active recovery state and revives canonical abandoned
-  rows where needed
-  ([listen-startup.ts](src/commands/listen-startup.ts));
-- the commit worker, which never builds on a base while a journal is active.
+- the commit worker, which never builds on a base while a live journal
+  exists, and resubmits only the live journal's signed commit;
+- `/pipeline-status`, which counts journals by derived status and reports
+  the live count and the oldest journal neither applied, folded nor dead.
 
 ### Lifecycle
 
-Typical successful tx-backed path:
-
 1. `preparePendingSubmission` records `header_hash`, `block_end_time`, and
-   members.
-2. Submit succeeds or is recovered from L1.
-3. `markSubmitted` stores `submitted_tx_hash`.
-4. Once the block lands, landed-block processing inserts `immutable`/`blocks`,
-   clears relevant mempool state and marks the journal locally applied; the
-   rebase projects its events, and the fold finalizes them.
-5. An unsigned journal a later lease holder finds is marked `abandoned`; a
-   rollback that removes a landed block disposes of its journal.
+   members: the journal is live.
+2. The signed commit is recorded and submitted through the intent journal.
+3. Once the block lands, landed-block processing inserts its landed row and
+   the rebase applies it (`applied`); the fold folds it (`folded`).
+4. A journal whose block can no longer land is dead; the rebase disposes of
+   its effects, and its members are pending again. If its block lands
+   anyway, it is applied like any other.
+5. The retention sweeper deletes folded journals past the challenge window.
 
 ### Relationships
 
 - Parent table for the deposit, withdrawal, forced-transaction, L2 transaction,
   UTxO, transition-trace, and event-to-step journal tables.
-- References L1 state queue through `header_hash` and `submitted_tx_hash`.
-- Coordinates local SQL state in `immutable`, `blocks`, `deposits_utxos`,
-  `mempool`, and `processed_mempool`.
+- References the L1 state queue through `header_hash`, and the intent
+  journal through `intended_tx_hash`.
+- Its status reads `node_landed_blocks`, `node_confirmed_ledger_frontier`,
+  `node_confirmed_merges` and the queue terminals.
 
 ### Invariants And Gaps
 
 Expected invariants:
 
-- only one active pending-finalization record can exist;
-- status transitions must be monotonic and explicit;
-- confirmation must match the persisted journal header before treating a block
-  as resolved;
-- abandoned deposit assignments must be cleared only for the matching header.
+- at most one live journal exists;
+- no journal row is written after its commit: landing, a rollback and its
+  death are derived;
+- a signed journal has its commit's intent until the intent is pruned;
+- a dead journal's deposit assignments must be cleared only for its header.
 
 Known gaps:
 
@@ -958,109 +942,6 @@ Known gaps:
 
 - A rejected row lives as long as its `tx_rejections` row (`RETENTION_DAYS`),
   so rejected admissions grow with rejection evidence under junk load.
-
-## `local_mutation_jobs`
-
-### Purpose
-
-`local_mutation_jobs` records local mutation jobs that happen after an L1
-submission or merge has reached a point where local side effects must not be
-silently skipped. It gives readiness and recovery code durable evidence that a
-local side effect is running, completed, or failed.
-
-Current job kinds:
-
-- `local_block_finalization`
-- `confirmed_merge_finalization`
-
-### Stored Information
-
-Schema:
-
-- `job_id TEXT PRIMARY KEY`
-- `kind TEXT NOT NULL`
-- `status TEXT NOT NULL`
-- `plan_hash BYTEA`
-- `payload JSONB NOT NULL DEFAULT '{}'::jsonb`
-- `attempts INTEGER NOT NULL DEFAULT 0`
-- `last_error TEXT`
-- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- `completed_at TIMESTAMPTZ`
-
-Allowed statuses:
-
-- `running`
-- `completed`
-- `failed`
-
-Index:
-
-- `idx_local_mutation_jobs_status_updated` on `(status, updated_at)`
-
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
-
-The adapter supports start, complete, fail, retrieve unfinished, and count
-unfinished
-([mutationJobs.ts](src/database/mutationJobs.ts)).
-`start` is idempotent for the same incomplete job id and increments attempts
-([mutationJobs.ts](src/database/mutationJobs.ts)).
-
-### Writers
-
-Local block finalization is wrapped in a local mutation job
-([commit-submission.ts](src/workers/utils/commit-submission.ts)).
-
-Confirmed merge finalization starts, completes, or fails a merge finalization
-job around the local `confirmed_ledger` and `blocks` updates, both right after
-the merge's L1 confirmation and when a later merge attempt finalizes a merge L1
-confirmed that this database has not
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
-
-### Readers
-
-Readiness reports unfinished jobs
-([listen-router.ts](src/commands/listen-router.ts)).
-Startup checks unfinished jobs before serving
-([listen.ts](src/commands/listen.ts)).
-
-### Lifecycle
-
-1. A local side-effect section starts and calls `MutationJobsDB.start`.
-2. The job is marked `running`, with payload and attempt count.
-3. If the local mutation succeeds, the job is marked `completed`.
-4. If it fails, it is marked `failed` with truncated error text.
-5. Readiness treats unfinished jobs as a reason not to report ready.
-
-### Relationships
-
-- `local_block_finalization` jobs relate to `immutable`, `blocks`, `mempool`,
-  `processed_mempool`, deposits, and pending-finalization status.
-- `confirmed_merge_finalization` jobs relate to `confirmed_ledger` and
-  `blocks`.
-
-### Invariants And Gaps
-
-Expected invariants:
-
-- unfinished jobs indicate local side effects that must be adopted, retried, or
-  explicitly resolved before a clean serving state;
-- completed jobs must have `completed_at`;
-- completed jobs are not overwritten by `start`.
-
-Known gaps:
-
-- `plan_hash` exists in the schema but is not populated by the adapter.
-- `confirmed_merge_finalization` jobs are retried by the merge fiber: every
-  merge attempt first finalizes each merge L1 confirmed that this database has
-  not, and fails until that succeeds; the merge builder does the same up to
-  the confirmed state its merge spends. Nothing runs a `local_block_finalization`
-  job any more: landed-block processing applies an own block when it lands.
-- Unfinished mutation jobs block listener startup until recovery is performed,
-  except confirmed-merge jobs, which startup leaves to the runtime, and
-  local-finalization jobs whose journal records a submitted block, which
-  startup closes.
 
 ## `schema_migrations`
 

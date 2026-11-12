@@ -10,11 +10,11 @@
  * - it is assigned to a header (`projected_header_hash`) or finalized: its
  *   block's disposition (the landed-block rebase) or a landed correction
  *   settles it;
- * - a block journal that is not abandoned names it: that journal's
- *   disposition comes first (an abandoned journal's memberships are its
- *   archived record);
- * - it is a forced orphan: one is counted only while an unfinished block
- *   journal holds it, and that journal's disposition clears it.
+ * - a block journal that is not dead names it: that journal lands or dies
+ *   first (a dead journal's memberships are its archived record);
+ * - it is a forced orphan: one is counted only while a block journal
+ *   neither applied, folded nor dead holds it, and that journal's landing
+ *   or death clears it.
  *
  * A held orphan is of one of three kinds, by its header:
  *
@@ -31,13 +31,14 @@
  *   The hold waits on another actor (a fault proof or an L1 rollback that
  *   removes the header); it is not a retry.
  * - journal: every other held orphan (a block journal not landed, a header
- *   the rebase has yet to release, a forced orphan an unfinished journal
- *   holds). Transient: the own-journal disposition or the rebase clears it,
- *   and the recompute keeps the gate pending meanwhile.
+ *   the rebase has yet to release, a forced orphan a pending journal
+ *   holds). Transient: the journal's landing or death, or the rebase, clears
+ *   it, and the recompute keeps the gate pending meanwhile.
  *
  * A finalized orphan is the kind of its header.
  *
- * Runs in the caller's gated transaction.
+ * Runs in the caller's gated transaction; `dead` is the dead own journals
+ * (`deadJournals`) the caller read in it.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -49,53 +50,60 @@ import {
   orphanedForcedAdmission,
   sameAdmission,
 } from "./l1-admission-identity.js";
+import {
+  deadHeader,
+  type DeadHeaders,
+} from "./pendingBlockFinalizations.derived-status.js";
 import { sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "follower_orphan_repair";
 
 /** SQL condition: the orphan aliased `o` is held (see the module doc). */
-const held = (sql: SqlClient.SqlClient) =>
+const held = (sql: SqlClient.SqlClient, dead: DeadHeaders) =>
   sql`(o.projected_header_hash IS NOT NULL OR o.status::text = 'finalized'
     OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m
-      JOIN pending_block_finalizations j ON j.header_hash = m.header_hash
-      WHERE ${sameAdmission(sql, "m", "o")} AND j.status <> 'abandoned')
+      WHERE ${sameAdmission(sql, "m", "o")}
+        AND NOT ${deadHeader(sql, "m.header_hash", dead)})
     OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m
-      JOIN pending_block_finalizations j ON j.header_hash = m.header_hash
-      WHERE ${sameAdmission(sql, "m", "o")} AND j.status <> 'abandoned'))`;
+      WHERE ${sameAdmission(sql, "m", "o")}
+        AND NOT ${deadHeader(sql, "m.header_hash", dead)}))`;
 
 /**
  * Deletes every unheld orphaned deposit (with the working-ledger row it
  * projected) and withdrawal, and re-runs withdrawal classification when
  * any was deleted. Returns how many rows it deleted.
  */
-export const deleteUnheldOrphans = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const deposits = yield* sql<{ event_id: Buffer }>`SELECT o.event_id
+export const deleteUnheldOrphans = (dead: DeadHeaders) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deposits = yield* sql<{ event_id: Buffer }>`SELECT o.event_id
     FROM deposits_utxos o
-    WHERE ${orphanedAdmission(sql, "o", "deposit")} AND NOT ${held(sql)}
+    WHERE ${orphanedAdmission(sql, "o", "deposit")} AND NOT ${held(sql, dead)}
     FOR UPDATE OF o`;
-  if (deposits.length > 0) {
-    const ids = deposits.map((row) => row.event_id);
-    // The working-ledger row references its deposit (ON DELETE RESTRICT).
-    yield* sql`DELETE FROM mempool_ledger WHERE ${sql.in("source_event_id", ids)}`;
-    yield* sql`DELETE FROM deposits_utxos WHERE ${sql.in("event_id", ids)}`;
-  }
-  const withdrawals = yield* sql<{
-    event_id: Buffer;
-  }>`DELETE FROM withdrawal_utxos o
-    WHERE ${orphanedAdmission(sql, "o", "withdrawal")} AND NOT ${held(sql)}
+    if (deposits.length > 0) {
+      const ids = deposits.map((row) => row.event_id);
+      // The working-ledger row references its deposit (ON DELETE RESTRICT).
+      yield* sql`DELETE FROM mempool_ledger WHERE ${sql.in("source_event_id", ids)}`;
+      yield* sql`DELETE FROM deposits_utxos WHERE ${sql.in("event_id", ids)}`;
+    }
+    const withdrawals = yield* sql<{
+      event_id: Buffer;
+    }>`DELETE FROM withdrawal_utxos o
+    WHERE ${orphanedAdmission(sql, "o", "withdrawal")} AND NOT ${held(sql, dead)}
     RETURNING o.event_id`;
-  const deleted = deposits.length + withdrawals.length;
-  if (deleted > 0)
-    // Classification runs again against the recomputed ledger; submitted
-    // raw withdrawal bodies and assignments to published headers stay.
-    yield* sql`UPDATE withdrawal_utxos SET settlement_event_info = NULL,
+    const deleted = deposits.length + withdrawals.length;
+    if (deleted > 0)
+      // Classification runs again against the recomputed ledger; submitted
+      // raw withdrawal bodies and assignments to published headers stay.
+      yield* sql`UPDATE withdrawal_utxos SET settlement_event_info = NULL,
       validity = NULL, validity_detail = '{}'::jsonb, status = 'awaiting',
       classification_revision = classification_revision + 1, updated_at = NOW()
       WHERE projected_header_hash IS NULL AND status <> 'finalized'
         AND (status <> 'awaiting' OR validity IS NOT NULL OR settlement_event_info IS NOT NULL)`;
-  return deleted;
-}).pipe(sqlErrorToDatabaseError(table, "Failed to delete orphaned event rows"));
+    return deleted;
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to delete orphaned event rows"),
+  );
 
 const ORPHAN_TABLES: ReadonlyArray<
   Readonly<{ table: string; kind: AdmissionKind }>
@@ -115,28 +123,30 @@ const sumOf = (
   );
 
 /** The held deposit and withdrawal orphans `where` selects (alias `o`), counted. */
-const countHeld = (
-  where: (sql: SqlClient.SqlClient) => ReturnType<typeof onLandedBlock>,
-  forced: boolean,
-  message: string,
-) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const counts = [
-      ...ORPHAN_TABLES.map(
-        ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
-          WHERE ${orphanedAdmission(sql, "o", kind)} AND ${held(sql)}
+const countHeld =
+  (
+    where: (sql: SqlClient.SqlClient) => ReturnType<typeof onLandedBlock>,
+    forced: boolean,
+    message: string,
+  ) =>
+  (dead: DeadHeaders) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const counts = [
+        ...ORPHAN_TABLES.map(
+          ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
+          WHERE ${orphanedAdmission(sql, "o", kind)} AND ${held(sql, dead)}
             AND ${where(sql)})`,
-      ),
-      ...(forced
-        ? [
-            sql`(SELECT count(*) FROM forced_transaction_utxos f
-              WHERE ${orphanedForcedAdmission(sql, "f")})`,
-          ]
-        : []),
-    ];
-    return yield* sumOf(sql, counts);
-  }).pipe(sqlErrorToDatabaseError(table, message));
+        ),
+        ...(forced
+          ? [
+              sql`(SELECT count(*) FROM forced_transaction_utxos f
+              WHERE ${orphanedForcedAdmission(sql, "f", dead)})`,
+            ]
+          : []),
+      ];
+      return yield* sumOf(sql, counts);
+    }).pipe(sqlErrorToDatabaseError(table, message));
 
 /**
  * Own-landed orphans: held deposits and withdrawals assigned to a processed
@@ -224,18 +234,19 @@ export const countJournalOrphans = countHeld(
  * (unheld ones included, which the repair deletes) except the own-landed
  * kind.
  */
-export const countOrphansAwaitingRecovery = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const counts = [
-    ...ORPHAN_TABLES.map(
-      ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
+export const countOrphansAwaitingRecovery = (dead: DeadHeaders) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const counts = [
+      ...ORPHAN_TABLES.map(
+        ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
         WHERE ${orphanedAdmission(sql, "o", kind)}
           AND NOT ${onLandedBlock(sql, "o", "own")})`,
-    ),
-    sql`(SELECT count(*) FROM forced_transaction_utxos f
-      WHERE ${orphanedForcedAdmission(sql, "f")})`,
-  ];
-  return yield* sumOf(sql, counts);
-}).pipe(
-  sqlErrorToDatabaseError(table, "Failed to count orphans awaiting recovery"),
-);
+      ),
+      sql`(SELECT count(*) FROM forced_transaction_utxos f
+      WHERE ${orphanedForcedAdmission(sql, "f", dead)})`,
+    ];
+    return yield* sumOf(sql, counts);
+  }).pipe(
+    sqlErrorToDatabaseError(table, "Failed to count orphans awaiting recovery"),
+  );

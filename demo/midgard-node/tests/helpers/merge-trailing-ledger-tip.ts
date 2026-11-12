@@ -31,11 +31,7 @@ type Submission = { readonly accepted: string } | { readonly refused: string };
 export const assertMergeWaitsForLedgerTip = async (
   m: MergeLifecycle,
   hooks: { l1ClockLeadSlots: number },
-  expectFinalizedOnce: (
-    m: MergeLifecycle,
-    headerHash: string,
-    attempts: number,
-  ) => Promise<void>,
+  expectFinalizedOnce: (m: MergeLifecycle, headerHash: string) => Promise<void>,
 ) => {
   const { fixture } = m;
   const block = await m.commitDepositBlock(12_000_000n, false);
@@ -136,5 +132,5 @@ export const assertMergeWaitsForLedgerTip = async (
     hooks.l1ClockLeadSlots = 0;
   }
   expect(await m.queuedBlocks()).toBe(0);
-  await expectFinalizedOnce(m, block, 1);
+  await expectFinalizedOnce(m, block);
 };

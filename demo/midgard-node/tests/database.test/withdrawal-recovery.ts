@@ -23,6 +23,16 @@ const reopenFrom = (id: Buffer, header: Buffer) =>
       WHERE d.event_id = ${id}`;
   });
 
+/** `id`'s withdrawal projected under `header`, as the landing of
+ * `header`'s block leaves it (`rebase-events.ts`). */
+const projectUnder = (id: Buffer, header: Buffer) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE withdrawal_utxos SET projected_header_hash = ${header},
+      updated_at = NOW()
+      WHERE event_id = ${id} AND status = 'projected'`;
+  });
+
 export const registerWithdrawalRecoveryTests = () => {
   describe("withdrawal correction classification recovery", () => {
     it.effect(
@@ -44,7 +54,7 @@ export const registerWithdrawalRecoveryTests = () => {
             yield* insertWithdrawals([entry]);
             yield* WithdrawalsDB.setSettlementInfoForEventIds([original]);
             yield* WithdrawalsDB.markAwaitingAsProjected([original]);
-            yield* WithdrawalsDB.markProjectedByEventIds([original], header);
+            yield* projectUnder(id, header);
             yield* WithdrawalsDB.markFinalizedByEventIds([id], header);
             yield* reopenFrom(id, header);
             let row = Option.getOrThrow(
@@ -85,24 +95,12 @@ export const registerWithdrawalRecoveryTests = () => {
             };
             yield* WithdrawalsDB.setSettlementInfoForEventIds([replacement]);
             yield* WithdrawalsDB.markAwaitingAsProjected([replacement]);
-            expect(
-              (yield* Effect.either(
-                WithdrawalsDB.markProjectedByEventIds([original], header),
-              ))._tag,
-            ).toBe("Left");
             yield* WithdrawalsDB.restoreCorrectedClassification(
               [original],
               header,
             );
             yield* WithdrawalsDB.markFinalizedByEventIds([id], header);
             row = Option.getOrThrow(yield* WithdrawalsDB.retrieveByEventId(id));
-            // Exact already-assigned reobservation remains idempotent after restoration.
-            yield* WithdrawalsDB.markProjectedByEventIds([original], header);
-            expect(
-              (yield* Effect.either(
-                WithdrawalsDB.markProjectedByEventIds([replacement], header),
-              ))._tag,
-            ).toBe("Left");
             expect(row[WithdrawalsDB.Columns.CLASSIFICATION_REVISION]).toBe(2);
             expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
               original.settlementEventInfo,
@@ -150,12 +148,12 @@ export const registerWithdrawalRecoveryTests = () => {
             ).toBe("Left");
             yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
             yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
-            yield* WithdrawalsDB.markProjectedByEventIds([assignment], header);
+            yield* projectUnder(id, header);
             yield* reopenFrom(id, header);
             const next = { ...assignment, expectedClassificationRevision: 1 };
             yield* WithdrawalsDB.setSettlementInfoForEventIds([next]);
             yield* WithdrawalsDB.markAwaitingAsProjected([next]);
-            yield* WithdrawalsDB.markProjectedByEventIds([next], nextHeader);
+            yield* projectUnder(id, nextHeader);
             expect(
               (yield* Effect.either(
                 WithdrawalsDB.restoreCorrectedClassification(

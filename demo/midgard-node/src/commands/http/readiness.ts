@@ -96,7 +96,6 @@ export const getReadinessHandler = Effect.gen(function* () {
   const {
     durableAdmissionBacklog,
     durableAdmissionOldestAgeMs,
-    unfinishedMutationJobs,
     daPublicationConflicts,
     mempoolTxCount,
     leaseInspection,
@@ -376,11 +375,6 @@ export const getReadinessHandler = Effect.gen(function* () {
   }
   const admissionWriter = yield* admissionWriterReadiness;
   if (admissionWriter.reason !== null) reasons.push(admissionWriter.reason);
-  if (unfinishedMutationJobs > 0n) {
-    reasons.push(
-      `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
-    );
-  }
   if (daPublicationConflicts > 0) {
     reasons.push(
       `da_publication_conflict:${daPublicationConflicts.toString()}`,
@@ -396,7 +390,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
-    unfinishedMutationJobs,
   });
   const readiness = {
     settlement,
@@ -409,7 +402,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     durableAdmissionOldestAgeMs,
     admissionWriter: admissionWriter.facts,
     mempoolTxCount: mempoolTxCount.toString(),
-    unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,
     unresolvedBlockSubmissionAgeMs,
     providerQueryHealthy: providerProbe.healthy,

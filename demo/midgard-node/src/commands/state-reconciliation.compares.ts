@@ -181,12 +181,14 @@ export type L1StateView = {
 
 export type JournalSummary = {
   readonly headerHash: string;
+  /** The journal's derived status (`ownBlockStatusSql`). */
   readonly status: string;
+  /** Why its block can no longer land (`deadJournals`), or null. */
+  readonly deadCause: string | null;
   readonly baseTailHeaderHash: string;
   readonly baseUtxosRoot: string;
   readonly expected: HeaderRoots;
-  readonly correctionTransitionDigest: string | null;
-  readonly submittedTxHash: string | null;
+  readonly intendedTxHash: string | null;
   /** Header end time decoded from the journal's header CBOR. */
   readonly endTimeMs: number | null;
 };

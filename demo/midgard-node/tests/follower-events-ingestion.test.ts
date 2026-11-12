@@ -26,9 +26,7 @@ import { getDepositStatusHandler } from "../src/commands/http/deposits.js";
 import {
   followerIngestedView,
   type FollowerIngestionOutcome,
-  reconcileFollowerEvents,
 } from "../src/database/follower-events.js";
-import { countOrphansAwaitingRecovery } from "../src/database/follower-orphan-repair.js";
 import {
   EVENT_IDENTITY_CONFLICT,
   type IngestionPlan,
@@ -40,6 +38,8 @@ import {
 import { Globals } from "../src/services/globals.globals.js";
 import {
   admitFollowerKeys,
+  orphansAwaitingRecovery,
+  reconcileOverDead,
   rewindFollowerKey,
   writeFollowerTip,
   writeFollowerView,
@@ -172,7 +172,7 @@ const depositStatusByTxHash = (cardanoTxHash: Buffer) =>
 /** The driver's sink under the follower write gate's fixture capability. */
 const ingest = (plan: IngestionPlan, cutoffMs = 0) =>
   withFollowerWrite(
-    reconcileFollowerEvents(plan, {
+    reconcileOverDead(plan, {
       network: "Preprod",
       slotToUnixTime,
       cutoffMs,
@@ -393,7 +393,7 @@ describe("follower event ingestion (Postgres)", () => {
         return {
           adopted,
           orphaned,
-          counted: yield* countOrphansAwaitingRecovery,
+          counted: yield* orphansAwaitingRecovery,
           rows: yield* eventRows,
         };
       }),

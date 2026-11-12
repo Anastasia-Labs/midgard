@@ -212,30 +212,25 @@ export const initializeArchitectureGOwner = <R = never>(
           Effect.gen(function* () {
             if (beforeJournalReplay !== undefined)
               yield* beforeJournalReplay(owner);
-            const active = yield* PendingBlockFinalizationsDB.retrieveActive();
-            if (Option.isSome(active)) {
-              const journal = active.value;
+            const live = yield* PendingBlockFinalizationsDB.retrieveLive();
+            if (Option.isSome(live)) {
+              const journal = live.value;
               const replay = journal.nativeMpfReplay;
-              const submitted =
-                journal[
-                  PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-                ] !== null;
-              const intended =
+              // A signed live journal's commit may land; the working ledger
+              // holds its block on the landed tip (the rebase target), so the
+              // owner recovers its candidate. An unsigned one was never
+              // broadcast and is discarded by the next commit attempt.
+              const signed =
                 journal[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
                 null;
-              // A signed intent is possible submission, not accepted state.
-              // Retain replay for canonical reconciliation; do not promote it.
-              if ((submitted || intended) && replay === undefined) {
+              if (signed && replay === undefined) {
                 return yield* Effect.fail(
                   new Error(
-                    `Architecture G signed or submitted journal is missing replay data: header_hash=${journal[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")}`,
+                    `Architecture G signed journal is missing replay data: header_hash=${journal[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")}`,
                   ),
                 );
               }
-              const canonicallyObserved =
-                journal[PendingBlockFinalizationsDB.Columns.STATUS] ===
-                PendingBlockFinalizationsDB.Status.ObservedWaitingStability;
-              if ((submitted || canonicallyObserved) && replay !== undefined) {
+              if (signed && replay !== undefined) {
                 yield* Effect.tryPromise({
                   try: () =>
                     owner.recover({
@@ -254,8 +249,8 @@ export const initializeArchitectureGOwner = <R = never>(
                   // A replay the owner refuses over a full-index cap left it
                   // at its durable root: the owner starts there, holding the
                   // refusal (which readiness names), instead of failing
-                  // startup into a crash loop. The journal stays active, and
-                  // its next replay (local finalization) retries it.
+                  // startup into a crash loop. The journal stays live, and
+                  // the landed-block rebase retries its replay.
                   Effect.catchIf(
                     (cause): cause is NativeMpfPromotionIndexCapExceeded =>
                       cause instanceof NativeMpfPromotionIndexCapExceeded,

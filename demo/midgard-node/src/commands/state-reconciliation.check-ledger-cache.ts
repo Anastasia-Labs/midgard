@@ -33,7 +33,6 @@ import {
   buildContext,
   type Context,
   finishCheck,
-  LOCALLY_FINALIZED_ACTIVE_STATUSES,
   newAccumulator,
   plural,
   skipCheck,
@@ -58,18 +57,10 @@ const checkLedgerCache = (
   const points: LedgerPoint[] = [];
   const tip = ctx.sql.finalizedTip;
   if (tip.kind === "materialized") points.push(tip.point);
-  const active = ctx.sql.activeTip;
-  const activeStatus =
-    active?.kind === "materialized" && active.point.headerHash !== null
-      ? ctx.journals.get(active.point.headerHash)?.status
-      : undefined;
-  if (
-    active?.kind === "materialized" &&
-    activeStatus !== undefined &&
-    LOCALLY_FINALIZED_ACTIVE_STATUSES.has(activeStatus)
-  ) {
-    points.push(active.point);
-  }
+  // The working ledger holds the live own block on the landed tip (the
+  // rebase target), so the live journal's point is a candidate too.
+  const live = ctx.sql.activeTip;
+  if (live?.kind === "materialized") points.push(live.point);
   if (points.length === 0) {
     if (tip.kind === "failed" && !tip.parentMissing) {
       const acc = newAccumulator();
@@ -104,9 +95,7 @@ const checkLedgerCache = (
       ].join("; ")}`,
     );
   } else if (clean.label !== points[0]!.label) {
-    acc.notes.push(
-      `matched at ${clean.label} (locally finalized active journal)`,
-    );
+    acc.notes.push(`matched at ${clean.label} (live journal)`);
   }
   return finishCheck(
     "ledger-cache",

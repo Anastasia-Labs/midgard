@@ -1,436 +1,230 @@
 /**
- * This node's block journals under whichever-lands-wins (plan §8.3, I3): the
- * working-ledger rebase disposes of every own journal whose block cannot be
- * on the landed chain the node follows, and revives every abandoned one
- * whose block landed after all. Neither halts: the local state follows the
- * landed block, and a journal disposed of early is revived if its block
- * lands, because the tail node makes the old and the new commit mutually
- * exclusive on chain.
+ * This node's dead block journals under whichever-lands-wins (plan §8.3,
+ * I3): a journal whose block can no longer land (`deadJournals`) is
+ * disposed of by the working-ledger rebase. Nothing is written to the
+ * journal: its status is derived, and a dead block that lands after all is
+ * landed, and taken in, like any other.
  *
- * A journal neither abandoned nor taken in by a processed landed row (nor
- * the frontier, nor folded into `confirmed_ledger` here) is disposed of when
+ * Disposal undoes what the journal's block left in the pending tables and
+ * its commit attempt held. Each effect is read again from the current rows
+ * and is idempotent, so a journal is disposed of while one is pending and
+ * never again once none is:
  *
- * - (i) a rollback took its block off the landed chain (a `removed` row);
- * - (ii) S6 derives its signed commit dead (`isDeadStatus`) at the
- *   follower's view;
- * - (iii) its base left: the base is removed or disposed of, or another
- *   processed block took the base's successor slot;
- * - (iv) it is unfinished and its commit anchor is not on the follower's
- *   chain, or it has none (`database/commit-anchor.ts`): every event it
- *   includes is in a block below the anchor;
- * - (v) an abandoned block of this node landed: it is revived, and every
- *   unfinished journal (built while it was abandoned) is disposed of.
+ * - (a) its withdrawals, still classified for it (projected to no header at
+ *   the classification it recorded) and in no journal that is not dead,
+ *   lose their classification;
+ * - (b) the inclusion marks its header holds are cleared;
+ * - (c) its block's `blocks` rows go, with the `immutable` rows of its
+ *   transactions no live block holds;
+ * - (d) the state-queue mutation lease it was prepared under is released
+ *   while active.
  *
- * Disposal abandons the journal under its replacement digest (its signed
- * content kept, so it stays revivable), and makes its members pending again
- * (its transactions back in their pending tables, its withdrawals
- * unclassified); the rebase that runs it recomputes the event statuses, the
- * working ledger and the native MPF on the landed blocks. The commit path
- * then builds a replacement on the landed tip from what is selectable.
+ * With them, its transactions that are in no pending table, `immutable`,
+ * `tx_rejections` or the foreign inclusions are restored to the table they
+ * were journaled from. That is not an effect of its own: a rejection is
+ * pruned in time, and a transaction rejected for good is never restored
+ * once the journal's other effects are done.
+ *
+ * The rebase that runs it recomputes the event statuses, the working ledger
+ * and the native MPF on the landed blocks; the commit path then builds a
+ * replacement on the landed tip from what is selectable.
  */
-import { createHash } from "node:crypto";
-
-import { isDeadStatus } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Option } from "effect";
 
-import { commitAnchorCanonical } from "../database/commit-anchor.js";
 import {
   BlocksDB,
   ImmutableDB,
   MempoolDB,
   MempoolInclusionsDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
-  TxRejectionsDB,
 } from "../database/index.js";
-import { ACTIVE_STATUSES } from "../database/pendingBlockFinalizations.columns.js";
-import { DatabaseError } from "../database/utils/common.js";
 import type { DriverHold } from "../l1-events/driver.js";
-import { signedIntentReplacementDigest } from "../services/canonical-journal-recovery.js";
-import { readIntentStatus } from "../services/intent-journal.js";
-import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING } from "./holds.js";
-import type { LandedLedger } from "./ledger.js";
-import type { LandedBlockRow } from "./store.js";
 
 const Journals = PendingBlockFinalizationsDB;
-const C = Journals.Columns;
-const Status = Journals.Status;
 const Member = Journals.MemberColumns;
 
-const OWN_BLOCK_REVIVAL_DOMAIN = "midgard/own-block-revival/v1";
-
-const failure = (message: string, cause?: unknown) =>
-  new DatabaseError({ table: Journals.tableName, message, cause });
-
-const bytea = (values: readonly Buffer[]) =>
-  values.map((value) => `\\x${value.toString("hex")}`);
-
-/** A journal the rebase disposes of, and why. */
+/** A dead journal the rebase disposes of, and why it is dead. */
 export type JournalDisposal = Readonly<{
   headerHash: string;
   cause: string;
-  /** Whether it was the node's one unfinished journal. */
-  active: boolean;
 }>;
 
 export type OwnJournalDisposition = Readonly<{
+  /** The dead journals with an effect still pending. */
   dispose: readonly JournalDisposal[];
-  /** Processed own rows whose abandoned journal the rebase revives. */
-  revive: readonly string[];
+  /** Every dead journal's header, for the SQL readers of the same
+   * transaction. */
+  dead: PendingBlockFinalizationsDB.DeadHeaders;
+  /** The signed commits (hex) of every dead journal. */
+  deadCommits: ReadonlySet<string>;
   /**
-   * Set when the disposition cannot be read (the follower's admission
-   * tables are missing): the rebase does not run while it is.
+   * Set when the dead set cannot be read (the follower's tables are
+   * missing): the rebase does not run while it is.
    */
   held?: DriverHold;
 }>;
 
-type Candidate = Readonly<{
-  headerHash: string;
-  baseTailHeaderHash: string;
-  status: string;
-  intendedTxHash: string | null;
-}>;
+/** SQL condition: the dead journal aliased `p` has an effect pending. */
+const effectPending = (
+  sql: SqlClient.SqlClient,
+  dead: PendingBlockFinalizationsDB.DeadHeaders,
+) => sql`(EXISTS (
+    SELECT 1 FROM pending_block_finalization_withdrawals member
+    JOIN withdrawal_utxos d ON d.event_id = member.member_id
+    WHERE member.header_hash = p.header_hash
+      AND d.status = 'projected' AND d.projected_header_hash IS NULL
+      AND d.classification_revision = member.classification_revision
+      AND NOT EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals other
+        WHERE other.member_id = member.member_id
+          AND other.header_hash <> member.header_hash
+          AND NOT ${Journals.deadHeader(sql, "other.header_hash", dead)}))
+  OR EXISTS (SELECT 1 FROM mempool WHERE mempool.included_by = p.header_hash)
+  OR EXISTS (SELECT 1 FROM processed_mempool processed
+    WHERE processed.included_by = p.header_hash)
+  OR EXISTS (SELECT 1 FROM blocks WHERE blocks.header_hash = p.header_hash)
+  OR EXISTS (SELECT 1 FROM state_queue_mutation_leases lease
+    WHERE lease.token = p.state_queue_lease_token
+      AND lease.status = 'active'))`;
 
-const isActive = (status: string) =>
-  (ACTIVE_STATUSES as readonly string[]).includes(status);
-
-/** S6's derived status of a signed commit; unknown (or unreadable) keeps it. */
-const intentDead = (txHash: string) =>
-  readIntentStatus(txHash).pipe(
-    Effect.map((status) => status !== null && isDeadStatus(status)),
-    Effect.catchAll((cause) =>
-      Effect.logWarning(
-        `The status of own commit ${txHash} is unreadable; its journal is kept`,
-        cause,
-      ).pipe(Effect.as(false)),
-    ),
-  );
-
-/**
- * Unfinished journals whose commit anchor is not on the follower's chain
- * (or that have none), or the follower tables that are missing: without
- * them no anchor can be read, so the disposition is held rather than read
- * as "every anchor is canonical".
- */
-const anchorlessJournals = Effect.gen(function* () {
+/** The dead journals and those the rebase disposes of. */
+export const ownJournalDisposition = Effect.gen(function* () {
+  const dead = yield* Journals.deadJournals;
+  if (dead.missing.length > 0)
+    return {
+      dispose: [],
+      dead: [],
+      deadCommits: new Set(),
+      held: {
+        reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+        detail: `the own-journal disposition cannot read commit anchors: ${dead.missing.join(", ")} missing`,
+      },
+    } satisfies OwnJournalDisposition;
+  const headers = Journals.deadHeadersOf(dead);
+  if (headers.length === 0)
+    return {
+      dispose: [],
+      dead: headers,
+      deadCommits: new Set(),
+    } satisfies OwnJournalDisposition;
   const sql = yield* SqlClient.SqlClient;
-  const [tables] = yield* sql<{ blocks: boolean; cursor: boolean }>`SELECT
-    to_regclass('l1_blocks') IS NOT NULL AS blocks,
-    to_regclass('l1_follower_cursor') IS NOT NULL AS cursor`;
-  const missing = [
-    ...(tables?.blocks === true ? [] : ["l1_blocks"]),
-    ...(tables?.cursor === true ? [] : ["l1_follower_cursor"]),
-  ];
-  if (missing.length > 0) return { kind: "held", missing } as const;
-  const rows = yield* sql<{ header_hash: Buffer; anchored: boolean }>`
-    SELECT p.header_hash, p.commit_anchor_hash IS NOT NULL AS anchored
+  const rows = yield* sql<{
+    header_hash: Buffer;
+    intended_tx_hash: Buffer | null;
+    pending: boolean;
+  }>`SELECT p.header_hash, p.intended_tx_hash,
+      ${effectPending(sql, headers)} AS pending
     FROM pending_block_finalizations p
-    WHERE p.status IN ${sql.in(ACTIVE_STATUSES)}
-      AND NOT ${commitAnchorCanonical(sql, "p")}`;
+    WHERE ${Journals.deadHeader(sql, "p.header_hash", headers)}
+    ORDER BY p.created_at, p.header_hash`;
   return {
-    kind: "read",
-    causes: new Map(
-      rows.map((row) => [
-        row.header_hash.toString("hex"),
-        row.anchored
-          ? "its commit anchor left the chain"
-          : "it has no commit anchor",
-      ]),
+    dispose: rows
+      .filter((row) => row.pending)
+      .map((row) => {
+        const headerHash = row.header_hash.toString("hex");
+        return { headerHash, cause: dead.causes.get(headerHash)! };
+      }),
+    dead: headers,
+    deadCommits: new Set(
+      rows.flatMap((row) =>
+        row.intended_tx_hash === null
+          ? []
+          : [row.intended_tx_hash.toString("hex")],
+      ),
     ),
-  } as const;
+  } satisfies OwnJournalDisposition;
 });
 
 /**
- * The journals the rebase disposes of and revives over `rows`, with the
- * confirmed-ledger frontier and processed chain `landed`.
+ * Disposes of `disposals` in the caller's transaction (see above); `dead`
+ * is the dead set the disposition was read over. Event statuses and the
+ * working ledger are the rebase's to recompute.
  */
-export const ownJournalDisposition = (
-  rows: readonly LandedBlockRow[],
-  landed: LandedLedger,
+export const disposeJournals = (
+  disposals: readonly JournalDisposal[],
+  dead: PendingBlockFinalizationsDB.DeadHeaders,
 ) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const landedOwn = rows
-      .filter(
-        (row) =>
-          row.kind === "own" && row.state === "processed" && !row.applied,
-      )
-      .map((row) => Buffer.from(row.headerHash, "hex"));
-    const revive =
-      landedOwn.length === 0
-        ? []
-        : (yield* sql<{ header_hash: Buffer }>`SELECT header_hash
-            FROM pending_block_finalizations
-            WHERE status = ${Status.Abandoned}
-              AND header_hash IN ${sql.in(landedOwn)}`).map((row) =>
-            row.header_hash.toString("hex"),
-          );
-    const processed = new Set(
-      rows
-        .filter((row) => row.state === "processed")
-        .map((row) => row.headerHash),
-    );
-    const removed = new Set(
-      rows
-        .filter((row) => row.state === "removed")
-        .map((row) => row.headerHash),
-    );
-    const raw = yield* sql<{
-      header_hash: Buffer;
-      base_tail_header_hash: Buffer;
-      status: string;
-      intended_tx_hash: Buffer | null;
-    }>`SELECT header_hash, base_tail_header_hash, status, intended_tx_hash
-      FROM pending_block_finalizations WHERE status <> ${Status.Abandoned}
-      ORDER BY created_at, header_hash`;
-    const folded = yield* retrieveMergeLinks;
-    const candidates: Candidate[] = [];
-    for (const row of raw) {
-      const headerHash = row.header_hash.toString("hex");
-      if (processed.has(headerHash)) continue;
-      if (headerHash === landed.frontier.headerHash) continue;
-      // Folded into `confirmed_ledger` here: a retained fold (an unfold
-      // makes its row processed again), or the merge fiber's finalization.
-      if (folded.has(headerHash)) continue;
-      if (row.status === Status.LocallyApplied) {
-        const merged = yield* MutationJobsDB.retrieveByJobId(
-          MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
-        );
-        if (
-          merged?.[MutationJobsDB.Columns.STATUS] ===
-          MutationJobsDB.Status.Completed
-        )
-          continue;
-      }
-      candidates.push({
-        headerHash,
-        baseTailHeaderHash: row.base_tail_header_hash.toString("hex"),
-        status: row.status,
-        intendedTxHash: row.intended_tx_hash?.toString("hex") ?? null,
-      });
-    }
-    if (candidates.length === 0) return { dispose: [], revive };
-    const chain = [
-      landed.frontier.headerHash,
-      ...landed.chain.map((row) => row.headerHash),
-    ];
-    const position = new Map(chain.map((hash, index) => [hash, index]));
-    const anchorRead = yield* anchorlessJournals;
-    if (anchorRead.kind === "held")
-      return {
-        dispose: [],
-        revive,
-        held: {
-          reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-          detail: `the own-journal disposition cannot read commit anchors: ${anchorRead.missing.join(", ")} missing`,
-        },
-      } satisfies OwnJournalDisposition;
-    const anchorless = anchorRead.causes;
-    const causes = new Map<string, string>();
-    for (const candidate of candidates) {
-      const { headerHash, status, intendedTxHash } = candidate;
-      if (removed.has(headerHash))
-        causes.set(
-          headerHash,
-          "a rollback took its block off the landed chain",
-        );
-      else if (revive.length > 0 && isActive(status))
-        causes.set(
-          headerHash,
-          `abandoned own block ${revive[0]!} landed and is revived`,
-        );
-      else if (anchorless.has(headerHash))
-        causes.set(headerHash, anchorless.get(headerHash)!);
-      else if (intendedTxHash !== null && (yield* intentDead(intendedTxHash)))
-        causes.set(headerHash, `its signed commit ${intendedTxHash} is dead`);
-    }
-    // A base that left takes every journal built on it along.
-    for (let changed = true; changed; ) {
-      changed = false;
-      for (const candidate of candidates) {
-        if (causes.has(candidate.headerHash)) continue;
-        const base = candidate.baseTailHeaderHash;
-        const index = position.get(base);
-        const cause = removed.has(base)
-          ? `its base ${base} left the landed chain`
-          : causes.has(base)
-            ? `its base ${base} is disposed of`
-            : index !== undefined && index < chain.length - 1
-              ? `block ${chain[index + 1]!} took the slot after its base ${base}`
-              : undefined;
-        if (cause === undefined) continue;
-        causes.set(candidate.headerHash, cause);
-        changed = true;
-      }
-    }
-    return {
-      dispose: candidates.flatMap((candidate) => {
-        const cause = causes.get(candidate.headerHash);
-        return cause === undefined
-          ? []
-          : [
-              {
-                headerHash: candidate.headerHash,
-                cause,
-                active: isActive(candidate.status),
-              },
-            ];
-      }),
-      revive,
-    } satisfies OwnJournalDisposition;
-  });
-
-/** The record of journal `headerHash`, row-locked. */
-const lockedRecord = (headerHash: string) =>
-  Journals.retrieveByHeaderHash(Buffer.from(headerHash, "hex"), true).pipe(
-    Effect.flatMap((record) =>
-      Option.isNone(record)
-        ? Effect.fail(
-            failure("An own journal left before its disposition", headerHash),
-          )
-        : Effect.succeed(record.value),
-    ),
-  );
-
-/**
- * Disposes of `disposals` in the caller's transaction: each journal is
- * abandoned under its replacement digest, its transactions are pending
- * again (marks cleared, rows restored but for those a rebuild rejected
- * meanwhile, its block's local effects undone), an unfinished one's
- * withdrawals lose their classification, and its
- * state-queue lease is released. Event statuses and the working ledger are
- * the rebase's to recompute.
- */
-export const disposeJournals = (disposals: readonly JournalDisposal[]) =>
   Effect.forEach(
     disposals,
     (disposal) =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const pg = sql as PgClient;
-        const record = yield* lockedRecord(disposal.headerHash);
-        const status = record[C.STATUS];
-        if (status === Status.Abandoned) return;
-        const header = record[C.HEADER_HASH];
-        yield* sql`UPDATE pending_block_finalizations
-          SET status = ${Status.Abandoned},
-            correction_transition_digest = COALESCE(correction_transition_digest,
-              ${signedIntentReplacementDigest(record) ?? null}),
-            updated_at = NOW()
-          WHERE header_hash = ${header} AND status = ${status}`;
-        if (isActive(status) && record.withdrawalEventIds.length > 0)
-          yield* sql`UPDATE withdrawal_utxos d SET status = 'awaiting',
-            reopened_from_header_hash = ${header}, validity = NULL,
-            validity_detail = '{}'::jsonb, settlement_event_info = NULL,
-            classification_revision = d.classification_revision + 1,
-            updated_at = NOW()
-            WHERE d.event_id = ANY(${pg.array(bytea(record.withdrawalEventIds))}::bytea[])
-              AND d.projected_header_hash IS NULL AND d.status = 'projected'`;
-        // A member a rebuild rejected while its block was off the chain
-        // stays rejected: a rejection is final.
-        const memberIds = record.txMembers.map((member) =>
+        const header = Buffer.from(disposal.headerHash, "hex");
+        const record = yield* Journals.retrieveByHeaderHash(header, true);
+        if (Option.isNone(record)) return;
+        const journal = record.value;
+        yield* sql`UPDATE withdrawal_utxos d SET status = 'awaiting',
+          reopened_from_header_hash = ${header}, validity = NULL,
+          validity_detail = '{}'::jsonb, settlement_event_info = NULL,
+          classification_revision = d.classification_revision + 1,
+          updated_at = NOW()
+          FROM pending_block_finalization_withdrawals member
+          WHERE member.header_hash = ${header}
+            AND d.event_id = member.member_id
+            AND d.status = 'projected' AND d.projected_header_hash IS NULL
+            AND d.classification_revision = member.classification_revision
+            AND NOT EXISTS (SELECT 1
+              FROM pending_block_finalization_withdrawals other
+              WHERE other.member_id = member.member_id
+                AND other.header_hash <> member.header_hash
+                AND NOT ${Journals.deadHeader(sql, "other.header_hash", dead)})`;
+        yield* MempoolInclusionsDB.clearMarks([header]);
+        yield* BlocksDB.clearBlock(header);
+        const memberIds = journal.txMembers.map((member) =>
           Buffer.from(member[Member.MEMBER_ID]),
         );
-        const rejected = new Set(
+        // A transaction left in `immutable` would be filtered from its next
+        // block as already committed; one a live block holds stays.
+        if (memberIds.length > 0)
+          yield* sql`DELETE FROM ${sql(ImmutableDB.tableName)} i
+            WHERE i.tx_id IN ${sql.in(memberIds)}
+              AND NOT EXISTS (SELECT 1 FROM ${sql(BlocksDB.tableName)} b
+                WHERE b.tx_id = i.tx_id)`;
+        // A member a rebuild rejected while its block was off the chain
+        // stays rejected: a rejection is final.
+        const absent = new Set(
           memberIds.length === 0
             ? []
-            : (yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM tx_rejections
-                  WHERE tx_id IN ${sql.in(memberIds)}`).map((row) =>
+            : (yield* sql<{ tx_id: Buffer }>`SELECT member.tx_id
+                FROM unnest(${(sql as PgClient).array(
+                  memberIds.map((id) => `\\x${id.toString("hex")}`),
+                )}::bytea[]) AS member(tx_id)
+                WHERE NOT EXISTS (SELECT 1 FROM tx_rejections r
+                    WHERE r.tx_id = member.tx_id)
+                  AND NOT EXISTS (SELECT 1 FROM mempool m
+                    WHERE m.tx_id = member.tx_id)
+                  AND NOT EXISTS (SELECT 1 FROM processed_mempool m
+                    WHERE m.tx_id = member.tx_id)
+                  AND NOT EXISTS (SELECT 1 FROM immutable i
+                    WHERE i.tx_id = member.tx_id)
+                  AND NOT EXISTS (SELECT 1 FROM node_foreign_tx_inclusions f
+                    WHERE f.tx_id = member.tx_id)`).map((row) =>
                 row.tx_id.toString("hex"),
               ),
         );
         const fromTable = (table: string) =>
-          record.txMembers
+          journal.txMembers
             .filter(
               (member) =>
                 member[Member.SOURCE_TABLE] === table &&
-                !rejected.has(
+                absent.has(
                   Buffer.from(member[Member.MEMBER_ID]).toString("hex"),
                 ),
             )
             .map(Journals.txMemberToEntry);
-        yield* MempoolInclusionsDB.clearMarks([header]);
         yield* MempoolDB.restoreJournalEntries(fromTable(MempoolDB.tableName));
         yield* ProcessedMempoolDB.insertTxs(
           fromTable(ProcessedMempoolDB.tableName),
         );
-        yield* BlocksDB.clearBlock(header);
-        const txIds = memberIds;
-        // A transaction left in ImmutableDB would be filtered from its next
-        // block as already committed; one a live block holds stays.
-        if (txIds.length > 0)
-          yield* sql`DELETE FROM ${sql(ImmutableDB.tableName)} i
-            WHERE i.tx_id IN ${sql.in(txIds)}
-              AND NOT EXISTS (SELECT 1 FROM ${sql(BlocksDB.tableName)} b
-                WHERE b.tx_id = i.tx_id)`;
-        yield* MutationJobsDB.abandonLocalBlockFinalization(
-          header,
-          disposal.cause,
-        );
         yield* StateQueueMutationLeasesDB.release(
-          record[C.STATE_QUEUE_LEASE_TOKEN],
+          journal[Journals.Columns.STATE_QUEUE_LEASE_TOKEN],
         );
         yield* Effect.logWarning(
-          `Disposed of own block ${disposal.headerHash} (${status}): ${disposal.cause}. Its members are pending again; a block of this node that lands is revived.`,
-        );
-      }),
-    { discard: true },
-  );
-
-const revivalDigest = (headerHash: Buffer) =>
-  createHash("sha256")
-    .update(Buffer.from(OWN_BLOCK_REVIVAL_DOMAIN, "utf8"))
-    .update(headerHash)
-    .digest("hex");
-
-/**
- * Revives the abandoned journal of each processed own row `headers`: it is
- * active again, its abandonment digest kept (the mark of a revived block),
- * and the same rebase applies its block (`own-blocks.ts`). Its members are
- * in the landed block, so a rejection recorded for one while the journal
- * was abandoned is deleted, with every rejection whose recorded causes are
- * all deleted ones (`TxRejectionsDB.deleteWithTracedRejections`), in the
- * caller's transaction.
- */
-export const reviveJournals = (headers: readonly string[]) =>
-  Effect.forEach(
-    headers,
-    (headerHash) =>
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const record = yield* lockedRecord(headerHash);
-        if (record[C.STATUS] !== Status.Abandoned) return;
-        const header = record[C.HEADER_HASH];
-        const digest =
-          signedIntentReplacementDigest(record) ?? revivalDigest(header);
-        const revived = yield* sql`UPDATE pending_block_finalizations
-        SET status = ${Status.ObservedWaitingStability},
-          observed_confirmed_at_ms = COALESCE(observed_confirmed_at_ms,
-            ${BigInt(Date.now())}),
-          correction_transition_digest = COALESCE(correction_transition_digest,
-            ${digest}),
-          updated_at = NOW()
-        WHERE header_hash = ${header} AND status = ${Status.Abandoned}
-        RETURNING header_hash`;
-        if (revived.length !== 1)
-          return yield* Effect.fail(
-            failure(
-              "Failed to revive a landed own block's journal",
-              headerHash,
-            ),
-          );
-        const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
-          record.txMembers.map((member) =>
-            Buffer.from(member[Member.MEMBER_ID]),
-          ),
-        );
-        yield* Effect.logWarning(
-          `Revived own block ${headerHash}: it landed after its journal was abandoned, and the rebase applies it.${cleared.length === 0 ? "" : ` Deleted ${cleared.length.toString()} rejections of its members and of transactions rejected after them.`}`,
+          `Disposed of own block ${disposal.headerHash}: ${disposal.cause}. Its members are pending again; if its block lands after all, the rebase takes it in.`,
         );
       }),
     { discard: true },

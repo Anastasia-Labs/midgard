@@ -60,61 +60,57 @@ export const BLOCK_COMMITMENT_DUE_WORK_KIND =
 
 export const BLOCK_COMMITMENT_DUE_WORK_KEY = "block_commitment";
 
-export const recoverNativeMpfFromSubmittedJournal = async ({
+export const recoverNativeMpfFromSignedJournal = async ({
   owner,
   handle,
-  submitted,
+  signed,
   replay,
 }: {
   readonly owner: NativeMpfOwnerService;
   readonly handle: NativeMpfGenerationHandle;
-  readonly submitted: boolean;
+  readonly signed: boolean;
   readonly replay?: PersistedNativeMpfReplay;
 }): Promise<void> => {
-  if (
-    !submitted ||
-    replay === undefined ||
-    replay.baseRoot !== handle.baseRoot
-  ) {
+  if (!signed || replay === undefined || replay.baseRoot !== handle.baseRoot) {
     throw new Error(
-      `Architecture G restarted-child journal mismatch: handle_base=${handle.baseRoot},journal_base=${replay?.baseRoot ?? "missing"},submitted=${String(submitted)}`,
+      `Architecture G restarted-child journal mismatch: handle_base=${handle.baseRoot},journal_base=${replay?.baseRoot ?? "missing"},signed=${String(signed)}`,
     );
   }
   await owner.recover(replay);
 };
 
 /**
- * Live-process recovery used when a commit worker exits after its submission
- * journal became durable but before it could return the promotion handle. The
- * journal replay is sufficient to reconstruct and atomically promote the
+ * Live-process recovery used when a commit worker exits after its journal
+ * recorded the signed commit but before it could return the promotion
+ * handle. The journal replay is sufficient to reconstruct and atomically promote the
  * candidate; a node restart is not required.
  */
 export const recoverNativeMpfAfterCommitWorkerFailure = async ({
   owner,
-  submitted,
+  signed,
   replay,
 }: {
   readonly owner: NativeMpfOwnerService;
-  readonly submitted: boolean;
+  readonly signed: boolean;
   readonly replay?: PersistedNativeMpfReplay;
 }): Promise<boolean> => {
-  if (!submitted) return false;
+  if (!signed) return false;
   if (replay === undefined) {
     throw new Error(
-      "Architecture G submitted journal is missing native replay data after commit worker failure",
+      "Architecture G signed journal is missing native replay data after commit worker failure",
     );
   }
   await owner.recover(replay);
   return true;
 };
 
-export const recoverNativeMpfFromActiveJournalAfterWorkerFailure = (
+export const recoverNativeMpfFromLiveJournalAfterWorkerFailure = (
   owner: NativeMpfOwnerService,
 ): Effect.Effect<boolean, unknown, Database> =>
   Effect.gen(function* () {
-    const active = yield* PendingBlockFinalizationsDB.retrieveActive();
-    if (Option.isNone(active)) return false;
-    const journal = active.value;
+    const live = yield* PendingBlockFinalizationsDB.retrieveLive();
+    if (Option.isNone(live)) return false;
+    const journal = live.value;
     const replay = journal.nativeMpfReplay;
     const persistedReplay =
       replay === undefined
@@ -132,11 +128,8 @@ export const recoverNativeMpfFromActiveJournalAfterWorkerFailure = (
     return yield* Effect.tryPromise(() =>
       recoverNativeMpfAfterCommitWorkerFailure({
         owner,
-        submitted:
-          journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
-            null ||
-          journal[PendingBlockFinalizationsDB.Columns.STATUS] ===
-            PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+        signed:
+          journal[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] != null,
         replay: persistedReplay,
       }),
     );
@@ -160,15 +153,15 @@ export const promoteOrRecoverNativeMpf = ({
         ) {
           return yield* Effect.fail(promotionError);
         }
-        const active = yield* PendingBlockFinalizationsDB.retrieveActive();
-        if (Option.isNone(active)) {
+        const live = yield* PendingBlockFinalizationsDB.retrieveLive();
+        if (Option.isNone(live)) {
           return yield* Effect.fail(
             new Error(
-              `Architecture G child restarted after submit but no active recovery journal exists: ${String(promotionError)}`,
+              `Architecture G child restarted after submit but no live recovery journal exists: ${String(promotionError)}`,
             ),
           );
         }
-        const journal = active.value;
+        const journal = live.value;
         const replay = journal.nativeMpfReplay;
         const persistedReplay =
           replay === undefined
@@ -184,14 +177,12 @@ export const promoteOrRecoverNativeMpf = ({
                 eventCount: replay.eventCount,
               };
         yield* Effect.tryPromise(() =>
-          recoverNativeMpfFromSubmittedJournal({
+          recoverNativeMpfFromSignedJournal({
             owner,
             handle,
-            submitted:
-              journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
-                null ||
-              journal[PendingBlockFinalizationsDB.Columns.STATUS] ===
-                PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+            signed:
+              journal[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
+              null,
             replay: persistedReplay,
           }),
         );

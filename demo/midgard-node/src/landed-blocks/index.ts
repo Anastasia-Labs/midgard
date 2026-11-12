@@ -1,6 +1,10 @@
 export * from "./holds.js";
 export { landedBlockHook } from "./hook.js";
 export { nodeLandedBlockPorts } from "./node-ports.js";
+export {
+  type OwnJournalDisposition,
+  ownJournalDisposition,
+} from "./own-journals.js";
 export type { LandedBlockPorts, OwnJournal } from "./ports.js";
 export type { ConfirmedLedgerPosition } from "./position.js";
 export { processLandedQueue, rebaseNeeded } from "./process.js";
@@ -20,7 +24,9 @@ export {
 } from "./rebase.js";
 export {
   blockedRebaseHold,
+  deadJournalsFor,
   rebasePlan,
+  rebasePlanOf,
   type RebaseTarget,
   rebaseTargetOf,
   walkTarget,

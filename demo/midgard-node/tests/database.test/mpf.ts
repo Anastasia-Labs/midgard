@@ -36,6 +36,7 @@ import {
 import { insertDeposits } from "../helpers/event-rows.js";
 import { materializeJournalLedger } from "../helpers/materialize-journal-ledger.js";
 import { prepareUnderTestLease } from "../helpers/mutation-lease.js";
+import { landApplied } from "../helpers/own-block-facts.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
 
 export const registerMpfTests = () => {
@@ -281,10 +282,10 @@ export const registerMpfTests = () => {
                     })),
                   },
                 });
-                yield* sql`UPDATE ${sql(
-                  PendingBlockFinalizationsDB.tableName,
-                )} SET status = ${PendingBlockFinalizationsDB.Status.LocallyApplied}
-              WHERE header_hash = ${headers[index]!}`;
+                yield* landApplied(
+                  headers[index]!,
+                  headerValues[index]!.prevHeaderHash,
+                );
               });
             yield* prepare(0, [a[LedgerUtils.Columns.OUTREF]], [c]);
             yield* prepare(1, [c[LedgerUtils.Columns.OUTREF]], [d]);
@@ -308,35 +309,25 @@ export const registerMpfTests = () => {
               ),
             );
             expect(snapshot.deltaChain).toHaveLength(3);
-            const nodeConfig = yield* NodeConfig;
-            const insertIn = (envelope: "identity" | "zstd") =>
+            const unwrappedIn = (envelope: "identity" | "zstd") =>
               buildDaPayloadInsert({ record: found.value }).pipe(
-                Effect.provideService(NodeConfig, {
-                  ...nodeConfig,
+                Effect.updateService(NodeConfig, (config) => ({
+                  ...config,
                   MIDGARD_DA_PAYLOAD_ENVELOPE: envelope,
-                }),
+                })),
+                Effect.flatMap((insert) =>
+                  Effect.tryPromise({
+                    try: () =>
+                      unwrapDaPayload(insert.payload_cbor, {
+                        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+                      }),
+                    catch: (cause) => cause,
+                  }),
+                ),
               );
-            const identityInsert = yield* insertIn("identity");
-            const zstdInsert = yield* insertIn("zstd");
-            const identityUnwrapped = yield* Effect.tryPromise({
-              try: () =>
-                unwrapDaPayload(identityInsert.payload_cbor, {
-                  maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-                }),
-              catch: (cause) => cause,
-            });
-            const zstdUnwrapped = yield* Effect.tryPromise({
-              try: () =>
-                unwrapDaPayload(zstdInsert.payload_cbor, {
-                  maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-                }),
-              catch: (cause) => cause,
-            });
-            for (const payloadBytes of [
-              identityUnwrapped.innerBytes,
-              zstdUnwrapped.innerBytes,
-            ]) {
-              const payload = SDK.decodeDaPayload(payloadBytes);
+            for (const envelope of ["identity", "zstd"] as const) {
+              const { innerBytes } = yield* unwrappedIn(envelope);
+              const payload = SDK.decodeDaPayload(innerBytes);
               expect(payload.block_body.header.utxosRoot).toBe(roots[3]);
             }
 
@@ -425,7 +416,6 @@ export const registerMpfTests = () => {
 
             // A merge on its base folds, consuming its deposit.
             yield* resetTo(1);
-            yield* sql`DELETE FROM node_landed_blocks`;
             const mergeHeaderHash = headers[1]!;
             const mergeJournal = yield* journalOf(mergeHeaderHash);
             const successTxHash = Buffer.alloc(32, 0x61);
@@ -480,6 +470,9 @@ export const registerMpfTests = () => {
             // A wrong base is refused, writing nothing: a frontier at the
             // base header with another root, or a ledger lacking what the
             // merge spends.
+            // (`resetTo` dropped the merge's retained fold; the block is
+            // applied again, as the rebase left it before its fold.)
+            yield* landApplied(mergeHeaderHash, headers[0]!);
             for (const wrong of [
               { utxosRoot: roots[2]!, ledger: 1 },
               { utxosRoot: roots[1]!, ledger: 0 },

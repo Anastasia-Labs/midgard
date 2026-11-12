@@ -27,7 +27,7 @@ export const BLOCK_SUBMITTED_MARKER =
  */
 export const JOURNAL_KILL_SURVIVOR_MARKERS = [
   "Skipping block commitment trigger because the state-queue mutation lease is busy",
-  "Abandoned unsigned pending block journal",
+  "Discarded unsigned pending block journal",
   BLOCK_SUBMITTED_MARKER,
 ] as const;
 

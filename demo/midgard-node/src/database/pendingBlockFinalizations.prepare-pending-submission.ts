@@ -16,7 +16,6 @@ import {
   NO_IDENTITY,
 } from "./l1-admission-identity.js";
 import {
-  ACTIVE_STATUSES,
   Columns,
   depositsTableName,
   eventToStepTableName,
@@ -25,7 +24,6 @@ import {
   PENDING_BLOCK_FINALIZATION_VERSION,
   PendingBlockFinalizationReplayKind,
   type Row,
-  Status,
   tableName,
   transitionTraceTableName,
   txsTableName,
@@ -39,6 +37,13 @@ import {
   retainedRootMemberEntry,
   withdrawalMemberEntry,
 } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
+import {
+  deadHeader,
+  deadHeadersOf,
+  deadJournals,
+  LIVE_JOURNAL_REFUSAL,
+  notAppliedOrFolded,
+} from "./pendingBlockFinalizations.derived-status.js";
 import { holdMutationLease } from "./pendingBlockFinalizations.hold-mutation-lease.js";
 import {
   exactBytes,
@@ -52,11 +57,7 @@ import {
   parsePendingBlockFinalization,
   txMemberEntry,
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
-import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
-import {
-  ACTIVE_PENDING_JOURNAL_REFUSAL,
-  refuseOnSingleActiveIndexLoss,
-} from "./pendingBlockFinalizations.single-active-refusal.js";
+import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as TxTable from "./utils/tx.js";
 import * as WithdrawalsDB from "./withdrawals.js";
@@ -65,7 +66,7 @@ export const preparePendingSubmission = (
   input: PrepareInput,
   options?: {
     /**
-     * Runs after the active-journal guard and inside the same SQL transaction
+     * Runs after the live-journal guard and inside the same SQL transaction
      * as the pending journal insert. Commit submission uses it to assert the
      * user-event sources are complete and the end time within the commit
      * anchor's cap in the same transaction; it returns the anchor the journal
@@ -239,24 +240,26 @@ export const preparePendingSubmission = (
               cause: input.headerHash.toString("hex"),
             }),
           );
-        const activeRows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
-          WHERE ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
+        // One live journal at a time: the lease row is locked FOR UPDATE
+        // (`holdMutationLease`), so prepares under one lease run one after
+        // another, and a later holder's takeover waits for this write.
+        const dead = deadHeadersOf(yield* deadJournals);
+        const live = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
+          SELECT p.${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)} p
+          WHERE p.${sql(Columns.HEADER_HASH)} <> ${input.headerHash}
+            AND ${notAppliedOrFolded(sql, "p")}
+            AND NOT ${deadHeader(sql, `p.${Columns.HEADER_HASH}`, dead)}
           LIMIT 1`;
-        const active = activeRows[0];
-        if (
-          active !== undefined &&
-          !active[Columns.HEADER_HASH].equals(input.headerHash)
-        ) {
+        if (live[0] !== undefined)
           return yield* Effect.fail(
             new DatabaseError({
               table: tableName,
-              message: ACTIVE_PENDING_JOURNAL_REFUSAL,
-              cause: `active_header_hash=${active[Columns.HEADER_HASH].toString(
+              message: LIVE_JOURNAL_REFUSAL,
+              cause: `live_header_hash=${live[0][Columns.HEADER_HASH].toString(
                 "hex",
               )},requested_header_hash=${input.headerHash.toString("hex")}`,
             }),
           );
-        }
         const anchor =
           options?.beforeJournalInsert === undefined
             ? undefined
@@ -272,25 +275,19 @@ export const preparePendingSubmission = (
         yield* WithdrawalsDB.assertClassificationSnapshots(
           withdrawalMembers.map(withdrawalMemberToAssignment),
         );
-        const held = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
-          SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
-          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
-            AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
-            AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NOT NULL
-              OR ${sql(Columns.INTENDED_TX_HASH)} IS NOT NULL)`;
+        // A signed journal of this header may be on L1: it is never
+        // replaced. An unsigned one was never broadcast; this prepare
+        // supersedes it.
+        const existing = yield* sql<Pick<Row, Columns.INTENDED_TX_HASH>>`
+          SELECT ${sql(Columns.INTENDED_TX_HASH)} FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}`;
         const heldHeaderHash = input.headerHash;
-        if (held.length !== 0) return { kind: "held" as const, heldHeaderHash };
-        if (active !== undefined) {
+        if (existing[0]?.[Columns.INTENDED_TX_HASH] != null)
+          return { kind: "held" as const, heldHeaderHash };
+        if (existing[0] !== undefined)
           yield* sql`DELETE FROM ${sql(tableName)}
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
-              AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
               AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
-        }
-        yield* sql`DELETE FROM ${sql(tableName)}
-          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
-            AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
-            AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
-      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
         yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
           [Columns.HEADER_HASH]: input.headerHash,
           [Columns.HEADER_CBOR]: input.headerCbor,
@@ -301,7 +298,6 @@ export const preparePendingSubmission = (
           [Columns.DEPLOYMENT_MANIFEST_ID]: deploymentMarker.manifestId,
           [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
           [Columns.PREPARED_TX_HASH]: input.preparedTxHash ?? null,
-          [Columns.SUBMITTED_TX_HASH]: null,
           [Columns.COMMIT_ANCHOR_HASH]: anchor?.hash ?? null,
           [Columns.COMMIT_ANCHOR_HEIGHT]: anchor?.height ?? null,
           [Columns.COMMIT_ANCHOR_SLOT]: anchor?.slot ?? null,
@@ -367,9 +363,7 @@ export const preparePendingSubmission = (
             nativeMpfReplay?.eventLogDigest ?? null,
           [Columns.MPF_REPLAY_EVENT_ROOTS]: nativeMpfReplay?.eventRoots ?? null,
           [Columns.MPF_REPLAY_EVENT_COUNT]: nativeMpfReplay?.eventCount ?? null,
-          [Columns.STATUS]: Status.PendingSubmission,
-          [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
-        })}`.pipe(refuseOnSingleActiveIndexLoss(tableName, input.headerHash));
+        })}`;
         const permit = candidateHistory;
         const memberHistory = (eventTable: string, eventId: Buffer) =>
           Effect.gen(function* () {

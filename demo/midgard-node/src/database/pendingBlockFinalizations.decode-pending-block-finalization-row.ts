@@ -15,7 +15,6 @@ import {
   type RawRow,
   type RetainedRootMemberInput,
   type Row,
-  Status,
   tableName,
   WithdrawalMemberColumns,
   type WithdrawalMemberRecord,
@@ -232,14 +231,11 @@ export const decodePendingBlockFinalizationRow = (
         );
       }
       const normalizedRow = normalizeRow(row);
-      validateSignedIntent(
-        normalizedRow[Columns.INTENDED_TX_HASH],
-        normalizedRow[Columns.SIGNED_TX_CBOR],
-      );
       const preparedHash = normalizedRow[Columns.PREPARED_TX_HASH];
       const intendedHash = normalizedRow[Columns.INTENDED_TX_HASH];
       if (
         (preparedHash != null && preparedHash.length !== 32) ||
+        (intendedHash != null && intendedHash.length !== 32) ||
         (intendedHash != null &&
           (preparedHash == null || !preparedHash.equals(intendedHash)))
       )
@@ -266,15 +262,10 @@ export const decodePendingBlockFinalizationRow = (
       if (
         normalizedRow[Columns.HEADER_HASH].length !== 28 ||
         normalizedRow[Columns.HEADER_CBOR].length === 0 ||
-        (normalizedRow[Columns.SUBMITTED_TX_HASH] !== null &&
-          normalizedRow[Columns.SUBMITTED_TX_HASH].length !== 32) ||
         normalizedRow[Columns.BLOCK_END_TIME].getTime() <=
-          pending.metadata.blockStartTime.getTime() ||
-        !Object.values(Status).includes(normalizedRow[Columns.STATUS])
+          pending.metadata.blockStartTime.getTime()
       ) {
-        throw new Error(
-          "persisted header, status, transaction hash, or block window is invalid",
-        );
+        throw new Error("persisted header or block window is invalid");
       }
       return {
         normalizedRow,

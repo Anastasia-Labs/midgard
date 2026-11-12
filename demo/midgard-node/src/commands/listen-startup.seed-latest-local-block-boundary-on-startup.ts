@@ -7,7 +7,6 @@ import { Effect, Option, Ref } from "effect";
 
 import {
   ConfirmedLedgerDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import { setUnresolvedBlockSubmission } from "../fibers/unresolved-block-submission.js";
@@ -15,11 +14,6 @@ import { foldMerge } from "../landed-blocks/confirmed-merges.js";
 import { ownFoldRow } from "../landed-blocks/journal.js";
 import { Frontier } from "../landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
-import {
-  type CanonicalCommittedHeader,
-  fetchCanonicalCommittedHeaders,
-  reviveEarliestCanonicalPayloadJournal,
-} from "../services/canonical-journal-recovery.js";
 import { Globals, MidgardContracts } from "../services/index.js";
 import { unboundJournalReason } from "../services/journal-header-binding.js";
 import {
@@ -29,69 +23,36 @@ import {
 import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 /**
- * Startup's recovery over the journals of the canonical queue, and the local
- * block boundary it seeds: the latest of the tip's end time, the tip's
- * journal's and the revived journal's.
- *
- * Only the earliest unattributed abandoned payload journal is revived, under
- * the single-active guard of reviveEarliestCanonicalPayloadJournal. A
- * journal disposed of under its replacement digest is revived by the
- * landed-block rebase once the follower processed its block; a
- * correction-abandoned one is never revived. A failure fails startup.
+ * The local block boundary startup seeds: the latest of the state-queue
+ * tip's end time and the end time of the tip's journal, when this node
+ * built the tip.
  */
-export const recoverCanonicalJournalsOnStartup = ({
-  canonicalHeaders,
-  latestHeaderHash,
-  latestEndTimeMs,
-}: {
-  readonly canonicalHeaders: readonly CanonicalCommittedHeader[];
-  readonly latestHeaderHash: Option.Option<Buffer>;
-  readonly latestEndTimeMs: number;
-}) =>
+const seededLocalBlockBoundary = (
+  latestHeaderHash: Option.Option<Buffer>,
+  latestEndTimeMs: number,
+) =>
   Effect.gen(function* () {
-    const revivedPayloadJournal = yield* reviveEarliestCanonicalPayloadJournal({
-      canonicalHeaders,
-      logPrefix: "Startup",
-    });
-    let seededBoundaryMs = latestEndTimeMs;
-    if (Option.isSome(latestHeaderHash)) {
-      const latestJournal =
-        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-          latestHeaderHash.value,
-        );
-      if (Option.isSome(latestJournal)) {
-        seededBoundaryMs = Math.max(
-          latestJournal.value[
-            PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
-          ].getTime(),
-          latestEndTimeMs,
-        );
-        yield* Effect.logInfo(
-          `Seeded latest local block boundary from pending-finalization journal for header ${latestHeaderHash.value.toString("hex")}: ${new Date(seededBoundaryMs).toISOString()}`,
-        );
-      }
-    }
-    if (Option.isSome(revivedPayloadJournal)) {
-      seededBoundaryMs = Math.max(
-        seededBoundaryMs,
-        revivedPayloadJournal.value.endTimeMs,
-        revivedPayloadJournal.value.journal.pipe(
-          Option.match({
-            onNone: () => 0,
-            onSome: (journal) =>
-              journal[
-                PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
-              ].getTime(),
-          }),
-        ),
+    if (Option.isNone(latestHeaderHash)) return latestEndTimeMs;
+    const latestJournal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+        latestHeaderHash.value,
       );
-    }
+    if (Option.isNone(latestJournal)) return latestEndTimeMs;
+    const seededBoundaryMs = Math.max(
+      latestJournal.value[
+        PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+      ].getTime(),
+      latestEndTimeMs,
+    );
+    yield* Effect.logInfo(
+      `Seeded latest local block boundary from pending-finalization journal for header ${latestHeaderHash.value.toString("hex")}: ${new Date(seededBoundaryMs).toISOString()}`,
+    );
     return seededBoundaryMs;
   });
 
 /**
  * Startup's one-time repair of a `confirmed_ledger` that no landed-block run
- * anchored yet (no frontier): the locally applied journal chain from the
+ * anchored yet (no frontier): the applied (or folded) journal chain from the
  * ledger's root up to `journal` is folded through the stored-delta fold
  * (N5), with the frontier set at the chain's base header first, and the
  * result's root must be `journal`'s. Undefined when the chain does not reach
@@ -116,12 +77,8 @@ const repairUnanchoredConfirmedLedger = (
       const base = first[Journals.Columns.BASE_TAIL_HEADER_HASH];
       if (seen.has(base.toString("hex"))) return undefined;
       seen.add(base.toString("hex"));
-      const parent = yield* Journals.retrieveByHeaderHash(base);
-      if (
-        Option.isNone(parent) ||
-        parent.value[Journals.Columns.STATUS] !== Journals.Status.LocallyApplied
-      )
-        return undefined;
+      const parent = yield* Journals.retrieveAppliedByHeaderHash(base);
+      if (Option.isNone(parent)) return undefined;
       chain.unshift(parent.value);
     }
     // Each fold's base is its journal's: a journal whose header bytes do not
@@ -203,13 +160,11 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
       const finalizedJournal =
         snapshot.tailCommitBase.headerHash === null
           ? Option.none<PendingBlockFinalizationsDB.Record>()
-          : yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          : yield* PendingBlockFinalizationsDB.retrieveAppliedByHeaderHash(
               Buffer.from(snapshot.tailCommitBase.headerHash, "hex"),
             );
       const repaired =
         Option.isSome(finalizedJournal) &&
-        finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-          PendingBlockFinalizationsDB.Status.LocallyApplied &&
         finalizedJournal.value[
           PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
         ] === onChainUtxoRoot
@@ -248,18 +203,10 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
             "hex",
           ),
         );
-  const seededBoundaryMs = yield* recoverCanonicalJournalsOnStartup({
-    canonicalHeaders: yield* fetchCanonicalCommittedHeaders,
+  const seededBoundaryMs = yield* seededLocalBlockBoundary(
     latestHeaderHash,
     latestEndTimeMs,
-  });
-  const deletedSupersededPreSubmitJournals =
-    yield* PendingBlockFinalizationsDB.deleteSupersededAbandonedUnsubmitted();
-  if (deletedSupersededPreSubmitJournals > 0) {
-    yield* Effect.logInfo(
-      `Deleted ${deletedSupersededPreSubmitJournals.toString()} superseded pre-submit pending-finalization journal(s) already covered by finalized state-queue roots.`,
-    );
-  }
+  );
   yield* Ref.set(globals.LATEST_LOCAL_BLOCK_END_TIME_MS, seededBoundaryMs);
   yield* Effect.logInfo(
     `Seeded latest local block boundary from startup state: ${new Date(seededBoundaryMs).toISOString()}`,
@@ -275,24 +222,23 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
 export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
   function* () {
     const globals = yield* Globals;
-    yield* PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete;
-    const pending = yield* PendingBlockFinalizationsDB.retrieveActive();
-    if (Option.isNone(pending)) {
+    yield* PendingBlockFinalizationsDB.assertLiveJournalPayloadsComplete;
+    const live = yield* PendingBlockFinalizationsDB.retrieveLive();
+    if (Option.isNone(live)) {
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
       return;
     }
 
-    const record = pending.value;
-    const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
-    const submittedTxHash =
-      record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
+    const record = live.value;
+    const intendedTxHash =
+      record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH];
     yield* setUnresolvedBlockSubmission(globals, record);
     yield* Effect.logInfo(
-      `Hydrated pending block-finalization journal on startup for header ${record[
+      `Hydrated the live block journal on startup for header ${record[
         PendingBlockFinalizationsDB.Columns.HEADER_HASH
-      ].toString("hex")} (status=${status}, submitted_tx=${
-        submittedTxHash === null ? "unknown" : submittedTxHash.toString("hex")
+      ].toString("hex")} (intended_tx=${
+        intendedTxHash == null ? "unsigned" : intendedTxHash.toString("hex")
       }).`,
     );
   },
@@ -304,75 +250,3 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
   ),
   Effect.orDie,
 );
-
-/**
- * Journal statuses of a submitted block, landed or not. Landed-block
- * processing applies such a block when it lands, with idempotent own effects,
- * so a local-finalization job left unfinished for it has no work left.
- */
-const SUBMITTED_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
-  [
-    PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
-    PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-    PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-    PendingBlockFinalizationsDB.Status.LocallyApplied,
-  ];
-
-export const LOCAL_FINALIZATION_JOB_ID_PATTERN = new RegExp(
-  `^${MutationJobsDB.Kind.LocalBlockFinalization}:([0-9a-f]{56})$`,
-);
-
-/** The header of an unfinished (running or failed) local-finalization job,
- * or none for any other job. */
-export const unfinishedLocalFinalizationHeader = (
-  job: MutationJobsDB.Entry,
-): Buffer | undefined => {
-  if (
-    job[MutationJobsDB.Columns.KIND] !==
-      MutationJobsDB.Kind.LocalBlockFinalization ||
-    (job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Failed &&
-      job[MutationJobsDB.Columns.STATUS] !== MutationJobsDB.Status.Running)
-  )
-    return undefined;
-  const match = LOCAL_FINALIZATION_JOB_ID_PATTERN.exec(
-    job[MutationJobsDB.Columns.JOB_ID],
-  );
-  return match === null ? undefined : Buffer.from(match[1]!, "hex");
-};
-
-/**
- * What startup does with an unfinished job. It runs while this process
- * holds the node instance lock, so no other node process is live on this
- * database or mid-way through any job: a running row is a process that died
- * (SIGKILL, OOM, power loss) before recording the outcome.
- *
- * "runtime" hands a confirmed-merge finalization, failed or running, over:
- * it is idempotent, and every merge attempt first finalizes each merge L1
- * confirmed that this database has not (finalizeLandedMergesProgram).
- *
- * "complete" closes a failed or running local-finalization job whose
- * journal records its block as submitted: landed-block processing applies
- * that block when it lands (`SUBMITTED_JOURNAL_STATUSES`), and nothing runs
- * the job any more.
- *
- * Every other unfinished job refuses: a local finalization whose journal is
- * missing, abandoned or never submitted, and a malformed job id.
- */
-export const classifyUnfinishedMutationJobOnStartup = (
-  job: MutationJobsDB.Entry,
-  journalStatus: PendingBlockFinalizationsDB.Status | undefined,
-): "runtime" | "complete" | "refuse" => {
-  if (
-    job[MutationJobsDB.Columns.KIND] ===
-    MutationJobsDB.Kind.ConfirmedMergeFinalization
-  )
-    return "runtime";
-  if (
-    unfinishedLocalFinalizationHeader(job) === undefined ||
-    journalStatus === undefined
-  )
-    return "refuse";
-  return SUBMITTED_JOURNAL_STATUSES.includes(journalStatus)
-    ? "complete"
-    : "refuse";
-};

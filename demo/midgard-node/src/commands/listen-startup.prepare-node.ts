@@ -5,8 +5,7 @@
  *
  * It seeds the commit base from the landed state queue, restores retained
  * script pins, hydrates the pending block finalization, releases the
- * previous node process's leases, checks the mutation jobs, and backfills
- * missing DA payloads (a backfill error is logged and skipped). The native
+ * previous node process's leases, and backfills missing DA payloads (a backfill error is logged and skipped). The native
  * MPF owner starts in the recompute itself.
  *
  * A failure fails the recompute as the named hold `startup_preparation_failed`
@@ -18,10 +17,9 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect } from "effect";
 
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { backfillMissingDaPayloadsFromAppliedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { landedStateQueueStartupReasons } from "./listen-startup.await-landed-state-queue.js";
 import {
-  assertStartupMutationJobsRecoverable,
   hydratePendingBlockFinalizationOnStartup,
   releaseStateQueueLeasesOfPreviousNodeProcess,
   seedLatestLocalBlockBoundaryOnStartup,
@@ -67,11 +65,7 @@ export const prepareNodeOnStartup = Effect.gen(function* () {
     "ledger store lease release",
     releaseLedgerStoreLeaseOfPreviousNodeProcess,
   );
-  yield* step(
-    "mutation jobs recovery check",
-    assertStartupMutationJobsRecoverable,
-  );
-  yield* backfillMissingDaPayloadsFromFinalizedJournals({ limit: 100 }).pipe(
+  yield* backfillMissingDaPayloadsFromAppliedJournals({ limit: 100 }).pipe(
     Effect.tap((summary) =>
       summary.scanned === 0
         ? Effect.void

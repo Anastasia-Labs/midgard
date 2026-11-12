@@ -13,19 +13,26 @@ import { expect } from "vitest";
 
 import {
   BlocksDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { foldMerge } from "../src/landed-blocks/confirmed-merges.js";
-import type { LandedBlockRow } from "../src/landed-blocks/store.js";
+import {
+  Frontier,
+  insertRow,
+  type LandedBlockRow,
+} from "../src/landed-blocks/store.js";
 import { Globals } from "../src/services/index.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 export const DURABLE_ROOT = "ab".repeat(32);
 
-/** Restores the worker's empty application state, then runs `effect` with an
- * Architecture G native owner whose diagnostics `diagnostics` answers. */
+/**
+ * Restores the worker's empty application state with the confirmed-ledger
+ * frontier at genesis (as landed-block processing bootstraps it before any
+ * block lands), then runs `effect` with an Architecture G native owner
+ * whose diagnostics `diagnostics` answers.
+ */
 export const isolatedDb = <A, E>(
   effect: Effect.Effect<A, E, any>,
   diagnostics: () => Promise<{
@@ -36,6 +43,10 @@ export const isolatedDb = <A, E>(
   provideDatabaseLayers(
     Effect.gen(function* () {
       yield* resetApplicationTables;
+      yield* Frontier.upsert({
+        headerHash: SDK.GENESIS_HEADER_HASH,
+        utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      });
       const globals = yield* Globals;
       yield* Ref.set(globals.NATIVE_MPF_OWNER, { diagnostics } as never);
       return yield* effect;
@@ -92,20 +103,45 @@ export const block = (index: number, prev: string) =>
     headerHash,
   }));
 
+/** An empty block's processed landed row on `parentHeaderHash`. */
+const emptyRow = (
+  headerHash: string,
+  parentHeaderHash: string,
+  kind: LandedBlockRow["kind"],
+  applied: boolean,
+): LandedBlockRow => ({
+  headerHash,
+  parentHeaderHash,
+  parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  kind,
+  state: "processed",
+  applied,
+  spent: [],
+  produced: [],
+  depositIds: [],
+  withdrawals: [],
+  forcedIds: [],
+  txIds: [],
+});
+
 /**
- * Journals `stored` under `headerHash` with one block-row tx, advanced to
- * `status` (Finalized or ObservedWaitingStability).
+ * Journals `stored` under `headerHash` on `base` (by default its header's
+ * parent) with one block-row tx, its block landed and, when `status` is
+ * applied, applied.
  */
 export const journal = ({
   headerHash,
   stored,
   status,
+  base = stored.prevHeaderHash,
 }: {
   readonly headerHash: string;
   readonly stored: SDK.Header;
+  readonly base?: string;
   readonly status:
-    | typeof PendingBlockFinalizationsDB.Status.LocallyApplied
-    | typeof PendingBlockFinalizationsDB.Status.ObservedWaitingStability;
+    | typeof PendingBlockFinalizationsDB.OwnBlockStatus.Applied
+    | typeof PendingBlockFinalizationsDB.OwnBlockStatus.Landed;
 }) =>
   Effect.gen(function* () {
     const hash = Buffer.from(headerHash, "hex");
@@ -122,7 +158,7 @@ export const journal = ({
         stateQueueLeaseToken: "lease-token",
         baseSnapshotId: "snapshot",
         baseTailOutRef: `${headerHash}#0`,
-        baseTailHeaderHash: Buffer.from(stored.prevHeaderHash, "hex"),
+        baseTailHeaderHash: Buffer.from(base, "hex"),
         baseTailDatumCbor: "d87980",
         baseRoots: emptyRoots,
         blockStartTime,
@@ -145,13 +181,14 @@ export const journal = ({
       validationTraceMembers: [],
       ledgerDelta: { spent: [], produced: [] },
     });
-    yield* PendingBlockFinalizationsDB.markSubmitted(
-      hash,
-      Buffer.from(headerHash.padEnd(64, "7"), "hex"),
+    yield* insertRow(
+      emptyRow(
+        headerHash,
+        stored.prevHeaderHash,
+        "own",
+        status === PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+      ),
     );
-    yield* PendingBlockFinalizationsDB.markObservedWaitingStability(hash, 1n);
-    if (status === PendingBlockFinalizationsDB.Status.LocallyApplied)
-      yield* PendingBlockFinalizationsDB.markFinalized(hash);
     yield* BlocksDB.insert(hash, [
       Buffer.from(headerHash.padEnd(64, "0"), "hex"),
     ]);
@@ -161,7 +198,7 @@ export const finalizedJournal = ({ header, headerHash }: Block) =>
   journal({
     headerHash,
     stored: header,
-    status: PendingBlockFinalizationsDB.Status.LocallyApplied,
+    status: PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
   });
 
 /**
@@ -192,21 +229,11 @@ export const confirmedAtBlock = (
 export const foreignRow = (
   headerHash: string,
   parentHeaderHash: string,
-): LandedBlockRow => ({
-  headerHash,
-  parentHeaderHash,
-  parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  kind: "foreign",
-  state: "processed",
-  applied: true,
-  spent: [],
-  produced: [],
-  depositIds: [],
-  withdrawals: [],
-  forcedIds: [],
-  txIds: [],
-});
+): LandedBlockRow => emptyRow(headerHash, parentHeaderHash, "foreign", true);
+
+/** This node's block `block`'s processed, applied landed row. */
+export const ownRow = ({ header, headerHash }: Block): LandedBlockRow =>
+  emptyRow(headerHash, header.prevHeaderHash, "own", true);
 
 /**
  * Folds the processed `row` into `confirmed_ledger` at the frontier, as
@@ -219,9 +246,9 @@ export const fold = (row: LandedBlockRow) =>
     yield* sql.withTransaction(foldMerge(row, null));
   });
 
-const mergeJob = (headerHash: string) =>
-  MutationJobsDB.retrieveByJobId(
-    MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
+const statusOf = (headerHash: string) =>
+  PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+    Buffer.from(headerHash, "hex"),
   );
 
 const blockRows = (headerHash: string) =>
@@ -231,21 +258,23 @@ const blockRows = (headerHash: string) =>
   );
 
 /**
- * The job completed after `attempts` attempts; the block rows stay until
- * its fold is final (`releaseFinalFolds`).
+ * The merge finalized: its block is folded; the block rows stay until its
+ * fold is final (`releaseFinalFolds`).
  */
-export const expectFinalized = (headerHash: string, attempts: number) =>
+export const expectFinalized = (headerHash: string) =>
   Effect.gen(function* () {
-    expect(yield* mergeJob(headerHash)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-      [MutationJobsDB.Columns.ATTEMPTS]: attempts,
-    });
+    expect(yield* statusOf(headerHash)).toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+    );
     expect(yield* blockRows(headerHash)).toBe(1);
   });
 
-/** No job was started and the block rows are still there. */
+/** The merge did not finalize: its block is not folded and its block rows
+ * are still there. */
 export const expectUntouched = (headerHash: string) =>
   Effect.gen(function* () {
-    expect(yield* mergeJob(headerHash)).toBeUndefined();
+    expect(yield* statusOf(headerHash)).not.toBe(
+      PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+    );
     expect(yield* blockRows(headerHash)).toBe(1);
   });

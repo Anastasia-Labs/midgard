@@ -33,7 +33,6 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { StateQueueMutationLeasesDB } from "../src/database/index.js";
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { shouldSkipForDueValidationTraceDefense } from "../src/fibers/block-commitment.validation-trace-defense-pause.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
@@ -44,6 +43,12 @@ import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js
 import { testDatabases } from "./helpers/l1-events-store.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
+  insertCommitIntent,
+  land,
+  ownLandedRow,
+} from "./helpers/own-block-facts.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
+import {
   bondUnlockTimeOf,
   type DefenseScene,
   inputsOf,
@@ -51,10 +56,6 @@ import {
   outRefOf,
   startedAtOf,
 } from "./helpers/validation-trace-defense-scene.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
 
 const databases = testDatabases();
 const opened: DefenseScene[] = [];
@@ -85,7 +86,11 @@ const defendOf = (s: DefenseScene, caseUnit: string) => {
   return { hash: caseOutput.txHash, ...s.landed(caseOutput.txHash) };
 };
 
-/** Journals a signed commit of `commitHeader`, unresolved; its intended hash. */
+/**
+ * Journals a signed commit of `commitHeader` on the scene's tail block,
+ * anchored at the follower's tip, with its commit intent: the node's live
+ * journal, unresolved.
+ */
 const prepareSignedCommit = async (s: DefenseScene, commitHeader: Buffer) => {
   const intended = Buffer.alloc(32, 0x5c);
   await s.inNode(
@@ -95,13 +100,28 @@ const prepareSignedCommit = async (s: DefenseScene, commitHeader: Buffer) => {
         preparedTxHash: intended,
       });
       const sql = yield* SqlClient.SqlClient;
+      const [tip] = yield* sql<{ hash: Buffer; height: number; slot: number }>`
+        SELECT hash, height, slot FROM l1_blocks
+        ORDER BY height DESC LIMIT 1`;
       yield* sql`UPDATE pending_block_finalizations
-        SET intended_tx_hash = ${intended}, signed_tx_cbor = ${Buffer.from("84a0a0f5f6", "hex")}
+        SET intended_tx_hash = ${intended},
+          base_tail_header_hash = ${tailOf(s)},
+          commit_anchor_hash = ${tip!.hash},
+          commit_anchor_height = ${tip!.height},
+          commit_anchor_slot = ${tip!.slot}
         WHERE header_hash = ${commitHeader}`;
+      yield* insertCommitIntent(
+        commitHeader,
+        intended,
+        Buffer.from("84a0a0f5f6", "hex"),
+      );
     }).pipe(Effect.provideService(FollowerWriteFixture, true)),
   );
-  return intended;
 };
+
+/** The scene's tail block: the one the next commit builds on. */
+const tailOf = (s: DefenseScene) =>
+  Buffer.from(s.scene.forced.evidence.headerHash, "hex");
 
 /** A material worker running the ES module `source`, bound by `timeoutMs`. */
 const workerOf = (
@@ -167,7 +187,7 @@ describe("the validation-trace defender's tick", () => {
   it("builds no Defend while a signed commit is unresolved, and defends over the commit once it is reconciled", async () => {
     const { s, claim } = await openWithClaim();
     const commitHeader = header("defender-commit-in-flight");
-    const intended = await prepareSignedCommit(s, commitHeader);
+    await prepareSignedCommit(s, commitHeader);
     // The commit's fiber may hold the L1 control plane meanwhile: the
     // Defend does not wait on it.
     const plane = await s.holdControlPlane();
@@ -183,12 +203,16 @@ describe("the validation-trace defender's tick", () => {
     ]);
     expect(waiting.defendFirstDue.has(claim.caseUnit)).toBe(false);
 
-    // The commit lands, and the node reconciles its journal.
+    // The commit lands, and the node processes its landing: its journal is
+    // landed.
     const commit = await commitSceneSuccessor(s.scene);
     await s.env.follow();
     await s.inNode(
-      PendingBlockFinalizationsDB.markSubmitted(commitHeader, intended).pipe(
-        Effect.provideService(FollowerWriteFixture, true),
+      land(
+        ownLandedRow(
+          commitHeader.toString("hex"),
+          s.scene.forced.evidence.headerHash,
+        ),
       ),
     );
 

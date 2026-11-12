@@ -32,8 +32,8 @@ Allowed states:
 - `(projected, H)`: projected exactly once and assigned to header `H`
 
 `consumed` is also a persisted status: spending a deposit-origin ledger row
-marks the deposit consumed so reconciliation cannot reinsert it. Matching-header
-abandonment can clear an assignment, and authenticated state-queue correction
+marks the deposit consumed so reconciliation cannot reinsert it. Disposing of
+the matching header's dead journal can clear an assignment, and authenticated state-queue correction
 can reopen affected events. Assignment is conflict-checked, not permanently
 immutable across these explicit recovery paths.
 
@@ -103,31 +103,23 @@ Submitted blocks are journaled durably before submission.
 The journal stores:
 
 - `header_hash`
-- `submitted_tx_hash`
+- `intended_tx_hash` (the signed commit; its bytes are in the intent journal)
 - `block_end_time`
 - included deposit event ids
 - included L2 tx ids
-- state machine status
 
-Journal states:
+The journal stores no status: it is derived from the facts (unlanded,
+landed, applied or folded), and an unlanded journal whose block can no
+longer land is dead. At most one live journal (unlanded and not dead)
+exists at a time.
 
-- `pending_submission`
-- `submitted_local_finalization_pending`
-- `submitted_unconfirmed`
-- `observed_waiting_stability`
-- `finalized`
-- `abandoned`
-
-At most one active pending-finalization record may exist at a time.
-
-After L1 submission succeeds, the journal moves to
-`submitted_local_finalization_pending` and stays active. The node applies the
+After L1 submission succeeds, the journal stays live. The node applies the
 block locally only once it lands: the working-ledger rebase that takes in the
-landed block writes its local effects and marks the journal `locally_applied`
-in the same transaction, idempotently, as it applies a foreign block.
+landed block writes its local effects in the same transaction, idempotently,
+as it applies a foreign block; nothing is written to the journal.
 
-If the submission is abandoned, deposits remain `(projected, NULL)` and are
-eligible for later inclusion without being reinserted into `mempool_ledger`.
+If the journal dies, deposits remain `(projected, NULL)` and are eligible for
+later inclusion without being reinserted into `mempool_ledger`.
 
 ## Recovery
 
@@ -160,7 +152,7 @@ Expose and alert on:
 - oldest awaiting deposit age
 - oldest projected-without-header age
 - replay-prevention violations
-- journal abandonment
+- dead own-block journals
 - SQL/trie divergence
 
 ## Implementation and checks

@@ -38,7 +38,6 @@ import {
   makePhaseBCandidate,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { reconcileFollowerEvents } from "../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
 import {
   poisonedHeaderHold,
@@ -58,7 +57,7 @@ import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
 import { classifyOldestQueuedBlockReadiness } from "../src/transactions/state-queue/merge-readiness.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
+import { backfillMissingDaPayloadsFromAppliedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import {
   DRIVER_TEST_SLOT,
   testDriverRecompute,
@@ -66,6 +65,7 @@ import {
 } from "./helpers/driver-recompute.js";
 import {
   modelSlotTime,
+  reconcileOverDead,
   rewindFollowerKey,
   writeFollowerView,
 } from "./helpers/follower-view.js";
@@ -164,7 +164,7 @@ const arrangeDeposit = async (relands: boolean) => {
     testWrite(
       Effect.gen(function* () {
         const at: IngestionPlan = yield* plan;
-        yield* reconcileFollowerEvents(at, {
+        yield* reconcileOverDead(at, {
           network: "Preprod",
           slotToUnixTime: modelSlotTime,
           cutoffMs: modelSlotTime(DRIVER_TEST_SLOT),
@@ -343,7 +343,7 @@ describe("a landed own block whose deposit left the chain", () => {
       await run(
         globals,
         runAtFollowerView(
-          backfillMissingDaPayloadsFromFinalizedJournals({ limit: 100 }),
+          backfillMissingDaPayloadsFromAppliedJournals({ limit: 100 }),
         ),
       ),
     ).toMatchObject({ scanned: 0 });

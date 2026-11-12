@@ -6,11 +6,7 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 
-import {
-  MempoolDB,
-  MutationJobsDB,
-  TxAdmissionsDB,
-} from "../../database/index.js";
+import { MempoolDB, TxAdmissionsDB } from "../../database/index.js";
 import { l1NowUnixTimeMs } from "../../l1-heads.js";
 import { landedElements } from "../../l1-state-queue/index.js";
 import {
@@ -98,14 +94,12 @@ export const getStateQueueHandler = Effect.gen(function* () {
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
-    unfinishedMutationJobs,
   ] = yield* Effect.all(
     [
       Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
       Ref.get(globals.RESET_IN_PROGRESS),
       TxAdmissionsDB.countBacklog,
       MempoolDB.retrieveTxCount,
-      MutationJobsDB.countUnfinished,
     ],
     { concurrency: "unbounded" },
   );
@@ -119,7 +113,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
-    unfinishedMutationJobs,
   });
   const oldestQueuedBlock = sortedUTxOs.find((u) => u.datum.key !== "Empty");
   const oldestBlockReadiness =
@@ -166,7 +159,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
       ...mergeReadiness,
       durableAdmissionBacklog: durableAdmissionBacklog.toString(),
       mempoolTxCount: mempoolTxCount.toString(),
-      unfinishedMutationJobs: unfinishedMutationJobs.toString(),
       oldestBlock: oldestBlockReadiness,
     },
   });

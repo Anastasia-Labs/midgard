@@ -158,7 +158,7 @@ const journalMember = (sourceId, ordinal = 0) => ({
 const databaseState = ({
   headerHash = h56("3"),
   baseHeaderHash = h56("4"),
-  submittedTxHash = h64("5"),
+  intendedTxHash = h64("5"),
   transactionIds = [txOne],
   retainedIds = transactionIds,
   leaseToken = "lease-token",
@@ -180,8 +180,7 @@ const databaseState = ({
       eventToStep: [],
       ledgerDelta: { spent: [], produced: [] },
     },
-    submittedTxHash,
-    status: "submitted_unconfirmed",
+    intendedTxHash,
     baseTailHeaderHash: baseHeaderHash,
     baseTailOutRef: `${h64("6")}#0`,
     baseTailDatumCbor: "00",

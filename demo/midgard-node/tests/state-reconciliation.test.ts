@@ -201,11 +201,11 @@ describe("state reconciliation evaluator", () => {
           ...sql.journals,
           journal({
             headerHash: active,
-            status: "pending_submission",
+            status: "unlanded",
             baseTailHeaderHash: TIP,
             baseUtxosRoot: R1,
             expected: { utxos: h32("12"), ...ROOTS },
-            submittedTxHash: null,
+            intendedTxHash: null,
           }),
         ],
         activeHeaderHashes: [active],
@@ -305,7 +305,7 @@ describe("state reconciliation evaluator", () => {
         ...sql,
         journals: sql.journals.map((j) =>
           j.headerHash === REMOVED
-            ? { ...j, status: "submitted_unconfirmed" }
+            ? { ...j, status: "landed", deadCause: null }
             : j,
         ),
         activeHeaderHashes: [REMOVED],
@@ -320,10 +320,10 @@ describe("state reconciliation evaluator", () => {
     ).toContain("accepted");
   });
 
-  it("passes a signed-intent journal abandoned for a replacement whose header never landed", () => {
+  it("passes a signed-intent journal dead for a replacement whose header never landed", () => {
     // The replaced intent shares its base with the landed replacement (TIP),
-    // carries the replacement digest, and no landed removal names it:
-    // nothing on L1 ever held it.
+    // which took its slot, and no landed removal names it: nothing on L1
+    // ever held it.
     const report = evaluateStateReconciliation(
       input(({ sql }) => ({
         sql: {
@@ -332,9 +332,9 @@ describe("state reconciliation evaluator", () => {
             ...sql.journals,
             journal({
               headerHash: h28("3b"),
-              status: "abandoned",
-              correctionTransitionDigest: h32("3d"),
-              submittedTxHash: h32("3e"),
+              status: "unlanded",
+              deadCause: `block ${TIP} took the slot after its base ${CONFIRMED}`,
+              intendedTxHash: h32("3e"),
             }),
           ],
         },

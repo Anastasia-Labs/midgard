@@ -5,10 +5,10 @@
  * block's fold into `confirmed_ledger` is final; the rollback that takes the
  * block off the landed chain clears the mark, and the row is pending again.
  *
- * - Marked: this node's local finalization of its own block, and landed-block
- *   processing of any block (the processing insert, a reland, the rebase).
- * - Cleared: the rollback of a processed block, and the reopening of an own
- *   block's journal.
+ * - Marked: landed-block processing of any block, this node's own included
+ *   (the processing insert, a reland, the rebase).
+ * - Cleared: the rollback of a processed block, and the disposal of a dead
+ *   own journal (`landed-blocks/own-journals.ts`).
  * - Deleted (rows and deltas): once the block's fold is final, by the prune
  *   that releases it (`landed-blocks/final-folds.ts`), never at the fold
  *   itself, so an unfold has nothing to restore. Another operator's block's

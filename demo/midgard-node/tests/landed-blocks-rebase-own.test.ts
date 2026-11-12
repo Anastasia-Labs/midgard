@@ -3,23 +3,24 @@
  * follower-change driver's `rebaseIfDue`, with the modelled native MPF
  * owner of `landed-blocks-rebase.fixture.ts`) as a foreign block is:
  *
- * - before the rebase the processed row is unapplied, its journal pending,
- *   its transaction in neither `immutable` nor `blocks`, no DA payload
- *   stored and its withdrawal unassigned; the rebase moves the working
- *   ledger and the native root onto it, writes its transaction to
+ * - before the rebase the processed row is unapplied, its journal derives
+ *   landed, its transaction is in neither `immutable` nor `blocks`, no DA
+ *   payload is stored and its withdrawal is unassigned; the rebase moves the
+ *   working ledger and the native root onto it, writes its transaction to
  *   `immutable` and `blocks` once, its DA payload and that payload's
- *   publication outbox, and marks its journal locally applied, and
- *   applying it again writes nothing new;
+ *   publication outbox, and its journal derives applied; applying it again
+ *   writes nothing new;
  * - its withdrawal is `projected` to the block from that rebase, as a
  *   foreign block's is, so it is not yet payout-eligible and refuses a new
  *   classification, and `finalized` only once the block folds;
  * - a rebase that fails after the block's transaction is written leaves
  *   nothing of it, and its retry applies the block as one clean rebase;
- * - a block whose journal was abandoned before it landed is revived and
- *   applied by the same rebase;
+ * - applying it deletes the rejections recorded for its transaction while
+ *   its journal was dead, and every rejection traced only to deleted ones;
  * - a merge of it on L1 while the rebase is held defers its fold, and folds
  *   it once the rebase has applied it.
  */
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,6 +33,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
+  TxRejectionsDB,
   WithdrawalsDB,
 } from "../src/database/index.js";
 import { setSettlementInfoForEventIds } from "../src/database/withdrawals.set-settlement-info-for-event-ids.js";
@@ -117,16 +119,14 @@ const foldPorts = {
 /**
  * The processed own block `OWN` (the seeded block's place, spending E0 for
  * E1, withdrawing `WITHDRAWAL`) and its journal `own`, with the landed
- * row's fields `row`; `abandoned` abandons the journal before the block lands.
+ * row's fields `row`.
  */
 const landOwn = async (
   native: Native,
   {
-    abandoned = false,
     own = journal,
     row = {},
   }: {
-    readonly abandoned?: boolean;
     readonly own?: PendingBlockFinalizationsDB.PrepareInput;
     readonly row?: Partial<LandedBlockRow>;
   } = {},
@@ -161,7 +161,6 @@ const landOwn = async (
             l1_origin_outref = ${ADMISSION_ORIGIN}
           WHERE event_id = ${WITHDRAWAL_ID}`;
         yield* prepareUnderTestLease(own);
-        if (abandoned) yield* Journals.markUnsubmittedAbandoned(HEADER);
       }),
     ),
   );
@@ -169,14 +168,14 @@ const landOwn = async (
 };
 
 /**
- * The block's journal status, its transaction's `immutable` and `blocks`
+ * The block's derived status, its transaction's `immutable` and `blocks`
  * rows, DA payload and withdrawal as stored.
  */
 const shownOwn = (globals: Globals) =>
   run(
     globals,
     Effect.gen(function* () {
-      const journal = yield* Journals.retrieveByHeaderHash(HEADER);
+      const status = yield* Journals.retrieveStatusByHeaderHash(HEADER);
       const withdrawal = Option.getOrThrow(
         yield* WithdrawalsDB.retrieveByEventId(WITHDRAWAL_ID),
       );
@@ -192,10 +191,7 @@ const shownOwn = (globals: Globals) =>
           (SELECT COUNT(*)::int FROM da_payload_announcements
             WHERE header_hash = ${HEADER}) AS announcements`;
       return {
-        journal: Option.map(
-          journal,
-          (record) => record[Journals.Columns.STATUS],
-        ),
+        status,
         immutable: immutable.map((row) => row.tx.toString("hex")),
         blocks: blocks.map((row) => row.header_hash.toString("hex")),
         da: Option.isSome(yield* DaPayloadsDB.retrieveByHeaderHash(HEADER)),
@@ -213,7 +209,7 @@ const shownOwn = (globals: Globals) =>
 
 /** What one clean application of the block stores. */
 const appliedOwn = () => ({
-  journal: Option.some(Journals.Status.LocallyApplied),
+  status: Journals.OwnBlockStatus.Applied,
   immutable: [TX.cbor.toString("hex")],
   blocks: [OWN],
   da: true,
@@ -259,7 +255,7 @@ describe(
         (await run(globals, retrieveRows)).map((row) => row.applied),
       ).toEqual([false]);
       expect(await shownOwn(globals)).toEqual({
-        journal: Option.some(Journals.Status.PendingSubmission),
+        status: Journals.OwnBlockStatus.Landed,
         immutable: [],
         blocks: [],
         da: false,
@@ -352,20 +348,58 @@ describe(
       });
     });
 
-    it("revives a block whose journal was abandoned before it landed and applies it at the same rebase", async () => {
-      const native = freshNative();
-      const globals = await landOwn(native, { abandoned: true });
-      expect((await shownOwn(globals)).journal).toEqual(
-        Option.some(Journals.Status.Abandoned),
+    it("deletes the rejections of its transaction and those traced only to them when it applies the block, and keeps the rest", async () => {
+      const globals = await landOwn(freshNative());
+      const tx = (label: string) =>
+        createHash("sha256").update(`rebase-own:rejected:${label}`).digest();
+      const other = tx("other");
+      const dependent = tx("dependent");
+      const transitive = tx("transitive");
+      const mixed = tx("mixed");
+      const unrelated = tx("unrelated");
+      // Recorded while its journal was dead (an included transaction's
+      // rejection, and the rejections traced to it).
+      await run(
+        globals,
+        testWrite(
+          Effect.forEach(
+            [
+              [TX.id, []],
+              [other, []],
+              [dependent, [TX.id]],
+              [transitive, [dependent]],
+              [mixed, [TX.id, other]],
+              [unrelated, []],
+            ] as const,
+            ([txId, causes]) =>
+              Effect.zipRight(
+                TxRejectionsDB.insertMany([
+                  {
+                    [TxRejectionsDB.Columns.TX_ID]: txId,
+                    [TxRejectionsDB.Columns.REJECT_CODE]: "test",
+                    [TxRejectionsDB.Columns.REJECT_DETAIL]: null,
+                  },
+                ]),
+                TxRejectionsDB.insertCauses(
+                  causes.map((causeTxId) => ({ txId, causeTxId })),
+                ),
+              ),
+            { discard: true },
+          ),
+        ),
       );
       expectRebased(await attempt(globals));
-      expect(native.durableRoot).toBe(R1);
-      expect(await shownOwn(globals)).toMatchObject({
-        journal: Option.some(Journals.Status.LocallyApplied),
-        da: true,
-        outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
-        withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },
-      });
+      expect(await shownOwn(globals)).toEqual(appliedOwn());
+      const rejected = await run(
+        globals,
+        Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql<{ tx_id: Buffer }>`SELECT tx_id FROM tx_rejections`,
+        ),
+      );
+      expect(new Set(rejected.map((row) => row.tx_id.toString("hex")))).toEqual(
+        new Set([other, mixed, unrelated].map((id) => id.toString("hex"))),
+      );
     });
 
     it("defers the fold of a merge of it while the rebase is held, and folds it once the rebase applies it", async () => {

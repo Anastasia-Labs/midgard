@@ -41,6 +41,7 @@ import {
   preflightDecodeBlockTxs,
 } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { fetchFirstBlockTxs } from "../src/transactions/utils.js";
+import { insertOwnJournal } from "./helpers/landed-blocks-sim.own.js";
 import {
   AFTER_A,
   type Block,
@@ -79,7 +80,6 @@ const nativeTx = () => {
 const recordOf = (a: Block, journal: OwnJournal) =>
   ({
     [Journals.Columns.HEADER_HASH]: Buffer.from(a.hash, "hex"),
-    [Journals.Columns.STATUS]: Journals.Status.LocallyApplied,
     [Journals.Columns.BASE_TAIL_HEADER_HASH]: Buffer.from(
       journal.baseTailHeaderHash,
       "hex",
@@ -128,8 +128,19 @@ const setUp = async () => {
     unmerged,
     // The merge created the root at slot 7.
     mergedAt7: { ...merged, root: createdAt(merged.root!, 7) },
-    // What applying the block when it landed stored for it.
+    // Its journal, and what applying the block when it landed stored for
+    // it.
     commitBodies: Effect.gen(function* () {
+      yield* insertOwnJournal({
+        headerHash: a.hash,
+        baseHeaderHash: journal.baseTailHeaderHash,
+        baseUtxosRoot: journal.baseUtxosRoot,
+        expectedUtxosRoot: journal.expectedUtxosRoot,
+        spent: journal.spent,
+        produced: journal.produced,
+        txIds: journal.txIds,
+        at: new Date("2026-10-01T00:00:00.000Z"),
+      });
       yield* ImmutableDB.insertTxsValidatedNative([
         { tx_id: tx.txId, tx: tx.tx },
       ]);
@@ -164,6 +175,8 @@ describe("an own block's bodies live until its fold is final", () => {
           SDK.GENESIS_HEADER_HASH,
         );
         expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
+        // The rebase applies `a` again.
+        yield* markApplied([s.a.hash]);
 
         // The merge again reads the oldest block's bodies and decodes them.
         const read = yield* fetchFirstBlockTxs(s.unmerged.nodes[0]!.element);

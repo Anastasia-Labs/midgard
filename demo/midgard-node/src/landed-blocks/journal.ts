@@ -66,9 +66,13 @@ export const ownJournal = (headerHash: string) =>
     ),
   );
 
-/** The node's one active journal, if any. */
-export const activeJournal = Journals.retrieveActive().pipe(
-  Effect.map((record) =>
-    Option.isNone(record) ? undefined : ownJournalOf(record.value),
-  ),
-);
+/**
+ * The node's live journal over the dead set `dead`, if any: its newest
+ * unlanded journal that is not dead.
+ */
+export const liveJournal = (dead: PendingBlockFinalizationsDB.DeadHeaders) =>
+  Journals.retrieveLiveOver(dead).pipe(
+    Effect.map((record) =>
+      Option.isNone(record) ? undefined : ownJournalOf(record.value),
+    ),
+  );

@@ -121,7 +121,7 @@ export const commitSubmitFailureOutput = ({
         type: "FailureOutput",
         error: `Signed commit intent retained for canonical reconciliation: ${detail}`,
       } satisfies WorkerOutput;
-    yield* PendingBlockFinalizationsDB.markAbandoned(headerHash).pipe(
+    yield* PendingBlockFinalizationsDB.discardUnsignedJournal(headerHash).pipe(
       Effect.catchAll(() => Effect.void),
     );
     if (failure.kind === "stale_tail") {

@@ -268,7 +268,8 @@ export const SUBMIT_FAILURES: readonly {
   readonly liveTail?: unknown;
   readonly intentJournaled: boolean;
   readonly output: Readonly<Record<string, unknown>>;
-  readonly abandoned: boolean;
+  /** The commit path discards its unsigned journal. */
+  readonly discarded: boolean;
 }[] = [
   {
     name: "a pre-broadcast gate refusal",
@@ -286,7 +287,7 @@ export const SUBMIT_FAILURES: readonly {
         code: "COMMIT_ANCHOR_NOT_CANONICAL",
       }),
     },
-    abandoned: true,
+    discarded: true,
   },
   {
     name: "a signing failure",
@@ -300,7 +301,7 @@ export const SUBMIT_FAILURES: readonly {
       type: "SkippedSubmissionOutput",
       submitRefusal: expect.objectContaining({ code: "SIGNING_FAILED" }),
     },
-    abandoned: true,
+    discarded: true,
   },
   {
     name: "a stale tail",
@@ -310,10 +311,10 @@ export const SUBMIT_FAILURES: readonly {
     }),
     intentJournaled: false,
     output: { type: "NothingToCommitOutput" },
-    abandoned: true,
+    discarded: true,
   },
   {
-    // The tail-naming arm's only trigger: it is retained, never abandoned.
+    // The tail-naming arm's only trigger: it is retained, never discarded.
     name: "a retained intent the node refused naming the tail",
     submit: submitFailure(tailSpentRejection),
     intentJournaled: true,
@@ -323,7 +324,7 @@ export const SUBMIT_FAILURES: readonly {
         "Signed commit intent retained for canonical reconciliation",
       ),
     },
-    abandoned: false,
+    discarded: false,
   },
   {
     // Nothing was sent and nothing is registered: the next tick rebuilds it.
@@ -331,6 +332,6 @@ export const SUBMIT_FAILURES: readonly {
     submit: commitSubmitDeferError(preSubmitDefer, HEADER_HASH),
     intentJournaled: false,
     output: { type: "NothingToCommitOutput" },
-    abandoned: true,
+    discarded: true,
   },
 ];

@@ -63,7 +63,6 @@ export const PHASE3_FINAL_TREE_SUITES = Object.freeze(
         "exec",
         "vitest",
         "run",
-        "tests/canonical-journal-recovery.test.ts",
         "tests/commit-block-header-state-queue-tail.test.ts",
         "tests/commit-recovery-planner.test.ts",
         "tests/commit-worker-failure-lease-classification.test.ts",

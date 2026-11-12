@@ -7,7 +7,6 @@ export type ConsolidationReadinessSnapshot = {
   readonly reasons: readonly string[];
   readonly durableAdmissionBacklog: number;
   readonly mempoolTxCount: number;
-  readonly unfinishedLocalMutationJobs: number;
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly providerQueryHealthy: boolean;
   readonly leaseStatus: string;
@@ -48,7 +47,6 @@ export const parseConsolidationReadiness = (
       "reasons",
       "durableAdmissionBacklog",
       "mempoolTxCount",
-      "unfinishedLocalMutationJobs",
       "unresolvedBlockSubmissionAgeMs",
       "providerQueryHealthy",
       "stateQueueMutationLease",
@@ -121,10 +119,6 @@ export const parseConsolidationReadiness = (
       body.mempoolTxCount,
       "mempoolTxCount",
     ),
-    unfinishedLocalMutationJobs: requiredReadinessCount(
-      body.unfinishedLocalMutationJobs,
-      "unfinishedLocalMutationJobs",
-    ),
     unresolvedBlockSubmissionAgeMs: requiredReadinessCount(
       body.unresolvedBlockSubmissionAgeMs,
       "unresolvedBlockSubmissionAgeMs",
@@ -162,7 +156,6 @@ export const isFullConsolidationReadiness = (
   snapshot.reasons.length === 0 &&
   snapshot.durableAdmissionBacklog === 0 &&
   snapshot.mempoolTxCount === 0 &&
-  snapshot.unfinishedLocalMutationJobs === 0 &&
   snapshot.unresolvedBlockSubmissionAgeMs === 0 &&
   snapshot.providerQueryHealthy &&
   snapshot.leaseStatus === "idle" &&

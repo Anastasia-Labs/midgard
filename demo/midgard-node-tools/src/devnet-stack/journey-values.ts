@@ -79,7 +79,6 @@ export const drainResidue = (status: Json): string[] => {
   const queue = status.stateQueue as Json | undefined;
   const admission = status.durableAdmission as Json | undefined;
   const pending = status.pendingBlockFinalizations as Json | undefined;
-  const jobs = status.localMutationJobs as Json | undefined;
   const settlement = status.settlement as Json | undefined;
   const problems: string[] = [];
   const expect = (what: string, actual: unknown, ok: boolean) => {
@@ -114,11 +113,6 @@ export const drainResidue = (status: Json): string[] => {
     "pendingBlockFinalizations.oldestActive",
     pending?.oldestActive,
     pending?.oldestActive === null,
-  );
-  expect(
-    "localMutationJobs.unfinished",
-    jobs?.unfinished,
-    String(jobs?.unfinished) === "0",
   );
   if (String(settlement?.unfinishedJobs) !== "0")
     problems.push(

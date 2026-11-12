@@ -12,6 +12,7 @@ import {
   Globals,
   NodeConfig,
 } from "../src/services/index.js";
+import { header } from "./helpers/own-journal-fixture.js";
 import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
   DAY_MS,
@@ -21,7 +22,6 @@ import {
   leaseTokens,
   remainingLabels,
 } from "./history-retention-prune.fixtures.js";
-import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /** A manifest window other than the compiled profile's 15 days, so a sweep
@@ -119,7 +119,7 @@ const seed = Effect.gen(function* () {
   yield* journals(
     JOURNALS.map((label, index) => ({
       label,
-      status: "locally_applied" as const,
+      status: "folded" as const,
       endedAgoMs: (40 - index) * DAY_MS,
     })),
   );

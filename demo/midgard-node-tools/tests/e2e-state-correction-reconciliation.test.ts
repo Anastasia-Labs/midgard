@@ -262,7 +262,7 @@ const makeFixture = async ({
     },
   ];
   const stateQueue = { depth: 0, fraudulentHeaderHashes: [] };
-  const jobs = { unfinishedMutationJobs: 0, pendingFinalizations: 0 };
+  const jobs = { pendingFinalizations: 0 };
   const watcher = {
     readiness: "ready",
     verification: "resumed_after_reconciliation",
@@ -427,7 +427,6 @@ const makeFixture = async ({
     ],
     finalState: {
       stateQueueDepth: 0,
-      unfinishedMutationJobs: 0,
       pendingFinalizations: 0,
       watcherReady: true,
       watcherVerificationResumed: true,
@@ -586,7 +585,6 @@ const makeFixture = async ({
         rejectAtIndependentAuthority ||
         observed.manifestId !== manifestId ||
         observed.stateQueueDepth !== 0 ||
-        observed.unfinishedMutationJobs !== 0 ||
         observed.pendingFinalizations !== 0
       ) {
         throw new Error("independent live authority rejected final state");

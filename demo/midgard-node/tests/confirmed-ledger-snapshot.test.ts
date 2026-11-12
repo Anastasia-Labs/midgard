@@ -81,7 +81,6 @@ const record = ({
   [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]: "de".repeat(32),
   [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
     "midgard-consensus-v1",
-  [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: Buffer.alloc(32, 2),
   [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",
   [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]: "snapshot",
   [PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF]:
@@ -129,9 +128,6 @@ const record = ({
         item[PendingBlockFinalizationsDB.UtxoColumns.OUTPUT].toString("hex"),
     }),
   ),
-  [PendingBlockFinalizationsDB.Columns.STATUS]:
-    PendingBlockFinalizationsDB.Status.LocallyApplied,
-  [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
   [PendingBlockFinalizationsDB.Columns.CREATED_AT]: BLOCK_START,
   [PendingBlockFinalizationsDB.Columns.UPDATED_AT]: BLOCK_END,
   depositEventIds: [],

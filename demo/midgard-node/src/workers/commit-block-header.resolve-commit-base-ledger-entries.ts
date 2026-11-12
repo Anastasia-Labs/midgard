@@ -1,9 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
-import { ConfirmedLedgerDB } from "../database/index.js";
+import {
+  ConfirmedLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { activeJournal } from "../landed-blocks/journal.js";
 import {
   landedLedger,
   ledgerAt,
@@ -51,11 +53,14 @@ export const resolveCommitBaseLedgerEntries = ({
     // is not one either while it is in flight: the next block waits for it
     // to land and be applied. This holds when it leaves the root unchanged,
     // too, where the tail checks below would pass.
-    const inFlight = yield* activeJournal;
-    if (inFlight !== undefined)
+    const inFlight = yield* PendingBlockFinalizationsDB.retrieveLive();
+    if (Option.isSome(inFlight))
       return yield* Effect.fail(
         new ForeignBlockVerificationError({
-          foreignHeaderHash: inFlight.headerHash,
+          foreignHeaderHash:
+            inFlight.value[
+              PendingBlockFinalizationsDB.Columns.HEADER_HASH
+            ].toString("hex"),
           reason: "missing",
           detail: LANDED_COMMIT_BASE_PENDING,
         }),

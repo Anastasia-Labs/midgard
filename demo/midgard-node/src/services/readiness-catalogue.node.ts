@@ -62,7 +62,6 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   // The `/readyz` handler (`commands/http/readiness*.ts`).
   reason("durable_admission_oldest_age_exceeded", COUNT, COUNT),
   reason("admission_writer_stalled", COUNT, COUNT),
-  reason("unfinished_local_mutation_jobs", COUNT),
   reason("da_publication_conflict", COUNT),
   reason("provider_query_unhealthy", oneOf("l1-provider")),
   detail("provider_query_degraded", oneOf("l1-provider"), COUNT),

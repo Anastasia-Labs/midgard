@@ -1,5 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+import { PendingBlockFinalizationsDB } from "midgard-node/database/index";
 import type { Database } from "midgard-node/services/database";
 
 import {
@@ -10,9 +11,9 @@ import {
 /**
  * The node's counts the finalizer gates on. Each is a fact this node holds
  * whichever operator committed the run's blocks:
- * - An abandoned journal (this node's block lost its slot, its txs went back
+ * - A dead journal (this node's block can no longer land, its txs went back
  *   to the mempool) can never finish, so it is neither unfinished nor
- *   tx-bearing.
+ *   tx-bearing. A finalized journal is applied or folded.
  * - `committed_l2_txs` is every tx this node's own blocks hold (`immutable`)
  *   or a landed block, own or another operator's, marked included. Once the
  *   block's fold is final the marked row is deleted and another operator's
@@ -27,6 +28,15 @@ export const collectDbCounts = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+      yield* PendingBlockFinalizationsDB.deadJournals,
+    );
+    const finalized = PendingBlockFinalizationsDB.appliedOrFolded(sql, "f");
+    const notDead = sql`NOT ${PendingBlockFinalizationsDB.deadHeader(
+      sql,
+      "f.header_hash",
+      dead,
+    )}`;
     const rows = yield* sql<CountRow>`
       SELECT 'deposits_consumed' AS label, COUNT(*) AS count
         FROM deposits_utxos WHERE status = 'consumed'
@@ -35,21 +45,21 @@ export const collectDbCounts = (): Effect.Effect<
         FROM tx_admissions WHERE status = 'accepted'
       UNION ALL
       SELECT 'pending_finalizations_finalized' AS label, COUNT(*) AS count
-        FROM pending_block_finalizations WHERE status = 'locally_applied'
+        FROM pending_block_finalizations f WHERE ${finalized}
       UNION ALL
       SELECT 'pending_finalization_tx_headers' AS label, COUNT(DISTINCT f.header_hash) AS count
         FROM pending_block_finalizations f
         JOIN pending_block_finalization_txs t USING (header_hash)
-        WHERE f.status <> 'abandoned'
+        WHERE ${notDead}
       UNION ALL
       SELECT 'pending_finalizations_finalized_tx_headers' AS label, COUNT(DISTINCT f.header_hash) AS count
         FROM pending_block_finalizations f
         JOIN pending_block_finalization_txs t USING (header_hash)
-        WHERE f.status = 'locally_applied'
+        WHERE ${finalized}
       UNION ALL
       SELECT 'pending_finalizations_unfinished' AS label, COUNT(*) AS count
-        FROM pending_block_finalizations
-        WHERE status NOT IN ('locally_applied', 'abandoned')
+        FROM pending_block_finalizations f
+        WHERE NOT ${finalized} AND ${notDead}
       UNION ALL
       SELECT 'mempool' AS label, COUNT(*) AS count FROM mempool
         WHERE included_by IS NULL
@@ -69,9 +79,6 @@ export const collectDbCounts = (): Effect.Effect<
       ) committed
       UNION ALL
       SELECT 'confirmed_ledger' AS label, COUNT(*) AS count FROM confirmed_ledger
-      UNION ALL
-      SELECT 'local_mutation_jobs_unfinished' AS label, COUNT(*) AS count
-        FROM local_mutation_jobs WHERE status <> 'completed'
       UNION ALL
       SELECT 'da_payloads' AS label, COUNT(*) AS count FROM da_payloads
     `;

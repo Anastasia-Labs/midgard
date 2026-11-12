@@ -35,11 +35,11 @@ import {
 import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
-import { simHeader } from "./helpers/state-queue-sim.fixtures.js";
 import {
   header as journalHeader,
   journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+} from "./helpers/own-journal-fixture.js";
+import { simHeader } from "./helpers/state-queue-sim.fixtures.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -259,8 +259,8 @@ describe("commit base on a foreign queue tail", { concurrent: false }, () => {
     );
     expectPending(await resolve(tail, r1), inFlight.toString("hex"));
 
-    // The journal disposed of, the same tail is a base.
-    await run(PendingBlockFinalizationsDB.markUnsubmittedAbandoned(inFlight));
+    // The unsigned journal discarded, the same tail is a base.
+    await run(PendingBlockFinalizationsDB.discardUnsignedJournal(inFlight));
     const outcome = await resolve(tail, r1);
     expect(Either.isRight(outcome)).toBe(true);
     expect(Either.getOrThrow(outcome).source).toBe(`landed:${headerHash}`);

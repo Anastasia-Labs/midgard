@@ -32,9 +32,10 @@
  *   node's marks must equal it.
  * - The node commits its own blocks on the processed tip
  *   (`landed-blocks-sim.node.ts`): the traffic's own candidate on it, which
- *   lands later (or never), or a fresh block that never lands. It abandons
- *   a journal whose base left the tip and revives one whose block lands
- *   anyway; a candidate that lands with no journal is a foreign block.
+ *   lands later (or never), or a fresh block that never lands. A journal
+ *   whose base left the tip is dead, and one whose block lands anyway is
+ *   applied like any other (both derived, never written); a candidate that
+ *   lands with no journal is a foreign block.
  * - A merge a rollback undid is unfolded (N5): the frontier rewinds by
  *   header identity to the root's lineage, also where another fork's header
  *   carries the same ledger, and `confirmed_ledger_behind` never holds. The
@@ -92,7 +93,10 @@ import {
   type Settled,
   simSettler,
 } from "./landed-blocks-sim.settle.js";
-import { compareTerminals } from "./landed-blocks-sim.terminals.js";
+import {
+  compareTerminals,
+  storedTerminals,
+} from "./landed-blocks-sim.terminals.js";
 import { landedBlocksTraffic } from "./landed-blocks-sim.traffic.js";
 import { H_MAX, hasDeposit } from "./landed-blocks-sim.universe.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
@@ -267,12 +271,13 @@ export const landedBlocksSimProjection = (
       .sort();
     if (JSON.stringify(rowSummary) !== JSON.stringify(expectedRows))
       return `rows ${JSON.stringify(rowSummary)} vs model ${JSON.stringify(expectedRows)}`;
+    const liveHeader = await node.liveHeader();
+    if (liveHeader !== undefined && model.rows.includes(liveHeader))
+      return `live own block ${liveHeader} is processed`;
     const live =
-      book.active !== undefined && !model.rows.includes(book.active)
-        ? book.blocks.get(book.active)!
-        : undefined;
+      liveHeader === undefined ? undefined : book.blocks.get(liveHeader)!;
     if (live !== undefined && live.parentHash !== model.tip)
-      return `active own block ${live.headerHash} is built on ${live.parentHash}, the processed tip is ${model.tip}`;
+      return `live own block ${live.headerHash} is built on ${live.parentHash}, the processed tip is ${model.tip}`;
     const top = live?.headerHash ?? model.tip;
     const topInfo = env.registry.get(top)!;
     const record = recordAt(model, new Set(folds.keys()));
@@ -283,6 +288,22 @@ export const landedBlocksSimProjection = (
     );
     const difference = await compareState(model, top, rebuild.ledger, record);
     if (difference !== null) return difference;
+    const lineage = rooted.slice(0, rooted.indexOf(model.frontier) + 1);
+    const held = new Set([model.frontier, ...folds.keys()]);
+    const own = await node.ownDifference(
+      {
+        folded: held,
+        pruned: new Set(lineage.filter((header) => !held.has(header))),
+        mergedInStore: new Set(
+          (await storedTerminals(store))
+            .filter((row) => row.includes(":merged:"))
+            .map((row) => row.split(":")[0]!),
+        ),
+      },
+      new Set(model.rows),
+      liveHeader,
+    );
+    if (own !== null) return own;
     // Case counters (the node agreed with the model).
     const merged = new Set(rooted);
     if (
@@ -336,20 +357,25 @@ export const landedBlocksSimProjection = (
     const tipInfo = env.registry.get(model.tip)!;
     const candidate =
       stop === undefined &&
-      book.active === undefined &&
+      live === undefined &&
       model.tip === (queue.nodes.at(-1) ?? queue.root)
         ? await node.candidateOn(model.tip)
         : undefined;
     if (
       candidate !== undefined ||
       (stop === undefined &&
-        book.active === undefined &&
+        live === undefined &&
         model.tip === (queue.nodes.at(-1) ?? queue.root) &&
         stats.checks % 5 === 1 &&
         tipInfo.h + 1 <= H_MAX &&
         !hasDeposit(tipInfo.h + 1))
     ) {
-      const block = await node.commit(model.tip, candidate, pending());
+      const block = await node.commit(
+        model.tip,
+        candidate,
+        pending(),
+        new Set([...rooted, ...queue.nodes]),
+      );
       if (typeof block === "string") return block;
       const info = env.registry.get(block.headerHash)!;
       const after = settleMempool(
@@ -415,7 +441,6 @@ export const landedBlocksSimProjection = (
       queue,
     );
     if ("error" in settled) return settled.error;
-    await node.followApplied();
     if (queue !== undefined) {
       const failed = await compare(
         store,

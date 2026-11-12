@@ -65,36 +65,43 @@ const queueNode = (queue: LandedStateQueue, headerHash: string) =>
 export const INTENT_COMMIT_ANCHOR_NOT_DEEP = "intent_commit_anchor_not_deep";
 
 /**
- * Whether the commit's anchor allows it at this view (plan §8.1): every
- * included event's block is below the anchor (`database/commit-anchor.ts`).
- *
- * - `false` when the journal has no anchor, or its anchor is no longer on
- *   the follower's chain;
- * - an `IntentPredicateWait` (`INTENT_COMMIT_ANCHOR_NOT_DEEP`) while the
- *   view is fewer than d blocks above the anchor;
- * - `true` otherwise.
+ * The height of the commit's anchor (plan §8.1), every included event's
+ * block being below it (`database/commit-anchor.ts`), or undefined when it
+ * has no journal, its journal no anchor, or the anchor is no longer on the
+ * follower's chain. A journal whose anchor left the chain is dead
+ * (`deadJournals`); its commit is never wanted again.
  */
-const commitAnchorSettled = async (
+const canonicalAnchorHeight = async (
   read: Read,
   headerHash: Buffer,
-): Promise<boolean> => {
-  const { tx, view, deps } = read;
-  const rows = await tx.query(
+): Promise<number | undefined> => {
+  const rows = await read.tx.query(
     `SELECT p.commit_anchor_height AS height,
         ${commitAnchorCanonicalText("p")} AS canonical
       FROM pending_block_finalizations p WHERE p.header_hash = ?`,
     [headerHash],
   );
   const row = rows[0];
-  if (row === undefined || row.height == null || row.canonical !== true)
-    return false;
-  const anchorHeight = Number(row.height);
+  return row === undefined || row.height == null || row.canonical !== true
+    ? undefined
+    : Number(row.height);
+};
+
+/**
+ * Throws `IntentPredicateWait` (`INTENT_COMMIT_ANCHOR_NOT_DEEP`) while the
+ * view is fewer than d blocks above the commit's canonical anchor.
+ */
+const awaitAnchorDepth = (
+  read: Read,
+  headerHash: Buffer,
+  anchorHeight: number,
+) => {
+  const { view, deps } = read;
   if (view.height < anchorHeight + deps.commitEventDepth)
     throw new IntentPredicateWait(
       INTENT_COMMIT_ANCHOR_NOT_DEEP,
       `commit ${headerHash.toString("hex")}: the view at height ${view.height.toString()} is fewer than ${deps.commitEventDepth.toString()} blocks above its anchor at height ${anchorHeight.toString()}`,
     );
-  return true;
 };
 
 /**
@@ -147,17 +154,18 @@ const commit = async (read: Read): Promise<boolean> => {
   const tail = keyRest(read.state, "commit:tail=");
   const header = read.state.intent.contentRef;
   if (header === null) throw new Error("a commit intent names no header");
-  const journal = await read.tx.query(
-    "SELECT status FROM pending_block_finalizations WHERE header_hash = ?",
-    [header],
-  );
-  if (journal.length === 0 || journal[0]!.status === "abandoned") return false;
+  // A journal dies once its anchor goes, its base leaves the landed chain
+  // or its slot is taken (`deadJournals`): the anchor is read first, the
+  // tail check below reads the others at this view.
+  const anchorHeight = await canonicalAnchorHeight(read, header);
+  if (anchorHeight === undefined) return false;
   const queue = await read.queue();
   if (landedTail(queue)?.outRef !== tail || !spends(read.state, tail))
     return false;
   if (!headAllowsAppend(read, queue)) return false;
   if (!schedulerOurs(read, await read.operators())) return false;
-  return commitAnchorSettled(read, header);
+  awaitAnchorDepth(read, header, anchorHeight);
+  return true;
 };
 
 const merge = async (read: Read): Promise<boolean> => {

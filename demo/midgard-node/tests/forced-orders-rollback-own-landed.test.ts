@@ -20,7 +20,6 @@ import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { ownLandedForcedOrphanDetail } from "../src/commands/http/readiness-inputs.js";
-import { countOrphansAwaitingRecovery } from "../src/database/follower-orphan-repair.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { refuseCommitForOrphanedOwnBlockEvent } from "../src/fibers/block-commitment.own-block-event-orphaned.js";
 import {
@@ -30,6 +29,7 @@ import {
 import { readOwnLandedForcedOrphans } from "../src/forced-orders/own-landed-orphans.js";
 import { insertRow, setState } from "../src/landed-blocks/store.js";
 import { Globals } from "../src/services/globals.globals.js";
+import { orphansAwaitingRecovery } from "./helpers/follower-view.js";
 import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
 import {
   honest,
@@ -120,7 +120,7 @@ const reported = () =>
           ownLanded,
           detail: ownLandedForcedOrphanDetail(ownLanded.length),
           commitRefused: yield* refuseCommitForOrphanedOwnBlockEvent,
-          awaitingRecovery: yield* countOrphansAwaitingRecovery,
+          awaitingRecovery: yield* orphansAwaitingRecovery,
         };
       }),
     ).pipe(Effect.provide(Globals.Default)),

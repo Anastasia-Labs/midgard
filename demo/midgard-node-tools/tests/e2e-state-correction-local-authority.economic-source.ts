@@ -120,7 +120,6 @@ const economicSource = ({
       },
       economicsPolicy,
       observeDatabase: async () => ({
-        unfinishedMutationJobs: 0,
         pendingFinalizations: 0,
       }),
       fetchImpl,

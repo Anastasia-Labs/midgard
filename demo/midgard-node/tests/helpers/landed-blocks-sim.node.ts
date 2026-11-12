@@ -1,18 +1,21 @@
 /**
  * What the simulated node does around landed-block processing (N3, I3): it
  * admits pending transactions and commits its own block on the processed
- * tip (the journal, then the working-ledger move onto it). The rebase that
- * takes a landed own block in applies it and marks its journal locally
- * applied, and disposes of and revives journals; the node keeps its book in
- * step with that, and stands in for S6 deriving an active commit dead when
- * its base left without a rebase.
+ * tip (the journal, then the working-ledger move onto it). The rebase takes
+ * a landed own block in, dead or not, and disposes of the dead journals;
+ * the node keeps its model of the mempool in step with that. Nothing writes
+ * a journal after its commit: its status and its death are derived.
  */
+import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { MempoolTxDeltasDB } from "../../src/database/index.js";
 import {
-  disposeJournals,
+  MempoolTxDeltasDB,
+  PendingBlockFinalizationsDB,
+} from "../../src/database/index.js";
+import {
   type OwnJournalDisposition,
+  ownJournalDisposition,
 } from "../../src/landed-blocks/own-journals.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import { rebaseTargetOf } from "../../src/landed-blocks/rebase-target.js";
@@ -27,14 +30,10 @@ import {
   restoreDisposedMembers,
   type SimPendingTx,
 } from "./landed-blocks-sim.mempool.js";
-import {
-  insertOwnJournal,
-  JournalStatus,
-  journalStatuses,
-  ownBlockOn,
-} from "./landed-blocks-sim.own.js";
+import { insertOwnJournal, ownBlockOn } from "./landed-blocks-sim.own.js";
 import type { LandedSimEnv } from "./landed-blocks-sim.ports.js";
 import { simDigest, simOutput } from "./landed-blocks-sim.universe.js";
+import { ownBlockStatuses } from "./own-block-facts.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
@@ -44,17 +43,43 @@ type Run = <A, E>(
 
 export const simNode = (env: LandedSimEnv, run: Run) => {
   const { stats, mempool, book } = env;
-  // Journals seen locally applied, by header (hex).
+  // Journals seen applied (or folded), seen unlanded again after that, and
+  // seen dead, by header.
   const applied = new Set<string>();
+  const rolledBack = new Set<string>();
+  const dead = new Set<string>();
+  // Each journal row as its commit wrote it, by header.
+  const written = new Map<string, string>();
+
+  /** Every journal row, column by column, by header. */
+  const journalRows = async () =>
+    new Map(
+      (
+        await run(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) =>
+              sql<
+                Record<string, unknown>
+              >`SELECT * FROM pending_block_finalizations`,
+          ),
+        )
+      ).map((row) => [
+        hex(row.header_hash as Buffer),
+        JSON.stringify(row, (_, value: unknown) =>
+          typeof value === "bigint" ? value.toString() : value,
+        ),
+      ]),
+    );
 
   /**
-   * A rebase that revives own blocks deletes their members' rejections. A
-   * disposal restores such a member's row from its journal bytes, which the
-   * node decodes once the rejection deleted its delta; the simulator's
-   * filler bytes do not decode, so it puts the delta back for them.
+   * Applying an own block deletes its members' rejections. A disposal
+   * restores such a member's row from its journal bytes, which the node
+   * decodes once the rejection deleted its delta; the simulator's filler
+   * bytes do not decode, so it puts the delta back for them.
    */
-  const reviveRejections = async (revived: readonly string[]) => {
-    const unrejected = revived.flatMap((header) =>
+  const unrejectMembers = async (headers: readonly string[]) => {
+    const unrejected = headers.flatMap((header) =>
       clearRevivedRejections(mempool, book.blocks.get(header)!.txIds.map(hex)),
     );
     stats.revivalUnrejected += unrejected.length;
@@ -71,19 +96,72 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       );
   };
 
-  /** A disposed own block's members are pending again. */
-  const restoreMembers = (header: string) => {
-    const block = book.blocks.get(header)!;
-    stats.unrejectedRestored += restoreDisposedMembers(
-      mempool,
-      block.txIds.map(hex),
-      block.at,
-    );
+  /**
+   * The journals the rebase applied: each one's members' rejections are
+   * gone. One seen dead before was taken in after all.
+   */
+  const followApplied = async () => {
+    const newly: string[] = [];
+    for (const [header, status] of await run(ownBlockStatuses)) {
+      if (
+        status !== PendingBlockFinalizationsDB.OwnBlockStatus.Applied &&
+        status !== PendingBlockFinalizationsDB.OwnBlockStatus.Folded
+      ) {
+        if (
+          applied.delete(header) &&
+          status === PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded
+        ) {
+          rolledBack.add(header);
+          stats.ownRolledBack += 1;
+        }
+        continue;
+      }
+      if (applied.has(header)) continue;
+      applied.add(header);
+      newly.push(header);
+      stats.ownApplied += 1;
+      if (dead.delete(header)) stats.ownRevivals += 1;
+      if (rolledBack.delete(header)) stats.ownRelanded += 1;
+    }
+    await unrejectMembers(newly);
+  };
+
+  /**
+   * The book after a rebase over `journals`: a disposed journal's members
+   * are pending again, and a journal newly dead is resolved. One dead before
+   * and not now landed after all, or its block can land again.
+   */
+  const followRebase = async (
+    journals: OwnJournalDisposition,
+    canonical: ReadonlySet<string>,
+  ) => {
+    for (const disposal of journals.dispose) {
+      const block = book.blocks.get(disposal.headerHash)!;
+      stats.unrejectedRestored += restoreDisposedMembers(
+        mempool,
+        block.txIds.map(hex),
+        block.at,
+      );
+    }
+    await followApplied();
+    const now = new Set(journals.dead.map(hex));
+    for (const header of dead) if (!now.has(header)) dead.delete(header);
+    for (const header of now) {
+      if (dead.has(header)) continue;
+      dead.add(header);
+      stats.ownResolutions += 1;
+      if (!canonical.has(book.blocks.get(header)!.parentHash))
+        stats.ownOnRemovedBase += 1;
+    }
   };
 
   /** Moves the working ledger and native MPF onto the processed chain (and live own block). */
-  const rebaseOnto = async () => {
-    const plan = await run(Effect.flatMap(retrieveRows, rebaseTargetOf));
+  const rebaseOnto = async (canonical: ReadonlySet<string>) => {
+    const plan = await run(
+      Effect.flatMap(ownJournalDisposition, (journals) =>
+        Effect.flatMap(retrieveRows, (rows) => rebaseTargetOf(rows, journals)),
+      ),
+    );
     if (plan.kind !== "ready") return `no rebase target: ${plan.detail}`;
     await run(
       moveNativeRoot(env.owner.current, plan.target, {
@@ -91,70 +169,63 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       }),
     );
     await run(withFollowerWrite(rebaseSql(plan.target)));
-    for (const disposal of plan.target.journals.dispose)
-      restoreMembers(disposal.headerHash);
-    await reviveRejections(plan.target.journals.revive);
+    await followRebase(plan.target.journals, canonical);
     if (plan.target.live !== undefined) stats.liveRebases += 1;
     return plan.target;
   };
 
-  const resolved = (header: string, canonical: ReadonlySet<string>) => {
-    book.active = undefined;
-    stats.ownResolutions += 1;
-    if (!canonical.has(book.blocks.get(header)!.parentHash))
-      stats.ownOnRemovedBase += 1;
-  };
-
   /**
-   * S6 derived the active commit dead (its base left the processed tip
-   * without a rebase): the node disposes of its journal.
+   * The journals' derived statuses equal a fresh derivation from the model
+   * at a settled check: folded at the frontier or a retained fold
+   * (`folded`), applied when processed past it (`processed`), unlanded
+   * otherwise. A fold the prune deleted (`pruned`) derives folded from its
+   * merged queue terminal; the sim's follower store is not the node
+   * database, so that terminal is read in the store (`mergedInStore`). No
+   * journal row changed since its commit wrote it, and the live journal
+   * (the one the commit path signs and submits) is not dead.
    */
-  const abandonActive = async (canonical: ReadonlySet<string>) => {
-    const active = book.active!;
-    await run(
-      withFollowerWrite(
-        disposeJournals([
-          {
-            headerHash: active,
-            cause: "its signed commit is dead",
-            active: true,
-          },
-        ]),
-      ),
-    );
-    restoreMembers(active);
-    resolved(active, canonical);
-  };
-
-  /** The book after a rebase that disposed of and revived `journals`. */
-  const followDisposition = async (
-    journals: OwnJournalDisposition,
-    canonical: ReadonlySet<string>,
+  const ownDifference = async (
+    folds: Readonly<{
+      folded: ReadonlySet<string>;
+      pruned: ReadonlySet<string>;
+      mergedInStore: ReadonlySet<string>;
+    }>,
+    processed: ReadonlySet<string>,
+    live: string | undefined,
   ) => {
-    for (const disposal of journals.dispose) {
-      restoreMembers(disposal.headerHash);
-      if (disposal.headerHash === book.active)
-        resolved(disposal.headerHash, canonical);
+    const S = PendingBlockFinalizationsDB.OwnBlockStatus;
+    const statuses = await run(ownBlockStatuses);
+    const rows = await journalRows();
+    const { folded, pruned, mergedInStore } = folds;
+    for (const header of book.blocks.keys()) {
+      if (pruned.has(header)) {
+        if (!mergedInStore.has(header))
+          return `own block ${header}'s fold was pruned with no merged queue terminal`;
+        stats.ownPrunedFolds += 1;
+      } else {
+        const expected = folded.has(header)
+          ? S.Folded
+          : processed.has(header)
+            ? S.Applied
+            : S.Unlanded;
+        if (statuses.get(header) !== expected)
+          return `own block ${header} is ${statuses.get(header)}, the model's ${expected}`;
+      }
+      if (rows.get(header) !== written.get(header))
+        return `own block ${header}'s journal row changed after its commit`;
     }
-    stats.ownRevivals += journals.revive.length;
-    await reviveRejections(journals.revive);
+    if (live !== undefined && dead.has(live))
+      return `dead own block ${live} is live`;
+    stats.ownStatusChecks += 1;
+    return null;
   };
 
-  /**
-   * The rebase applied a landed own block: its journal is locally applied,
-   * and an active one is no longer in flight.
-   */
-  const followApplied = async () => {
-    for (const [header, status] of await run(journalStatuses)) {
-      if (status !== JournalStatus.LocallyApplied) {
-        applied.delete(header);
-        continue;
-      }
-      if (applied.has(header)) continue;
-      applied.add(header);
-      stats.ownApplied += 1;
-      if (book.active === header) book.active = undefined;
-    }
+  /** The live own block's header (hex), if any. */
+  const liveHeader = async () => {
+    const live = await run(PendingBlockFinalizationsDB.retrieveLive());
+    return live._tag === "Some"
+      ? hex(live.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH])
+      : undefined;
   };
 
   /**
@@ -236,6 +307,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     tip: string,
     candidate: string | undefined,
     pending: readonly SimPendingTx[],
+    canonical: ReadonlySet<string>,
   ) => {
     const { block, info, journal } = ownBlockOn(
       env.universe,
@@ -246,11 +318,11 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       candidate,
     );
     await run(insertOwnJournal(journal));
+    written.set(block.headerHash, (await journalRows()).get(block.headerHash)!);
     env.registry.set(block.headerHash, info);
     book.blocks.set(block.headerHash, block);
-    book.active = block.headerHash;
     stats.ownCommits += 1;
-    const target = await rebaseOnto();
+    const target = await rebaseOnto(canonical);
     if (typeof target === "string") return target;
     if (target.live?.headerHash !== block.headerHash)
       return `the commit's rebase target holds live block ${target.live?.headerHash ?? "none"}, not ${block.headerHash}`;
@@ -258,10 +330,9 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   };
 
   return {
-    rebaseOnto,
-    abandonActive,
-    followDisposition,
-    followApplied,
+    followRebase,
+    ownDifference,
+    liveHeader,
     admit,
     candidateOn,
     commit,

@@ -2,18 +2,19 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { pruneFoldedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
+import { header } from "./helpers/own-journal-fixture.js";
 import {
   DAY_MS,
   DEPLOYMENT,
   journals,
   remainingLabels,
   run,
+  setJournalStatus,
 } from "./history-retention-prune.fixtures.js";
-import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
 
 const prune = () =>
-  pruneFinalizedBeyondChallengeability({
+  pruneFoldedBeyondChallengeability({
     challengeableCutoff: new Date(Date.now() - 15 * DAY_MS),
     view: {
       confirmedHeadHash: header("foreign-head"),
@@ -30,7 +31,7 @@ const seed = (labels: readonly string[]) =>
     yield* journals(
       labels.map((label, index) => ({
         label,
-        status: "locally_applied" as const,
+        status: "folded" as const,
         endedAgoMs: (40 - index) * DAY_MS,
       })),
     );
@@ -40,7 +41,7 @@ const seed = (labels: readonly string[]) =>
   });
 
 describe("journal retention dependencies", () => {
-  it.each(["pending_submission", "abandoned"])(
+  it.each(["unlanded", "landed"] as const)(
     "keeps the base, alternate-incarnation sibling and descendants needed by a %s journal",
     async (status) => {
       const labels = [
@@ -59,8 +60,7 @@ describe("journal retention dependencies", () => {
           yield* sql`UPDATE pending_block_finalizations SET
           base_tail_header_hash = ${header("base")}, base_tail_out_ref = 'base#0'
           WHERE header_hash = ${header("unfinished")}`;
-          yield* sql`UPDATE pending_block_finalizations SET status = ${status}
-          WHERE header_hash = ${header("unfinished")}`;
+          yield* setJournalStatus(header("unfinished"), status);
           // Same non-root header/root, a different node incarnation/outref.
           yield* sql`UPDATE pending_block_finalizations SET
           base_tail_header_hash = ${header("base")}, base_tail_out_ref = 'base#1'

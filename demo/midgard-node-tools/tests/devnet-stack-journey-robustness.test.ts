@@ -216,7 +216,6 @@ describe("journey drain and payout name the settlement worker's state", () => {
       unconfirmedSubmittedBlockTxHash: null,
     },
     pendingBlockFinalizations: { oldestActive: null },
-    localMutationJobs: { unfinished: "0" },
     settlement: { unfinishedJobs: "0", failingJobs: [] },
   };
   const unpayable =

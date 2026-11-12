@@ -14,11 +14,9 @@ import "./forcedTransactions.exact-forced-transaction-journal-member.js";
 import "./forcedTransactions.encode-forced-inclusion-value-v1.js";
 import "./forcedTransactions.mark-finalized-by-event-ids.js";
 export {
-  clearProjectedHeaderAssignmentByEventIds,
   encodeForcedInclusionValueV1,
   insertEntries,
   markAwaitingAsProjected,
-  markProjectedByEventIds,
   retrieveAllEntries,
   retrieveByProjectedHeaderHash,
   retrieveByTxOrderId,

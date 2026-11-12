@@ -153,7 +153,7 @@ export const attempt = async (globals: Globals) => {
     held: hold?.reason,
     failure: hold?.detail,
     reasons: await Effect.runPromise(currentLivenessReasons(globals)),
-    due: (await run(globals, rebasePlan)).kind,
+    due: (await run(globals, rebasePlan())).kind,
     applied: (await run(globals, retrieveRows)).map((row) => row.applied),
     working: (
       await run(

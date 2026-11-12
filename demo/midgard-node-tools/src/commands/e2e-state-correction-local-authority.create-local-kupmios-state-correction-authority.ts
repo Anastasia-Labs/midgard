@@ -145,10 +145,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
           `live Kupo state-queue depth mismatch: expected ${input.stateQueueDepth.toString()}, found ${queue.depth.toString()}`,
         );
       }
-      if (
-        database.unfinishedMutationJobs !== input.unfinishedMutationJobs ||
-        database.pendingFinalizations !== input.pendingFinalizations
-      ) {
+      if (database.pendingFinalizations !== input.pendingFinalizations) {
         throw new Error("live node database final state disagrees");
       }
       for (const [index, expected] of input.retainedProofTokens.entries()) {

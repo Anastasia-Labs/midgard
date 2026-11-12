@@ -31,8 +31,7 @@ vi.mock("../src/database/index.js", async () => {
     },
     PendingBlockFinalizationsDB: {
       ...actual.PendingBlockFinalizationsDB,
-      markAbandoned: vi.fn(() => Effect.void),
-      markSubmitted: vi.fn(() => Effect.void),
+      discardUnsignedJournal: vi.fn(() => Effect.void),
       preparePendingSubmission: vi.fn(() =>
         Effect.suspend(() => {
           submissionTrace.calls.push("prepare-journal");
@@ -158,18 +157,18 @@ const failureOutput = {
 } as const;
 
 const journalEvidence = ({
-  status,
+  status = PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded,
   intendedTxHash = null,
-  submittedTxHash = null,
+  dead = false,
 }: {
-  readonly status: string;
+  readonly status?: PendingBlockFinalizationsDB.OwnBlockStatus;
   readonly intendedTxHash?: Buffer | null;
-  readonly submittedTxHash?: Buffer | null;
+  readonly dead?: boolean;
 }): CommitWorkerFailureJournalEvidence => ({
   headerHash: Buffer.from("11".repeat(28), "hex"),
   intendedTxHash,
-  submittedTxHash,
   status,
+  dead,
 });
 
 const COMMIT_TX_HASH = Buffer.from("22".repeat(32), "hex");
@@ -187,17 +186,18 @@ describe("commit worker failure mutation-lease classification", () => {
     expect(result).toStrictEqual(failureOutput);
   });
 
-  // A commit path abandons its journal on a pre-broadcast failure: the
-  // abandoned row is the attempt's own, and nothing it held was sent.
-  it("returns a typed failure normally when every journal row for the lease is abandoned unsigned", async () => {
+  // A commit path discards its unsigned journal on a pre-broadcast
+  // failure; a row a later lease holder has not discarded yet was never
+  // sent either, dead or not.
+  it("returns a typed failure normally when every journal row for the lease is unsigned", async () => {
     const result = await Effect.runPromise(
       classifyCommitWorkerOutputForMutationLease({
         output: failureOutput,
-        stateQueueLeaseToken: "block_commitment:abandoned",
+        stateQueueLeaseToken: "block_commitment:unsigned",
         retrieveJournalEvidence: () =>
           Effect.succeed([
-            journalEvidence({ status: "abandoned" }),
-            journalEvidence({ status: "abandoned" }),
+            journalEvidence({}),
+            journalEvidence({ dead: true }),
           ]),
       }),
     );
@@ -205,40 +205,29 @@ describe("commit worker failure mutation-lease classification", () => {
     expect(result).toStrictEqual(failureOutput);
   });
 
-  // A state-queue correction or journal disposal abandons a signed or
-  // submitted row, whose commit may still be on L1.
+  // A row that recorded its signed intent may be on L1 whatever its
+  // derived status, dead or not.
   for (const evidence of [
-    [journalEvidence({ status: "pending_submission" })],
-    [
-      journalEvidence({ status: "abandoned" }),
-      journalEvidence({ status: "pending_submission" }),
-    ],
+    [journalEvidence({ intendedTxHash: COMMIT_TX_HASH })],
+    [journalEvidence({}), journalEvidence({ intendedTxHash: COMMIT_TX_HASH })],
+    [journalEvidence({ intendedTxHash: COMMIT_TX_HASH, dead: true })],
     [
       journalEvidence({
-        status: "submitted_unconfirmed",
-        submittedTxHash: COMMIT_TX_HASH,
-      }),
-    ],
-    [journalEvidence({ status: "abandoned", intendedTxHash: COMMIT_TX_HASH })],
-    [
-      journalEvidence({
-        status: "abandoned",
+        status: PendingBlockFinalizationsDB.OwnBlockStatus.Landed,
         intendedTxHash: COMMIT_TX_HASH,
-        submittedTxHash: COMMIT_TX_HASH,
       }),
     ],
     [
-      journalEvidence({ status: "abandoned" }),
-      journalEvidence({ status: "abandoned", intendedTxHash: COMMIT_TX_HASH }),
+      journalEvidence({
+        status: PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+        intendedTxHash: COMMIT_TX_HASH,
+      }),
     ],
   ]) {
     const statuses = evidence
-      .map(({ status, intendedTxHash, submittedTxHash }) =>
-        submittedTxHash !== null
-          ? `${status}(submitted)`
-          : intendedTxHash !== null
-            ? `${status}(signed)`
-            : status,
+      .map(
+        ({ status, intendedTxHash, dead }) =>
+          `${status}${intendedTxHash !== null ? "(signed)" : ""}${dead ? "(dead)" : ""}`,
       )
       .join("+");
     it(`fails closed for ${statuses} durable journal evidence`, async () => {
@@ -325,7 +314,6 @@ describe("commit submission journals before it signs and submits", () => {
   beforeEach(() => {
     submissionTrace.calls.length = 0;
     submissionTrace.failJournalPreparation = false;
-    vi.mocked(PendingBlockFinalizationsDB.markSubmitted).mockClear();
     vi.mocked(buildUnsignedCommitTx).mockReturnValue(
       Effect.succeed({
         preparedTxHash: "22".repeat(32),
@@ -354,9 +342,6 @@ describe("commit submission journals before it signs and submits", () => {
         "prepare-journal",
         "sign-and-submit",
       ]);
-      expect(
-        vi.mocked(PendingBlockFinalizationsDB.markSubmitted),
-      ).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -378,7 +363,7 @@ describe("both commit paths classify a submit failure the same way", () => {
     submissionTrace.calls.length = 0;
     submissionTrace.failJournalPreparation = false;
     submissionTrace.intentJournaled = false;
-    vi.mocked(PendingBlockFinalizationsDB.markAbandoned).mockClear();
+    vi.mocked(PendingBlockFinalizationsDB.discardUnsignedJournal).mockClear();
     vi.mocked(assertLiveTailCommitBase).mockReset();
     vi.mocked(assertLiveTailCommitBase).mockReturnValue(Effect.void);
   });
@@ -412,8 +397,8 @@ describe("both commit paths classify a submit failure the same way", () => {
 
       expect(outcome).toMatchObject({ _tag: "Right", right: failure.output });
       expect(
-        vi.mocked(PendingBlockFinalizationsDB.markAbandoned),
-      ).toHaveBeenCalledTimes(failure.abandoned ? 1 : 0);
+        vi.mocked(PendingBlockFinalizationsDB.discardUnsignedJournal),
+      ).toHaveBeenCalledTimes(failure.discarded ? 1 : 0);
     });
 
   it.each(commitPaths)(

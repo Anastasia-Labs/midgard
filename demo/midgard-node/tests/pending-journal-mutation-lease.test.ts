@@ -1,14 +1,16 @@
 /**
  * A pending journal is prepared and signed only under the state-queue
  * mutation lease it names, while that lease is the scope's active, unexpired
- * one (`holdMutationLease`). An unsigned active journal a later lease holder
- * finds was therefore never signed and never will be: the next commit tick
- * abandons it and clears its events' projected header
- * (`abandonUnsignedActiveJournal`). A journal holding a signed or submitted
- * transaction is never abandoned there: its commit may be on L1.
+ * one (`holdMutationLease`). An unsigned journal a later lease holder finds
+ * was therefore never signed and never will be: the next commit tick
+ * discards it (`discardStoppedUnsignedJournals`), and its events stay
+ * unassigned, since only a landing assigns them a header. A journal that
+ * recorded its signed intent is never discarded there: its commit may be
+ * on L1.
  */
 import "./utils.js";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Either, Option } from "effect";
@@ -20,21 +22,30 @@ import {
   StateQueueMutationLeasesDB,
 } from "../src/database/index.js";
 import { MUTATION_LEASE_NOT_HELD } from "../src/database/pendingBlockFinalizations.hold-mutation-lease.js";
-import { abandonUnsignedActiveJournal } from "../src/fibers/block-commitment.abandon-unsigned-journal.js";
+import { discardStoppedUnsignedJournals } from "../src/fibers/block-commitment.discard-unsigned-journals.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { makeDepositEntry } from "./database.test/fixtures.events.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { insertDeposits } from "./helpers/event-rows.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "./helpers/mutation-lease.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const Journals = PendingBlockFinalizationsDB;
+
+/** A prepare whose journal is anchored on the follower's chain, so it is
+ * live until it lands or dies. */
+const anchored = { beforeJournalInsert: Effect.orDie(simCommitAnchor) };
+
+/** The fixture journals' base is the frontier, so their blocks can land. */
+const baseOnChain = Frontier.upsert({
+  headerHash: header("base-tail").toString("hex"),
+  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+});
 
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.runPromise(
@@ -66,16 +77,19 @@ const journalWithDeposit = (label: string, preparedTxHash?: Buffer) =>
   Effect.gen(function* () {
     const deposit = makeDepositEntry();
     const depositId = deposit[DepositsDB.Columns.ID];
+    yield* baseOnChain;
     yield* insertDeposits([deposit]);
     const headerHash = header(label);
-    yield* prepareUnderTestLease({
-      ...journalFixture(headerHash),
-      ...(preparedTxHash === undefined ? {} : { preparedTxHash }),
-      depositEventIds: [depositId],
-      depositEntries: [deposit],
-    });
+    yield* prepareUnderTestLease(
+      {
+        ...journalFixture(headerHash),
+        ...(preparedTxHash === undefined ? {} : { preparedTxHash }),
+        depositEventIds: [depositId],
+        depositEntries: [deposit],
+      },
+      anchored,
+    );
     yield* DepositsDB.markAwaitingAsProjected([depositId]);
-    yield* DepositsDB.markProjectedByEventIds([depositId], headerHash);
     return { headerHash, depositId };
   });
 
@@ -84,13 +98,6 @@ const projectedHeaderOf = (depositId: Buffer) =>
     Effect.map(
       (entry) =>
         Option.getOrThrow(entry)[DepositsDB.Columns.PROJECTED_HEADER_HASH],
-    ),
-  );
-
-const journalStatus = (headerHash: Buffer) =>
-  Journals.retrieveByHeaderHash(headerHash).pipe(
-    Effect.map((record) =>
-      Option.map(record, (value) => value[Journals.Columns.STATUS]),
     ),
   );
 
@@ -142,12 +149,12 @@ describe("pending journal writes under the state-queue mutation lease", () => {
             outcome: yield* Effect.either(
               Journals.preparePendingSubmission(journal),
             ),
-            status: yield* journalStatus(journal.headerHash),
+            journal: yield* Journals.retrieveByHeaderHash(journal.headerHash),
           };
         }),
       );
       leaseRefusal(result.outcome);
-      expect(Option.isNone(result.status)).toBe(true);
+      expect(Option.isNone(result.journal)).toBe(true);
     },
   );
 
@@ -214,71 +221,71 @@ describe("pending journal writes under the state-queue mutation lease", () => {
   });
 });
 
-describe("abandoning an unsigned active journal", () => {
-  it("abandons it, clears its events' projected header, and lets the next header prepare", async () => {
+describe("discarding the unsigned journals a later lease holder finds", () => {
+  it("discards an unsigned journal, leaves its events unassigned, and lets the next header prepare", async () => {
+    const next = journalFixture(header("next-header"));
     const result = await run(
       Effect.gen(function* () {
         const { headerHash, depositId } = yield* journalWithDeposit("unsigned");
-        const projectedBefore = yield* projectedHeaderOf(depositId);
-        const abandoned = yield* abandonUnsignedActiveJournal;
-        const next = yield* Effect.either(
-          prepareUnderTestLease(journalFixture(header("next-header"))),
+        // While it is live, it refuses every other header's preparation.
+        const refused = yield* Effect.either(
+          prepareUnderTestLease(next, anchored),
         );
+        const discarded = yield* discardStoppedUnsignedJournals;
         return {
           headerHex: headerHash.toString("hex"),
-          projectedBefore,
-          abandoned,
-          status: yield* journalStatus(headerHash),
+          refused,
+          discarded,
+          journal: yield* Journals.retrieveByHeaderHash(headerHash),
           projectedAfter: yield* projectedHeaderOf(depositId),
-          next: next._tag,
-          active: Option.map(
-            yield* Journals.retrieveActive(),
+          prepared: yield* prepareUnderTestLease(next, anchored),
+          live: Option.map(
+            yield* Journals.retrieveLive(),
             (record) => record[Journals.Columns.HEADER_HASH],
           ),
         };
       }),
     );
-    expect(result.projectedBefore?.toString("hex")).toBe(result.headerHex);
-    expect(result.abandoned).toBe(result.headerHex);
-    expect(result.status).toEqual(Option.some(Journals.Status.Abandoned));
+    expect(Either.isLeft(result.refused)).toBe(true);
+    expect(
+      Either.isLeft(result.refused) ? result.refused.left : undefined,
+    ).toMatchObject({ message: Journals.LIVE_JOURNAL_REFUSAL });
+    expect(result.discarded).toEqual([result.headerHex]);
+    expect(Option.isNone(result.journal)).toBe(true);
     expect(result.projectedAfter).toBeNull();
-    expect(result.next).toBe("Right");
-    expect(result.active).toEqual(Option.some(header("next-header")));
+    expect(result.prepared).toEqual({ kind: "prepared" });
+    expect(result.live).toEqual(Option.some(next.headerHash));
   });
 
-  it.each(["intended", "submitted"] as const)(
-    "never abandons a journal whose %s transaction hash is set",
-    async (signed) => {
-      const result = await run(
-        Effect.gen(function* () {
-          const { cbor, txHash } = signedTx();
-          const { headerHash, depositId } = yield* journalWithDeposit(
-            `signed-${signed}`,
-            txHash,
-          );
-          yield* signed === "intended"
-            ? Journals.recordSignedIntent(headerHash, txHash, cbor).pipe(
-                withTestMutationLease(
-                  journalFixture(headerHash).metadata.stateQueueLeaseToken,
-                ),
-              )
-            : Journals.markSubmitted(headerHash, txHash);
-          const statusBefore = yield* journalStatus(headerHash);
-          return {
-            headerHex: headerHash.toString("hex"),
-            abandoned: yield* abandonUnsignedActiveJournal,
-            statusBefore,
-            statusAfter: yield* journalStatus(headerHash),
-            projectedAfter: yield* projectedHeaderOf(depositId),
-          };
-        }),
-      );
-      expect(result.abandoned).toBeUndefined();
-      expect(result.statusAfter).toEqual(result.statusBefore);
-      expect(result.statusAfter).not.toEqual(
-        Option.some(Journals.Status.Abandoned),
-      );
-      expect(result.projectedAfter?.toString("hex")).toBe(result.headerHex);
-    },
-  );
+  it("never discards a journal that recorded its signed intent", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const { cbor, txHash } = signedTx();
+        const { headerHash } = yield* journalWithDeposit("signed", txHash);
+        yield* Journals.recordSignedIntent(headerHash, txHash, cbor).pipe(
+          withTestMutationLease(
+            journalFixture(headerHash).metadata.stateQueueLeaseToken,
+          ),
+        );
+        const statusBefore =
+          yield* Journals.retrieveStatusByHeaderHash(headerHash);
+        return {
+          txHash,
+          discarded: yield* discardStoppedUnsignedJournals,
+          statusBefore,
+          statusAfter: yield* Journals.retrieveStatusByHeaderHash(headerHash),
+          journal: yield* Journals.retrieveByHeaderHash(headerHash),
+        };
+      }),
+    );
+    expect(result.discarded).toEqual([]);
+    expect(result.statusBefore).toBe(Journals.OwnBlockStatus.Unlanded);
+    expect(result.statusAfter).toBe(result.statusBefore);
+    expect(
+      Option.map(
+        result.journal,
+        (row) => row[Journals.Columns.INTENDED_TX_HASH],
+      ),
+    ).toEqual(Option.some(result.txHash));
+  });
 });

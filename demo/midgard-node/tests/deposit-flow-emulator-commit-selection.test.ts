@@ -97,7 +97,9 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         vi.setSystemTime(new Date(fixture.emulator.now()));
 
         const baseJournal = await runNodeDatabaseEffect(
-          PendingBlockFinalizationsDB.retrieveActive(),
+          PendingBlockFinalizationsDB.retrieveByHeaderHash(
+            Buffer.from(baseCommit.submittedHeaderHash, "hex"),
+          ),
         );
         expect(Option.isSome(baseJournal)).toBe(true);
         if (Option.isNone(baseJournal)) {
@@ -256,7 +258,9 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         expect(stateful.mempoolTxsCount).toBe(1);
 
         const active = await runNodeDatabaseEffect(
-          PendingBlockFinalizationsDB.retrieveActive(),
+          PendingBlockFinalizationsDB.retrieveByHeaderHash(
+            Buffer.from(stateful.submittedHeaderHash, "hex"),
+          ),
         );
         expect(Option.isSome(active)).toBe(true);
         if (Option.isNone(active)) {
@@ -431,7 +435,9 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         expect(cacheHitsAfter.count - cacheHitsBefore.count).toBe(2n);
         expect(fallbackAfter.count - fallbackBefore.count).toBe(0n);
         const active = await runNodeDatabaseEffect(
-          PendingBlockFinalizationsDB.retrieveActive(),
+          PendingBlockFinalizationsDB.retrieveByHeaderHash(
+            Buffer.from(output.submittedHeaderHash, "hex"),
+          ),
         );
         expect(Option.isSome(active)).toBe(true);
         if (Option.isSome(active)) {

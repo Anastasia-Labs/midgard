@@ -29,7 +29,6 @@ const tipSource = (answer: (method: string, call: number) => unknown) => {
       proverCollateralFloorLovelace: "5000000",
     },
     observeDatabase: async () => ({
-      unfinishedMutationJobs: 0,
       pendingFinalizations: 0,
     }),
     fetchImpl: async (_url: string, init?: RequestInit) => {

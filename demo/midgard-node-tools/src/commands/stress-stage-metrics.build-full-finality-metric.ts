@@ -1,6 +1,8 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+import { PendingBlockFinalizationsDB } from "midgard-node/database/index";
 
+import { ownCommitColumns } from "./stress-db-metrics.js";
 import {
   acceptedTxHashes,
   buildClientSubmissionMetric,
@@ -62,7 +64,11 @@ const buildFullFinalityMetric = ({
   const headerByTx = new Map(rows.map((row) => [row.txHash, row.headerHash]));
   const finalizedHeaders = new Set(
     rows
-      .filter((row) => row.status === "locally_applied")
+      .filter(
+        (row) =>
+          row.status === PendingBlockFinalizationsDB.OwnBlockStatus.Applied ||
+          row.status === PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
+      )
       .map((row) => row.headerHash),
   );
   const queuedHeaders = new Set(
@@ -165,9 +171,7 @@ export const collectStressStageMetricSourcesFromSql = (
         sql<SqlL1CommitRow>`SELECT
               encode(member.member_id, 'hex') AS tx_hash,
               encode(pending.header_hash, 'hex') AS header_hash,
-              pending.status,
-              pending.created_at,
-              pending.observed_confirmed_at_ms
+              ${ownCommitColumns(sql)}
             FROM pending_block_finalization_txs AS member
             JOIN pending_block_finalizations AS pending
               ON pending.header_hash = member.header_hash

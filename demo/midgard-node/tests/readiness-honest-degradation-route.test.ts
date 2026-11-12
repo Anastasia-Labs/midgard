@@ -1,3 +1,4 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,18 +12,17 @@ import {
   FORCED_ORDER_INGESTION_FAILED,
 } from "../src/forced-orders/index.js";
 import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/index.js";
-import { insertRow } from "../src/landed-blocks/store.js";
+import { Frontier, insertRow } from "../src/landed-blocks/store.js";
 import {
   L1_FOLLOWER_NOT_STARTED,
   type L1FollowerState,
 } from "../src/services/l1-follower.readiness.js";
 import { forcedProjectionEntry } from "./helpers/commit-da-frame-forced-projection.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
+import { insertCommitIntent } from "./helpers/own-block-facts.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { landedRow } from "./landed-blocks-rebase.fixture.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
 import {
   type L1AccessStub,
   readyz,
@@ -32,14 +32,33 @@ import {
   runningFollower,
 } from "./readiness-l1-follower.fixture.js";
 
+/** Prepares `headerHash`'s journal anchored at the follower's tip, on the
+ * frontier: the node's live journal. */
+const prepareLive = (headerHash: Buffer) =>
+  Effect.gen(function* () {
+    const input = journalFixture(headerHash);
+    yield* Frontier.upsert({
+      headerHash: input.metadata.baseTailHeaderHash.toString("hex"),
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    });
+    yield* prepareUnderTestLease(input, {
+      beforeJournalInsert: Effect.orDie(simCommitAnchor),
+    });
+  });
+
+/** Signs `headerHash`'s journal: its commit intent is journaled. */
 const signIntent = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const txHash = Buffer.alloc(32, 9);
     yield* sql`UPDATE pending_block_finalizations
-      SET prepared_tx_hash = ${txHash}, intended_tx_hash = ${txHash},
-        signed_tx_cbor = ${Buffer.from("84a0a0f5f6", "hex")}
+      SET prepared_tx_hash = ${txHash}, intended_tx_hash = ${txHash}
       WHERE header_hash = ${headerHash}`;
+    yield* insertCommitIntent(
+      headerHash,
+      txHash,
+      Buffer.from("84a0a0f5f6", "hex"),
+    );
   });
 
 const backdateJournals = (ms: number) =>
@@ -229,9 +248,7 @@ describe("GET /readyz under internal transients", () => {
     expect(none.signedIntentUnresolvedAgeMs).toBeNull();
 
     const unsigned = await readyz({
-      journal: asJournalSetup(
-        prepareUnderTestLease(journalFixture(header("readiness-unsigned"))),
-      ),
+      journal: asJournalSetup(prepareLive(header("readiness-unsigned"))),
     });
     expect(unsigned.pendingFinalizationAgeMs).toEqual(expect.any(Number));
     expect(unsigned.signedIntentUnresolvedAgeMs).toBeNull();
@@ -242,7 +259,7 @@ describe("GET /readyz under internal transients", () => {
     const signedPastBound = await readyz({
       journal: asJournalSetup(
         Effect.gen(function* () {
-          yield* prepareUnderTestLease(journalFixture(signedHeader));
+          yield* prepareLive(signedHeader);
           yield* signIntent(signedHeader);
           yield* backdateJournals(16 * 60_000);
         }),

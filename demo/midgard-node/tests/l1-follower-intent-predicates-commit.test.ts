@@ -2,7 +2,7 @@
  * The node's commit predicate over the follower's projections (I1), each
  * condition in both polarities, on the node database:
  *
- * - its block journal row is live, the tail it spends is still the landed
+ * - its block journal row exists, the tail it spends is still the landed
  *   tail, and the scheduler names this operator at the lower validity bound;
  *   each failing condition is `false`;
  * - the queue's head allows the append (the Q61 fence,
@@ -83,7 +83,7 @@ const LAST_APPEND_SLOT =
 const ownShift = async (s: PredicateScenario): Promise<void> => {
   await s.land(s.lists.insert(s.live(), "active", OWN));
   await s.land(s.lists.shift(s.live(), OWN, 0n));
-  await journalRow("pending_submission", await freshAnchor(s));
+  await journalRow(await freshAnchor(s));
 };
 
 const setAnchor = (anchor: { hash: Buffer; height: number; slot: number }) =>
@@ -162,7 +162,7 @@ describe("the node's commit predicate over the follower's projections", () => {
     // No journal row for the header: not wanted.
     expect(await s.verdict(commit)).toBe(false);
     // A journal row without a commit anchor: not wanted.
-    await journalRow("pending_submission", null);
+    await journalRow(null);
     expect(await s.verdict(commit)).toBe(false);
     // Anchored d below the view.
     const height = await viewHeight(s);
@@ -196,16 +196,6 @@ describe("the node's commit predicate over the follower's projections", () => {
         slotToPosixMs: () => Number(SDK.SHIFT_DURATION_MS),
       }),
     ).toBe(false);
-
-    // The journal row abandoned: false.
-    await db(
-      Effect.flatMap(
-        SqlClient.SqlClient,
-        (sql) =>
-          sql`UPDATE pending_block_finalizations SET status = 'abandoned'`,
-      ),
-    );
-    expect(await s.verdict(commit)).toBe(false);
   });
 
   it("a tail that is no longer the landed tail is false", async () => {

@@ -72,10 +72,6 @@ const projectedEventAdapter = ProjectedEvents.makeProjectedEventAdapter<Entry>({
     retrieveProjectedPendingHeaderEntries:
       "Failed to retrieve projected deposits awaiting header assignment",
     markAwaitingAsProjected: "Failed to mark awaiting deposits as projected",
-    markProjectedByEventIds:
-      "Failed to mark deposits as assigned to the given header",
-    clearProjectedHeaderAssignmentByEventIds:
-      "Failed to clear projected header assignments for the given deposits",
   },
 });
 
@@ -199,22 +195,6 @@ export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter.markAwaitingAsProjected(ids).pipe(withFollowerWrite);
-
-export const markProjectedByEventIds = (
-  ids: readonly Buffer[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter
-    .markProjectedByEventIds(ids, projectedHeaderHash)
-    .pipe(withFollowerWrite);
-
-export const clearProjectedHeaderAssignmentByEventIds = (
-  ids: readonly Buffer[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter
-    .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
-    .pipe(withFollowerWrite);
 
 export const markConsumedByEventIds = (
   ids: readonly Buffer[],

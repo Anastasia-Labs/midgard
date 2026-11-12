@@ -50,7 +50,7 @@ export const COMMIT_BASE_PENDING = "commit_base_pending";
 /** The liveness source `commit_window_pending` is raised under. */
 export const COMMIT_WINDOW_SOURCE = "commit_window";
 /**
- * The commit waits for the next scheduler window: an abandoned journal whose
+ * The commit waits for the next scheduler window: a dead journal whose
  * commit was signed holds its header hash. It clears on the worker's next
  * output that is not this wait.
  */

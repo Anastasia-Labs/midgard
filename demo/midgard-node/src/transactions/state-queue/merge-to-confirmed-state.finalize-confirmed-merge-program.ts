@@ -5,7 +5,6 @@ import { Effect, Metric, Option, Ref } from "effect";
 
 import {
   ConfirmedLedgerDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import {
@@ -95,11 +94,11 @@ const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
     if (frontier.headerHash !== base.headerHash)
       return "deferred" satisfies ConfirmedMergeLedgerStep;
     // A block the rebase has not applied yet folds once it has, as
-    // landed-block processing folds only an applied row. The rebase marks
-    // the journal and the row applied in one transaction.
+    // landed-block processing folds only an applied row.
     if (
-      journal[PendingBlockFinalizationsDB.Columns.STATUS] !==
-      PendingBlockFinalizationsDB.Status.LocallyApplied
+      (yield* PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+        journal[PendingBlockFinalizationsDB.Columns.HEADER_HASH],
+      )) !== PendingBlockFinalizationsDB.OwnBlockStatus.Applied
     )
       return "deferred" satisfies ConfirmedMergeLedgerStep;
     // A frontier at the base header with another root is refused here.
@@ -109,8 +108,9 @@ const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
 
 /**
  * The confirmed-merge finalization's one transaction: the own block's fold
- * at the frontier (when the frontier is its base). The block's bodies (`blocks` rows) and the
- * pending-table rows it marked stay until its fold is final
+ * at the frontier (when the frontier is its base). The block's bodies
+ * (`blocks` rows) and the pending-table rows it marked stay until its fold
+ * is final
  * (`releaseFinalFolds`): a rollback of this merge leaves the block queued,
  * and merging it again reads them. O(delta): no whole-ledger read, root or
  * table lock.
@@ -191,10 +191,9 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
   });
 
 /**
- * Finalizes one L1-confirmed merge into the local database under its
- * confirmed-merge job: folds the block's journal delta into
- * `confirmed_ledger` at the frontier (marking its events terminal), then
- * confirms the native MPF owner is live (see
+ * Finalizes one L1-confirmed merge into the local database: folds the
+ * block's journal delta into `confirmed_ledger` at the frontier (marking its
+ * events terminal), then confirms the native MPF owner is live (see
  * observeNativeOwnerAfterConfirmedMerge). `headerUtxosRoot` is the header's
  * committed UTxO root, which the journal's expected root must be.
  *
@@ -202,8 +201,9 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
  * block already folded is not folded twice, and its settlements are
  * recorded once. A frontier elsewhere leaves the fold to landed-block
  * processing, which folds every merged block in queue order. The block's
- * bodies stay until its fold is final (`releaseFinalFolds`). A failure
- * records the job as failed.
+ * bodies stay until its fold is final (`releaseFinalFolds`). Once the
+ * block is folded its status derives `folded`, and the landed-merge walk
+ * stops at it.
  */
 export const finalizeConfirmedMergeProgram = ({
   headerHash,
@@ -217,9 +217,6 @@ export const finalizeConfirmedMergeProgram = ({
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
-      headerHash.toString("hex"),
-    );
     const finalizedJournal =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
     if (Option.isNone(finalizedJournal)) {
@@ -250,16 +247,6 @@ export const finalizeConfirmedMergeProgram = ({
         }),
       );
     }
-    yield* MutationJobsDB.start({
-      jobId,
-      kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
-      payload: {
-        headerHash: headerHash.toString("hex"),
-        confirmedHeaderUtxosRoot: headerUtxosRoot,
-        ledgerDeltaSpentCount: journal.ledgerDelta.spent.length,
-        ledgerDeltaProducedCount: journal.ledgerDelta.produced.length,
-      },
-    });
     const step = yield* finalizeConfirmedMergeTransaction({ journal });
     const ownerObservation = yield* observeNativeOwnerAfterConfirmedMerge({
       nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
@@ -280,17 +267,7 @@ export const finalizeConfirmedMergeProgram = ({
         "hex",
       )},confirmed_ledger=${step},confirmed_header_root=${ownerObservation.confirmedLedgerRoot},durable_tail_root=${ownerObservation.durableLedgerRoot},active_generations=${ownerObservation.activeGenerations.toString()}).`,
     );
-    yield* MutationJobsDB.markCompleted(jobId);
-  }).pipe(
-    Effect.tapError((error) =>
-      MutationJobsDB.markFailed(
-        MutationJobsDB.confirmedMergeFinalizationJobId(
-          headerHash.toString("hex"),
-        ),
-        formatUnknownError(error),
-      ).pipe(Effect.catchAll(() => Effect.void)),
-    ),
-  );
+  });
 
 /**
  * A landed merge whose local finalization has to run, with its

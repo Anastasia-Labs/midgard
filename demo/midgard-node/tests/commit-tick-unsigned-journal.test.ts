@@ -1,11 +1,12 @@
 /**
- * The commit tick, holding the state-queue mutation lease, abandons an
- * active journal its predecessor prepared but never signed before it reads
- * the queue or launches its worker: no lease holder can sign that journal any
+ * The commit tick, holding the state-queue mutation lease, discards a live
+ * journal its predecessor prepared but never signed before it reads the
+ * queue or launches its worker: no lease holder can sign that journal any
  * more, so it would only refuse every other header's preparation. A journal
  * with a signed intent is left alone. The site is driven up to the worker it
  * launches.
  */
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Exit, Option, Ref } from "effect";
@@ -13,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { FollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   Globals,
@@ -24,15 +26,14 @@ import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixt
 import { writeFollowerTip } from "./helpers/follower-view.js";
 import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import {
   prepareUnderTestLease,
   withTestMutationLease,
 } from "./helpers/mutation-lease.js";
+import { insertCommitIntent } from "./helpers/own-block-facts.js";
+import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
-import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const { launched } = vi.hoisted(() => ({ launched: { count: 0 } }));
@@ -92,21 +93,34 @@ const config = makeTestNodeConfig({
 /** The tick's own lease, taken after its predecessor's ended. */
 const TICK_LEASE = "next-tick-lease";
 
+/** Prepares `headerHash`'s journal under its predecessor's lease, anchored
+ * at the follower's tip and on the frontier, so its block can land. */
+const prepareLive = (input: PendingBlockFinalizationsDB.PrepareInput) =>
+  Effect.gen(function* () {
+    yield* Frontier.upsert({
+      headerHash: input.metadata.baseTailHeaderHash.toString("hex"),
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    });
+    yield* prepareUnderTestLease(input, {
+      beforeJournalInsert: Effect.orDie(simCommitAnchor),
+    });
+  });
+
 /**
  * Prepares `journal` under its predecessor's lease, then runs one commit
  * tick under the next lease, at an applied follower view; returns the
- * journal's status after it and whether the tick launched its worker.
+ * journal's status after it (none once discarded), whether a journal is
+ * live, and whether the tick launched its worker.
  */
 const tickOver = (journal: Effect.Effect<Buffer, unknown, never>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       yield* resetApplicationTables;
+      const view = yield* writeFollowerTip(10);
       const headerHash = yield* journal;
       const globals = yield* Globals;
       yield* Ref.set(globals.NATIVE_MPF_OWNER, {} as never);
-      const permit = yield* openFollowerWriteGateAt(
-        yield* writeFollowerTip(10),
-      );
+      const permit = yield* openFollowerWriteGateAt(view);
       yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
         ...local,
         epoch: permit.epoch,
@@ -118,17 +132,18 @@ const tickOver = (journal: Effect.Effect<Buffer, unknown, never>) =>
           withTestMutationLease(TICK_LEASE),
         ),
       );
-      const status = Option.map(
-        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
-        (record) => record[PendingBlockFinalizationsDB.Columns.STATUS],
+      const status = Option.fromNullable(
+        yield* PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+          headerHash,
+        ),
       );
-      const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+      const live = yield* PendingBlockFinalizationsDB.retrieveLive();
       yield* Effect.orDie(resetApplicationTables);
       return {
         failed: Exit.isFailure(exit),
         launched: launched.count,
         status,
-        active: Option.isSome(active),
+        live: Option.isSome(live),
       };
     }).pipe(
       provideDatabaseLayers,
@@ -141,8 +156,8 @@ const tickOver = (journal: Effect.Effect<Buffer, unknown, never>) =>
       {
         failed: boolean;
         launched: number;
-        status: Option.Option<string>;
-        active: boolean;
+        status: Option.Option<PendingBlockFinalizationsDB.OwnBlockStatus>;
+        live: boolean;
       },
       unknown,
       never
@@ -150,18 +165,19 @@ const tickOver = (journal: Effect.Effect<Buffer, unknown, never>) =>
   );
 
 describe("the commit tick over its predecessor's journal", () => {
-  it("abandons an unsigned journal and launches the worker for the next block", async () => {
+  it("discards an unsigned journal and launches the worker for the next block", async () => {
     const result = await tickOver(
       Effect.gen(function* () {
         const headerHash = header("tick-unsigned");
-        yield* prepareUnderTestLease(journalFixture(headerHash));
+        yield* prepareLive(journalFixture(headerHash));
+        expect(
+          Option.isSome(yield* PendingBlockFinalizationsDB.retrieveLive()),
+        ).toBe(true);
         return headerHash;
       }) as Effect.Effect<Buffer, unknown, never>,
     );
-    expect(result.status).toEqual(
-      Option.some(PendingBlockFinalizationsDB.Status.Abandoned),
-    );
-    expect(result.active).toBe(false);
+    expect(result.status).toEqual(Option.none());
+    expect(result.live).toBe(false);
     // The worker that prepares the next block was launched (the test's
     // stand-in stops it there).
     expect(result.launched).toBe(1);
@@ -180,21 +196,22 @@ describe("the commit tick over its predecessor's journal", () => {
         hash.free();
         body.free();
         tx.free();
-        yield* prepareUnderTestLease({
+        yield* prepareLive({
           ...journalFixture(headerHash),
           preparedTxHash: txHash,
         });
         // Signed before its attempt stopped: the intent is durable.
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE pending_block_finalizations
-          SET intended_tx_hash = ${txHash}, signed_tx_cbor = ${signed}
+          SET intended_tx_hash = ${txHash}
           WHERE header_hash = ${headerHash}`;
+        yield* insertCommitIntent(headerHash, txHash, signed);
         return headerHash;
       }) as Effect.Effect<Buffer, unknown, never>,
     );
     expect(result.status).toEqual(
-      Option.some(PendingBlockFinalizationsDB.Status.PendingSubmission),
+      Option.some(PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded),
     );
-    expect(result.active).toBe(true);
+    expect(result.live).toBe(true);
   });
 });

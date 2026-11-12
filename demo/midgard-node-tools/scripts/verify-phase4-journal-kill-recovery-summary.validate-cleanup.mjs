@@ -16,7 +16,7 @@ export const PHASE4_PROCESS_SUMMARY_MODE =
  */
 export const JOURNAL_KILL_SURVIVOR_MARKERS = [
   "Skipping block commitment trigger because the state-queue mutation lease is busy",
-  "Abandoned unsigned pending block journal",
+  "Discarded unsigned pending block journal",
   "Block submitted; landed-block processing applies it once it lands.",
 ];
 
@@ -43,13 +43,6 @@ export const CARDANO_OUT_REF = /^[a-f0-9]{64}#[0-9]+$/u;
 export const ISOLATED_PREFIX = "midgard_phase4_process_";
 
 export const SUPERVISOR_SCHEMA = "midgard-e2e-service-supervisor-v1";
-
-export const ACTIVE_JOURNAL_STATUSES = new Set([
-  "pending_submission",
-  "submitted_local_finalization_pending",
-  "submitted_unconfirmed",
-  "observed_waiting_stability",
-]);
 
 export const LEASE_STATUSES = new Set(["active", "released", "failed"]);
 

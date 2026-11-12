@@ -1,12 +1,11 @@
 /**
  * What the working ledger and the native MPF must hold (plan §7.3, N3): the
  * processed landed chain from the confirmed-ledger frontier to its tip `T`,
- * then this node's live own block, the active journal built on `T` that has
- * not landed yet. Own journals whose block cannot be on the landed chain are
- * disposed of, and abandoned ones whose block landed revived, by the same
- * rebase (`own-journals.ts`). The rebase cannot run while a journal it keeps
- * is built on anything but `T` (a base it cannot place yet): S6 derives that
- * commit dead or landed. Nor can it run while a pending-table row is marked
+ * then this node's live own block, its live journal built on `T`. Own
+ * journals whose block can no longer land are disposed of by the same rebase
+ * (`own-journals.ts`). The rebase cannot run while the live journal is built
+ * on anything but `T` (a base it cannot place yet): S6 derives that commit
+ * dead or landed. Nor can it run while a pending-table row is marked
  * by a block the target neither holds nor disposes of, nor `confirmed_ledger`
  * holds: that row is neither pending nor in the base until processing takes
  * the block in or a rollback clears the mark. A
@@ -15,13 +14,16 @@
  */
 import { Effect } from "effect";
 
+import { PendingBlockFinalizationsDB } from "../database/index.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
+import { followerWriteHeld } from "../services/follower-write-gate.js";
+import type { NativeMpfOwnerService } from "../services/mpf-native-owner/protocol.js";
 import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
 import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
-import { activeJournal } from "./journal.js";
+import { liveJournal } from "./journal.js";
 import {
   applyDelta,
   type LandedLedger,
@@ -56,7 +58,7 @@ export type RebaseTarget = Readonly<{
   /** The processed tip `T`. */
   tip: HeaderRoot;
   live: (OwnJournal & { headerHash: string }) | undefined;
-  /** The own journals the rebase disposes of and revives. */
+  /** The dead own journals, and those the rebase disposes of. */
   journals: OwnJournalDisposition;
 }>;
 
@@ -71,7 +73,43 @@ export type RebasePlan =
       /** The hold's reason, when not `landed_block_rebase_pending`. */
       reason?: string;
     }>
-  | Readonly<{ kind: "ready"; target: RebaseTarget }>;
+  | Readonly<{
+      kind: "ready";
+      target: RebaseTarget;
+      /** Set when the native MPF's root is the only reason it is due. */
+      drift?: NativeRootDrift;
+    }>;
+
+/** The native MPF's durable root, away from the target's end root. */
+export type NativeRootDrift = Readonly<{
+  durableRoot: string;
+  targetRoot: string;
+}>;
+
+/** The root the target ends at: the live own block's, or the processed tip's. */
+export const targetRoot = (target: RebaseTarget) =>
+  target.steps.at(-1)?.utxosRoot ?? target.landed.frontier.utxosRoot;
+
+/**
+ * Where the native MPF's durable root stands against the target's end
+ * root: undefined when it is there. The owner's diagnostics read its stored
+ * durable marker; only a generation still open (a fork not yet promoted or
+ * discarded) has its reachable records walked for the byte count.
+ */
+export const nativeRootDrift = (
+  owner: NativeMpfOwnerService,
+  target: RebaseTarget,
+) =>
+  Effect.map(
+    Effect.tryPromise({
+      try: () => owner.diagnostics(),
+      catch: (cause) => cause,
+    }),
+    ({ durableRoot }): NativeRootDrift | undefined => {
+      const end = targetRoot(target);
+      return durableRoot === end ? undefined : { durableRoot, targetRoot: end };
+    },
+  );
 
 /**
  * The hold a blocked rebase plan holds. The unnamed block waits on landed
@@ -85,10 +123,11 @@ export const blockedRebaseHold = (
     ? { reason: LANDED_BLOCK_REBASE_PENDING, detail: plan.detail }
     : notRetried({ reason: plan.reason, detail: plan.detail });
 
-const NO_FRONTIER = {
+const NO_FRONTIER: RebasePlan = {
   kind: "blocked",
   detail: "confirmed_ledger has no frontier yet",
-} as const satisfies RebasePlan;
+};
+const NOT_DUE: RebasePlan = { kind: "none" };
 
 /** The target over `rows` and their landed chain `landed`. */
 const targetOn = (
@@ -125,21 +164,16 @@ const targetOn = (
     const disposed = new Set(
       journals.dispose.map((disposal) => disposal.headerHash),
     );
-    const active = yield* activeJournal;
-    const processed = new Set(rows.map((row) => row.headerHash));
+    const active = yield* liveJournal(journals.dead);
     let live: RebaseTarget["live"];
-    if (
-      active !== undefined &&
-      !processed.has(active.headerHash) &&
-      !disposed.has(active.headerHash)
-    ) {
+    if (active !== undefined) {
       if (
         active.baseTailHeaderHash !== tip.headerHash ||
         active.baseUtxosRoot !== tip.utxosRoot
       )
         return {
           kind: "blocked",
-          detail: `awaiting own journal resolution: active own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
+          detail: `awaiting own journal resolution: live own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
         } satisfies RebasePlan;
       live = active;
       steps.push({
@@ -170,41 +204,77 @@ const targetOn = (
   });
 
 /**
- * The rebase target over `rows`, due or not: what the working ledger and
+ * The rebase target over `rows` and the own-journal disposition `journals`
+ * read in the same transaction, due or not: what the working ledger and
  * the native MPF hold once the rebase runs, or why it cannot run.
  */
-export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
+export const rebaseTargetOf = (
+  rows: readonly LandedBlockRow[],
+  journals: OwnJournalDisposition,
+) =>
   Effect.gen(function* () {
     const landed = yield* landedLedger(rows);
     if (landed === undefined) return NO_FRONTIER;
-    return yield* targetOn(
-      rows,
-      landed,
-      yield* ownJournalDisposition(rows, landed),
-    );
+    return yield* targetOn(rows, landed, journals);
   });
 
 /**
- * Reads the rebase target, and whether a rebase is due (a landed row the
- * working ledger does not match, or an own journal to dispose of) and can
- * run.
+ * Reads the rebase target over `journals`, and whether a rebase is due (a
+ * landed row the working ledger does not match, a dead own journal to
+ * dispose of, or the native MPF `owner` away from the target's end root)
+ * and can run. Without `owner`, the native root is not read.
  */
-export const rebasePlan = Effect.gen(function* () {
-  const rows = yield* retrieveRows;
-  const landed = yield* landedLedger(rows);
-  if (landed === undefined)
-    return rebaseNeeded(rows)
-      ? (NO_FRONTIER as RebasePlan)
-      : ({ kind: "none" } satisfies RebasePlan);
-  const journals = yield* ownJournalDisposition(rows, landed);
-  if (
-    journals.held === undefined &&
-    !rebaseNeeded(rows) &&
-    journals.dispose.length === 0
-  )
-    return { kind: "none" } satisfies RebasePlan;
-  return yield* targetOn(rows, landed, journals);
-});
+export const rebasePlanOf = (
+  journals: OwnJournalDisposition,
+  owner?: NativeMpfOwnerService,
+) =>
+  Effect.gen(function* () {
+    const rows = yield* retrieveRows;
+    const landed = yield* landedLedger(rows);
+    if (landed === undefined) return rebaseNeeded(rows) ? NO_FRONTIER : NOT_DUE;
+    const due =
+      journals.held !== undefined ||
+      rebaseNeeded(rows) ||
+      journals.dispose.length > 0;
+    if (!due && owner === undefined) return NOT_DUE;
+    const on: RebasePlan = yield* targetOn(rows, landed, journals);
+    if (due) return on;
+    if (owner === undefined || on.kind !== "ready") return NOT_DUE;
+    const drift = yield* nativeRootDrift(owner, on.target);
+    return drift === undefined ? NOT_DUE : { ...on, drift };
+  });
+
+/** `rebasePlanOf` over the own-journal disposition it reads first. */
+export const rebasePlan = (owner?: NativeMpfOwnerService) =>
+  Effect.flatMap(ownJournalDisposition, (journals) =>
+    rebasePlanOf(journals, owner),
+  );
+
+/**
+ * The dead own journals, read again in the repair's transaction: the
+ * rebase of `target` holds when they are not the ones it disposes of.
+ */
+export const deadJournalsFor = (target: RebaseTarget | undefined) =>
+  Effect.gen(function* () {
+    const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+      yield* PendingBlockFinalizationsDB.deadJournals,
+    );
+    const named = new Set(dead.map((header) => header.toString("hex")));
+    const same =
+      target === undefined ||
+      (named.size === target.journals.dead.length &&
+        target.journals.dead.every((header) =>
+          named.has(header.toString("hex")),
+        ));
+    if (!same)
+      return yield* Effect.fail(
+        followerWriteHeld(
+          LANDED_BLOCK_REBASE_PENDING,
+          "the dead own journals changed after the rebase target was read",
+        ),
+      );
+    return dead;
+  });
 
 /** A step's MPF mutation: its spends and replaced outputs, then its outputs. */
 export type StepEvents = readonly (readonly NativeMpfEventOp[])[];

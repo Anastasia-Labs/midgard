@@ -33,7 +33,6 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { reconcileFollowerEvents } from "../src/database/follower-events.js";
 import { withdrawalDataToEntry } from "../src/database/user-event-entries.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
 import { EVENT_UNDECODABLE } from "../src/l1-events/driver.js";
@@ -43,7 +42,10 @@ import {
 } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
 import { classifyWithdrawalsInOrder } from "../src/workers/utils/mpf/withdrawal-classification.js";
-import { writeFollowerView } from "./helpers/follower-view.js";
+import {
+  reconcileOverDead,
+  writeFollowerView,
+} from "./helpers/follower-view.js";
 import {
   admissionTx,
   eventOrder,
@@ -153,7 +155,7 @@ const ingest = (event: ProjectedEvent) =>
       yield* resetApplicationTables;
       const plan = yield* writeFollowerView(100, [event]);
       const outcome = yield* withFollowerWrite(
-        reconcileFollowerEvents(plan, {
+        reconcileOverDead(plan, {
           network: "Preprod",
           slotToUnixTime: (slot: number) => slot * 1000,
           cutoffMs: 60_000,

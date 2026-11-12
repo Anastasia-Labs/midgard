@@ -125,7 +125,6 @@ export type E2EStateCorrectionAcceptance = {
   readonly recoveryDrills: readonly RecoveryDrill[];
   readonly finalState: {
     readonly stateQueueDepth: 0;
-    readonly unfinishedMutationJobs: 0;
     readonly pendingFinalizations: 0;
     readonly watcherReady: true;
     readonly watcherVerificationResumed: true;

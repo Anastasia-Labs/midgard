@@ -43,7 +43,6 @@ export type MergePreflightInput = {
   readonly resetInProgress: boolean;
   readonly durableAdmissionBacklog: bigint;
   readonly mempoolTxCount: bigint;
-  readonly unfinishedMutationJobs: bigint;
 };
 
 export type MergePreflightDecision = {
@@ -63,7 +62,7 @@ export type MergePreflightDecision = {
 };
 
 const formatIdleReason = (input: MergePreflightInput): string =>
-  `queue_length=${input.queueLength.toString()},min_queue_length=${input.minQueueLength.toString()},durable_admission_backlog=${input.durableAdmissionBacklog.toString()},mempool_tx_count=${input.mempoolTxCount.toString()},unfinished_mutation_jobs=${input.unfinishedMutationJobs.toString()}`;
+  `queue_length=${input.queueLength.toString()},min_queue_length=${input.minQueueLength.toString()},durable_admission_backlog=${input.durableAdmissionBacklog.toString()},mempool_tx_count=${input.mempoolTxCount.toString()}`;
 
 export const planMergePreflight = (
   input: MergePreflightInput,
@@ -114,10 +113,7 @@ export const planMergePreflight = (
     };
   }
 
-  const localWorkCount =
-    input.durableAdmissionBacklog +
-    input.mempoolTxCount +
-    input.unfinishedMutationJobs;
+  const localWorkCount = input.durableAdmissionBacklog + input.mempoolTxCount;
   if (input.queueLength === 1 && localWorkCount === 0n) {
     return {
       status: "tail_eligible_final_merge",

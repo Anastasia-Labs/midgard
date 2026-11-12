@@ -1,7 +1,8 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import { pruneFoldedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
+import { header } from "./helpers/own-journal-fixture.js";
 import {
   deleteLiveQueueNode,
   insertLiveQueueNode,
@@ -12,20 +13,19 @@ import {
   DEPLOYMENT,
   journals,
   recordDepositMember,
-  recordMergeJob,
   remainingLabels,
   run,
+  setJournalStatus,
 } from "./history-retention-prune.fixtures.js";
-import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
 
 /** The journal prune under the test deployment; it never runs without one. */
 const prune = (
   args: Omit<
-    Parameters<typeof pruneFinalizedBeyondChallengeability>[0],
+    Parameters<typeof pruneFoldedBeyondChallengeability>[0],
     "deploymentIdentityDigest"
   >,
 ) =>
-  pruneFinalizedBeyondChallengeability({
+  pruneFoldedBeyondChallengeability({
     deploymentIdentityDigest: DEPLOYMENT,
     ...args,
   });
@@ -34,50 +34,34 @@ const ALL = [
   "old-plain",
   "old-confirmed-head",
   "old-live-queue",
-  "old-abandoned",
-  "old-pending",
-  "recent-finalized",
+  "old-unlanded",
+  "old-landed",
+  "recent-folded",
 ];
 
-describe("pruning finalized journals beyond challengeability", () => {
-  it("removes only old finalized journals no exemption covers", async () => {
+describe("pruning folded journals beyond challengeability", () => {
+  it("removes only old folded journals no exemption covers", async () => {
     const result = await run(
       Effect.gen(function* () {
         yield* journals([
-          {
-            label: "old-plain",
-            status: "locally_applied",
-            endedAgoMs: 10 * DAY_MS,
-          },
+          { label: "old-plain", status: "folded", endedAgoMs: 10 * DAY_MS },
           {
             label: "old-confirmed-head",
-            status: "locally_applied",
+            status: "folded",
             endedAgoMs: 10 * DAY_MS,
           },
           {
             label: "old-live-queue",
-            status: "locally_applied",
+            status: "folded",
             endedAgoMs: 9 * DAY_MS,
           },
           {
-            label: "old-abandoned",
-            status: "abandoned",
+            label: "old-unlanded",
+            status: "unlanded",
             endedAgoMs: 10 * DAY_MS,
-            // A completed merge job: only the status keeps it.
-            mergeJob: "completed",
           },
-          {
-            label: "recent-finalized",
-            status: "locally_applied",
-            endedAgoMs: 60_000,
-          },
-          {
-            label: "old-pending",
-            status: "pending_submission",
-            endedAgoMs: 10 * DAY_MS,
-            // A completed merge job: only the status keeps it.
-            mergeJob: "completed",
-          },
+          { label: "recent-folded", status: "folded", endedAgoMs: 60_000 },
+          { label: "old-landed", status: "landed", endedAgoMs: 10 * DAY_MS },
         ]);
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
@@ -93,14 +77,14 @@ describe("pruning finalized journals beyond challengeability", () => {
     expect(result.remaining).toEqual(ALL.filter((l) => l !== "old-plain"));
   });
 
-  it("keeps the newest finalized journal even past the horizon, and works in batches", async () => {
+  it("keeps the newest folded journal even past the horizon, and works in batches", async () => {
     const labels = ["f1", "f2", "f3", "f4"];
     const result = await run(
       Effect.gen(function* () {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (20 - index) * DAY_MS,
           })),
         );
@@ -142,8 +126,8 @@ describe("pruning finalized journals beyond challengeability", () => {
     expect(result.remaining).toEqual(["f4"]);
   });
 
-  it("keeps an old finalized journal until its confirmed merge has been folded locally", async () => {
-    const labels = ["merge-running", "merge-unstarted", "newest"];
+  it("keeps an old applied journal until its block is folded", async () => {
+    const labels = ["applied-older", "applied", "newest"];
     const view = {
       confirmedHeadHash: header("not-journaled"),
       liveQueueHeaderHashes: [],
@@ -153,45 +137,35 @@ describe("pruning finalized journals beyond challengeability", () => {
       Effect.gen(function* () {
         yield* journals([
           {
-            label: "merge-running",
-            status: "locally_applied",
+            label: "applied-older",
+            status: "applied",
             endedAgoMs: 10 * DAY_MS,
-            mergeJob: "running",
           },
-          {
-            label: "merge-unstarted",
-            status: "locally_applied",
-            endedAgoMs: 9 * DAY_MS,
-            mergeJob: "none",
-          },
-          {
-            label: "newest",
-            status: "locally_applied",
-            endedAgoMs: 8 * DAY_MS,
-          },
+          { label: "applied", status: "applied", endedAgoMs: 9 * DAY_MS },
+          { label: "newest", status: "folded", endedAgoMs: 8 * DAY_MS },
         ]);
-        const whileUnmerged = yield* prune({
+        const whileApplied = yield* prune({
           challengeableCutoff: cutoff,
           view,
         });
-        const keptWhileUnmerged = yield* remainingLabels(labels);
-        yield* recordMergeJob(header("merge-running"), "completed");
-        yield* recordMergeJob(header("merge-unstarted"), "completed");
-        const onceMerged = yield* prune({
+        const keptWhileApplied = yield* remainingLabels(labels);
+        yield* setJournalStatus(header("applied-older"), "folded");
+        yield* setJournalStatus(header("applied"), "folded");
+        const onceFolded = yield* prune({
           challengeableCutoff: cutoff,
           view,
         });
         return {
-          whileUnmerged,
-          keptWhileUnmerged,
-          onceMerged,
+          whileApplied,
+          keptWhileApplied,
+          onceFolded,
           remaining: yield* remainingLabels(labels),
         };
       }),
     );
-    expect(result.whileUnmerged).toBe(0);
-    expect(result.keptWhileUnmerged).toEqual(labels);
-    expect(result.onceMerged).toBe(2);
+    expect(result.whileApplied).toBe(0);
+    expect(result.keptWhileApplied).toEqual(labels);
+    expect(result.onceFolded).toBe(2);
     expect(result.remaining).toEqual(["newest"]);
   });
 
@@ -207,7 +181,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (10 - index) * DAY_MS,
           })),
         );
@@ -239,7 +213,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: DAY_MS / 2,
           })),
         );
@@ -272,7 +246,7 @@ describe("journals a landed tx took out of the queue, or the facts still queue",
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -322,7 +296,7 @@ describe("journals a landed tx took out of the queue, or the facts still queue",
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -376,7 +350,7 @@ describe("journals a landed tx took out of the queue, or the facts still queue",
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -401,7 +375,7 @@ describe("journals with an orphaned event member", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "locally_applied" as const,
+            status: "folded" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );

@@ -288,18 +288,3 @@ export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter.markAwaitingAsProjected(ids);
-
-export const markProjectedByEventIds = (
-  ids: readonly Buffer[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.markProjectedByEventIds(ids, projectedHeaderHash);
-
-export const clearProjectedHeaderAssignmentByEventIds = (
-  ids: readonly Buffer[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.clearProjectedHeaderAssignmentByEventIds(
-    ids,
-    projectedHeaderHash,
-  );

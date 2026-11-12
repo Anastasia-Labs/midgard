@@ -14,10 +14,10 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
+import { landApplied } from "../helpers/own-block-facts.js";
 import {
   daPayloadInsertFixture,
   databaseFixtureBytes,
-  databaseTxHash,
   isolatedDb,
 } from "./fixtures.js";
 
@@ -445,7 +445,7 @@ export const registerAvailabilityTests = () => {
     );
 
     it.effect(
-      "retrieves only finalized pending journals missing DA payload rows",
+      "retrieves only applied own-block journals missing DA payload rows",
       (_) =>
         isolatedDb(
           Effect.gen(function* () {
@@ -464,10 +464,7 @@ export const registerAvailabilityTests = () => {
             );
             const baseTime = new Date("2026-06-12T00:00:00.000Z");
             const deploymentMarker = makeDeploymentMarker("de".repeat(32));
-            const row = (
-              headerHash: Buffer,
-              status: PendingBlockFinalizationsDB.Status,
-            ) => ({
+            const row = (headerHash: Buffer) => ({
               [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
               [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: Buffer.from(
                 "d87980",
@@ -485,8 +482,6 @@ export const registerAvailabilityTests = () => {
                 deploymentMarker.manifestId,
               [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
                 MIDGARD_CONSENSUS_PROFILE_ID,
-              [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
-                databaseTxHash(`submitted-${headerHash.toString("hex")}`),
               [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
                 "lease",
               [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]:
@@ -546,26 +541,19 @@ export const registerAvailabilityTests = () => {
                 JSON.stringify([]),
               [PendingBlockFinalizationsDB.Columns.LEDGER_DELTA_PRODUCED]:
                 JSON.stringify([]),
-              [PendingBlockFinalizationsDB.Columns.STATUS]: status,
-              [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]:
-                1n,
             });
             yield* sql`INSERT INTO ${sql(
               PendingBlockFinalizationsDB.tableName,
             )} ${sql.insert([
-              row(
-                missingHeader,
-                PendingBlockFinalizationsDB.Status.LocallyApplied,
-              ),
-              row(
-                coveredHeader,
-                PendingBlockFinalizationsDB.Status.LocallyApplied,
-              ),
-              row(
-                activeHeader,
-                PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-              ),
+              row(missingHeader),
+              row(coveredHeader),
+              row(activeHeader),
             ])}`;
+            yield* landApplied(
+              missingHeader,
+              databaseFixtureBytes("base-tail-header", 28),
+            );
+            yield* landApplied(coveredHeader, missingHeader);
             yield* DaPayloadsDB.upsertAvailable({
               [DaPayloadsDB.Columns.HEADER_HASH]: coveredHeader,
               [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
@@ -606,7 +594,7 @@ export const registerAvailabilityTests = () => {
             });
 
             const missing =
-              yield* PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads(
+              yield* PendingBlockFinalizationsDB.retrieveAppliedMissingDaPayloads(
                 {
                   limit: 10,
                 },
@@ -620,7 +608,7 @@ export const registerAvailabilityTests = () => {
             ).toEqual([missingHeader.toString("hex")]);
 
             const covered =
-              yield* PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads(
+              yield* PendingBlockFinalizationsDB.retrieveAppliedMissingDaPayloads(
                 {
                   headerHash: coveredHeader,
                   limit: 10,

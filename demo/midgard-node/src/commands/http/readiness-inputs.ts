@@ -8,14 +8,13 @@ import { Effect } from "effect";
 import {
   DaPayloadPublicationsDB,
   MempoolDB,
-  MutationJobsDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
 } from "../../database/index.js";
 import {
   PENDING_FINALIZATION_AGE_BOUND_MS,
-  retrieveActiveJournalAges,
-} from "../../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+  retrieveLiveJournalAges,
+} from "../../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import * as SettlementJournal from "../../database/settlement.js";
 import {
   L1_OWN_BLOCK_FORCED_ORDER_ORPHANED,
@@ -38,7 +37,6 @@ export const readReadinessDatabaseState = (
     return {
       durableAdmissionBacklog: yield* TxAdmissionsDB.countBacklog,
       durableAdmissionOldestAgeMs: yield* TxAdmissionsDB.oldestQueuedAgeMs,
-      unfinishedMutationJobs: yield* MutationJobsDB.countUnfinished,
       daPublicationConflicts: yield* DaPayloadPublicationsDB.conflictCount(
         15,
         deploymentIdentityDigest,
@@ -47,7 +45,7 @@ export const readReadinessDatabaseState = (
       leaseInspection: yield* StateQueueMutationLeasesDB.inspect({
         recentLimit: 3,
       }),
-      journalAges: yield* retrieveActiveJournalAges,
+      journalAges: yield* retrieveLiveJournalAges,
       ownLandedForcedOrphans: (yield* readOwnLandedForcedOrphans).length,
       stuckSettlementJobs:
         settlementDeploymentId === undefined

@@ -3,7 +3,6 @@ import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, Ref } from "effect";
 
 import {
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
@@ -16,24 +15,18 @@ import { TX_STATUS_COMMITTED_MEANINGS } from "../tx-status.js";
 import { PIPELINE_STATUS_ENDPOINT } from "./routes.js";
 
 type PipelineStatusCountRow = {
-  readonly status: string;
+  readonly status: PendingBlockFinalizationsDB.OwnBlockStatus;
   readonly count: bigint | number | string;
 };
 
-export const PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES = [
-  PendingBlockFinalizationsDB.Status.PendingSubmission,
-  PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
-  PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-  PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-] as const satisfies readonly PendingBlockFinalizationsDB.Status[];
-
+/** The oldest journal neither applied, folded nor dead: the node's own-block
+ * work still outstanding. */
 export type PipelineStatusOldestActiveRow = {
   readonly header_hash: string;
-  readonly submitted_tx_hash: string | null;
-  readonly status: (typeof PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES)[number];
+  readonly intended_tx_hash: string | null;
+  readonly status: PendingBlockFinalizationsDB.OwnBlockStatus;
   readonly created_at: Date;
   readonly updated_at: Date;
-  readonly observed_confirmed_at_ms: bigint | number | string | null;
 };
 
 type PipelineStatusCountOnlyRow = {
@@ -72,58 +65,72 @@ export const encodePipelineStatusOldestActive = (
     ? null
     : {
         headerHash: oldestActive.header_hash,
-        submittedTxHash: oldestActive.submitted_tx_hash,
+        intendedTxHash: oldestActive.intended_tx_hash,
         status: oldestActive.status,
         ageMs: Math.max(0, now.getTime() - oldestActive.created_at.getTime()),
         createdAt: oldestActive.created_at.toISOString(),
         updatedAt: oldestActive.updated_at.toISOString(),
-        observedConfirmedAt:
-          oldestActive.observed_confirmed_at_ms === null
-            ? null
-            : new Date(
-                Number(oldestActive.observed_confirmed_at_ms),
-              ).toISOString(),
       };
+
+/** The journal counts by derived status, every status named: they sum to
+ * the journal rows. */
+export const encodePipelineStatusCounts = (
+  rows: readonly PipelineStatusCountRow[],
+): Record<PendingBlockFinalizationsDB.OwnBlockStatus, string> =>
+  Object.fromEntries(
+    PendingBlockFinalizationsDB.OWN_BLOCK_STATUSES.map((status) => [
+      status,
+      bigintString(rows.find((row) => row.status === status)?.count ?? 0),
+    ]),
+  ) as Record<PendingBlockFinalizationsDB.OwnBlockStatus, string>;
 
 export const getPipelineStatusHandler = Effect.gen(function* () {
   const globals = yield* Globals;
   const sql = yield* SqlClient;
   const { manifestId } = yield* ContractDeploymentIdentity;
   const now = new Date();
+  const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+    yield* PendingBlockFinalizationsDB.deadJournals,
+  );
+  const status = PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "p");
+  const notDead = sql`NOT ${PendingBlockFinalizationsDB.deadHeader(
+    sql,
+    "p.header_hash",
+    dead,
+  )}`;
   const [
     pendingCounts,
+    liveRows,
     oldestActiveRows,
     durableAdmissionBacklog,
     mempoolTxCountRows,
     processedMempoolTxCountRows,
-    unfinishedMutationJobs,
     leaseInspection,
     settlementBacklog,
   ] = yield* Effect.all(
     [
-      sql<PipelineStatusCountRow>`SELECT
-          status,
-          COUNT(*)::bigint AS count
-        FROM pending_block_finalizations
+      sql<PipelineStatusCountRow>`SELECT status, COUNT(*)::bigint AS count
+        FROM (SELECT ${status} AS status
+          FROM pending_block_finalizations p) derived
         GROUP BY status
         ORDER BY status`,
+      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count
+        FROM pending_block_finalizations p
+        WHERE ${status} = 'unlanded' AND ${notDead}`,
       sql<PipelineStatusOldestActiveRow>`SELECT
-          encode(header_hash, 'hex') AS header_hash,
-          encode(submitted_tx_hash, 'hex') AS submitted_tx_hash,
-          status,
-          created_at,
-          updated_at,
-          observed_confirmed_at_ms
-        FROM pending_block_finalizations
-        WHERE ${sql(PendingBlockFinalizationsDB.Columns.STATUS)} IN ${sql.in(
-          PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
-        )}
-        ORDER BY created_at ASC
+          encode(p.header_hash, 'hex') AS header_hash,
+          encode(p.intended_tx_hash, 'hex') AS intended_tx_hash,
+          ${status} AS status,
+          p.created_at,
+          p.updated_at
+        FROM pending_block_finalizations p
+        WHERE ${PendingBlockFinalizationsDB.notAppliedOrFolded(sql, "p")}
+          AND ${notDead}
+        ORDER BY p.created_at ASC
         LIMIT 1`,
       TxAdmissionsDB.countBacklog,
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM mempool WHERE included_by IS NULL`,
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
-      MutationJobsDB.countUnfinished,
       StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
       manifestId === undefined
         ? Effect.succeed({ unfinishedJobs: 0n, failingJobs: [] })
@@ -161,9 +168,8 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
         ),
       },
       pendingBlockFinalizations: {
-        countsByStatus: Object.fromEntries(
-          pendingCounts.map((row) => [row.status, bigintString(row.count)]),
-        ),
+        countsByStatus: encodePipelineStatusCounts(pendingCounts),
+        live: bigintString(liveRows[0]?.count ?? 0),
         oldestActive: encodePipelineStatusOldestActive(oldestActive, now),
       },
       stateQueue: {
@@ -180,9 +186,6 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
       },
       stateQueueMutationLease:
         StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection),
-      localMutationJobs: {
-        unfinished: unfinishedMutationJobs.toString(),
-      },
       settlement: encodePipelineStatusSettlement(settlementBacklog),
     }),
   );

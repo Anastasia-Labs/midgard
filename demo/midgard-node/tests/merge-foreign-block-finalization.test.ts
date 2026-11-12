@@ -10,7 +10,6 @@
 import { Effect, Either, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MutationJobsDB } from "../src/database/index.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { Frontier, markApplied } from "../src/landed-blocks/store.js";
 import { Globals } from "../src/services/index.js";
@@ -67,11 +66,6 @@ describe("merging another operator's block", () => {
           ownOperatorKeyHash: OWN_OPERATOR,
         });
         expect(yield* failures).toBe(before);
-        expect(
-          yield* MutationJobsDB.retrieveByJobId(
-            MutationJobsDB.confirmedMergeFinalizationJobId(f.hash),
-          ),
-        ).toBeUndefined();
 
         // Landed-block processing sees the merged root at F and folds it.
         yield* processLandedQueue(landed, queueOf(confirmedAt(f, ""), []));

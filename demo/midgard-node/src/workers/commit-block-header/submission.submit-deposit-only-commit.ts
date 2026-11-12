@@ -392,18 +392,11 @@ export const submitDepositOnlyCommit = ({
                           } satisfies WorkerOutput),
                       }),
                     onSuccess: (txHash) =>
-                      PendingBlockFinalizationsDB.markSubmitted(
-                        headerHashBuffer,
-                        Buffer.from(fromHex(txHash)),
-                      ).pipe(
-                        Effect.andThen(
-                          submittedAwaitingConfirmationOutput(
-                            txHash,
-                            txSize,
-                            blockEndTimeMs,
-                            newHeaderHash,
-                          ),
-                        ),
+                      submittedAwaitingConfirmationOutput(
+                        txHash,
+                        txSize,
+                        blockEndTimeMs,
+                        newHeaderHash,
                       ),
                   },
                 );

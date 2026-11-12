@@ -10,10 +10,11 @@
  * - (a) The replacement lands. The old journal is disposed of, the native
  *   root returns to the base, and the next commit builds on the winner.
  * - (b) The old signed commit lands instead. A same-window rebuild of its
- *   content waits for the next window rather than replace its journal. The landed-block rebase revives
- *   its journal and disposes of the replacement's, the native root is the
- *   old commit's, and the next commit builds on it, carrying the L2
- *   transfer the disposed-of replacement had taken from the mempool.
+ *   content waits for the next window rather than replace its journal.
+ *   The landed-block rebase applies its block and disposes of the
+ *   replacement's journal, the native root is the old commit's, and the
+ *   next commit builds on it, carrying the L2 transfer the disposed-of
+ *   replacement had taken from the mempool.
  * - (c) A deposit leaves the chain (a rollback past its admission). The
  *   journal holding it is disposed of, S6 abandons its intent, the L2
  *   transfer it also held stays accepted and pending (its funding output
@@ -66,7 +67,7 @@ import {
   depositorL2Utxos,
 } from "./helpers/emulator-l2-transfer.js";
 
-const S = Pending.Status;
+const S = Pending.OwnBlockStatus;
 
 let j: CommitJourney;
 
@@ -83,7 +84,7 @@ afterAll(async () => {
 const replacementLands = async () => {
   await j.deposit(12_000_000n);
   const old = await j.commitUnlanded();
-  expect(old.status).toBe(S.SubmittedLocalFinalizationPending);
+  expect(old).toMatchObject({ status: S.Unlanded, dead: false });
   expect(old.deposits).toHaveLength(1);
   expect(await j.node.intentStatus(old.txHash)).toMatchObject({
     kind: "live",
@@ -101,7 +102,7 @@ const replacementLands = async () => {
   });
   await j.node.disposeDead();
   await synchronizeBounded(j.live);
-  expect(await j.statusOf(old)).toBe(S.Abandoned);
+  expect(await j.deadOf(old)).toBe(true);
   expect(await nativeRoot(j.h)).toBe(old.baseRoot);
 
   const replacement = await j.commitLanded();
@@ -110,11 +111,11 @@ const replacementLands = async () => {
   expect(replacement.deposits).toEqual(old.deposits);
   expect(replacement.root).toBe(old.root);
   await j.expectWinner(replacement);
-  expect(await j.statusOf(old)).toBe(S.Abandoned);
+  expect(await j.deadOf(old)).toBe(true);
 };
 
-/** (b) The old signed commit lands instead: its journal is revived, and
- * the next commit builds on it. */
+/** (b) The old signed commit lands instead: its dead journal's block is
+ * applied, and the next commit builds on it. */
 const oldCommitLands = async () => {
   await j.deposit(13_000_000n);
   const old = await j.commitUnlanded();
@@ -127,21 +128,18 @@ const oldCommitLands = async () => {
   });
   await j.node.disposeDead();
   await synchronizeBounded(j.live);
-  expect(await j.statusOf(old)).toBe(S.Abandoned);
+  expect(await j.deadOf(old)).toBe(true);
   expect(await nativeRoot(j.h)).toBe(old.baseRoot);
 
   // The same content on the same base in the same scheduler window has the
-  // old header hash. Its signed abandoned journal is kept (its bytes land
+  // old header hash. Its signed dead journal is kept (its bytes land
   // below), so the commit writes nothing and waits for the next window.
   expect(await j.commitOutput()).toEqual({
     type: "AwaitingNextCommitWindowOutput",
     heldHeaderHash: old.header,
     detail: HELD_HEADER_DETAIL,
   });
-  expect(await j.journalOf(old.header)).toEqual({
-    ...old,
-    status: S.Abandoned,
-  });
+  expect(await j.journalOf(old.header)).toEqual({ ...old, dead: true });
 
   // The replacement, in a later window, also carries an L2 transfer.
   const [funding] = await depositorL2Utxos(j.live);
@@ -153,7 +151,7 @@ const oldCommitLands = async () => {
   expect(replacement.deposits).toEqual(old.deposits);
   expect(old.txs).toEqual([]);
   expect(replacement.txs).toHaveLength(1);
-  expect(replacement.status).toBe(S.SubmittedLocalFinalizationPending);
+  expect(replacement).toMatchObject({ status: S.Unlanded, dead: false });
 
   // The old signed bytes land on the tail both commits extend.
   expect(Number(decodeTransaction(old.signed).invalidAfter)).toBeGreaterThan(
@@ -168,20 +166,20 @@ const oldCommitLands = async () => {
   expect(await j.node.intentStatus(old.txHash)).toMatchObject({
     kind: "landed",
   });
-  // Landed-block processing revives the old journal, and the rebase that
-  // takes its block in applies it.
+  // Landed-block processing records the old block's landing, and the
+  // rebase that takes it in applies it: the dead journal derives applied.
   await j.node.processLanded();
   await synchronizeBounded(j.live);
-  expect(await j.statusOf(old)).toBe(S.LocallyApplied);
-  expect(await j.statusOf(replacement)).toBe(S.Abandoned);
+  expect(await j.statusOf(old)).toBe(S.Applied);
+  expect(await j.deadOf(replacement)).toBe(true);
   expect(await nativeRoot(j.h)).toBe(old.root);
   await j.expectWinner(old);
   // S6 reads the replacement conflicted by the landed commit's spend of the
   // tail both commits spend (dead, superseded). S6 does not run here; its
-  // abandoned event writes the same dead status.
+  // abandoned event writes the same dead intent status.
   await j.node.abandon(replacement.txHash);
 
-  // The next commit builds on the revived block. It carries the transfer the
+  // The next commit builds on the landed old block. It carries the transfer the
   // disposed-of replacement had taken from the mempool, which went back to it.
   const next = await j.commitLanded();
   expect(next.base).toBe(old.header);
@@ -216,7 +214,7 @@ const depositLeavesChain = async () => {
   });
   await j.node.disposeDead();
   await synchronizeBounded(j.live);
-  expect(await j.statusOf(old)).toBe(S.Abandoned);
+  expect(await j.deadOf(old)).toBe(true);
   expect(await nativeRoot(j.h)).toBe(old.baseRoot);
   // S6's next pass: the commit predicate refuses a disposed-of journal, so
   // the intent is abandoned and never sent, which releases its inputs.

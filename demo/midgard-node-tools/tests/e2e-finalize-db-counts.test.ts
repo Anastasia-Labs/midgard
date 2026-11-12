@@ -13,11 +13,8 @@ import {
   Frontier,
   type LandedBlockRow,
 } from "midgard-node/landed-blocks/store";
-import {
-  insertOwnJournal,
-  JournalStatus,
-  setJournalStatus,
-} from "midgard-node/tests/helpers/landed-blocks-sim.own";
+import { insertOwnJournal } from "midgard-node/tests/helpers/landed-blocks-sim.own";
+import { land, ownLandedRow } from "midgard-node/tests/helpers/own-block-facts";
 import {
   provideDatabaseLayers,
   resetApplicationTables,
@@ -30,8 +27,9 @@ const dbEnabled = process.env.MIDGARD_SKIP_DB_TESTS !== "1";
 
 /**
  * The finalizer's counts on the node a user submitted to, in a run where
- * another operator won a block race: this node's block holding `lost` was
- * abandoned and the other operator's block included `lost` instead.
+ * another operator won a block race: this node's block holding `lost`, on
+ * its applied block `ownWon`, is dead (the other operator's block took the
+ * slot after `ownWon`) and that block included `lost` instead.
  */
 const ROOT = "11".repeat(32);
 const won = Buffer.alloc(32, 0xb1);
@@ -39,6 +37,7 @@ const lost = Buffer.alloc(32, 0xb2);
 const pending = Buffer.alloc(32, 0xb3);
 const ownWon = "a1".repeat(28);
 const ownLost = "a2".repeat(28);
+const BASE = "c0".repeat(28);
 const foreign: LandedBlockRow = {
   headerHash: "f2".repeat(28),
   parentHeaderHash: ownWon,
@@ -55,10 +54,10 @@ const foreign: LandedBlockRow = {
   txIds: [lost],
 };
 
-const journal = (headerHash: string, txId: Buffer) =>
+const journal = (headerHash: string, base: string, txId: Buffer) =>
   insertOwnJournal({
     headerHash,
-    baseHeaderHash: "c0".repeat(28),
+    baseHeaderHash: base,
     baseUtxosRoot: ROOT,
     expectedUtxosRoot: ROOT,
     spent: [],
@@ -79,15 +78,14 @@ const counts = (variant: Variant) =>
           actor: "e2e-finalize-db-counts.test",
         });
         yield* resetApplicationTables;
-        yield* journal(ownWon, won);
-        yield* setJournalStatus(ownWon, JournalStatus.LocallyApplied);
+        yield* journal(ownWon, BASE, won);
+        yield* land(ownLandedRow(ownWon, BASE, { applied: true }));
         yield* sql`INSERT INTO immutable (tx_id, tx) VALUES (${won}, ${Buffer.from([0x84])})`;
-        yield* journal(ownLost, lost);
-        yield* setJournalStatus(
+        // Unfinished: built on the other operator's block, it can land yet.
+        yield* journal(
           ownLost,
-          variant === "unfinished"
-            ? JournalStatus.SubmittedUnconfirmed
-            : JournalStatus.Abandoned,
+          variant === "unfinished" ? foreign.headerHash : ownWon,
+          lost,
         );
         yield* sql`INSERT INTO mempool (tx_id, tx) VALUES
           (${lost}, ${Buffer.from([0x84])}), (${pending}, ${Buffer.from([0x84])})`;

@@ -5,7 +5,6 @@ import { PgClient } from "@effect/sql-pg";
 import { Duration, Effect, Either, Exit, Fiber, Redacted, Ref } from "effect";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import * as MutationJobs from "../src/database/mutationJobs.js";
 import { settleLeaseDurably } from "../src/database/stateQueueMutationLeases.settle.js";
 import type { Globals } from "../src/services/globals.globals.js";
 import { initialL1ControlPlaneActivity } from "../src/services/globals.l1-control-plane.activity.js";
@@ -73,7 +72,7 @@ beforeAll(async () => {
   await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`CREATE TABLE local_mutation_jobs (job_id TEXT PRIMARY KEY,status TEXT NOT NULL,last_error TEXT,completed_at TIMESTAMPTZ,updated_at TIMESTAMPTZ)`;
+      yield* sql`CREATE TABLE finalization_writes (token TEXT PRIMARY KEY,status TEXT NOT NULL)`;
       yield* sql`CREATE TABLE state_queue_mutation_leases (token TEXT PRIMARY KEY,status TEXT NOT NULL,released_at TIMESTAMPTZ,last_error TEXT)`;
     }),
   );
@@ -108,7 +107,7 @@ it.skipIf(!dbEnabled).each(["interruption", "hold-timeout"] as const)(
     await run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO local_mutation_jobs (job_id,status) VALUES (${token},'running')`;
+        yield* sql`INSERT INTO finalization_writes (token,status) VALUES (${token},'running')`;
         yield* sql`INSERT INTO state_queue_mutation_leases (token,status) VALUES (${token},'active')`;
       }),
     );
@@ -126,7 +125,8 @@ it.skipIf(!dbEnabled).each(["interruption", "hold-timeout"] as const)(
       Effect.gen(function* () {
         yield* Effect.sync(enter);
         yield* Effect.promise(() => paused);
-        yield* MutationJobs.markCompleted(token);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE finalization_writes SET status='completed' WHERE token=${token}`;
         writeSucceeded = true;
       }),
     ).pipe(
@@ -166,17 +166,17 @@ it.skipIf(!dbEnabled).each(["interruption", "hold-timeout"] as const)(
       const state = await run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          const [job] = yield* sql<{
+          const [write] = yield* sql<{
             status: string;
-          }>`SELECT status FROM local_mutation_jobs WHERE job_id=${token}`;
+          }>`SELECT status FROM finalization_writes WHERE token=${token}`;
           const [lease] = yield* sql<{
             status: string;
           }>`SELECT status FROM state_queue_mutation_leases WHERE token=${token}`;
-          return { job: job!.status, lease: lease!.status };
+          return { write: write!.status, lease: lease!.status };
         }),
       );
       expect({ ...state, writeSucceeded }).toEqual({
-        job: "completed",
+        write: "completed",
         lease: "released",
         writeSucceeded: true,
       });

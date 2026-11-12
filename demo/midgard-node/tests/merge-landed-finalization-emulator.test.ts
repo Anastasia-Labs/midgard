@@ -11,7 +11,6 @@ import { expect, it, vi } from "vitest";
 
 import {
   DepositsDB,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
@@ -44,7 +43,7 @@ import {
 import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
-import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
+import { assertLandedMergeFoldedByProcessing } from "./helpers/merge-landed-finalization-folded-by-processing.js";
 import { assertMergeWaitsForLedgerTip } from "./helpers/merge-trailing-ledger-tip.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
@@ -128,6 +127,8 @@ vi.mock(
   },
 );
 
+const Status = PendingBlockFinalizationsDB.OwnBlockStatus;
+
 // A target no queued block has: the merge attempt runs its landed-merge
 // catch-up and then skips without building a transaction.
 const CATCH_UP_ONLY = { expectedHeaderHash: "ff".repeat(28) };
@@ -176,10 +177,11 @@ const openMergeLifecycle = async () => {
         ).pipe(Effect.provide(Database.layer)),
       )
     ).blockCount;
-  const mergeJob = (headerHash: string) =>
+  /** The block's derived status: folded once its merge is finalized. */
+  const ownStatus = (headerHash: string) =>
     run(
-      MutationJobsDB.retrieveByJobId(
-        MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
+      PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+        Buffer.from(headerHash, "hex"),
       ),
     );
   // The block's deposits, all in `status`: projected while its merge is not
@@ -396,7 +398,7 @@ const openMergeLifecycle = async () => {
     expect(mergeHooks.confirmedFinalizations).toHaveLength(
       reportedFinalizations,
     );
-    expect(await mergeJob(headerHash)).toBeUndefined();
+    expect(await ownStatus(headerHash)).toBe(Status.Applied);
     dropPendingEmulatorTransaction(fixture.emulator, heldTxHash!);
     h.observer.forgetDropped(heldTxHash!);
     h.lucidService.api.clearUTxOOverride();
@@ -414,7 +416,7 @@ const openMergeLifecycle = async () => {
     run,
     sqlRun,
     queuedBlocks,
-    mergeJob,
+    ownStatus,
     expectDeposits,
     expectedRoot,
     gatePending,
@@ -440,22 +442,17 @@ const openMergeLifecycle = async () => {
 
 export type MergeLifecycle = Awaited<ReturnType<typeof openMergeLifecycle>>;
 
-const expectFinalizedOnce = async (
-  m: MergeLifecycle,
-  headerHash: string,
-  attempts: number,
-) => {
-  expect(await m.mergeJob(headerHash)).toMatchObject({
-    [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-    [MutationJobsDB.Columns.ATTEMPTS]: attempts,
-  });
+/** The block is folded, its deposits consumed once, and the confirmed
+ * ledger at its root. */
+const expectFinalizedOnce = async (m: MergeLifecycle, headerHash: string) => {
+  expect(await m.ownStatus(headerHash)).toBe(Status.Folded);
   await m.expectDeposits(headerHash, DepositsDB.Status.Consumed);
   const audit = await m.run(runLedgerPayloadAudit);
   expect(audit.confirmedRoot).toBe(await m.expectedRoot(headerHash));
   expect(audit.diverged).toBe(false);
 };
 
-it("finalizes a landed merge whose local finalization failed or was held by a driver recompute, exactly once", async () => {
+it("finalizes a landed merge whose local finalization failed after its fold or was held by a driver recompute, exactly once", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
   try {
@@ -471,11 +468,9 @@ it("finalizes a landed merge whose local finalization failed or was held by a dr
       get(target, property) {
         if (property === "diagnostics")
           return async () => {
-            const job = await m.mergeJob(first);
             if (
               failures === 0 &&
-              job?.[MutationJobsDB.Columns.STATUS] ===
-                MutationJobsDB.Status.Running
+              (await m.ownStatus(first)) === Status.Folded
             ) {
               failures += 1;
               throw new Error("test: owner unreachable after the ledger fold");
@@ -501,18 +496,11 @@ it("finalizes a landed merge whose local finalization failed or was held by a dr
       { headerHash: first, succeeded: false },
     ]);
     expect(await m.queuedBlocks()).toBe(0);
-    expect(await m.mergeJob(first)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Failed,
-      [MutationJobsDB.Columns.ATTEMPTS]: 1,
-    });
-    // The fold committed: the confirmed ledger is already at the block.
-    expect((await m.run(runLedgerPayloadAudit)).confirmedRoot).toBe(
-      await m.expectedRoot(first),
-    );
-    // The next merge attempt retries it before anything else, on the ledger
-    // the failed attempt already folded.
+    // The fold committed: the block is folded and the confirmed ledger is
+    // already at it, so the next merge attempt finds nothing to finalize.
+    await expectFinalizedOnce(m, first);
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, first, 2);
+    await expectFinalizedOnce(m, first);
 
     // --- B: a driver recompute holds the gate while the merge lands. ------
     const second = await m.commitDepositBlock(9_000_000n);
@@ -535,14 +523,11 @@ it("finalizes a landed merge whose local finalization failed or was held by a dr
       headerHash: second,
       succeeded: false,
     });
-    const refusedJob = await m.mergeJob(second);
-    expect(refusedJob).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Failed,
-      [MutationJobsDB.Columns.ATTEMPTS]: 1,
-    });
-    expect(refusedJob?.[MutationJobsDB.Columns.LAST_ERROR]).toContain(
-      DRIVER_RECOMPUTE_PENDING,
-    );
+    expect(
+      Either.isLeft(refused) &&
+        formatUnknownError(refused.left, { includeCause: true }),
+    ).toContain(DRIVER_RECOMPUTE_PENDING);
+    expect(await m.ownStatus(second)).toBe(Status.Applied);
     await m.expectDeposits(second, DepositsDB.Status.Projected);
     expect(await m.gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
     // No merge attempt, and so no catch-up, runs while the gate is held.
@@ -553,24 +538,19 @@ it("finalizes a landed merge whose local finalization failed or was held by a dr
       Either.isLeft(whileHeld) &&
         (whileHeld.left as { readonly _tag?: string })._tag,
     ).toBe("MergeProducerPermitUnavailable");
-    expect(await m.mergeJob(second)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Failed,
-      [MutationJobsDB.Columns.ATTEMPTS]: 1,
-    });
+    expect(await m.ownStatus(second)).toBe(Status.Applied);
 
     // The node restarts: the fresh driver's first view recomputes and
-    // reopens the gate, and startup leaves the failed job to the runtime.
+    // reopens the gate, and startup leaves the merge's finalization to the
+    // runtime.
     await m.restart();
     expect(await m.gatePending()).toBeNull();
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, second, 2);
+    await expectFinalizedOnce(m, second);
     // Finalized once: a further attempt finds nothing left to do.
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, second, 2);
-    expect(await m.mergeJob(first)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-      [MutationJobsDB.Columns.ATTEMPTS]: 2,
-    });
+    await expectFinalizedOnce(m, second);
+    expect(await m.ownStatus(first)).toBe(Status.Folded);
     expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
   } finally {
     await m.close();
@@ -591,7 +571,7 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
     // Not landed: L1 still queues the block, and no attempt finalizes it.
     expect(await m.queuedBlocks()).toBe(1);
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    expect(await m.mergeJob(block)).toBeUndefined();
+    expect(await m.ownStatus(block)).toBe(Status.Applied);
     await m.expectDeposits(block, DepositsDB.Status.Projected);
 
     // The same signed merge lands while the node is down.
@@ -601,21 +581,25 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
       expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
     });
     expect(await m.queuedBlocks()).toBe(0);
-    expect(await m.mergeJob(block)).toBeUndefined();
+    // Landed-block processing folded it on restart; the catch-up finds
+    // nothing left to finalize.
+    await expectFinalizedOnce(m, block);
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, block, 1);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, block, 1);
+    await expectFinalizedOnce(m, block);
     expect(mergeHooks.confirmedFinalizations).toEqual([]);
   } finally {
     await m.close();
   }
 });
 
-it("refuses to finalize a landed merge whose retained journal names a different canonical parent", async () => {
+it("leaves a landed merge that landed-block processing folded alone, whatever base its retained journal names", async () => {
   const m = await openMergeLifecycle();
   try {
-    await assertLandedMergeParentRefusal(m, mergeHooks, expectFinalizedOnce);
+    await assertLandedMergeFoldedByProcessing(
+      m,
+      mergeHooks,
+      expectFinalizedOnce,
+    );
   } finally {
     await m.close();
   }
@@ -636,19 +620,19 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
     expect(Either.isRight(firstMerge) && firstMerge.right.status).toBe(
       "merged",
     );
-    await expectFinalizedOnce(m, first, 1);
+    await expectFinalizedOnce(m, first);
 
     const second = await m.commitDepositBlock(9_000_000n);
     const third = await m.commitDepositBlock(7_000_000n);
     expect(await m.queuedBlocks()).toBe(2);
     const held = await m.expireMergeConfirmation(second);
 
-    // Not landed: the walk starts at the first block's completed merge and
+    // Not landed: the walk starts at the first block's folded merge and
     // finalizes neither queued block.
     expect(await m.queuedBlocks()).toBe(2);
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     for (const queued of [second, third]) {
-      expect(await m.mergeJob(queued)).toBeUndefined();
+      expect(await m.ownStatus(queued)).toBe(Status.Applied);
       await m.expectDeposits(queued, DepositsDB.Status.Projected);
     }
 
@@ -680,17 +664,11 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
       { headerHash: first, succeeded: true },
       { headerHash: third, succeeded: true },
     ]);
-    expect(await m.mergeJob(second)).toMatchObject({
-      [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
-      [MutationJobsDB.Columns.ATTEMPTS]: 1,
-    });
+    expect(await m.ownStatus(second)).toBe(Status.Folded);
     await m.expectDeposits(second, DepositsDB.Status.Consumed);
-    await expectFinalizedOnce(m, third, 1);
+    await expectFinalizedOnce(m, third);
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, third, 1);
-    expect(await m.mergeJob(second)).toMatchObject({
-      [MutationJobsDB.Columns.ATTEMPTS]: 1,
-    });
+    await expectFinalizedOnce(m, third);
   } finally {
     await m.close();
   }

@@ -14,8 +14,8 @@
  *   current view (`planCurrentView`), which the follower-change driver
  *   applies (`makeEmulatorDriver` in `emulator-l1-follower.driver.ts`);
  * - `ingestEmulatorEventsUnowned`: that plan through
- *   `reconcileFollowerEvents` under the test-only fixture capability, before
- *   any driver has applied a view.
+ *   `reconcileFollowerEvents` (over the dead own journals) under the
+ *   test-only fixture capability, before any driver has applied a view.
  *
  * The deployment is bound once per emulator (`bindNodeFollower`), from the
  * fixture's contracts when nothing bound it earlier.
@@ -24,7 +24,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Duration, Effect, Ref, Schedule } from "effect";
 
-import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import {
@@ -50,6 +49,7 @@ import {
   syncFollowerHost,
   withFollowerHost,
 } from "./follower-emulator.host.js";
+import { reconcileOverDead } from "./follower-view.js";
 
 const failed = (message: string, cause?: unknown) =>
   new DatabaseError({ table: "l1_follower_cursor", message, cause });
@@ -179,7 +179,7 @@ export const ingestEmulatorEventsUnowned = (
     const network = lucid.config().network;
     if (network === undefined) return yield* failed("Emulator has no network");
     const outcome = yield* withFollowerWrite(
-      reconcileFollowerEvents(plan, {
+      reconcileOverDead(plan, {
         network,
         slotToUnixTime: (slot) => lucid.slotToUnixTime(slot),
         cutoffMs: options.projectThroughMs ?? 0,

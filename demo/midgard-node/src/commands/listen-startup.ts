@@ -9,8 +9,6 @@ import "@al-ft/midgard-sdk";
 import "effect";
 import "../database/index.js";
 import "../mpf/index.js";
-import "../services/canonical-journal-recovery.js";
-import "../services/own-block-node.js";
 import "../services/index.js";
 import "../services/landed-state-queue.js";
 import "../transactions/availability-challenge-registration.js";
@@ -20,15 +18,12 @@ import "./contract-deployment-info.js";
 import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 import "./listen-startup.seed-latest-local-block-boundary-on-startup.js";
 import "./listen-startup.release-state-queue-leases-of-previous-node-process.js";
-import "./listen-startup.assert-startup-mutation-jobs-recoverable.js";
-export { assertStartupMutationJobsRecoverable } from "./listen-startup.assert-startup-mutation-jobs-recoverable.js";
 export { ensureProtocolInitializedOnStartup } from "./listen-startup.ensure-protocol-initialized-on-startup.js";
 export {
   NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS,
   releaseStateQueueLeasesOfPreviousNodeProcess,
 } from "./listen-startup.release-state-queue-leases-of-previous-node-process.js";
 export {
-  classifyUnfinishedMutationJobOnStartup,
   hydratePendingBlockFinalizationOnStartup,
   seedLatestLocalBlockBoundaryOnStartup,
 } from "./listen-startup.seed-latest-local-block-boundary-on-startup.js";

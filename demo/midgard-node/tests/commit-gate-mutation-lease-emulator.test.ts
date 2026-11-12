@@ -4,7 +4,7 @@
  * runs before broadcast, so a refusal sends nothing. A commit worker holding
  * its lease signs and sends its commit; one that outlived its lease
  * (released, or expired) signs nothing, and neither does one whose journal
- * the next lease holder abandoned as unsigned.
+ * the next lease holder discarded as unsigned.
  */
 import "./helpers/follower-emulator-installed.js";
 
@@ -37,7 +37,7 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-type Ending = "held" | "released" | "expired" | "abandoned";
+type Ending = "held" | "released" | "expired" | "discarded";
 
 /**
  * Prepares a pending block for a payment, ends what the worker's signing
@@ -59,9 +59,9 @@ const signAfter = async (ending: Ending) => {
     permit,
     Buffer.from(unsigned.toHash(), "hex"),
   );
-  if (ending === "abandoned")
+  if (ending === "discarded")
     await env.runtime.runPromise(
-      PendingBlockFinalizationsDB.markUnsubmittedAbandoned(headerHash).pipe(
+      PendingBlockFinalizationsDB.discardUnsignedJournal(headerHash).pipe(
         Effect.provideService(FollowerWrite, permit),
       ),
     );
@@ -102,7 +102,7 @@ describe("the commit gate after the worker's lease or journal ended", () => {
     expect(result.text).toBe("success");
     expect(result.direct).toHaveLength(1);
     expect(result.journaled).toHaveLength(1);
-    expect(result.intent?.signed_tx_cbor?.toString("hex")).toBe(
+    expect(result.intent?.intent_tx_cbor?.toString("hex")).toBe(
       result.direct[0],
     );
     // The commit lands through the follower provider.
@@ -121,23 +121,18 @@ describe("the commit gate after the worker's lease or journal ended", () => {
       expect(result.journaled).toEqual([]);
       expect(result.intent).toMatchObject({
         intended_tx_hash: null,
-        signed_tx_cbor: null,
+        intent_tx_cbor: null,
       });
     },
   );
 
-  it("refuses a signed intent for a journal abandoned as unsigned and sends nothing", async () => {
-    const result = await signAfter("abandoned");
+  it("refuses a signed intent for a journal discarded as unsigned and sends nothing", async () => {
+    const result = await signAfter("discarded");
     expect(result.exit._tag).toBe("Failure");
-    expect(result.text).toContain(
-      "Signed intent conflicts with the pending journal",
-    );
+    expect(result.text).toContain("Signed intent has no prepared journal");
     expect(result.direct).toEqual([]);
     expect(result.sent).toEqual([]);
     expect(result.journaled).toEqual([]);
-    expect(result.intent).toMatchObject({
-      intended_tx_hash: null,
-      signed_tx_cbor: null,
-    });
+    expect(result.intent).toBeUndefined();
   });
 });

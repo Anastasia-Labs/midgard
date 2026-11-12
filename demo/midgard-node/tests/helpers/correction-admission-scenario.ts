@@ -178,12 +178,10 @@ export const observe = async (
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const header = Buffer.from(headerHash, "hex");
-      const journal = yield* sql<{
-        status: string;
-        correction_transition_digest: Buffer | null;
-        updated_at: Date;
-      }>`SELECT status, correction_transition_digest, updated_at
-        FROM pending_block_finalizations WHERE header_hash = ${header}`;
+      const journal = yield* sql<{ status: Pending.OwnBlockStatus }>`SELECT
+          ${Pending.ownBlockStatusSql(sql, "p")} AS status
+        FROM pending_block_finalizations p WHERE p.header_hash = ${header}`;
+      const dead = yield* Pending.deadJournals;
       const deposits = yield* sql<{
         status: string;
         projected_header_hash: Buffer | null;
@@ -208,8 +206,7 @@ export const observe = async (
             ? undefined
             : {
                 status: journal[0].status,
-                corrected: journal[0].correction_transition_digest !== null,
-                updatedAt: new Date(journal[0].updated_at).toISOString(),
+                dead: dead.causes.has(headerHash),
               },
         deposits: deposits.map((row) => ({
           status: row.status,

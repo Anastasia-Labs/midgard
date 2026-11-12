@@ -39,11 +39,15 @@ const C = Pending.Columns;
 
 export type Journal = Readonly<{
   header: string;
-  status: string;
+  /** Its derived status when read. */
+  status: Pending.OwnBlockStatus;
+  /** Whether its block could no longer land when read (`deadJournals`). */
+  dead: boolean;
   base: string;
   baseRoot: string;
   root: string;
   txHash: string;
+  /** The signed commit, as the intent journal holds it. */
   signed: Buffer;
   deposits: readonly string[];
   txs: readonly string[];
@@ -104,25 +108,40 @@ export const openCommitJourney = async () => {
     throw new Error(`Unexpected commit output: ${JSON.stringify(output)}`);
   };
 
+  /** Rows of the node's database, read through the running handle. */
+  const query = <A>(
+    read: (
+      sql: SqlClient.SqlClient,
+    ) => Effect.Effect<A, unknown, SqlClient.SqlClient>,
+  ) => h.command(Effect.flatMap(SqlClient.SqlClient, read));
+
   const journalOf = async (headerHash: string): Promise<Journal> => {
     const journal = await readJournal(headerHash);
+    const header = Buffer.from(headerHash, "hex");
+    const txHash = journal[C.INTENDED_TX_HASH]!;
+    const facts = await query((sql) =>
+      Effect.all({
+        status: Pending.retrieveStatusByHeaderHash(header),
+        dead: Effect.map(Pending.deadJournals, (dead) =>
+          dead.causes.has(headerHash),
+        ),
+        signed: sql<{ tx_cbor: Buffer }>`SELECT tx_cbor FROM l1_intents
+          WHERE tx_hash = ${txHash}`,
+      }),
+    );
     return {
       header: headerHash,
-      status: journal[C.STATUS],
+      status: facts.status!,
+      dead: facts.dead,
       base: journal[C.BASE_TAIL_HEADER_HASH].toString("hex"),
       baseRoot: journal[C.BASE_UTXOS_ROOT],
       root: journal[C.EXPECTED_UTXOS_ROOT],
-      txHash: journal[C.INTENDED_TX_HASH]!.toString("hex"),
-      signed: journal[C.SIGNED_TX_CBOR]!,
+      txHash: txHash.toString("hex"),
+      signed: facts.signed[0]!.tx_cbor,
       deposits: journal.depositEventIds.map((id) => id.toString("hex")).sort(),
       txs: journal.mempoolTxIds.map((id) => id.toString("hex")).sort(),
     };
   };
-
-  /** Rows of the node's database, read through the running handle. */
-  const query = <A>(
-    read: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown>,
-  ) => h.command(Effect.flatMap(SqlClient.SqlClient, read));
 
   /** A commit whose transaction the emulator loses before any block. */
   const commitUnlanded = async () => {
@@ -164,6 +183,7 @@ export const openCommitJourney = async () => {
     journalOf,
     statusOf: async (journal: Journal) =>
       (await journalOf(journal.header)).status,
+    deadOf: async (journal: Journal) => (await journalOf(journal.header)).dead,
     query,
     admissionStatus: async (txId: Buffer) =>
       (

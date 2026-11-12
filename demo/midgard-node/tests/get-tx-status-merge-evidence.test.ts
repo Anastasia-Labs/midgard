@@ -46,17 +46,23 @@ import { provideDatabaseLayers } from "./utils.js";
 const txId = Buffer.alloc(32, 0xaa);
 const header = Buffer.alloc(28, 0xbb);
 const otherHeader = Buffer.alloc(28, 0xcc);
-const root = "11".repeat(32);
+const base = Buffer.alloc(28, 0x0b);
 /** The follower's covered tip height in every case. */
 const TIP_HEIGHT = 1_000;
+/** The derived status of a journal holding the tx: folded (its retained
+ * fold), applied or landed (its landed row), or dead (unlanded, with no
+ * commit anchor). */
+type JournalStatus = "folded" | "applied" | "landed" | "dead";
 type Options = {
-  status?: string;
-  job?: string;
+  /** The status of the tx's journal; `applied` by default. */
+  status?: JournalStatus;
   outcome?: string;
   /** The merge tx is one block short of `safe` (cd deep) at the tip. */
   shallow?: boolean;
+  /** Another applied journal holds the tx too. */
   ambiguous?: boolean;
-  oldAbandoned?: boolean;
+  /** A dead journal of another header holds the tx too. */
+  deadPredecessor?: boolean;
   revoked?: boolean;
   /** The follower write gate: open at an applied view (the default), a
    * driver recompute pending, or no view applied yet. */
@@ -71,12 +77,17 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
         return yield* sql.withTransaction(
           Effect.gen(function* () {
             // Connection-local fabricated rows exercise actual joins, never deployed state.
-            yield* sql`CREATE TEMP TABLE pending_block_finalizations (header_hash bytea PRIMARY KEY, status text, expected_utxos_root text) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE pending_block_finalizations (header_hash bytea PRIMARY KEY, base_tail_header_hash bytea, intended_tx_hash bytea, commit_anchor_hash bytea, commit_anchor_height bigint, commit_anchor_slot bigint, created_at timestamptz DEFAULT now()) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE pending_block_finalization_txs (header_hash bytea, member_id bytea) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE local_mutation_jobs (job_id text, kind text, status text, payload jsonb) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE node_l1_queue_terminals (header_hash bytea, terminal_outcome text, height bigint) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE l1_follower_cursor (height bigint) ON COMMIT DROP`;
-            yield* sql`INSERT INTO l1_follower_cursor VALUES (${TIP_HEIGHT})`;
+            yield* sql`CREATE TEMP TABLE node_confirmed_ledger_frontier (header_hash bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_confirmed_merges (header_hash bytea, parent_header_hash bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_landed_blocks (header_hash bytea, parent_header_hash bytea, state text, applied boolean) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_foreign_tx_inclusions (tx_id bytea, header_hash bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_l1_queue_terminals (header_hash bytea, terminal_outcome text, height bigint, tx_index integer) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE l1_blocks (hash bytea, slot bigint, height bigint) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE l1_intents (tx_hash bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE l1_follower_cursor (height bigint, pruned_through_slot bigint) ON COMMIT DROP`;
+            yield* sql`INSERT INTO l1_follower_cursor VALUES (${TIP_HEIGHT}, 0)`;
             yield* sql`CREATE TEMP TABLE node_follower_write_gate (singleton boolean, applied_generation bigint, pending_reason text) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE immutable (tx_id bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
@@ -84,20 +95,25 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
             yield* sql`CREATE TEMP TABLE tx_rejections (tx_id bytea, reject_code text, reject_detail text, created_at timestamptz) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE tx_admissions (tx_id bytea, status text) ON COMMIT DROP`;
             yield* sql`INSERT INTO immutable VALUES (${txId})`;
-            yield* sql`INSERT INTO pending_block_finalizations VALUES (${header}, ${options.status ?? "locally_applied"}, ${root})`;
-            yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${header}, ${txId})`;
-            if (options.oldAbandoned || options.ambiguous) {
-              yield* sql`INSERT INTO pending_block_finalizations VALUES (${otherHeader}, ${options.oldAbandoned ? "abandoned" : "locally_applied"}, ${root})`;
-              yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${otherHeader}, ${txId})`;
-            }
-            if (options.job) {
-              yield* sql`INSERT INTO local_mutation_jobs VALUES (${"confirmed_merge_finalization:" + header.toString("hex")}, 'confirmed_merge_finalization', ${options.job}, ${JSON.stringify({ headerHash: header.toString("hex"), confirmedHeaderUtxosRoot: root, ledgerDeltaSpentCount: 1, ledgerDeltaProducedCount: 1 })}::jsonb)`;
-            }
+            /** A journal of `headerHash` holding the tx, with `status`'s facts. */
+            const journal = (headerHash: Buffer, status: JournalStatus) =>
+              Effect.gen(function* () {
+                yield* sql`INSERT INTO pending_block_finalizations (header_hash, base_tail_header_hash)
+                  VALUES (${headerHash}, ${base})`;
+                yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${headerHash}, ${txId})`;
+                if (status === "folded")
+                  yield* sql`INSERT INTO node_confirmed_merges VALUES (${headerHash}, ${base})`;
+                if (status === "applied" || status === "landed")
+                  yield* sql`INSERT INTO node_landed_blocks VALUES (${headerHash}, ${base}, 'processed', ${status === "applied"})`;
+              });
+            yield* journal(header, options.status ?? "applied");
+            if (options.ambiguous) yield* journal(otherHeader, "applied");
+            if (options.deadPredecessor) yield* journal(otherHeader, "dead");
             if (options.outcome) {
               // `safe`: at least cd deep at the tip (depth = tip - height + 1).
               const safeHeight =
                 TIP_HEIGHT - manifest.l1Finality.confirmationDepth + 1;
-              yield* sql`INSERT INTO node_l1_queue_terminals VALUES (${header}, ${options.outcome}, ${options.shallow ? safeHeight + 1 : safeHeight})`;
+              yield* sql`INSERT INTO node_l1_queue_terminals VALUES (${header}, ${options.outcome}, ${options.shallow ? safeHeight + 1 : safeHeight}, 0)`;
             }
             const gate = options.gate ?? "open";
             yield* sql`INSERT INTO node_follower_write_gate VALUES (true,
@@ -156,9 +172,9 @@ for (const route of ["GET", "batch"] as const)
     it("does not call an L1-confirmed commitment an actual merge", async () => {
       expect((await query(route)).body.confirmedLedgerFinalized).toBe(false);
     });
-    it("reports a completed local merge of the exact current header", async () => {
+    it("reports the merge of a folded header", async () => {
       expect(
-        (await query(route, { job: "completed", outcome: "merged" })).body,
+        (await query(route, { status: "folded", outcome: "merged" })).body,
       ).toMatchObject({
         status: "committed",
         headerHash: header.toString("hex"),
@@ -167,32 +183,31 @@ for (const route of ["GET", "batch"] as const)
       });
     });
     it.each<Options>([
-      { job: "running", outcome: "merged" },
-      { job: "failed", outcome: "merged" },
-      { job: "completed" },
-      { outcome: "merged" },
-      { job: "completed", outcome: "removed" },
-      { job: "completed", outcome: "merged", shallow: true },
-      { job: "completed", outcome: "merged", ambiguous: true },
-      { job: "completed", outcome: "merged", status: "abandoned" },
-      { job: "completed", outcome: "merged", revoked: true },
-      { job: "completed", outcome: "merged", gate: "pending" },
-      { job: "completed", outcome: "merged", gate: "unapplied" },
+      { status: "applied", outcome: "merged" },
+      { status: "landed", outcome: "merged" },
+      { status: "folded" },
+      { status: "dead" },
+      { status: "folded", outcome: "removed" },
+      { status: "folded", outcome: "merged", shallow: true },
+      { status: "folded", outcome: "merged", ambiguous: true },
+      { status: "folded", outcome: "merged", revoked: true },
+      { status: "folded", outcome: "merged", gate: "pending" },
+      { status: "folded", outcome: "merged", gate: "unapplied" },
     ])(
-      "refuses missing, revoked or mismatched merge evidence, or a gate a driver recompute holds: %j",
+      "refuses missing, revoked or unfolded merge evidence, a dead journal, or a gate a driver recompute holds: %j",
       async (options) => {
         const result = await query(route, options);
         expect(result.status).toBe(200);
         expect(result.body.confirmedLedgerFinalized).toBe(false);
       },
     );
-    it("uses the current merged incarnation while retaining an abandoned predecessor", async () => {
+    it("uses the current merged incarnation while retaining a dead predecessor", async () => {
       expect(
         (
           await query(route, {
-            job: "completed",
+            status: "folded",
             outcome: "merged",
-            oldAbandoned: true,
+            deadPredecessor: true,
           })
         ).body.confirmedLedgerFinalized,
       ).toBe(true);

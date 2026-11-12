@@ -11,8 +11,8 @@ export {
 } from "./http/l1-provider-probe.js";
 export { getMergeHandler } from "./http/operator-actions.js";
 export {
+  encodePipelineStatusCounts,
   encodePipelineStatusOldestActive,
-  PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "./http/pipeline-status.js";
 export { buildListenRouter } from "./http/router.js";

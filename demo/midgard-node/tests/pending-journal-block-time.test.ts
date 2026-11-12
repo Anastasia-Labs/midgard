@@ -15,7 +15,7 @@ import {
   header,
   isolatedDb,
   journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
+} from "./helpers/own-journal-fixture.js";
 
 describe("pending journal block time", () => {
   it.effect("stores a block time after the block end", () =>

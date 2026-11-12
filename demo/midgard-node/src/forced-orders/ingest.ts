@@ -29,10 +29,11 @@
  * A rollback that removes an order removes its follower key and its order
  * row (N10b). In the same transaction, while the follower is caught up, the
  * hook deletes each node row without a header whose order is gone and that
- * no unfinished block journal holds. A row such a journal holds is an
- * orphan for the event-history recovery (`countOrphansAwaitingRecovery`) and
- * keeps the node unready with `l1_events_orphan_recovery` until that
- * journal is disposed of; a row with a header is its header's. A row of a
+ * no block journal neither applied, folded nor dead holds. A row such a
+ * journal holds is an orphan for the event-history recovery
+ * (`countOrphansAwaitingRecovery`) and keeps the node unready with
+ * `l1_events_orphan_recovery` until that journal lands or is dead; a row
+ * with a header is its header's. A row of a
  * landed own block whose order is gone holds nothing: the hook logs a
  * warning once per header and `/readyz` reports a degradation
  * (`own-landed-orphans.ts`). An order that lands again is ingested again
@@ -51,7 +52,10 @@ import { SqlClient } from "@effect/sql";
 import { Cause, Effect, Exit, Metric } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
-import { ForcedTransactionsDB } from "../database/index.js";
+import {
+  ForcedTransactionsDB,
+  PendingBlockFinalizationsDB,
+} from "../database/index.js";
 import {
   abandonedForcedAdmission,
   orphanedForcedAdmission,
@@ -177,7 +181,7 @@ type ViewWrite =
       kind: "written";
       /** Rows deleted because their order is gone. */
       deleted: readonly string[];
-      /** Rows whose order is gone that an unfinished block journal holds. */
+      /** Rows whose order is gone that a pending block journal holds. */
       orphaned: readonly string[];
       /** Rows of landed own blocks whose order is gone. */
       ownLanded: readonly OwnLandedForcedOrphan[];
@@ -201,9 +205,12 @@ const writeAtView = (
         if (!(yield* followerViewValid(view)))
           return { kind: "stale" } as ViewWrite;
         yield* sql`LOCK TABLE ${sql(ForcedTransactionsDB.tableName)} IN SHARE ROW EXCLUSIVE MODE`;
+        const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+          yield* PendingBlockFinalizationsDB.deadJournals,
+        );
         const deleted = sweep
           ? yield* sql<OrderOutRef>`DELETE FROM ${sql(ForcedTransactionsDB.tableName)} t
-              WHERE ${abandonedForcedAdmission(sql, "t")}
+              WHERE ${abandonedForcedAdmission(sql, "t", dead)}
               RETURNING t.tx_order_l1_tx_hash, t.tx_order_l1_output_index`
           : [];
         if (entries.length > 0)
@@ -211,7 +218,7 @@ const writeAtView = (
         const orphaned = yield* sql<OrderOutRef>`SELECT
             t.tx_order_l1_tx_hash, t.tx_order_l1_output_index
           FROM ${sql(ForcedTransactionsDB.tableName)} t
-          WHERE ${orphanedForcedAdmission(sql, "t")}
+          WHERE ${orphanedForcedAdmission(sql, "t", dead)}
           ORDER BY t.tx_order_l1_tx_hash, t.tx_order_l1_output_index`;
         return {
           kind: "written",

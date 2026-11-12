@@ -334,7 +334,6 @@ describe("public status HTTP presentation", () => {
             },
             durableAdmission: { backlog: "0" },
             localResidue: { mempoolTxCount: "0", processedMempoolTxCount: "0" },
-            localMutationJobs: { unfinished: "0" },
             stateQueueMutationLease: {
               status: "busy",
               activeLease: { holder: "commit", status: "active" },

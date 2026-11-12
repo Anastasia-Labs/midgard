@@ -31,7 +31,6 @@ const baseInput = {
   resetInProgress: false,
   durableAdmissionBacklog: 0n,
   mempoolTxCount: 0n,
-  unfinishedMutationJobs: 0n,
 };
 
 describe("merge readiness planner", () => {

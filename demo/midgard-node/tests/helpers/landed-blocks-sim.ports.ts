@@ -86,20 +86,26 @@ export type LandedSimStats = TrafficStats & {
   /** Pending transactions a processed foreign block included. */
   foreignIncluded: number;
   ownCommits: number;
-  /**
-   * Rebases whose target held a live own block (a commit's, a journal
-   * resolution's, or one processing asked for).
-   */
+  /** Rebases whose target held a live own block (a commit's, or one processing asked for). */
   liveRebases: number;
   ownProcessed: number;
-  /** Own blocks the rebase applied when they landed (journal locally applied). */
+  /** Own blocks the rebase applied when they landed. */
   ownApplied: number;
-  /** Own journals abandoned because their base left the processed tip. */
+  /** Own journals derived dead (their block can no longer land). */
   ownResolutions: number;
   /** ...because their base was a foreign block a rollback removed. */
   ownOnRemovedBase: number;
+  /** Dead own journals whose block landed and was applied anyway. */
   ownRevivals: number;
-  /** Revived members whose rejection the revival deleted. */
+  /** Applied own blocks a rollback made unlanded again. */
+  ownRolledBack: number;
+  /** ...that landed again and were applied. */
+  ownRelanded: number;
+  /** Settled checks whose own statuses and journal rows equalled the model. */
+  ownStatusChecks: number;
+  /** Own blocks seen folded with their fold pruned (folded by their merged terminal). */
+  ownPrunedFolds: number;
+  /** Members of an applied own block whose rejection the application deleted. */
   revivalUnrejected: number;
   /** ...that a later disposal of their block restored to the mempool. */
   unrejectedRestored: number;
@@ -157,6 +163,10 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   ownResolutions: 0,
   ownOnRemovedBase: 0,
   ownRevivals: 0,
+  ownRolledBack: 0,
+  ownRelanded: 0,
+  ownStatusChecks: 0,
+  ownPrunedFolds: 0,
   revivalUnrejected: 0,
   unrejectedRestored: 0,
   offlineChecks: 0,
@@ -315,7 +325,7 @@ export const simPorts = (
   // (deferred, or crashed and resumed now and then): a due rebase is
   // recorded as asked for and held pending until it ran.
   rebase: () =>
-    rebasePlan.pipe(
+    rebasePlan().pipe(
       Effect.map((plan) => {
         if (plan.kind === "blocked")
           return {

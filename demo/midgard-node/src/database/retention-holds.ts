@@ -3,6 +3,7 @@ import { Clock, Effect } from "effect";
 
 import { finalityHeldPayload, type RetentionL1View } from "./daPayloads.js";
 import { orphanedAdmission } from "./l1-admission-identity.js";
+import { notAppliedOrFolded } from "./pendingBlockFinalizations.derived-status.js";
 
 /**
  * What a housekeeping prune reads to keep challenge-relevant rows: the
@@ -34,19 +35,21 @@ export const challengeRelevantHeader = (
   OR ${finalityHeldPayload(sql, holds.deploymentIdentityDigest, headerColumn, holds.view.finalThroughHeight)})`;
 
 /**
- * Journals recovery still reads, irrespective of age. Unfinished and abandoned
- * journals retain their same-base siblings (including other incarnations of a
- * non-root node) and the descendants displacement walks, plus those journals'
- * replay bases. UNION makes cycles finite.
+ * Journals recovery still reads, irrespective of age. Journals neither
+ * applied nor folded (unlanded, dead or not, and landed) retain their
+ * same-base siblings (including other incarnations of a non-root node) and
+ * the descendants displacement walks, plus those journals' replay bases.
+ * UNION makes cycles finite.
  */
 export const recoveryRelevantJournal = (
   sql: SqlClient.SqlClient,
   headerColumn: string,
 ) => sql`${sql(headerColumn)} IN (
   WITH RECURSIVE recovery_seeds AS (
-    SELECT header_hash, base_tail_header_hash, base_tail_out_ref, base_utxos_root
-    FROM pending_block_finalizations
-    WHERE status <> 'locally_applied'
+    SELECT seed_row.header_hash, seed_row.base_tail_header_hash,
+      seed_row.base_tail_out_ref, seed_row.base_utxos_root
+    FROM pending_block_finalizations AS seed_row
+    WHERE ${notAppliedOrFolded(sql, "seed_row")}
   ), dependent AS (
     SELECT sibling.header_hash, sibling.base_tail_header_hash
     FROM pending_block_finalizations AS sibling
@@ -68,8 +71,8 @@ export const recoveryRelevantJournal = (
  * The SQL condition true when the journal whose header is `headerColumn` has
  * a deposit or withdrawal member whose follower admission identity L1 no
  * longer holds in its key set (an orphan). Such a journal is incomplete:
- * ledger repair refuses to undo an orphan's admission while a journal not
- * abandoned names it as a member, so deleting the journal would turn that
+ * ledger repair refuses to undo an orphan's admission while a journal that
+ * is not dead names it as a member, so deleting the journal would turn that
  * refusal into a repair.
  */
 export const orphanMemberJournal = (

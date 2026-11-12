@@ -38,8 +38,6 @@ import {
   depositorL2Utxos,
 } from "./helpers/emulator-l2-transfer.js";
 
-const S = Pending.Status;
-
 let j: CommitJourney;
 
 beforeAll(async () => {
@@ -105,7 +103,8 @@ describe("an L2 transfer funded by a deposit that leaves the chain", () => {
     expect(await j.node.processLanded()).toBeUndefined();
     await j.node.disposeDead();
     await synchronizeBounded(j.live);
-    expect(await j.statusOf(old)).toBe(S.Abandoned);
+    expect(await j.statusOf(old)).toBe(Pending.OwnBlockStatus.Unlanded);
+    expect(await j.deadOf(old)).toBe(true);
     // S6's next pass: the lost commit spends the departed block's output, so
     // its inputs are not live facts and the family predicate is not read (a
     // rollback alone never abandons: the block can land again). It waits on

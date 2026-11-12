@@ -49,8 +49,6 @@ export const CONFIRMED_ROOTS = {
   transactions: h32("71"),
 };
 
-const DIGEST = h32("99");
-
 /** A da_attestation_timeout_ms unlike every deployment profile's, so a
  * hardcoded profile value cannot pass. */
 export const DA_TIMEOUT = 60_000;
@@ -107,12 +105,12 @@ export const journal = (
   overrides: Partial<JournalSummary>,
 ): JournalSummary => ({
   headerHash: TIP,
-  status: "locally_applied",
+  status: "applied",
+  deadCause: null,
   baseTailHeaderHash: CONFIRMED,
   baseUtxosRoot: R0,
   expected: { utxos: R1, ...ROOTS },
-  correctionTransitionDigest: null,
-  submittedTxHash: h32("05"),
+  intendedTxHash: h32("05"),
   endTimeMs: 3_000,
   ...overrides,
 });
@@ -187,8 +185,8 @@ const consistentSql = (): SqlStateSnapshot => ({
     journal({}),
     journal({
       headerHash: REMOVED,
-      status: "abandoned",
-      correctionTransitionDigest: DIGEST,
+      status: "unlanded",
+      deadCause: "a landed transaction removed its block from the state queue",
     }),
   ],
   activeHeaderHashes: [],

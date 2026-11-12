@@ -45,11 +45,7 @@ export const parseFinalSnapshot = (value: unknown): FinalSnapshot => {
     `${field}.stateQueue`,
   );
   const jobs = record(candidate.jobs, `${field}.jobs`);
-  exactKeys(
-    jobs,
-    ["unfinishedMutationJobs", "pendingFinalizations"],
-    `${field}.jobs`,
-  );
+  exactKeys(jobs, ["pendingFinalizations"], `${field}.jobs`);
   const watcher = record(candidate.watcher, `${field}.watcher`);
   exactKeys(watcher, ["readiness", "verification"], `${field}.watcher`);
   const authentication = record(
@@ -331,10 +327,6 @@ export const parseFinalSnapshot = (value: unknown): FinalSnapshot => {
       ),
     },
     jobs: {
-      unfinishedMutationJobs: nonNegativeInteger(
-        jobs.unfinishedMutationJobs,
-        `${field}.jobs.unfinishedMutationJobs`,
-      ),
       pendingFinalizations: nonNegativeInteger(
         jobs.pendingFinalizations,
         `${field}.jobs.pendingFinalizations`,

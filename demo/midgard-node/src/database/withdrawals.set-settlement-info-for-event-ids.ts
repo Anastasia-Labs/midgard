@@ -262,31 +262,3 @@ export const setSettlementInfoForEventIds = (
       "Failed to set withdrawal settlement event info",
     ),
   );
-
-export const markProjectedByEventIds = (
-  assignments: readonly SettlementInfoAssignment[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* assertClassificationSnapshots(assignments, projectedHeaderHash);
-        yield* projectedEventAdapter.markProjectedByEventIds(
-          assignments.map((assignment) => assignment.eventId),
-          projectedHeaderHash,
-        );
-      }),
-    );
-  }).pipe(
-    withFollowerWrite,
-    sqlErrorToDatabaseError(tableName, "Failed to assign withdrawal header"),
-  );
-
-export const clearProjectedHeaderAssignmentByEventIds = (
-  ids: readonly Buffer[],
-  projectedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter
-    .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
-    .pipe(withFollowerWrite);

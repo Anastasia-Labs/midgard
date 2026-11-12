@@ -22,29 +22,31 @@ import {
 } from "./journal-kill-process-harness.database-state.js";
 import { type ServiceSupervisorSummary } from "./service-supervisor.js";
 
-/** Read-only database evidence captured after the journal-kill recovery run. */
+/**
+ * Read-only database evidence captured after the journal-kill recovery run.
+ * Its active journal is the node's live journal (unlanded and not dead),
+ * counted with every journal whose block can still land.
+ */
 export const captureJournalKillDatabaseState: Effect.Effect<
   JournalKillDatabaseState,
   unknown,
   Database
 > = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const activeStatuses = [
-    PendingBlockFinalizationsDB.Status.PendingSubmission,
-    PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
-    PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
-    PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-  ];
+  const dead = PendingBlockFinalizationsDB.deadHeadersOf(
+    yield* PendingBlockFinalizationsDB.deadJournals,
+  );
   const [journal, leaseInspection, deposits, mempool, processed, activeCount] =
     yield* Effect.all([
-      PendingBlockFinalizationsDB.retrieveActive(),
+      PendingBlockFinalizationsDB.retrieveLiveOver(dead),
       StateQueueMutationLeasesDB.inspect(),
       DepositsDB.retrieveAllEntries(),
       TxUtils.retrieveAllEntries(MempoolDB.tableName),
       ProcessedMempoolDB.retrieve,
       sql<{ readonly count: string }>`SELECT COUNT(*)::text AS count
-        FROM ${sql(PendingBlockFinalizationsDB.tableName)}
-        WHERE ${sql(PendingBlockFinalizationsDB.Columns.STATUS)} IN ${sql.in(activeStatuses)}`,
+        FROM ${sql(PendingBlockFinalizationsDB.tableName)} p
+        WHERE ${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "p")} = 'unlanded'
+          AND NOT ${PendingBlockFinalizationsDB.deadHeader(sql, "p.header_hash", dead)}`,
     ]);
   const activeJournal = Option.match(journal, {
     onNone: () => null,
@@ -82,11 +84,10 @@ export const captureJournalKillDatabaseState: Effect.Effect<
             ),
         },
       },
-      submittedTxHash:
-        record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
+      intendedTxHash:
+        record[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH]?.toString(
           "hex",
         ) ?? null,
-      status: record[PendingBlockFinalizationsDB.Columns.STATUS],
       baseTailHeaderHash:
         record[
           PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH
