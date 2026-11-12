@@ -19,11 +19,9 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "./funding/plain-funding-output.js";
 import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
 import { type PublishedProofChunk } from "./proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
@@ -31,6 +29,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
@@ -39,7 +38,6 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -172,12 +170,12 @@ export const submitNativeTxBinding = async ({
   }
   requireNativeTxMatchesCompactCbor(txInclusion);
 
-  signer.selectWallet(lucid);
   if (publishedProofChunks.length > 0 && wrapInclusionCarriage === undefined)
     throw nativeTxBindingError(
       "published proof chunks require a carriage-aware family",
     );
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: publishedProofChunks.map(({ utxo }) => utxo),
   });
   const stepReference = requireStepReferenceScript({
@@ -256,9 +254,7 @@ export const submitNativeTxBinding = async ({
       spendRedeemerSchema,
     );
   }) satisfies BuildTxWithRedeemer;
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(carriage.referenceInputs)
     .pay.ToContract(
@@ -268,18 +264,16 @@ export const submitNativeTxBinding = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = carriage.attachWithdrawal(base);
-  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
+  const signed = await completeStep(tx, funding);
   if (layout === undefined) {
     throw nativeTxBindingError(
       `BuildTxWithRedeemer did not resolve ${label} layout.`,
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: label,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -292,16 +286,8 @@ export const submitNativeTxBinding = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw nativeTxBindingError(
-      `provider returned transaction hash ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
