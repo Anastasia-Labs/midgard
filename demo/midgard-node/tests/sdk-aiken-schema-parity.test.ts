@@ -9,37 +9,9 @@ import {
   MidgardTxValidityCodes,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
+import { parseBlueprintAbi, refines } from "@al-ft/midgard-sdk/blueprint-abi";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
-
-type DataSchema = {
-  readonly $ref?: string;
-  readonly anyOf?: readonly DataSchema[];
-  readonly dataType?: string;
-  readonly fields?: readonly DataSchema[];
-  readonly index?: number;
-  readonly items?: DataSchema;
-  readonly keys?: DataSchema;
-  readonly title?: string;
-  readonly values?: DataSchema;
-};
-
-type Blueprint = {
-  readonly definitions: Record<string, DataSchema>;
-};
-
-type NormalizedSchema =
-  | { readonly type: string }
-  | { readonly list: NormalizedSchema }
-  | { readonly map: readonly [NormalizedSchema, NormalizedSchema] }
-  | {
-      readonly constructors: readonly {
-        readonly index: number;
-        readonly fields: readonly {
-          readonly schema: NormalizedSchema;
-        }[];
-      }[];
-    };
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
@@ -50,75 +22,16 @@ const repoRoot = path.resolve(testDir, "../../..");
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   path.join(repoRoot, "onchain/aiken/plutus.json");
-const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
+const blueprintAbi = parseBlueprintAbi(
+  JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
+);
 
-const jsonPointerName = (reference: string): string =>
-  reference
-    .replace("#/definitions/", "")
-    .replaceAll("~1", "/")
-    .replaceAll("~0", "~");
-
-const normalizeSchema = (
-  schema: DataSchema,
-  definitions?: Blueprint["definitions"],
-  resolving: ReadonlySet<string> = new Set(),
-): NormalizedSchema => {
-  if (schema.$ref !== undefined) {
-    expect(
-      definitions,
-      "a schema reference requires definitions",
-    ).toBeDefined();
-    const name = jsonPointerName(schema.$ref);
-    expect(resolving.has(name), `recursive ABI schema ${name}`).toBe(false);
-    const definition = definitions![name];
-    expect(definition, `missing blueprint definition ${name}`).toBeDefined();
-    return normalizeSchema(
-      definition!,
-      definitions,
-      new Set([...resolving, name]),
-    );
-  }
-
-  if (schema.anyOf !== undefined) {
-    return {
-      constructors: schema.anyOf.map((constructor) => ({
-        index: constructor.index!,
-        fields: (constructor.fields ?? []).map((field) => ({
-          schema: normalizeSchema(field, definitions, resolving),
-        })),
-      })),
-    };
-  }
-
-  if (schema.dataType === "list" || schema.items !== undefined) {
-    expect(schema.items, "list schema must name its item schema").toBeDefined();
-    return { list: normalizeSchema(schema.items!, definitions, resolving) };
-  }
-
-  if (
-    schema.dataType === "map" ||
-    schema.keys !== undefined ||
-    schema.values !== undefined
-  ) {
-    expect(schema.keys, "map schema must name its key schema").toBeDefined();
-    expect(
-      schema.values,
-      "map schema must name its value schema",
-    ).toBeDefined();
-    return {
-      map: [
-        normalizeSchema(schema.keys!, definitions, resolving),
-        normalizeSchema(schema.values!, definitions, resolving),
-      ],
-    };
-  }
-
-  if (schema.dataType === undefined) {
-    return { type: "data" };
-  }
-
-  expect(schema.dataType, "unclassified ABI schema").toBeDefined();
-  return { type: schema.dataType! };
+/** A copy of `schema` with constructor 0's fields `left` and `right` swapped. */
+const withFieldsSwapped = (schema: unknown, left: number, right: number) => {
+  const copy = structuredClone(schema) as { anyOf: [{ fields: unknown[] }] };
+  const fields = copy.anyOf[0].fields;
+  [fields[left], fields[right]] = [fields[right], fields[left]];
+  return copy;
 };
 
 const ABI_MAPPINGS = [
@@ -227,31 +140,24 @@ const ABI_MAPPINGS = [
   // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 27
   // `TransactionRedeemerItemBeginWitness`, 28 `TransactionFieldItemWitness`) and
   // the whole of `ValidationProofItemDatumV1` — and #597 moved both TypeScript
-  // twins to match. Neither can be measured here, for two different reasons, and
-  // both were checked by adding the mapping and running it rather than reasoned
-  // about:
+  // twins to match. Neither can be measured here, for one reason: no validator
+  // declares either in its ABI, so the blueprint carries no definition to refine
+  // against.
   //
-  //   * `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1` **is** in
-  //     the blueprint, but `normalizeSchema` fully inlines `$ref`s and refuses a
-  //     definition that reappears while resolving. This sum reaches
-  //     `midgard/cek_builtin_v1/BlsExpressionWitnessV1` — genuinely recursive in
-  //     Aiken — through its `CekCoreStepWitness` arm, so the row fails on
-  //     `recursive ABI schema …` before it compares a single field, and would go
-  //     on failing after #579 regenerates.
-  //   * `midgard/validation_machine/machine_types/ValidationProofItemDatumV1` is in **no**
-  //     blueprint, frozen or regenerated. Measured against a scratch stock build
-  //     of this working tree (`MIDGARD_REAL_BLUEPRINT_PATH`), the definition is
-  //     still absent: the datum is read as `Data` off an `InlineDatum` inside
-  //     `canonical_decode_item_semantic_v1.proof_item_from_reference`, so it
-  //     never reaches a validator's declared ABI surface and Aiken emits no
-  //     definition for it. That row also cannot pass after regeneration.
+  //   * `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`
+  //     crosses the wire as `Data` into the yield dispatchers' builtin decodes.
+  //     Recursion is no obstacle: `refines` compares a recursive definition
+  //     (its CEK arm reaches `midgard/cek_builtin_v1/BlsExpressionWitnessV1`)
+  //     coinductively, so a row would measure it if Aiken published it.
+  //   * `midgard/validation_machine/machine_types/ValidationProofItemDatumV1` is
+  //     read as `Data` off an `InlineDatum` inside
+  //     `canonical_decode_item_semantic_v1.proof_item_from_reference`.
   //
-  // Both would therefore be gates that cannot pass, which is the mirror of the
-  // gate that cannot fail and no more use as a handoff signal. **So #592's wire
-  // change is invisible to this file by construction, not by staleness** — which
-  // is worth knowing for #579, because regenerating the blueprint will not
-  // surface it either. What pins those two surfaces instead is the cross-language
-  // producer vector `typescript_generated_field_chunk_auxiliary_is_exact` in
+  // A row for either would be a gate that cannot pass, which is the mirror of
+  // the gate that cannot fail and no more use as a handoff signal. **So #592's
+  // wire change is invisible to this file by construction, not by staleness.**
+  // What pins those two surfaces instead is the cross-language producer vector
+  // `typescript_generated_field_chunk_auxiliary_is_exact` in
   // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`,
   // emitted by `demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs`:
   // it checks the bytes this TypeScript half emits against the Aiken decoder and
@@ -296,30 +202,40 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
   });
 
   it.each(ABI_MAPPINGS)(
-    "matches %s to %s recursively",
+    "refines %s to %s recursively, field titles included",
     (typescriptSchemaName, aikenDefinitionName) => {
-      const typescriptSchema = SDK[typescriptSchemaName] as
-        | DataSchema
-        | undefined;
-      const aikenSchema = blueprint.definitions[aikenDefinitionName];
+      const typescriptSchema: unknown = SDK[typescriptSchemaName];
       expect(
         typescriptSchema,
         `missing SDK schema ${typescriptSchemaName}`,
       ).toBeDefined();
       expect(
-        aikenSchema,
-        `missing Aiken blueprint definition ${aikenDefinitionName}`,
-      ).toBeDefined();
-
-      expect(normalizeSchema(typescriptSchema!)).toEqual(
-        normalizeSchema(
-          aikenSchema!,
-          blueprint.definitions,
-          new Set([aikenDefinitionName]),
-        ),
-      );
+        refines(typescriptSchema, blueprintAbi.ref(aikenDefinitionName)),
+      ).toEqual([]);
     },
   );
+
+  it("reports two same-typed Int fields swapped in a TypeScript schema", () => {
+    // withdrawal_count (9) and deposit_count (12) are both `Int`, so only
+    // their titles tell the two encodings apart.
+    expect(
+      refines(
+        withFieldsSwapped(SDK.HeaderSchema, 9, 12),
+        blueprintAbi.ref("midgard/ledger_state/HeaderV1"),
+      ),
+    ).toEqual([
+      {
+        path: "$.HeaderV1.withdrawal_count",
+        message:
+          'field 9 is "withdrawal_count" in the blueprint, "depositCount" in TypeScript',
+      },
+      {
+        path: "$.HeaderV1.deposit_count",
+        message:
+          'field 12 is "deposit_count" in the blueprint, "withdrawalCount" in TypeScript',
+      },
+    ]);
+  });
 
   it.each(VALIDITY_VECTORS)(
     "binds raw native validity %s code %s to its Plutus constructor",

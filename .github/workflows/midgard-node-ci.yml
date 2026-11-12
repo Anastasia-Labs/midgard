@@ -741,10 +741,10 @@ jobs:
           prebuild: lucid-midgard midgard-core
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
-      # The HeaderV1 ABI pin. `sdk-aiken-schema-parity` compares SDK schemas to
-      # blueprint definitions structurally but normalizes titles away, so field
-      # *names* and their order are not covered there. This gate is the only one
-      # that holds the 25 ordered Header field names, their SDK spellings and the
+      # The HeaderV1 ABI pin. `sdk-aiken-schema-parity` checks that each SDK
+      # schema refines its blueprint definition, field titles and their order
+      # included, but against no pinned contract. This gate is the only one that
+      # holds the 25 ordered Header field names, their SDK spellings and the
       # three field groups against BOTH real projections — the blueprint the
       # compiler just generated and the Data schema the SDK build above exports.
       # It runs after the SDK build because it imports that dist. The self-test
