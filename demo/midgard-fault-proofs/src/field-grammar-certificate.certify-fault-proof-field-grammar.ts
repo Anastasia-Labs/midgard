@@ -31,13 +31,10 @@ import {
 import { Effect } from "effect";
 
 import { faultProofRawFieldCarriage } from "./field-opening.publish-fault-proof-field-carriage.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "./runtime.js";
+import { type ResolvedProverSigner } from "./runtime.js";
+import { submitStep } from "./step-completion.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -292,8 +289,8 @@ export const certifyFaultProofFieldGrammar = async ({
   });
   const submit = async (unsigned: TxSignBuilder): Promise<UTxO> => {
     const signed = await unsigned.sign.withWallet().complete();
-    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-      signed,
+    const txHash = await submitStep(lucid, signed, {
+      label: "field-grammar certificate",
       referenceScripts: [
         workflowReferenceScript({
           role: "field-grammar-certificate",
@@ -302,16 +299,8 @@ export const certifyFaultProofFieldGrammar = async ({
         }),
       ],
       boundary: preSubmitBoundary,
+      awaitConfirmation,
     });
-    const txHash = await signed.submit();
-    if (txHash !== expectedTxHash) {
-      throw new Error(
-        `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-      );
-    }
-    if (awaitConfirmation) {
-      await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-    }
     const unit = fieldGrammarCertificateUnit(certificatePolicyId);
     const live = (await lucid.utxosAt(certificateAddress)).find(
       (utxo) => utxo.txHash === txHash && utxo.assets[unit] === 1n,
