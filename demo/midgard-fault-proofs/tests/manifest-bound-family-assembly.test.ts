@@ -17,12 +17,11 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    // These six installed families still own their adapters outside this
+    // These five installed families still own their adapters outside this
     // shared assembly; every other installed category must have a definition.
     const separatelyAssembled = new Set([
       "doubleSpend",
       "missingSignature",
-      "mintItemNonCanonical",
       "networkId",
       "validationTraceDispute",
       "valueNotPreserved",
@@ -41,7 +40,7 @@ describe("manifest-bound family assembly", () => {
       categories.filter(
         (category) => definitionOf(category).adapter.kind === "cursor",
       ),
-    ).toHaveLength(30);
+    ).toHaveLength(31);
     for (const category of categories) {
       expect(definitionOf(category).category).toBe(category);
     }

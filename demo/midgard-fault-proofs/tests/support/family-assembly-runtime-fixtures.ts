@@ -1,6 +1,7 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW } from "../../src/field-item-width-illegal/workflow.js";
+import { MINT_ITEM_NON_CANONICAL_WORKFLOW } from "../../src/mint-item-non-canonical/workflow.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW } from "../../src/output-reference-script-decoding/authenticated-workflow.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW } from "../../src/protected-output-signer-missing/authenticated-workflow.js";
 import { SPEND_INPUT_SIGNER_MISSING_WORKFLOW } from "../../src/spend-input-signer-missing/authenticated-workflow.js";
@@ -8,6 +9,7 @@ import { createCanonicalFamilyArtifactPort } from "../../src/workflow/manifest-b
 
 const versions = {
   fieldItemWidthIllegal: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
+  mintItemNonCanonical: MINT_ITEM_NON_CANONICAL_WORKFLOW,
   outputReferenceScriptDecoding: OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
   protectedOutputSignerMissing: PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW,
   spendInputSignerMissing: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
