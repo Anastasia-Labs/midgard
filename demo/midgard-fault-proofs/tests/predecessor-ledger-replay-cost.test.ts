@@ -7,7 +7,7 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { ledgerBeforeTransactionEvent } from "../src/event-ledger.js";
+import { eventLedgerBefore } from "../src/event-ledger.js";
 import { deriveResolvedOutputPriorLedgerReplay } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import {
@@ -66,7 +66,7 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     ]);
     const lastBefore = async (block: Block) =>
       await trieLeaves(() =>
-        ledgerBeforeTransactionEvent({
+        eventLedgerBefore({
           block: block.evidence,
           eventKey: {
             L2TransactionEventKey: { tx_id: block.txs.at(-1)!.txId },

@@ -4,9 +4,9 @@
  *
  * - `scan`: the ledger-relative spend scan, which needs the ledger before
  *   every event of the block;
- * - `prove`: for a few events, the ledger before that one event alone and the
- *   resolution proof a validation trace takes of its input against it, the
- *   work a Plutus event's replay adds;
+ * - `prove`: for a few events, the ledger before that event from the
+ *   block's one walk and the resolution proof a validation trace takes of its
+ *   input against it, the work a Plutus event's replay adds;
  * - `union`: the installed catalogue's replay of the block, but for the
  *   transition-trace family, which needs raw L1 events admitted for the
  *   header and reads no event ledger;
@@ -30,7 +30,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ledgerBeforeTransactionEvent } from "../src/input-existence/event-ledger.js";
+import { eventLedgerBefore } from "../src/event-ledger.js";
 import { checkedLedgerPreState } from "../src/ledger-at.js";
 import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import * as completeReplay from "../src/workflow/complete-replay.js";
@@ -174,7 +174,7 @@ describe(`event-ledger replay over ${EVENTS} events and ${ENTRIES} entries`, () 
       const step = Math.ceil((EVENTS * sample) / PROVED_EVENTS) - 1;
       const input = block.predecessorEntries[step]!.outRef;
       const ledger = await timed(() =>
-        ledgerBeforeTransactionEvent({
+        eventLedgerBefore({
           block: block.evidence,
           eventKey: { L2TransactionEventKey: { tx_id: block.txs[step]!.txId } },
           stepIndex: BigInt(step),

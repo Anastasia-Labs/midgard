@@ -6,8 +6,8 @@
  * carriage (redeemer-carried proof, or the #545 published chunks for a proof
  * the 16,384-byte envelope cannot hold). The §2.4.3(d) predicate is re-checked
  * locally before anything is paid for: a leaf whose embedded validity scalar
- * does not claim acceptance was honestly recorded as a no-op and can never
- * bind on-chain, whatever its input sets look like.
+ * does not claim acceptance can never bind on-chain, whatever its input sets
+ * look like; l2TxMistag convicts such a leaf.
  *
  * The thread advances to step-02 carrying `State { bad_tx_id }` — the §2.5
  * anchor step-02 opens fields 0/1 against.
@@ -168,8 +168,8 @@ export const submitInputSetUniquenessStep01 = async ({
 
   requireNativeTxMatchesCompactCbor(txInclusion);
   // §2.4.3(d): a leaf IS an acceptance verdict only when its own embedded
-  // validity scalar claims `TxIsValid`. An honestly-rejected no-op leaf can
-  // never convict on input-set grounds.
+  // validity scalar claims `TxIsValid`. A leaf with any other code is
+  // l2TxMistag's to convict, never this family's on input-set grounds.
   if (txInclusion.nativeTx.validity_code !== 0n) {
     throw inputSetUniquenessSubmitError(
       `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is not an acceptance and this family cannot bind it.`,

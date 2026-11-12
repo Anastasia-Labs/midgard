@@ -7,10 +7,9 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { describe, expect, it } from "vitest";
 
 import {
-  createEventLedgerWalk,
+  eventLedgerBefore,
   EventLedgerReplayRefusal,
-  ledgerBeforeTransactionEvent,
-} from "../src/input-existence/event-ledger.js";
+} from "../src/event-ledger.js";
 import { prepareValidationTraceArtifact } from "../src/validation-trace-dispute/detected-claim.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import {
@@ -21,6 +20,7 @@ import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
 } from "../src/workflow/complete-replay.js";
+import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
   type EventSpend,
   plutusExecutionEventsBlockFixture,
@@ -60,13 +60,19 @@ const predecessorOf = (block: Block) =>
     context: block.context,
   })!;
 
+const request = (block: Block, step: number) => ({
+  block: block.evidence,
+  eventKey: eventKey(block, step),
+  stepIndex: BigInt(step),
+  predecessor: predecessorOf(block),
+});
+
+/** The block's walk's ledger before step `step`. */
+const walked = async (block: Block, step: number) =>
+  await eventLedgerBefore(request(block, step));
+
 const oneOff = async (block: Block, step: number) =>
-  await ledgerBeforeTransactionEvent({
-    block: block.evidence,
-    eventKey: eventKey(block, step),
-    stepIndex: BigInt(step),
-    predecessor: predecessorOf(block),
-  });
+  await referenceLedgerBefore(request(block, step));
 
 const SPENDS: readonly EventSpend[] = [
   "failing",
@@ -89,7 +95,7 @@ describe("validation-trace dispute replay: one walk per block", () => {
     ).toStrictEqual(
       [0, 2, 3].map((step) => ["validation-trace", block.txs[step]!.txId]),
     );
-    // Each detection's claim rebuilds from a one-off pre-state of its own.
+    // Each detection's claim builds from its own pre-state.
     for (const selected of classification.detections)
       await expect(
         prepareValidationTraceArtifact({
@@ -103,17 +109,13 @@ describe("validation-trace dispute replay: one walk per block", () => {
 
   it("gives each event the one-off pre-state, in any request order", async () => {
     const block = await plutusExecutionEventsBlockFixture(SPENDS);
-    const walk = createEventLedgerWalk({
-      block: block.evidence,
-      predecessor: predecessorOf(block),
-    });
     for (const step of [1, 3, 0, 2, 2, 3]) {
-      const [walked, expected] = [
-        await walk.before(eventKey(block, step), BigInt(step)),
+      const [ledger, expected] = [
+        await walked(block, step),
         await oneOff(block, step),
       ];
-      expect(walked.utxosRoot).toBe(expected.utxosRoot);
-      expect(walked.entries).toStrictEqual(expected.entries);
+      expect(ledger.utxosRoot).toBe(expected.utxosRoot);
+      expect(ledger.entries).toStrictEqual(expected.entries);
     }
   });
 
@@ -141,18 +143,14 @@ describe("validation-trace dispute replay: one walk per block", () => {
       selected: { violationId: "validation-trace" },
     });
 
-    const walk = createEventLedgerWalk({
-      block: block.evidence,
-      predecessor: predecessorOf(block),
-    });
     for (let attempt = 0; attempt < 2; attempt += 1)
-      await expect(walk.before(eventKey(block, 2), 2n)).rejects.toMatchObject({
+      await expect(walked(block, 2)).rejects.toMatchObject({
         reason: "post_root_changed",
       });
-    await expect(walk.before(eventKey(block, 2), 2n)).rejects.toBeInstanceOf(
+    await expect(walked(block, 2)).rejects.toBeInstanceOf(
       EventLedgerReplayRefusal,
     );
-    expect((await walk.before(eventKey(block, 1), 1n)).utxosRoot).toBe(
+    expect((await walked(block, 1)).utxosRoot).toBe(
       (await oneOff(block, 1)).utxosRoot,
     );
   });

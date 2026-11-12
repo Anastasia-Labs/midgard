@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 
-import { createEventLedgerWalk } from "../../src/event-ledger.js";
+import { eventLedgerBefore } from "../../src/event-ledger.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.js";
 import {
@@ -79,12 +79,13 @@ export const block = async (
       post: roots[index + 1]!,
     })),
   });
+  const key = (index: number): SDK.EventKey => ({
+    L2TransactionEventKey: { tx_id: txs[index]!.txId },
+  });
   return {
     ...fixture,
     txs,
-    key: (index: number): SDK.EventKey => ({
-      L2TransactionEventKey: { tx_id: txs[index]!.txId },
-    }),
+    key,
     /** Step `index`'s transactions-root position, which findings name. */
     position: (index: number) =>
       BigInt(
@@ -92,9 +93,12 @@ export const block = async (
           ({ txId }) => txId === txs[index]!.txId,
         ),
       ),
-    walk: () =>
-      createEventLedgerWalk({
+    /** The block's walk's ledger before step `index`. */
+    before: async (index: number) =>
+      await eventLedgerBefore({
         block: fixture.evidence,
+        eventKey: key(index),
+        stepIndex: BigInt(index),
         predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
       }),
     replay: async (members: readonly CompleteCanonicalReplay[]) => {

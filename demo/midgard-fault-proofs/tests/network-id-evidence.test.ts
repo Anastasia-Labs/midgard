@@ -238,7 +238,7 @@ describe("Q35 network-id DA-first evidence", () => {
     ).toThrow("expected network id must be canonical network id 0 or 1");
   });
 
-  it("never challenges an honestly rejected no-op", () => {
+  it("never challenges a non-zero normal leaf, which l2TxMistag convicts", () => {
     expect(
       findNetworkIdFaults({
         evidence: retained(

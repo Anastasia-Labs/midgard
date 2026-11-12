@@ -11,9 +11,9 @@
  *    twins are refused by the VALIDATOR at the exact decisive check —
  *    item byte-equality for a fabricated duplicate/overlap, `i < j` for a
  *    reflexive pair, and the §8.8 door's `index < count` range gate.
- * 2. A committed leaf the operator honestly recorded as REJECTED
- *    (`validity_code != 0`). However degenerate its input sets, the family
- *    must never convict a no-op: the honest step-01 submitter refuses
+ * 2. A committed leaf recorded as REJECTED (`validity_code != 0`), which
+ *    l2TxMistag convicts. However degenerate its input sets, this family
+ *    must never convict it: the honest step-01 submitter refuses
  *    locally, and a raw bind that skips the guard dies on the validator's
  *    own `validity_code == 0` expect.
  *
@@ -307,7 +307,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
     ).resolves.toHaveLength(1);
   }, 600_000);
 
-  it("never binds a committed leaf the operator honestly recorded as rejected", async () => {
+  it("never binds a committed leaf recorded as rejected", async () => {
     const harness = await makeInputSetUniquenessEmulatorHarness();
 
     // Degenerate input sets — but the operator marked the tx invalid, so the

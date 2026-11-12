@@ -10,10 +10,10 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
-import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
@@ -109,14 +109,17 @@ export const prepareValueConservationArtifact = async ({
   // A mint item outside the field-5 grammar, an output the ledger-output
   // scan refuses, or one that does not read as a transaction output, has no
   // conservation meaning; the direct mint-item, output canonicality or output
-  // reference script proof owns that transaction.
+  // reference script proof owns that transaction. A forced transaction's
+  // output carries no reference script once its order is admitted, so one
+  // that does is not the order's: no family yet convicts that, and the
+  // decline holds the block.
   if (
-    !forced &&
-    (transactionHasNonCanonicalMintItem(source.fullTransactionCbor) ||
-      outputsScanRefused(transaction.body.outputsPreimageCbor) ||
-      !decodeMidgardFieldPreimage(transaction.body.outputsPreimageCbor).every(
-        readsAsTransactionOutput,
-      ))
+    (!forced &&
+      (transactionHasNonCanonicalMintItem(source.fullTransactionCbor) ||
+        outputsScanRefused(transaction.body.outputsPreimageCbor))) ||
+    !decodeMidgardFieldPreimage(transaction.body.outputsPreimageCbor).every(
+      readsAsTransactionOutput,
+    )
   )
     throw replayPrerequisiteFailure(
       block.headerHash,
@@ -131,7 +134,7 @@ export const prepareValueConservationArtifact = async ({
     reconstruction: block.reconstruction,
     stepIndex: event.value.step_index,
   });
-  const { root: ledger, outputs } = await nativeScriptDecodingPriorLedger(
+  const { root: ledger, outputs } = await eventLedgerBeforeStep(
     block.reconstruction,
     event.value.step_index,
     predecessor,
@@ -151,9 +154,10 @@ export const prepareValueConservationArtifact = async ({
   // A spent output that does not read as a transaction output was created by
   // an accepted step before this one, whose output reference script proof
   // convicts it, or the predecessor ledger holds it, and the resolved output
-  // proof convicts this spend.
+  // proof convicts this spend. A forced rejection's reason ranks after that
+  // output's fault, and no family yet convicts that: the decline holds the
+  // block.
   if (
-    !forced &&
     !resolvedInputs.every(({ output }) =>
       readsAsTransactionOutput(output.value),
     )

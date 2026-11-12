@@ -6,8 +6,8 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CheckedLedger } from "../ledger-at.js";
-import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { forcedTxFromCoreCompact } from "../step-support.js";
 import {
   eventKeyFingerprint,
@@ -55,13 +55,11 @@ export const prepareDirectScriptMaterial = async ({
     throw new Error(
       "direct script derivation: selected event/transition differs",
     );
-  const ledger = await nativeScriptDecodingPriorLedger(
+  const ledger = await eventLedgerBeforeStep(
     current,
     step.step_index,
     predecessor,
   );
-  if (ledger.root.root !== step.pre_utxos_root)
-    throw new Error("direct script derivation: event pre-root differs");
   const raw = source.entry.fullTransactionCbor;
   const material = (
     source.phase === "L2Transaction"

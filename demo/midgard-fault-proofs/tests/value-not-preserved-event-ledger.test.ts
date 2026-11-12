@@ -16,12 +16,19 @@
  * decline: output-reference-script-decoding for an output the transaction
  * creates, at or before the spend, and resolved-output-non-canonical for an
  * output the predecessor ledger holds.
+ *
+ * A forced transaction the operator rejected for its value is declined the
+ * same way, and no family yet convicts what it would mean: an admitted order
+ * carries no output reference script, and no forced arm convicts a rejection
+ * whose reason ranks after the spent output's fault. The decline stays
+ * undischarged, so the union fails closed on it.
  */
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
 import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
 import {
+  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
@@ -39,6 +46,7 @@ import {
   SPENT,
   type Step,
 } from "./helpers/event-ledger-committed-steps.js";
+import { forcedValueRejection } from "./helpers/event-ledger-forced-step.js";
 import {
   outRef,
   undecodableNativeOutput,
@@ -206,6 +214,39 @@ describe("value-not-preserved declines an output that does not decode", () => {
         violationId: "resolved-output-non-canonical",
         position: fixture.position(0),
       },
+    ]);
+  });
+});
+
+describe("value-not-preserved declines a forced rejection whose output does not decode", () => {
+  const declined = async (
+    fixture: Awaited<ReturnType<typeof forcedValueRejection>>,
+    members: Parameters<typeof fixture.replay>[0],
+  ) =>
+    expect(await prerequisites(() => fixture.replay(members))).toEqual([
+      { eventKey: fixture.key, prerequisite: "representable_field_shape" },
+    ]);
+
+  it("in its own outputs, which no admitted order carries", async () => {
+    const fixture = await forcedValueRejection(creator.input);
+    await declined(fixture, [VNP]);
+    await declined(fixture, [
+      VNP,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    ]);
+  });
+
+  it("spent from the predecessor ledger", async () => {
+    const fixture = await forcedValueRejection({
+      spendInputs: [NATIVE.outRef],
+      outputs: [makeOutput(3_000_000n)],
+      fee: 7n,
+    });
+    await declined(fixture, [VNP]);
+    await declined(fixture, [
+      NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+      VNP,
+      RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
     ]);
   });
 });

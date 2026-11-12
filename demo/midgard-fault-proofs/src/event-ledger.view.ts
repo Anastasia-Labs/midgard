@@ -3,12 +3,21 @@
  * the predecessor's entries with the changes of the steps before it, merged
  * only when read.
  */
+import type { Trie } from "@aiken-lang/merkle-patricia-forestry";
+
 import { type CheckedLedger, type LedgerEntry } from "./ledger-at.js";
 import {
   type KeyValuePhasEntry,
   type KeyValuePhasRoot,
   type mutableKeyValuePhasTrie,
+  trieFromEntries,
 } from "./transition-trace/phas.js";
+
+/** Steps whose membership trie the walk keeps: the first this many any
+ * reader proves against. Plutus detection walks forward and builds a trie
+ * only for an event it finds failing, so these are the earliest failing
+ * events, whose claims prove against the same ledgers again. */
+export const RETAINED_PROOF_TRIES = 4;
 
 /** What step `step` did to one out-ref: created `created`, or spent it. */
 export type Change = Readonly<{
@@ -79,6 +88,9 @@ export type Pass = {
   /** The step that failed to apply, and why. */
   failure?: Readonly<{ step: number; error: unknown }>;
   trie?: Promise<Awaited<ReturnType<typeof mutableKeyValuePhasTrie>>>;
+  /** The membership tries kept for the walk's life, by step: at most
+   * `RETAINED_PROOF_TRIES`, and only the trie, never its ledger's entries. */
+  readonly proofTries: Map<number, Promise<Trie>>;
 };
 
 export const latestBefore = (pass: Pass, key: string, step: number) => {
@@ -137,12 +149,28 @@ export const view = (pass: Pass, step: number): CheckedLedger => {
     };
     return merged;
   };
+  // A step past the walk's kept tries builds its trie for this view alone.
+  let own: Promise<Trie> | undefined;
+  const membershipTrie = (): Promise<Trie> => {
+    const known = pass.proofTries.get(step) ?? own;
+    if (known !== undefined) return known;
+    const built = trieFromEntries(sorted().leaves);
+    if (pass.proofTries.size < RETAINED_PROOF_TRIES)
+      pass.proofTries.set(step, built);
+    else own = built;
+    built.catch(() => {
+      if (pass.proofTries.get(step) === built) pass.proofTries.delete(step);
+      if (own === built) own = undefined;
+    });
+    return built;
+  };
   const trie: KeyValuePhasRoot = Object.freeze({
     root: pass.roots[step]!,
     count: BigInt(pass.sizes[step]!),
     get entries() {
       return sorted().leaves;
     },
+    membershipTrie,
   });
   return Object.freeze({
     utxosRoot: pass.roots[step]!,

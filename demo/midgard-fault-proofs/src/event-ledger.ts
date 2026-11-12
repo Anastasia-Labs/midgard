@@ -6,9 +6,12 @@
  * A walk applies the block's steps in order, once, to one trie it edits in
  * place, and keeps every entry a step creates or spends. The ledger before an
  * event is a view over the predecessor and those changes, so the ledgers
- * before every event of a block cost one pass over its steps. A request's
- * result does not depend on the requests before it: it is what applying the
- * steps before its event from the predecessor gives.
+ * before every event of a block cost one pass over its steps. Every reader of
+ * a block from one predecessor shares its one walk, which keeps the
+ * membership tries of the first few ledgers proved against, so a claim proves
+ * against its detected event's ledger without building that trie again. A
+ * request's result does not depend on the requests before it: it is what
+ * applying the steps before its event from the predecessor gives.
  */
 import {
   decodeMidgardFieldPreimage,
@@ -36,7 +39,10 @@ import {
   type SourceEventRecord,
   type TransitionTraceReconstruction,
 } from "./transition-trace/reconstruct.js";
-import { requireReplayPredecessorLedger } from "./workflow/replay-predecessor-ledger.js";
+import {
+  type ReplayPrerequisite,
+  replayPrerequisiteFailure,
+} from "./workflow/replay-prerequisite.js";
 
 export type EventLedgerRefusalReason =
   | "step_out_of_range"
@@ -123,7 +129,7 @@ const acceptedEffects = (
   return null;
 };
 
-export type EventLedgerWalk = Readonly<{
+type EventLedgerWalk = Readonly<{
   /** The checked ledger before the withdrawal or transaction event
    * `eventKey`, the block's step `stepIndex`. */
   before: (eventKey: SDK.EventKey, stepIndex: bigint) => Promise<CheckedLedger>;
@@ -157,6 +163,7 @@ const walkSteps = ({
       firstAfter: PHASES.map(() => undefined),
       next: 0,
       priorRank: -1,
+      proofTries: new Map(),
     };
   };
 
@@ -336,32 +343,6 @@ const walkSteps = ({
   });
 };
 
-/** The walk of one canonical block from its admitted predecessor ledger. */
-export const createEventLedgerWalk = ({
-  block,
-  predecessor,
-}: {
-  readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
-}): EventLedgerWalk => {
-  // These are the existing evidence-grade and source-root authorities. A
-  // diagnostic/operator-private reconstruction cannot produce proof material.
-  blockTransactionsFromCanonicalEvidence(block);
-  SDK.assertTransactionSourceInclusionRootAuthenticated(
-    block.inclusionRootAuthentication,
-  );
-  return walkSteps({
-    reconstruction: block.reconstruction,
-    stepCount: block.header.transitionStepCount,
-    open: () =>
-      requireReplayPredecessorLedger({
-        block,
-        predecessor,
-        label: "input-existence",
-      }),
-  });
-};
-
 const sharedWalks = new WeakMap<
   TransitionTraceReconstruction,
   Map<CheckedLedger | undefined, EventLedgerWalk>
@@ -370,12 +351,12 @@ const sharedWalks = new WeakMap<
 /**
  * The one walk of an authenticated reconstruction from `predecessor`, or
  * from the genesis ledger its header must then commit, shared by every
- * family that asks: a request's result does not depend on the requests
- * before it, so the families' ledgers of one block cost one pass.
+ * reader: a request's result does not depend on the requests before it, so
+ * every ledger of one block from one predecessor costs one pass.
  */
-export const reconstructionEventLedgerWalk = (
+const sharedWalk = (
   reconstruction: TransitionTraceReconstruction,
-  predecessor?: CheckedLedger,
+  predecessor: CheckedLedger | undefined,
 ): EventLedgerWalk => {
   let walks = sharedWalks.get(reconstruction);
   if (walks === undefined) sharedWalks.set(reconstruction, (walks = new Map()));
@@ -388,7 +369,7 @@ export const reconstructionEventLedgerWalk = (
         requireLedgerOpening({
           ledger: predecessor,
           utxosRoot: reconstruction.header.prevUtxosRoot,
-          label: "event ledger predecessor ledger",
+          label: "input-existence predecessor ledger",
         }),
     });
     walks.set(predecessor, walk);
@@ -396,21 +377,10 @@ export const reconstructionEventLedgerWalk = (
   return walk;
 };
 
-/** `createEventLedgerWalk`, created at its first request: a caller whose
- * events may need no ledger meets the walk's evidence checks only when one
- * does. */
-export const lazyEventLedgerWalk = (
-  input: Parameters<typeof createEventLedgerWalk>[0],
-): EventLedgerWalk => {
-  let walk: EventLedgerWalk | undefined;
-  return Object.freeze({
-    before: async (eventKey: SDK.EventKey, stepIndex: bigint) =>
-      await (walk ??= createEventLedgerWalk(input)).before(eventKey, stepIndex),
-  });
-};
-
-/** The checked ledger before one event of `block`. */
-export const ledgerBeforeTransactionEvent = async ({
+/** The checked ledger before the withdrawal or transaction event
+ * `eventKey`, the step `stepIndex` of canonical `block`, from its admitted
+ * predecessor ledger. */
+export const eventLedgerBefore = async ({
   block,
   eventKey,
   stepIndex,
@@ -419,9 +389,102 @@ export const ledgerBeforeTransactionEvent = async ({
   readonly block: CanonicalBlockEvidence;
   readonly eventKey: SDK.EventKey;
   readonly stepIndex: bigint;
-  readonly predecessor?: CheckedLedger;
-}): Promise<CheckedLedger> =>
-  await createEventLedgerWalk({
-    block,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  }).before(eventKey, stepIndex);
+  readonly predecessor?: CheckedLedger | undefined;
+}): Promise<CheckedLedger> => {
+  // These are the existing evidence-grade and source-root authorities. A
+  // diagnostic/operator-private reconstruction cannot produce proof material.
+  blockTransactionsFromCanonicalEvidence(block);
+  SDK.assertTransactionSourceInclusionRootAuthenticated(
+    block.inclusionRootAuthentication,
+  );
+  return await sharedWalk(block.reconstruction, predecessor).before(
+    eventKey,
+    stepIndex,
+  );
+};
+
+function fatal(message: string): never {
+  throw new Error(`event ledger: ${message}`);
+}
+
+/** What a refused walk means to a trace-relative family: a prerequisite at
+ * the event of the step the refusal names, or a fatal corruption of the
+ * committed trace. */
+const REFUSAL_OUTCOME: Readonly<
+  Record<
+    EventLedgerRefusalReason,
+    Readonly<{ prerequisite: ReplayPrerequisite } | { fatal: string }>
+  >
+> = {
+  withdrawal_input_absent: { prerequisite: "present_spend_input" },
+  transaction_input_absent: { prerequisite: "present_spend_input" },
+  transaction_output_already_present: {
+    prerequisite: "prior_transition_effect",
+  },
+  post_root_changed: { prerequisite: "prior_transition_effect" },
+  phase_order_changed: { prerequisite: "prior_transition_effect" },
+  transition_link_changed: { fatal: "prior transition mismatch" },
+  source_event_changed: { fatal: "prior event mismatch" },
+  step_out_of_range: { fatal: "prior transition mismatch" },
+  selected_pre_root_changed: { fatal: "event prior ledger changed" },
+};
+
+/**
+ * The ledger before step `stepIndex` of a trace-relative family's
+ * reconstruction, from the block's one shared walk. A step the walk cannot
+ * apply is a prerequisite at the event of the step it names: an absent input
+ * wants that event's spend-input proof, an output that is not a canonical
+ * ledger entry its field-shape proof, and any other unopenable effect its
+ * transition proof.
+ */
+export const eventLedgerBeforeStep = async (
+  current: TransitionTraceReconstruction,
+  stepIndex: bigint,
+  predecessor?: CheckedLedger,
+) => {
+  if (
+    predecessor !== undefined &&
+    predecessor.utxosRoot !== current.header.prevUtxosRoot
+  )
+    fatal("unrelated predecessor");
+  if (
+    predecessor === undefined &&
+    current.header.prevUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT
+  )
+    fatal("authenticated predecessor ledger unavailable");
+  const target = current.traceByStepIndex.get(stepIndex)?.value;
+  if (target === undefined) fatal("prior transition mismatch");
+  let ledger: CheckedLedger;
+  try {
+    ledger = await sharedWalk(current, predecessor).before(
+      target.event_key,
+      stepIndex,
+    );
+  } catch (cause) {
+    // Every step a prerequisite names opened when the walk applied it.
+    const at = (step: bigint, prerequisite: ReplayPrerequisite) =>
+      replayPrerequisiteFailure(
+        current.headerHash,
+        current.traceByStepIndex.get(step)!.value.event_key,
+        prerequisite,
+      );
+    if (cause instanceof EventLedgerOutputNotCanonical)
+      throw at(cause.step, "representable_field_shape");
+    if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
+    const outcome = REFUSAL_OUTCOME[cause.reason];
+    if ("fatal" in outcome) fatal(outcome.fatal);
+    throw at(cause.step, outcome.prerequisite);
+  }
+  return {
+    root: ledger.trie,
+    outputs: {
+      get: (key: string) => {
+        const value = ledger.outputs.get(key);
+        return value === undefined
+          ? undefined
+          : { key: Buffer.from(key, "hex"), value };
+      },
+      has: (key: string) => ledger.outputs.has(key),
+    },
+  };
+};

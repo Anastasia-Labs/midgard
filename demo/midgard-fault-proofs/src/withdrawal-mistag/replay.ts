@@ -1,9 +1,9 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import {
   type CountedRoot,
   keyValuePhasNonMembershipProof,
@@ -63,13 +63,11 @@ export const prepareWithdrawalMistagReplay = async ({
       : current.traceByStepIndex.get(mapping.value.step_index);
   if (mapping === undefined || step === undefined)
     throw new Error("withdrawalMistag authenticated event mapping is absent");
-  const ledger = await nativeScriptDecodingPriorLedger(
+  const ledger = await eventLedgerBeforeStep(
     current,
     mapping.value.step_index,
     predecessor,
   );
-  if (ledger.root.root !== step.value.pre_utxos_root)
-    throw new Error("withdrawalMistag prior ledger differs from event root");
   const key = encodeMidgardSpendInputItem({
     txId: Buffer.from(entry.value.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(entry.value.body.l2_outref.outputIndex),

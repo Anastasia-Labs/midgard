@@ -50,8 +50,8 @@ import { network as emulatorNetwork } from "./submit-init-emulator-shared.js";
 /**
  * A raw step-01 bind: the honest submitter's redeemer-carried inclusion
  * transaction minus its §2.4.3(d) validity re-check and header cross-check,
- * so an honestly-rejected committed leaf reaches the validator's own
- * `validity_code == 0` refusal.
+ * so a committed leaf with a non-zero validity code, which l2TxMistag
+ * convicts, reaches the validator's own `validity_code == 0` refusal.
  */
 export const submitRawInputSetUniquenessBind = async ({
   harness,

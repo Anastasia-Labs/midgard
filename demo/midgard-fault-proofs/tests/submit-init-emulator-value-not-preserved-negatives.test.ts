@@ -3,10 +3,10 @@
  * EARLY gates — the step-01 domain boundary and the step-02 authentication
  * walk — are refused at the exact on-chain check.
  *
- * 1. Rejected committed leaf: the operator honestly recorded the transaction
- *    as a no-op (`TxIsInvalid`). The honest step-01 submitter's §1.4
- *    acceptance-gate twin refuses locally, and the raw bind builder (no
- *    local twin) reaches the validator's own
+ * 1. Rejected committed leaf (`TxIsInvalid`): no acceptance claim, and
+ *    l2TxMistag's to convict, not this family's. The honest step-01
+ *    submitter's §1.4 acceptance-gate twin refuses locally, and the raw bind
+ *    builder (no local twin) reaches the validator's own
  *    `expect bad_tx_view.tx_compact.validity_code == 0` refusal. The thread
  *    never leaves step-01.
  *

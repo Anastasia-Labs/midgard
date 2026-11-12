@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
-import { ledgerBeforeTransactionEvent } from "../../src/input-existence/event-ledger.js";
+import { eventLedgerBefore } from "../../src/event-ledger.js";
 import type { CheckedLedger } from "../../src/ledger-at.js";
 import {
   buildValidationTraceClaimMaterial,
@@ -39,7 +39,7 @@ export const eventAndLedger = async (
   const opening = evidence.reconstruction.eventToStepByFingerprint.get(
     event.fingerprint,
   )!;
-  const ledger = await ledgerBeforeTransactionEvent({
+  const ledger = await eventLedgerBefore({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,

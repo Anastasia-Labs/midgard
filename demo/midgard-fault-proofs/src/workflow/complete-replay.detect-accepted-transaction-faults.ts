@@ -20,16 +20,14 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
-import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
-  createEventLedgerWalk,
+  eventLedgerBefore,
   EventLedgerReplayRefusal,
-  type EventLedgerWalk,
-} from "../input-existence/event-ledger.js";
+} from "../event-ledger.js";
+import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
-import { keepDetectedLedger } from "../validation-trace-dispute/detected-ledgers.js";
 import {
   type CommittedL2Event,
   eventRunsPlutus,
@@ -364,9 +362,8 @@ export const detectPlutusExecutionFailures = async ({
       }),
     );
   };
-  // One walk of the block's steps serves every event's pre-state, so the
-  // events replay in step order.
-  let walk: EventLedgerWalk | undefined;
+  // The block's one walk serves every event's pre-state, so the events
+  // replay in step order.
   const pass = holds.pass();
   for (const { event, position } of plutusEventsInStepOrder(evidence)) {
     const holdKey = `${evidence.headerHash}\u0000${event.fingerprint}`;
@@ -423,11 +420,12 @@ export const detectPlutusExecutionFailures = async ({
     }
     let ledger: CheckedLedger;
     try {
-      walk ??= createEventLedgerWalk({
+      ledger = await eventLedgerBefore({
         block: evidence,
-        ...(predecessor === undefined ? {} : { predecessor }),
+        eventKey: event.eventKey,
+        stepIndex: opening.value.step_index,
+        predecessor,
       });
-      ledger = await walk.before(event.eventKey, opening.value.step_index);
     } catch (cause) {
       if (cause instanceof EventLedgerReplayRefusal) {
         holds.decided(holdKey);
@@ -451,18 +449,12 @@ export const detectPlutusExecutionFailures = async ({
       continue;
     }
     holds.decided(holdKey);
-    if (replay.kind === "fails") {
-      keepDetectedLedger({
-        evidence,
-        predecessor,
-        fingerprint: event.fingerprint,
-        ledger,
-      });
+    if (replay.kind === "fails")
       found(
         VALIDATION_TRACE_VIOLATION_ID,
         `accepted transaction ${event.entry.txId} fails Plutus execution; its honest trace has ${replay.stepCount.toString()} steps`,
       );
-    } else if (replay.kind === "trace_disagrees")
+    else if (replay.kind === "trace_disagrees")
       found(
         VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID,
         `accepted transaction ${event.entry.txId}: ${replay.detail}`,

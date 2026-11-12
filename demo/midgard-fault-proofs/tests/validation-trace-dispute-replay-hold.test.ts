@@ -14,8 +14,8 @@ import {
 } from "@al-ft/midgard-validation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { EventLedgerReplayRefusal } from "../src/input-existence/event-ledger.js";
 import {
   prepareValidationTraceArtifact,
   validateValidationTraceArtifact,
@@ -78,32 +78,21 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/input-existence/event-ledger.js", async (importOriginal) => {
+vi.mock("../src/event-ledger.js", async (importOriginal) => {
   const actual =
-    await importOriginal<
-      typeof import("../src/input-existence/event-ledger.js")
-    >();
+    await importOriginal<typeof import("../src/event-ledger.js")>();
   return {
     ...actual,
-    createEventLedgerWalk: (
-      input: Parameters<typeof actual.createEventLedgerWalk>[0],
+    eventLedgerBefore: async (
+      input: Parameters<typeof actual.eventLedgerBefore>[0],
     ) => {
-      const walk = actual.createEventLedgerWalk(input);
-      return {
-        before: async (
-          ...[eventKey, stepIndex]: Parameters<typeof walk.before>
-        ) => {
-          const { L2TransactionEventKey: key } = eventKey as {
-            readonly L2TransactionEventKey?: { readonly tx_id: string };
-          };
-          const fault =
-            key === undefined
-              ? undefined
-              : injected.ledgerFaults.get(key.tx_id);
-          if (fault !== undefined) throw fault;
-          return await walk.before(eventKey, stepIndex);
-        },
+      const { L2TransactionEventKey: key } = input.eventKey as {
+        readonly L2TransactionEventKey?: { readonly tx_id: string };
       };
+      const fault =
+        key === undefined ? undefined : injected.ledgerFaults.get(key.tx_id);
+      if (fault !== undefined) throw fault;
+      return await actual.eventLedgerBefore(input);
     },
   };
 });

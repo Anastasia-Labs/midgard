@@ -7,18 +7,15 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
-import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import {
-  buildEventToStepMembershipProof,
-  buildIndexedTraceProof,
-} from "../transition-trace/witnesses.js";
+import { buildEventToStepMembershipProof } from "../transition-trace/witnesses.js";
 import { acceptedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   collectReplayFindingBatches,
@@ -59,17 +56,11 @@ export const prepareMintAuthorizationReplay = async ({
     reconstruction: current,
     eventKey: { L2TransactionEventKey: { tx_id: source.txId } },
   });
-  const transition = await buildIndexedTraceProof({
-    reconstruction: current,
-    stepIndex: event.value.step_index,
-  });
-  const ledger = await nativeScriptDecodingPriorLedger(
+  const ledger = await eventLedgerBeforeStep(
     current,
     event.value.step_index,
     predecessor,
   );
-  if (ledger.root.root !== transition.value.pre_utxos_root)
-    throw new Error("mint authorization: selected event prior root changed");
   const referenceItems = decodeMidgardFieldPreimage(
     tx.body.referenceInputsPreimageCbor,
   );

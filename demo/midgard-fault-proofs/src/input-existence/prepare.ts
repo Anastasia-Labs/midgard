@@ -4,6 +4,7 @@ import { computeHash32 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { eventLedgerBefore } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import {
@@ -15,7 +16,6 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
-import { ledgerBeforeTransactionEvent } from "./event-ledger.js";
 import { deriveInputExistenceSelection } from "./selection.js";
 import {
   type OpenedProofThreadSource,
@@ -93,7 +93,7 @@ export const prepareInputExistence = async ({
   }
   // Replay even for an impossible WR index: absent ledger evidence cannot
   // waive the event/root linkage or the checked predecessor authority.
-  const ledger = await ledgerBeforeTransactionEvent({
+  const ledger = await eventLedgerBefore({
     block,
     eventKey,
     stepIndex: step.step_index,

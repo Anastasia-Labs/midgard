@@ -4,11 +4,11 @@ import {
 } from "@al-ft/midgard-core";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
-import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  eventLedgerBefore,
   EventLedgerReplayRefusal,
-  lazyEventLedgerWalk,
-} from "../input-existence/event-ledger.js";
+} from "../event-ledger.js";
+import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
 import {
   type CheckedLedger,
@@ -182,10 +182,8 @@ export const EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID =
 
 /** Scan the selected transaction's authenticated event ledger, including
  * earlier forced effects and withdrawals. A later creator never backfills it.
- * One walk of the block's steps serves every event of a phase, so the events
- * are scanned in step order; their findings, and the first error, keep the
- * block's source order. A walk stops at a step that fails for its phase, which
- * an event of an earlier phase may never reach, so each phase has its own. */
+ * The block's one walk serves every event, so the events are scanned in step
+ * order; their findings, and the first error, keep the block's source order. */
 export const detectLedgerRelativeMissingInputs = async ({
   evidence,
   context,
@@ -198,12 +196,6 @@ export const detectLedgerRelativeMissingInputs = async ({
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const field = kind === "spend" ? 0 : 1;
   const violationId = field === 0 ? "non-existent-input" : "no-reference-input";
-  const walk = () =>
-    lazyEventLedgerWalk({
-      block: evidence,
-      ...(predecessor === undefined ? {} : { predecessor }),
-    });
-  const walks = { ForcedTransaction: walk(), L2Transaction: walk() };
   const steps = evidence.reconstruction.eventToStepByFingerprint;
   const positions = { ForcedTransaction: 0, L2Transaction: 0 };
   const events = evidence.reconstruction.sourceEvents.flatMap((event) =>
@@ -256,10 +248,12 @@ export const detectLedgerRelativeMissingInputs = async ({
       );
     let ledger: CheckedLedger;
     try {
-      ledger = await walks[event.phase].before(
-        event.eventKey,
-        eventOpening.value.step_index,
-      );
+      ledger = await eventLedgerBefore({
+        block: evidence,
+        eventKey: event.eventKey,
+        stepIndex: eventOpening.value.step_index,
+        predecessor,
+      });
     } catch (cause) {
       if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
       return gap(

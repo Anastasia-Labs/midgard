@@ -11,11 +11,7 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  createEventLedgerWalk,
-  ledgerBeforeTransactionEvent,
-  reconstructionEventLedgerWalk,
-} from "../src/event-ledger.js";
+import { eventLedgerBefore } from "../src/event-ledger.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { type CheckedLedger, checkedLedgerPreState } from "../src/ledger-at.js";
 import {
@@ -145,10 +141,18 @@ const requests = (block: CanonicalBlockEvidence, draw: Draw): Request[] => {
   return all;
 };
 
+/** `block` with a reconstruction object of its own, so that its walk
+ * starts afresh: a block's one walk is shared by its reconstruction. */
+const afresh = (block: CanonicalBlockEvidence): CanonicalBlockEvidence => ({
+  ...block,
+  reconstruction: { ...block.reconstruction },
+});
+
 /**
- * Compares, for every request: the reference; one walk asked every request
- * in drawn order, some of them concurrently; the reconstruction's shared
- * walk asked them in that order; and a fresh walk per request.
+ * Compares, for every request: the reference; one fresh walk asked every
+ * request in drawn order, some of them concurrently; the block's own walk,
+ * whatever was asked of it before, asked them in that order; and a fresh
+ * walk per request.
  */
 const compareWithReference = async ({
   block,
@@ -163,33 +167,22 @@ const compareWithReference = async ({
 }) => {
   const draw = seeded(seed);
   const asked = shuffled(draw, requests(block, draw));
-  const walk = createEventLedgerWalk({
-    block,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  });
+  const ask = (walked: CanonicalBlockEvidence, request: Request) => () =>
+    eventLedgerBefore({ block: walked, ...request, predecessor });
+  const concurrent = afresh(block);
   const shared = new Map<Request, Promise<Outcome>>();
   for (let start = 0; start < asked.length; ) {
     const batch = asked.slice(start, (start += 1 + draw(4)));
     const settled = batch.map((request) =>
-      outcome(() => walk.before(request.eventKey, request.stepIndex), probes),
+      outcome(ask(concurrent, request), probes),
     );
     for (const [index, request] of batch.entries())
       shared.set(request, settled[index]!);
     await Promise.all(settled);
   }
-  const reconstructionWalk = reconstructionEventLedgerWalk(
-    block.reconstruction,
-    predecessor,
-  );
-  const reconstruction = new Map<Request, Outcome>();
+  const own = new Map<Request, Outcome>();
   for (const request of asked)
-    reconstruction.set(
-      request,
-      await outcome(
-        () => reconstructionWalk.before(request.eventKey, request.stepIndex),
-        probes,
-      ),
-    );
+    own.set(request, await outcome(ask(block, request), probes));
   const refusals = new Set<string>();
   for (const request of asked) {
     const expected = await outcome(
@@ -197,18 +190,10 @@ const compareWithReference = async ({
       probes,
     );
     expect(await shared.get(request)).toStrictEqual(expected);
-    expect(reconstruction.get(request)).toStrictEqual(expected);
-    expect(
-      await outcome(
-        () =>
-          ledgerBeforeTransactionEvent({
-            block,
-            ...request,
-            ...(predecessor === undefined ? {} : { predecessor }),
-          }),
-        probes,
-      ),
-    ).toStrictEqual(expected);
+    expect(own.get(request)).toStrictEqual(expected);
+    expect(await outcome(ask(afresh(block), request), probes)).toStrictEqual(
+      expected,
+    );
     refusals.add(
       "refused" in expected
         ? String(expected.refused.reason ?? expected.refused.message)

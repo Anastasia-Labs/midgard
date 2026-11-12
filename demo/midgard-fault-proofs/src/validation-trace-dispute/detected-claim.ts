@@ -1,16 +1,16 @@
 /** The claim material for the event a validation-trace detection names, from
  * the same DA replay the detector ran: the detection's single subject event,
- * its pre-state ledger over the admitted predecessor (the one the detector
- * walked to, when it kept it), and its honest trace. */
+ * its pre-state ledger over the admitted predecessor from the block's one
+ * walk the detector advanced, and its honest trace. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  eventLedgerBefore,
   EventLedgerReplayRefusal,
-  ledgerBeforeTransactionEvent,
-} from "../input-existence/event-ledger.js";
+} from "../event-ledger.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type {
   CanonicalBlockClassification,
   CanonicalViolationDetection,
@@ -31,7 +31,6 @@ import {
   validationTraceClaimBuildHeld,
   type ValidationTraceClaimMaterial,
 } from "./claim-material.js";
-import { detectedLedger } from "./detected-ledgers.js";
 import { type CommittedL2Event, eventRunsPlutus } from "./replay.js";
 
 export type DetectedValidationTraceClaim = {
@@ -75,24 +74,18 @@ export const detectedValidationTraceClaim = async ({
       "validation claim: the detected event has no committed event-to-step opening",
     );
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  const ledger =
-    detectedLedger({
-      evidence,
-      predecessor,
-      fingerprint: event.fingerprint,
-    }) ??
-    (await ledgerBeforeTransactionEvent({
-      block: evidence,
-      eventKey: event.eventKey,
-      stepIndex: opening.value.step_index,
-      ...(predecessor === undefined ? {} : { predecessor }),
-    }).catch((cause: unknown) => {
-      // A refused pre-state is the block's own, and decides; a read that
-      // failed otherwise is held, as the detector holds it.
-      throw cause instanceof EventLedgerReplayRefusal
-        ? cause
-        : validationTraceClaimBuildHeld(cause);
-    }));
+  const ledger = await eventLedgerBefore({
+    block: evidence,
+    eventKey: event.eventKey,
+    stepIndex: opening.value.step_index,
+    predecessor,
+  }).catch((cause: unknown) => {
+    // A refused pre-state is the block's own, and decides; a read that
+    // failed otherwise is held, as the detector holds it.
+    throw cause instanceof EventLedgerReplayRefusal
+      ? cause
+      : validationTraceClaimBuildHeld(cause);
+  });
   return {
     event,
     material: await buildValidationTraceClaimMaterial({

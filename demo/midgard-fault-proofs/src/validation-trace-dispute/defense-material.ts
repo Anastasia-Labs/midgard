@@ -24,8 +24,8 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { eventLedgerBefore } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { ledgerBeforeTransactionEvent } from "../input-existence/event-ledger.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import {
   acceptedLedgerMutation,
@@ -156,11 +156,11 @@ export const buildPortableValidationTraceDefenseMaterial = async ({
     throw new Error(
       "validation defense: the case's event has no committed event-to-step opening",
     );
-  const ledger = await ledgerBeforeTransactionEvent({
+  const ledger = await eventLedgerBefore({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,
-    ...(predecessor === undefined ? {} : { predecessor }),
+    predecessor,
   });
   const replay = {
     header: evidence.header,

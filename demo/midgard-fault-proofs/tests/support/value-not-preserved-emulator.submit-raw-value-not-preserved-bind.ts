@@ -104,8 +104,9 @@ export const publishTamperedFieldPreimagePublication = async ({
 
 /**
  * A raw step-01 bind: the honest submitter's inclusion transaction minus its
- * §1.4 acceptance-gate re-check, so an honestly-rejected committed leaf
- * reaches the validator's own `validity_code == 0` refusal.
+ * §1.4 acceptance-gate re-check, so a committed leaf with a non-zero validity
+ * code, which l2TxMistag convicts, reaches the validator's own
+ * `validity_code == 0` refusal.
  */
 export const submitRawValueNotPreservedBind = async ({
   harness,

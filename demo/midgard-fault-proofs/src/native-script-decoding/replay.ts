@@ -16,12 +16,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  EventLedgerOutputNotCanonical,
-  type EventLedgerRefusalReason,
-  EventLedgerReplayRefusal,
-  reconstructionEventLedgerWalk,
-} from "../event-ledger.js";
+import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
 import { type CheckedLedger } from "../ledger-at.js";
@@ -31,96 +26,12 @@ import {
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
-import {
-  collectReplayFindings,
-  type ReplayPrerequisite,
-  replayPrerequisiteFailure,
-} from "../workflow/replay-prerequisite.js";
+import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import { buildNativeScriptDecodingScanPlan } from "./scan-plan.js";
 
 function failure(message: string): never {
   throw new Error(`nativeScriptDecoding: ${message}`);
 }
-
-/** What a refused walk means here: a prerequisite at the event of the step
- * the refusal names, or a fatal corruption of the committed trace. */
-const REFUSAL_OUTCOME: Readonly<
-  Record<
-    EventLedgerRefusalReason,
-    Readonly<{ prerequisite: ReplayPrerequisite } | { fatal: string }>
-  >
-> = {
-  withdrawal_input_absent: { prerequisite: "present_spend_input" },
-  transaction_input_absent: { prerequisite: "present_spend_input" },
-  transaction_output_already_present: {
-    prerequisite: "prior_transition_effect",
-  },
-  post_root_changed: { prerequisite: "prior_transition_effect" },
-  phase_order_changed: { prerequisite: "prior_transition_effect" },
-  transition_link_changed: { fatal: "prior transition mismatch" },
-  source_event_changed: { fatal: "prior event mismatch" },
-  step_out_of_range: { fatal: "prior transition mismatch" },
-  selected_pre_root_changed: { fatal: "event prior ledger changed" },
-};
-
-/**
- * The ledger before step `stepIndex`, from the block's one shared event
- * ledger walk. A step the walk cannot apply is a prerequisite at the event
- * of the step it names: an absent input wants that event's spend-input
- * proof, an output that is not a canonical ledger entry its field-shape
- * proof, and any other unopenable effect its transition proof.
- */
-export const nativeScriptDecodingPriorLedger = async (
-  current: TransitionTraceReconstruction,
-  stepIndex: bigint,
-  predecessor?: CheckedLedger,
-) => {
-  if (
-    predecessor !== undefined &&
-    predecessor.utxosRoot !== current.header.prevUtxosRoot
-  )
-    failure("unrelated predecessor");
-  if (
-    predecessor === undefined &&
-    current.header.prevUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT
-  )
-    failure("authenticated predecessor ledger unavailable");
-  const target = current.traceByStepIndex.get(stepIndex)?.value;
-  if (target === undefined) failure("prior transition mismatch");
-  let ledger: CheckedLedger;
-  try {
-    ledger = await reconstructionEventLedgerWalk(current, predecessor).before(
-      target.event_key,
-      stepIndex,
-    );
-  } catch (cause) {
-    // Every step a prerequisite names opened when the walk applied it.
-    const at = (step: bigint, prerequisite: ReplayPrerequisite) =>
-      replayPrerequisiteFailure(
-        current.headerHash,
-        current.traceByStepIndex.get(step)!.value.event_key,
-        prerequisite,
-      );
-    if (cause instanceof EventLedgerOutputNotCanonical)
-      throw at(cause.step, "representable_field_shape");
-    if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
-    const outcome = REFUSAL_OUTCOME[cause.reason];
-    if ("fatal" in outcome) failure(outcome.fatal);
-    throw at(cause.step, outcome.prerequisite);
-  }
-  return {
-    root: ledger.trie,
-    outputs: {
-      get: (key: string) => {
-        const value = ledger.outputs.get(key);
-        return value === undefined
-          ? undefined
-          : { key: Buffer.from(key, "hex"), value };
-      },
-      has: (key: string) => ledger.outputs.has(key),
-    },
-  };
-};
 
 export type NativeScriptDecodingCoordinate = Readonly<{
   sourceKind: 0 | 1;
@@ -237,7 +148,7 @@ export const prepareNativeScriptDecodingReplay = async ({
       ledgerTrie: null,
     };
   }
-  const ledger = await nativeScriptDecodingPriorLedger(
+  const ledger = await eventLedgerBeforeStep(
     current,
     mapping.step_index,
     predecessor,

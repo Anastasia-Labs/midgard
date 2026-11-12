@@ -8,11 +8,8 @@ import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { eventLedgerBefore } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  type EventLedgerWalk,
-  lazyEventLedgerWalk,
-} from "../input-existence/event-ledger.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
@@ -98,17 +95,10 @@ export const prepareNoReferenceInputWrongfulRejection = async ({
   block,
   forcedIndex,
   predecessor,
-  walk = lazyEventLedgerWalk({
-    block,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  }),
 }: {
   block: CanonicalBlockEvidence;
   forcedIndex: number;
   predecessor?: CheckedLedger;
-  /** The block's ledger walk, when several of its rejections are prepared;
-   * it then stands for `predecessor`. */
-  walk?: EventLedgerWalk;
 }): Promise<PreparedNoReferenceInputWrongfulRejection> => {
   const forced = block.reconstruction.forcedTransactions[forcedIndex];
   if (forced === undefined)
@@ -153,7 +143,12 @@ export const prepareNoReferenceInputWrongfulRejection = async ({
     null;
   if (material.selectedInput !== null) {
     const ledger = (
-      await walk.before(eventKey, eventMembership.value.step_index)
+      await eventLedgerBefore({
+        block,
+        eventKey,
+        stepIndex: eventMembership.value.step_index,
+        predecessor,
+      })
     ).trie;
     if (ledger.root !== transitionMembership.value.pre_utxos_root)
       throw new Error(
@@ -189,10 +184,6 @@ export const detectNoReferenceInputWrongfulRejections = async ({
   predecessor?: CheckedLedger;
 }) => {
   const detections = [];
-  const walk = lazyEventLedgerWalk({
-    block,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  });
   for (const [
     forcedIndex,
     forced,
@@ -209,7 +200,7 @@ export const detectNoReferenceInputWrongfulRejections = async ({
       const prepared = await prepareNoReferenceInputWrongfulRejection({
         block,
         forcedIndex,
-        walk,
+        ...(predecessor === undefined ? {} : { predecessor }),
       });
       detections.push({
         ...forcedTransactionSubject(forced.key),

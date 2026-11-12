@@ -14,6 +14,9 @@ export type KeyValuePhasRoot = {
   readonly root: string;
   readonly count: bigint;
   readonly entries: readonly KeyValuePhasEntry[];
+  /** The membership trie of `entries`, from an owner that decides how long
+   * it is kept. A root without one shares one trie per root object. */
+  readonly membershipTrie?: () => Promise<Trie>;
 };
 
 export type CountedRoot = KeyValuePhasRoot & {
@@ -58,7 +61,7 @@ export const canonicalizeKeyValuePhasEntries = (
   return sorted;
 };
 
-const trieFromEntries = async (
+export const trieFromEntries = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<Trie> =>
   await Trie.fromList(
@@ -75,6 +78,7 @@ const trieFromEntries = async (
 const triesByRoot = new WeakMap<KeyValuePhasRoot, Promise<Trie>>();
 
 const trieForRoot = (root: KeyValuePhasRoot): Promise<Trie> => {
+  if (root.membershipTrie !== undefined) return root.membershipTrie();
   const known = triesByRoot.get(root);
   if (known !== undefined) return known;
   const built = trieFromEntries(root.entries);

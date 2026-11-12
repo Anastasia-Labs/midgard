@@ -1,7 +1,7 @@
 /**
- * What an event-ledger refusal means to a family that reads a block's
- * ledgers through the shared walk (native-script-decoding, and the families
- * built on its prior ledger), and which family's finding discharges it:
+ * What an event-ledger refusal means to a trace-relative family that reads a
+ * block's ledgers through the shared walk (`eventLedgerBeforeStep`), and
+ * which family's finding discharges it:
  *
  * - a rejected normal step changes nothing, and is itself convicted by
  *   l2TxMistag (tests/l2-tx-mistag.test.ts:116);
@@ -26,12 +26,11 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  createEventLedgerWalk,
-  reconstructionEventLedgerWalk,
+  eventLedgerBefore,
+  eventLedgerBeforeStep,
 } from "../src/event-ledger.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry } from "../src/ledger-at.js";
-import { nativeScriptDecodingPriorLedger } from "../src/native-script-decoding/replay.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
 import {
   isStructurallyInconsistent,
@@ -128,20 +127,18 @@ describe("a rejected normal step in the event ledger", () => {
 
   it("gives a rejected step the ledger before it, which its no-op leaves to the next step", async () => {
     const fixture = await block([rejected(false), nativeFault()]);
-    const walk = fixture.walk();
-    const own = await walk.before(fixture.key(0), 0n);
+    const own = await fixture.before(0);
     expect(own.utxosRoot).toBe(fixture.evidence.header.prevUtxosRoot);
     expect(own.outputs.has(hex(OTHER.outRef))).toBe(true);
-    expect((await walk.before(fixture.key(1), 1n)).utxosRoot).toBe(
-      own.utxosRoot,
-    );
+    expect((await fixture.before(1)).utxosRoot).toBe(own.utxosRoot);
   });
 
   it("refuses a rejected step whose committed root changed, and l2TxMistag's finding at it discharges the refusal", async () => {
     const fixture = await block([rejected(true), nativeFault()]);
-    await expect(
-      fixture.walk().before(fixture.key(1), 1n),
-    ).rejects.toMatchObject({ reason: "post_root_changed", step: 0n });
+    await expect(fixture.before(1)).rejects.toMatchObject({
+      reason: "post_root_changed",
+      step: 0n,
+    });
     expect(
       await prerequisites(() =>
         fixture.replay([NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY]),
@@ -178,9 +175,7 @@ describe("an output the event ledger already holds", () => {
       [{ input: creator, applied: true }, nativeFault(OTHER.outRef)],
       [NATIVE, SPENT, OTHER, held],
     );
-    await expect(
-      fixture.walk().before(fixture.key(1), 1n),
-    ).rejects.toMatchObject({
+    await expect(fixture.before(1)).rejects.toMatchObject({
       reason: "transaction_output_already_present",
       step: 0n,
     });
@@ -207,9 +202,7 @@ describe("an output that is not a canonical ledger entry", () => {
       },
       nativeFault(OTHER.outRef),
     ]);
-    await expect(
-      fixture.walk().before(fixture.key(1), 1n),
-    ).rejects.toMatchObject({
+    await expect(fixture.before(1)).rejects.toMatchObject({
       step: 0n,
       message: expect.stringContaining("not a canonical ledger entry"),
     });
@@ -246,9 +239,10 @@ describe("an absent input in the event ledger", () => {
       },
       nativeFault(),
     ]);
-    await expect(
-      fixture.walk().before(fixture.key(1), 1n),
-    ).rejects.toMatchObject({ reason: "transaction_input_absent", step: 0n });
+    await expect(fixture.before(1)).rejects.toMatchObject({
+      reason: "transaction_input_absent",
+      step: 0n,
+    });
     expect(
       await prerequisites(() =>
         fixture.replay([NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY]),
@@ -281,7 +275,7 @@ describe("an absent input in the event ledger", () => {
       withdrawal,
     );
     const [failure] = await prerequisites(() =>
-      nativeScriptDecodingPriorLedger(
+      eventLedgerBeforeStep(
         fixture.evidence.reconstruction,
         fixture.targetStep,
         fixture.predecessor,
@@ -336,10 +330,14 @@ describe("a step out of phase order in the event ledger", () => {
       "ForcedTransaction",
     ]);
     await expect(
-      createEventLedgerWalk({ block: evidence }).before(forced!.event_key, 1n),
+      eventLedgerBefore({
+        block: evidence,
+        eventKey: forced!.event_key,
+        stepIndex: 1n,
+      }),
     ).rejects.toMatchObject({ reason: "phase_order_changed", step: 0n });
     const [failure] = await prerequisites(() =>
-      nativeScriptDecodingPriorLedger(evidence.reconstruction, 1n),
+      eventLedgerBeforeStep(evidence.reconstruction, 1n),
     );
     expect(failure).toEqual({
       eventKey: l2!.event_key,
@@ -405,14 +403,9 @@ describe("a deposit stepped before an earlier phase's event", () => {
         ),
       }),
     );
-    const [deposit, withdrawal] = events.map(([eventKey]) => eventKey);
-    await expect(
-      reconstructionEventLedgerWalk(reconstruction).before(withdrawal!, 1n),
-    ).rejects.toMatchObject({ reason: "phase_order_changed", step: 0n });
+    const [deposit] = events.map(([eventKey]) => eventKey);
     expect(
-      await prerequisites(() =>
-        nativeScriptDecodingPriorLedger(reconstruction, 1n),
-      ),
+      await prerequisites(() => eventLedgerBeforeStep(reconstruction, 1n)),
     ).toEqual([{ eventKey: deposit, prerequisite: "prior_transition_effect" }]);
     // Each step lies in the other's band. Such a block never reaches the
     // replay union: the header classifier seals the band fault first.

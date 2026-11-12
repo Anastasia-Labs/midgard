@@ -2,10 +2,11 @@
  * `mint-authorization` adversarial polarity: an honest commitment is refused
  * at the exact check, and a tampered predeployed carriage is refused on-chain.
  *
- * Four negatives, each against a commitment that carries NO fault:
+ * Four negatives, each against a commitment that carries no fault of this
+ * family's:
  *
- * - a committed leaf the operator honestly RECORDED AS REJECTED can never be
- *   bound — step-01's §2.4.3(d) acceptance guard refuses it;
+ * - a committed leaf RECORDED AS REJECTED, which l2TxMistag convicts, can
+ *   never be bound — step-01's §2.4.3(d) acceptance guard refuses it;
  * - a direction-A "the script is absent" claim is FALSE when the committed
  *   field 6 actually consulted a script hashing to the policy — step-03's
  *   absence fold refuses it;
@@ -98,7 +99,7 @@ const driveInit = async (
 };
 
 describe("mint-authorization emulator adversarial polarity", () => {
-  it("never binds a committed leaf the operator honestly recorded as rejected", async () => {
+  it("never binds a committed leaf recorded as rejected", async () => {
     const harness = await makeMintAuthorizationEmulatorHarness({
       useScalusEvaluator: false,
     });

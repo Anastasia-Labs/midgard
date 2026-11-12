@@ -6,8 +6,9 @@
  * carriage (redeemer-carried proof, or the #545 published chunks for a
  * proof the 16,384-byte envelope cannot hold). The §2.4.3(d) predicate is
  * re-checked locally before anything is paid for: a leaf whose embedded
- * validity scalar does not claim acceptance can never bind on-chain — an
- * honestly-rejected no-op is out of this family's domain by construction.
+ * validity scalar does not claim acceptance can never bind on-chain — such a
+ * leaf is l2TxMistag's to convict, out of this family's domain by
+ * construction.
  *
  * The step-02 state paid forward carries exactly what only this step can
  * read off the block-committed compact structure: the §2.5 anchors
@@ -168,7 +169,7 @@ export const submitMintAuthorizationStep01 = async ({
 
   requireNativeTxMatchesCompactCbor(txInclusion);
   // §2.4.3(d): only an operator-ACCEPTED transaction is in this family's
-  // domain — the honestly-rejected no-op can never convict.
+  // domain — a leaf with any other code is l2TxMistag's to convict.
   if (txInclusion.nativeTx.validity_code !== 0n) {
     throw mintAuthorizationSubmitError(
       `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is not an acceptance and this family cannot bind it.`,
