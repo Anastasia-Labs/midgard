@@ -45,6 +45,7 @@ export {
 } from "./replay.js";
 export { diffPruned, dumpRetained, retainedQueries } from "./retention.js";
 export { Rng } from "./rng.js";
+export { ROLE_FAILURE_ROWS, type RoleFailureRow } from "./role-failure-rows.js";
 export {
   buildForkSteps,
   checkpointFailure,

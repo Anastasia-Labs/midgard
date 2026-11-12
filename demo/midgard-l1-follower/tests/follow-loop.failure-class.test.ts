@@ -1,7 +1,8 @@
 /**
  * The follow loop's failure classes (owner ruling 2026-10-09: retry only
- * what is transient): how `classifyFailure` and `classifyStreamFailure` sort
- * a failure, and that the loop reopens a stream or restarts the store on a
+ * what is transient): how `classifyStreamFailure` sorts the transport's
+ * typed failures (the shared rows are in `role-failure.conformance.test.ts`),
+ * and that the loop reopens a stream or restarts the store on a
  * transient failure however often it repeats, and stops under
  * `l1_follower_apply_stuck` once one that is not transient repeats
  * `stuckAfter` times in a row. Transient store failures are bounded
@@ -20,7 +21,6 @@ import { describe, expect, it } from "vitest";
 
 import { stuckRecorder } from "../src/follow/stuck.js";
 import {
-  classifyFailure,
   classifyStreamFailure,
   type FactStore,
   FOLLOWER_APPLY_STUCK,
@@ -52,40 +52,6 @@ const reasons = (status: FollowStatus): string[] =>
 
 const coded = (message: string, code: string): Error =>
   Object.assign(new Error(message), { code });
-
-describe("classifyFailure", () => {
-  const coded = (message: string, code: string) =>
-    Object.assign(new Error(message), { code });
-
-  it.each([
-    ["pg's connect timeout", new Error("timeout expired"), "transient"],
-    ["a reset socket", coded("read ECONNRESET", "ECONNRESET"), "transient"],
-    [
-      "a connection-class SQLSTATE",
-      coded("admin shutdown", "57P01"),
-      "transient",
-    ],
-    [
-      "a constraint violation",
-      coded("duplicate key", "23505"),
-      "deterministic",
-    ],
-    [
-      "a missing database",
-      coded("database does not exist", "3D000"),
-      "unknown",
-    ],
-    ["an unrecognised error", new Error("boom"), "unknown"],
-    [
-      "a message that only mentions a timeout",
-      new Error("statement timeout expired soon"),
-      "unknown",
-    ],
-    ["a non-Error value", "timeout expired", "unknown"],
-  ] as const)("classifies %s", (_name, error, expected) => {
-    expect(classifyFailure(error)).toBe(expected);
-  });
-});
 
 describe("classifyStreamFailure", () => {
   it.each([

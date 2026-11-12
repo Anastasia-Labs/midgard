@@ -225,6 +225,12 @@ export {
   type TxContentSource,
 } from "./resolve/outputs.js";
 export {
+  classifyRoleFailure,
+  CONNECTION_ERRNOS,
+  type ConnectionErrno,
+  type RoleFailureClass,
+} from "./role-failure.js";
+export {
   assertRoleL1Env,
   NON_FOLLOWER_L1_ENV_KEYS,
   type NonFollowerL1EnvKey,
