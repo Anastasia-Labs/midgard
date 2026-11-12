@@ -421,6 +421,7 @@ export const submitCommittedFieldShapeStep01 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "committed-field-shape step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

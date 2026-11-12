@@ -372,6 +372,7 @@ export const submitStep01 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 01 layout.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "double-spend step-01",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-01",

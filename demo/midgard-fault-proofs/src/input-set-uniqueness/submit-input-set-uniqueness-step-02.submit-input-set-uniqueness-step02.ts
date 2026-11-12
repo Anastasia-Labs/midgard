@@ -465,6 +465,7 @@ export const submitInputSetUniquenessStep02 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "input-set-uniqueness step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

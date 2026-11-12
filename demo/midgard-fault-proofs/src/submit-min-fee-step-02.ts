@@ -413,6 +413,7 @@ export const submitMinFeeStep02 = async ({
     throw minFeeSubmitError("step-02 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "min-fee step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

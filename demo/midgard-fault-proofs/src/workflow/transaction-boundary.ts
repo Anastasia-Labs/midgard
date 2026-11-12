@@ -229,13 +229,18 @@ export const captureLocallyEvaluatedTransaction = async (
   );
 };
 
+/**
+ * Submits a captured transaction and refuses a provider that reports another
+ * hash; `label`, when given, names the transaction in that refusal.
+ */
 export const submitCapturedTransaction = async (
   transaction: LocallyEvaluatedTransaction,
+  label?: string,
 ): Promise<string> => {
   const submitted = (await transaction.signed.submit()).toLowerCase();
   if (submitted !== transaction.txHash) {
     throw new Error(
-      `provider returned transaction hash ${submitted}, expected ${transaction.txHash}`,
+      `${label === undefined ? "" : `${label}: `}provider returned transaction hash ${submitted}, expected ${transaction.txHash}`,
     );
   }
   return submitted;

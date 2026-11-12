@@ -307,6 +307,7 @@ export const submitL2TxMistagStep01 = async ({
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "l2-tx-mistag step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

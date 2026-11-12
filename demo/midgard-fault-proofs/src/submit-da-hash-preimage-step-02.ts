@@ -408,6 +408,7 @@ export const submitDaHashPreimageStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const txHash = await submitStep(lucid, signed, {
+    label: "da-hash-preimage step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

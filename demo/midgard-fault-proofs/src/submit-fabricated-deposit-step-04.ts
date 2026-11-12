@@ -346,6 +346,7 @@ export const submitFabricatedDepositStep04 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "fabricated-deposit step-04",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

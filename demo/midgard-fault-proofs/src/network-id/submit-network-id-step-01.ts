@@ -332,6 +332,7 @@ export const submitNetworkIdStep01 = async ({
     throw networkIdSubmitError("step-01 layout was not resolved");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "network-id step-01",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof network-id step-01",

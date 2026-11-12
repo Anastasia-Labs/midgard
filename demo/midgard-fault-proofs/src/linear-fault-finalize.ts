@@ -202,6 +202,7 @@ export const submitLinearFaultFinalize = async ({
     throw new Error(`${label}: unresolved final layout`);
   }
   const txHash = await submitStep(lucid, signed, {
+    label: label,
     referenceScripts: [
       workflowReferenceScript({
         role: label,

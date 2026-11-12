@@ -409,6 +409,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "canonical-decodability step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

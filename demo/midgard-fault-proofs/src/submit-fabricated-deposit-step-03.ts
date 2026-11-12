@@ -335,6 +335,7 @@ export const submitFabricatedDepositStep03 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "fabricated-deposit step-03",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-03",

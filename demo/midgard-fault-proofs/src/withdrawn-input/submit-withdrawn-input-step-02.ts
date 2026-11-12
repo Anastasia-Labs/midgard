@@ -235,6 +235,7 @@ export const submitWithdrawnInputStep02 = async ({
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "withdrawn-input step-02",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-input step-02",

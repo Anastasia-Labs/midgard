@@ -306,6 +306,7 @@ export const submitInputNoIdxStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const txHash = await submitStep(lucid, signed, {
+    label: "input-no-idx step-04",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

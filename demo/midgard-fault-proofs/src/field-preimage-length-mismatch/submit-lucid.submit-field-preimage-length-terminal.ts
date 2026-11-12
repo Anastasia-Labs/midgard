@@ -157,6 +157,7 @@ export const submitFieldPreimageLengthTerminal = async ({
     throw new Error(`${LABEL}: terminal layout did not resolve`);
   const resolved = layout;
   const txHash = await submitStep(config.lucid, signed, {
+    label: `${LABEL} step-04`,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

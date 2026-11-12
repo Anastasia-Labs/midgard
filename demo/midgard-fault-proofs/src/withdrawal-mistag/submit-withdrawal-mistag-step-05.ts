@@ -207,6 +207,7 @@ export const submitWithdrawalMistagStep05 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "withdrawal-mistag step-05",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

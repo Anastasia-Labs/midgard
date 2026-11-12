@@ -310,6 +310,7 @@ export const submitDoubleWithdrawStep01 = async ({
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "double-withdraw step-01",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-withdraw step-01",

@@ -318,6 +318,7 @@ export const submitDoubleWithdrawStep02 = async ({
     throw doubleWithdrawSubmitError("step-02 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "double-withdraw step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

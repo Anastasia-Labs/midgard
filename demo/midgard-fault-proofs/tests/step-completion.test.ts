@@ -130,6 +130,7 @@ describe("fundStep and completeStep", () => {
     expect(requiredSigners?.len()).toBe(1);
     expect(requiredSigners?.get(0).to_hex()).toBe(signer.paymentKeyHash);
     await submitStep(lucid, signed, {
+      label: "test step-01",
       referenceScripts: [],
       awaitConfirmation: true,
     });
@@ -138,27 +139,35 @@ describe("fundStep and completeStep", () => {
     );
   });
 
-  it("coin-select a seed wallet from the coins fundStep read, never one that reaches it before completion", async () => {
+  it("coin-select a seed wallet from the plain coins fundStep read, never a coin or the prover's own carriage that reaches it before completion", async () => {
     const { emulator, lucid, funderLucid, signer, funder, proverUtxos } =
       await prover([{ lovelace: ada(20n) }, { lovelace: ada(3n) }]);
     const [fee, extra] = proverUtxos;
 
     const funding = await fundStep(lucid, { signer });
+    const carriage = Data.to(new Constr(0, ["cd".repeat(32)]));
     const lateHash = await (
       await (
         await funderLucid
           .newTx()
           .pay.ToAddress(signer.address, { lovelace: ada(100n) })
+          .pay.ToAddressWithData(
+            signer.address,
+            { kind: "inline", value: carriage },
+            { lovelace: ada(200n) },
+          )
           .complete()
       ).sign
         .withWallet()
         .complete()
     ).submit();
     emulator.awaitBlock();
-    const late = (await lucid.wallet().getUtxos()).find(
+    const late = (await lucid.wallet().getUtxos()).filter(
       ({ txHash }) => txHash === lateHash,
     );
-    expect(late).toBeDefined();
+    expect(late.map(({ datum }) => datum ?? null).sort()).toEqual(
+      [carriage, null].sort(),
+    );
 
     const signed = await completeStep(
       funding.tx.pay.ToAddress(funder, { lovelace: ada(21n) }),
@@ -211,6 +220,7 @@ describe("fundStep and completeStep", () => {
       funding,
     );
     await submitStep(lucid, signed, {
+      label: "test step-01",
       referenceScripts: [],
       boundary: restricted.preSubmitBoundary,
       awaitConfirmation: true,
@@ -243,6 +253,7 @@ describe("submitStep", () => {
     let seen: unknown;
     await expect(
       submitStep(lucid, signed, {
+        label: "test step-01",
         referenceScripts,
         boundary: (transaction) => {
           seen = transaction;
@@ -261,10 +272,11 @@ describe("submitStep", () => {
     expect(await unspent(lucid, proverUtxos)).toEqual(proverUtxos.map(label));
   });
 
-  it("returns the hash once the transaction confirms, and refuses a provider that reports another", async () => {
+  it("returns the hash once the transaction confirms, and refuses a provider that reports another, naming the step", async () => {
     const accepted = await signedStep();
     expect(
       await submitStep(accepted.lucid, accepted.signed, {
+        label: "test step-01",
         referenceScripts: [],
         awaitConfirmation: true,
       }),
@@ -281,11 +293,12 @@ describe("submitStep", () => {
     try {
       await expect(
         submitStep(lucid, signed, {
+          label: "test step-01",
           referenceScripts: [],
           awaitConfirmation: false,
         }),
       ).rejects.toThrow(
-        `provider returned transaction hash ${otherHash}, expected ${signed.toHash()}`,
+        `test step-01: provider returned transaction hash ${otherHash}, expected ${signed.toHash()}`,
       );
     } finally {
       provider.restore();

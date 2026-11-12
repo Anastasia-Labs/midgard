@@ -329,6 +329,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
   const txHash = await submitStep(lucid, signed, {
+    label: "spend-input-signer-missing step-02",
     referenceScripts: [
       workflowReferenceScript({
         role: "spend-input-signer-missing-step-02",

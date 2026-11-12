@@ -8,7 +8,6 @@ import {
   type LucidEvolution,
   type Network,
   toUnit,
-  type TxBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -227,60 +226,57 @@ export const submitStep04 = async ({
     },
   );
 
-  const makeStep04Tx = (): TxBuilder => {
-    const withInputs = funding.tx.collectFrom(
-      [threadUtxo],
-      makeStep04SpendRedeemer({
-        threadUtxo,
-        fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+  const withInputs = funding.tx.collectFrom(
+    [threadUtxo],
+    makeStep04SpendRedeemer({
+      threadUtxo,
+      fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+      fraudProofPolicyId: contracts.fraudProof.policyId,
+      fraudProofUnit,
+      fraudProofDatum,
+      tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
+        faultProofFieldOpening({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+          label: "Double-spend step 04 tx2 spend-inputs",
+        }),
+      doubleSpentInputIndex,
+      onLayout: (layout) => {
+        spendLayout = layout;
+      },
+    }),
+  );
+  // Tier 1 references nothing, and `readFrom([])` is an error rather than a
+  // no-op, so the branch is on whether §8 produced carriage at all.
+  const chained = (
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom([...referenceInputs])
+  )
+    .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
+    .mintAssets(
+      { [fraudProofUnit]: 1n },
+      makeFraudProofMintRedeemer({
         fraudProofPolicyId: contracts.fraudProof.policyId,
-        fraudProofUnit,
-        fraudProofDatum,
-        tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
-          faultProofFieldOpening({
-            planned,
-            referenceInputs: ctx.referenceInputs,
-            ...(certificatePolicyId === undefined
-              ? {}
-              : { certificatePolicyId }),
-            label: "Double-spend step 04 tx2 spend-inputs",
-          }),
-        doubleSpentInputIndex,
-        onLayout: (layout) => {
-          spendLayout = layout;
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        computationThreadAssetName: threadToken.assetName,
+        onComputationThreadMintRedeemerIndex: (index) => {
+          computationThreadMintRedeemerIndex = index;
         },
       }),
-    );
-    // Tier 1 references nothing, and `readFrom([])` is an error rather than a
-    // no-op, so the branch is on whether §8 produced carriage at all.
-    const chained = (
-      referenceInputs.length === 0
-        ? withInputs
-        : withInputs.readFrom([...referenceInputs])
     )
-      .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
-      .mintAssets(
-        { [fraudProofUnit]: 1n },
-        makeFraudProofMintRedeemer({
-          fraudProofPolicyId: contracts.fraudProof.policyId,
-          computationThreadPolicyId: contracts.computationThread.policyId,
-          computationThreadAssetName: threadToken.assetName,
-          onComputationThreadMintRedeemerIndex: (index) => {
-            computationThreadMintRedeemerIndex = index;
-          },
-        }),
-      )
-      .pay.ToContract(
-        contracts.fraudProof.spendingScriptAddress,
-        { kind: "inline", value: fraudProofDatum },
-        fraudProofAssets,
-      );
-    return fraudProofMintCarriage.attach(
-      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+    .pay.ToContract(
+      contracts.fraudProof.spendingScriptAddress,
+      { kind: "inline", value: fraudProofDatum },
+      fraudProofAssets,
     );
-  };
-
-  const signed = await completeStep(makeStep04Tx(), funding);
+  const signed = await completeStep(
+    fraudProofMintCarriage.attach(
+      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+    ),
+    funding,
+  );
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -292,6 +288,7 @@ export const submitStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const txHash = await submitStep(lucid, signed, {
+    label: "double-spend step-04",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-04",

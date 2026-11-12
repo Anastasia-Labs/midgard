@@ -89,17 +89,20 @@ export const completeStep = async (
 /**
  * Submits a signed step: it reaches `boundary` with the transaction and the
  * reference scripts it uses, submits only after the boundary returns,
- * refuses a provider that reports another hash, and waits for confirmation
- * when asked. Returns the transaction hash.
+ * refuses a provider that reports another hash, naming the step by `label`
+ * (its family and step), and waits for confirmation when asked. Returns the
+ * transaction hash.
  */
 export const submitStep = async (
   lucid: LucidEvolution,
   signed: TxSigned,
   {
+    label,
     referenceScripts,
     boundary,
     awaitConfirmation,
   }: {
+    readonly label: string;
     readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
     readonly boundary?: FraudProofPreSubmitBoundary;
     readonly awaitConfirmation: boolean;
@@ -110,7 +113,7 @@ export const submitStep = async (
     referenceScripts,
     boundary,
   });
-  await submitCapturedTransaction({ txHash, signed, referenceScripts });
+  await submitCapturedTransaction({ txHash, signed, referenceScripts }, label);
   if (awaitConfirmation)
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return txHash;

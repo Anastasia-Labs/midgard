@@ -209,6 +209,7 @@ export const submitMintAuthorizationWitnessScan = async ({
   if (outputIndex === undefined)
     throw new Error("mint witness scan did not resolve output index");
   const txHash = await submitStep(lucid, signed, {
+    label: "mint-authorization step-07",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

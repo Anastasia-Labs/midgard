@@ -152,6 +152,7 @@ export const submitLinearFaultCancel = async ({
     throw new Error(`${label}: unresolved cancellation layout`);
   }
   const txHash = await submitStep(lucid, signed, {
+    label: `${label} cancel`,
     referenceScripts: [
       workflowReferenceScript({
         role: `${label}-cancel`,

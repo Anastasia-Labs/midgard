@@ -231,6 +231,7 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
   const txHash = await submitStep(config.lucid, signed, {
+    label: `${LABEL} step-01 accepted`,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

@@ -257,6 +257,7 @@ export const submitMissingSignatureStep02 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "missing-signature step-02",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-02",

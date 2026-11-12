@@ -245,6 +245,7 @@ export const submitWithdrawnInputStep01 = async ({
     throw withdrawnInputSubmitError("step-01 layout was not resolved.");
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "withdrawn-input step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

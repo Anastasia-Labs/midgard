@@ -220,6 +220,7 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-03 layout unresolved");
   const txHash = await submitStep(lucid, signed, {
+    label: "resolved-output-non-canonical step-03",
     referenceScripts: [
       workflowReferenceScript({
         role: "resolved-output-non-canonical-step-03",

@@ -300,6 +300,7 @@ export const submitInvalidSignatureStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const txHash = await submitStep(lucid, signed, {
+    label: "invalid-signature step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

@@ -335,6 +335,7 @@ export const submitMinAdaTxStep02 = async ({
     );
   const signed = await completeStep(tx, funding);
   const txHash = await submitStep(lucid, signed, {
+    label: "min-ada step-02",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

@@ -250,6 +250,7 @@ export const submitMinAdaTxStep01 = async ({
   const signed = await completeStep(inclusion.attachWithdrawal(base), funding);
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const txHash = await submitStep(lucid, signed, {
+    label: "min-ada step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

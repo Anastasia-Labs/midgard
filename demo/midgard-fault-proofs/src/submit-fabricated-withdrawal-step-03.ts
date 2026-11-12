@@ -339,6 +339,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "fabricated-withdrawal step-03",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-03",

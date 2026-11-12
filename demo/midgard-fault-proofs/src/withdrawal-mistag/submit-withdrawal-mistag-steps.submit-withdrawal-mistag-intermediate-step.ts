@@ -160,6 +160,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: withdrawalMistagStepLabel(stepIndex),
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

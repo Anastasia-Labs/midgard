@@ -347,6 +347,7 @@ export const submitMintAuthorizationStep01 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "mint-authorization step-01",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

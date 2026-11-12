@@ -61,6 +61,7 @@ export const submitLinearFaultContinue = async ({
     funding,
   );
   return await submitStep(lucid, signed, {
+    label: stepRole,
     referenceScripts: [
       workflowReferenceScript({
         role: stepRole,

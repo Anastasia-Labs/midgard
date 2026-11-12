@@ -256,6 +256,7 @@ export const submitMintAuthorizationEvaluate = async ({
   if (outputIndex === undefined)
     throw new Error("mint evaluator did not resolve output index");
   const txHash = await submitStep(lucid, signed, {
+    label: "mint-authorization step-06",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [

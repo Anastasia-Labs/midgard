@@ -293,6 +293,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "withdrawn-reference-input step-02",
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-reference-input step-02",

@@ -289,6 +289,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     );
   }
   const txHash = await submitStep(lucid, signed, {
+    label: "withdrawn-reference-input step-03",
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
