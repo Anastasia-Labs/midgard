@@ -380,7 +380,6 @@ export const makeRuntimePaths = () => {
   const ledgerMpfPath = `/tmp/midgard-deposit-flow-${suffix}-ledger`;
   const transactionsMpfPath = `/tmp/midgard-deposit-flow-${suffix}-transactions`;
   process.env.LEDGER_MPF_DB_PATH = ledgerMpfPath;
-  process.env.TRANSACTIONS_MPF_DB_PATH = transactionsMpfPath;
   return { ledgerMpfPath, transactionsMpfPath };
 };
 

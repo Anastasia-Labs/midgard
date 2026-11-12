@@ -108,8 +108,6 @@ export const boundedValidationInteger = (
  */
 export type NodeConfigDep = {
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
-  L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
-  L1_RECENT_TX_404_MAX_DELAY_MS: number;
   /** Local ledger for reward-account reads; Ogmios cannot answer them. */
   L1_NATIVE_LEDGER: NativeLedgerSettings | undefined;
   L1_OPERATOR_SEED_PHRASE: string;
@@ -132,7 +130,6 @@ export type NodeConfigDep = {
   VALIDATION_BATCH_SIZE: number;
   VALIDATION_BATCH_HARD_CAP: number;
   VALIDATION_MIN_BATCH: number;
-  VALIDATION_MAX_QUEUE_AGE_MS: number;
   VALIDATION_PHASE_A_CONCURRENCY: number;
   VALIDATION_G4_BUCKET_CONCURRENCY: number;
   VALIDATION_STRICTNESS_PROFILE: string;
@@ -177,7 +174,6 @@ export type NodeConfigDep = {
   VALIDATION_LEASE_MS: number;
   VALIDATION_RETRY_BACKOFF_BASE_MS: number;
   VALIDATION_RETRY_BACKOFF_MAX_MS: number;
-  VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD: number;
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   /** The longest a state-queue mutation lease may be held before `/readyz`
@@ -259,7 +255,6 @@ export type NodeConfigDep = {
   MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS: number;
   MPF_NATIVE_OWNER_RESTART_LIMIT: number;
   LEDGER_MPF_DB_PATH: string;
-  TRANSACTIONS_MPF_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
   /** Preserves configured wallet identity when an isolated harness maps C=A. */
   GENESIS_UTXOS_BY_WALLET?: Readonly<{

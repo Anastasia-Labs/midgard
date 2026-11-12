@@ -43,8 +43,8 @@ It is responsible for:
 
 - PostgreSQL stores durable relational views such as mempool entries, latest
   ledger entries, immutable transactions, address history, and rejection logs.
-- `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
-  directories used to persist MPF-backed state roots across restarts.
+- `LEDGER_MPF_DB_PATH` points at the LevelDB directory used to persist the
+  MPF-backed ledger root across restarts.
 - `pnpm build` bundles the node entry point and worker entry points with tsup;
   workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
@@ -332,7 +332,6 @@ POSTGRES_PASSWORD=postgres
 POSTGRES_DB=midgard
 POSTGRES_HOST=localhost
 LEDGER_MPF_DB_PATH=db/midgard-ledger-mpf-db
-TRANSACTIONS_MPF_DB_PATH=db/midgard-transactions-mpf-db
 ```
 
 With a properly setup database, the following set of commands should start the

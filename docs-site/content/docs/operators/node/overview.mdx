@@ -44,7 +44,7 @@ mutually consistent.
   <Card
     title="LevelDB MPF state"
     href="/docs/operators/node/database"
-    description="Merkle Patricia Forestry roots for the ledger (LEDGER_MPF_DB_PATH) and transactions (TRANSACTIONS_MPF_DB_PATH), persisted across restarts."
+    description="The Merkle Patricia Forestry ledger root (LEDGER_MPF_DB_PATH), persisted across restarts."
   />
   <Card
     title="On-chain protocol state"
@@ -55,8 +55,8 @@ mutually consistent.
 
 - PostgreSQL stores durable relational views such as mempool entries, latest
   ledger entries, immutable transactions, address history, and rejection logs.
-- `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
-  directories used to persist MPF-backed state roots across restarts.
+- `LEDGER_MPF_DB_PATH` points at the LevelDB directory used to persist the
+  MPF-backed ledger root across restarts.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
   or remotely reachable environment.
 

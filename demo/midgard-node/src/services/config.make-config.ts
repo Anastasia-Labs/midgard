@@ -100,32 +100,6 @@ export const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const l1RecentTxVisibilityTimeoutMs = yield* Config.integer(
-    "L1_RECENT_TX_VISIBILITY_TIMEOUT_MS",
-  ).pipe(
-    Config.withDefault(180_000),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(
-          "L1_RECENT_TX_VISIBILITY_TIMEOUT_MS must be a positive safe integer",
-        );
-      }
-      return value;
-    }),
-  );
-  const l1RecentTx404MaxDelayMs = yield* Config.integer(
-    "L1_RECENT_TX_404_MAX_DELAY_MS",
-  ).pipe(
-    Config.withDefault(10_000),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(
-          "L1_RECENT_TX_404_MAX_DELAY_MS must be a positive safe integer",
-        );
-      }
-      return value;
-    }),
-  );
   const referenceScriptSeedPhrase = yield* requiredSeedPhrase(
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
   );
@@ -206,9 +180,6 @@ export const makeConfig = Effect.gen(function* () {
     "VALIDATION_MIN_BATCH",
     128,
   );
-  const validationMaxQueueAgeMs = yield* Config.integer(
-    "VALIDATION_MAX_QUEUE_AGE_MS",
-  ).pipe(Config.withDefault(250));
   const validationPhaseAConcurrency = yield* boundedValidationInteger(
     "VALIDATION_PHASE_A_CONCURRENCY",
     32,
@@ -370,9 +341,6 @@ export const makeConfig = Effect.gen(function* () {
       "VALIDATION_RETRY_BACKOFF_MAX_MS must not be less than VALIDATION_RETRY_BACKOFF_BASE_MS",
     );
   }
-  const validationExpiredLeaseReadinessThreshold = yield* Config.integer(
-    "VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD",
-  ).pipe(Config.withDefault(1));
   const stateQueueMutationLeaseTtlMs = yield* Config.integer(
     "STATE_QUEUE_MUTATION_LEASE_TTL_MS",
   ).pipe(
@@ -783,9 +751,6 @@ export const makeConfig = Effect.gen(function* () {
   const ledgerMpfDbPath = yield* Config.string("LEDGER_MPF_DB_PATH").pipe(
     Config.withDefault("midgard-ledger-mpf-db"),
   );
-  const transactionsMpfDbPath = yield* Config.string(
-    "TRANSACTIONS_MPF_DB_PATH",
-  ).pipe(Config.withDefault("midgard-transactions-mpf-db"));
   const mpfNativeOwnerBinaryPath = yield* Config.string(
     "MPF_NATIVE_OWNER_BINARY_PATH",
   ).pipe(
@@ -866,8 +831,6 @@ export const makeConfig = Effect.gen(function* () {
 
   return {
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
-    L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
-    L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
     L1_NATIVE_LEDGER: nativeLedger,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
@@ -888,7 +851,6 @@ export const makeConfig = Effect.gen(function* () {
     VALIDATION_BATCH_SIZE: validationBatchSize,
     VALIDATION_BATCH_HARD_CAP: validationBatchHardCap,
     VALIDATION_MIN_BATCH: validationMinBatch,
-    VALIDATION_MAX_QUEUE_AGE_MS: validationMaxQueueAgeMs,
     VALIDATION_PHASE_A_CONCURRENCY: validationPhaseAConcurrency,
     VALIDATION_G4_BUCKET_CONCURRENCY: validationG4BucketConcurrency,
     VALIDATION_STRICTNESS_PROFILE: validationStrictnessProfile,
@@ -924,8 +886,6 @@ export const makeConfig = Effect.gen(function* () {
     VALIDATION_LEASE_MS: validationLeaseMs,
     VALIDATION_RETRY_BACKOFF_BASE_MS: validationRetryBackoffBaseMs,
     VALIDATION_RETRY_BACKOFF_MAX_MS: validationRetryBackoffMaxMs,
-    VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD:
-      validationExpiredLeaseReadinessThreshold,
     STATE_QUEUE_MUTATION_LEASE_TTL_MS: stateQueueMutationLeaseTtlMs,
     STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS:
       stateQueueMutationLeaseRenewIntervalMs,
@@ -992,7 +952,6 @@ export const makeConfig = Effect.gen(function* () {
     MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS: mpfNativeOwnerRequestTimeoutMs,
     MPF_NATIVE_OWNER_RESTART_LIMIT: mpfNativeOwnerRestartLimit,
     LEDGER_MPF_DB_PATH: ledgerMpfDbPath,
-    TRANSACTIONS_MPF_DB_PATH: transactionsMpfDbPath,
     // Atomic initialization commits an empty ledger on every network.
     // Isolated harnesses may inject an explicitly authenticated genesis fixture.
     GENESIS_UTXOS: [],
