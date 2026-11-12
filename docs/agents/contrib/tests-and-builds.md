@@ -34,9 +34,17 @@ Selected skips remain exit 3.
 
 `--file` takes package-relative test paths; without one, the run is the whole
 package. Before running, `vitest list` collects the files with the same
-configuration and flags: a named file the config or an `--exclude` drops, or a
-filter that also selects other files, is refused, and the receipt then
-requires the report to cover exactly those files. The runner derives the
+configuration and flags. A named file the declared run does not collect (a
+fork-sim test, a devnet `node --test` file) is not run: it prints as `SKIPPED`
+with what runs it, the `pnpm --dir <package> run test:*` script that names it
+or its directory, else a `--config` run for each other `vitest.*.config.*` of
+the package, else that nothing does. Package scripts are never run for you.
+The rest runs, and the receipt is `partial` (exit 4, not a pass, unlike the
+exit 3 of tests skipped by their own conditions); with nothing left to run it
+fails. With the caller's own `--exclude` or `--config`, and in a
+`contrib gate`, such a file is refused before anything runs, as is a filter
+that also selects other files; the receipt then requires the report to cover
+exactly the files run. The runner derives the
 package's declared build prerequisites, makes its declared blueprint ready
 (copied from a checkout with identical inputs and profile, else built with
 `deployment:build`), requires the local test Postgres and native outputs declared by the package, and assigns an invocation-specific disposable database family,

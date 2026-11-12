@@ -23,9 +23,15 @@ Ordinary package scripts and `contrib test` consume the same `midgardTasks`
 declaration. Before changing prerequisites or passing caller flags, read the
 [task declaration and flag rules](../../../../docs/agents/contrib/tests-and-builds.md).
 The runner asks Vitest
-first which files the run collects: a named file that the config or an
-`--exclude` drops, or a path that also selects other files, is refused before
-anything runs. A `--name` that matches nothing fails the receipt (0 tests
+first which files the run collects. A named file the declared run does not
+collect (fork-sim, dropped by the declared command's own `--exclude`; a devnet
+`node --test` file) prints as `SKIPPED` with the command that runs it, usually
+`pnpm --dir <package> run test:<script>`; run that yourself. The rest still
+runs and exits 4 (`partial`, not a pass); if nothing is left, the run fails.
+Once you pass any `--exclude` or `--config`, and in a `contrib gate`, any
+uncollected named file is refused before anything runs, as is a path that
+also selects other files. A
+`--name` that matches nothing fails the receipt (0 tests
 executed). Failures print as `FAIL <file> > <test>` with their first message
 line, then the log and receipt paths. The workspace lease covers only the
 builds before the suites, so two runs in one checkout proceed side by side,

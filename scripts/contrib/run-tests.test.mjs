@@ -19,6 +19,7 @@ import { HELP, parse } from "../contrib.mjs";
 import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { atomicJson, workspacePackages } from "./files.mjs";
 import { fixture } from "./fixture.test-support.mjs";
+import { gateExitCode, runGate } from "./gates.mjs";
 import { preparationPlan, runTests, testCommand } from "./tests.mjs";
 import {
   failures,
@@ -429,7 +430,7 @@ test("a focused run skips the preludes and defaults to the test runtime", async 
   assert.equal(run.NODE_ENV, "test");
 });
 
-test("a named file that Vitest would not run is refused before anything runs", async (t) => {
+test("a run of named files nothing runs fails, and a file the caller excludes is refused, before anything runs", async (t) => {
   const { root, env, calls } = workspace(
     t,
     { command: ["vitest", "run", "--exclude", "tests/slow*"] },
@@ -441,7 +442,7 @@ test("a named file that Vitest would not run is refused before anything runs", a
       sourceOnly: true,
       env,
     }),
-    /does not collect tests\/slow\.test\.ts/u,
+    /none of the named files runs[^]*SKIPPED tests\/slow\.test\.ts: no script or config in demo\/example runs it/u,
   );
   await assert.rejects(
     runTests(root, "example", {
@@ -475,6 +476,64 @@ test("a failing run fails its receipt and names the failure", async (t) => {
     },
   ]);
   assert.match(summaryLines(receipt).join("\n"), /FAIL tests\/b\.test\.ts/u);
+});
+
+test("a failing run with a named file left unrun stays failed", async (t) => {
+  const { root, env } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "b.test.ts": "FAIL" },
+  );
+  mkdirSync(resolve(root, "demo/example/scratch"));
+  writeFileSync(resolve(root, "demo/example/scratch/x.test.ts"), "");
+  const receipt = await runTests(root, "example", {
+    files: ["tests/b.test.ts", "scratch/x.test.ts"],
+    sourceOnly: true,
+    env,
+  });
+  assert.equal(receipt.status, "failed");
+  assert.equal(receipt.exitCode, 1);
+  assert.deepEqual(
+    receipt.skipped.map(({ file }) => file),
+    ["scratch/x.test.ts"],
+  );
+  assert.doesNotMatch(String(receipt.reason), /not run/u);
+});
+
+test("a gate refuses a registered file its package's run does not collect, and fails on a code it does not know", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run", "--exclude", "tests/migration-locking*"] },
+    Object.fromEntries(
+      [
+        "database",
+        "migration-runner",
+        "migration-locking",
+        "tx-admissions-claim-load",
+      ].map((name) => [`${name}.test.ts`, ""]),
+    ),
+  );
+  const manifest = resolve(root, "demo/example/package.json");
+  atomicJson(manifest, {
+    ...JSON.parse(readFileSync(manifest, "utf8")),
+    name: "midgard-node",
+  });
+  await assert.rejects(
+    runGate(root, "database-isolation", {
+      sourceOnly: true,
+      env: { ...env, MIDGARD_SKIP_NATIVE_BUILD: "1" },
+    }),
+    /does not collect tests\/migration-locking\.test\.ts/u,
+  );
+  assert.deepEqual(calls(), []);
+  for (const [codes, gate] of [
+    [[0, 0], 0],
+    [[0, 3], 3],
+    [[3, 1], 1],
+    [[0, 4], 1],
+    [[2, 3], 1],
+  ])
+    assert.equal(gateExitCode(codes), gate, codes.join(","));
 });
 
 test("a related run runs what the change reaches, with the preludes, and nothing when it reaches nothing", async (t) => {
@@ -632,13 +691,14 @@ test("--config runs named files of another package config, and only named files"
   writeFileSync(resolve(root, "demo/example/journeys/j.test.ts"), "");
   writeFileSync(resolve(root, "demo/example/vitest.journeys.config.ts"), "");
   const config = "vitest.journeys.config.ts";
+  // Not run unasked: another config's suites may need a live devnet.
   await assert.rejects(
     runTests(root, "example", {
       files: ["journeys/j.test.ts"],
       sourceOnly: true,
       env,
     }),
-    /does not collect journeys\/j\.test\.ts/u,
+    /run: node scripts\/contrib\.mjs test --package example --config vitest\.journeys\.config\.ts --file journeys\/j\.test\.ts/u,
   );
   await assert.rejects(
     runTests(root, "example", { sourceOnly: true, env, flags: { config } }),
@@ -654,6 +714,16 @@ test("--config runs named files of another package config, and only named files"
       }),
       /--config takes a Vitest config file in demo\/example/u,
     );
+  // Under the caller's --config, a named file it does not collect is refused.
+  await assert.rejects(
+    runTests(root, "example", {
+      files: ["journeys/j.test.ts", "tests/a.test.ts"],
+      sourceOnly: true,
+      env,
+      flags: { config },
+    }),
+    /does not collect tests\/a\.test\.ts/u,
+  );
   assert.deepEqual(calls(), []);
   const receipt = await runTests(root, "example", {
     files: ["journeys/j.test.ts"],
@@ -675,6 +745,105 @@ test("--config runs named files of another package config, and only named files"
     () => parse(["test", "--config", config, "--config", config]),
     /duplicate --config/u,
   );
+});
+
+test("a named file only a package script runs is skipped with that script, and the rest runs (exit 4)", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run", "--exclude", "tests/fork-sim/**"] },
+    { "unit.test.ts": "" },
+  );
+  const manifest = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  // As midgard-l1-follower's fork simulator and bench, and node-tools'
+  // devnet assets.
+  pkg.scripts["test:fork-sim"] = "vitest run tests/fork-sim";
+  pkg.scripts["test:devnet"] = "node --test devnet/a.test.mjs";
+  pkg.scripts["test:built"] = "pnpm run build && node --test devnet/b.test.mjs";
+  pkg.scripts.bench = "vitest run --config vitest.bench.config.ts";
+  atomicJson(manifest, pkg);
+  writeFileSync(resolve(root, "demo/example/vitest.bench.config.ts"), "");
+  for (const file of [
+    "tests/fork-sim/chain-sync.test.ts",
+    "devnet/a.test.mjs",
+    "devnet/b.test.mjs",
+  ]) {
+    mkdirSync(resolve(root, "demo/example", file, ".."), { recursive: true });
+    writeFileSync(resolve(root, "demo/example", file), "");
+  }
+  const cases = [
+    ["tests/fork-sim/chain-sync.test.ts", "test:fork-sim"],
+    ["devnet/a.test.mjs", "test:devnet"],
+    ["devnet/b.test.mjs", "test:built"],
+  ];
+  for (const [file, script] of cases) {
+    const receipt = await runTests(root, "example", {
+      files: ["tests/unit.test.ts", file],
+      sourceOnly: true,
+      env,
+    });
+    assert.equal(receipt.status, "partial", receipt.reason);
+    assert.equal(receipt.exitCode, 4);
+    assert.equal(receipt.counts.passed, 1);
+    assert.deepEqual(receipt.skipped, [
+      {
+        file,
+        reason: `only the script ${script} runs it`,
+        commands: [`pnpm --dir demo/example run ${script}`],
+      },
+    ]);
+    assert.match(
+      summaryLines(receipt).join("\n"),
+      new RegExp(
+        `SKIPPED ${file}[^]*run: pnpm --dir demo/example run ${script}`,
+        "u",
+      ),
+    );
+  }
+  // Only the declared run ran: a package script is the caller's to run.
+  assert.deepEqual(
+    calls().map(({ vitest }) => vitest.filter((arg) => !arg.startsWith("-"))),
+    cases.map(() => ["tests/unit.test.ts"]),
+  );
+});
+
+test("a named file no script names gets each other config's command, or says nothing runs it", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "unit.test.ts": "" },
+  );
+  mkdirSync(resolve(root, "demo/example/scratch"));
+  writeFileSync(resolve(root, "demo/example/scratch/x.test.ts"), "");
+  const files = ["tests/unit.test.ts", "scratch/x.test.ts"];
+  const alone = await runTests(root, "example", {
+    files,
+    sourceOnly: true,
+    env,
+  });
+  assert.equal(alone.status, "partial");
+  assert.deepEqual(alone.skipped, [
+    {
+      file: "scratch/x.test.ts",
+      reason: "no script or config in demo/example runs it",
+      commands: [],
+    },
+  ]);
+  for (const config of ["vitest.bench.config.ts", "vitest.e2e.config.mjs"])
+    writeFileSync(resolve(root, "demo/example", config), "");
+  const configured = await runTests(root, "example", {
+    files,
+    sourceOnly: true,
+    env,
+  });
+  assert.deepEqual(
+    configured.skipped[0].commands,
+    ["vitest.bench.config.ts", "vitest.e2e.config.mjs"].map(
+      (config) =>
+        `node scripts/contrib.mjs test --package example --config ${config} --file scratch/x.test.ts`,
+    ),
+  );
+  assert.equal(calls().length, 2);
 });
 
 test("--timeout-seconds bounds the Vitest step, and only as whole seconds", async (t) => {

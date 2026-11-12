@@ -77,7 +77,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs devnet campaign run --input CAMPAIGN_JSON [--plan]
   node scripts/contrib.mjs acceptance --input STACK_CONFIG [--plan]
 Global: --root CHECKOUT, --output JSON_FILE. Exit 0 passed/planned, 1 failed,
-2 invalid usage, 3 incomplete/skipped. Plans never execute prerequisites.
+2 invalid usage, 3 incomplete/skipped, 4 partial (a named test file not run).
+Plans never execute prerequisites.
 Receipts/logs live in the owner-only temporary run registry. Preserve their
 directories when using them as handoff evidence. See docs/agents/contrib.md.`;
 
@@ -136,6 +137,7 @@ const testView = (result) =>
         reason: result.reason,
         reportError: result.reportError,
         failures: result.failures?.slice(0, 10),
+        skipped: result.skipped,
         blueprintAction: result.blueprintAction,
         reach: result.reach && {
           changed: result.reach.changed.length,

@@ -3,7 +3,7 @@ import {
   packageTestTask,
   taskEnvironment,
 } from "../../demo/scripts/package-tasks.mjs";
-import { existsSync, realpathSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -35,9 +35,12 @@ import { reachedTests } from "./reached.mjs";
 import {
   failures,
   declaredTestCommand,
+  skippedLines,
   vitestFlags,
   withCallerFlags,
 } from "./vitest-command.mjs";
+
+const VITEST_CONFIG = /^vitest\.[\w-]+\.config\.[cm]?[jt]s$/u;
 
 export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
@@ -210,6 +213,7 @@ export const runTests = async (
     proofKind,
     flags = {},
     timeoutMs,
+    refuseUncollected = false,
     reach: findReach = reachedTests,
   } = {},
 ) => {
@@ -222,7 +226,7 @@ export const runTests = async (
   // (the watcher journeys, some of which need a live devnet): name its files.
   if (flags.config !== undefined) {
     if (
-      !/^vitest\.[\w-]+\.config\.[cm]?[jt]s$/u.test(flags.config) ||
+      !VITEST_CONFIG.test(flags.config) ||
       !existsSync(resolve(cwd, flags.config))
     )
       throw new Error(
@@ -351,7 +355,7 @@ export const runTests = async (
     throw new Error(
       "vitest resolves outside this checkout; install its locked workspace dependencies",
     );
-  const selectedFiles = await collect({
+  const { selected: selectedFiles, missing } = await collect({
     runner,
     cwd,
     env: runEnv,
@@ -363,7 +367,29 @@ export const runTests = async (
     // filters select only widens the run.
     widen: Boolean(reach),
   });
+  // A named file the declared run does not collect is skipped, saying what
+  // runs it; a reach, a gate or the caller's own --config or --exclude
+  // refuses it instead.
+  if (
+    missing.length &&
+    (reach ||
+      refuseUncollected ||
+      flags.config !== undefined ||
+      flags.exclude?.length)
+  )
+    throw new Error(
+      `vitest does not collect ${missing.map((file) => relative(cwd, file)).join(", ")} (excluded by the package's Vitest config or an --exclude)`,
+    );
   const whole = files.length === 0;
+  const skipped = missing.map((file) => skippedFile(pkg, cwd, file));
+  files = files.filter((file) => !missing.includes(resolve(cwd, file)));
+  if (!whole && !files.length)
+    throw new Error(
+      [
+        `none of the named files runs under the ${pkg.name} test run`,
+        ...skipped.flatMap(skippedLines),
+      ].join("\n"),
+    );
   const blueprintBefore = prepared.blueprint ? blueprintHash(root) : undefined;
   const before = inputIdentity(root, pkg.name);
   const reportPath = resolve(directory, "vitest.json");
@@ -509,15 +535,56 @@ export const runTests = async (
     final.reason =
       "selected publication driver did not emit its measurement evidence";
   }
+  // A named file left unrun cannot pass: a run of the rest is partial
+  // (exit 4), not one whose own tests skipped (exit 3).
+  if (skipped.length) {
+    final.skipped = skipped;
+    if (final.status !== "failed") {
+      Object.assign(final, { status: "partial", exitCode: 4 });
+      final.reason ??= `not run: ${skipped.map(({ file }) => file).join(", ")}`;
+    }
+  }
   atomicJson(receipt.path, final);
   return final;
 };
 
 /**
+ * What runs a named file the declared run does not collect: a `test:*`
+ * script naming it or its directory, else another Vitest config.
+ */
+const skippedFile = (pkg, cwd, absolute) => {
+  const file = relative(cwd, absolute);
+  const script = Object.entries(pkg.scripts ?? {}).find(
+    ([name, text]) =>
+      name.startsWith("test:") &&
+      text
+        .split(/\s+/u)
+        .some((word) => word && (file === word || file.startsWith(`${word}/`))),
+  )?.[0];
+  if (script)
+    return {
+      file,
+      reason: `only the script ${script} runs it`,
+      commands: [`pnpm --dir ${pkg.directory} run ${script}`],
+    };
+  const configs = readdirSync(cwd).filter((name) => VITEST_CONFIG.test(name));
+  return {
+    file,
+    reason: configs.length
+      ? "the declared config does not collect it; another config may"
+      : `no script or config in ${pkg.directory} runs it`,
+    commands: configs.map(
+      (config) =>
+        `node scripts/contrib.mjs test --package ${pkg.name} --config ${config} --file ${file}`,
+    ),
+  };
+};
+
+/**
  * The files the run will execute, as Vitest itself collects them with the
- * same configuration, environment and flags. Named files must each be
- * collected, and nothing else: Vitest's file arguments are substring filters,
- * and an `--exclude` can drop a named file without a word.
+ * same configuration, environment and flags, and the named files it does
+ * not collect (`missing`, an `--exclude` can drop one without a word). Named
+ * files select nothing else: Vitest's file arguments are substring filters.
  */
 const collect = async ({
   runner,
@@ -554,19 +621,18 @@ const collect = async ({
   ].sort();
   if (!files.length) {
     if (!collected.length) throw new Error("vitest collected no test files");
-    return collected;
+    return { selected: collected, missing: [] };
   }
   const named = [...new Set(files.map((file) => resolve(cwd, file)))].sort();
   const missing = named.filter((file) => !collected.includes(file));
   const extra = collected.filter((file) => !named.includes(file));
-  if (missing.length)
-    throw new Error(
-      `vitest does not collect ${missing.map((file) => relative(cwd, file)).join(", ")} (excluded by the package's Vitest config or an --exclude)`,
-    );
-  if (widen) return collected;
+  if (widen) return { selected: collected, missing };
   if (extra.length)
     throw new Error(
       `the file filters also select ${extra.map((file) => relative(cwd, file)).join(", ")}; name a path that selects only the intended file`,
     );
-  return named;
+  return {
+    selected: named.filter((file) => !missing.includes(file)),
+    missing,
+  };
 };

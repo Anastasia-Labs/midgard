@@ -80,6 +80,12 @@ export const failures = (report, directory) =>
       : [];
   });
 
+/** A named file the run did not collect, and what runs it. */
+export const skippedLines = ({ file, reason, commands }) => [
+  `  SKIPPED ${file}: ${reason}`,
+  ...commands.map((command) => `       run: ${command}`),
+];
+
 /** A few lines a person can read: the verdict, what failed, where to look. */
 export const summaryLines = (receipt, { limit = 10 } = {}) => {
   const counts = receipt.counts;
@@ -98,6 +104,7 @@ export const summaryLines = (receipt, { limit = 10 } = {}) => {
     );
   if ((receipt.failures?.length ?? 0) > limit)
     lines.push(`  ... ${receipt.failures.length - limit} more`);
+  lines.push(...(receipt.skipped ?? []).flatMap(skippedLines));
   for (const step of receipt.steps ?? [])
     if (step.exitCode !== 0 || step.reason)
       lines.push(`  log: ${step.logPath}`);

@@ -182,12 +182,18 @@ export const gatePlan = (root, name) => {
   });
 };
 
+// A gate runs every registered file: one its package's run does not collect
+// is refused, not skipped.
 export const runGate = async (root, name, options) => {
   const plan = gatePlan(root, name);
   const receipts = [];
   for (const lane of plan)
     receipts.push(
-      await runTests(root, lane.package, { ...options, files: lane.files }),
+      await runTests(root, lane.package, {
+        ...options,
+        files: lane.files,
+        refuseUncollected: true,
+      }),
     );
   return {
     gate: name,
@@ -196,10 +202,14 @@ export const runGate = async (root, name, options) => {
       status: receipt.status,
       counts: receipt.counts,
     })),
-    exitCode: receipts.some((receipt) => receipt.exitCode === 1)
-      ? 1
-      : receipts.some((receipt) => receipt.exitCode === 3)
-        ? 3
-        : 0,
+    exitCode: gateExitCode(receipts.map((receipt) => receipt.exitCode)),
   };
 };
+
+/** Any lane failing fails the gate, as does a code it does not know. */
+export const gateExitCode = (codes) =>
+  codes.some((code) => code !== 0 && code !== 3)
+    ? 1
+    : codes.includes(3)
+      ? 3
+      : 0;
