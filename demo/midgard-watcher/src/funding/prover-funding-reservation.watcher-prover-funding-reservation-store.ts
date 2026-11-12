@@ -1,5 +1,6 @@
 import type {
   FraudProofWorkflowJournalEntry,
+  HoldWalletInputs,
   SignedWorkflowTransactionRetirement,
   WorkflowFundingAttemptIntent,
 } from "@al-ft/midgard-fault-proofs";
@@ -91,10 +92,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
    * reservation takes them meanwhile. Throws a reservation conflict when one
    * is leased or held already. A restart drops every hold.
    */
-  holdWalletInputs(input: {
-    readonly outRefs: readonly string[];
-    readonly untilMs: number;
-  }): () => void;
+  holdWalletInputs: HoldWalletInputs;
   /** Includes recorded and superseded attempts and lineage, not just the
    * current pending attempt. */
   hasSignedHistory?(input: {
@@ -227,6 +225,12 @@ export type WatcherProverFundingReservationStore = Readonly<{
     },
   ): Promise<WatcherProverFundingReservationRecord>;
 }>;
+
+/** The prover wallet's coins funding reservations lease or removals hold. */
+export type WatcherWalletLeases = Pick<
+  WatcherProverFundingReservationStore,
+  "readReservedOutRefs" | "holdWalletInputs"
+>;
 
 export const admittedPlans = new WeakSet<object>();
 

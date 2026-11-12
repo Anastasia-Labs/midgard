@@ -24,4 +24,5 @@ export {
   type WatcherProverFundingReservationStore,
   type WatcherProverFundingReservationTransition,
   WatcherProverFundingUnavailableError,
+  type WatcherWalletLeases,
 } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";

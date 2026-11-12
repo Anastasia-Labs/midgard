@@ -36,7 +36,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { WatcherProverFundingReservationStore } from "../funding/prover-funding-reservation.js";
+import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.js";
 import { type WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
@@ -254,10 +254,7 @@ export type WatcherFaultProofApplication = Readonly<{
   driveProvenCorrection(
     input: Readonly<{
       correction: ProvenFraudProofCorrection;
-      walletLeases: Pick<
-        WatcherProverFundingReservationStore,
-        "readReservedOutRefs" | "holdWalletInputs"
-      >;
+      walletLeases: WatcherWalletLeases;
     }>,
   ): Promise<ProvenCorrectionRemoval | Readonly<{ kind: "observing" }>>;
   close(): Promise<void>;

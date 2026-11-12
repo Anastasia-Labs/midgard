@@ -6,7 +6,7 @@ import {
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { WatcherProverFundingReservationStore } from "../funding/prover-funding-reservation.js";
+import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.js";
 import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
@@ -46,10 +46,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly authenticationKey: Uint8Array;
   readonly maximumClassificationConcurrency: number;
   /** The prover wallet's coins funding reservations lease or removals hold. */
-  readonly walletLeases: Pick<
-    WatcherProverFundingReservationStore,
-    "readReservedOutRefs" | "holdWalletInputs"
-  >;
+  readonly walletLeases: WatcherWalletLeases;
   readonly operationsSink?: WatcherOperationsSink;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
