@@ -1,4 +1,7 @@
-import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import {
+  createValidationTraceReplayHolds,
+  type HeaderDecision,
+} from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
@@ -59,12 +62,18 @@ const failureSuffix = ({ failure }: Finishing): string =>
  * target, held or unreproduced, or started from an Idle lock on the first
  * queued header a completed proof convicts, unless that correction is the
  * pass's target. One removal at a time, started on a dispatching pass and,
- * after a failure, started again on the next one.
+ * after a failure, started again on a dispatching pass once the retry
+ * backoff (1 s doubling to 60 s) has run; a failure is warned when it first
+ * happens or its message changes.
  */
 export const decisionHolds = (
   dependencies: Pick<
     BridgeDependencies,
-    "readRecords" | "supersede" | "warn" | "driveProvenRemoval"
+    | "readRecords"
+    | "supersede"
+    | "warn"
+    | "driveProvenRemoval"
+    | "monotonicNowMs"
   >,
 ) => {
   let holds: readonly Hold[] = [];
@@ -72,6 +81,21 @@ export const decisionHolds = (
   let unreproduced: LockedFraudProof | null = null;
   let warnedLock: string | null = null;
   let finishing: Finishing | null = null;
+  /** Failed removals, by fraud-proof asset name, and the message last
+   * warned for each. */
+  const retries = createValidationTraceReplayHolds({
+    now: dependencies.monotonicNowMs ?? (() => performance.now()),
+  });
+  const warnedFailures = new Map<string, string>();
+  const retryEvent = (key: string) => ({
+    headerHash: key,
+    position: 0,
+    txId: key,
+  });
+  const settled = (key: string): void => {
+    retries.decided(key);
+    warnedFailures.delete(key);
+  };
   return Object.freeze({
     /**
      * Supersedes or holds, in queue order, each classified header whose
@@ -161,6 +185,8 @@ export const decisionHolds = (
       if (current === null || finish === undefined || finishing?.running)
         return;
       const locked = current.correction;
+      const key = locked.fraudProofAssetName;
+      if (retries.pass().waiting(key, retryEvent(key)) !== undefined) return;
       const attempt: Finishing = finishing ?? {
         fraudProofAssetName: locked.fraudProofAssetName,
         lock: current.lock,
@@ -172,6 +198,9 @@ export const decisionHolds = (
       const failed = (error: unknown) => {
         attempt.running = false;
         attempt.failure = message(error);
+        retries.failed(key, { ...retryEvent(key), detail: attempt.failure });
+        if (warnedFailures.get(key) === attempt.failure) return;
+        warnedFailures.set(key, attempt.failure);
         dependencies.warn?.({
           event: "correction_lock_finishing_removal_failed",
           ...locked,
@@ -188,7 +217,10 @@ export const decisionHolds = (
       }
       if (started.kind !== "proven") {
         finishing = null;
-        if (started.kind === "finished") unreproduced = null;
+        if (started.kind === "finished") {
+          unreproduced = null;
+          settled(key);
+        }
         return;
       }
       if (attempt.fraudProofOutRef !== started.fraudProofOutRef)
@@ -203,6 +235,7 @@ export const decisionHolds = (
       // A confirmed removal is seen as the live lock moving on next pass.
       started.removal.then(() => {
         attempt.running = false;
+        settled(key);
         if (finishing === attempt) finishing = null;
       }, failed);
     },

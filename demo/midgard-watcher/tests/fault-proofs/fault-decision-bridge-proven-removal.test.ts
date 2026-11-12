@@ -51,7 +51,10 @@ const settled = <T>() => {
 const drain = async () => await new Promise((resolve) => setTimeout(resolve));
 
 // The classifier reproduces doubleSpend; the lock names invalidRange.
-const unreproducedLock = (driveProvenRemoval: FinishLockedRemoval) => {
+const unreproducedLock = (
+  driveProvenRemoval: FinishLockedRemoval,
+  monotonicNowMs?: () => number,
+) => {
   const lock = lockedBy("invalidRange");
   const warnings: unknown[] = [];
   const current = harness({
@@ -59,9 +62,19 @@ const unreproducedLock = (driveProvenRemoval: FinishLockedRemoval) => {
     categoryByHeader: { [lock.headerHash]: "doubleSpend" },
     warn: (warning) => void warnings.push(warning),
     driveProvenRemoval,
+    ...(monotonicNowMs === undefined ? {} : { monotonicNowMs }),
   });
   return { ...lock, ...current, warnings };
 };
+
+const failureMessages = (warnings: readonly unknown[]) =>
+  warnings
+    .filter(
+      (warning) =>
+        (warning as { event: string }).event ===
+        "correction_lock_finishing_removal_failed",
+    )
+    .map((warning) => (warning as { message: string }).message);
 
 describe("a Locked correction no admitted fault reproduces", () => {
   it("finishes the removal from the proven record until the lock moves on", async () => {
@@ -122,14 +135,18 @@ describe("a Locked correction no admitted fault reproduces", () => {
     ]);
   });
 
-  it("reports a failed removal and starts it again on the next pass", async () => {
+  it("reports a failed removal and starts it again once its backoff has run", async () => {
     const removals = [settled<unknown>(), settled<unknown>()];
     let started = 0;
-    const lock = unreproducedLock(async () => ({
-      kind: "proven",
-      fraudProofOutRef: PROVEN_RECORD,
-      removal: removals[started++]!.promise,
-    }));
+    let nowMs = 0;
+    const lock = unreproducedLock(
+      async () => ({
+        kind: "proven",
+        fraudProofOutRef: PROVEN_RECORD,
+        removal: removals[started++]!.promise,
+      }),
+      () => nowMs,
+    );
     await lock.bridge.reconcileAndDispatch(lock.current);
     removals[0]!.reject(new Error("prover funding unavailable"));
     await drain();
@@ -146,6 +163,7 @@ describe("a Locked correction no admitted fault reproduces", () => {
       message: "prover funding unavailable",
     });
 
+    nowMs = 1_000;
     const retried = await lock.bridge.reconcileAndDispatch(lock.current);
     expect(retried.target).toBe(null);
     expect(started).toBe(2);
@@ -154,6 +172,75 @@ describe("a Locked correction no admitted fault reproduces", () => {
         reason: "correction_lock_finishing_removal",
         detail: `${lock.fraudProofAssetName}: locked: finishing removal from the proven record ${PROVEN_RECORD}`,
       },
+    ]);
+  });
+
+  it("retries a failing removal on a doubling backoff, warning once per message", async () => {
+    let nowMs = 0;
+    const failures = ["coin taken", "coin taken", "provider unavailable"];
+    let calls = 0;
+    const lock = unreproducedLock(
+      async () => ({
+        kind: "proven",
+        fraudProofOutRef: PROVEN_RECORD,
+        removal: Promise.reject(new Error(failures[calls++] ?? "done")),
+      }),
+      () => nowMs,
+    );
+    const passAt = async (atMs: number) => {
+      nowMs = atMs;
+      await lock.bridge.reconcileAndDispatch(lock.current);
+      await drain();
+      return calls;
+    };
+    expect(await passAt(0)).toBe(1);
+    // The first retry waits 1 s, the next 2 s.
+    expect(await passAt(999)).toBe(1);
+    expect(await passAt(1_000)).toBe(2);
+    expect(await passAt(2_999)).toBe(2);
+    expect(await passAt(3_000)).toBe(3);
+    expect(failureMessages(lock.warnings)).toEqual([
+      "coin taken",
+      "provider unavailable",
+    ]);
+    expect(lock.bridge.readiness()).toEqual([
+      {
+        reason: "correction_lock_finishing_removal",
+        detail: `${lock.fraudProofAssetName}: locked: finishing removal from the proven record ${PROVEN_RECORD}; last attempt failed: provider unavailable`,
+      },
+    ]);
+  });
+
+  it("starts a confirmed correction's removal afresh, with no backoff left", async () => {
+    let nowMs = 0;
+    const outcomes = [
+      () => Promise.reject(new Error("coin taken")),
+      () => Promise.resolve({}),
+      () => Promise.reject(new Error("coin taken")),
+    ];
+    let calls = 0;
+    const lock = unreproducedLock(
+      async () => ({
+        kind: "proven",
+        fraudProofOutRef: PROVEN_RECORD,
+        removal: outcomes[calls++]!(),
+      }),
+      () => nowMs,
+    );
+    const pass = async () => {
+      await lock.bridge.reconcileAndDispatch(lock.current);
+      await drain();
+    };
+    await pass();
+    nowMs = 1_000;
+    await pass();
+    // The removal confirmed: the next pass runs at once, and its failure is
+    // warned again as a first failure.
+    await pass();
+    expect(calls).toBe(3);
+    expect(failureMessages(lock.warnings)).toEqual([
+      "coin taken",
+      "coin taken",
     ]);
   });
 
