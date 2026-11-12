@@ -19,7 +19,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
@@ -27,7 +26,6 @@ import {
   type PublishedProofChunk,
 } from "../proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -37,6 +35,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -49,10 +48,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { L2TxMistagContracts } from "./contracts.js";
 import {
   L2TxMistagStep01SpendRedeemer,
@@ -169,10 +165,10 @@ export const submitL2TxMistagStep01 = async ({
     committed_validity_code: txInclusion.nativeTx.validity_code,
   };
 
-  signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
   const carriedByChunks = chunks.length > 0;
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: chunks.map(({ utxo }) => utxo),
   });
   const phasMembershipScript: Script = {
@@ -272,9 +268,7 @@ export const submitL2TxMistagStep01 = async ({
     return Data.to({ Continue: [carriage] }, L2TxMistagStep01SpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], spendRedeemer)
     .readFrom(referenceInputs);
   const withMembership = carriedByChunks
@@ -299,27 +293,20 @@ export const submitL2TxMistagStep01 = async ({
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
-  const paid = withMembership.pay
-    .ToContract(
-      contracts.steps[1].spendingScriptAddress,
-      { kind: "inline", value: step02Datum },
-      {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
-        [threadToken.unit]: 1n,
-      },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  const paid = withMembership.pay.ToContract(
+    contracts.steps[1].spendingScriptAddress,
+    { kind: "inline", value: step02Datum },
+    {
+      lovelace: threadUtxo.assets.lovelace ?? 0n,
+      [threadToken.unit]: 1n,
+    },
+  );
   const completedTx = membershipCarriage.attach(paid);
-  const unsigned = await completedTx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(completedTx, funding);
   if (layout === undefined) {
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -341,16 +328,8 @@ export const submitL2TxMistagStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw l2TxMistagSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     walletSource: signer.source,
