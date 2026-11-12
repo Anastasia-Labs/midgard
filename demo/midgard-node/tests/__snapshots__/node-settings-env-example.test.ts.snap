@@ -110,7 +110,7 @@ exports[`.env.example > resolves to the pinned node configuration 1`] = `
   "L1_ORIGIN": null,
   "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS": 15000,
   "L1_REFERENCE_SCRIPT_ADDRESS": "addr_test1qpdjresrrk294hy9ndtqly955ldlhy688507shkfxpwtgf39vzk9uwp87k96zkd5yal83h9x0qheeu0lrqp9lldvsqjs5s4ggd",
-  "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS": "",
+  "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS": "addr_test1qpdjresrrk294hy9ndtqly955ldlhy688507shkfxpwtgf39vzk9uwp87k96zkd5yal83h9x0qheeu0lrqp9lldvsqjs5s4ggd",
   "L1_REFERENCE_SCRIPT_SEED_PHRASE": "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil",
   "L1_SETTLEMENT_SEED_PHRASE": "",
   "L1_TX_CONTENT_SOURCES": [],

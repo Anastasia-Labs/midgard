@@ -71,6 +71,15 @@ describe("operational wallet topology at config load", () => {
     );
   });
 
+  it("treats a blank deploy address, as .env.example leaves it, as unset", async () => {
+    stubWallets();
+    vi.stubEnv("L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS", " ");
+    const config = await loadConfig();
+    expect(config.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS).toBe(
+      addressOf(reference),
+    );
+  });
+
   it("loads without a settlement wallet", async () => {
     stubWallets({ settlement: "" });
     await expect(loadConfig()).resolves.toMatchObject({

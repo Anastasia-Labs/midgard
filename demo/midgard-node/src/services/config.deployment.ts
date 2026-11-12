@@ -81,8 +81,9 @@ export const deploymentConfig = Config.all({
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
   ),
   L1_REFERENCE_SCRIPT_ADDRESS: stringConfig("L1_REFERENCE_SCRIPT_ADDRESS", ""),
-  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: Config.option(
-    Config.string("L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS"),
+  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: stringConfig(
+    "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+    "",
   ),
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: positiveSafeIntegerConfig(
     "REFERENCE_SCRIPT_AUTH_TIMELOCK_MS",
@@ -144,10 +145,8 @@ export const deploymentConfig = Config.all({
       const L1_REFERENCE_SCRIPT_ADDRESS =
         settings.L1_REFERENCE_SCRIPT_ADDRESS.trim() ||
         seedPhraseAddress(settings.L1_REFERENCE_SCRIPT_SEED_PHRASE, network);
-      const L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS = Option.getOrElse(
-        deployAddress,
-        () => L1_REFERENCE_SCRIPT_ADDRESS,
-      );
+      const L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS =
+        deployAddress.trim() || L1_REFERENCE_SCRIPT_ADDRESS;
       assertDistinctOperationalWallets({
         seeds: {
           ...settings,
