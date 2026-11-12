@@ -29,7 +29,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -39,12 +38,12 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
@@ -53,7 +52,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { NetworkIdContracts } from "./contracts.js";
@@ -217,8 +215,7 @@ export const submitNetworkIdStep01 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const phasScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -306,9 +303,7 @@ export const submitNetworkIdStep01 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const chained = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const chained = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs)
     .withdraw(
@@ -328,17 +323,15 @@ export const submitNetworkIdStep01 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await membershipCarriage
-    .attach(chained)
-    .complete({ localUPLCEval: true });
+    );
+  const signed = await completeStep(
+    membershipCarriage.attach(chained),
+    funding,
+  );
   if (layout === undefined) {
     throw networkIdSubmitError("step-01 layout was not resolved");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof network-id step-01",
@@ -352,16 +345,8 @@ export const submitNetworkIdStep01 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw networkIdSubmitError(
-      `provider returned transaction hash ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     walletSource: signer.source,
