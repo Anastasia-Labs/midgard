@@ -54,7 +54,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -64,12 +63,12 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -79,7 +78,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
@@ -226,8 +224,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
   const badTxId = txInclusion.nativeTxId;
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
@@ -323,9 +320,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     expectedScriptHash: steps[0].spendingScriptHash,
     stepIndex: 0,
   });
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
@@ -346,19 +341,16 @@ export const submitWithdrawnReferenceInputStep01 = async ({
       steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
       threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = membershipCarriage.attach(base);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw withdrawnReferenceInputSubmitError(
       "BuildTxWithRedeemer did not resolve withdrawn-reference-input step 01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -375,16 +367,8 @@ export const submitWithdrawnReferenceInputStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawnReferenceInputSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

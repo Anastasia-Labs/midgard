@@ -32,11 +32,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -44,7 +41,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
@@ -176,8 +172,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     label: `${STEP_LABEL} fraud-proof mint`,
   });
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -258,9 +253,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
@@ -271,8 +264,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [fraudProofUnit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const stepReference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
@@ -287,7 +279,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     computationThreadCarriage.attach(withReferences),
   );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -296,9 +288,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -320,16 +310,8 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawnReferenceInputSubmitError(
-      `step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

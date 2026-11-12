@@ -49,11 +49,8 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -61,7 +58,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
@@ -180,7 +176,6 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     expectedScriptHash: steps[1].spendingScriptHash,
     stepIndex: 1,
   });
-  signer.selectWallet(lucid);
   // §8's ladder decides whether anything has to exist on-chain first. Tier 1
   // publishes nothing; tier 2 publishes raw carriage located by content
   // (§8.7), and a publication that already exists at this address is reused
@@ -216,7 +211,8 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   const missingReferenceInput =
     referenceInputs[Number(badReferenceInputIndex)]!;
 
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: transactionReferenceInputs,
   });
   const step03Datum = Data.to(
@@ -280,26 +276,23 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .readFrom([...transactionReferenceInputs])
-    .pay.ToContract(
-      steps[2].spendingScriptAddress,
-      { kind: "inline", value: step03Datum },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true, ...walletInputs });
+  const signed = await completeStep(
+    funding.tx
+      .collectFrom([threadUtxo], redeemer)
+      .readFrom([...transactionReferenceInputs])
+      .pay.ToContract(
+        steps[2].spendingScriptAddress,
+        { kind: "inline", value: step03Datum },
+        threadAssets,
+      ),
+    funding,
+  );
   if (resolvedLayout === undefined) {
     throw withdrawnReferenceInputSubmitError(
       "BuildTxWithRedeemer did not resolve withdrawn-reference-input step 02 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-reference-input step-02",
@@ -308,16 +301,8 @@ export const submitWithdrawnReferenceInputStep02 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawnReferenceInputSubmitError(
-      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
