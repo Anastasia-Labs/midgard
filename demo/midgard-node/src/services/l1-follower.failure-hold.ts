@@ -14,7 +14,6 @@ import {
   TransportTimeoutError,
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
-import { classifyFailure } from "@al-ft/midgard-l1-follower";
 import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
 
 import {
@@ -23,26 +22,20 @@ import {
   transientFailure,
 } from "../l1-events/driver.js";
 import {
-  isConnectionClassError,
+  classifyNodeFailure,
   isRetryableProviderError,
 } from "../provider-retry.js";
 
 /**
- * Whether a failure says only that a dependency did not answer: a
- * connection-class or retryable provider failure (`isConnectionClassError`,
- * `isRetryableProviderError`) or a store failure the follower classifies as
- * transient (`classifyFailure`). An unrecognised failure is not transient.
+ * Whether a failure says only that a dependency did not answer or another
+ * transaction was in the way: a retryable provider failure
+ * (`isRetryableProviderError`, which takes the shared table's `transient`
+ * class) or the table's `contention` class. An unrecognised failure is not
+ * transient.
  */
-export const isTransientDriverFailure = (error: unknown): boolean => {
-  if (isConnectionClassError(error) || isRetryableProviderError(error))
-    return true;
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
-    if (classifyFailure(current) === "transient") return true;
-    current = current.cause;
-  }
-  return false;
-};
+export const isTransientDriverFailure = (error: unknown): boolean =>
+  classifyNodeFailure(error) === "contention" ||
+  isRetryableProviderError(error);
 
 /**
  * Whether a failure comes from the L1 node: its transport or sidecar, or

@@ -1,5 +1,9 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isTransientOgmiosJsonRpcFailure } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import {
+  classifyRoleFailure,
+  type RoleFailureClass,
+} from "@al-ft/midgard-l1-follower";
 import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import { Cause, Duration, Effect, Runtime } from "effect";
 
@@ -11,23 +15,6 @@ export type ProviderRetryOptions = {
   readonly isRetryable?: (error: unknown) => boolean;
 };
 
-// Socket- and resolver-level failures of an endpoint that is restarting,
-// briefly unroutable or shedding connections. Node sets these on the error
-// itself or on the `cause` a fetch failure wraps.
-const TRANSIENT_NODE_NET_CODES: ReadonlySet<string> = new Set([
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "ECONNABORTED",
-  "ETIMEDOUT",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "EPIPE",
-  "ENETUNREACH",
-  "ENETDOWN",
-  "EHOSTUNREACH",
-  "EHOSTDOWN",
-]);
-
 // undici (the fetch behind every HTTP provider read) connection failures.
 const TRANSIENT_UNDICI_CODES: ReadonlySet<string> = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
@@ -37,23 +24,14 @@ const TRANSIENT_UNDICI_CODES: ReadonlySet<string> = new Set([
   "UND_ERR_CLOSED",
 ]);
 
-// postgres.js connection-state codes and the SQLSTATEs of a server that is
-// starting, shutting down, in recovery or out of connection slots. A query
-// the server answered with any other SQLSTATE is not a connection failure.
+// postgres.js connection-state codes. The socket errnos and the SQLSTATEs of
+// a server that is starting, shutting down, in recovery or out of resources
+// are the shared table's (`classifyRoleFailure`).
 const TRANSIENT_POSTGRES_CODES: ReadonlySet<string> = new Set([
   "CONNECTION_CLOSED",
   "CONNECTION_DESTROYED",
   "CONNECTION_ENDED",
   "CONNECT_TIMEOUT",
-  "57P01", // admin_shutdown
-  "57P02", // crash_shutdown
-  "57P03", // cannot_connect_now: starting up or in recovery
-  "53300", // too_many_connections
-  "08000", // connection_exception
-  "08001", // sqlclient_unable_to_establish_sqlconnection
-  "08003", // connection_does_not_exist
-  "08004", // sqlserver_rejected_establishment_of_sqlconnection
-  "08006", // connection_failure
 ]);
 
 // undici rejects with these exact messages when a peer drops a response.
@@ -90,6 +68,21 @@ const effectCauseMembers = (cause: Cause.Cause<unknown>): unknown[] => [
   ...Cause.failures(cause),
   ...Cause.defects(cause),
 ];
+
+/** What an Effect `FiberFailure` or `Cause` carries, beyond its `cause`. */
+const unwrapEffect = (link: object): readonly unknown[] =>
+  Cause.isCause(link)
+    ? effectCauseMembers(link)
+    : Runtime.isFiberFailure(link)
+      ? effectCauseMembers(link[Runtime.FiberFailureCauseId])
+      : [];
+
+/**
+ * The shared failure class (`classifyRoleFailure`) of `error`, read through
+ * the Effect `Cause` or `FiberFailure` around it.
+ */
+export const classifyNodeFailure = (error: unknown): RoleFailureClass =>
+  classifyRoleFailure(error, unwrapEffect);
 
 /**
  * Every error on `error`'s cause chain, including AggregateError members and
@@ -165,16 +158,21 @@ export const hasCauseCode = (error: unknown, code: string): boolean =>
 
 /**
  * True when the database could not be reached or would not take a
- * connection: the server restarting, in recovery, out of slots, or the
- * socket dropping. A query the server answered and refused is not one.
+ * connection: the server restarting, in recovery, out of resources, or the
+ * socket dropping (the shared table's `transient` class, and postgres.js's
+ * own connection failures). A query the server answered and refused is not
+ * one, and a port in use anywhere on the chain is a restart, not a wait.
  */
-export const isConnectionClassError = (error: unknown): boolean =>
-  causeChain(error).some((link) =>
-    hasTransientConnectionShape(link, [
-      TRANSIENT_NODE_NET_CODES,
-      TRANSIENT_POSTGRES_CODES,
-    ]),
+export const isConnectionClassError = (error: unknown): boolean => {
+  const failure = classifyNodeFailure(error);
+  return (
+    failure === "transient" ||
+    (failure !== "restart" &&
+      causeChain(error).some((link) =>
+        hasTransientConnectionShape(link, [TRANSIENT_POSTGRES_CODES]),
+      ))
   );
+};
 
 /**
  * True for a provider failure that a later attempt can clear: an error that
@@ -191,6 +189,9 @@ export const isConnectionClassError = (error: unknown): boolean =>
  * "Failed to fetch ..." error is not a transient read).
  */
 export const isRetryableProviderError = (error: unknown): boolean => {
+  const failure = classifyNodeFailure(error);
+  if (failure === "transient") return true;
+  if (failure === "restart") return false;
   const chain = causeChain(error);
   if (
     chain.some(
@@ -201,7 +202,6 @@ export const isRetryableProviderError = (error: unknown): boolean => {
         isTransientOgmiosJsonRpcFailure(link) ||
         link.name === "TimeoutError" ||
         hasTransientConnectionShape(link, [
-          TRANSIENT_NODE_NET_CODES,
           TRANSIENT_UNDICI_CODES,
           TRANSIENT_POSTGRES_CODES,
         ]),

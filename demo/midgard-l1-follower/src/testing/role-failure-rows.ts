@@ -81,6 +81,8 @@ export const ROLE_FAILURE_ROWS: readonly RoleFailureRow[] = [
     "57P02": "a crash shutdown",
     "57P03": "a server that cannot connect now",
     "53300": "too many connections",
+    "53100": "a disk full",
+    "53200": "an out of memory",
   }),
   row(
     "pg's own dropped connection",

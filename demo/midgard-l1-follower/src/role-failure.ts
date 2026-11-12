@@ -149,22 +149,26 @@ const PRECEDENCE: readonly RoleFailureClass[] = [
 
 /**
  * The class of `error`, read from it and everything it wraps (`cause`, an
- * `AggregateError`'s `errors`): a port in use anywhere exits, a dropped
- * connection anywhere is transient, and a failure nothing recognises is
- * `unknown`.
+ * `AggregateError`'s `errors`, and whatever `unwrap` returns for a wrapper
+ * the role knows, such as an Effect `Cause`): a port in use anywhere exits,
+ * a dropped connection anywhere is transient, and a failure nothing
+ * recognises is `unknown`.
  */
-export const classifyRoleFailure = (error: unknown): RoleFailureClass => {
+export const classifyRoleFailure = (
+  error: unknown,
+  unwrap: (link: object) => readonly unknown[] = () => [],
+): RoleFailureClass => {
   const found = new Set<RoleFailureClass>();
   const seen = new Set<unknown>();
   const pending: unknown[] = [error];
-  while (pending.length > 0 && seen.size < 16) {
+  while (pending.length > 0 && seen.size < 64) {
     const link = pending.shift();
     if (typeof link !== "object" || link === null || seen.has(link)) continue;
     seen.add(link);
     const linkClass = classOfLink(link);
     if (linkClass !== undefined) found.add(linkClass);
     const { cause, errors } = link as { cause?: unknown; errors?: unknown };
-    pending.push(cause);
+    pending.push(cause, ...unwrap(link));
     if (Array.isArray(errors)) pending.push(...(errors as unknown[]));
   }
   return PRECEDENCE.find((candidate) => found.has(candidate)) ?? "unknown";
