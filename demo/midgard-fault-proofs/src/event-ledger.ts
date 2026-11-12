@@ -1,5 +1,5 @@
 /**
- * The ledger before each transaction event of a block, from the authenticated
+ * The ledger before each event of a block, from the authenticated
  * predecessor ledger and the block's committed earlier steps. Every
  * intermediate root is checked.
  *
@@ -18,6 +18,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { latestBefore, type Pass, record, view } from "./event-ledger.view.js";
 import {
   blockTransactionsFromCanonicalEvidence,
   type CanonicalBlockEvidence,
@@ -26,39 +27,45 @@ import {
   type CheckedLedger,
   type LedgerEntry,
   ledgerEntryLeaf,
+  requireLedgerOpening,
 } from "./ledger-at.js";
-import {
-  type KeyValuePhasEntry,
-  type KeyValuePhasRoot,
-  mutableKeyValuePhasTrie,
-} from "./transition-trace/phas.js";
+import { mutableKeyValuePhasTrie } from "./transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   eventKeyPhase,
   type SourceEventRecord,
+  type TransitionTraceReconstruction,
 } from "./transition-trace/reconstruct.js";
 import { requireReplayPredecessorLedger } from "./workflow/replay-predecessor-ledger.js";
 
+export type EventLedgerRefusalReason =
+  | "step_out_of_range"
+  | "transition_link_changed"
+  | "source_event_changed"
+  | "phase_order_changed"
+  | "withdrawal_input_absent"
+  | "transaction_input_absent"
+  | "transaction_output_already_present"
+  | "post_root_changed"
+  | "selected_pre_root_changed";
+
 /** A committed prefix cannot supply the selected event's ledger authority.
- * Detectors surface a gap; no missing-output conviction is inferred from it. */
+ * Detectors surface a gap; no missing-output conviction is inferred from it.
+ * `step` is the step the refusal is about: the step that failed to apply,
+ * the step of a later phase placed before an earlier phase's step, or the
+ * requested step when its own index or opening is refused. */
 export class EventLedgerReplayRefusal extends Error {
   constructor(
-    readonly reason:
-      | "normal_source_not_accepted"
-      | "step_out_of_range"
-      | "transition_link_changed"
-      | "source_event_changed"
-      | "phase_order_changed"
-      | "withdrawal_input_absent"
-      | "transaction_input_absent"
-      | "output_already_present"
-      | "post_root_changed"
-      | "selected_pre_root_changed",
+    readonly reason: EventLedgerRefusalReason,
+    readonly step: bigint,
   ) {
     super(`input-existence: event ledger replay refused (${reason})`);
     this.name = "EventLedgerReplayRefusal";
   }
 }
+
+const refused = (reason: EventLedgerRefusalReason, step: number | bigint) =>
+  new EventLedgerReplayRefusal(reason, BigInt(step));
 
 const PHASES: readonly SDK.TransitionPhase[] = [
   "Withdrawal",
@@ -88,9 +95,12 @@ const acceptedEffects = (
     };
   }
   if (event.phase === "L2Transaction") {
-    if (event.entry.validity !== "TxIsValid") {
-      throw new EventLedgerReplayRefusal("normal_source_not_accepted");
-    }
+    // A rejected normal transaction changes no entry, so its step must leave
+    // the ledger as it found it. Its leaf is a block fault of its own: a
+    // normal transactions_root leaf is an acceptance claim and must use
+    // validity code zero, and l2TxMistag convicts any other code
+    // (docs/fault-proofs/rejection-reason-catalogue-v1.md).
+    if (event.entry.validity !== "TxIsValid") return null;
     return {
       transactionId: event.entry.txId,
       inputs: decodeMidgardFieldPreimage(event.entry.spendInputsPreimage),
@@ -100,160 +110,11 @@ const acceptedEffects = (
   return null;
 };
 
-/** What step `step` did to one out-ref: created `created`, or spent it. */
-type Change = Readonly<{
-  step: number;
-  created?: Readonly<{ entry: LedgerEntry; leaf: Buffer }>;
-}>;
-
-/** The outputs of the ledger before step `before`, read through `latest`. */
-class LedgerOutputs implements ReadonlyMap<string, Buffer> {
-  constructor(
-    private readonly predecessor: CheckedLedger,
-    private readonly latest: (key: string) => Change | undefined,
-    private readonly sorted: () => readonly LedgerEntry[],
-    readonly size: number,
-  ) {}
-
-  get(key: string): Buffer | undefined {
-    const change = this.latest(key);
-    return change === undefined
-      ? this.predecessor.outputs.get(key)
-      : change.created?.entry.output;
-  }
-
-  has(key: string): boolean {
-    return this.get(key) !== undefined;
-  }
-
-  *entries(): MapIterator<[string, Buffer]> {
-    for (const { outRef, output } of this.sorted())
-      yield [outRef.toString("hex"), output];
-  }
-
-  *keys(): MapIterator<string> {
-    for (const [key] of this.entries()) yield key;
-  }
-
-  *values(): MapIterator<Buffer> {
-    for (const [, output] of this.entries()) yield output;
-  }
-
-  [Symbol.iterator](): MapIterator<[string, Buffer]> {
-    return this.entries();
-  }
-
-  forEach(
-    callback: (
-      value: Buffer,
-      key: string,
-      map: ReadonlyMap<string, Buffer>,
-    ) => void,
-  ): void {
-    for (const [key, output] of this.entries()) callback(output, key, this);
-  }
-}
-
-/** The block's steps applied from `predecessor` up to `next`. */
-type Pass = {
-  readonly predecessor: CheckedLedger;
-  /** Each out-ref's changes, in step order. */
-  readonly changes: Map<string, Change[]>;
-  /** `roots[k]` and `sizes[k]`: the ledger before step `k`. */
-  readonly roots: string[];
-  readonly sizes: number[];
-  /** `firstAfter[rank]`: the first applied step of a phase after `rank`. */
-  readonly firstAfter: (number | undefined)[];
-  next: number;
-  priorRank: number;
-  /** The step that failed to apply, and why. */
-  failure?: Readonly<{ step: number; error: unknown }>;
-  trie?: Promise<Awaited<ReturnType<typeof mutableKeyValuePhasTrie>>>;
-};
-
 export type EventLedgerWalk = Readonly<{
-  /** The checked ledger before the transaction event `eventKey`, the
-   * block's step `stepIndex`. */
+  /** The checked ledger before the withdrawal or transaction event
+   * `eventKey`, the block's step `stepIndex`. */
   before: (eventKey: SDK.EventKey, stepIndex: bigint) => Promise<CheckedLedger>;
 }>;
-
-const latestBefore = (pass: Pass, key: string, step: number) => {
-  const changes = pass.changes.get(key);
-  if (changes === undefined) return undefined;
-  for (let index = changes.length - 1; index >= 0; index -= 1)
-    if (changes[index]!.step < step) return changes[index];
-  return undefined;
-};
-
-const record = (walk: Pass, key: string, change: Change) => {
-  const changes = walk.changes.get(key);
-  if (changes === undefined) walk.changes.set(key, [change]);
-  else changes.push(change);
-};
-
-/** The ledger before step `step` of `pass`, as a checked ledger. Its entries
- * are merged from the predecessor's and the changes only when read. */
-const view = (pass: Pass, step: number): CheckedLedger => {
-  const { predecessor } = pass;
-  let merged:
-    | { entries: readonly LedgerEntry[]; leaves: readonly KeyValuePhasEntry[] }
-    | undefined;
-  const sorted = () => {
-    if (merged !== undefined) return merged;
-    const kept: { entry: LedgerEntry; leaf: KeyValuePhasEntry }[] = [];
-    const leaves = predecessor.trie.entries;
-    for (const [index, entry] of predecessor.entries.entries())
-      if (latestBefore(pass, entry.outRef.toString("hex"), step) === undefined)
-        kept.push({ entry, leaf: leaves[index]! });
-    const created: typeof kept = [];
-    for (const key of pass.changes.keys()) {
-      const leaf = latestBefore(pass, key, step)?.created;
-      if (leaf !== undefined)
-        created.push({
-          entry: leaf.entry,
-          leaf: { key: leaf.entry.outRef, value: leaf.leaf },
-        });
-    }
-    created.sort((left, right) =>
-      Buffer.compare(left.entry.outRef, right.entry.outRef),
-    );
-    const all: typeof kept = [];
-    let [k, c] = [0, 0];
-    while (k < kept.length || c < created.length)
-      all.push(
-        c === created.length ||
-          (k < kept.length &&
-            Buffer.compare(kept[k]!.entry.outRef, created[c]!.entry.outRef) < 0)
-          ? kept[k++]!
-          : created[c++]!,
-      );
-    merged = {
-      entries: Object.freeze(all.map(({ entry }) => entry)),
-      leaves: Object.freeze(all.map(({ leaf }) => leaf)),
-    };
-    return merged;
-  };
-  const trie: KeyValuePhasRoot = Object.freeze({
-    root: pass.roots[step]!,
-    count: BigInt(pass.sizes[step]!),
-    get entries() {
-      return sorted().leaves;
-    },
-  });
-  return Object.freeze({
-    utxosRoot: pass.roots[step]!,
-    get entries() {
-      return sorted().entries;
-    },
-    trie,
-    outputs: new LedgerOutputs(
-      predecessor,
-      (key) => latestBefore(pass, key, step),
-      () => sorted().entries,
-      pass.sizes[step]!,
-    ),
-  }) as unknown as CheckedLedger;
-};
 
 /**
  * One block's committed steps, applied in order and each at most once: the
@@ -262,26 +123,19 @@ const view = (pass: Pass, step: number): CheckedLedger => {
  * walk goes no further for it. A step that fails to apply stops the walk
  * there, and every request past it meets that failure.
  */
-export const createEventLedgerWalk = ({
-  block,
-  predecessor,
+const walkSteps = ({
+  reconstruction,
+  stepCount,
+  open,
 }: {
-  readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly stepCount: bigint;
+  /** The admitted ledger the block starts from. */
+  readonly open: () => CheckedLedger;
 }): EventLedgerWalk => {
-  // These are the existing evidence-grade and source-root authorities. A
-  // diagnostic/operator-private reconstruction cannot produce proof material.
-  blockTransactionsFromCanonicalEvidence(block);
-  SDK.assertTransactionSourceInclusionRootAuthenticated(
-    block.inclusionRootAuthentication,
-  );
   let pass: Pass | undefined;
   const start = (): Pass => {
-    const ledger = requireReplayPredecessorLedger({
-      block,
-      predecessor,
-      label: "input-existence",
-    });
+    const ledger = open();
     return {
       predecessor: ledger,
       changes: new Map(),
@@ -304,7 +158,7 @@ export const createEventLedgerWalk = ({
   const apply = async (walk: Pass): Promise<void> => {
     const index = walk.next;
     try {
-      const opening = block.reconstruction.traceByStepIndex.get(BigInt(index));
+      const opening = reconstruction.traceByStepIndex.get(BigInt(index));
       const step = opening?.value;
       if (
         opening === undefined ||
@@ -314,8 +168,8 @@ export const createEventLedgerWalk = ({
         step.schema_version !== 1n ||
         step.pre_utxos_root !== walk.roots[index]
       )
-        throw new EventLedgerReplayRefusal("transition_link_changed");
-      const event = block.reconstruction.sourceEventsByFingerprint.get(
+        throw refused("transition_link_changed", index);
+      const event = reconstruction.sourceEventsByFingerprint.get(
         eventKeyFingerprint(step.event_key),
       );
       if (
@@ -324,10 +178,16 @@ export const createEventLedgerWalk = ({
         Data.to(event.eventKey, SDK.EventKey) !==
           Data.to(step.event_key, SDK.EventKey)
       )
-        throw new EventLedgerReplayRefusal("source_event_changed");
+        throw refused("source_event_changed", index);
+      // Out of phase order, the refusal names the step of the later phase
+      // that comes first: under the header's counts its index lies in an
+      // earlier phase's band. A deposit applies before an earlier phase's
+      // requested event only as that first step.
       const stepRank = phaseRank(event.phase);
-      if (stepRank < walk.priorRank || event.phase === "Deposit")
-        throw new EventLedgerReplayRefusal("phase_order_changed");
+      if (event.phase === "Deposit")
+        throw refused("phase_order_changed", index);
+      if (stepRank < walk.priorRank)
+        throw refused("phase_order_changed", walk.firstAfter[stepRank]!);
       for (let later = 0; later < stepRank; later += 1)
         walk.firstAfter[later] ??= index;
       const spent: string[] = [];
@@ -347,7 +207,7 @@ export const createEventLedgerWalk = ({
             txId: Buffer.from(ref.transactionId, "hex"),
             outputIndex: Number(ref.outputIndex),
           }).toString("hex"),
-          new EventLedgerReplayRefusal("withdrawal_input_absent"),
+          refused("withdrawal_input_absent", index),
         );
       } else {
         const effects = acceptedEffects(event);
@@ -355,15 +215,21 @@ export const createEventLedgerWalk = ({
           for (const input of effects.inputs)
             spend(
               input.toString("hex"),
-              new EventLedgerReplayRefusal("transaction_input_absent"),
+              refused("transaction_input_absent", index),
             );
           const outputs = effects.outputs.map((output, outputIndex) => {
             const outRef = encodeMidgardSpendInputItem({
               txId: Buffer.from(effects.transactionId, "hex"),
               outputIndex,
             });
+            // A ledger holding this out-ref already applied the same
+            // transaction, so its inputs were spent and the spends above
+            // refuse first. Only a hash collision, or an accepted
+            // transaction with no spend input (itself a fault: validation
+            // rejects it as EmptyInputs), reaches here. The entry is
+            // refused, never overwritten.
             if (current(outRef.toString("hex")))
-              throw new EventLedgerReplayRefusal("output_already_present");
+              throw refused("transaction_output_already_present", index);
             return { outRef, output: Buffer.from(output) };
           });
           // The ledger's sole full-output -> descriptor conversion, including
@@ -386,13 +252,12 @@ export const createEventLedgerWalk = ({
       for (const { entry, leaf } of created)
         await trie.insert(entry.outRef, leaf);
       if (trie.root() !== step.post_utxos_root)
-        throw new EventLedgerReplayRefusal("post_root_changed");
+        throw refused("post_root_changed", index);
       walk.roots.push(step.post_utxos_root);
       walk.sizes.push(walk.sizes[index]! - spent.length + created.length);
       walk.priorRank = stepRank;
       walk.next += 1;
-      if (walk.next === Number(block.header.transitionStepCount))
-        delete walk.trie;
+      if (walk.next === Number(stepCount)) delete walk.trie;
     } catch (error) {
       walk.failure = { step: index, error };
       delete walk.trie;
@@ -414,14 +279,12 @@ export const createEventLedgerWalk = ({
 
   return Object.freeze({
     before: async (eventKey: SDK.EventKey, stepIndex: bigint) => {
-      if (
-        !("L2TransactionEventKey" in eventKey) &&
-        !("ForcedTransactionEventKey" in eventKey)
-      )
-        throw new Error("input-existence: subject is not a transaction event");
-      if (stepIndex < 0n || stepIndex >= block.header.transitionStepCount) {
-        throw new EventLedgerReplayRefusal("step_out_of_range");
-      }
+      if ("DepositEventKey" in eventKey)
+        throw new Error(
+          "event ledger: subject is not a withdrawal or transaction event",
+        );
+      if (stepIndex < 0n || stepIndex >= stepCount)
+        throw refused("step_out_of_range", stepIndex);
       const walk = (pass ??= start());
       const target = Number(stepIndex);
       const rank = phaseRank(eventKeyPhase(eventKey));
@@ -430,10 +293,10 @@ export const createEventLedgerWalk = ({
       // later-phase step is never past the walk's failure.
       const later = walk.firstAfter[rank];
       if (later !== undefined && later < target)
-        throw new EventLedgerReplayRefusal("phase_order_changed");
+        throw refused("phase_order_changed", later);
       const { failure } = walk;
       if (failure !== undefined && failure.step < target) throw failure.error;
-      const opening = block.reconstruction.traceByStepIndex.get(stepIndex);
+      const opening = reconstruction.traceByStepIndex.get(stepIndex);
       if (
         opening === undefined ||
         opening.key !== stepIndex ||
@@ -443,12 +306,71 @@ export const createEventLedgerWalk = ({
         Data.to(opening.value.event_key, SDK.EventKey) !==
           Data.to(eventKey, SDK.EventKey) ||
         opening.value.pre_utxos_root !== walk.roots[target]
-      ) {
-        throw new EventLedgerReplayRefusal("selected_pre_root_changed");
-      }
+      )
+        throw refused("selected_pre_root_changed", stepIndex);
       return view(walk, target);
     },
   });
+};
+
+/** The walk of one canonical block from its admitted predecessor ledger. */
+export const createEventLedgerWalk = ({
+  block,
+  predecessor,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly predecessor?: CheckedLedger;
+}): EventLedgerWalk => {
+  // These are the existing evidence-grade and source-root authorities. A
+  // diagnostic/operator-private reconstruction cannot produce proof material.
+  blockTransactionsFromCanonicalEvidence(block);
+  SDK.assertTransactionSourceInclusionRootAuthenticated(
+    block.inclusionRootAuthentication,
+  );
+  return walkSteps({
+    reconstruction: block.reconstruction,
+    stepCount: block.header.transitionStepCount,
+    open: () =>
+      requireReplayPredecessorLedger({
+        block,
+        predecessor,
+        label: "input-existence",
+      }),
+  });
+};
+
+const sharedWalks = new WeakMap<
+  TransitionTraceReconstruction,
+  Map<CheckedLedger | undefined, EventLedgerWalk>
+>();
+
+/**
+ * The one walk of an authenticated reconstruction from `predecessor`, or
+ * from the genesis ledger its header must then commit, shared by every
+ * family that asks: a request's result does not depend on the requests
+ * before it, so the families' ledgers of one block cost one pass.
+ */
+export const reconstructionEventLedgerWalk = (
+  reconstruction: TransitionTraceReconstruction,
+  predecessor?: CheckedLedger,
+): EventLedgerWalk => {
+  let walks = sharedWalks.get(reconstruction);
+  if (walks === undefined) sharedWalks.set(reconstruction, (walks = new Map()));
+  let walk = walks.get(predecessor);
+  if (walk === undefined) {
+    walk = walkSteps({
+      reconstruction,
+      stepCount: reconstruction.header.transitionStepCount,
+      open: () =>
+        requireLedgerOpening({
+          ledger: predecessor,
+          utxosRoot: reconstruction.header.prevUtxosRoot,
+          label: "event ledger predecessor ledger",
+        }),
+    });
+    walks.set(predecessor, walk);
+  }
+  return walk;
 };
 
 /** `createEventLedgerWalk`, created at its first request: a caller whose
@@ -464,7 +386,7 @@ export const lazyEventLedgerWalk = (
   });
 };
 
-/** The checked ledger before one transaction event of `block`. */
+/** The checked ledger before one event of `block`. */
 export const ledgerBeforeTransactionEvent = async ({
   block,
   eventKey,

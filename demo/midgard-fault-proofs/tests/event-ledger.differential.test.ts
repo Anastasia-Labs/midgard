@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   createEventLedgerWalk,
   ledgerBeforeTransactionEvent,
+  reconstructionEventLedgerWalk,
 } from "../src/event-ledger.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { type CheckedLedger, checkedLedgerPreState } from "../src/ledger-at.js";
@@ -44,7 +45,12 @@ import {
 type Outcome =
   | Readonly<{ ledger: unknown }>
   | Readonly<{
-      refused: Readonly<{ name: string; message: string; reason: unknown }>;
+      refused: Readonly<{
+        name: string;
+        message: string;
+        reason: unknown;
+        step: unknown;
+      }>;
     }>;
 
 const ledgerSnapshot = async (
@@ -94,9 +100,17 @@ const outcome = async (
     ledger = await run();
   } catch (error) {
     if (!(error instanceof Error)) throw error;
-    const { reason } = error as Error & { reason?: unknown };
+    const { reason, step } = error as Error & {
+      reason?: unknown;
+      step?: unknown;
+    };
     return {
-      refused: { name: error.constructor.name, message: error.message, reason },
+      refused: {
+        name: error.constructor.name,
+        message: error.message,
+        reason,
+        step,
+      },
     };
   }
   return { ledger: await ledgerSnapshot(ledger, probes) };
@@ -104,33 +118,28 @@ const outcome = async (
 
 type Request = Readonly<{ eventKey: SDK.EventKey; stepIndex: bigint }>;
 
-/** Every transaction event of `block` at every step, and requests outside
- * them: a forced event the block does not hold, a withdrawal, and steps out
- * of range. */
+/** Every withdrawal and transaction event of `block` at every step, and
+ * requests outside them: a forced event and a withdrawal the block does not
+ * hold, steps out of range, and a deposit, which has no event ledger. */
 const requests = (block: CanonicalBlockEvidence, draw: Draw): Request[] => {
   const steps = block.header.transitionStepCount;
   const keys: SDK.EventKey[] = [];
   for (const { value } of block.reconstruction.traceByStepIndex.values())
-    if (
-      "L2TransactionEventKey" in value.event_key ||
-      "ForcedTransactionEventKey" in value.event_key
-    )
-      keys.push(value.event_key);
-  keys.push({
-    ForcedTransactionEventKey: {
-      tx_order_id: { transactionId: hex(bytes(draw, 32)), outputIndex: 0n },
-    },
+    if (!("DepositEventKey" in value.event_key)) keys.push(value.event_key);
+  const absent = () => ({
+    transactionId: hex(bytes(draw, 32)),
+    outputIndex: 0n,
   });
+  keys.push(
+    { ForcedTransactionEventKey: { tx_order_id: absent() } },
+    { WithdrawalEventKey: { withdrawal_id: absent() } },
+  );
   const all: Request[] = [];
   for (const eventKey of keys)
     for (let stepIndex = -1n; stepIndex <= steps; stepIndex += 1n)
       all.push({ eventKey, stepIndex });
   all.push({
-    eventKey: {
-      WithdrawalEventKey: {
-        withdrawal_id: { transactionId: hex(bytes(draw, 32)), outputIndex: 0n },
-      },
-    },
+    eventKey: { DepositEventKey: { deposit_id: absent() } },
     stepIndex: 0n,
   });
   return all;
@@ -138,7 +147,8 @@ const requests = (block: CanonicalBlockEvidence, draw: Draw): Request[] => {
 
 /**
  * Compares, for every request: the reference; one walk asked every request
- * in drawn order, some of them concurrently; and a fresh walk per request.
+ * in drawn order, some of them concurrently; the reconstruction's shared
+ * walk asked them in that order; and a fresh walk per request.
  */
 const compareWithReference = async ({
   block,
@@ -167,6 +177,19 @@ const compareWithReference = async ({
       shared.set(request, settled[index]!);
     await Promise.all(settled);
   }
+  const reconstructionWalk = reconstructionEventLedgerWalk(
+    block.reconstruction,
+    predecessor,
+  );
+  const reconstruction = new Map<Request, Outcome>();
+  for (const request of asked)
+    reconstruction.set(
+      request,
+      await outcome(
+        () => reconstructionWalk.before(request.eventKey, request.stepIndex),
+        probes,
+      ),
+    );
   const refusals = new Set<string>();
   for (const request of asked) {
     const expected = await outcome(
@@ -174,6 +197,7 @@ const compareWithReference = async ({
       probes,
     );
     expect(await shared.get(request)).toStrictEqual(expected);
+    expect(reconstruction.get(request)).toStrictEqual(expected);
     expect(
       await outcome(
         () =>
@@ -260,8 +284,8 @@ describe("event-ledger walk against a fresh replay", () => {
       none: "ledger",
       absent_input: "transaction_input_absent",
       repeated_input: "transaction_input_absent",
-      rejected: "normal_source_not_accepted",
-      output_present: "output_already_present",
+      rejected: "ledger",
+      output_present: "transaction_output_already_present",
       foreign_post_root: "post_root_changed",
       foreign_pre_root: "transition_link_changed",
       non_canonical_output: "not a canonical ledger entry",

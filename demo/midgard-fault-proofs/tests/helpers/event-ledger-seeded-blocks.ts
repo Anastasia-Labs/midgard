@@ -53,7 +53,7 @@ const plainOutput = Buffer.from(
 );
 /** The plain output with a native script_ref whose body does not decode: a
  * canonical entry under its committed undecodable-native descriptor. */
-const undecodableNativeOutput = Buffer.concat([
+export const undecodableNativeOutput = Buffer.concat([
   Buffer.from("a3", "hex"),
   plainOutput.subarray(1),
   Buffer.from("03", "hex"),

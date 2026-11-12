@@ -310,7 +310,7 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
     const block = await oneEventBlock();
     injected.ledgerFaults.set(
       block.txs[0]!.txId,
-      new EventLedgerReplayRefusal("transaction_input_absent"),
+      new EventLedgerReplayRefusal("transaction_input_absent", 0n),
     );
     expect(await decide(clockedReplayer().replayer, block)).toMatchObject({
       decision: "unprovable_gap",

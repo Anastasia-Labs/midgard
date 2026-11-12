@@ -5,7 +5,6 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardSpendInputItem,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardSpendInputItem,
   MidgardNativeScriptDecodingBindKinds,
   MidgardNativeScriptDecodingDirections,
   MidgardNativeScriptDecodingTraceOutcomeKinds,
@@ -15,19 +14,17 @@ import {
   deriveMidgardForcedTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  type EventLedgerRefusalReason,
+  EventLedgerReplayRefusal,
+  reconstructionEventLedgerWalk,
+} from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  retainedOutputReferenceScript,
-  undecodableNativeOutputDescriptor,
-} from "../evidence/retained-ledger-output.js";
+import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import {
-  keyValuePhasProof,
-  keyValuePhasRootWithCount,
-} from "../transition-trace/phas.js";
+import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
@@ -35,6 +32,7 @@ import {
 import { eventSubject } from "../workflow/detection-subject.js";
 import {
   collectReplayFindings,
+  type ReplayPrerequisite,
   replayPrerequisiteFailure,
 } from "../workflow/replay-prerequisite.js";
 import { buildNativeScriptDecodingScanPlan } from "./scan-plan.js";
@@ -43,7 +41,33 @@ function failure(message: string): never {
   throw new Error(`nativeScriptDecoding: ${message}`);
 }
 
-/** Raw outputs are only preimages: their derived descriptor root is checked at every event. */
+/** What a refused walk means here: a prerequisite at the event of the step
+ * the refusal names, or a fatal corruption of the committed trace. */
+const REFUSAL_OUTCOME: Readonly<
+  Record<
+    EventLedgerRefusalReason,
+    Readonly<{ prerequisite: ReplayPrerequisite } | { fatal: string }>
+  >
+> = {
+  withdrawal_input_absent: { prerequisite: "present_spend_input" },
+  transaction_input_absent: { prerequisite: "present_spend_input" },
+  transaction_output_already_present: {
+    prerequisite: "prior_transition_effect",
+  },
+  post_root_changed: { prerequisite: "prior_transition_effect" },
+  phase_order_changed: { prerequisite: "prior_transition_effect" },
+  transition_link_changed: { fatal: "prior transition mismatch" },
+  source_event_changed: { fatal: "prior event mismatch" },
+  step_out_of_range: { fatal: "prior transition mismatch" },
+  selected_pre_root_changed: { fatal: "event prior ledger changed" },
+};
+
+/**
+ * The ledger before step `stepIndex`, from the block's one shared event
+ * ledger walk. A step the walk cannot apply is a prerequisite at the event
+ * of the step it names: an absent input wants that event's spend-input
+ * proof, and any other unopenable effect its transition proof.
+ */
 export const nativeScriptDecodingPriorLedger = async (
   current: TransitionTraceReconstruction,
   stepIndex: bigint,
@@ -54,105 +78,42 @@ export const nativeScriptDecodingPriorLedger = async (
     predecessor.utxosRoot !== current.header.prevUtxosRoot
   )
     failure("unrelated predecessor");
-  const outputs = new Map<
-    string,
-    { key: Buffer; value: Buffer; descriptor?: Buffer | undefined }
-  >(
-    (predecessor?.entries ?? []).map(({ outRef, output, descriptor }) => [
-      outRef.toString("hex"),
-      { key: Buffer.from(outRef), value: Buffer.from(output), descriptor },
-    ]),
-  );
-  const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
-  const descriptorFor = (key: Buffer, value: Buffer, descriptor?: Buffer) => {
-    try {
-      return resolveDescriptor({
-        outRef: key,
-        outputCbor: value,
-      });
-    } catch {
-      // The checked predecessor ledger already bound and authenticated it.
-      if (descriptor !== undefined) return descriptor;
-      return undecodableNativeOutputDescriptor({ key, output: value });
-    }
-  };
-  const rootOf = async () =>
-    await keyValuePhasRootWithCount(
-      [...outputs.values()].map(({ key, value, descriptor }) => ({
-        key,
-        value: descriptorFor(key, value, descriptor),
-      })),
-    );
-  let root = await rootOf();
-  if (root.root !== current.header.prevUtxosRoot)
+  if (
+    predecessor === undefined &&
+    current.header.prevUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT
+  )
     failure("authenticated predecessor ledger unavailable");
-  for (let index = 0n; index < stepIndex; index++) {
-    const step = current.traceByStepIndex.get(index)?.value;
-    if (
-      step === undefined ||
-      step.step_index !== index ||
-      step.schema_version !== 1n ||
-      step.pre_utxos_root !== root.root
-    )
-      failure("prior transition mismatch");
-    const event = current.sourceEventsByFingerprint.get(
-      eventKeyFingerprint(step.event_key),
+  const target = current.traceByStepIndex.get(stepIndex)?.value;
+  if (target === undefined) failure("prior transition mismatch");
+  let ledger: CheckedLedger;
+  try {
+    ledger = await reconstructionEventLedgerWalk(current, predecessor).before(
+      target.event_key,
+      stepIndex,
     );
-    if (event === undefined || event.phase !== step.phase)
-      failure("prior event mismatch");
-    if (event.phase === "Withdrawal") {
-      if (event.entry.value.validity === "WithdrawalIsValid") {
-        const outref = event.entry.value.body.l2_outref;
-        outputs.delete(
-          encodeMidgardSpendInputItem({
-            txId: Buffer.from(outref.transactionId, "hex"),
-            outputIndex: Number(outref.outputIndex),
-          }).toString("hex"),
-        );
-      }
-    } else if (
-      event.phase === "ForcedTransaction" ||
-      event.phase === "L2Transaction"
-    ) {
-      const accepted =
-        event.phase === "L2Transaction"
-          ? event.entry.validity === "TxIsValid"
-          : event.entry.value.verdict === "ForcedTxValid";
-      if (accepted) {
-        const tx = (
-          event.phase === "ForcedTransaction"
-            ? decodeMidgardForcedTxFullFromCanonicalCbor
-            : decodeMidgardNativeTxFullFromCanonicalCbor
-        )(event.entry.fullTransactionCbor);
-        for (const key of decodeMidgardFieldPreimage(
-          tx.body.spendInputsPreimageCbor,
-        ))
-          outputs.delete(key.toString("hex"));
-        const txId =
-          event.phase === "L2Transaction"
-            ? event.entry.txId
-            : event.entry.value.tx_id;
-        for (const [outputIndex, value] of decodeMidgardFieldPreimage(
-          tx.body.outputsPreimageCbor,
-        ).entries()) {
-          const key = encodeMidgardSpendInputItem({
-            txId: Buffer.from(txId, "hex"),
-            outputIndex,
-          });
-          outputs.set(key.toString("hex"), { key, value });
-        }
-      }
-    } else
-      failure("deposit precedes a transaction outside canonical phase order");
-    root = await rootOf();
-    if (root.root !== step.post_utxos_root)
-      throw replayPrerequisiteFailure(
-        current.headerHash,
-        step.event_key,
-        "prior_transition_effect",
-      );
+  } catch (cause) {
+    if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
+    const outcome = REFUSAL_OUTCOME[cause.reason];
+    if ("fatal" in outcome) failure(outcome.fatal);
+    // Every step a prerequisite names opened when the walk applied it.
+    throw replayPrerequisiteFailure(
+      current.headerHash,
+      current.traceByStepIndex.get(cause.step)!.value.event_key,
+      outcome.prerequisite,
+    );
   }
-  return { root, outputs };
+  return {
+    root: ledger.trie,
+    outputs: {
+      get: (key: string) => {
+        const value = ledger.outputs.get(key);
+        return value === undefined
+          ? undefined
+          : { key: Buffer.from(key, "hex"), value };
+      },
+      has: (key: string) => ledger.outputs.has(key),
+    },
+  };
 };
 
 export type NativeScriptDecodingCoordinate = Readonly<{
@@ -275,8 +236,6 @@ export const prepareNativeScriptDecodingReplay = async ({
     mapping.step_index,
     predecessor,
   );
-  if (ledger.root.root !== transition.pre_utxos_root)
-    failure("event prior ledger changed");
   const output = ledger.outputs.get(selected.toString("hex"));
   if (output === undefined) return null;
   const descriptorCbor = ledger.root.entries.find((entry) =>

@@ -1,7 +1,8 @@
-/** The ledger before one transaction event of a block, rebuilt from scratch:
+/** The ledger before one event of a block, rebuilt from scratch:
  * the predecessor's entries, each earlier step's effects applied to a plain
- * map, and every intermediate ledger root-checked with a fresh trie. It
- * refuses in the order an event-ledger walk must, so a walk's result for any
+ * map, and every intermediate ledger root-checked with a fresh trie. A
+ * rejected normal transaction changes nothing. It refuses in the order, and
+ * at the step, an event-ledger walk must, so a walk's result for any
  * request, in any request order, can be compared with it. */
 import {
   decodeMidgardFieldPreimage,
@@ -30,8 +31,11 @@ const rank = (phase: SDK.TransitionPhase): number =>
     phase,
   );
 
-const refuse = (reason: EventLedgerReplayRefusal["reason"]): never => {
-  throw new EventLedgerReplayRefusal(reason);
+const refuse = (
+  reason: EventLedgerReplayRefusal["reason"],
+  step: bigint,
+): never => {
+  throw new EventLedgerReplayRefusal(reason, step);
 };
 
 export const referenceLedgerBefore = async ({
@@ -45,13 +49,12 @@ export const referenceLedgerBefore = async ({
   readonly eventKey: SDK.EventKey;
   readonly stepIndex: bigint;
 }): Promise<CheckedLedger> => {
-  if (
-    !("L2TransactionEventKey" in eventKey) &&
-    !("ForcedTransactionEventKey" in eventKey)
-  )
-    throw new Error("input-existence: subject is not a transaction event");
+  if ("DepositEventKey" in eventKey)
+    throw new Error(
+      "event ledger: subject is not a withdrawal or transaction event",
+    );
   if (stepIndex < 0n || stepIndex >= block.header.transitionStepCount)
-    refuse("step_out_of_range");
+    refuse("step_out_of_range", stepIndex);
   let ledger = requireReplayPredecessorLedger({
     block,
     predecessor,
@@ -61,7 +64,7 @@ export const referenceLedgerBefore = async ({
     ledger.entries.map((entry) => [entry.outRef.toString("hex"), entry]),
   );
   const targetRank = rank(eventKeyPhase(eventKey));
-  let priorRank = -1;
+  const ranks: number[] = [];
   for (let index = 0n; index < stepIndex; index += 1n) {
     const opening = block.reconstruction.traceByStepIndex.get(index);
     const step = opening?.value;
@@ -73,7 +76,7 @@ export const referenceLedgerBefore = async ({
       step.schema_version !== 1n ||
       step.pre_utxos_root !== ledger.utxosRoot
     )
-      refuse("transition_link_changed");
+      refuse("transition_link_changed", index);
     const event = block.reconstruction.sourceEventsByFingerprint.get(
       eventKeyFingerprint(step!.event_key),
     );
@@ -83,12 +86,14 @@ export const referenceLedgerBefore = async ({
       Data.to(event.eventKey, SDK.EventKey) !==
         Data.to(step!.event_key, SDK.EventKey)
     )
-      refuse("source_event_changed");
+      refuse("source_event_changed", index);
+    // Out of phase order: the first step of a later phase than this one.
     const stepRank = rank(event!.phase);
-    if (stepRank < priorRank || event!.phase === "Deposit")
-      refuse("phase_order_changed");
-    if (stepRank > targetRank) refuse("phase_order_changed");
-    priorRank = stepRank;
+    if (event!.phase === "Deposit") refuse("phase_order_changed", index);
+    const misplaced = ranks.findIndex((prior) => prior > stepRank);
+    if (misplaced >= 0) refuse("phase_order_changed", BigInt(misplaced));
+    if (stepRank > targetRank) refuse("phase_order_changed", index);
+    ranks.push(stepRank);
     let effects:
       | { txId: string; inputs: readonly Buffer[]; outputs: readonly Buffer[] }
       | undefined;
@@ -99,7 +104,7 @@ export const referenceLedgerBefore = async ({
           txId: Buffer.from(ref.transactionId, "hex"),
           outputIndex: Number(ref.outputIndex),
         }).toString("hex");
-        if (!entries.delete(key)) refuse("withdrawal_input_absent");
+        if (!entries.delete(key)) refuse("withdrawal_input_absent", index);
       }
     } else if (event!.phase === "ForcedTransaction") {
       if (event!.entry.value.verdict === "ForcedTxValid") {
@@ -112,9 +117,10 @@ export const referenceLedgerBefore = async ({
           outputs: decodeMidgardFieldPreimage(tx.body.outputsPreimageCbor),
         };
       }
-    } else if (event!.phase === "L2Transaction") {
-      if (event!.entry.validity !== "TxIsValid")
-        refuse("normal_source_not_accepted");
+    } else if (
+      event!.phase === "L2Transaction" &&
+      event!.entry.validity === "TxIsValid"
+    ) {
       effects = {
         txId: event!.entry.txId,
         inputs: decodeMidgardFieldPreimage(event!.entry.spendInputsPreimage),
@@ -124,14 +130,14 @@ export const referenceLedgerBefore = async ({
     if (effects !== undefined) {
       for (const input of effects.inputs)
         if (!entries.delete(input.toString("hex")))
-          refuse("transaction_input_absent");
+          refuse("transaction_input_absent", index);
       for (const [outputIndex, output] of effects.outputs.entries()) {
         const outRef = encodeMidgardSpendInputItem({
           txId: Buffer.from(effects.txId, "hex"),
           outputIndex,
         });
         if (entries.has(outRef.toString("hex")))
-          refuse("output_already_present");
+          refuse("transaction_output_already_present", index);
         entries.set(outRef.toString("hex"), {
           outRef,
           output: Buffer.from(output),
@@ -145,7 +151,8 @@ export const referenceLedgerBefore = async ({
         label: `input-existence earlier event ${index.toString()}`,
       });
     } catch (cause) {
-      if (cause instanceof LedgerRootMismatchError) refuse("post_root_changed");
+      if (cause instanceof LedgerRootMismatchError)
+        refuse("post_root_changed", index);
       throw cause;
     }
   }
@@ -160,6 +167,6 @@ export const referenceLedgerBefore = async ({
       Data.to(eventKey, SDK.EventKey) ||
     target.value.pre_utxos_root !== ledger.utxosRoot
   )
-    refuse("selected_pre_root_changed");
+    refuse("selected_pre_root_changed", stepIndex);
   return ledger;
 };

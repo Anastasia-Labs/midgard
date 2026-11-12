@@ -131,7 +131,7 @@ describe("validation-trace claim build: held only when it ends without a result"
   });
 
   it("keeps a refusal of the block's own steps as the build's outcome", async () => {
-    const refusal = new EventLedgerReplayRefusal("transition_link_changed");
+    const refusal = new EventLedgerReplayRefusal("transition_link_changed", 0n);
     injected.next = refusal;
     await expect(prepareAgain()).rejects.toBe(refusal);
   });
