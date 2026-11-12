@@ -179,8 +179,11 @@ export const decisionHolds = (
         current?.correction.fraudProofAssetName !==
           finishing?.fraudProofAssetName &&
         finishing?.running !== true
-      )
+      ) {
+        if (finishing !== null)
+          warnedFailures.delete(finishing.fraudProofAssetName);
         finishing = null;
+      }
       const finish = dependencies.driveProvenRemoval;
       if (current === null || finish === undefined || finishing?.running)
         return;

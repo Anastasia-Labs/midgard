@@ -244,6 +244,46 @@ describe("a Locked correction no admitted fault reproduces", () => {
     ]);
   });
 
+  it("starts a correction afresh once L1 shows it finished, with no backoff left", async () => {
+    let nowMs = 0;
+    const outcomes = [
+      { kind: "proven", failure: "coin taken" },
+      { kind: "finished" },
+      { kind: "proven", failure: "coin taken" },
+      { kind: "proven", failure: "coin taken" },
+    ] as const;
+    let calls = 0;
+    const lock = unreproducedLock(
+      async () => {
+        const outcome = outcomes[calls++]!;
+        return outcome.kind === "finished"
+          ? outcome
+          : {
+              kind: "proven",
+              fraudProofOutRef: PROVEN_RECORD,
+              removal: Promise.reject(new Error(outcome.failure)),
+            };
+      },
+      () => nowMs,
+    );
+    const passAt = async (atMs: number) => {
+      nowMs = atMs;
+      await lock.bridge.reconcileAndDispatch(lock.current);
+      await drain();
+      return calls;
+    };
+    expect(await passAt(0)).toBe(1);
+    expect(await passAt(1_000)).toBe(2);
+    // Finished: the next pass runs at once, its failure is warned as a
+    // first failure, and its retry waits the first backoff, not a doubled one.
+    expect(await passAt(1_000)).toBe(3);
+    expect(failureMessages(lock.warnings)).toEqual([
+      "coin taken",
+      "coin taken",
+    ]);
+    expect(await passAt(2_000)).toBe(4);
+  });
+
   it("keeps holding the lock when no proven record names it, and the pass succeeds", async () => {
     let calls = 0;
     const lock = unreproducedLock(async () => {
