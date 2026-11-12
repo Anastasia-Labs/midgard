@@ -23,18 +23,21 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "../linear-fault-family.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
@@ -156,7 +159,6 @@ export const submitMinAdaTxStep02 = async ({
     publish: publishCarriage,
     label: `${label} field 2`,
   });
-  signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
@@ -311,12 +313,11 @@ export const submitMinAdaTxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     yieldReference,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: transactionReferences,
   });
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const tx = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(transactionReferences)
     .withdraw(
@@ -331,16 +332,9 @@ export const submitMinAdaTxStep02 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true, ...walletInputs });
-  const signed = await unsigned.sign.withWallet().complete();
-  const {
-    reachFraudProofPreSubmitBoundary,
-    workflowReferenceScriptsUsedByTransaction,
-  } = await import("../workflow/transaction-boundary.js");
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+    );
+  const signed = await completeStep(tx, funding);
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -357,13 +351,8 @@ export const submitMinAdaTxStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) throw new Error(`${label}: hash mismatch`);
-  if (awaitConfirmation) {
-    const { DEFAULT_CONFIRMATION_POLL_MS } = await import("../runtime.js");
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   if (nextStepIndex === 1 && awaitConfirmation)
     return submitMinAdaTxStep02({
