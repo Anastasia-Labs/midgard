@@ -24,14 +24,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
@@ -194,29 +193,22 @@ export const submitMintAuthorizationWitnessScan = async ({
     };
     return Data.to(value, MintAuthorizationWitnessScanSpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: [...refs, threadUtxo],
   });
-  const builder = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const builder = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(refs)
     .pay.ToContract(
       nextStep.spendingScriptAddress,
       { kind: "inline", value: datum },
       { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadToken.unit]: 1n },
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await carriage
-    .attach(builder)
-    .complete({ localUPLCEval: true, ...walletInputs });
-  const signed = await unsigned.sign.withWallet().complete();
+    );
+  const signed = await completeStep(carriage.attach(builder), funding);
   if (outputIndex === undefined)
     throw new Error("mint witness scan did not resolve output index");
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -228,11 +220,8 @@ export const submitMintAuthorizationWitnessScan = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expected)
-    throw new Error("mint witness scan submission hash changed");
-  if (awaitConfirmation) await lucid.awaitTx(txHash);
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex}`,
