@@ -127,16 +127,11 @@ export const AssetLeafOpening = asDataType<AssetLeafOpening>(
   AssetLeafOpeningSchema,
 );
 
-/** Wire twin of the aiken `validation_merkle_v1.FrontierPeak`, 32-byte hash. */
-export const FrontierPeakSchema = BoundedBlobFrontierPeakSchema;
-export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
-export const FrontierPeak = asDataType<FrontierPeak>(FrontierPeakSchema);
-
 /** The pre-state value witness for one spend input. */
 export const SpentInputValueWitnessSchema = Data.Object({
   descriptor_cbor: Data.Bytes(),
   ledger_membership_proof: ProofSchema,
-  asset_peaks: Data.Array(FrontierPeakSchema),
+  asset_peaks: Data.Array(BoundedBlobFrontierPeakSchema),
   asset_openings: Data.Array(AssetLeafOpeningSchema),
 });
 export type SpentInputValueWitness = Data.Static<

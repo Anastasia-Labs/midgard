@@ -1,5 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  BoundedBlobFrontierPeakSchema,
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -12,7 +13,6 @@ import { TransactionOutputScanControlSchema } from "../transaction-output-non-ca
 import {
   ClaimedAssetSchema,
   ClaimedImbalanceDirectionSchema,
-  FrontierPeakSchema,
   ValueNotPreservedStep01ArgsSchema,
 } from "./schemas.js";
 
@@ -343,7 +343,7 @@ export const ConservationAssetActionSchema = Data.Enum([
       policy_id: Data.Bytes(),
       asset_name: Data.Bytes(),
       quantity: Data.Integer(),
-      peaks: Data.Array(FrontierPeakSchema),
+      peaks: Data.Array(BoundedBlobFrontierPeakSchema),
       siblings: Data.Array(Data.Bytes()),
     }),
   }),

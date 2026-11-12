@@ -27,6 +27,7 @@ import {
 import { buildMidgardValidationMerkleMembership } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import {
+  type BoundedBlobFrontierPeak,
   encodeMidgardTxInputCanonical,
   type FieldCarriage,
   type FieldOpening,
@@ -41,7 +42,6 @@ import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "./contracts.js";
 import type {
   AssetLeafOpening,
   ClaimedAsset,
-  FrontierPeak,
   SpentInputValueWitness,
 } from "./schemas.js";
 
@@ -219,10 +219,12 @@ export const buildSpentInputValueWitness = async ({
       "spent value's asset frontier does not re-derive the descriptor's asset_frontier_commitment",
     );
   }
-  const peaks: FrontierPeak[] = frontier.frontier.peaks.map((peak) => ({
-    height: BigInt(peak.height),
-    hash: Buffer.from(peak.hash).toString("hex"),
-  }));
+  const peaks: BoundedBlobFrontierPeak[] = frontier.frontier.peaks.map(
+    (peak) => ({
+      height: BigInt(peak.height),
+      hash: Buffer.from(peak.hash).toString("hex"),
+    }),
+  );
   const openings: AssetLeafOpening[] = assets.map((asset, index) => {
     const membership = buildMidgardValidationMerkleMembership(
       frontier.leaves,
