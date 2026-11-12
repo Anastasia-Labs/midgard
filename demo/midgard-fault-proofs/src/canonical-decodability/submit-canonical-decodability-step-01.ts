@@ -32,7 +32,6 @@ import {
 import { Effect } from "effect";
 
 import { faultProofRawFieldCarriage } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
@@ -40,7 +39,6 @@ import {
   type PublishedProofChunk,
 } from "../proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -50,6 +48,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,
@@ -61,10 +60,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import { deriveCanonicalDecodabilityNextOutput } from "./derive-canonical-decodability-next-output.js";
 import { prepareCanonicalDecodability } from "./prepare-canonical-decodability.js";
@@ -204,10 +200,10 @@ export const submitCanonicalDecodabilityStep01 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
   const carriedByChunks = chunks.length > 0;
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: chunks.map(({ utxo }) => utxo),
   });
   const phasMembershipScript: Script = {
@@ -371,9 +367,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs);
   const withCarriage = carriedByChunks
@@ -398,30 +392,23 @@ export const submitCanonicalDecodabilityStep01 = async ({
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
-  const paid = withCarriage.pay
-    .ToContract(
-      nextOutput.address,
-      { kind: "inline", value: nextOutput.datum },
-      {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
-        [threadToken.unit]: 1n,
-      },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  const paid = withCarriage.pay.ToContract(
+    nextOutput.address,
+    { kind: "inline", value: nextOutput.datum },
+    {
+      lovelace: threadUtxo.assets.lovelace ?? 0n,
+      [threadToken.unit]: 1n,
+    },
+  );
   const completedTx = inclusionCarriage.attach(paid);
 
-  const unsigned = await completedTx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(completedTx, funding);
   if (resolvedLayout === undefined) {
     throw canonicalDecodabilitySubmitError(
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -443,16 +430,8 @@ export const submitCanonicalDecodabilityStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw canonicalDecodabilitySubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     walletSource: signer.source,
