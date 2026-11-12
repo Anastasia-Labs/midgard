@@ -13,15 +13,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { requireInitialStepDatum, selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
@@ -66,8 +63,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   requireInitialStepDatum({ threadUtxo, signer });
   const bindState: NativeScriptDecodingBindState = "PendingForced";
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: bindState },
     NativeScriptDecodingStep02Datum,
@@ -111,29 +107,25 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   };
 
   const tx = sourceStepScript({
-    tx: lucid
-      .newTx()
-      .collectFrom([feeInput])
+    tx: funding.tx
       .collectFrom([threadUtxo], redeemer)
       .pay.ToContract(
         contracts.steps[1].spendingScriptAddress,
         { kind: "inline", value: step02Datum },
         threadAssets,
-      )
-      .addSignerKey(signer.paymentKeyHash),
+      ),
     contracts,
     referenceScriptUtxo,
   });
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw nativeScriptDecodingSubmitError(
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: `${STEP_LABEL} record-forced`,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -145,16 +137,8 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw nativeScriptDecodingSubmitError(
-      `step-01 record-forced provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

@@ -18,15 +18,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
@@ -204,8 +200,8 @@ export const advanceStep03Thread = async ({
   readonly awaitConfirmation: boolean;
 }): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
   const stepLabel = nativeScriptDecodingStepLabel(spendingStepIndex);
-  signer.selectWallet(lucid);
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: carriageUtxos,
   });
   const nextDatum = Data.to(
@@ -244,41 +240,32 @@ export const advanceStep03Thread = async ({
       stepIndex: spendingStepIndex,
     }),
   ];
-  const withInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer);
+  const withInputs = funding.tx.collectFrom([threadUtxo], redeemer);
   const withReferences =
     referenceInputs.length === 0
       ? withInputs
       : withInputs.readFrom(referenceInputs);
-  const paid = withReferences.pay
-    .ToContract(
-      destinationAddress,
-      { kind: "inline", value: nextDatum },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+  const paid = withReferences.pay.ToContract(
+    destinationAddress,
+    { kind: "inline", value: nextDatum },
+    threadAssets,
+  );
   const tx = paid;
 
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw nativeScriptDecodingSubmitError(
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
   const referenceRole =
     spendingStepIndex === OPEN_SUBJECT_INDEX
       ? "V1 fraud-proof native-script-decoding step-03 open-subject"
       : spendingStepIndex === BIND_DESCRIPTOR_INDEX
         ? "V1 fraud-proof native-script-decoding step-03 bind-descriptor"
         : "V1 fraud-proof native-script-decoding step-03 advance-or-close";
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: stepLabel,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -290,16 +277,8 @@ export const advanceStep03Thread = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw nativeScriptDecodingSubmitError(
-      `${stepLabel} provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return { txHash, layout: resolvedLayout };
 };
 

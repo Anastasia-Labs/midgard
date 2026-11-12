@@ -53,16 +53,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
@@ -300,8 +296,7 @@ export const submitNativeScriptDecodingStep02 = async ({
     }
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step03Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: scanState },
     NativeScriptDecodingStep03OpenSubjectDatum,
@@ -351,16 +346,13 @@ export const submitNativeScriptDecodingStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .pay.ToContract(
       contracts.steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = base.readFrom([
     requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
@@ -369,15 +361,14 @@ export const submitNativeScriptDecodingStep02 = async ({
     }),
   ]);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw nativeScriptDecodingSubmitError(
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
+    label: STEP_LABEL,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -389,16 +380,8 @@ export const submitNativeScriptDecodingStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw nativeScriptDecodingSubmitError(
-      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
