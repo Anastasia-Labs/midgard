@@ -36,11 +36,8 @@ import {
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -48,7 +45,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
@@ -153,7 +149,6 @@ export const submitMissingSignatureStep02 = async ({
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
   });
-  signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
     ownOutputs,
     lucid,
@@ -185,7 +180,8 @@ export const submitMissingSignatureStep02 = async ({
     }),
   ];
 
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: carriageUtxos,
   });
   const step03State: MissingSignatureStep03State = {
@@ -244,33 +240,23 @@ export const submitMissingSignatureStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const withInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer);
+  const withInputs = funding.tx.collectFrom([threadUtxo], redeemer);
   const withReferences =
     referenceInputs.length === 0
       ? withInputs
       : withInputs.readFrom(referenceInputs);
-  const tx = withReferences.pay
-    .ToContract(
-      contracts.steps[2].spendingScriptAddress,
-      { kind: "inline", value: step03Datum },
-      threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await tx.complete({
-    localUPLCEval: true,
-    ...walletInputs,
-  });
+  const tx = withReferences.pay.ToContract(
+    contracts.steps[2].spendingScriptAddress,
+    { kind: "inline", value: step03Datum },
+    threadAssets,
+  );
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw missingSignatureSubmitError(
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-02",
@@ -279,16 +265,8 @@ export const submitMissingSignatureStep02 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw missingSignatureSubmitError(
-      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

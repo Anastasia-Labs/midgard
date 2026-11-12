@@ -27,15 +27,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
@@ -110,8 +106,7 @@ export const submitMissingSignatureStep03 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step04State: MissingSignatureStep04State = {
     missing_required_signer_vkey: vkey,
     verified_tx_id: state.verified_tx_id,
@@ -159,16 +154,13 @@ export const submitMissingSignatureStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .pay.ToContract(
       contracts.steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
     .readFrom([
       requireMissingSignatureReferenceScript({
         utxo: referenceScriptUtxo,
@@ -177,15 +169,13 @@ export const submitMissingSignatureStep03 = async ({
       }),
     ]);
 
-  const unsigned = await base.complete({ localUPLCEval: true });
+  const signed = await completeStep(base, funding);
   if (resolvedLayout === undefined) {
     throw missingSignatureSubmitError(
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-03",
@@ -194,16 +184,8 @@ export const submitMissingSignatureStep03 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw missingSignatureSubmitError(
-      `step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

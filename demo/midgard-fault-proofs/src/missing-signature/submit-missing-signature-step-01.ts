@@ -44,7 +44,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -54,11 +53,11 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
-  selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -68,7 +67,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -191,8 +189,7 @@ export const submitMissingSignatureStep01 = async ({
       verifiedWitnessSetHash,
     });
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -277,9 +274,7 @@ export const submitMissingSignatureStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs)
     .withdraw(
@@ -296,18 +291,15 @@ export const submitMissingSignatureStep01 = async ({
       contracts.steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
       threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = phasMembershipCarriage.attach(base);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (resolvedLayout === undefined) {
     throw missingSignatureSubmitError(
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -324,16 +316,8 @@ export const submitMissingSignatureStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw missingSignatureSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
