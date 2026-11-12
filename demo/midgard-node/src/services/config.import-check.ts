@@ -5,7 +5,10 @@ import {
 } from "@al-ft/midgard-core/deployment-profile";
 import { Config } from "effect";
 
-import { boundedValidationInteger } from "./config.node-config-dep.js";
+import {
+  nonNegativeSafeIntegerConfig,
+  positiveSafeIntegerConfig,
+} from "./config.parse.js";
 
 /**
  * The import checker's bounds (`../import-check/`).
@@ -102,25 +105,23 @@ export const DEFAULT_IMPORT_CHECK_CONFIG: ImportCheckConfig = {
 };
 
 export const importCheckConfig: Config.Config<ImportCheckConfig> = Config.all({
-  killFloorMs: boundedValidationInteger(
+  killFloorMs: positiveSafeIntegerConfig(
     "IMPORT_CHECK_KILL_FLOOR_MS",
     DEFAULT_IMPORT_CHECK_CONFIG.killFloorMs,
   ),
-  killMsPerGigaCpu: boundedValidationInteger(
+  killMsPerGigaCpu: nonNegativeSafeIntegerConfig(
     "IMPORT_CHECK_KILL_MS_PER_GIGA_CPU",
     DEFAULT_IMPORT_CHECK_CONFIG.killMsPerGigaCpu,
-    true,
   ),
-  killUsPerKib: boundedValidationInteger(
+  killUsPerKib: nonNegativeSafeIntegerConfig(
     "IMPORT_CHECK_KILL_US_PER_KIB",
     DEFAULT_IMPORT_CHECK_CONFIG.killUsPerKib,
-    true,
   ),
-  blockCapMs: boundedValidationInteger(
+  blockCapMs: positiveSafeIntegerConfig(
     "IMPORT_CHECK_BLOCK_CAP_MS",
     DEFAULT_IMPORT_CHECK_CONFIG.blockCapMs,
   ),
-  negativeCacheTtlMs: boundedValidationInteger(
+  negativeCacheTtlMs: positiveSafeIntegerConfig(
     "IMPORT_CHECK_NEGATIVE_CACHE_TTL_MS",
     DEFAULT_IMPORT_CHECK_CONFIG.negativeCacheTtlMs,
   ).pipe(
@@ -132,13 +133,12 @@ export const importCheckConfig: Config.Config<ImportCheckConfig> = Config.all({
       return value;
     }),
   ),
-  backlogWorkers: boundedValidationInteger(
+  backlogWorkers: positiveSafeIntegerConfig(
     "IMPORT_CHECK_BACKLOG_WORKERS",
     DEFAULT_IMPORT_CHECK_CONFIG.backlogWorkers,
   ),
-  openerMarginMs: boundedValidationInteger(
+  openerMarginMs: nonNegativeSafeIntegerConfig(
     "IMPORT_CHECK_OPENER_MARGIN_MS",
     DEFAULT_IMPORT_CHECK_CONFIG.openerMarginMs,
-    true,
   ),
 });

@@ -1,7 +1,7 @@
 import { ConfigProvider, Effect } from "effect";
 
+import type { NodeConfigDep } from "../../src/services/config.js";
 import { makeConfig } from "../../src/services/config.make-config.js";
-import type { NodeConfigDep } from "../../src/services/config.node-config-dep.js";
 import { TEST_ENV_DEFAULTS, testDatabaseName } from "../test-env.js";
 
 /**

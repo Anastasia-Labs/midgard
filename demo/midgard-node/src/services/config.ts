@@ -12,10 +12,10 @@ import "../da/hardening-config.js";
 import "../da/local-signers.js";
 import "../database/retention-policy.js";
 import "./native-ledger.js";
-import "./config.node-config-dep.js";
 import "./config.make-config.js";
-export { ConfigError, NodeConfig } from "./config.make-config.js";
 export {
+  ConfigError,
+  NodeConfig,
   type NodeConfigDep,
-  resolveValidationWorkerPoolSize,
-} from "./config.node-config-dep.js";
+} from "./config.make-config.js";
+export { resolveValidationWorkerPoolSize } from "./config.validation.js";

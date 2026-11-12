@@ -10,7 +10,7 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import { seedPhraseAddress } from "../../services/config.node-config-dep.js";
+import { seedPhraseAddress } from "../../services/config.operational-wallets.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,

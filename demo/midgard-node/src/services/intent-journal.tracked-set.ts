@@ -7,10 +7,8 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 
-import {
-  type NodeConfigDep,
-  seedPhraseAddress,
-} from "./config.node-config-dep.js";
+import type { NodeConfigDep } from "./config.js";
+import { seedPhraseAddress } from "./config.operational-wallets.js";
 
 const addressBytes = (bech32: string): Buffer =>
   Buffer.from(getAddressDetails(bech32).address.hex, "hex");

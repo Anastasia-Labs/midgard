@@ -20,8 +20,8 @@ import { Context, Effect, Layer, type Scope } from "effect";
 
 import type { L1Access } from "../l1-access.js";
 import { hasCauseCode } from "../provider-retry.js";
+import type { NodeConfigDep } from "./config.js";
 import { ConfigError } from "./config.js";
-import type { NodeConfigDep } from "./config.node-config-dep.js";
 import {
   NODE_L1_ACCESS_UNCONFIGURED,
   openNodeLedgerAccessFromConfig,

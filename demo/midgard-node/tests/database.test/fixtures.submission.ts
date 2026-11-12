@@ -32,8 +32,8 @@ import {
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import { MempoolDB, TxAdmissionsDB } from "../../src/database/index.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
+import type { NodeConfigDep } from "../../src/services/config.js";
 import { NodeConfig } from "../../src/services/config.js";
-import type { NodeConfigDep } from "../../src/services/config.node-config-dep.js";
 import { BatchSql } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";

@@ -44,7 +44,7 @@ import {
   type L1ViewPoint,
   openL1Access,
 } from "../l1-access.js";
-import { type NodeConfigDep } from "./config.node-config-dep.js";
+import { type NodeConfigDep } from "./config.js";
 import type { NodeIndexSpec } from "./l1-follower.index-spec.js";
 import {
   L1LedgerBehindError,

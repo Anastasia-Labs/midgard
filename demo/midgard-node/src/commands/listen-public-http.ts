@@ -16,10 +16,8 @@ import {
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
-import {
-  type NodeConfigDep,
-  seedPhraseAddress,
-} from "../services/config.node-config-dep.js";
+import type { NodeConfigDep } from "../services/config.js";
+import { seedPhraseAddress } from "../services/config.operational-wallets.js";
 import {
   failHttpConfig as fail,
   type HttpListenerTransport,

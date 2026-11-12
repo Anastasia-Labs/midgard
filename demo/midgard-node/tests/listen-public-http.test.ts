@@ -37,11 +37,8 @@ import {
   createPublicLogRedactor,
   redactPublicLogger,
 } from "../src/commands/listen-public-logging.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  type NodeConfigDep,
-  seedPhraseAddress,
-} from "../src/services/config.node-config-dep.js";
+import { NodeConfig, type NodeConfigDep } from "../src/services/config.js";
+import { seedPhraseAddress } from "../src/services/config.operational-wallets.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
 import { ValidationWorkerError } from "../src/services/validation-pool.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";

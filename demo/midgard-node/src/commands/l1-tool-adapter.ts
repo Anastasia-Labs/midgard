@@ -7,7 +7,7 @@
  */
 import { Layer } from "effect";
 
-import type { NodeConfigDep } from "../services/config.node-config-dep.js";
+import type { NodeConfigDep } from "../services/config.js";
 import { nodeSeededAddresses } from "../services/intent-journal.tracked-set.js";
 import {
   L1Adapter,

@@ -33,10 +33,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 
-import {
-  type NodeConfigDep,
-  seedPhraseAddress,
-} from "../services/config.node-config-dep.js";
+import type { NodeConfigDep } from "../services/config.js";
+import { seedPhraseAddress } from "../services/config.operational-wallets.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import { defensePocketAddress } from "../services/intent-journal.tracked-set.js";
 import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";

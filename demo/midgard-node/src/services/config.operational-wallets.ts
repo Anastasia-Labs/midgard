@@ -13,11 +13,69 @@
  * (the default, for reclaimable test deployments) or a non-spendable address
  * (production), but never the operator, merge or settlement wallet.
  */
-import type { Network } from "@lucid-evolution/lucid";
-import { paymentCredentialOf } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { createHash } from "node:crypto";
 
-import { seedPhraseAddress } from "./config.node-config-dep.js";
+import type { Network } from "@lucid-evolution/lucid";
+import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
+import { Config } from "effect";
+
+/**
+ * Wallet derivation runs bip39 PBKDF2 in wasm, tens of milliseconds a call,
+ * and every NodeConfig load derives up to four wallets. Hosts that rebuild
+ * the config layer per effect (commands, tests) paid that on every run. The
+ * derived address is a pure function of (network, phrase), so it is memoized
+ * under a SHA-256 of that pair: the cache holds no seed material, only public
+ * addresses. A failed derivation is not cached and throws again every load.
+ */
+const seedAddresses = new Map<string, string>();
+const SEED_ADDRESS_CACHE_LIMIT = 64;
+
+export const seedPhraseAddress = (
+  seedPhrase: string,
+  network: Network,
+): string => {
+  const key = createHash("sha256")
+    .update(network)
+    .update("\0")
+    .update(seedPhrase)
+    .digest("hex");
+  const cached = seedAddresses.get(key);
+  if (cached !== undefined) return cached;
+  const { address } = walletFromSeed(seedPhrase, { network });
+  if (seedAddresses.size >= SEED_ADDRESS_CACHE_LIMIT) seedAddresses.clear();
+  seedAddresses.set(key, address);
+  return address;
+};
+
+const validateSeedPhrase = (name: string, value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(
+      `${name} is required: set a wallet seed phrase in .env (see the "Required settings" block at the top of .env.example).`,
+    );
+  }
+  try {
+    // Address prefix depends on the network, mnemonic validity does not, so a
+    // fixed network is enough to reject a malformed phrase at config load.
+    seedPhraseAddress(trimmed, "Preprod");
+  } catch (cause) {
+    throw new Error(
+      `${name} is not a valid wallet seed phrase: ${String(cause)}`,
+    );
+  }
+  return trimmed;
+};
+
+/**
+ * Reads a wallet seed phrase that the node cannot start without. Fails config
+ * load with the variable named and the fix stated, instead of letting the
+ * wallet derivation surface a bare bip39 "invalid mnemonic" defect for an
+ * empty `.env` value.
+ */
+export const requiredSeedPhrase = (name: string) =>
+  Config.string(name).pipe(
+    Config.mapAttempt((value) => validateSeedPhrase(name, value)),
+  );
 
 /** The seed settings of the node's wallet roles. */
 export type OperationalWalletSeeds = Readonly<{
@@ -109,20 +167,3 @@ export const assertDistinctOperationalWallets = (input: {
       `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS is the ${deployWallet.setting} wallet; set it to the reference-script wallet or to a non-spendable address`,
     );
 };
-
-/** `assertDistinctOperationalWallets` as a config-load step. */
-export const refuseSharedOperationalWallets = (
-  input: OperationalWalletSeeds & {
-    readonly L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
-    readonly NETWORK: Network;
-  },
-): Effect.Effect<void, Error> =>
-  Effect.try({
-    try: () =>
-      assertDistinctOperationalWallets({
-        seeds: input,
-        referenceScriptDeployAddress: input.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
-        network: input.NETWORK,
-      }),
-    catch: (cause) => cause as Error,
-  });

@@ -10,8 +10,8 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { Effect, Option } from "effect";
 
 import { PEER_MAX_BODY_BYTES } from "../l2-peer/protocol.js";
+import type { NodeConfigDep } from "../services/config.js";
 import { NodeConfig } from "../services/config.js";
-import type { NodeConfigDep } from "../services/config.node-config-dep.js";
 import { isTrustedHttpProxy } from "../services/http-address.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,

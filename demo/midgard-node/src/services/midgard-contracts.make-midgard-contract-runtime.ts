@@ -18,8 +18,8 @@ import {
   loadDeploymentRunState,
 } from "../e2e/run-state.js";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
+import type { NodeConfigDep } from "./config.js";
 import { ConfigError, NodeConfig } from "./config.js";
-import type { NodeConfigDep } from "./config.node-config-dep.js";
 import {
   asStartupConfigError,
   FollowerL1ChainParametersLive,

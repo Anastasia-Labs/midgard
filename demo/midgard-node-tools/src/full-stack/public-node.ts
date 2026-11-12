@@ -19,7 +19,7 @@ import {
   type PublicHttpProfile,
   readMountedHttpFile,
 } from "midgard-node/commands/listen-public-http";
-import { resolveValidationWorkerPoolSize } from "midgard-node/services/config.node-config-dep";
+import { resolveValidationWorkerPoolSize } from "midgard-node/services/config.validation";
 
 import { SIGNED_RELEASE_FILES } from "../sign-deployment-release.js";
 import type { StackConfig } from "./config.js";

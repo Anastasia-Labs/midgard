@@ -745,11 +745,6 @@
     "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
   },
   {
-    "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1041,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment."
-  },
-  {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
     "max": 626,
     "reason": "Restores protocol contracts, the catalogue policy and fault-proof chains in one Effect sequence with shared contract/hash state. Member restoration derives from SDK recipes; further extraction of the remaining sequence needs separately verified behavior preservation."

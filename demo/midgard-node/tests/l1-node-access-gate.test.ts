@@ -75,7 +75,7 @@ describe("the node's L1 access gate", () => {
     const files = sourceFiles(PACKAGE_ROOT);
     expect(files).toContain("src/services/lucid.ts");
     expect(files).toContain("src/services/l1-provider.ts");
-    expect(files).toContain("src/services/config.node-config-dep.ts");
+    expect(files).toContain("src/services/config.l1.ts");
     expect(files).toContain("scripts/capture-node-slot-config.mjs");
     expect(files).not.toContain("src/l1-external/kupmios-access.ts");
   });

@@ -13,7 +13,7 @@
 import { Effect, Layer } from "effect";
 
 import type { ConfigError } from "./config.js";
-import type { NodeConfigDep } from "./config.node-config-dep.js";
+import type { NodeConfigDep } from "./config.js";
 import {
   L1_INDEX_UNCONFIGURED,
   L1Adapter,
