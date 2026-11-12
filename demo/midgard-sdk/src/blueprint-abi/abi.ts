@@ -70,6 +70,15 @@ export type BlueprintAbi = {
 const DEFINITIONS_POINTER = "#/definitions/";
 
 /**
+ * Aiken's `Data` and every opaque alias of it (`cardano/transaction/Redeemer`)
+ * carry this description and no shape: any Plutus Data inhabits them.
+ */
+export const isOpaqueData = (schema: BlueprintSchema): boolean =>
+  schema.dataType === undefined &&
+  schema.anyOf === undefined &&
+  schema.description === "Any Plutus data.";
+
+/**
  * Decodes a `#/definitions/<name>` pointer (RFC 6901 escaping) to the
  * definition name. Any other `$ref` form is refused.
  */

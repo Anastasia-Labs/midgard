@@ -1,15 +1,14 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
-import { ValidationTraceProof } from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { parseExactAikenDataCbor } from "../src/aiken-blueprint-data.js";
+import { parseExactAikenDataCbor } from "../src/blueprint-abi/index.js";
+import { ValidationTraceProof } from "../src/index.js";
 
 const blueprint = JSON.parse(
   readFileSync(
-    resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+    new URL("../../../onchain/aiken/plutus.json", import.meta.url),
     "utf8",
   ),
 ) as unknown;
@@ -72,5 +71,15 @@ describe("exact Aiken blueprint data validation", () => {
         maxBytes: 1,
       }),
     ).toThrow(/exceeding 1/);
+    expect(() =>
+      parseExactAikenDataCbor({
+        blueprint,
+        definitionName: "midgard/validation_trace_v1/Absent",
+        cbor: valid,
+        maxBytes: 1_024,
+      }),
+    ).toThrow(
+      'Blueprint is missing definition "midgard/validation_trace_v1/Absent"',
+    );
   });
 });

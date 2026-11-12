@@ -78,38 +78,6 @@ export const assertPinnedAuxiliaryEnvelope = (cbor: Buffer): void => {
   }
 };
 
-/**
- * The exact redeemer definition each semantic-resolver validator declares:
- * most modules declare their own `SpendRedeemer`, but the yield-dispatching
- * item resolvers share a lib-level redeemer type (e.g.
- * `phase_a_native_scripts_item_semantic_v1` declares
- * `midgard/fraud_proofs/validation_trace/phase_a_native_item_yield_v1/SpendRedeemer`),
- * so the name is read from the validator's own blueprint entry rather than
- * assumed from the module name.
- */
-export const spendRedeemerDefinitionName = (moduleName: string): string => {
-  const { validators } = validationDisputeBlueprint as {
-    readonly validators: readonly {
-      readonly title: string;
-      readonly redeemer?: { readonly schema?: { readonly $ref?: string } };
-    }[];
-  };
-  const title = `fraud_proofs/validation_trace/${moduleName}.main.spend`;
-  const reference = validators.find((validator) => validator.title === title)
-    ?.redeemer?.schema?.$ref;
-  if (reference === undefined || !reference.startsWith("#/definitions/")) {
-    throw new Error(
-      `validator ${title} declares no referenced spend redeemer definition`,
-    );
-  }
-  return reference
-    .slice("#/definitions/".length)
-    .split("~1")
-    .join("/")
-    .split("~0")
-    .join("~");
-};
-
 export const semanticResolverDefinitions = [
   "canonical_decode_empty_semantic_v1",
   "canonical_decode_item_semantic_v1",

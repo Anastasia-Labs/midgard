@@ -1,8 +1,20 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { parseBlueprintAbi } from "@al-ft/midgard-sdk/blueprint-abi";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { blueprintConstructor } from "./support/blueprint-abi.js";
+import {
+  readBlueprint,
+  realBlueprintPath,
+} from "./support/emulator/blueprints.js";
+
+/**
+ * The compiled Aiken blueprint's ABI. A test that asserts an SDK encoding
+ * against its constructor indices and field orders checks two independent
+ * implementations against each other; every lookup throws rather than
+ * skipping an assertion.
+ */
+export const blueprintAbi = parseBlueprintAbi(readBlueprint(realBlueprintPath));
 
 const TRANSITION_FAULT_DEF =
   "midgard/fraud_proofs/transition_trace/proof/TransitionFault";
@@ -52,7 +64,7 @@ export const constructorRendering = (
   definitionKey: string,
   constructorTitle: string,
 ): string =>
-  `C${blueprintConstructor(definitionKey, constructorTitle).index.toString()}()`;
+  `C${blueprintAbi.ref(definitionKey).constructorTitled(constructorTitle).index.toString()}()`;
 
 const H32_A =
   "1111111111111111111111111111111111111111111111111111111111111111";
@@ -230,8 +242,12 @@ export const expectArmMatchesBlueprint = ({
     readonly domainConstructorTitle: string;
   };
 }): void => {
-  const outer = blueprintConstructor(TRANSITION_FAULT_DEF, outerTitle);
-  const witness = blueprintConstructor(witnessDefinition, witnessTitle);
+  const outer = blueprintAbi
+    .ref(TRANSITION_FAULT_DEF)
+    .constructorTitled(outerTitle);
+  const witness = blueprintAbi
+    .ref(witnessDefinition)
+    .constructorTitled(witnessTitle);
   const encoded = encodedFault(fault);
 
   expect(
@@ -262,14 +278,12 @@ export const expectArmMatchesBlueprint = ({
   // index, arity and `domain` leaf all come from the compiled ABI.
   const proofPosition = witness.fieldTitles.length - 1;
   const proofValue = encoded.witnessFields[proofPosition];
-  const declaredProof = blueprintConstructor(
-    proof.definitionKey,
-    proof.constructorTitle,
-  );
-  const declaredDomain = blueprintConstructor(
-    ROOT_DOMAIN_DEF,
-    proof.domainConstructorTitle,
-  );
+  const declaredProof = blueprintAbi
+    .ref(proof.definitionKey)
+    .constructorTitled(proof.constructorTitle);
+  const declaredDomain = blueprintAbi
+    .ref(ROOT_DOMAIN_DEF)
+    .constructorTitled(proof.domainConstructorTitle);
   expect(declaredProof.fieldTitles).toEqual(proof.expectedFieldTitles);
   if (!(proofValue instanceof Constr)) {
     throw new Error(

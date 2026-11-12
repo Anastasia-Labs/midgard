@@ -2,6 +2,7 @@ import {
   blueprintDefinitionName,
   type BlueprintRef,
   type BlueprintSchema,
+  isOpaqueData,
 } from "./abi.js";
 
 /** One place a TypeScript schema does not refine its blueprint definition. */
@@ -34,13 +35,6 @@ const snake = (title: string): string =>
     .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1_$2")
     .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
     .toLowerCase();
-
-// Aiken's `Data` and every opaque alias of it (`cardano/transaction/Redeemer`)
-// carry this description and nothing else to compare.
-const isOpaqueData = (schema: BlueprintSchema): boolean =>
-  schema.dataType === undefined &&
-  schema.anyOf === undefined &&
-  schema.description === "Any Plutus data.";
 
 const tsKind = (schema: TsSchema): string => {
   if (schema.$ref !== undefined) {

@@ -23,7 +23,6 @@
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "./support/blueprint-abi.js";
 import "./structural-na-event-window-variants.expect-arm-matches-blueprint.js";
 import "./structural-na-event-window-variants.omitted-withdrawal-fault.js";
 
@@ -33,6 +32,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ASSET_NAME,
+  blueprintAbi,
   constructorRendering,
   encodedFault,
   EVENT_KEY_DEF,
@@ -56,7 +56,6 @@ import {
   outOfWindowForcedFault,
   outOfWindowWithdrawalFault,
 } from "./structural-na-event-window-variants.omitted-withdrawal-fault.js";
-import { blueprintConstructor } from "./support/blueprint-abi.js";
 
 describe("Q47 omitted / out-of-window event-window variants", () => {
   it("encodes the omitted-due deposit variant exactly as the Aiken constructor", () => {
@@ -217,10 +216,9 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       }
       return proof.fields;
     };
-    const declared = blueprintConstructor(
-      nonMembershipProofDef("WithdrawalId"),
-      "RootNonMembershipProof",
-    );
+    const declared = blueprintAbi
+      .ref(nonMembershipProofDef("WithdrawalId"))
+      .constructorTitled("RootNonMembershipProof");
     expect(declared.fieldTitles).toEqual(NON_MEMBERSHIP_FIELDS);
 
     const correct = proofFields(omittedWithdrawalFault());
@@ -243,10 +241,9 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       }
       return proof.fields;
     };
-    const declared = blueprintConstructor(
-      nonMembershipProofDef("WithdrawalId"),
-      "RootNonMembershipProof",
-    );
+    const declared = blueprintAbi
+      .ref(nonMembershipProofDef("WithdrawalId"))
+      .constructorTitled("RootNonMembershipProof");
     const correct = proofFields(omittedWithdrawalFault());
     const wrongId = proofFields(omittedWithdrawalFault({ key: outRef(7n) }));
     const differing = declared.fieldTitles.filter(
@@ -275,7 +272,7 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       const decoded = Data.from(encodedKeys[position]);
       expect(
         renderData(decoded).startsWith(
-          `C${blueprintConstructor(EVENT_KEY_DEF, title).index.toString()}(`,
+          `C${blueprintAbi.ref(EVENT_KEY_DEF).constructorTitled(title).index.toString()}(`,
         ),
         `${title} constructor index`,
       ).toBe(true);

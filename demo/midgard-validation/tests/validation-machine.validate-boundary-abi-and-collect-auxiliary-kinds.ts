@@ -8,7 +8,7 @@ import {
   MIDGARD_VALIDATION_DISPUTE_VERSION,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
+import { parseExactAikenDataCbor } from "@al-ft/midgard-sdk/blueprint-abi";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {

@@ -3,7 +3,8 @@
  * subpath is self-contained. Its static import graph, followed from the source
  * file its export declares, stays inside `src/blueprint-abi/` and names no
  * package outside `ALLOWED_PACKAGES`, so a consumer of the reader never loads
- * the SDK root or its transaction builders.
+ * the SDK root or its transaction builders. The two packages are the Plutus
+ * Data decoders `parseExactAikenDataCbor` runs.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
@@ -15,7 +16,10 @@ import { describe, expect, it } from "vitest";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const subpathRoot = resolve(packageRoot, "src/blueprint-abi");
 
-const ALLOWED_PACKAGES: readonly string[] = [];
+const ALLOWED_PACKAGES: readonly string[] = [
+  "@al-ft/midgard-core/plutus-data-cbor",
+  "@lucid-evolution/lucid",
+];
 
 const declaredEntry = (): string => {
   const manifest = JSON.parse(

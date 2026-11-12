@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
+import { parseBlueprintAbi } from "@al-ft/midgard-sdk/blueprint-abi";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -12,23 +13,6 @@ import {
   limitConstants,
   timingConstants,
 } from "../../scripts/deployment-profile-aiken.mjs";
-
-type BlueprintConstructor = {
-  readonly title: string;
-  readonly index: number;
-  readonly fields?: readonly {
-    readonly title?: string;
-    readonly $ref?: string;
-  }[];
-};
-
-type BlueprintDefinition = {
-  readonly anyOf?: readonly BlueprintConstructor[];
-};
-
-type Blueprint = {
-  readonly definitions: Record<string, BlueprintDefinition>;
-};
 
 type GoldenAbiFixture = {
   readonly schema: string;
@@ -56,41 +40,14 @@ const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   path.join(repoRoot, "onchain/aiken/plutus.json");
 
-const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
+/** The compiled Aiken blueprint's ABI; every lookup throws when absent. */
+export const blueprintAbi = parseBlueprintAbi(
+  JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
+);
 
 export const transitionTraceAbiGolden = JSON.parse(
   readFileSync(transitionTraceAbiGoldenPath, "utf8"),
 ) as GoldenAbiFixtureFile;
-
-const definition = (name: string): BlueprintDefinition => {
-  const found = blueprint.definitions[name];
-  expect(found, `missing blueprint definition ${name}`).toBeDefined();
-  return found;
-};
-
-export const constructor = (
-  definitionName: string,
-  constructorName: string,
-): BlueprintConstructor => {
-  const found = definition(definitionName).anyOf?.find(
-    (candidate) => candidate.title === constructorName,
-  );
-  expect(
-    found,
-    `missing ${constructorName} constructor in ${definitionName}`,
-  ).toBeDefined();
-  return found!;
-};
-
-export const constructors = (
-  definitionName: string,
-): readonly BlueprintConstructor[] =>
-  [...(definition(definitionName).anyOf ?? [])].sort(
-    (left, right) => left.index - right.index,
-  );
-
-export const fields = (ctor: BlueprintConstructor): readonly string[] =>
-  (ctor.fields ?? []).map((field) => field.title ?? "");
 
 // The value the generator compiles into the selected profile's Aiken env
 // constant `name`. deployment-profiles.mjs renders every env from the profile

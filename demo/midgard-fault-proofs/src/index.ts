@@ -1,4 +1,3 @@
-export * from "./aiken-blueprint-data.js";
 export * from "./block-replay.faults.js";
 export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";

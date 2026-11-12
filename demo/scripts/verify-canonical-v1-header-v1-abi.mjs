@@ -16,6 +16,21 @@ const defaultSdkModulePath = resolve(
   "demo/midgard-sdk/dist/index.js",
 );
 
+// The blueprint is read through the SDK's one blueprint ABI reader, from the
+// same build the gate checks `HeaderSchema` against; it is never redirected.
+const blueprintAbiModulePath = resolve(
+  repoRoot,
+  "demo/midgard-sdk/dist/blueprint-abi/index.js",
+);
+if (!existsSync(blueprintAbiModulePath)) {
+  throw new Error(
+    `SDK blueprint ABI reader does not exist: ${blueprintAbiModulePath}; build @al-ft/midgard-sdk first`,
+  );
+}
+const { blueprintDefinitionName, parseBlueprintAbi } = await import(
+  pathToFileURL(blueprintAbiModulePath).href
+);
+
 // Redirection hooks for the behavioral self-test. Each names ONE input; the
 // self-test seeds a mismatch into exactly one of them and leaves the other two
 // real, so a run that passed only because two synthesized projections agreed
@@ -207,31 +222,16 @@ export const assertHeaderV1AbiContract = (value) => {
   };
 };
 
-const decodeJsonPointerReference = (reference) => {
-  const prefix = "#/definitions/";
-  if (typeof reference !== "string" || !reference.startsWith(prefix)) {
-    throw new Error(`unsupported blueprint reference ${String(reference)}`);
-  }
-  return reference
-    .slice(prefix.length)
-    .replaceAll("~1", "/")
-    .replaceAll("~0", "~");
-};
-
-const blueprintSchemaKind = (schema, definitions, resolving = new Set()) => {
+const blueprintSchemaKind = (abi, schema, resolving = new Set()) => {
   const value = requireRecord(schema, "blueprint schema");
   if (value.$ref !== undefined) {
-    const name = decodeJsonPointerReference(value.$ref);
+    const name = blueprintDefinitionName(value.$ref);
     if (resolving.has(name)) {
       throw new Error(`recursive blueprint reference ${name}`);
     }
-    const definition = definitions[name];
-    if (definition === undefined) {
-      throw new Error(`missing blueprint definition ${name}`);
-    }
     return blueprintSchemaKind(
-      definition,
-      definitions,
+      abi,
+      abi.ref(name).schema,
       new Set([...resolving, name]),
     );
   }
@@ -248,12 +248,8 @@ const blueprintSchemaKind = (schema, definitions, resolving = new Set()) => {
 
 /** Extract Header's constructor shape from the generated Aiken blueprint. */
 export const extractHeaderV1Blueprint = (blueprint) => {
-  const value = requireRecord(blueprint, "blueprint");
-  const definitions = requireRecord(value.definitions, "blueprint.definitions");
-  const definition = requireRecord(
-    definitions["midgard/ledger_state/HeaderV1"],
-    "blueprint Header definition",
-  );
+  const abi = parseBlueprintAbi(blueprint);
+  const definition = abi.ref("midgard/ledger_state/HeaderV1").schema;
   const variants = requireArray(definition.anyOf, "blueprint Header variants");
   const constructor = variants.find((candidate) => candidate?.index === 0);
   if (constructor === undefined) {
@@ -276,10 +272,8 @@ export const extractHeaderV1Blueprint = (blueprint) => {
           `blueprint Header field ${index.toString()}.title`,
         ),
         aikenRef:
-          entry.$ref === undefined
-            ? null
-            : decodeJsonPointerReference(entry.$ref),
-        type: blueprintSchemaKind(entry, definitions),
+          entry.$ref === undefined ? null : blueprintDefinitionName(entry.$ref),
+        type: blueprintSchemaKind(abi, entry),
       };
     }),
   };

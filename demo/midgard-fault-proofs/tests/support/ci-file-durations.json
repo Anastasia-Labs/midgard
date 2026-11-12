@@ -6,7 +6,6 @@
   },
   "defaultSeconds": 4.7,
   "files": {
-    "tests/aiken-blueprint-data.test.ts": 1.1,
     "tests/authenticated-replay-artifact.test.ts": 1.5,
     "tests/bin.test.ts": 1.4,
     "tests/bin.verifier-unavailable.test.ts": 2.3,

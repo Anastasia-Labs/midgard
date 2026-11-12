@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { constructors, fields } from "./sdk-abi-fixtures.header-fixture.js";
+import { blueprintAbi } from "./sdk-abi-fixtures.header-fixture.js";
 
 type SchemaArm = {
   readonly title: string;
@@ -21,13 +21,16 @@ const sdkArms = (
 
 describe("source-membership witness ABI", () => {
   it("encodes exactly the arms the on-chain witness accepts, in order", () => {
-    const onChainArms = constructors(
-      "midgard/fraud_proofs/transition_trace/proof/SourceMembershipMismatchWitness",
-    ).map((ctor) => ({
-      index: ctor.index,
-      title: ctor.title,
-      fields: [...fields(ctor)],
-    }));
+    const onChainArms = blueprintAbi
+      .ref(
+        "midgard/fraud_proofs/transition_trace/proof/SourceMembershipMismatchWitness",
+      )
+      .constructors()
+      .map(({ index, title, fieldTitles }) => ({
+        index,
+        title,
+        fields: [...fieldTitles],
+      }));
     expect(sdkArms).toEqual(onChainArms);
   });
 });

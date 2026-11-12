@@ -22,12 +22,11 @@ import { buildTransitionTraceAbiFixtures } from "./sdk-abi-fixtures.build-transi
 import {
   address,
   aikenEnvConst,
-  constructor,
+  blueprintAbi,
   encodedFixture,
   eventKeys,
   expectGoldenFixture,
   expectRoundTrip,
-  fields,
   forcedInclusionTxFixture,
   type GoldenAbiFixtureFile,
   h28,
@@ -70,21 +69,24 @@ describe("SDK canonical ABI fixtures", () => {
 
   it("tracks canonical Aiken datum and redeemer field names", () => {
     expect(
-      fields(constructor("midgard/scheduler/SchedDatum", "ActiveOperator")),
+      blueprintAbi
+        .ref("midgard/scheduler/SchedDatum")
+        .constructorTitled("ActiveOperator").fieldTitles,
     ).toEqual(["operator", "start_time"]);
     expect(
-      constructor("midgard/scheduler/SchedDatum", "NoActiveOperators").index,
+      blueprintAbi
+        .ref("midgard/scheduler/SchedDatum")
+        .constructorTitled("NoActiveOperators").index,
     ).toBe(0);
     expect(
-      fields(constructor("midgard/ledger_state/DepositInfo", "DepositInfo")),
+      blueprintAbi
+        .ref("midgard/ledger_state/DepositInfo")
+        .constructorTitled("DepositInfo").fieldTitles,
     ).toEqual(["l2_address", "l2_network_id", "l2_datum"]);
     expect(
-      fields(
-        constructor(
-          "midgard/state_queue/MintRedeemer",
-          "MergeToConfirmedStateV1",
-        ),
-      ),
+      blueprintAbi
+        .ref("midgard/state_queue/MintRedeemer")
+        .constructorTitled("MergeToConfirmedStateV1").fieldTitles,
     ).toEqual([
       "yield_to_ref_input_index",
       "header_node_key",
@@ -107,14 +109,19 @@ describe("SDK canonical ABI fixtures", () => {
       "merged_block_validation_trace_count",
     ]);
     expect(
-      fields(constructor("midgard/settlement/MintRedeemer", "Spawn")),
+      blueprintAbi
+        .ref("midgard/settlement/MintRedeemer")
+        .constructorTitled("Spawn").fieldTitles,
     ).toEqual([
       "settlement_id",
       "output_index",
       "state_queue_merge_redeemer_index",
       "hub_ref_input_index",
     ]);
-    expect(fields(constructor("midgard/settlement/Datum", "Datum"))).toEqual([
+    expect(
+      blueprintAbi.ref("midgard/settlement/Datum").constructorTitled("Datum")
+        .fieldTitles,
+    ).toEqual([
       "deposits_root",
       "withdrawals_root",
       "forced_transactions_root",
@@ -122,36 +129,28 @@ describe("SDK canonical ABI fixtures", () => {
       "resolution_claim",
     ]);
     expect(
-      fields(
-        constructor(
-          "midgard/fraud_proofs/transition_trace/proof/TransitionFaultProof",
-          "TransitionFaultProof",
-        ),
-      ),
+      blueprintAbi
+        .ref("midgard/fraud_proofs/transition_trace/proof/TransitionFaultProof")
+        .constructorTitled("TransitionFaultProof").fieldTitles,
     ).toEqual(["challenged_header_hash", "header", "fault"]);
     expect(
-      fields(
-        constructor(
-          "midgard/fraud_proofs/transition_trace/proof/TransitionFault",
-          "TraceBoundaryFault",
-        ),
-      ),
+      blueprintAbi
+        .ref("midgard/fraud_proofs/transition_trace/proof/TransitionFault")
+        .constructorTitled("TraceBoundaryFault").fieldTitles,
     ).toEqual(["side", "trace_proof"]);
     expect(
-      fields(
-        constructor(
+      blueprintAbi
+        .ref(
           "midgard/fraud_proofs/transition_trace/proof/SourceMembershipMismatchWitness",
-          "MappedEventMissingFromSource",
-        ),
-      ),
+        )
+        .constructorTitled("MappedEventMissingFromSource").fieldTitles,
     ).toEqual(["trace_proof", "event_to_step", "source_non_membership"]);
     expect(
-      fields(
-        constructor(
+      blueprintAbi
+        .ref(
           "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
-          "ValidDepositTransition",
-        ),
-      ),
+        )
+        .constructorTitled("ValidDepositTransition").fieldTitles,
     ).toEqual([
       "trace_proof",
       "event_to_step",
@@ -159,12 +158,11 @@ describe("SDK canonical ABI fixtures", () => {
       "projected_utxo",
     ]);
     expect(
-      fields(
-        constructor(
+      blueprintAbi
+        .ref(
           "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
-          "ValidForcedTransactionTransition",
-        ),
-      ),
+        )
+        .constructorTitled("ValidForcedTransactionTransition").fieldTitles,
     ).toEqual(["trace_proof", "event_to_step", "source_membership"]);
     for (const [definition, variant, sourceField] of [
       [
@@ -189,26 +187,20 @@ describe("SDK canonical ABI fixtures", () => {
       ],
     ] as const) {
       expect(
-        fields(
-          constructor(
-            `midgard/fraud_proofs/transition_trace/proof/${definition}`,
-            variant,
-          ),
-        ),
+        blueprintAbi
+          .ref(`midgard/fraud_proofs/transition_trace/proof/${definition}`)
+          .constructorTitled(variant).fieldTitles,
       ).toEqual([sourceField]);
     }
     expect(
-      fields(
-        constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
-      ),
+      blueprintAbi
+        .ref("fraud_proofs/transition_trace/route_v1/Args")
+        .constructorTitled("Args").fieldTitles,
     ).toEqual(["input_index", "output_index", "proof", "proof_ref_indices"]);
     expect(
-      fields(
-        constructor(
-          "midgard/fraud_proofs/transition_trace/final_v1/Args",
-          "Args",
-        ),
-      ),
+      blueprintAbi
+        .ref("midgard/fraud_proofs/transition_trace/final_v1/Args")
+        .constructorTitled("Args").fieldTitles,
     ).toEqual([
       "input_index",
       "output_index",
@@ -216,14 +208,15 @@ describe("SDK canonical ABI fixtures", () => {
       "fraud_proof_mint_redeemer_index",
     ]);
     expect(
-      constructor(
-        "midgard/ledger_state/WithdrawalValidity",
-        "UnpayableWithdrawalValue",
-      ).index,
+      blueprintAbi
+        .ref("midgard/ledger_state/WithdrawalValidity")
+        .constructorTitled("UnpayableWithdrawalValue").index,
     ).toBe(7);
 
     expect(
-      fields(constructor("midgard/payout/MintRedeemer", "MintPayout")),
+      blueprintAbi
+        .ref("midgard/payout/MintRedeemer")
+        .constructorTitled("MintPayout").fieldTitles,
     ).toEqual([
       "withdrawal_utxo_out_ref",
       "withdrawal_input_index",
@@ -231,16 +224,18 @@ describe("SDK canonical ABI fixtures", () => {
       "hub_ref_input_index",
     ]);
     expect(
-      fields(constructor("midgard/payout/MintRedeemer", "BurnPayout")),
+      blueprintAbi
+        .ref("midgard/payout/MintRedeemer")
+        .constructorTitled("BurnPayout").fieldTitles,
     ).toEqual([
       "payout_input_index",
       "payout_asset_name",
       "payout_spend_redeemer_index",
       "hub_ref_input_index",
     ]);
-    const addFundsFields = fields(
-      constructor("midgard/payout/SpendRedeemer", "AddFunds"),
-    );
+    const addFundsFields = blueprintAbi
+      .ref("midgard/payout/SpendRedeemer")
+      .constructorTitled("AddFunds").fieldTitles;
     expect(addFundsFields).toEqual([
       "payout_input_index",
       "payout_output_index",
@@ -252,9 +247,9 @@ describe("SDK canonical ABI fixtures", () => {
     ]);
     expect(addFundsFields).not.toContain("settlement_ref_input_index");
     expect(addFundsFields).not.toContain("membership_proof");
-    const concludeFields = fields(
-      constructor("midgard/payout/SpendRedeemer", "ConcludeWithdrawal"),
-    );
+    const concludeFields = blueprintAbi
+      .ref("midgard/payout/SpendRedeemer")
+      .constructorTitled("ConcludeWithdrawal").fieldTitles;
     expect(concludeFields).toEqual([
       "payout_input_index",
       "l1_output_index",
@@ -264,7 +259,9 @@ describe("SDK canonical ABI fixtures", () => {
     expect(concludeFields).not.toContain("settlement_ref_input_index");
     expect(concludeFields).not.toContain("membership_proof");
     expect(
-      fields(constructor("midgard/reserve/SpendRedeemer", "Spend")),
+      blueprintAbi
+        .ref("midgard/reserve/SpendRedeemer")
+        .constructorTitled("Spend").fieldTitles,
     ).toEqual([
       "reserve_input_index",
       "payout_input_index",

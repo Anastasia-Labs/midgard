@@ -46,7 +46,7 @@ const makeBlueprint = (source = contract) => {
       dataType: field.type.startsWith("bytes") ? "bytes" : "integer",
     };
   }
-  return { definitions };
+  return { validators: [], definitions };
 };
 
 const makeSdkSchema = (source = contract) => ({

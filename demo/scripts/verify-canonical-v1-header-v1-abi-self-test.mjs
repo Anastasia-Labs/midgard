@@ -182,7 +182,7 @@ mustReject(
 
 mustReject(
   "the blueprint no longer defines Header at all",
-  /blueprint Header definition must be an object/u,
+  /Blueprint is missing definition "midgard\/ledger_state\/HeaderV1"/u,
   () =>
     seedBlueprint((_definition, definitions) => {
       delete definitions[HEADER_DEFINITION];
