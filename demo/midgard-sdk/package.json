@@ -11,6 +11,12 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./blueprint-abi": {
+      "midgard-source": "./src/blueprint-abi/index.ts",
+      "types": "./dist/blueprint-abi/index.d.ts",
+      "import": "./dist/blueprint-abi/index.js",
+      "require": "./dist/blueprint-abi/index.cjs"
+    },
     "./test-support/user-history": {
       "midgard-source": "./tests/support/user-history.ts",
       "types": "./tests/support/user-history.ts"
@@ -26,6 +32,16 @@
         "require": {
           "types": "./dist/index.d.cts",
           "default": "./dist/index.cjs"
+        }
+      },
+      "./blueprint-abi": {
+        "import": {
+          "types": "./dist/blueprint-abi/index.d.ts",
+          "default": "./dist/blueprint-abi/index.js"
+        },
+        "require": {
+          "types": "./dist/blueprint-abi/index.d.cts",
+          "default": "./dist/blueprint-abi/index.cjs"
         }
       }
     }
@@ -113,6 +129,7 @@
           "command": [
             "tsup",
             "src/index.ts",
+            "src/blueprint-abi/index.ts",
             "--minify",
             "--format",
             "esm,cjs",

@@ -1,6 +1,11 @@
 import { Data, fromHex, toHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
+import {
+  blueprintDefinitionName,
+  parseBlueprintAbi,
+} from "../../blueprint-abi/index.js";
+
 /**
  * One entry of a blueprint validator's `parameters[]`: the compiler's own
  * record of a `validator main(...)` parameter, in declaration order.
@@ -62,66 +67,25 @@ const parsedBlueprints = new WeakSet<object>();
 export const parseFaultProofBlueprint = (
   value: unknown,
 ): FaultProofBlueprint => {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("Fault proof blueprint must be a JSON object");
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    parsedBlueprints.has(value)
+  ) {
+    return value as FaultProofBlueprint;
   }
-  if (parsedBlueprints.has(value)) return value as FaultProofBlueprint;
-
-  const validators = (value as { readonly validators?: unknown }).validators;
-  if (!Array.isArray(validators)) {
-    throw new Error("Fault proof blueprint must contain validators[]");
-  }
-
   const parsed: FaultProofBlueprint = {
-    validators: validators.map((validator, index) => {
-      if (typeof validator !== "object" || validator === null) {
-        throw new Error(`validators[${index}] must be an object`);
-      }
-      const candidate = validator as {
-        readonly title?: unknown;
-        readonly compiledCode?: unknown;
-        readonly parameters?: unknown;
-      };
-      if (typeof candidate.title !== "string") {
-        throw new Error(`validators[${index}].title must be a string`);
-      }
-      if (typeof candidate.compiledCode !== "string") {
-        throw new Error(`validators[${index}].compiledCode must be a string`);
-      }
-      // A validator that takes no parameters omits the key entirely, so absent
-      // means zero declared — never "unknown, skip the check".
-      const rawParameters = candidate.parameters ?? [];
-      if (!Array.isArray(rawParameters)) {
-        throw new Error(
-          `validators[${index}].parameters must be an array when present`,
-        );
-      }
-      return {
-        title: candidate.title,
-        compiledCode: candidate.compiledCode,
-        parameters: rawParameters.map((parameter, parameterIndex) => {
-          const candidateParameter = parameter as {
-            readonly title?: unknown;
-            readonly schema?: unknown;
-            readonly schemaRef?: unknown;
-          };
-          const parameterTitle = candidateParameter.title;
-          if (typeof parameterTitle !== "string") {
-            throw new Error(
-              `validators[${index}].parameters[${parameterIndex}].title must be a string`,
-            );
-          }
-          const schemaRef =
-            typeof candidateParameter.schema === "object" &&
-            candidateParameter.schema !== null
-              ? (candidateParameter.schema as { readonly $ref?: unknown }).$ref
-              : candidateParameter.schemaRef;
-          return typeof schemaRef === "string"
-            ? { title: parameterTitle, schemaRef }
-            : { title: parameterTitle };
-        }),
-      };
-    }),
+    validators: parseBlueprintAbi(value).validators.map(
+      ({ title, compiledCode, parameters }) => ({
+        title,
+        compiledCode,
+        parameters: parameters.map((parameter) =>
+          parameter.$ref === undefined
+            ? { title: parameter.title }
+            : { title: parameter.title, schemaRef: parameter.$ref },
+        ),
+      }),
+    ),
   };
   parsedBlueprints.add(parsed);
   return parsed;
@@ -172,17 +136,13 @@ export const describeDeclaredParameters = (
  * Blueprint definitions whose values are 28-byte Blake2b-224 hashes. A term
  * applied to such a parameter must be exactly 56 hexadecimal characters.
  */
-const HASH28_DEFINITION_REFS: ReadonlySet<string> = new Set([
-  "#/definitions/aiken~1crypto~1ScriptHash",
-  "#/definitions/cardano~1assets~1PolicyId",
-  "#/definitions/aiken~1crypto~1VerificationKeyHash",
+const HASH28_DEFINITIONS: ReadonlySet<string> = new Set([
+  "aiken/crypto/ScriptHash",
+  "cardano/assets/PolicyId",
+  "aiken/crypto/VerificationKeyHash",
 ]);
 
-const INT_DEFINITION_REF = "#/definitions/Int";
-
-const BYTEARRAY_DEFINITION_REF = "#/definitions/ByteArray";
-
-const LIST_DEFINITION_REF = /^#\/definitions\/List<(?<element>.+)>$/u;
+const LIST_DEFINITION = /^List<(?<element>.+)>$/u;
 
 const HEX28 = /^[0-9a-f]{56}$/u;
 
@@ -205,48 +165,46 @@ const describeShape = (value: Data): string =>
 const assertParameterShape = (
   validatorTitle: string,
   parameterTitle: string,
-  ref: string,
+  definition: string,
   value: Data,
 ): void => {
   const refuse = (expected: string): never => {
     throw new Error(
       `Blueprint validator "${validatorTitle}" parameter "${parameterTitle}" ` +
-        `is declared ${ref.replace("#/definitions/", "").replace(/~1/gu, "/")} ` +
+        `is declared ${definition} ` +
         `and must be ${expected}, but a ${describeShape(value)} was applied. ` +
         "On-chain code trusts deployment parameters; this is the only check.",
     );
   };
-  if (HASH28_DEFINITION_REFS.has(ref)) {
+  if (HASH28_DEFINITIONS.has(definition)) {
     if (typeof value !== "string" || !HEX28.test(value)) {
       refuse("a 28-byte hash as 56 lowercase hexadecimal characters");
     }
     return;
   }
-  if (ref === INT_DEFINITION_REF) {
+  if (definition === "Int") {
     if (typeof value !== "bigint") {
       refuse("an integer");
     }
     return;
   }
-  if (ref === BYTEARRAY_DEFINITION_REF) {
+  if (definition === "ByteArray") {
     if (typeof value !== "string" || !HEX.test(value)) {
       refuse("a bytestring as lowercase hexadecimal characters");
     }
     return;
   }
-  const list = LIST_DEFINITION_REF.exec(ref);
-  const elementDefinition = list?.groups?.["element"];
-  if (elementDefinition !== undefined) {
+  const element = LIST_DEFINITION.exec(definition)?.groups?.["element"];
+  if (element !== undefined) {
     const elements: readonly Data[] = Array.isArray(value)
       ? value
       : refuse("a list");
-    const elementRef = `#/definitions/${elementDefinition}`;
-    elements.forEach((element, index) => {
+    elements.forEach((item, index) => {
       assertParameterShape(
         validatorTitle,
         `${parameterTitle}[${index.toString()}]`,
-        elementRef,
         element,
+        item,
       );
     });
   }
@@ -276,7 +234,7 @@ export const assertParameterShapes = (
       assertParameterShape(
         validator.title,
         parameter.title,
-        parameter.schemaRef,
+        blueprintDefinitionName(parameter.schemaRef),
         value,
       );
     }
