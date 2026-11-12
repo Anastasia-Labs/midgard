@@ -22,12 +22,11 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { selectFeeInput } from "../step-support.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -35,7 +34,6 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
@@ -106,7 +104,6 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
     throw new Error(
       "resolved-output-non-canonical: production predecessor membership object is absent",
     );
-  signer.selectWallet(lucid);
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
@@ -193,12 +190,10 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
       ResolvedOutputStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const unsigned = await membershipCarriage
-    .attach(
-      lucid
-        .newTx()
-        .collectFrom([feeInput])
+  const funding = await fundStep(lucid, { signer });
+  const signed = await completeStep(
+    membershipCarriage.attach(
+      funding.tx
         .collectFrom([threadUtxo], redeemer)
         .readFrom([stepReference, ...membershipCarriage.referenceInputs])
         .withdraw(
@@ -218,15 +213,13 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
             lovelace: threadUtxo.assets.lovelace ?? 0n,
             [threadToken.unit]: 1n,
           },
-        )
-        .addSignerKey(signer.paymentKeyHash),
-    )
-    .complete({ localUPLCEval: true });
+        ),
+    ),
+    funding,
+  );
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-03 layout unresolved");
-  const signed = await unsigned.sign.withWallet().complete();
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "resolved-output-non-canonical-step-03",
@@ -240,11 +233,7 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expected)
-    throw new Error("resolved-output-non-canonical: step-03 hash mismatch");
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
