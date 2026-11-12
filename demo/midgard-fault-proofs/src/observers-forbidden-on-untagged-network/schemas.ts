@@ -2,27 +2,14 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
-  NativeTxInclusionCarriageSchema,
+  ProofThreadSubjectSourceSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ObserversForbiddenStateSchema } from "./family.js";
 
-export const ObserversForbiddenStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const ObserversForbiddenStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const ObserversForbiddenStep01ArgsSchema = Data.Object({
   source: ObserversForbiddenStep01SourceSchema,
 });

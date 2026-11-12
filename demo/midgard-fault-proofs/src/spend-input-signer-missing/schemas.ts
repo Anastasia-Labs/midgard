@@ -2,22 +2,13 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
   MembershipCarriageSchema,
-  NativeTxInclusionCarriageSchema,
-  RejectionReasonSchema,
+  ProofThreadSubjectSourceSchema,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const SpendInputSignerVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const SpendInputSignerVerdictSubjectSchema = VerdictSubjectSchema;
 export const SpendInputSignerBoundSchema = Data.Object({
   subject: SpendInputSignerVerdictSubjectSchema,
   input_index: Data.Integer(),
@@ -39,19 +30,8 @@ export const SpendInputSignerVerdictSchema = Data.Object({
   signer_required: Data.Boolean(),
   signer_missing: Data.Boolean(),
 });
-export const SpendInputSignerStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const SpendInputSignerStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const SpendInputSignerStep01RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({

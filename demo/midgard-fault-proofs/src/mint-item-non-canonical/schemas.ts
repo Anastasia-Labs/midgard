@@ -2,9 +2,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
-  NativeTxInclusionCarriageSchema,
+  ProofThreadSubjectSourceSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -21,19 +19,7 @@ export const MintItemScanControlSchema = Data.Object({
   previous_asset: Data.Nullable(Data.Bytes()),
 });
 
-export const MintItemStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const MintItemStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const MintItemStep01ArgsSchema = Data.Object({
   source: MintItemStep01SourceSchema,
   item_index: Data.Integer(),

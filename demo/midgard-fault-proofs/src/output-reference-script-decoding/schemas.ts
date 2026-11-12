@@ -3,22 +3,13 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
   NativeScriptFrameSchema,
-  NativeTxInclusionCarriageSchema,
-  RejectionReasonSchema,
+  ProofThreadSubjectSourceSchema,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const OutputReferenceVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const OutputReferenceVerdictSubjectSchema = VerdictSubjectSchema;
 export const OutputReferenceBoundOutputSchema = Data.Object({
   subject: OutputReferenceVerdictSubjectSchema,
   output_index: Data.Integer(),
@@ -67,19 +58,7 @@ export const OutputReferenceScanStateSchema = Data.Object({
   checkpoint_hash: Data.Bytes(),
   result_class: Data.Integer(),
 });
-export const OutputReferenceStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const OutputReferenceStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const OutputReferenceStep01RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     source: OutputReferenceStep01SourceSchema,

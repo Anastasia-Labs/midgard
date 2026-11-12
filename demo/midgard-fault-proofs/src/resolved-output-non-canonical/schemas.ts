@@ -3,23 +3,15 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
   MembershipCarriageSchema,
-  NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonSchema,
+  ProofThreadSubjectSourceSchema,
+  StreamFrameSchema,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ResolvedOutputVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const ResolvedOutputVerdictSubjectSchema = VerdictSubjectSchema;
 export const ResolvedOutputBoundInputSchema = Data.Object({
   subject: ResolvedOutputVerdictSubjectSchema,
   source_kind: Data.Integer(),
@@ -66,19 +58,7 @@ export const ResolvedOutputReconstructionSchema = Data.Object({
   descriptor_cbor: Data.Bytes(),
   control: ResolvedOutputScanControlSchema,
 });
-export const ResolvedOutputStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const ResolvedOutputStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const ResolvedOutputStep01ArgsSchema = Data.Object({
   source: ResolvedOutputStep01SourceSchema,
   source_kind: Data.Integer(),
@@ -130,16 +110,7 @@ export const ResolvedOutputStep04ArgsSchema = Data.Object({
 export const ResolvedOutputStep04RedeemerSchema = faultProofStepRedeemerSchema(
   ResolvedOutputStep04ArgsSchema,
 );
-export const ResolvedOutputStreamFrameSchema = Data.Enum([
-  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
-  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
-  Data.Object({
-    ChunksFrame: Data.Object({
-      seen: Data.Integer(),
-      leading: Data.Boolean(),
-    }),
-  }),
-]);
+export const ResolvedOutputStreamFrameSchema = StreamFrameSchema;
 export const ResolvedOutputDatumVerdictStateSchema = Data.Object({
   subject: ResolvedOutputVerdictSubjectSchema,
   item_commitment: Data.Bytes(),

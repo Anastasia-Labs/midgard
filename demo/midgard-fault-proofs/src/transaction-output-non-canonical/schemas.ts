@@ -2,9 +2,8 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
-  HeaderSchema,
-  NativeTxInclusionCarriageSchema,
+  ProofThreadSubjectSourceSchema,
+  StreamFrameSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -43,19 +42,8 @@ export const TransactionOutputScanControlSchema = Data.Object({
   reference_script_length: Data.Integer(),
 });
 
-export const TransactionOutputStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const TransactionOutputStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const TransactionOutputStep01ArgsSchema = Data.Object({
   source: TransactionOutputStep01SourceSchema,
   output_index: Data.Integer(),
@@ -103,16 +91,7 @@ export const TransactionOutputStep04ArgsSchema = Data.Object({
 });
 export const TransactionOutputStep04RedeemerSchema =
   faultProofStepRedeemerSchema(TransactionOutputStep04ArgsSchema);
-export const TransactionOutputStreamFrameSchema = Data.Enum([
-  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
-  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
-  Data.Object({
-    ChunksFrame: Data.Object({
-      seen: Data.Integer(),
-      leading: Data.Boolean(),
-    }),
-  }),
-]);
+export const TransactionOutputStreamFrameSchema = StreamFrameSchema;
 export const TransactionOutputDatumScanStateSchema = Data.Object({
   scan: TransactionOutputScanStateSchema,
   cursor: Data.Integer(),

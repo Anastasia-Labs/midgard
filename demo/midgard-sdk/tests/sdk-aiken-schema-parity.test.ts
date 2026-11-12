@@ -76,6 +76,9 @@ const MIRRORS = {
     "midgard/validation_claim_v1/ValidationClaimWitnessV1",
   OperatorVerdictSchema: "midgard/rejection_reason_v1/OperatorVerdictV1",
   RejectionReasonSchema: "midgard/rejection_reason_v1/RejectionReasonV1",
+  VerdictSubjectSchema:
+    "midgard/fraud_proofs/proof_thread_substrate_v1/VerdictSubjectV1",
+  StreamFrameSchema: "midgard/canonical_plutus_data_stream_v1/StreamFrameV1",
   CommittedFieldClaimSchema:
     "midgard/fraud_proofs/canonical_decodability/rule/CommittedFieldClaimV1",
   CanonicalDecodabilityStep02StateSchema:

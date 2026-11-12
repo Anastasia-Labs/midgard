@@ -4,9 +4,9 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  RejectionReasonSchema,
   terminalVerdictContradiction,
   type VerdictSubject,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -250,14 +250,7 @@ export const mintDeclaredAssetLimitEvidenceCloses = (
   evidence: MintDeclaredAssetLimitEvidence,
 ): boolean => terminalVerdictContradiction(evidence.subject, evidence.crossing);
 
-export const MintDeclaredAssetLimitVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const MintDeclaredAssetLimitVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const MintDeclaredAssetLimitBoundPolicySchema = Data.Object({
   subject: MintDeclaredAssetLimitVerdictSubjectSchema,

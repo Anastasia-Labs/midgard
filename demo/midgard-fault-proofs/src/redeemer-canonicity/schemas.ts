@@ -2,22 +2,16 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedLeafMembershipV1Schema,
   ForcedTransactionSourceMembershipProofSchema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
-  RejectionReasonSchema,
+  ProofThreadSubjectSourceSchema,
+  StreamFrameSchema,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const RedeemerCanonicityVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const RedeemerCanonicityVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const RedeemerCanonicityBoundSchema = Data.Object({
   subject: RedeemerCanonicityVerdictSubjectSchema,
@@ -33,19 +27,8 @@ export const RedeemerCanonicityTerminalSchema = Data.Object({
   canonical: Data.Boolean(),
 });
 
-export const RedeemerCanonicityStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: ForcedLeafMembershipV1Schema,
-    }),
-  }),
-]);
+export const RedeemerCanonicityStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 /**
  * The step-01 source as retained in the workflow artifact, which keeps the
  * full forced-transaction membership.
@@ -80,16 +63,7 @@ export const RedeemerCanonicityStep02ArgsSchema = Data.Object({
 });
 export const RedeemerCanonicityStep02RedeemerSchema =
   faultProofStepRedeemerSchema(RedeemerCanonicityStep02ArgsSchema);
-export const RedeemerCanonicityStreamFrameSchema = Data.Enum([
-  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
-  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
-  Data.Object({
-    ChunksFrame: Data.Object({
-      seen: Data.Integer(),
-      leading: Data.Boolean(),
-    }),
-  }),
-]);
+export const RedeemerCanonicityStreamFrameSchema = StreamFrameSchema;
 export const RedeemerCanonicityDataScanStateSchema = Data.Object({
   bound: RedeemerCanonicityBoundSchema,
   data_length: Data.Integer(),

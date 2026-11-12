@@ -7,18 +7,11 @@ import {
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
-  RejectionReason as RejectionReasonSchema,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ScriptIntegrityVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema as never),
-});
+export const ScriptIntegrityVerdictSubjectSchema = VerdictSubjectSchema;
 export const ScriptIntegrityBindStateSchema = Data.Enum([
   Data.Object({
     BoundAccepted: Data.Object({

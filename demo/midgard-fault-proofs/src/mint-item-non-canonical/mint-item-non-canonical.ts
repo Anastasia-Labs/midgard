@@ -6,10 +6,10 @@ import {
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
-  RejectionReasonSchema,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -141,14 +141,7 @@ export const prepareMintItemEvidence = ({
 export const mintItemEvidenceCloses = (evidence: MintItemEvidence): boolean =>
   terminalVerdictContradiction(evidence.subject, !evidence.canonical);
 
-export const MintItemVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const MintItemVerdictSubjectSchema = VerdictSubjectSchema;
 export const MintFieldCursorSchema = Data.Object({
   next_index: Data.Integer(),
   next_offset: Data.Integer(),

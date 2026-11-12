@@ -11,14 +11,10 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
-  FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxBodyCompact,
   type NativeTxBodyCompact as NativeTxBodyCompactData,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
 } from "./native.js";
 import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
@@ -32,18 +28,11 @@ export const ZeroInputStep01Datum = asDataType<ZeroInputStep01Datum>(
 );
 
 /**
- * Mirrors `midgard/fraud_proofs/zero_input/step_01.SourceV1`: the accepted
- * direction carries the native inclusion; the forced direction carries the
- * forced-inclusion leaf and its polarity.
+ * Mirrors `midgard/fraud_proofs/zero_input/step_01.Args`, whose `SourceV1` is
+ * the proof-thread subject source.
  */
-export const ZeroInputStep01SourceSchema = ProofThreadSubjectSourceSchema;
-export type ZeroInputStep01Source = Data.Static<
-  typeof ZeroInputStep01SourceSchema
->;
-
-/** Mirrors `midgard/fraud_proofs/zero_input/step_01.Args`. */
 export const ZeroInputStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  Data.Object({ source: ZeroInputStep01SourceSchema }),
+  Data.Object({ source: ProofThreadSubjectSourceSchema }),
 );
 export type ZeroInputStep01SpendRedeemer = Data.Static<
   typeof ZeroInputStep01SpendRedeemerSchema
@@ -51,27 +40,15 @@ export type ZeroInputStep01SpendRedeemer = Data.Static<
 export const ZeroInputStep01SpendRedeemer =
   asDataType<ZeroInputStep01SpendRedeemer>(ZeroInputStep01SpendRedeemerSchema);
 
-export const ZeroInputVerdictSubjectSchema = VerdictSubjectSchema;
-
 /**
- * Mirrors `midgard/fraud_proofs/zero_input/rule.StateV1`. The thread carries
- * the proof-thread substrate's verdict subject, whose `transaction_id` is the
- * §2.5 anchor step-02 opens field 0 against; the retired
+ * The state mirrors `midgard/fraud_proofs/zero_input/rule.StateV1`. The thread
+ * carries the proof-thread substrate's verdict subject, whose `transaction_id`
+ * is the §2.5 anchor step-02 opens field 0 against; the retired
  * `bad_tx_spend_inputs_hash` was compared against `empty_field_commitment`
  * directly, and the step now reads the door's authenticated item count instead.
  */
-export const ZeroInputStep02StateSchema = Data.Object({
-  subject: ZeroInputVerdictSubjectSchema,
-});
-export type ZeroInputStep02State = Data.Static<
-  typeof ZeroInputStep02StateSchema
->;
-export const ZeroInputStep02State = asDataType<ZeroInputStep02State>(
-  ZeroInputStep02StateSchema,
-);
-
 export const ZeroInputStep02DatumSchema = faultProofStepDatumSchema(
-  ZeroInputStep02StateSchema,
+  Data.Object({ subject: VerdictSubjectSchema }),
 );
 export type ZeroInputStep02Datum = Data.Static<
   typeof ZeroInputStep02DatumSchema
@@ -86,32 +63,19 @@ export const ZeroInputStep02Datum = asDataType<ZeroInputStep02Datum>(
  * opens the field. For a genuinely empty field the §5.1 preimage is the single
  * byte `80`, so tier 1 always carries it.
  */
-export const ZeroInputStep02ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningSchema,
-});
-export type ZeroInputStep02Args = Data.Static<typeof ZeroInputStep02ArgsSchema>;
-export const ZeroInputStep02Args = asDataType<ZeroInputStep02Args>(
-  ZeroInputStep02ArgsSchema,
-);
-
 export const ZeroInputStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  ZeroInputStep02ArgsSchema,
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    fraud_proof_mint_redeemer_index: Data.Integer(),
+    spend_inputs_opening: FieldOpeningSchema,
+  }),
 );
 export type ZeroInputStep02SpendRedeemer = Data.Static<
   typeof ZeroInputStep02SpendRedeemerSchema
 >;
 export const ZeroInputStep02SpendRedeemer =
   asDataType<ZeroInputStep02SpendRedeemer>(ZeroInputStep02SpendRedeemerSchema);
-
-export {
-  FaultProofStepCancel as ZeroInputStepCancel,
-  FaultProofStepCancelSchema as ZeroInputStepCancelSchema,
-  NativeTxInclusionArgs as ZeroInputTxInclusionArgs,
-  NativeTxInclusionArgsSchema as ZeroInputTxInclusionArgsSchema,
-};
 
 /**
  * The `spend_inputs_hash` a native transaction body carries when it spends

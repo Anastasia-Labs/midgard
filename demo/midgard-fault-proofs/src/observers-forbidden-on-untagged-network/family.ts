@@ -7,9 +7,9 @@ import {
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  RejectionReasonSchema,
   type VerdictSubject,
   verdictSubjectIsCanonical,
+  VerdictSubjectSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -116,14 +116,7 @@ export const observersForbiddenEvidenceCloses = (
     ? observersForbiddenFaultHolds(evidence)
     : !observersForbiddenFaultHolds(evidence);
 
-export const ObserversForbiddenVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const ObserversForbiddenVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const ObserversForbiddenStateSchema = Data.Object({
   subject: ObserversForbiddenVerdictSubjectSchema,
