@@ -200,11 +200,9 @@ const forcedValidationSlotConfig = {
 const workerInput = {
   data: {
     availableConfirmedBlock: "",
-    availableLocalFinalizationBlock: "",
     currentBlockStartTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
     forcedValidationSlotConfig,
     ledgerStoreLeaseOwner: "commit:12345678-1234-4123-8123-123456789abc",
-    localFinalizationPending: false,
     mempoolTxsCountSoFar: 0,
     sizeOfProcessedTxsSoFar: 0,
     baseSnapshotId: "test",
