@@ -23,11 +23,8 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
@@ -35,7 +32,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -133,7 +129,6 @@ export const submitWithdrawnInputStep02 = async ({
     publish: publishCarriage,
     label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
   });
-  signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
     (planned.plan.publications.length === 0
@@ -162,7 +157,8 @@ export const submitWithdrawnInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: referenceInputs,
   });
   const outputDatum = Data.to(
@@ -223,9 +219,7 @@ export const submitWithdrawnInputStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const tx = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs)
     .pay.ToContract(
@@ -235,15 +229,12 @@ export const submitWithdrawnInputStep02 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
+    );
+  const signed = await completeStep(tx, funding);
   if (layout === undefined) {
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-input step-02",
@@ -252,16 +243,8 @@ export const submitWithdrawnInputStep02 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw withdrawnInputSubmitError(
-      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
