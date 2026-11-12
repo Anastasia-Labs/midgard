@@ -20,11 +20,13 @@
  * - `indefinite`: additional information 31.
  *
  * Where `cbor_deserialise` (the ledger's permissive Data decoder) applies, a
- * vector also records `permissive`: the bytes are exactly one integer head, or
- * the head of an empty byte string, list or map, and `cbor_deserialise`
- * either accepts them, giving `serialised` (what `serialiseData` writes for
- * the decoded value), or refuses them. Non-minimal heads are where the two
- * kinds part: the permissive decoder accepts them.
+ * vector also records `permissive`: the bytes are exactly one integer head,
+ * the head of an empty byte string, list or map, or an indefinite head of one
+ * of those closed at once by its break, and `cbor_deserialise` either accepts
+ * them, giving `serialised` (what `serialiseData` writes for the decoded
+ * value), or refuses them. Non-minimal heads and the indefinite empty
+ * containers are where the two kinds part: the permissive decoder accepts
+ * them.
  *
  * The generator (`scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs`)
  * renders `onchain/aiken/lib/midgard/canonical-cbor-head-v1-golden.test.ak`
@@ -180,6 +182,19 @@ const reservedVectors = majors.flatMap((major) => [
   ),
 ]);
 
+/** The empty byte string, list and map written indefinite: the indefinite head
+ * and its break. The permissive decoder reads the empty value, which
+ * `serialiseData` writes definite. */
+const indefiniteEmptyVectors = [2, 4, 5].map((major) =>
+  vector(
+    `major_${major}_indefinite_empty`,
+    `${headHex(major, 31)}ff`,
+    0,
+    refuse(reasons.indefinite),
+    Object.freeze({ verdict: "accept", serialised: minimalHex(major, 0n) }),
+  ),
+);
+
 /** Every proper prefix of a canonical head that keeps its initial byte. */
 const truncatedVectors = [0, 4].flatMap((major) =>
   [
@@ -233,6 +248,7 @@ export const vectors = Object.freeze([
   ...minimalVectors,
   ...nonMinimalVectors,
   ...reservedVectors,
+  ...indefiniteEmptyVectors,
   ...truncatedVectors,
   ...offsetVectors,
   ...outOfRangeVectors,

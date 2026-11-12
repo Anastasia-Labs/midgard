@@ -46,7 +46,7 @@ export const readArgument = (
   readonly value: bigint;
   readonly nextOffset: number;
 } => {
-  if (offset >= bytes.length) {
+  if (!Number.isInteger(offset) || offset < 0 || offset >= bytes.length) {
     throw err("Unexpected end of CBOR", `offset=${offset}`);
   }
   const initial = bytes[offset]!;

@@ -17,16 +17,14 @@ const refusalMessages: Record<CanonicalCborHeadRefusalReason, RegExp> = {
   indefinite: /^Indefinite-length CBOR is not valid$/u,
 };
 
-// Every caller walks forward from offset 0, so `readArgument` does not guard a
-// negative offset; only the on-chain readers are held to those vectors.
-const inDomain = vectors.filter((vector) => vector.offset >= 0);
-
 describe("canonical CBOR head vectors: readArgument", () => {
-  it("leaves out only the negative-offset vectors", () => {
-    expect(vectors.length - inDomain.length).toBe(2);
+  it("refuses a non-integer offset as out of range", () => {
+    expect(() => readArgument(Buffer.from("1818", "hex"), 0.5)).toThrow(
+      refusalMessages["out-of-range"],
+    );
   });
 
-  it.each(inDomain.map((vector) => [vector.name, vector] as const))(
+  it.each(vectors.map((vector) => [vector.name, vector] as const))(
     "%s",
     (_name, { hex, offset, canonical }) => {
       const bytes = Buffer.from(hex, "hex");

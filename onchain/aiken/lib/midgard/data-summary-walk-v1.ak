@@ -111,8 +111,8 @@ fn argument(bytes: ByteArray, at: Int, size: Int, end: Int) -> Int {
 }
 
 /// A minimal CBOR head at `at`: (major, argument, next). An indefinite head
-/// has argument -1.
-fn head(bytes: ByteArray, at: Int, end: Int) -> Option<(Int, Int, Int)> {
+/// has argument -1. Public only for the head vectors.
+pub fn head(bytes: ByteArray, at: Int, end: Int) -> Option<(Int, Int, Int)> {
   let first = byte_at(bytes, at, end)
   if first < 0 {
     None

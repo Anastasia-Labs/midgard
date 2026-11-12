@@ -3,14 +3,18 @@
 //// Do not edit; run `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync`.
 ////
 //// Every canonical CBOR head reader gives each vector's head under the
-//// vector's major type and refuses it under every other major type. Where a
-//// vector has a permissive result, `cbor_deserialise.deserialise` gives it.
+//// vector's major type and refuses it under every other major type. The data
+//// summary walk's head gives the same head, or argument -1 for an indefinite
+//// one, at every offset that is not negative. Where a vector has a permissive
+//// result, `cbor_deserialise.deserialise` gives it.
 
 use aiken/cbor
 use aiken/collection/list
 use aiken/option
+use aiken/primitive/bytearray
 use midgard/canonical_cbor_scan_v1
 use midgard/cbor_deserialise
+use midgard/data_summary_walk_v1
 use midgard/native_script_scan_v1
 
 /// Whether every canonical head reader, asked for each major type in turn,
@@ -47,6 +51,16 @@ fn reads(
   )
 }
 
+/// Whether the data summary walk's head, reading to the end of `source`,
+/// gives `expected` (major type, argument or -1 when indefinite, next offset).
+fn walks(
+  source: ByteArray,
+  offset: Int,
+  expected: Option<(Int, Int, Int)>,
+) -> Bool {
+  data_summary_walk_v1.head(source, offset, bytearray.length(source)) == expected
+}
+
 /// Whether the permissive decoder gives `expected`: what `serialiseData`
 /// writes for the decoded value, or `None` where it refuses.
 fn deserialises(source: ByteArray, expected: Option<ByteArray>) -> Bool {
@@ -56,6 +70,7 @@ fn deserialises(source: ByteArray, expected: Option<ByteArray>) -> Bool {
 test head_major_0_value_0() {
   and {
     reads(#"00", 0, Some((0, 0, 1))),
+    walks(#"00", 0, Some((0, 0, 1))),
     deserialises(#"00", Some(#"00")),
   }
 }
@@ -63,6 +78,7 @@ test head_major_0_value_0() {
 test head_major_0_value_23() {
   and {
     reads(#"17", 0, Some((0, 23, 1))),
+    walks(#"17", 0, Some((0, 23, 1))),
     deserialises(#"17", Some(#"17")),
   }
 }
@@ -70,6 +86,7 @@ test head_major_0_value_23() {
 test head_major_0_value_24() {
   and {
     reads(#"1818", 0, Some((0, 24, 2))),
+    walks(#"1818", 0, Some((0, 24, 2))),
     deserialises(#"1818", Some(#"1818")),
   }
 }
@@ -77,6 +94,7 @@ test head_major_0_value_24() {
 test head_major_0_value_255() {
   and {
     reads(#"18ff", 0, Some((0, 255, 2))),
+    walks(#"18ff", 0, Some((0, 255, 2))),
     deserialises(#"18ff", Some(#"18ff")),
   }
 }
@@ -84,6 +102,7 @@ test head_major_0_value_255() {
 test head_major_0_value_256() {
   and {
     reads(#"190100", 0, Some((0, 256, 3))),
+    walks(#"190100", 0, Some((0, 256, 3))),
     deserialises(#"190100", Some(#"190100")),
   }
 }
@@ -91,6 +110,7 @@ test head_major_0_value_256() {
 test head_major_0_value_65535() {
   and {
     reads(#"19ffff", 0, Some((0, 65535, 3))),
+    walks(#"19ffff", 0, Some((0, 65535, 3))),
     deserialises(#"19ffff", Some(#"19ffff")),
   }
 }
@@ -98,6 +118,7 @@ test head_major_0_value_65535() {
 test head_major_0_value_65536() {
   and {
     reads(#"1a00010000", 0, Some((0, 65536, 5))),
+    walks(#"1a00010000", 0, Some((0, 65536, 5))),
     deserialises(#"1a00010000", Some(#"1a00010000")),
   }
 }
@@ -105,6 +126,7 @@ test head_major_0_value_65536() {
 test head_major_0_value_2_pow_32_minus_1() {
   and {
     reads(#"1affffffff", 0, Some((0, 4294967295, 5))),
+    walks(#"1affffffff", 0, Some((0, 4294967295, 5))),
     deserialises(#"1affffffff", Some(#"1affffffff")),
   }
 }
@@ -112,6 +134,7 @@ test head_major_0_value_2_pow_32_minus_1() {
 test head_major_0_value_2_pow_32() {
   and {
     reads(#"1b0000000100000000", 0, Some((0, 4294967296, 9))),
+    walks(#"1b0000000100000000", 0, Some((0, 4294967296, 9))),
     deserialises(#"1b0000000100000000", Some(#"1b0000000100000000")),
   }
 }
@@ -119,6 +142,7 @@ test head_major_0_value_2_pow_32() {
 test head_major_0_value_2_pow_64_minus_1() {
   and {
     reads(#"1bffffffffffffffff", 0, Some((0, 18446744073709551615, 9))),
+    walks(#"1bffffffffffffffff", 0, Some((0, 18446744073709551615, 9))),
     deserialises(#"1bffffffffffffffff", Some(#"1bffffffffffffffff")),
   }
 }
@@ -126,6 +150,7 @@ test head_major_0_value_2_pow_64_minus_1() {
 test head_major_1_value_0() {
   and {
     reads(#"20", 0, Some((1, 0, 1))),
+    walks(#"20", 0, Some((1, 0, 1))),
     deserialises(#"20", Some(#"20")),
   }
 }
@@ -133,6 +158,7 @@ test head_major_1_value_0() {
 test head_major_1_value_23() {
   and {
     reads(#"37", 0, Some((1, 23, 1))),
+    walks(#"37", 0, Some((1, 23, 1))),
     deserialises(#"37", Some(#"37")),
   }
 }
@@ -140,6 +166,7 @@ test head_major_1_value_23() {
 test head_major_1_value_24() {
   and {
     reads(#"3818", 0, Some((1, 24, 2))),
+    walks(#"3818", 0, Some((1, 24, 2))),
     deserialises(#"3818", Some(#"3818")),
   }
 }
@@ -147,6 +174,7 @@ test head_major_1_value_24() {
 test head_major_1_value_255() {
   and {
     reads(#"38ff", 0, Some((1, 255, 2))),
+    walks(#"38ff", 0, Some((1, 255, 2))),
     deserialises(#"38ff", Some(#"38ff")),
   }
 }
@@ -154,6 +182,7 @@ test head_major_1_value_255() {
 test head_major_1_value_256() {
   and {
     reads(#"390100", 0, Some((1, 256, 3))),
+    walks(#"390100", 0, Some((1, 256, 3))),
     deserialises(#"390100", Some(#"390100")),
   }
 }
@@ -161,6 +190,7 @@ test head_major_1_value_256() {
 test head_major_1_value_65535() {
   and {
     reads(#"39ffff", 0, Some((1, 65535, 3))),
+    walks(#"39ffff", 0, Some((1, 65535, 3))),
     deserialises(#"39ffff", Some(#"39ffff")),
   }
 }
@@ -168,6 +198,7 @@ test head_major_1_value_65535() {
 test head_major_1_value_65536() {
   and {
     reads(#"3a00010000", 0, Some((1, 65536, 5))),
+    walks(#"3a00010000", 0, Some((1, 65536, 5))),
     deserialises(#"3a00010000", Some(#"3a00010000")),
   }
 }
@@ -175,6 +206,7 @@ test head_major_1_value_65536() {
 test head_major_1_value_2_pow_32_minus_1() {
   and {
     reads(#"3affffffff", 0, Some((1, 4294967295, 5))),
+    walks(#"3affffffff", 0, Some((1, 4294967295, 5))),
     deserialises(#"3affffffff", Some(#"3affffffff")),
   }
 }
@@ -182,6 +214,7 @@ test head_major_1_value_2_pow_32_minus_1() {
 test head_major_1_value_2_pow_32() {
   and {
     reads(#"3b0000000100000000", 0, Some((1, 4294967296, 9))),
+    walks(#"3b0000000100000000", 0, Some((1, 4294967296, 9))),
     deserialises(#"3b0000000100000000", Some(#"3b0000000100000000")),
   }
 }
@@ -189,6 +222,7 @@ test head_major_1_value_2_pow_32() {
 test head_major_1_value_2_pow_64_minus_1() {
   and {
     reads(#"3bffffffffffffffff", 0, Some((1, 18446744073709551615, 9))),
+    walks(#"3bffffffffffffffff", 0, Some((1, 18446744073709551615, 9))),
     deserialises(#"3bffffffffffffffff", Some(#"3bffffffffffffffff")),
   }
 }
@@ -196,256 +230,431 @@ test head_major_1_value_2_pow_64_minus_1() {
 test head_major_2_value_0() {
   and {
     reads(#"40", 0, Some((2, 0, 1))),
+    walks(#"40", 0, Some((2, 0, 1))),
     deserialises(#"40", Some(#"40")),
   }
 }
 
 test head_major_2_value_23() {
-  reads(#"57", 0, Some((2, 23, 1)))
+  and {
+    reads(#"57", 0, Some((2, 23, 1))),
+    walks(#"57", 0, Some((2, 23, 1))),
+  }
 }
 
 test head_major_2_value_24() {
-  reads(#"5818", 0, Some((2, 24, 2)))
+  and {
+    reads(#"5818", 0, Some((2, 24, 2))),
+    walks(#"5818", 0, Some((2, 24, 2))),
+  }
 }
 
 test head_major_2_value_255() {
-  reads(#"58ff", 0, Some((2, 255, 2)))
+  and {
+    reads(#"58ff", 0, Some((2, 255, 2))),
+    walks(#"58ff", 0, Some((2, 255, 2))),
+  }
 }
 
 test head_major_2_value_256() {
-  reads(#"590100", 0, Some((2, 256, 3)))
+  and {
+    reads(#"590100", 0, Some((2, 256, 3))),
+    walks(#"590100", 0, Some((2, 256, 3))),
+  }
 }
 
 test head_major_2_value_65535() {
-  reads(#"59ffff", 0, Some((2, 65535, 3)))
+  and {
+    reads(#"59ffff", 0, Some((2, 65535, 3))),
+    walks(#"59ffff", 0, Some((2, 65535, 3))),
+  }
 }
 
 test head_major_2_value_65536() {
-  reads(#"5a00010000", 0, Some((2, 65536, 5)))
+  and {
+    reads(#"5a00010000", 0, Some((2, 65536, 5))),
+    walks(#"5a00010000", 0, Some((2, 65536, 5))),
+  }
 }
 
 test head_major_2_value_2_pow_32_minus_1() {
-  reads(#"5affffffff", 0, Some((2, 4294967295, 5)))
+  and {
+    reads(#"5affffffff", 0, Some((2, 4294967295, 5))),
+    walks(#"5affffffff", 0, Some((2, 4294967295, 5))),
+  }
 }
 
 test head_major_2_value_2_pow_32() {
-  reads(#"5b0000000100000000", 0, Some((2, 4294967296, 9)))
+  and {
+    reads(#"5b0000000100000000", 0, Some((2, 4294967296, 9))),
+    walks(#"5b0000000100000000", 0, Some((2, 4294967296, 9))),
+  }
 }
 
 test head_major_2_value_2_pow_64_minus_1() {
-  reads(#"5bffffffffffffffff", 0, Some((2, 18446744073709551615, 9)))
+  and {
+    reads(#"5bffffffffffffffff", 0, Some((2, 18446744073709551615, 9))),
+    walks(#"5bffffffffffffffff", 0, Some((2, 18446744073709551615, 9))),
+  }
 }
 
 test head_major_3_value_0() {
-  reads(#"60", 0, Some((3, 0, 1)))
+  and {
+    reads(#"60", 0, Some((3, 0, 1))),
+    walks(#"60", 0, Some((3, 0, 1))),
+  }
 }
 
 test head_major_3_value_23() {
-  reads(#"77", 0, Some((3, 23, 1)))
+  and {
+    reads(#"77", 0, Some((3, 23, 1))),
+    walks(#"77", 0, Some((3, 23, 1))),
+  }
 }
 
 test head_major_3_value_24() {
-  reads(#"7818", 0, Some((3, 24, 2)))
+  and {
+    reads(#"7818", 0, Some((3, 24, 2))),
+    walks(#"7818", 0, Some((3, 24, 2))),
+  }
 }
 
 test head_major_3_value_255() {
-  reads(#"78ff", 0, Some((3, 255, 2)))
+  and {
+    reads(#"78ff", 0, Some((3, 255, 2))),
+    walks(#"78ff", 0, Some((3, 255, 2))),
+  }
 }
 
 test head_major_3_value_256() {
-  reads(#"790100", 0, Some((3, 256, 3)))
+  and {
+    reads(#"790100", 0, Some((3, 256, 3))),
+    walks(#"790100", 0, Some((3, 256, 3))),
+  }
 }
 
 test head_major_3_value_65535() {
-  reads(#"79ffff", 0, Some((3, 65535, 3)))
+  and {
+    reads(#"79ffff", 0, Some((3, 65535, 3))),
+    walks(#"79ffff", 0, Some((3, 65535, 3))),
+  }
 }
 
 test head_major_3_value_65536() {
-  reads(#"7a00010000", 0, Some((3, 65536, 5)))
+  and {
+    reads(#"7a00010000", 0, Some((3, 65536, 5))),
+    walks(#"7a00010000", 0, Some((3, 65536, 5))),
+  }
 }
 
 test head_major_3_value_2_pow_32_minus_1() {
-  reads(#"7affffffff", 0, Some((3, 4294967295, 5)))
+  and {
+    reads(#"7affffffff", 0, Some((3, 4294967295, 5))),
+    walks(#"7affffffff", 0, Some((3, 4294967295, 5))),
+  }
 }
 
 test head_major_3_value_2_pow_32() {
-  reads(#"7b0000000100000000", 0, Some((3, 4294967296, 9)))
+  and {
+    reads(#"7b0000000100000000", 0, Some((3, 4294967296, 9))),
+    walks(#"7b0000000100000000", 0, Some((3, 4294967296, 9))),
+  }
 }
 
 test head_major_3_value_2_pow_64_minus_1() {
-  reads(#"7bffffffffffffffff", 0, Some((3, 18446744073709551615, 9)))
+  and {
+    reads(#"7bffffffffffffffff", 0, Some((3, 18446744073709551615, 9))),
+    walks(#"7bffffffffffffffff", 0, Some((3, 18446744073709551615, 9))),
+  }
 }
 
 test head_major_4_value_0() {
   and {
     reads(#"80", 0, Some((4, 0, 1))),
+    walks(#"80", 0, Some((4, 0, 1))),
     deserialises(#"80", Some(#"80")),
   }
 }
 
 test head_major_4_value_23() {
-  reads(#"97", 0, Some((4, 23, 1)))
+  and {
+    reads(#"97", 0, Some((4, 23, 1))),
+    walks(#"97", 0, Some((4, 23, 1))),
+  }
 }
 
 test head_major_4_value_24() {
-  reads(#"9818", 0, Some((4, 24, 2)))
+  and {
+    reads(#"9818", 0, Some((4, 24, 2))),
+    walks(#"9818", 0, Some((4, 24, 2))),
+  }
 }
 
 test head_major_4_value_255() {
-  reads(#"98ff", 0, Some((4, 255, 2)))
+  and {
+    reads(#"98ff", 0, Some((4, 255, 2))),
+    walks(#"98ff", 0, Some((4, 255, 2))),
+  }
 }
 
 test head_major_4_value_256() {
-  reads(#"990100", 0, Some((4, 256, 3)))
+  and {
+    reads(#"990100", 0, Some((4, 256, 3))),
+    walks(#"990100", 0, Some((4, 256, 3))),
+  }
 }
 
 test head_major_4_value_65535() {
-  reads(#"99ffff", 0, Some((4, 65535, 3)))
+  and {
+    reads(#"99ffff", 0, Some((4, 65535, 3))),
+    walks(#"99ffff", 0, Some((4, 65535, 3))),
+  }
 }
 
 test head_major_4_value_65536() {
-  reads(#"9a00010000", 0, Some((4, 65536, 5)))
+  and {
+    reads(#"9a00010000", 0, Some((4, 65536, 5))),
+    walks(#"9a00010000", 0, Some((4, 65536, 5))),
+  }
 }
 
 test head_major_4_value_2_pow_32_minus_1() {
-  reads(#"9affffffff", 0, Some((4, 4294967295, 5)))
+  and {
+    reads(#"9affffffff", 0, Some((4, 4294967295, 5))),
+    walks(#"9affffffff", 0, Some((4, 4294967295, 5))),
+  }
 }
 
 test head_major_4_value_2_pow_32() {
-  reads(#"9b0000000100000000", 0, Some((4, 4294967296, 9)))
+  and {
+    reads(#"9b0000000100000000", 0, Some((4, 4294967296, 9))),
+    walks(#"9b0000000100000000", 0, Some((4, 4294967296, 9))),
+  }
 }
 
 test head_major_4_value_2_pow_64_minus_1() {
-  reads(#"9bffffffffffffffff", 0, Some((4, 18446744073709551615, 9)))
+  and {
+    reads(#"9bffffffffffffffff", 0, Some((4, 18446744073709551615, 9))),
+    walks(#"9bffffffffffffffff", 0, Some((4, 18446744073709551615, 9))),
+  }
 }
 
 test head_major_5_value_0() {
   and {
     reads(#"a0", 0, Some((5, 0, 1))),
+    walks(#"a0", 0, Some((5, 0, 1))),
     deserialises(#"a0", Some(#"a0")),
   }
 }
 
 test head_major_5_value_23() {
-  reads(#"b7", 0, Some((5, 23, 1)))
+  and {
+    reads(#"b7", 0, Some((5, 23, 1))),
+    walks(#"b7", 0, Some((5, 23, 1))),
+  }
 }
 
 test head_major_5_value_24() {
-  reads(#"b818", 0, Some((5, 24, 2)))
+  and {
+    reads(#"b818", 0, Some((5, 24, 2))),
+    walks(#"b818", 0, Some((5, 24, 2))),
+  }
 }
 
 test head_major_5_value_255() {
-  reads(#"b8ff", 0, Some((5, 255, 2)))
+  and {
+    reads(#"b8ff", 0, Some((5, 255, 2))),
+    walks(#"b8ff", 0, Some((5, 255, 2))),
+  }
 }
 
 test head_major_5_value_256() {
-  reads(#"b90100", 0, Some((5, 256, 3)))
+  and {
+    reads(#"b90100", 0, Some((5, 256, 3))),
+    walks(#"b90100", 0, Some((5, 256, 3))),
+  }
 }
 
 test head_major_5_value_65535() {
-  reads(#"b9ffff", 0, Some((5, 65535, 3)))
+  and {
+    reads(#"b9ffff", 0, Some((5, 65535, 3))),
+    walks(#"b9ffff", 0, Some((5, 65535, 3))),
+  }
 }
 
 test head_major_5_value_65536() {
-  reads(#"ba00010000", 0, Some((5, 65536, 5)))
+  and {
+    reads(#"ba00010000", 0, Some((5, 65536, 5))),
+    walks(#"ba00010000", 0, Some((5, 65536, 5))),
+  }
 }
 
 test head_major_5_value_2_pow_32_minus_1() {
-  reads(#"baffffffff", 0, Some((5, 4294967295, 5)))
+  and {
+    reads(#"baffffffff", 0, Some((5, 4294967295, 5))),
+    walks(#"baffffffff", 0, Some((5, 4294967295, 5))),
+  }
 }
 
 test head_major_5_value_2_pow_32() {
-  reads(#"bb0000000100000000", 0, Some((5, 4294967296, 9)))
+  and {
+    reads(#"bb0000000100000000", 0, Some((5, 4294967296, 9))),
+    walks(#"bb0000000100000000", 0, Some((5, 4294967296, 9))),
+  }
 }
 
 test head_major_5_value_2_pow_64_minus_1() {
-  reads(#"bbffffffffffffffff", 0, Some((5, 18446744073709551615, 9)))
+  and {
+    reads(#"bbffffffffffffffff", 0, Some((5, 18446744073709551615, 9))),
+    walks(#"bbffffffffffffffff", 0, Some((5, 18446744073709551615, 9))),
+  }
 }
 
 test head_major_6_value_0() {
-  reads(#"c0", 0, Some((6, 0, 1)))
+  and {
+    reads(#"c0", 0, Some((6, 0, 1))),
+    walks(#"c0", 0, Some((6, 0, 1))),
+  }
 }
 
 test head_major_6_value_23() {
-  reads(#"d7", 0, Some((6, 23, 1)))
+  and {
+    reads(#"d7", 0, Some((6, 23, 1))),
+    walks(#"d7", 0, Some((6, 23, 1))),
+  }
 }
 
 test head_major_6_value_24() {
-  reads(#"d818", 0, Some((6, 24, 2)))
+  and {
+    reads(#"d818", 0, Some((6, 24, 2))),
+    walks(#"d818", 0, Some((6, 24, 2))),
+  }
 }
 
 test head_major_6_value_255() {
-  reads(#"d8ff", 0, Some((6, 255, 2)))
+  and {
+    reads(#"d8ff", 0, Some((6, 255, 2))),
+    walks(#"d8ff", 0, Some((6, 255, 2))),
+  }
 }
 
 test head_major_6_value_256() {
-  reads(#"d90100", 0, Some((6, 256, 3)))
+  and {
+    reads(#"d90100", 0, Some((6, 256, 3))),
+    walks(#"d90100", 0, Some((6, 256, 3))),
+  }
 }
 
 test head_major_6_value_65535() {
-  reads(#"d9ffff", 0, Some((6, 65535, 3)))
+  and {
+    reads(#"d9ffff", 0, Some((6, 65535, 3))),
+    walks(#"d9ffff", 0, Some((6, 65535, 3))),
+  }
 }
 
 test head_major_6_value_65536() {
-  reads(#"da00010000", 0, Some((6, 65536, 5)))
+  and {
+    reads(#"da00010000", 0, Some((6, 65536, 5))),
+    walks(#"da00010000", 0, Some((6, 65536, 5))),
+  }
 }
 
 test head_major_6_value_2_pow_32_minus_1() {
-  reads(#"daffffffff", 0, Some((6, 4294967295, 5)))
+  and {
+    reads(#"daffffffff", 0, Some((6, 4294967295, 5))),
+    walks(#"daffffffff", 0, Some((6, 4294967295, 5))),
+  }
 }
 
 test head_major_6_value_2_pow_32() {
-  reads(#"db0000000100000000", 0, Some((6, 4294967296, 9)))
+  and {
+    reads(#"db0000000100000000", 0, Some((6, 4294967296, 9))),
+    walks(#"db0000000100000000", 0, Some((6, 4294967296, 9))),
+  }
 }
 
 test head_major_6_value_2_pow_64_minus_1() {
-  reads(#"dbffffffffffffffff", 0, Some((6, 18446744073709551615, 9)))
+  and {
+    reads(#"dbffffffffffffffff", 0, Some((6, 18446744073709551615, 9))),
+    walks(#"dbffffffffffffffff", 0, Some((6, 18446744073709551615, 9))),
+  }
 }
 
 test head_major_7_value_0() {
-  reads(#"e0", 0, Some((7, 0, 1)))
+  and {
+    reads(#"e0", 0, Some((7, 0, 1))),
+    walks(#"e0", 0, Some((7, 0, 1))),
+  }
 }
 
 test head_major_7_value_23() {
-  reads(#"f7", 0, Some((7, 23, 1)))
+  and {
+    reads(#"f7", 0, Some((7, 23, 1))),
+    walks(#"f7", 0, Some((7, 23, 1))),
+  }
 }
 
 test head_major_7_value_24() {
-  reads(#"f818", 0, Some((7, 24, 2)))
+  and {
+    reads(#"f818", 0, Some((7, 24, 2))),
+    walks(#"f818", 0, Some((7, 24, 2))),
+  }
 }
 
 test head_major_7_value_255() {
-  reads(#"f8ff", 0, Some((7, 255, 2)))
+  and {
+    reads(#"f8ff", 0, Some((7, 255, 2))),
+    walks(#"f8ff", 0, Some((7, 255, 2))),
+  }
 }
 
 test head_major_7_value_256() {
-  reads(#"f90100", 0, Some((7, 256, 3)))
+  and {
+    reads(#"f90100", 0, Some((7, 256, 3))),
+    walks(#"f90100", 0, Some((7, 256, 3))),
+  }
 }
 
 test head_major_7_value_65535() {
-  reads(#"f9ffff", 0, Some((7, 65535, 3)))
+  and {
+    reads(#"f9ffff", 0, Some((7, 65535, 3))),
+    walks(#"f9ffff", 0, Some((7, 65535, 3))),
+  }
 }
 
 test head_major_7_value_65536() {
-  reads(#"fa00010000", 0, Some((7, 65536, 5)))
+  and {
+    reads(#"fa00010000", 0, Some((7, 65536, 5))),
+    walks(#"fa00010000", 0, Some((7, 65536, 5))),
+  }
 }
 
 test head_major_7_value_2_pow_32_minus_1() {
-  reads(#"faffffffff", 0, Some((7, 4294967295, 5)))
+  and {
+    reads(#"faffffffff", 0, Some((7, 4294967295, 5))),
+    walks(#"faffffffff", 0, Some((7, 4294967295, 5))),
+  }
 }
 
 test head_major_7_value_2_pow_32() {
-  reads(#"fb0000000100000000", 0, Some((7, 4294967296, 9)))
+  and {
+    reads(#"fb0000000100000000", 0, Some((7, 4294967296, 9))),
+    walks(#"fb0000000100000000", 0, Some((7, 4294967296, 9))),
+  }
 }
 
 test head_major_7_value_2_pow_64_minus_1() {
-  reads(#"fbffffffffffffffff", 0, Some((7, 18446744073709551615, 9)))
+  and {
+    reads(#"fbffffffffffffffff", 0, Some((7, 18446744073709551615, 9))),
+    walks(#"fbffffffffffffffff", 0, Some((7, 18446744073709551615, 9))),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_0_non_minimal_one_byte_0() {
   and {
     reads(#"1800", 0, None),
+    walks(#"1800", 0, None),
     deserialises(#"1800", Some(#"00")),
   }
 }
@@ -454,6 +663,7 @@ test head_major_0_non_minimal_one_byte_0() {
 test head_major_0_non_minimal_one_byte_23() {
   and {
     reads(#"1817", 0, None),
+    walks(#"1817", 0, None),
     deserialises(#"1817", Some(#"17")),
   }
 }
@@ -462,6 +672,7 @@ test head_major_0_non_minimal_one_byte_23() {
 test head_major_0_non_minimal_two_byte_0() {
   and {
     reads(#"190000", 0, None),
+    walks(#"190000", 0, None),
     deserialises(#"190000", Some(#"00")),
   }
 }
@@ -470,6 +681,7 @@ test head_major_0_non_minimal_two_byte_0() {
 test head_major_0_non_minimal_two_byte_255() {
   and {
     reads(#"1900ff", 0, None),
+    walks(#"1900ff", 0, None),
     deserialises(#"1900ff", Some(#"18ff")),
   }
 }
@@ -478,6 +690,7 @@ test head_major_0_non_minimal_two_byte_255() {
 test head_major_0_non_minimal_four_byte_0() {
   and {
     reads(#"1a00000000", 0, None),
+    walks(#"1a00000000", 0, None),
     deserialises(#"1a00000000", Some(#"00")),
   }
 }
@@ -486,6 +699,7 @@ test head_major_0_non_minimal_four_byte_0() {
 test head_major_0_non_minimal_four_byte_65535() {
   and {
     reads(#"1a0000ffff", 0, None),
+    walks(#"1a0000ffff", 0, None),
     deserialises(#"1a0000ffff", Some(#"19ffff")),
   }
 }
@@ -494,6 +708,7 @@ test head_major_0_non_minimal_four_byte_65535() {
 test head_major_0_non_minimal_eight_byte_0() {
   and {
     reads(#"1b0000000000000000", 0, None),
+    walks(#"1b0000000000000000", 0, None),
     deserialises(#"1b0000000000000000", Some(#"00")),
   }
 }
@@ -502,6 +717,7 @@ test head_major_0_non_minimal_eight_byte_0() {
 test head_major_0_non_minimal_eight_byte_2_pow_32_minus_1() {
   and {
     reads(#"1b00000000ffffffff", 0, None),
+    walks(#"1b00000000ffffffff", 0, None),
     deserialises(#"1b00000000ffffffff", Some(#"1affffffff")),
   }
 }
@@ -510,6 +726,7 @@ test head_major_0_non_minimal_eight_byte_2_pow_32_minus_1() {
 test head_major_1_non_minimal_one_byte_0() {
   and {
     reads(#"3800", 0, None),
+    walks(#"3800", 0, None),
     deserialises(#"3800", Some(#"20")),
   }
 }
@@ -518,6 +735,7 @@ test head_major_1_non_minimal_one_byte_0() {
 test head_major_1_non_minimal_one_byte_23() {
   and {
     reads(#"3817", 0, None),
+    walks(#"3817", 0, None),
     deserialises(#"3817", Some(#"37")),
   }
 }
@@ -526,6 +744,7 @@ test head_major_1_non_minimal_one_byte_23() {
 test head_major_1_non_minimal_two_byte_0() {
   and {
     reads(#"390000", 0, None),
+    walks(#"390000", 0, None),
     deserialises(#"390000", Some(#"20")),
   }
 }
@@ -534,6 +753,7 @@ test head_major_1_non_minimal_two_byte_0() {
 test head_major_1_non_minimal_two_byte_255() {
   and {
     reads(#"3900ff", 0, None),
+    walks(#"3900ff", 0, None),
     deserialises(#"3900ff", Some(#"38ff")),
   }
 }
@@ -542,6 +762,7 @@ test head_major_1_non_minimal_two_byte_255() {
 test head_major_1_non_minimal_four_byte_0() {
   and {
     reads(#"3a00000000", 0, None),
+    walks(#"3a00000000", 0, None),
     deserialises(#"3a00000000", Some(#"20")),
   }
 }
@@ -550,6 +771,7 @@ test head_major_1_non_minimal_four_byte_0() {
 test head_major_1_non_minimal_four_byte_65535() {
   and {
     reads(#"3a0000ffff", 0, None),
+    walks(#"3a0000ffff", 0, None),
     deserialises(#"3a0000ffff", Some(#"39ffff")),
   }
 }
@@ -558,6 +780,7 @@ test head_major_1_non_minimal_four_byte_65535() {
 test head_major_1_non_minimal_eight_byte_0() {
   and {
     reads(#"3b0000000000000000", 0, None),
+    walks(#"3b0000000000000000", 0, None),
     deserialises(#"3b0000000000000000", Some(#"20")),
   }
 }
@@ -566,6 +789,7 @@ test head_major_1_non_minimal_eight_byte_0() {
 test head_major_1_non_minimal_eight_byte_2_pow_32_minus_1() {
   and {
     reads(#"3b00000000ffffffff", 0, None),
+    walks(#"3b00000000ffffffff", 0, None),
     deserialises(#"3b00000000ffffffff", Some(#"3affffffff")),
   }
 }
@@ -574,282 +798,403 @@ test head_major_1_non_minimal_eight_byte_2_pow_32_minus_1() {
 test head_major_2_non_minimal_one_byte_0() {
   and {
     reads(#"5800", 0, None),
+    walks(#"5800", 0, None),
     deserialises(#"5800", Some(#"40")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_one_byte_23() {
-  reads(#"5817", 0, None)
+  and {
+    reads(#"5817", 0, None),
+    walks(#"5817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_two_byte_0() {
   and {
     reads(#"590000", 0, None),
+    walks(#"590000", 0, None),
     deserialises(#"590000", Some(#"40")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_two_byte_255() {
-  reads(#"5900ff", 0, None)
+  and {
+    reads(#"5900ff", 0, None),
+    walks(#"5900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_four_byte_0() {
   and {
     reads(#"5a00000000", 0, None),
+    walks(#"5a00000000", 0, None),
     deserialises(#"5a00000000", Some(#"40")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_four_byte_65535() {
-  reads(#"5a0000ffff", 0, None)
+  and {
+    reads(#"5a0000ffff", 0, None),
+    walks(#"5a0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_eight_byte_0() {
   and {
     reads(#"5b0000000000000000", 0, None),
+    walks(#"5b0000000000000000", 0, None),
     deserialises(#"5b0000000000000000", Some(#"40")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_2_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"5b00000000ffffffff", 0, None)
+  and {
+    reads(#"5b00000000ffffffff", 0, None),
+    walks(#"5b00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_one_byte_0() {
-  reads(#"7800", 0, None)
+  and {
+    reads(#"7800", 0, None),
+    walks(#"7800", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_one_byte_23() {
-  reads(#"7817", 0, None)
+  and {
+    reads(#"7817", 0, None),
+    walks(#"7817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_two_byte_0() {
-  reads(#"790000", 0, None)
+  and {
+    reads(#"790000", 0, None),
+    walks(#"790000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_two_byte_255() {
-  reads(#"7900ff", 0, None)
+  and {
+    reads(#"7900ff", 0, None),
+    walks(#"7900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_four_byte_0() {
-  reads(#"7a00000000", 0, None)
+  and {
+    reads(#"7a00000000", 0, None),
+    walks(#"7a00000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_four_byte_65535() {
-  reads(#"7a0000ffff", 0, None)
+  and {
+    reads(#"7a0000ffff", 0, None),
+    walks(#"7a0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_eight_byte_0() {
-  reads(#"7b0000000000000000", 0, None)
+  and {
+    reads(#"7b0000000000000000", 0, None),
+    walks(#"7b0000000000000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_3_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"7b00000000ffffffff", 0, None)
+  and {
+    reads(#"7b00000000ffffffff", 0, None),
+    walks(#"7b00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_one_byte_0() {
   and {
     reads(#"9800", 0, None),
+    walks(#"9800", 0, None),
     deserialises(#"9800", Some(#"80")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_one_byte_23() {
-  reads(#"9817", 0, None)
+  and {
+    reads(#"9817", 0, None),
+    walks(#"9817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_two_byte_0() {
   and {
     reads(#"990000", 0, None),
+    walks(#"990000", 0, None),
     deserialises(#"990000", Some(#"80")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_two_byte_255() {
-  reads(#"9900ff", 0, None)
+  and {
+    reads(#"9900ff", 0, None),
+    walks(#"9900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_four_byte_0() {
   and {
     reads(#"9a00000000", 0, None),
+    walks(#"9a00000000", 0, None),
     deserialises(#"9a00000000", Some(#"80")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_four_byte_65535() {
-  reads(#"9a0000ffff", 0, None)
+  and {
+    reads(#"9a0000ffff", 0, None),
+    walks(#"9a0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_eight_byte_0() {
   and {
     reads(#"9b0000000000000000", 0, None),
+    walks(#"9b0000000000000000", 0, None),
     deserialises(#"9b0000000000000000", Some(#"80")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_4_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"9b00000000ffffffff", 0, None)
+  and {
+    reads(#"9b00000000ffffffff", 0, None),
+    walks(#"9b00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_one_byte_0() {
   and {
     reads(#"b800", 0, None),
+    walks(#"b800", 0, None),
     deserialises(#"b800", Some(#"a0")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_one_byte_23() {
-  reads(#"b817", 0, None)
+  and {
+    reads(#"b817", 0, None),
+    walks(#"b817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_two_byte_0() {
   and {
     reads(#"b90000", 0, None),
+    walks(#"b90000", 0, None),
     deserialises(#"b90000", Some(#"a0")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_two_byte_255() {
-  reads(#"b900ff", 0, None)
+  and {
+    reads(#"b900ff", 0, None),
+    walks(#"b900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_four_byte_0() {
   and {
     reads(#"ba00000000", 0, None),
+    walks(#"ba00000000", 0, None),
     deserialises(#"ba00000000", Some(#"a0")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_four_byte_65535() {
-  reads(#"ba0000ffff", 0, None)
+  and {
+    reads(#"ba0000ffff", 0, None),
+    walks(#"ba0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_eight_byte_0() {
   and {
     reads(#"bb0000000000000000", 0, None),
+    walks(#"bb0000000000000000", 0, None),
     deserialises(#"bb0000000000000000", Some(#"a0")),
   }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_5_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"bb00000000ffffffff", 0, None)
+  and {
+    reads(#"bb00000000ffffffff", 0, None),
+    walks(#"bb00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_one_byte_0() {
-  reads(#"d800", 0, None)
+  and {
+    reads(#"d800", 0, None),
+    walks(#"d800", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_one_byte_23() {
-  reads(#"d817", 0, None)
+  and {
+    reads(#"d817", 0, None),
+    walks(#"d817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_two_byte_0() {
-  reads(#"d90000", 0, None)
+  and {
+    reads(#"d90000", 0, None),
+    walks(#"d90000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_two_byte_255() {
-  reads(#"d900ff", 0, None)
+  and {
+    reads(#"d900ff", 0, None),
+    walks(#"d900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_four_byte_0() {
-  reads(#"da00000000", 0, None)
+  and {
+    reads(#"da00000000", 0, None),
+    walks(#"da00000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_four_byte_65535() {
-  reads(#"da0000ffff", 0, None)
+  and {
+    reads(#"da0000ffff", 0, None),
+    walks(#"da0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_eight_byte_0() {
-  reads(#"db0000000000000000", 0, None)
+  and {
+    reads(#"db0000000000000000", 0, None),
+    walks(#"db0000000000000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_6_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"db00000000ffffffff", 0, None)
+  and {
+    reads(#"db00000000ffffffff", 0, None),
+    walks(#"db00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_one_byte_0() {
-  reads(#"f800", 0, None)
+  and {
+    reads(#"f800", 0, None),
+    walks(#"f800", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_one_byte_23() {
-  reads(#"f817", 0, None)
+  and {
+    reads(#"f817", 0, None),
+    walks(#"f817", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_two_byte_0() {
-  reads(#"f90000", 0, None)
+  and {
+    reads(#"f90000", 0, None),
+    walks(#"f90000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_two_byte_255() {
-  reads(#"f900ff", 0, None)
+  and {
+    reads(#"f900ff", 0, None),
+    walks(#"f900ff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_four_byte_0() {
-  reads(#"fa00000000", 0, None)
+  and {
+    reads(#"fa00000000", 0, None),
+    walks(#"fa00000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_four_byte_65535() {
-  reads(#"fa0000ffff", 0, None)
+  and {
+    reads(#"fa0000ffff", 0, None),
+    walks(#"fa0000ffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_eight_byte_0() {
-  reads(#"fb0000000000000000", 0, None)
+  and {
+    reads(#"fb0000000000000000", 0, None),
+    walks(#"fb0000000000000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_major_7_non_minimal_eight_byte_2_pow_32_minus_1() {
-  reads(#"fb00000000ffffffff", 0, None)
+  and {
+    reads(#"fb00000000ffffffff", 0, None),
+    walks(#"fb00000000ffffffff", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_0_reserved_28() {
   and {
     reads(#"1c", 0, None),
+    walks(#"1c", 0, None),
     deserialises(#"1c", None),
   }
 }
@@ -858,6 +1203,7 @@ test head_major_0_reserved_28() {
 test head_major_0_reserved_29() {
   and {
     reads(#"1d", 0, None),
+    walks(#"1d", 0, None),
     deserialises(#"1d", None),
   }
 }
@@ -866,6 +1212,7 @@ test head_major_0_reserved_29() {
 test head_major_0_reserved_30() {
   and {
     reads(#"1e", 0, None),
+    walks(#"1e", 0, None),
     deserialises(#"1e", None),
   }
 }
@@ -874,6 +1221,7 @@ test head_major_0_reserved_30() {
 test head_major_0_indefinite() {
   and {
     reads(#"1f", 0, None),
+    walks(#"1f", 0, Some((0, -1, 1))),
     deserialises(#"1f", None),
   }
 }
@@ -882,6 +1230,7 @@ test head_major_0_indefinite() {
 test head_major_1_reserved_28() {
   and {
     reads(#"3c", 0, None),
+    walks(#"3c", 0, None),
     deserialises(#"3c", None),
   }
 }
@@ -890,6 +1239,7 @@ test head_major_1_reserved_28() {
 test head_major_1_reserved_29() {
   and {
     reads(#"3d", 0, None),
+    walks(#"3d", 0, None),
     deserialises(#"3d", None),
   }
 }
@@ -898,6 +1248,7 @@ test head_major_1_reserved_29() {
 test head_major_1_reserved_30() {
   and {
     reads(#"3e", 0, None),
+    walks(#"3e", 0, None),
     deserialises(#"3e", None),
   }
 }
@@ -906,134 +1257,235 @@ test head_major_1_reserved_30() {
 test head_major_1_indefinite() {
   and {
     reads(#"3f", 0, None),
+    walks(#"3f", 0, Some((1, -1, 1))),
     deserialises(#"3f", None),
   }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_2_reserved_28() {
-  reads(#"5c", 0, None)
+  and {
+    reads(#"5c", 0, None),
+    walks(#"5c", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_2_reserved_29() {
-  reads(#"5d", 0, None)
+  and {
+    reads(#"5d", 0, None),
+    walks(#"5d", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_2_reserved_30() {
-  reads(#"5e", 0, None)
+  and {
+    reads(#"5e", 0, None),
+    walks(#"5e", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_2_indefinite() {
-  reads(#"5f", 0, None)
+  and {
+    reads(#"5f", 0, None),
+    walks(#"5f", 0, Some((2, -1, 1))),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_3_reserved_28() {
-  reads(#"7c", 0, None)
+  and {
+    reads(#"7c", 0, None),
+    walks(#"7c", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_3_reserved_29() {
-  reads(#"7d", 0, None)
+  and {
+    reads(#"7d", 0, None),
+    walks(#"7d", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_3_reserved_30() {
-  reads(#"7e", 0, None)
+  and {
+    reads(#"7e", 0, None),
+    walks(#"7e", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_3_indefinite() {
-  reads(#"7f", 0, None)
+  and {
+    reads(#"7f", 0, None),
+    walks(#"7f", 0, Some((3, -1, 1))),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_4_reserved_28() {
-  reads(#"9c", 0, None)
+  and {
+    reads(#"9c", 0, None),
+    walks(#"9c", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_4_reserved_29() {
-  reads(#"9d", 0, None)
+  and {
+    reads(#"9d", 0, None),
+    walks(#"9d", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_4_reserved_30() {
-  reads(#"9e", 0, None)
+  and {
+    reads(#"9e", 0, None),
+    walks(#"9e", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_4_indefinite() {
-  reads(#"9f", 0, None)
+  and {
+    reads(#"9f", 0, None),
+    walks(#"9f", 0, Some((4, -1, 1))),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_5_reserved_28() {
-  reads(#"bc", 0, None)
+  and {
+    reads(#"bc", 0, None),
+    walks(#"bc", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_5_reserved_29() {
-  reads(#"bd", 0, None)
+  and {
+    reads(#"bd", 0, None),
+    walks(#"bd", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_5_reserved_30() {
-  reads(#"be", 0, None)
+  and {
+    reads(#"be", 0, None),
+    walks(#"be", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_5_indefinite() {
-  reads(#"bf", 0, None)
+  and {
+    reads(#"bf", 0, None),
+    walks(#"bf", 0, Some((5, -1, 1))),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_6_reserved_28() {
-  reads(#"dc", 0, None)
+  and {
+    reads(#"dc", 0, None),
+    walks(#"dc", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_6_reserved_29() {
-  reads(#"dd", 0, None)
+  and {
+    reads(#"dd", 0, None),
+    walks(#"dd", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_6_reserved_30() {
-  reads(#"de", 0, None)
+  and {
+    reads(#"de", 0, None),
+    walks(#"de", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_6_indefinite() {
-  reads(#"df", 0, None)
+  and {
+    reads(#"df", 0, None),
+    walks(#"df", 0, Some((6, -1, 1))),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_7_reserved_28() {
-  reads(#"fc", 0, None)
+  and {
+    reads(#"fc", 0, None),
+    walks(#"fc", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_7_reserved_29() {
-  reads(#"fd", 0, None)
+  and {
+    reads(#"fd", 0, None),
+    walks(#"fd", 0, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_major_7_reserved_30() {
-  reads(#"fe", 0, None)
+  and {
+    reads(#"fe", 0, None),
+    walks(#"fe", 0, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_major_7_indefinite() {
-  reads(#"ff", 0, None)
+  and {
+    reads(#"ff", 0, None),
+    walks(#"ff", 0, Some((7, -1, 1))),
+  }
+}
+
+// Canonical readers refuse it: indefinite.
+test head_major_2_indefinite_empty() {
+  and {
+    reads(#"5fff", 0, None),
+    walks(#"5fff", 0, Some((2, -1, 1))),
+    deserialises(#"5fff", Some(#"40")),
+  }
+}
+
+// Canonical readers refuse it: indefinite.
+test head_major_4_indefinite_empty() {
+  and {
+    reads(#"9fff", 0, None),
+    walks(#"9fff", 0, Some((4, -1, 1))),
+    deserialises(#"9fff", Some(#"80")),
+  }
+}
+
+// Canonical readers refuse it: indefinite.
+test head_major_5_indefinite_empty() {
+  and {
+    reads(#"bfff", 0, None),
+    walks(#"bfff", 0, Some((5, -1, 1))),
+    deserialises(#"bfff", Some(#"a0")),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_0_one_byte_truncated_after_0() {
   and {
     reads(#"18", 0, None),
+    walks(#"18", 0, None),
     deserialises(#"18", None),
   }
 }
@@ -1042,6 +1494,7 @@ test head_major_0_one_byte_truncated_after_0() {
 test head_major_0_two_byte_truncated_after_0() {
   and {
     reads(#"19", 0, None),
+    walks(#"19", 0, None),
     deserialises(#"19", None),
   }
 }
@@ -1050,6 +1503,7 @@ test head_major_0_two_byte_truncated_after_0() {
 test head_major_0_two_byte_truncated_after_1() {
   and {
     reads(#"1901", 0, None),
+    walks(#"1901", 0, None),
     deserialises(#"1901", None),
   }
 }
@@ -1058,6 +1512,7 @@ test head_major_0_two_byte_truncated_after_1() {
 test head_major_0_four_byte_truncated_after_0() {
   and {
     reads(#"1a", 0, None),
+    walks(#"1a", 0, None),
     deserialises(#"1a", None),
   }
 }
@@ -1066,6 +1521,7 @@ test head_major_0_four_byte_truncated_after_0() {
 test head_major_0_four_byte_truncated_after_1() {
   and {
     reads(#"1a00", 0, None),
+    walks(#"1a00", 0, None),
     deserialises(#"1a00", None),
   }
 }
@@ -1074,6 +1530,7 @@ test head_major_0_four_byte_truncated_after_1() {
 test head_major_0_four_byte_truncated_after_2() {
   and {
     reads(#"1a0001", 0, None),
+    walks(#"1a0001", 0, None),
     deserialises(#"1a0001", None),
   }
 }
@@ -1082,6 +1539,7 @@ test head_major_0_four_byte_truncated_after_2() {
 test head_major_0_four_byte_truncated_after_3() {
   and {
     reads(#"1a000100", 0, None),
+    walks(#"1a000100", 0, None),
     deserialises(#"1a000100", None),
   }
 }
@@ -1090,6 +1548,7 @@ test head_major_0_four_byte_truncated_after_3() {
 test head_major_0_eight_byte_truncated_after_0() {
   and {
     reads(#"1b", 0, None),
+    walks(#"1b", 0, None),
     deserialises(#"1b", None),
   }
 }
@@ -1098,6 +1557,7 @@ test head_major_0_eight_byte_truncated_after_0() {
 test head_major_0_eight_byte_truncated_after_1() {
   and {
     reads(#"1b00", 0, None),
+    walks(#"1b00", 0, None),
     deserialises(#"1b00", None),
   }
 }
@@ -1106,6 +1566,7 @@ test head_major_0_eight_byte_truncated_after_1() {
 test head_major_0_eight_byte_truncated_after_2() {
   and {
     reads(#"1b0000", 0, None),
+    walks(#"1b0000", 0, None),
     deserialises(#"1b0000", None),
   }
 }
@@ -1114,6 +1575,7 @@ test head_major_0_eight_byte_truncated_after_2() {
 test head_major_0_eight_byte_truncated_after_3() {
   and {
     reads(#"1b000000", 0, None),
+    walks(#"1b000000", 0, None),
     deserialises(#"1b000000", None),
   }
 }
@@ -1122,6 +1584,7 @@ test head_major_0_eight_byte_truncated_after_3() {
 test head_major_0_eight_byte_truncated_after_4() {
   and {
     reads(#"1b00000001", 0, None),
+    walks(#"1b00000001", 0, None),
     deserialises(#"1b00000001", None),
   }
 }
@@ -1130,6 +1593,7 @@ test head_major_0_eight_byte_truncated_after_4() {
 test head_major_0_eight_byte_truncated_after_5() {
   and {
     reads(#"1b0000000100", 0, None),
+    walks(#"1b0000000100", 0, None),
     deserialises(#"1b0000000100", None),
   }
 }
@@ -1138,6 +1602,7 @@ test head_major_0_eight_byte_truncated_after_5() {
 test head_major_0_eight_byte_truncated_after_6() {
   and {
     reads(#"1b000000010000", 0, None),
+    walks(#"1b000000010000", 0, None),
     deserialises(#"1b000000010000", None),
   }
 }
@@ -1146,142 +1611,222 @@ test head_major_0_eight_byte_truncated_after_6() {
 test head_major_0_eight_byte_truncated_after_7() {
   and {
     reads(#"1b00000001000000", 0, None),
+    walks(#"1b00000001000000", 0, None),
     deserialises(#"1b00000001000000", None),
   }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_one_byte_truncated_after_0() {
-  reads(#"98", 0, None)
+  and {
+    reads(#"98", 0, None),
+    walks(#"98", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_two_byte_truncated_after_0() {
-  reads(#"99", 0, None)
+  and {
+    reads(#"99", 0, None),
+    walks(#"99", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_two_byte_truncated_after_1() {
-  reads(#"9901", 0, None)
+  and {
+    reads(#"9901", 0, None),
+    walks(#"9901", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_four_byte_truncated_after_0() {
-  reads(#"9a", 0, None)
+  and {
+    reads(#"9a", 0, None),
+    walks(#"9a", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_four_byte_truncated_after_1() {
-  reads(#"9a00", 0, None)
+  and {
+    reads(#"9a00", 0, None),
+    walks(#"9a00", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_four_byte_truncated_after_2() {
-  reads(#"9a0001", 0, None)
+  and {
+    reads(#"9a0001", 0, None),
+    walks(#"9a0001", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_four_byte_truncated_after_3() {
-  reads(#"9a000100", 0, None)
+  and {
+    reads(#"9a000100", 0, None),
+    walks(#"9a000100", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_0() {
-  reads(#"9b", 0, None)
+  and {
+    reads(#"9b", 0, None),
+    walks(#"9b", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_1() {
-  reads(#"9b00", 0, None)
+  and {
+    reads(#"9b00", 0, None),
+    walks(#"9b00", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_2() {
-  reads(#"9b0000", 0, None)
+  and {
+    reads(#"9b0000", 0, None),
+    walks(#"9b0000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_3() {
-  reads(#"9b000000", 0, None)
+  and {
+    reads(#"9b000000", 0, None),
+    walks(#"9b000000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_4() {
-  reads(#"9b00000001", 0, None)
+  and {
+    reads(#"9b00000001", 0, None),
+    walks(#"9b00000001", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_5() {
-  reads(#"9b0000000100", 0, None)
+  and {
+    reads(#"9b0000000100", 0, None),
+    walks(#"9b0000000100", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_6() {
-  reads(#"9b000000010000", 0, None)
+  and {
+    reads(#"9b000000010000", 0, None),
+    walks(#"9b000000010000", 0, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_major_4_eight_byte_truncated_after_7() {
-  reads(#"9b00000001000000", 0, None)
+  and {
+    reads(#"9b00000001000000", 0, None),
+    walks(#"9b00000001000000", 0, None),
+  }
 }
 
 test head_at_offset_1_one_byte() {
-  reads(#"ff1818", 1, Some((0, 24, 3)))
+  and {
+    reads(#"ff1818", 1, Some((0, 24, 3))),
+    walks(#"ff1818", 1, Some((0, 24, 3))),
+  }
 }
 
 test head_at_offset_1_trailing() {
-  reads(#"ff19010000", 1, Some((0, 256, 4)))
+  and {
+    reads(#"ff19010000", 1, Some((0, 256, 4))),
+    walks(#"ff19010000", 1, Some((0, 256, 4))),
+  }
 }
 
 test head_at_offset_2_eight_byte_trailing() {
-  reads(#"00001b0000000100000000ff", 2, Some((0, 4294967296, 11)))
+  and {
+    reads(#"00001b0000000100000000ff", 2, Some((0, 4294967296, 11))),
+    walks(#"00001b0000000100000000ff", 2, Some((0, 4294967296, 11))),
+  }
 }
 
 test head_at_offset_1_immediate_array() {
-  reads(#"ff8300", 1, Some((4, 3, 2)))
+  and {
+    reads(#"ff8300", 1, Some((4, 3, 2))),
+    walks(#"ff8300", 1, Some((4, 3, 2))),
+  }
 }
 
 // Canonical readers refuse it: non-minimal.
 test head_at_offset_1_non_minimal() {
-  reads(#"ff1817", 1, None)
+  and {
+    reads(#"ff1817", 1, None),
+    walks(#"ff1817", 1, None),
+  }
 }
 
 // Canonical readers refuse it: truncated.
 test head_at_offset_1_truncated() {
-  reads(#"ff1a0001", 1, None)
+  and {
+    reads(#"ff1a0001", 1, None),
+    walks(#"ff1a0001", 1, None),
+  }
 }
 
 // Canonical readers refuse it: reserved.
 test head_at_offset_1_reserved() {
-  reads(#"001c00", 1, None)
+  and {
+    reads(#"001c00", 1, None),
+    walks(#"001c00", 1, None),
+  }
 }
 
 // Canonical readers refuse it: indefinite.
 test head_at_offset_1_indefinite() {
-  reads(#"009f00", 1, None)
+  and {
+    reads(#"009f00", 1, None),
+    walks(#"009f00", 1, Some((4, -1, 2))),
+  }
 }
 
 // Canonical readers refuse it: out-of-range.
 test head_empty_at_offset_0() {
   and {
     reads(#"", 0, None),
+    walks(#"", 0, None),
     deserialises(#"", None),
   }
 }
 
 // Canonical readers refuse it: out-of-range.
 test head_offset_at_length() {
-  reads(#"00", 1, None)
+  and {
+    reads(#"00", 1, None),
+    walks(#"00", 1, None),
+  }
 }
 
 // Canonical readers refuse it: out-of-range.
 test head_offset_past_length() {
-  reads(#"00", 2, None)
+  and {
+    reads(#"00", 2, None),
+    walks(#"00", 2, None),
+  }
 }
 
 // Canonical readers refuse it: out-of-range.
 test head_offset_far_past_length() {
-  reads(#"1818", 9, None)
+  and {
+    reads(#"1818", 9, None),
+    walks(#"1818", 9, None),
+  }
 }
 
 // Canonical readers refuse it: out-of-range.

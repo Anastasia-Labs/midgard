@@ -1,6 +1,6 @@
 /** The canonical CBOR heads and byte strings the data summary walk reads. */
 export const byteAt = (bytes: Uint8Array, at: number, end: number) =>
-  at < end ? bytes[at]! : -1;
+  at >= 0 && at < end ? bytes[at]! : -1;
 
 export const bigEndian = (bytes: Uint8Array) =>
   bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n);
