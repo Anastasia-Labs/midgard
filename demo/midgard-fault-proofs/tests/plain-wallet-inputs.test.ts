@@ -1,7 +1,8 @@
 /** The wallet inputs a transaction of ours is completed from: the plain
- * coins of the selected wallet outside what it excludes, and no preset at
- * all when that removes nothing, so the wallet's own collateral survives;
- * a wallet with nothing left to select is refused. */
+ * coins of the selected wallet outside what it excludes, read once, and no
+ * preset at all only for a wallet that reserves collateral when that removes
+ * nothing, so its collateral survives; a wallet with nothing left to select
+ * is refused. */
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -18,9 +19,19 @@ const utxo = (index: number, extra: Partial<UTxO> = {}): UTxO => ({
   ...extra,
 });
 
+/** A seed or key wallet holding `utxos`: Lucid takes no collateral from it. */
 const walletOf = (utxos: readonly UTxO[]) =>
   ({
     wallet: () => ({ getUtxos: async () => [...utxos] }),
+  }) as unknown as LucidEvolution;
+
+/** A CIP-30 wallet holding `utxos` that also reserves its own collateral. */
+const collateralWalletOf = (utxos: readonly UTxO[]) =>
+  ({
+    wallet: () => ({
+      getUtxos: async () => [...utxos],
+      getCollateral: async () => [],
+    }),
   }) as unknown as LucidEvolution;
 
 describe("plainWalletInputs", () => {
@@ -40,10 +51,20 @@ describe("plainWalletInputs", () => {
       ).toStrictEqual({ presetWalletInputs: plain });
   });
 
-  it("presets nothing for a wallet that offers plain coins only", async () => {
+  it("presets every plain coin of a seed wallet, so completion cannot re-read the wallet", async () => {
     expect(await plainWalletInputs(walletOf([utxo(0), utxo(1)]))).toStrictEqual(
-      {},
+      { presetWalletInputs: [utxo(0), utxo(1)] },
     );
+  });
+
+  it("presets nothing for a wallet that reserves collateral and offers plain coins only", async () => {
+    expect(
+      await plainWalletInputs(collateralWalletOf([utxo(0), utxo(1)])),
+    ).toStrictEqual({});
+  });
+
+  it("presets nothing for an empty wallet, which Lucid would read as no preset", async () => {
+    expect(await plainWalletInputs(walletOf([]))).toStrictEqual({});
   });
 });
 
@@ -64,14 +85,16 @@ describe("plainWalletInputs with exclusions", () => {
     ).toStrictEqual({ presetWalletInputs: [utxo(0)] });
   });
 
-  it("presets nothing when no excluded coin is in the wallet", async () => {
+  it("presets nothing for a wallet that reserves collateral when no excluded coin is in it", async () => {
     expect(
-      await plainWalletInputs(walletOf([utxo(0), utxo(1)]), [
+      await plainWalletInputs(collateralWalletOf([utxo(0), utxo(1)]), [
         { txHash: "cd".repeat(32), outputIndex: 0 },
         { ...utxo(7) },
       ]),
     ).toStrictEqual({});
-    expect(await plainWalletInputs(walletOf([utxo(0)]))).toStrictEqual({});
+    expect(
+      await plainWalletInputs(collateralWalletOf([utxo(0)])),
+    ).toStrictEqual({});
   });
 
   it("refuses a wallet whose every coin is excluded or not plain, since an empty preset would bring them all back", async () => {
@@ -101,11 +124,21 @@ describe("stepWalletFunding", () => {
     });
   });
 
-  it("presets nothing and picks the largest plain coin from a plain wallet", async () => {
+  it("presets nothing and picks the largest plain coin from a plain wallet that reserves collateral", async () => {
+    const fee = utxo(1, { assets: { lovelace: 20_000_000n } });
+    expect(
+      await stepWalletFunding(collateralWalletOf([utxo(0), fee])),
+    ).toStrictEqual({
+      feeInput: fee,
+      walletInputs: {},
+    });
+  });
+
+  it("presets the plain coins it read and picks the largest from a plain seed wallet", async () => {
     const fee = utxo(1, { assets: { lovelace: 20_000_000n } });
     expect(await stepWalletFunding(walletOf([utxo(0), fee]))).toStrictEqual({
       feeInput: fee,
-      walletInputs: {},
+      walletInputs: { presetWalletInputs: [utxo(0), fee] },
     });
   });
 });

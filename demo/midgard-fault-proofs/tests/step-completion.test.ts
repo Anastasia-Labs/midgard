@@ -138,6 +138,37 @@ describe("fundStep and completeStep", () => {
     );
   });
 
+  it("coin-select a seed wallet from the coins fundStep read, never one that reaches it before completion", async () => {
+    const { emulator, lucid, funderLucid, signer, funder, proverUtxos } =
+      await prover([{ lovelace: ada(20n) }, { lovelace: ada(3n) }]);
+    const [fee, extra] = proverUtxos;
+
+    const funding = await fundStep(lucid, { signer });
+    const lateHash = await (
+      await (
+        await funderLucid
+          .newTx()
+          .pay.ToAddress(signer.address, { lovelace: ada(100n) })
+          .complete()
+      ).sign
+        .withWallet()
+        .complete()
+    ).submit();
+    emulator.awaitBlock();
+    const late = (await lucid.wallet().getUtxos()).find(
+      ({ txHash }) => txHash === lateHash,
+    );
+    expect(late).toBeDefined();
+
+    const signed = await completeStep(
+      funding.tx.pay.ToAddress(funder, { lovelace: ada(21n) }),
+      funding,
+    );
+    expect([...workflowTransactionInputOutRefs(signed)].sort()).toEqual(
+      [fee!, extra!].map(label).sort(),
+    );
+  });
+
   it("take no completion without the funding fundStep began, so coin selection never reads the whole wallet", () => {
     expectTypeOf(completeStep).parameters.toEqualTypeOf<
       [TxBuilder, StepFunding]

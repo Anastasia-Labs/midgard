@@ -20,30 +20,42 @@ const outRefKey = ({ txHash, outputIndex }: OutRef): string =>
   `${txHash}#${outputIndex.toString()}`;
 
 /**
+ * Whether Lucid takes the selected wallet's own collateral: the same test as
+ * its `fetchWalletCollateral` (@lucid-evolution/lucid 0.8.9,
+ * dist/index.js:5057), which only a CIP-30 wallet such as the watcher's
+ * restricted one (`restrictWorkflowFundingSigner`) passes.
+ */
+const walletReservesCollateral = (lucid: LucidEvolution): boolean =>
+  lucid.wallet().getCollateral !== undefined;
+
+/**
  * `complete`'s wallet-input option: the wallet coins coin selection may
- * spend, those that are plain (`isPlainFundingOutput`) and not `excluding`.
- * It is `{}` when that removes nothing from `walletUtxos`, and Lucid then
- * re-reads the wallet inside `complete`. A preset is passed only when it
- * narrows the wallet, because Lucid takes collateral only from among preset
- * inputs: a needless preset hides the wallet's own collateral, the one the
- * watcher's restricted wallet (`restrictWorkflowFundingSigner`) reserves.
- * Under that wallet the result is therefore always `{}`. It throws when the
- * wallet holds coins but none is selectable: Lucid reads an empty preset as
- * none and would bring the removed coins back into coin selection.
+ * spend, those that are plain (`isPlainFundingOutput`) and not `excluding`,
+ * from the one wallet read made here. Without a preset Lucid re-reads the
+ * wallet inside `complete`, and a coin that reached it in between would join
+ * coin selection. It is `{}` only for a wallet that reserves collateral and
+ * whose coins are all selectable: Lucid takes collateral only from among
+ * preset inputs, so a preset would hide that reserved collateral. It is `{}`
+ * for an empty wallet too, which Lucid reads as no preset; the fee input
+ * selection reports the shortfall. It throws when the wallet holds coins but
+ * none is selectable: Lucid reads an empty preset as none and would bring the
+ * removed coins back into coin selection.
  */
 const coinSelectionWalletInputs = (
   walletUtxos: readonly UTxO[],
+  reservesCollateral: boolean,
   excluding: readonly OutRef[] = [],
 ): { presetWalletInputs?: UTxO[] } => {
+  if (walletUtxos.length === 0) return {};
   const excluded = new Set(excluding.map(outRefKey));
   const selectable = walletUtxos.filter(
     (utxo) => isPlainFundingOutput(utxo) && !excluded.has(outRefKey(utxo)),
   );
-  if (selectable.length === walletUtxos.length) return {};
   if (selectable.length === 0)
     throw new Error(
       "Prover wallet must contain a pure-ADA UTxO outside the transaction's own inputs and references for coin selection.",
     );
+  if (reservesCollateral && selectable.length === walletUtxos.length) return {};
   return { presetWalletInputs: selectable };
 };
 
@@ -60,7 +72,11 @@ export const stepWalletFunding = async (
   readonly walletInputs: { presetWalletInputs?: UTxO[] };
 }> => {
   const walletUtxos = await lucid.wallet().getUtxos();
-  const walletInputs = coinSelectionWalletInputs(walletUtxos, excluding);
+  const walletInputs = coinSelectionWalletInputs(
+    walletUtxos,
+    walletReservesCollateral(lucid),
+    excluding,
+  );
   return {
     feeInput: selectFeeInput(walletInputs.presetWalletInputs ?? walletUtxos),
     walletInputs,
@@ -72,4 +88,8 @@ export const plainWalletInputs = async (
   lucid: LucidEvolution,
   excluding?: readonly OutRef[],
 ): Promise<{ presetWalletInputs?: UTxO[] }> =>
-  coinSelectionWalletInputs(await lucid.wallet().getUtxos(), excluding);
+  coinSelectionWalletInputs(
+    await lucid.wallet().getUtxos(),
+    walletReservesCollateral(lucid),
+    excluding,
+  );
