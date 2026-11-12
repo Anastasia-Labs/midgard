@@ -5,8 +5,19 @@ import {
   NonExistentInputStep04ThreadDatum,
 } from "@al-ft/midgard-sdk";
 
+import { NON_EXISTENT_INPUT_KIND } from "../non-existent-input/wrongful-rejection.js";
 import { NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { defineLinearFamily } from "./family-definition.js";
+import {
+  inputExistenceRemoval,
+  type InputExistenceWorkflowReferenceScripts,
+  WITNESS_ROLES,
+} from "./input-existence.capture-removal.js";
+import {
+  inputExistenceTransactionPort,
+  type ManifestBoundInputExistenceWorkflow,
+  type ManifestBoundInputExistenceWorkflowConfig,
+} from "./input-existence.create-transaction-port.js";
 import { inputExistenceFieldCarriageRequirements } from "./input-existence-field-carriage.js";
 import {
   admitLedgerAbsenceArtifact,
@@ -16,15 +27,15 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
-import {
-  actionInput,
-  WITNESS_ROLES,
-} from "./non-existent-input.capture-removal.js";
-import {
-  createTransactionPort,
-  type ManifestBoundNonExistentInputWorkflow,
-  type ManifestBoundNonExistentInputWorkflowConfig,
-} from "./non-existent-input.create-transaction-port.js";
+
+export type NonExistentInputWorkflowReferenceScripts =
+  InputExistenceWorkflowReferenceScripts<"nonExistentInput">;
+export type ManifestBoundNonExistentInputWorkflowConfig =
+  ManifestBoundInputExistenceWorkflowConfig<"nonExistentInput">;
+export type ManifestBoundNonExistentInputWorkflow =
+  ManifestBoundInputExistenceWorkflow<"nonExistentInput">;
+
+const { actionInput } = inputExistenceRemoval(NON_EXISTENT_INPUT_KIND);
 
 export const NON_EXISTENT_INPUT_FAMILY_DEFINITION = defineLinearFamily({
   category: "nonExistentInput",
@@ -37,7 +48,10 @@ export const NON_EXISTENT_INPUT_FAMILY_DEFINITION = defineLinearFamily({
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-  adapter: { kind: "linear", transactionPort: createTransactionPort },
+  adapter: {
+    kind: "linear",
+    transactionPort: inputExistenceTransactionPort(NON_EXISTENT_INPUT_KIND),
+  },
   fieldCarriage: inputExistenceFieldCarriageRequirements(
     (action) => actionInput(action).stage === "step_02",
   ),

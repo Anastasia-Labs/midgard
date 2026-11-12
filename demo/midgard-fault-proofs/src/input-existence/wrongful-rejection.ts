@@ -18,18 +18,8 @@ import {
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
+import type { InputExistenceCategory, InputExistenceKind } from "./kind.js";
 
-/** The input a forced transaction's InputNotFound rejection names: a spent
- * input (source kind 0, the spend-input field) or a reference input (source
- * kind 1, the reference-input field). */
-export type InputExistenceKind<ViolationId extends string> = Readonly<{
-  /** The prefix of the family's error messages. */
-  label: string;
-  violationId: ViolationId;
-  sourceKind: bigint;
-  /** The transaction field that lists inputs of this kind. */
-  fieldIndex: number;
-}>;
 export type InputExistenceForcedSource = {
   header: SDK.Header;
   membership: SDK.ForcedTransactionSourceMembershipProof;
@@ -49,12 +39,12 @@ export type PreparedInputExistenceWrongfulRejection = Readonly<{
 /** Detects and prepares the proofs that a forced transaction's
  * InputNotFound rejection of an input of one kind is wrongful. */
 export const inputExistenceWrongfulRejection = <ViolationId extends string>({
-  label,
+  category,
   violationId,
   sourceKind,
   fieldIndex,
-}: InputExistenceKind<ViolationId>) => {
-  const honest = `${label}: honest InputNotFound rejection`;
+}: InputExistenceKind<InputExistenceCategory, ViolationId>) => {
+  const honest = `${category}: honest InputNotFound rejection`;
   const forcedSourceMaterial = (
     source: InputExistenceForcedSource,
     fullTransactionCbor: string,
@@ -64,14 +54,14 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
       leaf.verdict === "ForcedTxValid"
     )
-      throw new Error(`${label}: wrong forced direction`);
+      throw new Error(`${category}: wrong forced direction`);
     const reason = leaf.verdict.ForcedTxInvalid.reason;
     if (
       typeof reason !== "object" ||
       !("InputNotFound" in reason) ||
       reason.InputNotFound.source_kind !== sourceKind
     )
-      throw new Error(`${label}: wrong typed rejection/source kind`);
+      throw new Error(`${category}: wrong typed rejection/source kind`);
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       Buffer.from(fullTransactionCbor, "hex"),
     );
@@ -84,7 +74,7 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
         leaf.submitted_source.field_preimage_lengths_cbor
     )
-      throw new Error(`${label}: forced transaction source changed`);
+      throw new Error(`${category}: forced transaction source changed`);
     const inputItems = decodeMidgardFieldPreimage(
       material.fieldPreimages[fieldIndex]!,
     );
@@ -121,7 +111,8 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     predecessor?: CheckedLedger;
   }): Promise<PreparedInputExistenceWrongfulRejection> => {
     const forced = block.reconstruction.forcedTransactions[forcedIndex];
-    if (forced === undefined) throw new Error(`${label}: forced source absent`);
+    if (forced === undefined)
+      throw new Error(`${category}: forced source absent`);
     const eventKey: SDK.EventKey = {
       ForcedTransactionEventKey: { tx_order_id: forced.key },
     };
@@ -154,7 +145,7 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       Data.to(transition.event_key, SDK.EventKey) !==
         Data.to(eventKey, SDK.EventKey)
     )
-      throw new Error(`${label}: inconsistent event transition`);
+      throw new Error(`${category}: inconsistent event transition`);
     let ledgerMembership: PreparedInputExistenceWrongfulRejection["ledgerMembership"] =
       null;
     if (material.selectedInput !== null) {

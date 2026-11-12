@@ -11,6 +11,37 @@ import {
 import type { InputExistenceContracts } from "./prepare-step-carriage.js";
 import { submitInputExistenceStep } from "./submit.js";
 
+/** The deployed category and contracts of the family whose inputs `field`
+ * lists. */
+export const resolveInputExistenceDeployment = async (
+  field: 0 | 1,
+  parameters: Parameters<typeof resolveNoReferenceInputDeploymentContracts>[0],
+): Promise<{ categoryId: string; contracts: InputExistenceContracts }> => {
+  if (field === 0) {
+    const resolved =
+      await resolveNonExistentInputDeploymentContracts(parameters);
+    return {
+      categoryId: resolved.nonExistentInputCategory.categoryId,
+      contracts: {
+        hubOraclePolicyId: resolved.hubOraclePolicyId,
+        steps: resolved.contracts.nonExistentInput.steps,
+        computationThread: resolved.contracts.computationThread,
+        fraudProof: resolved.contracts.fraudProof,
+      },
+    };
+  }
+  const resolved = await resolveNoReferenceInputDeploymentContracts(parameters);
+  return {
+    categoryId: resolved.noReferenceInputCategory.categoryId,
+    contracts: {
+      hubOraclePolicyId: resolved.hubOraclePolicyId,
+      steps: resolved.contracts.noReferenceInput.steps,
+      computationThread: resolved.contracts.computationThread,
+      fraudProof: resolved.contracts.fraudProof,
+    },
+  };
+};
+
 export type InputExistenceDeploymentStepArguments = Omit<
   Parameters<typeof submitInputExistenceStep>[0],
   "contracts" | "categoryId" | "stepIndex"
@@ -31,34 +62,10 @@ export const createInputExistenceDeploymentStep =
       throw new Error(
         "input-existence stage received another family's preparation",
       );
-    const parameters = {
-      blueprint: args.blueprint,
-      deploymentInfo,
-      network: args.network,
-    };
-    let categoryId: string;
-    let contracts: InputExistenceContracts;
-    if (field === 0) {
-      const resolved =
-        await resolveNonExistentInputDeploymentContracts(parameters);
-      categoryId = resolved.nonExistentInputCategory.categoryId;
-      contracts = {
-        hubOraclePolicyId: resolved.hubOraclePolicyId,
-        steps: resolved.contracts.nonExistentInput.steps,
-        computationThread: resolved.contracts.computationThread,
-        fraudProof: resolved.contracts.fraudProof,
-      };
-    } else {
-      const resolved =
-        await resolveNoReferenceInputDeploymentContracts(parameters);
-      categoryId = resolved.noReferenceInputCategory.categoryId;
-      contracts = {
-        hubOraclePolicyId: resolved.hubOraclePolicyId,
-        steps: resolved.contracts.noReferenceInput.steps,
-        computationThread: resolved.contracts.computationThread,
-        fraudProof: resolved.contracts.fraudProof,
-      };
-    }
+    const { categoryId, contracts } = await resolveInputExistenceDeployment(
+      field,
+      { blueprint: args.blueprint, deploymentInfo, network: args.network },
+    );
     return submitInputExistenceStep({
       ...args,
       prepared,

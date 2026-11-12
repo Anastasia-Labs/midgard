@@ -5,8 +5,19 @@ import {
   NoReferenceInputStep04ThreadDatum,
 } from "@al-ft/midgard-sdk";
 
+import { NO_REFERENCE_INPUT_KIND } from "../no-reference-input/wrongful-rejection.js";
 import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { defineLinearFamily } from "./family-definition.js";
+import {
+  inputExistenceRemoval,
+  type InputExistenceWorkflowReferenceScripts,
+  WITNESS_ROLES,
+} from "./input-existence.capture-removal.js";
+import {
+  inputExistenceTransactionPort,
+  type ManifestBoundInputExistenceWorkflow,
+  type ManifestBoundInputExistenceWorkflowConfig,
+} from "./input-existence.create-transaction-port.js";
 import { inputExistenceFieldCarriageRequirements } from "./input-existence-field-carriage.js";
 import {
   admitLedgerAbsenceArtifact,
@@ -16,15 +27,15 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
-import {
-  actionInput,
-  WITNESS_ROLES,
-} from "./no-reference-input.capture-removal.js";
-import {
-  createTransactionPort,
-  type ManifestBoundNoReferenceInputWorkflow,
-  type ManifestBoundNoReferenceInputWorkflowConfig,
-} from "./no-reference-input.create-transaction-port.js";
+
+export type NoReferenceInputWorkflowReferenceScripts =
+  InputExistenceWorkflowReferenceScripts<"noReferenceInput">;
+export type ManifestBoundNoReferenceInputWorkflowConfig =
+  ManifestBoundInputExistenceWorkflowConfig<"noReferenceInput">;
+export type ManifestBoundNoReferenceInputWorkflow =
+  ManifestBoundInputExistenceWorkflow<"noReferenceInput">;
+
+const { actionInput } = inputExistenceRemoval(NO_REFERENCE_INPUT_KIND);
 
 export const NO_REFERENCE_INPUT_FAMILY_DEFINITION = defineLinearFamily({
   category: "noReferenceInput",
@@ -37,7 +48,10 @@ export const NO_REFERENCE_INPUT_FAMILY_DEFINITION = defineLinearFamily({
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
   replayer: () => NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  adapter: { kind: "linear", transactionPort: createTransactionPort },
+  adapter: {
+    kind: "linear",
+    transactionPort: inputExistenceTransactionPort(NO_REFERENCE_INPUT_KIND),
+  },
   fieldCarriage: inputExistenceFieldCarriageRequirements(
     (action) => actionInput(action).stage === "step_02",
   ),
@@ -58,5 +72,3 @@ export const createManifestBoundNoReferenceInputWorkflow = (
   );
 export const runOrResumeManifestBoundNoReferenceInputWorkflow =
   runOrResumeManifestBoundFamilyWorkflow;
-
-export type { ManifestBoundNoReferenceInputWorkflow } from "./no-reference-input.create-transaction-port.js";

@@ -17,16 +17,14 @@ import "./linear-family-adapter.js";
 import "./manifest-bound-family-assembly.js";
 import "./proof-chunk-prerequisite.js";
 import "./transaction-boundary.js";
-import "./non-existent-input.capture-removal.js";
-import "./non-existent-input.create-transaction-port.js";
+import "./input-existence.capture-removal.js";
+import "./input-existence.create-transaction-port.js";
 import "./non-existent-input.non-existent-input-family-definition.js";
-export { type NonExistentInputWorkflowReferenceScripts } from "./non-existent-input.capture-removal.js";
-export {
-  type ManifestBoundNonExistentInputWorkflow,
-  type ManifestBoundNonExistentInputWorkflowConfig,
-} from "./non-existent-input.create-transaction-port.js";
 export {
   createManifestBoundNonExistentInputWorkflow,
+  type ManifestBoundNonExistentInputWorkflow,
+  type ManifestBoundNonExistentInputWorkflowConfig,
   NON_EXISTENT_INPUT_FAMILY_DEFINITION,
+  type NonExistentInputWorkflowReferenceScripts,
   runOrResumeManifestBoundNonExistentInputWorkflow,
 } from "./non-existent-input.non-existent-input-family-definition.js";

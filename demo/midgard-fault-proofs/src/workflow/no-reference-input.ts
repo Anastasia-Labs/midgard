@@ -17,14 +17,14 @@ import "./linear-family-adapter.js";
 import "./manifest-bound-family-assembly.js";
 import "./proof-chunk-prerequisite.js";
 import "./transaction-boundary.js";
-import "./no-reference-input.capture-removal.js";
-import "./no-reference-input.create-transaction-port.js";
+import "./input-existence.capture-removal.js";
+import "./input-existence.create-transaction-port.js";
 import "./no-reference-input.no-reference-input-family-definition.js";
-export { type NoReferenceInputWorkflowReferenceScripts } from "./no-reference-input.capture-removal.js";
-export { type ManifestBoundNoReferenceInputWorkflowConfig } from "./no-reference-input.create-transaction-port.js";
 export {
   createManifestBoundNoReferenceInputWorkflow,
   type ManifestBoundNoReferenceInputWorkflow,
+  type ManifestBoundNoReferenceInputWorkflowConfig,
   NO_REFERENCE_INPUT_FAMILY_DEFINITION,
+  type NoReferenceInputWorkflowReferenceScripts,
   runOrResumeManifestBoundNoReferenceInputWorkflow,
 } from "./no-reference-input.no-reference-input-family-definition.js";
