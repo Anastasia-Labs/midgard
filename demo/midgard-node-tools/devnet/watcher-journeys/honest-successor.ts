@@ -15,47 +15,45 @@ import type {
   StagedJourney,
 } from "./fixture.js";
 import {
+  faultRemovedBeforeAttestation,
+  readFaultAttestation,
+} from "./honest-successor.fault-attestation.js";
+import {
   assertNoHonestHeaderOnFault,
   COMMIT_BASE_PENDING,
+  LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_INVALID,
   readIndexedStateQueueHeader,
   readOperatorShiftsOnFault,
 } from "./honest-successor.observables.js";
+import type {
+  JourneyFaultAttestation,
+  JourneySuccessorStage,
+} from "./honest-successor.stage.js";
 import { successorTransfer } from "./honest-successor.transfer.js";
 import { createNodeHoldWatch, type NodeHoldWatch } from "./node-hold-watch.js";
 
-/**
- * Whether the family's successor stage tested our node's refusal to build on
- * the fault. It was not reached when the watcher's removal of the fault
- * landed strictly before our operator's first shift after the fault's
- * commit: our node never had a shift in which it could have built on the
- * fault. That still passes the proof and the removal; the evidence is what
- * L1 shows of the three.
- */
-export type JourneySuccessorStage =
-  | Readonly<{ successorStage: "exercised" }>
-  | Readonly<{
-      successorStage: "not-reached-fault-removed-before-our-shift";
-      successorStageEvidence: Readonly<{
-        removal: Readonly<{ txHash: string; slot: number; atMs: number }>;
-        ourFirstShiftStartMs: number;
-        operator2ShiftEndMs: number;
-      }>;
-    }>;
+export type {
+  JourneyFaultAttestation,
+  JourneySuccessorStage,
+} from "./honest-successor.stage.js";
 
 /**
  * How a family's honest successor comes about once the fault is on L1.
  * - `afterFaultLanded`: the fault is the queue's tail; give our node work.
  * - `commit`: the watcher removed the fault in `removalTxHash`; return the
- *   successor block and whether the successor stage was reached.
+ *   successor block, whether the successor stage was reached, and, where L1
+ *   was read for it, when the fault's DA attestation was applied.
  * - `close`: stop anything `afterFaultLanded` left running.
  */
 export type JourneySuccessorPort = Readonly<{
   afterFaultLanded(): Promise<void>;
-  commit(
-    correction: Readonly<{ removalTxHash: string }>,
-  ): Promise<
-    Readonly<{ successor: JourneySuccessor; stage: JourneySuccessorStage }>
+  commit(correction: Readonly<{ removalTxHash: string }>): Promise<
+    Readonly<{
+      successor: JourneySuccessor;
+      stage: JourneySuccessorStage;
+      faultAttestation?: JourneyFaultAttestation;
+    }>
   >;
   close(): Promise<void>;
 }>;
@@ -115,9 +113,7 @@ const faultRemovedBeforeOurShift = (
 ): JourneySuccessorStage | string => {
   const { removal, ourFirstShiftStartMs, faultOperatorShift } = faultTail;
   if (removal === null)
-    return "Kupo shows the fault unspent, so its removal is not proven before our shift";
-  if (removal.txHash !== removalTxHash)
-    return `Kupo shows the fault spent by ${removal.txHash ?? "an unnamed transaction"}, not by the watcher's removal ${removalTxHash}`;
+    return `Kupo shows no output of the fault spent by the watcher's removal ${removalTxHash}, so its removal is not proven before our shift`;
   if (ourFirstShiftStartMs === null)
     return "L1 shows no shift of ours after the fault's commit to place the removal before";
   if (removal.atMs >= ourFirstShiftStartMs)
@@ -144,7 +140,10 @@ const faultRemovedBeforeOurShift = (
  * fault is the tail, and watches our node's `/readyz` for its hold on the
  * fault. After the watcher's removal it proves the three refusal
  * observables:
- * 1. our node held `landed_block_invalid` on the fault while it was the tail;
+ * 1. our node held `landed_block_invalid` on the fault while it was the tail,
+ *    or held it awaiting its DA only and L1 shows the watcher's removal
+ *    strictly before the fault's DA apply (or no DA apply), which the
+ *    family records as its own stage;
  * 2. no header of our operator on L1 names the fault as its parent;
  * 3. the hold cleared, and our node's next header links to the fault's
  *    predecessor and carries the transfer.
@@ -223,10 +222,14 @@ export const stackSuccessorPort = (
       if (existsSync(successorPath)) {
         const refusal = await readJourneyArtifact<{
           stage?: JourneySuccessorStage;
+          faultAttestation?: JourneyFaultAttestation;
         }>(refusalPath);
         return {
           successor: await readJourneyArtifact<JourneySuccessor>(successorPath),
           stage: refusal.stage ?? { successorStage: "exercised" },
+          ...(refusal.faultAttestation === undefined
+            ? {}
+            : { faultAttestation: refusal.faultAttestation }),
         };
       }
       const intent = await savedIntent();
@@ -235,10 +238,41 @@ export const stackSuccessorPort = (
       // Observable 1: the hold was on the fault while it was the tail.
       const observations = await holdWatch.observations(faultHeaderHash);
       const firstHeld = observations.find(({ hold }) => hold?.state === "held");
-      if (firstHeld === undefined)
-        throw new Error(
-          `Our node never reported ${LANDED_BLOCK_INVALID} for the fault ${input.fault.headerHash} while it was the tail; the refusal was not observed`,
+      const firstAwaiting = observations.find(
+        ({ hold }) => hold?.state === "awaiting_da",
+      );
+      const unobserved = `Our node never reported ${LANDED_BLOCK_INVALID} for the fault ${input.fault.headerHash} while it was the tail; the refusal was not observed`;
+      const firstHold = firstHeld ?? firstAwaiting;
+      if (firstHold === undefined) throw new Error(unobserved);
+      // When the fault's DA apply landed, read once: it decides observable 1
+      // without a held report, and the race is measured from it.
+      const attestation = await readFaultAttestation(
+        {
+          kupoUrl: input.kupoUrl,
+          policyId: input.stateQueuePolicyId,
+          faultHeaderHash,
+          slotToUnixTime: input.slotToUnixTime,
+        },
+        fetchImpl,
+      );
+      const faultAttestation: JourneyFaultAttestation = {
+        blockTimeMs: attestation.blockTimeMs,
+        apply: attestation.apply,
+        lagAfterBlockTimeMs: attestation.lagAfterBlockTimeMs,
+      };
+      let stage: JourneySuccessorStage = { successorStage: "exercised" };
+      if (firstHeld === undefined) {
+        const removedBeforeAttestation = faultRemovedBeforeAttestation(
+          attestation,
+          removalTxHash,
+          input.slotToUnixTime,
         );
+        if (typeof removedBeforeAttestation === "string")
+          throw new Error(
+            `${unobserved}: it reported only ${LANDED_BLOCK_AWAITING_DA}, and ${removedBeforeAttestation}`,
+          );
+        stage = removedBeforeAttestation;
+      }
       const committed = await input.poll(
         "our node's successor commitment",
         async () => {
@@ -325,11 +359,12 @@ export const stackSuccessorPort = (
             stateQueuePolicyId: input.stateQueuePolicyId,
             schedulerPolicyId: input.schedulerPolicyId,
             faultHeaderHash,
+            removalTxHash,
             operatorKeyHash: input.honestOperatorKeyHash,
             shiftDurationMs: input.shiftDurationMs,
             slotToUnixTime: input.slotToUnixTime,
             untilSlot: onL1!.createdAtSlot,
-            heldFromMs: Date.parse(firstHeld.observedAt),
+            heldFromMs: Date.parse(firstHold.observedAt),
           },
           fetchImpl,
         )),
@@ -342,8 +377,8 @@ export const stackSuccessorPort = (
       await writeJourneyArtifact(join(input.directory, "fault-tail.json"), {
         fault: faultHeaderHash,
         ...faultTail,
+        faultAttestation,
       });
-      let stage: JourneySuccessorStage = { successorStage: "exercised" };
       if (
         faultTail.ourShifts.length === 0 &&
         faultTail.commitBasePendingAt === undefined
@@ -375,9 +410,10 @@ export const stackSuccessorPort = (
         successor: committed,
         commitTxHash: onL1!.txHash,
         stage,
+        faultAttestation,
       });
       await writeJourneyArtifact(successorPath, successor);
-      return { successor, stage };
+      return { successor, stage, faultAttestation };
     },
     close: async () => {
       await holdWatch.stop();

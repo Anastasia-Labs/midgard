@@ -24,6 +24,7 @@ import type {
   JourneyCategory,
   JourneySuccessor,
 } from "./fixture.js";
+import { verifyJourneySuccessorStageEvidence } from "./honest-successor.stage.js";
 import {
   canonicalDigest,
   inputLabels,
@@ -257,6 +258,12 @@ export const verifyJourneyResultEvidence = async (
         confirmationDepth,
       "Native evidence has insufficient finality depth",
     );
+  // A fault removed before its DA apply is claimed only with its evidence,
+  // the removal at the slot the native chain shows it in.
+  verifyJourneySuccessorStageEvidence(result, {
+    txHash: completion.correction.removalTxHash,
+    slot: Number(transaction(completion.correction.removalTxHash).slot),
+  });
   const point = canonical.blocks.get(completion.observedAt.blockHash);
   assert(
     point !== undefined && point.slot === BigInt(completion.observedAt.slot),

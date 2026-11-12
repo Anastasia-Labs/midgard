@@ -79,6 +79,14 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     { block: predecessor, slot: 5 },
     { block: fault, slot: 10 },
   ];
+  /** Where the fault's newest output is in `indexed`. */
+  const lastFaultOutput = () => {
+    let last = -1;
+    indexed.forEach(({ block }, index) => {
+      if (block === fault) last = index;
+    });
+    return last;
+  };
   const appointments: IndexedAppointment[] = [];
   const kupoUrl = await kupo(
     () => indexed,
@@ -244,12 +252,13 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     indexed.push({ block, slot: 30 });
     node.status = { status: "committed", headerHash: block.headerHash };
   };
-  const observedHold = async () => {
+  /** Waits until the hold watch recorded our node's hold in `state`. */
+  const observedHold = async (state: "held" | "awaiting_da" = "held") => {
     const path = join(directory, "node-hold-observations.ndjson");
     for (;;) {
       if (
         existsSync(path) &&
-        (await readFile(path, "utf8")).includes('"state":"held"')
+        (await readFile(path, "utf8")).includes(`"state":"${state}"`)
       )
         return;
       await pause(5);
@@ -265,12 +274,37 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     slot: number,
     { by = correction.removalTxHash }: { by?: string | null } = {},
   ) => {
-    indexed[1] = {
-      block: fault,
-      slot: 10,
+    const index = lastFaultOutput();
+    const { block, slot: createdAt, txHash, attested } = indexed[index]!;
+    indexed[index] = {
+      block,
+      slot: createdAt,
+      ...(txHash === undefined ? {} : { txHash }),
+      ...(attested === undefined ? {} : { attested }),
       spentAt: slot,
       ...(by === null ? {} : { spentBy: by }),
     };
+  };
+  /** The transaction that applies the fault's DA attestation. */
+  const attestationApplyTxHash = "a7".repeat(32);
+  /**
+   * The fault's DA attestation is applied at `slot`: it spends the fault's
+   * output, unless that is spent already, and creates an attested one.
+   */
+  const attests = (slot: number) => {
+    const index = lastFaultOutput();
+    if (indexed[index]!.spentAt === undefined)
+      indexed[index] = {
+        ...indexed[index]!,
+        spentAt: slot,
+        spentBy: attestationApplyTxHash,
+      };
+    indexed.push({
+      block: fault,
+      slot,
+      txHash: attestationApplyTxHash,
+      attested: true,
+    });
   };
   /** The scheduler appoints `operator` from `slot`, one second a slot. */
   const appoints = (operator: string, slot: number) =>
@@ -289,6 +323,8 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
     observedHold,
     correction,
     removed,
+    attests,
+    attestationApplyTxHash,
     appoints,
     replayedPredecessor,
     transferBeforeFault,

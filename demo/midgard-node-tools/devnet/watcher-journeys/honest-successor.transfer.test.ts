@@ -73,6 +73,11 @@ describe("stack successor transfer", () => {
     await expect(port.commit(drill.correction)).resolves.toEqual({
       successor: expect.objectContaining({ headerHash: ours.headerHash }),
       stage: { successorStage: "exercised" },
+      faultAttestation: {
+        blockTimeMs: Number(drill.fault.header.endTime),
+        apply: null,
+        lagAfterBlockTimeMs: null,
+      },
     });
     expect(
       JSON.parse(await readFile(join(drill.directory, "refusal.json"), "utf8")),

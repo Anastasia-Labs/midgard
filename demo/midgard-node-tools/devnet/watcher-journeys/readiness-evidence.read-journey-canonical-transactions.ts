@@ -32,6 +32,9 @@ export type JourneyResult = {
   proverAddress?: string;
   completion: FraudProofWorkflowTerminal;
   successor: string;
+  /** Whether the successor stage was reached, and on what evidence. */
+  successorStage?: string;
+  successorStageEvidence?: unknown;
   diagnostics: {
     status: {
       readiness: string;

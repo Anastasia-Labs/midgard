@@ -66,13 +66,17 @@ export const schedulerPolicyId = "d4".repeat(28);
 
 /**
  * A state-queue output, created at `slot` and spent at `spentAt` by
- * `spentBy`, which Kupo leaves unnamed when absent.
+ * `spentBy`, which Kupo leaves unnamed when absent. `txHash` names the
+ * transaction that created it (by default one numbered by its place), and
+ * `attested` sets its DA attestation.
  */
 export type IndexedOutput = Readonly<{
   block: JourneyBlock;
   slot: number;
   spentAt?: number;
   spentBy?: string;
+  txHash?: string;
+  attested?: boolean;
 }>;
 
 /** A scheduler output appointing `operator` from `startTime`, made at `slot`. */
@@ -134,42 +138,50 @@ export const kupo = (
     };
     const matches = [
       ...(name === "*" ? [root] : []),
-      ...outputs().map(({ block, slot, spentAt, spentBy }, index) => {
-        const assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${block.headerHash}`;
-        const node: SDK.StateQueueNode = {
-          header: block.header,
-          block_time: block.header.endTime,
-          da_attestation: "Unattested",
-          proven_fraud: null,
-        };
-        return {
-          transaction_id: (index + 1).toString(16).padStart(64, "0"),
-          output_index: 1,
-          address: "addr_test1wqueue",
-          value: {
-            coins: 2_000_000,
-            assets: { [`${policyId}.${assetName}`]: 1 },
-          },
-          datum_type: "inline",
-          datum: Data.to(
-            SDK.nodeViewToLinkedListDatum({
-              key: { Key: { key: block.headerHash } },
-              next: "Empty",
-              data: Data.castTo(node, SDK.StateQueueNode),
-            }),
-            SDK.LinkedListDatum,
-          ),
-          created_at: { slot_no: slot },
-          spent_at:
-            spentAt === undefined
-              ? null
-              : {
-                  slot_no: spentAt,
-                  ...(spentBy === undefined ? {} : { transaction_id: spentBy }),
-                },
-          assetName,
-        };
-      }),
+      ...outputs().map(
+        ({ block, slot, spentAt, spentBy, txHash, attested }, index) => {
+          const assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${block.headerHash}`;
+          const node: SDK.StateQueueNode = {
+            header: block.header,
+            block_time: block.header.endTime,
+            da_attestation:
+              attested === true
+                ? { Attested: { commitment_hash: "ee".repeat(32) } }
+                : SDK.NO_DA_ATTESTATION,
+            proven_fraud: null,
+          };
+          return {
+            transaction_id:
+              txHash ?? (index + 1).toString(16).padStart(64, "0"),
+            output_index: 1,
+            address: "addr_test1wqueue",
+            value: {
+              coins: 2_000_000,
+              assets: { [`${policyId}.${assetName}`]: 1 },
+            },
+            datum_type: "inline",
+            datum: Data.to(
+              SDK.nodeViewToLinkedListDatum({
+                key: { Key: { key: block.headerHash } },
+                next: "Empty",
+                data: Data.castTo(node, SDK.StateQueueNode),
+              }),
+              SDK.LinkedListDatum,
+            ),
+            created_at: { slot_no: slot },
+            spent_at:
+              spentAt === undefined
+                ? null
+                : {
+                    slot_no: spentAt,
+                    ...(spentBy === undefined
+                      ? {}
+                      : { transaction_id: spentBy }),
+                  },
+            assetName,
+          };
+        },
+      ),
     ].filter(
       (match) =>
         policy === policyId &&

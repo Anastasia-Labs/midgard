@@ -69,6 +69,12 @@ describe("stack successor", () => {
           faultCommitToOurNextShiftMs: 4_000,
         },
       },
+      // No DA attestation was applied to the fault before its removal.
+      faultAttestation: {
+        blockTimeMs: Number(drill.fault.header.endTime),
+        apply: null,
+        lagAfterBlockTimeMs: null,
+      },
     });
     // A resumed run reads the proven successor back.
     const resumed = drill.port();
@@ -77,6 +83,7 @@ describe("stack successor", () => {
     await expect(resumed.commit(drill.correction)).resolves.toMatchObject({
       successor: { headerHash: ours.headerHash },
       stage: { successorStage: "exercised" },
+      faultAttestation: { apply: null, lagAfterBlockTimeMs: null },
     });
   });
 
@@ -215,6 +222,11 @@ describe("stack successor", () => {
     await expect(port.commit(drill.correction)).resolves.toEqual({
       successor: expect.objectContaining({ headerHash: ours.headerHash }),
       stage: notReached,
+      faultAttestation: {
+        blockTimeMs: Number(drill.fault.header.endTime),
+        apply: null,
+        lagAfterBlockTimeMs: null,
+      },
     });
     // The family's evidence records it with the timing it was decided on.
     expect(
@@ -255,7 +267,7 @@ describe("stack successor", () => {
         drill.appoints(operator2, 9);
         drill.appoints(honestOperator, 31);
       },
-      /shows the fault unspent/u,
+      /no output of the fault spent by the watcher's removal/u,
     ],
     [
       "is not named by Kupo",
@@ -264,7 +276,7 @@ describe("stack successor", () => {
         drill.removed(13, { by: null });
         drill.appoints(honestOperator, 14);
       },
-      /spent by an unnamed transaction/u,
+      /no output of the fault spent by the watcher's removal/u,
     ],
     [
       "is another transaction than the watcher's removal",
@@ -273,7 +285,7 @@ describe("stack successor", () => {
         drill.removed(13, { by: "cd".repeat(32) });
         drill.appoints(honestOperator, 14);
       },
-      /not by the watcher's removal/u,
+      /no output of the fault spent by the watcher's removal/u,
     ],
     [
       "has no shift of ours on L1 after it",

@@ -89,6 +89,11 @@ export const classifyNodeFaultHold = (
 export type IndexedStateQueueHeader = Readonly<{
   headerHash: string;
   header: SDK.Header;
+  /** The node's block time (POSIX ms), its DA attestation timeout's start. */
+  blockTimeMs: number;
+  /** Whether the node carries a DA attestation (any status but unattested). */
+  attested: boolean;
+  /** The transaction that created this output. */
   txHash: string;
   outputIndex: number;
   createdAtSlot: number;
@@ -169,11 +174,14 @@ const headerOfMatch = async (
     throw new Error(
       `State-queue output ${match.transaction_id}#${match.output_index.toString()} keys another header than its token`,
     );
+  const queueNode = await Effect.runPromise(
+    SDK.getStateQueueNodeFromStateQueueDatum({ data: node.data as never }),
+  );
   return {
     headerHash,
-    header: await Effect.runPromise(
-      SDK.getHeaderFromStateQueueDatum({ data: node.data as never }),
-    ),
+    header: queueNode.header,
+    blockTimeMs: Number(queueNode.block_time),
+    attested: queueNode.da_attestation !== SDK.NO_DA_ATTESTATION,
     txHash: match.transaction_id,
     outputIndex: match.output_index,
     createdAtSlot: match.created_at.slot_no,
@@ -210,6 +218,26 @@ export const readIndexedStateQueueHeader = async (
     if (header !== undefined) headers.push(header);
   }
   return headers.sort((a, b) => a.createdAtSlot - b.createdAtSlot);
+};
+
+/**
+ * The watcher's removal of the fault: the spend of whichever of its outputs
+ * the removal transaction spent, named by that transaction and never by the
+ * output's position. An attested fault's commit output is spent by its DA
+ * apply, and the removal spends the attested output after it. The caller
+ * passes the removal the watcher's correction authenticated. Null while
+ * Kupo shows no output of the fault spent by it.
+ */
+export const faultRemovalOf = (
+  outputs: readonly IndexedStateQueueHeader[],
+  removalTxHash: string,
+): Readonly<{ txHash: string; slot: number }> | null => {
+  const removed = outputs.find(
+    ({ spentByTxHash }) => spentByTxHash === removalTxHash,
+  );
+  return removed?.spentAtSlot === undefined
+    ? null
+    : { txHash: removalTxHash, slot: removed.spentAtSlot };
 };
 
 /**
@@ -271,16 +299,21 @@ export type OperatorShiftOnFault = Readonly<{
 
 /**
  * Our operator's shifts, as L1's scheduler appointed them, that overlap the
- * window in which our node knew the fault invalid while it was the queue's
- * tail: from our node's first `landed_block_invalid` report on it
- * (`heldFromMs`) to its removal (its state-queue output spent), or to
- * `untilSlot` while it is unspent. A shift that ended before our node held
+ * window in which our node held the fault while it was the queue's tail:
+ * from our node's first `landed_block_invalid` report on it, or its first
+ * `landed_block_awaiting_da` report where it never reported the fault
+ * invalid (`heldFromMs`), to the watcher's removal (`removalTxHash`
+ * spending one of its state-queue outputs). An attested fault's DA apply
+ * also spends its output, but the fault stays the tail after it. Where Kupo
+ * shows no spend by the watcher's removal, the window ends when Kupo shows
+ * every output of the fault spent, or at `untilSlot` while one is unspent;
+ * the removal then stays unproven. A shift that ended before our node held
  * the fault proves nothing about its refusal to build on it. The fault's
  * commit landed in operator-2's shift, so an appointment of ours that
  * overlaps the window was made after it.
  *
  * Also what tells a fault removed before our node's shift apart: the
- * transaction that spent the fault, the start of our operator's first shift
+ * watcher's removal of the fault, the start of our operator's first shift
  * after the fault's commit, and the shift of the fault's operator that the
  * commit landed in. Each is null when L1 does not show it.
  */
@@ -290,6 +323,8 @@ export const readOperatorShiftsOnFault = async (
     stateQueuePolicyId: string;
     schedulerPolicyId: string;
     faultHeaderHash: string;
+    /** The watcher's authenticated removal of the fault. */
+    removalTxHash: string;
     operatorKeyHash: string;
     shiftDurationMs: number;
     slotToUnixTime(slot: number): number;
@@ -302,9 +337,12 @@ export const readOperatorShiftsOnFault = async (
   fromMs: number;
   toMs: number;
   ourShifts: OperatorShiftOnFault[];
-  /** The fault's spend, as Kupo indexed it; null while it is unspent. */
+  /**
+   * The watcher's removal of the fault, as Kupo indexed it; null while Kupo
+   * shows no output of the fault spent by it.
+   */
   removal: Readonly<{
-    txHash: string | null;
+    txHash: string;
     slot: number;
     atMs: number;
   }> | null;
@@ -322,7 +360,7 @@ export const readOperatorShiftsOnFault = async (
     faultCommitToOurNextShiftMs: number | null;
   }>;
 }> => {
-  const [fault] = await readIndexedStateQueueHeader(
+  const outputs = await readIndexedStateQueueHeader(
     {
       kupoUrl: input.kupoUrl,
       policyId: input.stateQueuePolicyId,
@@ -330,13 +368,25 @@ export const readOperatorShiftsOnFault = async (
     },
     fetchImpl,
   );
+  // The oldest output is the fault's commit.
+  const [fault] = outputs;
   if (fault === undefined)
     throw new Error(
       `Kupo indexes no state-queue output of the fault ${input.faultHeaderHash}`,
     );
+  const removed = faultRemovalOf(outputs, input.removalTxHash);
   const faultCommittedMs = input.slotToUnixTime(fault.createdAtSlot);
   const fromMs = Math.max(faultCommittedMs, input.heldFromMs);
-  const toMs = input.slotToUnixTime(fault.spentAtSlot ?? input.untilSlot);
+  // Without the watcher's removal on L1, the fault was the tail until no
+  // output of it was left unspent, whichever transactions spent them.
+  const leftQueueAtSlot = outputs.every(
+    ({ spentAtSlot }) => spentAtSlot !== undefined,
+  )
+    ? Math.max(...outputs.map(({ spentAtSlot }) => spentAtSlot!))
+    : undefined;
+  const toMs = input.slotToUnixTime(
+    removed?.slot ?? leftQueueAtSlot ?? input.untilSlot,
+  );
   // The appointment the fault's commit landed in was made less than a shift
   // before it; two shifts back also holds one whose start was its upper
   // validity bound.
@@ -384,19 +434,12 @@ export const readOperatorShiftsOnFault = async (
     fromMs,
     toMs,
     ourShifts,
-    removal:
-      fault.spentAtSlot === undefined
-        ? null
-        : {
-            txHash: fault.spentByTxHash ?? null,
-            slot: fault.spentAtSlot,
-            atMs: toMs,
-          },
+    removal: removed === null ? null : { ...removed, atMs: toMs },
     ourFirstShiftStartMs: ourNextShiftMs ?? null,
     faultOperatorShift,
     measured: {
       faultCommitToConvictionMs:
-        fault.spentAtSlot === undefined ? null : toMs - faultCommittedMs,
+        removed === null ? null : toMs - faultCommittedMs,
       faultCommitToOurNextShiftMs:
         ourNextShiftMs === undefined ? null : ourNextShiftMs - faultCommittedMs,
     },
