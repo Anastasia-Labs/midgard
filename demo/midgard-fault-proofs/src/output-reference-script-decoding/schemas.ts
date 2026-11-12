@@ -3,6 +3,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
+  FrontierPeakSchema,
   NativeScriptFrameSchema,
   ProofThreadSubjectSourceSchema,
   VerdictSubjectSchema,
@@ -15,7 +16,6 @@ export const OutputReferenceBoundOutputSchema = Data.Object({
   output_index: Data.Integer(),
   accused_class: Data.Integer(),
 });
-const PeakSchema = Data.Object({ height: Data.Integer(), hash: Data.Bytes() });
 export const OutputReferenceOutputControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
@@ -32,7 +32,7 @@ export const OutputReferenceOutputControlSchema = Data.Object({
   current_policy: Data.Bytes(),
   previous_asset_name: Data.Bytes(),
   asset_count: Data.Integer(),
-  asset_peaks: Data.Array(PeakSchema),
+  asset_peaks: Data.Array(FrontierPeakSchema),
   datum_offset: Data.Integer(),
   datum_length: Data.Integer(),
   payload_remaining: Data.Integer(),

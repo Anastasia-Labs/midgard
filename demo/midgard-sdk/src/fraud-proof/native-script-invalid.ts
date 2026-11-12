@@ -2,15 +2,16 @@
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import { H32Schema } from "../common.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
 } from "./native.js";
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  ProofThreadSubjectSourceSchema,
+} from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   FrontierPeakSchema,
@@ -31,13 +32,8 @@ export const NativeScriptInvalidStep01DatumSchema = faultProofStepDatumSchema(
 export const NativeScriptInvalidVerdictSubjectSchema = VerdictSubjectSchema;
 export const NativeScriptInvalidStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
-export const NativeScriptInvalidForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const NativeScriptInvalidForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 export const NativeScriptInvalidStep01ArgsSchema = Data.Object({
   source: NativeScriptInvalidStep01SourceSchema,
 });

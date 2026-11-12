@@ -5,6 +5,10 @@ type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
 export const ByteArrayListSchema = Data.Array(Data.Bytes());
 
+/**
+ * `validation_merkle_v1.FrontierPeak` with any hash length, so decoding chain
+ * data never refuses a peak; `BoundedBlobFrontierPeakSchema` is the strict twin.
+ */
 export const FrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes(),

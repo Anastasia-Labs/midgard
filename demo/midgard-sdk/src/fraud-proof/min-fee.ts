@@ -17,10 +17,8 @@ import { computeMidgardForcedTxCanonicalSizeFromProofSource } from "@al-ft/midga
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { H32Schema } from "../common.js";
 import { FieldCarriageSchema } from "../native-tx-field-access.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -31,7 +29,10 @@ import {
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  ProofThreadSubjectSourceSchema,
+} from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   terminalVerdictContradiction,
@@ -68,13 +69,8 @@ export const MinFeeStep01Datum = asDataType<MinFeeStep01Datum>(
 
 export const MinFeeVerdictSubjectSchema = VerdictSubjectSchema;
 export const MinFeeStep01SourceSchema = ProofThreadSubjectSourceSchema;
-export const MinFeeForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const MinFeeForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({ source: MinFeeStep01SourceSchema }),
 );

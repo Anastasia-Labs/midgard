@@ -2,12 +2,7 @@ import { createHash } from "node:crypto";
 
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import type { VerdictSubject } from "@al-ft/midgard-sdk";
-import {
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
-  OutputReferenceSchema,
-  rootMembershipProofSchema,
-} from "@al-ft/midgard-sdk";
+import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { JournalJsonObject } from "../workflow/journal.js";
@@ -235,13 +230,8 @@ export const admitObserverOrderInvalidArtifact = (
   });
 };
 
-export const ObserverOrderInvalidForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const ObserverOrderInvalidForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 
 export const observerOrderInvalidArtifactDigest = (
   artifact: ObserverOrderInvalidArtifact,

@@ -8,9 +8,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   InputExistenceLedgerStateSchema,
   InputExistencePreStateArgsSchema,
@@ -27,7 +24,10 @@ import {
   NativeTxInclusionCarriage,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  ProofThreadSubjectSourceSchema,
+} from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 /**
@@ -63,13 +63,8 @@ export const NoReferenceInputStepCancel =
 export const NoReferenceInputVerdictSubjectSchema = VerdictSubjectSchema;
 export const NoReferenceInputStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
-export const NoReferenceInputForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const NoReferenceInputForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 
 export const NoReferenceInputStep01ArgsSchema = Data.Object({
   source: NoReferenceInputStep01SourceSchema,

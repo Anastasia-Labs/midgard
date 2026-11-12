@@ -2,9 +2,6 @@ import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -15,7 +12,10 @@ import {
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
 } from "./native.js";
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  ProofThreadSubjectSourceSchema,
+} from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
@@ -30,13 +30,8 @@ export const InvalidRangeStep01Datum = asDataType<InvalidRangeStep01Datum>(
 
 export const InvalidRangeVerdictSubjectSchema = VerdictSubjectSchema;
 export const InvalidRangeStep01SourceSchema = ProofThreadSubjectSourceSchema;
-export const InvalidRangeForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const InvalidRangeForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 export const InvalidRangeStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({ source: InvalidRangeStep01SourceSchema }),

@@ -152,6 +152,10 @@ export const NativeTxProofSource = asDataType<NativeTxProofSource>(
   NativeTxProofSourceSchema,
 );
 
+/**
+ * `validation_merkle_v1.FrontierPeak` with a 32-byte hash, for peaks this
+ * side builds; `FrontierPeakSchema` is the loose twin for decoding chain data.
+ */
 export const BoundedBlobFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: H32Schema,

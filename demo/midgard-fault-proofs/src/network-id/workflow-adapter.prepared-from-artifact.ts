@@ -1,10 +1,7 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
   type NetworkIdFault,
-  OutputReferenceSchema,
-  rootMembershipProofSchema,
+  ProofThreadForcedSourcePayloadSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -76,13 +73,7 @@ export type NetworkIdForcedWorkflowArtifact = {
   readonly forcedSourceCbor: string;
 };
 
-export const NetworkIdForcedSourceSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const NetworkIdForcedSourceSchema = ProofThreadForcedSourcePayloadSchema;
 
 export type WorkflowContext = Parameters<
   FraudProofFamilyWorkflowAdapter["observe"]

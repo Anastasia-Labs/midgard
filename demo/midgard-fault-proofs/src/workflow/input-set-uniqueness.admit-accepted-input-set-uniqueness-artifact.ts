@@ -3,11 +3,8 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
   MIDGARD_FIELD_INDEX,
-  OutputReferenceSchema,
-  rootMembershipProofSchema,
+  ProofThreadForcedSourcePayloadSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -38,13 +35,8 @@ export const INPUT_SET_UNIQUENESS_ARTIFACT =
 export const INPUT_SET_UNIQUENESS_FORCED_ARTIFACT =
   "midgard-production-input-set-uniqueness-forced-artifact-v1" as const;
 
-export const InputSetUniquenessForcedSourceSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const InputSetUniquenessForcedSourceSchema =
+  ProofThreadForcedSourcePayloadSchema;
 
 type ClaimJson =
   | Readonly<{

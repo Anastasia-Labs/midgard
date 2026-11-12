@@ -17,10 +17,7 @@ import {
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { OutputReferenceSchema } from "../common.js";
 import { H32Schema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
@@ -32,7 +29,10 @@ import {
   NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  ProofThreadSubjectSourceSchema,
+} from "./proof-thread-source.js";
 import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   acceptedVerdictSubject,
@@ -274,13 +274,8 @@ export const InvalidSignatureStep01Datum =
 export const InvalidSignatureVerdictSubjectSchema = VerdictSubjectSchema;
 export const InvalidSignatureStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
-export const InvalidSignatureForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const InvalidSignatureForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 
 export const InvalidSignatureStep01ArgsSchema = Data.Object({
   source: InvalidSignatureStep01SourceSchema,

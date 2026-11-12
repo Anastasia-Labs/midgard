@@ -2,24 +2,16 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
-  OutputReferenceSchema,
+  ProofThreadForcedSourcePayloadSchema,
   ProofThreadSubjectSourceSchema,
-  rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ZeroInputStateSchema } from "./family.js";
 
 export const ZeroInputStep01SourceSchema = ProofThreadSubjectSourceSchema;
-export const ZeroInputForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const ZeroInputForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 export const ZeroInputStep01ArgsSchema = Data.Object({
   source: ZeroInputStep01SourceSchema,
 });

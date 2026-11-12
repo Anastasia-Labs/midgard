@@ -79,6 +79,10 @@ const MIRRORS = {
   VerdictSubjectSchema:
     "midgard/fraud_proofs/proof_thread_substrate_v1/VerdictSubjectV1",
   StreamFrameSchema: "midgard/canonical_plutus_data_stream_v1/StreamFrameV1",
+  FrontierPeakSchema: "midgard/validation_merkle_v1/FrontierPeak",
+  BoundedBlobFrontierPeakSchema: "midgard/validation_merkle_v1/FrontierPeak",
+  MinAdaOutputScanControlSchema:
+    "midgard/ledger_output_scan_v1/LedgerOutputScanControlV1",
   CommittedFieldClaimSchema:
     "midgard/fraud_proofs/canonical_decodability/rule/CommittedFieldClaimV1",
   CanonicalDecodabilityStep02StateSchema:

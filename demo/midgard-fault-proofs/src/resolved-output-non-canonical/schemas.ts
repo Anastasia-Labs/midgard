@@ -3,6 +3,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
+  FrontierPeakSchema,
   MembershipCarriageSchema,
   OutputReferenceSchema,
   ProofThreadSubjectSourceSchema,
@@ -27,7 +28,6 @@ export const ResolvedOutputCanonicalVerdictSchema = Data.Object({
   subject: ResolvedOutputVerdictSubjectSchema,
   output_is_non_canonical: Data.Boolean(),
 });
-const PeakSchema = Data.Object({ height: Data.Integer(), hash: Data.Bytes() });
 export const ResolvedOutputScanControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
@@ -44,7 +44,7 @@ export const ResolvedOutputScanControlSchema = Data.Object({
   current_policy: Data.Bytes(),
   previous_asset_name: Data.Bytes(),
   asset_count: Data.Integer(),
-  asset_peaks: Data.Array(PeakSchema),
+  asset_peaks: Data.Array(FrontierPeakSchema),
   datum_offset: Data.Integer(),
   datum_length: Data.Integer(),
   payload_remaining: Data.Integer(),

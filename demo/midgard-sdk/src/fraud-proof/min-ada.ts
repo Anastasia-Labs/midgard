@@ -2,12 +2,12 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { H32Schema } from "../common.js";
 import {
-  ForcedLeafMembershipV1Schema,
-  rootMembershipProofSchema,
-} from "../transition-trace.js";
+  BoundedBlobFrontierPeakSchema,
+  HeaderSchema,
+} from "../ledger-state.js";
+import { ForcedLeafMembershipV1Schema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
@@ -15,6 +15,7 @@ import {
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
 import { NativeScriptInvalidVerdictSubjectSchema } from "./native-script-invalid.js";
+import { ProofThreadForcedSourcePayloadSchema } from "./proof-thread-source.js";
 
 export const MIN_ADA_VIOLATION_ID = "min-ada" as const;
 
@@ -27,13 +28,8 @@ export const MinAdaFaultSchema = Data.Object({ output_index: Data.Integer() });
 export type MinAdaFault = Data.Static<typeof MinAdaFaultSchema>;
 export const MinAdaFault = asDataType<MinAdaFault>(MinAdaFaultSchema);
 
-export const MinAdaForcedSourcePayloadSchema = Data.Object({
-  header: HeaderSchema,
-  membership: rootMembershipProofSchema(
-    OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
-  ),
-});
+export const MinAdaForcedSourcePayloadSchema =
+  ProofThreadForcedSourcePayloadSchema;
 
 export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const MinAdaStep01ArgsSchema = Data.Object({
@@ -81,10 +77,6 @@ export const MinAdaStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep02ArgsSchema,
 );
 
-const FrontierPeakSchema = Data.Object({
-  height: Data.Integer(),
-  hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-});
 export const MinAdaOutputScanControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
@@ -101,7 +93,7 @@ export const MinAdaOutputScanControlSchema = Data.Object({
   current_policy: Data.Bytes(),
   previous_asset_name: Data.Bytes(),
   asset_count: Data.Integer(),
-  asset_peaks: Data.Array(FrontierPeakSchema),
+  asset_peaks: Data.Array(BoundedBlobFrontierPeakSchema),
   datum_offset: Data.Integer(),
   datum_length: Data.Integer(),
   payload_remaining: Data.Integer(),

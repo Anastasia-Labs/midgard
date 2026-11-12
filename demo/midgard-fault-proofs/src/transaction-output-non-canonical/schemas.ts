@@ -2,6 +2,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldOpeningSchema,
+  MinAdaOutputScanControlSchema,
   ProofThreadSubjectSourceSchema,
   StreamFrameSchema,
 } from "@al-ft/midgard-sdk";
@@ -12,35 +13,7 @@ import {
   TransactionOutputVerdictSubjectSchema,
 } from "./transaction-output-non-canonical.js";
 
-const FrontierPeakSchema = Data.Object({
-  height: Data.Integer(),
-  hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-});
-export const TransactionOutputScanControlSchema = Data.Object({
-  version: Data.Integer(),
-  stage: Data.Integer(),
-  cursor: Data.Integer(),
-  map_entry_count: Data.Integer(),
-  optional_field_count: Data.Integer(),
-  address: Data.Bytes(),
-  lovelace: Data.Integer(),
-  cardano_value_size: Data.Integer(),
-  policy_remaining: Data.Integer(),
-  asset_remaining: Data.Integer(),
-  policy_asset_cursor: Data.Integer(),
-  previous_policy: Data.Bytes(),
-  current_policy: Data.Bytes(),
-  previous_asset_name: Data.Bytes(),
-  asset_count: Data.Integer(),
-  asset_peaks: Data.Array(FrontierPeakSchema),
-  datum_offset: Data.Integer(),
-  datum_length: Data.Integer(),
-  payload_remaining: Data.Integer(),
-  reference_script_language: Data.Integer(),
-  reference_script_item_offset: Data.Integer(),
-  reference_script_offset: Data.Integer(),
-  reference_script_length: Data.Integer(),
-});
+export const TransactionOutputScanControlSchema = MinAdaOutputScanControlSchema;
 
 export const TransactionOutputStep01SourceSchema =
   ProofThreadSubjectSourceSchema;

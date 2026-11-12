@@ -18,6 +18,7 @@
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  BoundedBlobFrontierPeakSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldCarriageSchema,
@@ -126,11 +127,8 @@ export const AssetLeafOpening = asDataType<AssetLeafOpening>(
   AssetLeafOpeningSchema,
 );
 
-/** Wire twin of the aiken `validation_merkle_v1.FrontierPeak`. */
-export const FrontierPeakSchema = Data.Object({
-  height: Data.Integer(),
-  hash: H32Schema,
-});
+/** Wire twin of the aiken `validation_merkle_v1.FrontierPeak`, 32-byte hash. */
+export const FrontierPeakSchema = BoundedBlobFrontierPeakSchema;
 export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
 export const FrontierPeak = asDataType<FrontierPeak>(FrontierPeakSchema);
 
