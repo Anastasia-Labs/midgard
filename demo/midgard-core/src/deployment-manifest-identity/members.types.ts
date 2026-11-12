@@ -1,7 +1,7 @@
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.additions.js";
 import type { DeploymentManifestFraudProofCatalogueCategory } from "./catalogue-roles.protocol-categories.js";
 
-/** The positional protocol ABI is independent of the member projections. */
+/** The contract-name set is maintained independently of the member rows. */
 export type DeploymentContract =
   (typeof DEPLOYMENT_MANIFEST_CONTRACT_NAMES)[number];
 export type DeploymentFamily =

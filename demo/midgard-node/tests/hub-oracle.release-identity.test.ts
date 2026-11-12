@@ -54,26 +54,26 @@ describe("real hub-oracle release identity", () => {
     expect(descriptor?.scriptHash).toBe(hubOracle.policyId);
   });
 
-  it("permits only the known hub credential's mint-program correspondence and refuses scaffold metadata", async () => {
+  it("resolves the hub credential to its member's mint program and refuses scaffold metadata", async () => {
     const { base, hubOracle, blueprint } = await construct();
     if (
-      hubOracle.spendingScript.type !== "PlutusV3" ||
-      base.hubOracle.spendingScript.type !== "PlutusV3"
+      hubOracle.mintingScript.type !== "PlutusV3" ||
+      base.hubOracle.mintingScript.type !== "PlutusV3"
     )
       throw new Error("Hub oracle probe requires actual Plutus V3 scripts");
     const actualScript = {
       type: "PlutusV3" as const,
-      script: hubOracle.spendingScript.script,
+      script: hubOracle.mintingScript.script,
     };
     const scaffoldScript = {
       type: "PlutusV3" as const,
-      script: base.hubOracle.spendingScript.script,
+      script: base.hubOracle.mintingScript.script,
     };
-    const spend = {
-      contract: "hubOracleSpend",
-      purpose: "spend" as const,
+    const mint = {
+      contract: "hubOracleMint",
+      purpose: "mint" as const,
       script: actualScript,
-      scriptHash: hubOracle.spendingScriptHash,
+      scriptHash: hubOracle.policyId,
       referenceScriptRole: null,
     };
     const nonDeployed = Object.fromEntries(
@@ -86,24 +86,27 @@ describe("real hub-oracle release identity", () => {
     );
     const registry = SDK.buildBlueprintDeploymentRegistry(
       blueprint,
-      [spend],
+      [mint],
       nonDeployed,
     );
     expect(registry.contracts[0]?.application?.validatorTitle).toBe(
       "hub_oracle.mint.mint",
     );
     expect(registry.contracts[0]?.application?.parameters).toHaveLength(2);
+    // No member names a hub-oracle spend, so the mint program cannot be
+    // borrowed under a spending purpose, by that name or any other.
+    for (const contract of ["hubOracleSpend", "arbitrarySpend"])
+      expect(() =>
+        SDK.buildBlueprintDeploymentRegistry(
+          blueprint,
+          [{ ...mint, contract, purpose: "spend" }],
+          nonDeployed,
+        ),
+      ).toThrow(/one complete blueprint parameter record/);
     expect(() =>
       SDK.buildBlueprintDeploymentRegistry(
         blueprint,
-        [{ ...spend, contract: "arbitrarySpend" }],
-        nonDeployed,
-      ),
-    ).toThrow(/one complete blueprint parameter record/);
-    expect(() =>
-      SDK.buildBlueprintDeploymentRegistry(
-        blueprint,
-        [{ ...spend, script: scaffoldScript }],
+        [{ ...mint, script: scaffoldScript }],
         nonDeployed,
       ),
     ).toThrow(/hash differs from actual bytes/);
@@ -112,9 +115,9 @@ describe("real hub-oracle release identity", () => {
         blueprint,
         [
           {
-            ...spend,
+            ...mint,
             script: scaffoldScript,
-            scriptHash: base.hubOracle.spendingScriptHash,
+            scriptHash: base.hubOracle.policyId,
           },
         ],
         nonDeployed,

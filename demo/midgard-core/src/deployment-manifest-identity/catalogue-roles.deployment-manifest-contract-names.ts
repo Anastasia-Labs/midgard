@@ -38,15 +38,11 @@ export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([
   // twin in a single commit; #594 then replaced the tx-order mint's receipt
   // parameters with the §8.6 certificate policy id. The regenerated blueprint
   // declares none of the three titles, so these names had no script to resolve
-  // to and were dead roles holding live ABI positions. Removing them here is
-  // what completes off-chain what #587 did on-chain.
+  // to and were dead roles. Removing them here is what completes off-chain what
+  // #587 did on-chain.
   //
-  // This is a removal from a POSITIONAL vector, so it renumbers every contract
-  // after it — which is why it is an owner-authorized identity movement rather
-  // than a tidy-up. The deployment-manifest id, the ABI-01/03/04/07 digests and
-  // every position-derived downstream identity (the watcher's synthetic
-  // catalogue among them) move with it and are re-pinned with cause in the same
-  // batch, the same way the certificate's registration was appended below.
+  // This list is a contract set, not a positional vector: deployment identity
+  // checks membership, and no protocol identity depends on its order.
   "scriptDecodeSpend",
   "scriptDecodeMint",
   "settlementSpend",
@@ -72,11 +68,8 @@ export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([
   "fraudProofNoReferenceInput",
   "fraudProofReferenceInputNoIdx",
   "fraudProofInvalidSignature",
-  // #579. The §8.6 field-preimage certificate policy. Appended rather than
-  // slotted beside the transaction-field entries because this vector is
-  // positional — its order IS the ABI — so an insertion would renumber every
-  // contract after it. #594 retired the receipt family and gave the tx-order
-  // mint and every field-opening step a
+  // #579. The §8.6 field-preimage certificate policy. #594 retired the
+  // receipt family and gave the tx-order mint and every field-opening step a
   // `field_preimage_certificate_policy_id` parameter; the certificate is the
   // one deployed policy those readers share (§8.6 Consumption,
   // docs/spec/midgard-tx.md), so it needs a deployment role rather than being

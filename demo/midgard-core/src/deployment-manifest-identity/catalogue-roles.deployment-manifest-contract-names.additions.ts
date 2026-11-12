@@ -1,6 +1,6 @@
 import { DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.js";
 
-// Contract names appended after the base table, in manifest order.
+// Contract names added after the base table; like it, a set without order.
 const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
   "validationTraceDisputeCekCoreStagedBytes",
   "validationTraceDisputeCekCoreStagedInteger",

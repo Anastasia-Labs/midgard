@@ -1,4 +1,8 @@
 import {
+  DEPLOYMENT_MEMBERS,
+  type DeploymentContract,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
   applyDoubleCborEncoding,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
@@ -108,83 +112,24 @@ export const buildBlueprintDeploymentRegistry = (
     const samePurpose = sameBytes.filter((record) =>
       record.validatorTitle.endsWith(`.${entry.purpose}`),
     );
-    // These existing constructors use a mint-only credential, an else-titled
-    // program, the history list's shared program, or a known byte-identical
-    // family-step alias. No other contract may borrow
-    // a program with a different declared purpose.
-    const correspondence = [
-      ["hubOracleSpend", "spend", "hub_oracle.mint.mint"],
-      ["fraudProofCatalogueSpend", "spend", "fraud_proof_catalogue.spend.else"],
-      ["fraudProofSpend", "spend", "fraud_proof.spend.else"],
-      ["reserveWithdraw", "withdraw", "reserve.withdraw.else"],
-      ["depositMint", "mint", "user_events/history.history.spend"],
-      ["withdrawalMint", "mint", "user_events/history.history.spend"],
-      [
-        "validationTraceDisputeProofItem",
-        "spend",
-        "fraud_proofs/validation_trace/proof_item_v1.main.else",
-      ],
-      [
-        "fraudProofWithdrawnReferenceInputStep03",
-        "spend",
-        "fraud_proofs/withdrawn_reference_input/step_03.main.spend",
-      ],
-      [
-        "fraudProofWithdrawnInputStep03",
-        "spend",
-        "fraud_proofs/withdrawn_input/step_03.main.spend",
-      ],
-      [
-        "fraudProofMintDeclaredAssetLimitStep04",
-        "spend",
-        "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",
-      ],
-      [
-        "fraudProofObserverOrderInvalidStep04",
-        "spend",
-        "fraud_proofs/observer_order_invalid/step_04.main.spend",
-      ],
-      [
-        "fraudProofNonExistentInputStep03",
-        "spend",
-        "fraud_proofs/no_input/step_03.main.spend",
-      ],
-      [
-        "fraudProofNonExistentInputStep04",
-        "spend",
-        "fraud_proofs/no_input/step_04.main.spend",
-      ],
-      [
-        "fraudProofNonExistentInputNoIndexStep04",
-        "spend",
-        "fraud_proofs/input_no_idx/step_04.main.spend",
-      ],
-      [
-        "fraudProofNoReferenceInputStep03",
-        "spend",
-        "fraud_proofs/no_reference_input/step_03.main.spend",
-      ],
-      [
-        "fraudProofNoReferenceInputStep04",
-        "spend",
-        "fraud_proofs/no_reference_input/step_04.main.spend",
-      ],
-      [
-        "fraudProofReferenceInputNoIdxStep04",
-        "spend",
-        "fraud_proofs/reference_input_no_idx/step_04.main.spend",
-      ],
-    ].find(
-      ([contract, purpose]) =>
-        contract === entry.contract && purpose === entry.purpose,
-    );
-    // Multi-handler aliases can have byte-identical programs. Retain the
-    // constructor's requested purpose rather than picking the first bytes.
+    // A deployment member resolves to the compiler title its row names, so an
+    // else-titled program, the history list's shared program or a
+    // byte-identical family-step alias picks that one record, and no member
+    // borrows a program its row does not name. Any other contract must match
+    // exactly one record of its own purpose.
+    const member = Object.prototype.hasOwnProperty.call(
+      DEPLOYMENT_MEMBERS,
+      entry.contract,
+    )
+      ? DEPLOYMENT_MEMBERS[entry.contract as DeploymentContract]
+      : undefined;
     const matched =
-      correspondence === undefined
+      member === undefined ||
+      member.validatorTitle === null ||
+      member.purpose !== entry.purpose
         ? samePurpose
         : sameBytes.filter(
-            (record) => record.validatorTitle === correspondence[2],
+            (record) => record.validatorTitle === member.validatorTitle,
           );
     if (matched.length !== 1)
       throw new Error(

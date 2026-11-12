@@ -20,7 +20,7 @@ export {
   type ReferenceScriptCommandName,
 } from "./members.types.js";
 
-/** Admission compares against the independently maintained positional protocol ABI. */
+/** Admission compares the rows against the independently maintained contract set. */
 export const verifyDeploymentMembers = (
   members: Readonly<Record<string, DeploymentMember>>,
 ): void => {

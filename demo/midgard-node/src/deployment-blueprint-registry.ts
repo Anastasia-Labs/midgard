@@ -18,6 +18,17 @@ import {
   loadRealBlueprint,
 } from "./services/midgard-contracts.load-reference-script-auth-validator.js";
 
+const byContract = <Entry extends Readonly<{ contract: string }>>(
+  entries: readonly Entry[],
+): Entry[] =>
+  [...entries].sort((left, right) =>
+    left.contract < right.contract
+      ? -1
+      : left.contract > right.contract
+        ? 1
+        : 0,
+  );
+
 /** Public publication has no implicit bucket for an unrequested raw validator. */
 export const publicDeploymentBlueprintRegistry = (
   scripts: readonly DeployableScript[],
@@ -122,9 +133,11 @@ export const publicDeploymentBlueprintRegistry = (
     const retainedScripts = reconstructed.contracts.map(
       ({ application: _application, ...entry }) => entry,
     );
+    // Both sides list each contract once, so sorting by contract compares the
+    // sets; neither the retained file nor the manifest order is significant.
     if (
-      computeDeploymentManifestJsonDigest(retainedScripts) !==
-      computeDeploymentManifestJsonDigest(deployed)
+      computeDeploymentManifestJsonDigest(byContract(retainedScripts)) !==
+      computeDeploymentManifestJsonDigest(byContract(deployed))
     )
       throw new Error(
         "Retained parameter registry differs from the actual deployment contracts",
