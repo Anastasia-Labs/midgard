@@ -606,7 +606,9 @@ Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs`
   - `demo/flake.lock`
   - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/canonical-cbor-head-v1.vectors.mjs`
   - `demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/canonical-cbor-head-v1-golden.test.ak`
   - `onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak`
   - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`

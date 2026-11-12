@@ -2,13 +2,24 @@
 //// from demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs.
 //// Do not edit; run `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync`.
 
+use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/data_summary_walk_v1
 use midgard/validation_machine_tests/data_serialise_driver
 use midgard/validation_machine_tests/data_stream_driver
 use midgard/validation_machine_tests/data_traverse_driver
+
+/// Whether the ledger's permissive decoder reads `source` and `serialiseData`
+/// writes the same bytes back: the corpus's definition of canonical Data.
+fn round_trips(source: ByteArray) -> Bool {
+  when cbor_deserialise.deserialise(source) is {
+    Some(data) -> cbor.serialise(data) == source
+    None -> False
+  }
+}
 
 test corpus_int_zero() {
   let source = #"00"
@@ -73,6 +84,7 @@ test corpus_int_zero() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -139,6 +151,7 @@ test corpus_int_23() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -205,6 +218,7 @@ test corpus_int_24() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -271,6 +285,7 @@ test corpus_int_256() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -337,6 +352,7 @@ test corpus_int_2_pow_32() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -403,6 +419,7 @@ test corpus_int_2_pow_64_minus_1() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -469,6 +486,7 @@ test corpus_int_minus_1() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -535,6 +553,7 @@ test corpus_int_minus_2_pow_64() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -601,6 +620,7 @@ test corpus_bignum_2_pow_64() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -667,6 +687,7 @@ test corpus_bignum_minus_2_pow_64_minus_1() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -733,6 +754,7 @@ test corpus_bignum_64_byte_magnitude() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -799,6 +821,7 @@ test corpus_bignum_65_byte_magnitude_chunked() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -865,6 +888,7 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -913,6 +937,7 @@ test corpus_int_non_minimal_one_byte() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -961,6 +986,7 @@ test corpus_int_non_minimal_two_byte() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1009,6 +1035,7 @@ test corpus_int_non_minimal_eight_byte() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1057,6 +1084,7 @@ test corpus_int_reserved_additional_28() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1105,6 +1133,7 @@ test corpus_int_reserved_additional_30() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1153,6 +1182,7 @@ test corpus_int_indefinite_additional() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1201,6 +1231,7 @@ test corpus_int_truncated_argument() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1249,6 +1280,7 @@ test corpus_bignum_one_byte_magnitude() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1297,6 +1329,7 @@ test corpus_bignum_empty_magnitude() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1345,6 +1378,7 @@ test corpus_bignum_eight_byte_magnitude() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1393,6 +1427,7 @@ test corpus_bignum_leading_zero() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1441,6 +1476,7 @@ test corpus_negative_bignum_one_byte() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1489,6 +1525,7 @@ test corpus_bignum_indefinite_nine_bytes() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1537,6 +1574,7 @@ test corpus_bignum_indefinite_one_full_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1585,6 +1623,7 @@ test corpus_bignum_over_integer() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1633,6 +1672,7 @@ test corpus_bignum_magnitude_past_end() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -1699,6 +1739,7 @@ test corpus_bytes_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -1765,6 +1806,7 @@ test corpus_bytes_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -1831,6 +1873,7 @@ test corpus_bytes_32() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -1897,6 +1940,7 @@ test corpus_bytes_64() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -1963,6 +2007,7 @@ test corpus_bytes_65_chunked() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -2029,6 +2074,7 @@ test corpus_bytes_128_chunked() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -2095,6 +2141,7 @@ test corpus_bytes_129_chunked() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -2143,6 +2190,7 @@ test corpus_bytes_definite_65() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2191,6 +2239,7 @@ test corpus_bytes_indefinite_empty() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2239,6 +2288,7 @@ test corpus_bytes_indefinite_short() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2287,6 +2337,7 @@ test corpus_bytes_indefinite_one_full_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2335,6 +2386,7 @@ test corpus_bytes_short_chunk_first() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2383,6 +2435,7 @@ test corpus_bytes_empty_final_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2431,6 +2484,7 @@ test corpus_bytes_empty_first_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2479,6 +2533,7 @@ test corpus_bytes_oversized_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2527,6 +2582,7 @@ test corpus_bytes_integer_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2575,6 +2631,7 @@ test corpus_bytes_nested_indefinite_chunk() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2623,6 +2680,7 @@ test corpus_bytes_missing_break() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2671,6 +2729,7 @@ test corpus_bytes_past_end() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2719,6 +2778,7 @@ test corpus_text_string() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2767,6 +2827,7 @@ test corpus_text_empty() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2815,6 +2876,7 @@ test corpus_simple_false() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2863,6 +2925,7 @@ test corpus_simple_null() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2911,6 +2974,7 @@ test corpus_float_half() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -2977,6 +3041,7 @@ test corpus_list_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3043,6 +3108,7 @@ test corpus_list_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3109,6 +3175,7 @@ test corpus_list_two() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3175,6 +3242,7 @@ test corpus_list_nested() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3241,6 +3309,7 @@ test corpus_list_of_bytes() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3289,6 +3358,7 @@ test corpus_list_definite_one() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3337,6 +3407,7 @@ test corpus_list_definite_two() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3385,6 +3456,7 @@ test corpus_list_indefinite_empty() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3433,6 +3505,7 @@ test corpus_list_open_only() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3481,6 +3554,7 @@ test corpus_list_missing_break() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3529,6 +3603,7 @@ test corpus_list_nested_missing_break() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3577,6 +3652,7 @@ test corpus_list_inner_empty_indefinite() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -3643,6 +3719,7 @@ test corpus_map_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3709,6 +3786,7 @@ test corpus_map_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3775,6 +3853,7 @@ test corpus_map_duplicate_keys_kept() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3841,6 +3920,7 @@ test corpus_map_out_of_order_kept() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3907,6 +3987,7 @@ test corpus_map_nested() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -3955,6 +4036,7 @@ test corpus_map_indefinite() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4003,6 +4085,7 @@ test corpus_map_indefinite_empty() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4051,6 +4134,7 @@ test corpus_map_missing_value() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4099,6 +4183,7 @@ test corpus_map_missing_pair() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4165,6 +4250,7 @@ test corpus_constr_0_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4231,6 +4317,7 @@ test corpus_constr_0_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4297,6 +4384,7 @@ test corpus_constr_6_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4363,6 +4451,7 @@ test corpus_constr_7_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4429,6 +4518,7 @@ test corpus_constr_127_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4495,6 +4585,7 @@ test corpus_constr_nested() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -4543,6 +4634,7 @@ test corpus_constr_empty_indefinite_fields() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4591,6 +4683,7 @@ test corpus_constr_definite_fields() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4639,6 +4732,7 @@ test corpus_constr_fields_missing() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4687,6 +4781,7 @@ test corpus_constr_fields_open_only() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4735,6 +4830,7 @@ test corpus_constr_fields_missing_break() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4783,6 +4879,7 @@ test corpus_tag_120() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4831,6 +4928,7 @@ test corpus_tag_128() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4879,6 +4977,7 @@ test corpus_tag_1279() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4927,6 +5026,7 @@ test corpus_tag_1401() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -4975,6 +5075,7 @@ test corpus_tag_constr_7_non_minimal() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5023,6 +5124,7 @@ test corpus_tag_1() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5071,6 +5173,7 @@ test corpus_tag_4() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5137,6 +5240,7 @@ test corpus_large_constr_128_empty() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -5203,6 +5307,7 @@ test corpus_large_constr_128_one() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -5269,6 +5374,7 @@ test corpus_large_constr_256() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -5335,6 +5441,7 @@ test corpus_large_constr_max_index() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -5401,6 +5508,7 @@ test corpus_large_constr_nested() {
     ) == True,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == True,
   }
 }
 
@@ -5449,6 +5557,7 @@ test corpus_large_constr_index_5() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5497,6 +5606,7 @@ test corpus_large_constr_index_127() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5545,6 +5655,7 @@ test corpus_large_constr_index_non_minimal() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5593,6 +5704,7 @@ test corpus_large_constr_index_negative() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5641,6 +5753,7 @@ test corpus_large_constr_index_bignum() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5689,6 +5802,7 @@ test corpus_large_constr_indefinite_outer() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5737,6 +5851,7 @@ test corpus_large_constr_outer_length_3() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5785,6 +5900,7 @@ test corpus_large_constr_outer_length_1() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5833,6 +5949,7 @@ test corpus_large_constr_fields_missing() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5881,6 +5998,7 @@ test corpus_large_constr_empty_indefinite_fields() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5929,6 +6047,7 @@ test corpus_large_constr_definite_fields() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -5977,6 +6096,7 @@ test corpus_large_constr_map_fields() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6025,6 +6145,7 @@ test corpus_trailing_after_integer() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6073,6 +6194,7 @@ test corpus_trailing_after_bytes() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6121,6 +6243,7 @@ test corpus_trailing_after_list() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6169,6 +6292,7 @@ test corpus_trailing_after_indefinite_list() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6217,6 +6341,7 @@ test corpus_trailing_after_map() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }
 
@@ -6265,5 +6390,6 @@ test corpus_trailing_break() {
     ) == False,
     data_serialise_driver.whole_v1(source) == serialised,
     data_serialise_driver.windows_v1(source, 68, 1) == serialised,
+    round_trips(source) == False,
   }
 }

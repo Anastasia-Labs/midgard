@@ -135,7 +135,7 @@
     {
       "id": "cek-data-canonical-corpus-v1",
       "kind": "golden",
-      "summary": "Canonical Data corpus: accepted spans bound to the TypeScript traverse summary and unreadable spans to their stage, rendered as a whole generated Aiken module run by the honest traverse driver.",
+      "summary": "Canonical Data corpus: accepted spans bound to the TypeScript traverse summary and unreadable spans to their stage, rendered as a whole generated Aiken module run by the honest traverse driver and held to the cbor_deserialise round trip; and the canonical CBOR head vectors, rendered as a second whole module run against every on-chain canonical head reader and cbor_deserialise.",
       "generators": [
         "demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs"
       ],
@@ -146,9 +146,11 @@
       "producers": ["demo/midgard-core"],
       "inputs": [
         "@golden-channel",
+        "demo/midgard-core/tests/fixtures/canonical-cbor-head-v1.vectors.mjs",
         "demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs"
       ],
       "outputs": [
+        "onchain/aiken/lib/midgard/canonical-cbor-head-v1-golden.test.ak",
         "onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,

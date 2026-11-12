@@ -426,7 +426,8 @@ jobs:
       # The canonical Data corpus: every accepted span bound to the summary the
       # TypeScript traverse twin computes, every other span to the traverse
       # stage that refuses it; the generated Aiken module runs the honest
-      # driver over the on-chain traverse.
+      # driver over the on-chain traverse. The same generator renders the
+      # canonical CBOR head vectors, run against every on-chain head reader.
       - name: Check canonical Data corpus golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-data-canonical-corpus-v1

@@ -89,7 +89,9 @@ pub type NativeFrameResultV1 {
   NativeFrameComplete { tail: ByteArray, valid: Bool }
 }
 
-type CborHeadV1 {
+/// Public only so `canonical-cbor-head-v1-golden.test.ak` can hold this copy
+/// to the head vectors until it is deleted for `canonical_cbor_scan_v1`'s.
+pub type CborHeadV1 {
   next_offset: Int,
   value: Int,
 }
@@ -122,7 +124,9 @@ fn read_big_endian(
   }
 }
 
-fn canonical_head(
+/// A copy of `canonical_cbor_scan_v1.head_at_v1`, public only for the head
+/// vectors.
+pub fn canonical_head(
   bytes: ByteArray,
   offset: Int,
   expected_major: Int,
