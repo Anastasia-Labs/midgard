@@ -3,22 +3,18 @@ import {
   decodeMidgardMintPolicyItem,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  encodeMidgardSpendInputItem,
   traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
+import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
-import {
-  keyValuePhasProof,
-  keyValuePhasRootWithCount,
-} from "../transition-trace/phas.js";
-import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
+import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
+import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
@@ -51,116 +47,17 @@ const outputsScanRefused = (outputsPreimageCbor: Uint8Array): boolean =>
     (output) => traceMidgardLedgerOutputScan(output).refusal !== null,
   );
 
-const eventLedger = async (
-  block: CanonicalBlockEvidence,
-  stepIndex: bigint,
-  predecessor?: CheckedLedger,
-) => {
-  if (
-    predecessor !== undefined &&
-    predecessor.utxosRoot !== block.header.prevUtxosRoot
-  )
-    throw new Error("value conservation: unrelated predecessor");
-  const outputs = new Map(
-    (predecessor?.entries ?? []).map(({ outRef, output }) => [
-      outRef.toString("hex"),
-      { key: Buffer.from(outRef), value: Buffer.from(output) },
-    ]),
-  );
-  // Each leaf as the ledger root commits it, including the descriptor of an
-  // output whose native script does not decode.
-  const root = async () =>
-    await keyValuePhasRootWithCount(
-      [...outputs.values()].map((entry) => ({
-        key: entry.key,
-        value: ledgerEntryLeaf(
-          { outRef: entry.key, output: entry.value },
-          "value conservation",
-        ).leaf,
-      })),
-    );
-  let ledger = await root();
-  if (ledger.root !== block.header.prevUtxosRoot)
-    throw new Error(
-      "value conservation: authenticated predecessor ledger unavailable",
-    );
-  for (let index = 0n; index < stepIndex; index++) {
-    const step = block.reconstruction.traceByStepIndex.get(index)?.value;
-    if (
-      step === undefined ||
-      step.step_index !== index ||
-      step.schema_version !== 1n ||
-      step.pre_utxos_root !== ledger.root
-    )
-      throw new Error("value conservation: inconsistent prior transition");
-    const event = block.reconstruction.sourceEventsByFingerprint.get(
-      eventKeyFingerprint(step.event_key),
-    );
-    if (event === undefined || event.phase !== step.phase)
-      throw new Error("value conservation: missing prior source event");
-    if (event.phase === "Withdrawal") {
-      if (event.entry.value.validity === "WithdrawalIsValid") {
-        const ref = event.entry.value.body.l2_outref;
-        outputs.delete(
-          encodeMidgardSpendInputItem({
-            txId: Buffer.from(ref.transactionId, "hex"),
-            outputIndex: Number(ref.outputIndex),
-          }).toString("hex"),
-        );
-      }
-    } else if (
-      event.phase === "ForcedTransaction" ||
-      event.phase === "L2Transaction"
-    ) {
-      const valid =
-        event.phase === "ForcedTransaction"
-          ? event.entry.value.verdict === "ForcedTxValid"
-          : event.entry.validity === "TxIsValid";
-      if (valid) {
-        const transactionId = Buffer.from(
-          event.phase === "ForcedTransaction"
-            ? event.entry.value.tx_id
-            : event.entry.txId,
-          "hex",
-        );
-        const transaction = (
-          event.phase === "ForcedTransaction"
-            ? decodeMidgardForcedTxFullFromCanonicalCbor
-            : decodeMidgardNativeTxFullFromCanonicalCbor
-        )(event.entry.fullTransactionCbor);
-        if (outputsScanRefused(transaction.body.outputsPreimageCbor))
-          throw replayPrerequisiteFailure(
-            block.headerHash,
-            step.event_key,
-            "representable_field_shape",
-          );
-        for (const input of decodeMidgardFieldPreimage(
-          transaction.body.spendInputsPreimageCbor,
-        ))
-          outputs.delete(input.toString("hex"));
-        for (const [outputIndex, value] of decodeMidgardFieldPreimage(
-          transaction.body.outputsPreimageCbor,
-        ).entries()) {
-          const key = encodeMidgardSpendInputItem({
-            txId: transactionId,
-            outputIndex,
-          });
-          outputs.set(key.toString("hex"), { key, value });
-        }
-      }
-    } else
-      throw new Error(
-        "value conservation: deposit phase precedes transaction phase",
-      );
-    ledger = await root();
-    if (ledger.root !== step.post_utxos_root)
-      throw replayPrerequisiteFailure(
-        block.headerHash,
-        step.event_key,
-        "prior_transition_effect",
-      );
+/** Whether `output` reads as a transaction output. One whose native
+ * reference script does not decode is a canonical ledger entry that does
+ * not: it has no value the conservation fold can read. */
+const readsAsTransactionOutput = (output: Uint8Array): boolean => {
+  try {
+    decodeMidgardTxOutput(output);
+    return true;
+  } catch (cause) {
+    if (cause instanceof MidgardTxCodecError) return false;
+    throw cause;
   }
-  return { ledger, outputs };
 };
 
 /** Public retained-DA reconstruction, including earlier transactions in the block. */
@@ -209,13 +106,17 @@ export const prepareValueConservationArtifact = async ({
     : decodeMidgardNativeTxFullFromCanonicalCbor(source.fullTransactionCbor);
   if ("validity" in transaction && transaction.validity !== "TxIsValid")
     return null;
-  // A mint item outside the field-5 grammar, or an output the ledger-output
-  // scan refuses, has no conservation meaning; the direct mint-item or output
-  // canonicality proof owns that transaction.
+  // A mint item outside the field-5 grammar, an output the ledger-output
+  // scan refuses, or one that does not read as a transaction output, has no
+  // conservation meaning; the direct mint-item, output canonicality or output
+  // reference script proof owns that transaction.
   if (
     !forced &&
     (transactionHasNonCanonicalMintItem(source.fullTransactionCbor) ||
-      outputsScanRefused(transaction.body.outputsPreimageCbor))
+      outputsScanRefused(transaction.body.outputsPreimageCbor) ||
+      !decodeMidgardFieldPreimage(transaction.body.outputsPreimageCbor).every(
+        readsAsTransactionOutput,
+      ))
   )
     throw replayPrerequisiteFailure(
       block.headerHash,
@@ -230,13 +131,11 @@ export const prepareValueConservationArtifact = async ({
     reconstruction: block.reconstruction,
     stepIndex: event.value.step_index,
   });
-  const { ledger, outputs } = await eventLedger(
-    block,
+  const { root: ledger, outputs } = await nativeScriptDecodingPriorLedger(
+    block.reconstruction,
     event.value.step_index,
     predecessor,
   );
-  if (ledger.root !== transition.value.pre_utxos_root)
-    throw new Error("value conservation: selected event pre-state differs");
   const inputItems = decodeMidgardFieldPreimage(
     transaction.body.spendInputsPreimageCbor,
   );
@@ -249,6 +148,21 @@ export const prepareValueConservationArtifact = async ({
       );
     return { key, output };
   });
+  // A spent output that does not read as a transaction output was created by
+  // an accepted step before this one, whose output reference script proof
+  // convicts it, or the predecessor ledger holds it, and the resolved output
+  // proof convicts this spend.
+  if (
+    !forced &&
+    !resolvedInputs.every(({ output }) =>
+      readsAsTransactionOutput(output.value),
+    )
+  )
+    throw replayPrerequisiteFailure(
+      block.headerHash,
+      eventKey,
+      "representable_field_shape",
+    );
   const finding = findValueNotPreserved({
     validity: "TxIsValid",
     fee: transaction.body.fee,
@@ -322,10 +236,10 @@ export const prepareValueConservationArtifact = async ({
           await keyValuePhasProof(
             ledger,
             key,
-            buildCanonicalMidgardLedgerEntryOutputMaterial({
-              outRef: key,
-              outputCbor: output.value,
-            }).descriptorCbor,
+            ledgerEntryLeaf(
+              { outRef: key, output: output.value },
+              "value conservation",
+            ).leaf,
           ),
           SDK.Proof,
         ),

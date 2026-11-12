@@ -17,6 +17,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  EventLedgerOutputNotCanonical,
   type EventLedgerRefusalReason,
   EventLedgerReplayRefusal,
   reconstructionEventLedgerWalk,
@@ -66,6 +67,7 @@ const REFUSAL_OUTCOME: Readonly<
  * The ledger before step `stepIndex`, from the block's one shared event
  * ledger walk. A step the walk cannot apply is a prerequisite at the event
  * of the step it names: an absent input wants that event's spend-input
+ * proof, an output that is not a canonical ledger entry its field-shape
  * proof, and any other unopenable effect its transition proof.
  */
 export const nativeScriptDecodingPriorLedger = async (
@@ -92,15 +94,19 @@ export const nativeScriptDecodingPriorLedger = async (
       stepIndex,
     );
   } catch (cause) {
+    // Every step a prerequisite names opened when the walk applied it.
+    const at = (step: bigint, prerequisite: ReplayPrerequisite) =>
+      replayPrerequisiteFailure(
+        current.headerHash,
+        current.traceByStepIndex.get(step)!.value.event_key,
+        prerequisite,
+      );
+    if (cause instanceof EventLedgerOutputNotCanonical)
+      throw at(cause.step, "representable_field_shape");
     if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
     const outcome = REFUSAL_OUTCOME[cause.reason];
     if ("fatal" in outcome) failure(outcome.fatal);
-    // Every step a prerequisite names opened when the walk applied it.
-    throw replayPrerequisiteFailure(
-      current.headerHash,
-      current.traceByStepIndex.get(cause.step)!.value.event_key,
-      outcome.prerequisite,
-    );
+    throw at(cause.step, outcome.prerequisite);
   }
   return {
     root: ledger.trie,

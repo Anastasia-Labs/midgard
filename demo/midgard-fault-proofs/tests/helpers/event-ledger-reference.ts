@@ -12,7 +12,10 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { EventLedgerReplayRefusal } from "../../src/event-ledger.js";
+import {
+  EventLedgerOutputNotCanonical,
+  EventLedgerReplayRefusal,
+} from "../../src/event-ledger.js";
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
 import {
   type CheckedLedger,
@@ -153,7 +156,8 @@ export const referenceLedgerBefore = async ({
     } catch (cause) {
       if (cause instanceof LedgerRootMismatchError)
         refuse("post_root_changed", index);
-      throw cause;
+      // Every entry the steps did not create was checked before them.
+      throw new EventLedgerOutputNotCanonical(index, cause as Error);
     }
   }
   const target = block.reconstruction.traceByStepIndex.get(stepIndex);

@@ -46,6 +46,9 @@ export type Step = Readonly<{
   input: FixtureTransactionInput;
   /** Whether the operator's committed root applies the step's effects. */
   applied: boolean;
+  /** The operator's committed pre root, when it is not the root the earlier
+   * steps leave. */
+  pre?: string;
 }>;
 
 /** The steps over `predecessor`, committed with the operator's roots. */
@@ -72,7 +75,7 @@ export const block = async (
     predecessorEntries: predecessor,
     txs,
     steps: txs.map((_, index) => ({
-      pre: roots[index]!,
+      pre: steps[index]!.pre ?? roots[index]!,
       post: roots[index + 1]!,
     })),
   });

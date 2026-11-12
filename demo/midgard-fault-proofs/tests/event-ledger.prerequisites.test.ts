@@ -16,7 +16,9 @@
  *   band fault is structural, so the header classifier seals it before any
  *   family replays the block
  *   (tests/header-classifier.transition-trace-structural-route.test.ts:318);
- * - an output the ledger already holds is refused by name.
+ * - an output the ledger already holds is refused by name;
+ * - an output that is not a canonical ledger entry wants its step's field
+ *   shape proof, which transaction-output-non-canonical gives.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -40,6 +42,7 @@ import {
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
 import { assertReplayPrerequisiteCovered } from "../src/workflow/replay-prerequisite.js";
@@ -188,6 +191,49 @@ describe("an output the event ledger already holds", () => {
     ).toEqual([
       { eventKey: fixture.key(0), prerequisite: "prior_transition_effect" },
     ]);
+  });
+});
+
+describe("an output that is not a canonical ledger entry", () => {
+  it("wants its step's field-shape proof, which transaction-output-non-canonical gives", async () => {
+    const fixture = await block([
+      {
+        input: {
+          spendInputs: [SPENT.outRef],
+          outputs: [Buffer.from("a0", "hex")],
+          fee: 3n,
+        },
+        applied: false,
+      },
+      nativeFault(OTHER.outRef),
+    ]);
+    await expect(
+      fixture.walk().before(fixture.key(1), 1n),
+    ).rejects.toMatchObject({
+      step: 0n,
+      message: expect.stringContaining("not a canonical ledger entry"),
+    });
+    expect(
+      await prerequisites(() =>
+        fixture.replay([NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY]),
+      ),
+    ).toEqual([
+      { eventKey: fixture.key(0), prerequisite: "representable_field_shape" },
+    ]);
+    expect(
+      (
+        await fixture.replay([
+          NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+          TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+        ])
+      ).classification,
+    ).toMatchObject({
+      decision: "fault_detected",
+      selected: {
+        violationId: "transaction-output-non-canonical",
+        position: fixture.position(0),
+      },
+    });
   });
 });
 

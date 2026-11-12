@@ -116,7 +116,8 @@ describe("mint-authorization emulator adversarial polarity", () => {
     const { initResult, refs } = await driveInit(harness, setup);
 
     // §2.4.3(d): an operator-rejected leaf carries a non-zero validity code, so
-    // step-01 refuses to bind it — the honest no-op can never convict.
+    // step-01 refuses to bind it — l2TxMistag convicts that leaf, and this
+    // family never convicts it a second time.
     await expect(
       submitMintAuthorizationStep01({
         lucid: harness.proverLucid,

@@ -79,13 +79,14 @@ const initThread = async (
   });
 
 describe("value-not-preserved negative scenarios", () => {
-  it("refuses to bind an honestly-rejected committed leaf: the no-op recording is outside the family's domain", async () => {
+  it("refuses to bind a rejected committed leaf: l2TxMistag convicts it, so it is outside the family's domain", async () => {
     const harness = await makeValueNotPreservedEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // The leaf LOOKS like an inflation (sourced 6, paid 20) — but the
-    // operator recorded it as invalid, so nothing was applied and there is
-    // no fault to prove.
+    // operator recorded it as invalid, so nothing was applied. A normal leaf
+    // claims acceptance, so the rejected one is itself a fault l2TxMistag
+    // convicts; this family declines it rather than convict it twice.
     const token = (quantity: bigint) => [
       { policyIdHex: POLICY_ID_HEX, assetNameHex: ASSET_NAME_HEX, quantity },
     ];

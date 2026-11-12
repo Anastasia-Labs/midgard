@@ -64,6 +64,19 @@ export class EventLedgerReplayRefusal extends Error {
   }
 }
 
+/** Step `step` creates an output that is not a canonical ledger entry, so
+ * no ledger after it can hold that output: the step's own output is the
+ * fault. It is not a refusal, so a reader that cannot name that fault meets
+ * it as the corruption it is. */
+export class EventLedgerOutputNotCanonical extends Error {
+  constructor(
+    readonly step: bigint,
+    cause: Error,
+  ) {
+    super(cause.message, { cause });
+  }
+}
+
 const refused = (reason: EventLedgerRefusalReason, step: number | bigint) =>
   new EventLedgerReplayRefusal(reason, BigInt(step));
 
@@ -235,9 +248,19 @@ const walkSteps = ({
           // The ledger's sole full-output -> descriptor conversion, including
           // its existing malformed-reference-script representation.
           for (const entry of outputs)
-            created.push(
-              ledgerEntryLeaf(entry, `input-existence earlier event ${index}`),
-            );
+            try {
+              created.push(
+                ledgerEntryLeaf(
+                  entry,
+                  `input-existence earlier event ${index}`,
+                ),
+              );
+            } catch (cause) {
+              throw new EventLedgerOutputNotCanonical(
+                BigInt(index),
+                cause as Error,
+              );
+            }
           for (const leaf of created)
             record(walk, leaf.entry.outRef.toString("hex"), {
               step: index,
