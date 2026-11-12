@@ -27,7 +27,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -39,11 +38,11 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireInitialStepDatum,
-  selectFeeInput,
 } from "./step-support.js";
 import {
   type DaHashPreimageStep01Layout,
@@ -58,7 +57,6 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -185,8 +183,7 @@ export const submitDaHashPreimageStep01 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -281,9 +278,7 @@ export const submitDaHashPreimageStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const tx = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs)
     .withdraw(
@@ -303,21 +298,18 @@ export const submitDaHashPreimageStep01 = async ({
         value: step02Datum,
       },
       threadAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const completedTx = phasMembershipCarriage.attach(
     stepScriptCarriage.attach(tx),
   );
 
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const signed = await completeStep(completedTx, funding);
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve da-hash-preimage step 01 layout.",
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -334,16 +326,8 @@ export const submitDaHashPreimageStep01 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `da-hash-preimage step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,

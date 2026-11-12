@@ -31,7 +31,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -42,10 +41,8 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./step-support.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -54,7 +51,6 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
@@ -315,8 +311,7 @@ export const submitDaHashPreimageStep02 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -352,9 +347,7 @@ export const submitDaHashPreimageStep02 = async ({
     ...fraudProofMintCarriage.referenceInputs,
   ];
 
-  const withInputs = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const withInputs = funding.tx
     .collectFrom(
       [threadUtxo],
       makeDaHashPreimageStep02SpendRedeemer({
@@ -390,8 +383,7 @@ export const submitDaHashPreimageStep02 = async ({
       contracts.fraudProof.spendingScriptAddress,
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   // `readFrom([])` is an error rather than a no-op, so the branch is on
   // whether any witness published a reference script at all.
   const chained =
@@ -402,7 +394,7 @@ export const submitDaHashPreimageStep02 = async ({
     computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
   );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -415,9 +407,7 @@ export const submitDaHashPreimageStep02 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -439,16 +429,8 @@ export const submitDaHashPreimageStep02 = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `da-hash-preimage step 02 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   return {
     txHash,
