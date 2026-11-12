@@ -243,6 +243,11 @@ export const driveProvenCorrectionRemoval = async ({
   } else if (!namesCorrection(live.datum, correction))
     return Object.freeze({ kind: "finished" });
   const releases: (() => void)[] = [];
+  /** When a transaction with this TTL can no longer land. */
+  const expiresAtMs = (ttl: bigint | undefined): number =>
+    ttl === undefined
+      ? Date.now() + Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS)
+      : lucid.slotToUnixTime(Number(ttl));
   const holdOwnCoins: FraudProofPreSubmitBoundary = async ({ signed }) => {
     // Collateral may be a spent input too.
     const spent = await lucid.utxosByOutRef(
@@ -258,7 +263,7 @@ export const driveProvenCorrectionRemoval = async ({
         outRefs: spent
           .filter(({ address }) => address === signer.address)
           .map(outRefLabel),
-        untilMs: Date.now() + Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS),
+        untilMs: expiresAtMs(signed.toTransaction().body().ttl()),
       }),
     );
   };

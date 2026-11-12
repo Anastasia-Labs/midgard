@@ -101,7 +101,8 @@ const otherCaller = async (fixture: ProvedDoubleSpendFixture) => {
   };
 };
 
-/** A signed transaction's inputs and collateral at `address`. */
+/** A signed transaction's inputs and collateral at `address`, and when it
+ * can no longer land. */
 const walletCoinsOf = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   cbor: string,
@@ -120,8 +121,11 @@ const walletCoinsOf = async (
     ...outRefs(body.inputs()),
     ...outRefs(body.collateral_inputs()),
   ]);
+  const ttl = body.ttl();
   return {
     collateral: outRefs(body.collateral_inputs()).map(outRefLabel),
+    expiresAtMs:
+      ttl === undefined ? undefined : lucid.slotToUnixTime(Number(ttl)),
     wallet: [
       ...new Set(
         spent.filter((utxo) => utxo.address === address).map(outRefLabel),
@@ -130,15 +134,18 @@ const walletCoinsOf = async (
   };
 };
 
-/** The removal's wallet holds and submissions, in the order they happen. */
+/** The removal's wallet holds and submissions, in the order they happen;
+ * `submitFailure`, when given, fails every submission after recording it. */
 const walletEvents = (
   fixture: ProvedDoubleSpendFixture,
   refuse?: (outRefs: readonly string[]) => Error | undefined,
+  submitFailure?: Error,
 ) => {
   const events: (
     | Readonly<{
         kind: "hold";
         outRefs: readonly string[];
+        untilMs: number;
         release: () => void;
       }>
     | Readonly<{
@@ -158,6 +165,7 @@ const walletEvents = (
         kind: "submit",
         coins: await walletCoinsOf(lucid, cbor, walletAddress),
       });
+      if (submitFailure !== undefined) throw submitFailure;
       return await submit(cbor);
     });
   };
@@ -166,7 +174,7 @@ const walletEvents = (
     const refused = refuse?.(outRefs);
     if (refused !== undefined) throw refused;
     const release = vi.fn();
-    events.push({ kind: "hold", outRefs, release });
+    events.push({ kind: "hold", outRefs, untilMs, release });
     return release;
   };
   return { events, hold, watch };
@@ -211,7 +219,8 @@ describe("driving a proven fraud-proof correction from L1", () => {
       fixture.proverPaymentKeyHash,
     );
     // Each peel held its own wallet coins, collateral included, before it
-    // was submitted; the confirmed removal released every hold.
+    // was submitted, until its TTL; the confirmed removal released every
+    // hold.
     expect(wallet.events.map(({ kind }) => kind)).toEqual([
       "hold",
       "submit",
@@ -226,6 +235,7 @@ describe("driving a proven fraud-proof correction from L1", () => {
       expect(collateral.length).toBeGreaterThan(0);
       expect(coins).toEqual(expect.arrayContaining(collateral));
       expect([...held.outRefs].sort()).toEqual(coins);
+      expect(held.untilMs).toBe(submitted.coins.expiresAtMs);
       expect(held.release).toHaveBeenCalledOnce();
     }
 
@@ -285,6 +295,23 @@ describe("driving a proven fraud-proof correction from L1", () => {
       contracts: fixture.contracts,
       expectedHeaderHashes: [fixture.headerHash],
     });
+  }, 240_000);
+
+  it("keeps a failed removal's holds, as its transaction may still land", async () => {
+    const { fixture, lock } = await interruptedRemoval();
+    const wallet = walletEvents(
+      fixture,
+      undefined,
+      new Error("node lost the removal"),
+    );
+    const { result: started } = await finish(fixture, lock, wallet);
+    if (started.kind !== "proven") throw new Error(started.kind);
+    await expect(started.removal).rejects.toThrow("node lost the removal");
+    expect(wallet.events.map(({ kind }) => kind)).toEqual(["hold", "submit"]);
+    const [held] = wallet.events;
+    if (held?.kind !== "hold") throw new Error("the submission was not held");
+    expect(held.outRefs.length).toBeGreaterThan(0);
+    expect(held.release).not.toHaveBeenCalled();
   }, 240_000);
 
   it("submits nothing for a correction no proven record names", async () => {
