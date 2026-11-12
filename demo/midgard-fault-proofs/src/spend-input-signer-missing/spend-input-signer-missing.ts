@@ -24,7 +24,10 @@ import type {
   AuthenticatedPriorLedgerOutput,
   ResolvedOutputPriorLedgerReplay,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
-import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
+import {
+  scanSignerWitnesses,
+  type SignerWitnessScanCheckpoint,
+} from "../signer-witness-scan/signer-witness-scan.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_CATEGORY =
   "spendInputSignerMissing" as const;
@@ -79,10 +82,7 @@ export type SpendInputSignerMissingEvidence = SpendInputSignerMissingFinding &
     signerMissing: boolean;
     inputCarriage: "Inline" | "RawUtxo" | "Certified";
     witnessCarriage: "Inline" | "RawUtxo" | "Certified";
-    checkpoints: readonly Readonly<{
-      cursor: number;
-      signerPresent: boolean;
-    }>[];
+    checkpoints: readonly SignerWitnessScanCheckpoint[];
   }>;
 
 /** Narrows in-range evidence to the resolved prior-ledger output step 02 proves. */

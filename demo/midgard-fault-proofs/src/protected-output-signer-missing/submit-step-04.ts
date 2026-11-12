@@ -1,4 +1,3 @@
-import { missingSignatureFieldWalkCheckpoint } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -104,7 +103,7 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
     witnessSetCompactCbor,
     owner: signer.paymentKeyHash,
   });
-  const { checkpoint, nextCursor, signerPresent, exhausted } =
+  const { checkpoint, signerPresent, exhausted, nextCheckpoint } =
     planSignerWitnessScanTurn({
       checkpoints: evidence.checkpoints,
       txId: evidence.subject.transaction_id,
@@ -115,6 +114,13 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
     });
   // This family's scan always runs to the end of the field.
   const terminal = exhausted;
+  const continuingCheckpointHash = (): string => {
+    if (nextCheckpoint === undefined)
+      throw new Error(
+        "protected-output-signer-missing: a continuing scan has no next checkpoint",
+      );
+    return nextCheckpoint.checkpointHash;
+  };
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
@@ -148,12 +154,7 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
           }
         : {
             protected: state.protected,
-            checkpoint_hash: missingSignatureFieldWalkCheckpoint({
-              txId: evidence.subject.transaction_id,
-              itemCount: planned.itemCount,
-              totalLength: planned.preimage.length,
-              nextItemIndex: nextCursor,
-            }).checkpointHash,
+            checkpoint_hash: continuingCheckpointHash(),
             signer_present: signerPresent,
           },
     } as never,

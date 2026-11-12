@@ -18,7 +18,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
+import {
+  scanSignerWitnesses,
+  type SignerWitnessScanCheckpoint,
+} from "../signer-witness-scan/signer-witness-scan.js";
 
 export const PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY =
   "protectedOutputSignerMissing" as const;
@@ -65,10 +68,7 @@ export type ProtectedOutputSignerMissingEvidence =
       signerPresent: boolean;
       outputCarriage: "Inline" | "RawUtxo" | "Certified";
       witnessCarriage: "Inline" | "RawUtxo" | "Certified";
-      checkpoints: readonly Readonly<{
-        cursor: number;
-        signerPresent: boolean;
-      }>[];
+      checkpoints: readonly SignerWitnessScanCheckpoint[];
     }>;
 
 /** Narrows scan-route evidence to the fields the scan steps consume. */
