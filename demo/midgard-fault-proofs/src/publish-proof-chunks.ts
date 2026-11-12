@@ -31,7 +31,6 @@ import {
   Data,
   type LucidEvolution,
   type Network,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
@@ -40,7 +39,6 @@ import {
   splitProofIntoChunkDatums,
 } from "./proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   type ResolvedProverSigner,
@@ -49,11 +47,8 @@ import {
   minimumLovelaceForInlineDatumOutput,
   resolveProtocolParameters,
 } from "./spend-input-witness.js";
-import { selectFeeInput } from "./step-support.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-} from "./workflow/transaction-boundary.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
 export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
@@ -62,7 +57,6 @@ export type PublishedProof = {
   readonly txHash: string;
   readonly chunks: readonly PublishedProofChunk[];
   readonly proofStepCount: number;
-  readonly spentFeeInput: UTxO;
 };
 
 export const resolvePublishedProofChunks = async ({
@@ -146,9 +140,8 @@ export const publishProofChunks = async ({
   });
   const { coinsPerUtxoByte } = await resolveProtocolParameters(lucid);
 
-  signer.selectWallet(lucid);
-  const spentFeeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  let tx = lucid.newTx().collectFrom([spentFeeInput]);
+  const funding = await fundStep(lucid, { signer });
+  let tx = funding.tx;
   for (const datum of datums) {
     tx = tx.pay.ToAddressWithData(
       address,
@@ -162,25 +155,13 @@ export const publishProofChunks = async ({
       },
     );
   }
-  const unsigned = await tx
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
-
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const signed = await completeStep(tx, funding);
+  const txHash = await submitStep(lucid, signed, {
+    label: "publish-proof-chunks",
     referenceScripts: [],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
 
   const claimed = new Set<number>();
   const chunks: PublishedProofChunk[] = [];
@@ -229,6 +210,5 @@ export const publishProofChunks = async ({
     txHash,
     chunks,
     proofStepCount: chunks.reduce((total, chunk) => total + chunk.stepCount, 0),
-    spentFeeInput,
   };
 };
