@@ -15,14 +15,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
-import { requireInitialStepDatum, selectFeeInput } from "../step-support.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
 import {
   type FieldPreimageLengthClaimResolver,
@@ -51,8 +48,7 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
     stepIndex: 0,
   });
   requireInitialStepDatum({ threadUtxo, signer: config.signer });
-  config.signer.selectWallet(config.lucid);
-  const feeInput = selectFeeInput(await config.lucid.wallet().getUtxos());
+  const funding = await fundStep(config.lucid, { signer: config.signer });
   const next = config.contracts.fieldPreimageLengthMismatch.forcedStep02;
   const datum = Data.to(
     {
@@ -98,9 +94,7 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
     expectedHash: step.spendingScriptHash,
     role: "step-01",
   });
-  const tx = config.lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const tx = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .pay.ToContract(
       next.spendingScriptAddress,
@@ -110,16 +104,13 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(config.signer.paymentKeyHash)
     .readFrom([reference]);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (layout === undefined) {
     throw new Error(`${LABEL}: forced dispatch layout did not resolve`);
   }
   const resolvedLayout = layout;
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(config.lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -131,14 +122,8 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(`${LABEL}: provider returned a different transaction id`);
-  }
-  if (awaitConfirmation) {
-    await config.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
@@ -232,28 +217,24 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
   });
   if (claimResolver === undefined && claim === undefined)
     throw new Error(`${LABEL}: accepted authentication omitted field claim`);
-  config.signer.selectWallet(config.lucid);
-  const feeInput = selectFeeInput(await config.lucid.wallet().getUtxos());
-  const unsigned = await config.lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
-      terminal.spendingScriptAddress,
-      { kind: "inline", value: datum },
-      {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
-        [threadToken.unit]: 1n,
-      },
-    )
-    .addSignerKey(config.signer.paymentKeyHash)
-    .readFrom([reference, ...carriageReferenceInputs])
-    .complete({ localUPLCEval: true });
+  const funding = await fundStep(config.lucid, { signer: config.signer });
+  const signed = await completeStep(
+    funding.tx
+      .collectFrom([threadUtxo], redeemer)
+      .pay.ToContract(
+        terminal.spendingScriptAddress,
+        { kind: "inline", value: datum },
+        {
+          lovelace: threadUtxo.assets.lovelace ?? 0n,
+          [threadToken.unit]: 1n,
+        },
+      )
+      .readFrom([reference, ...carriageReferenceInputs]),
+    funding,
+  );
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(config.lucid, signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -265,14 +246,8 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
       ],
     }),
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(`${LABEL}: provider returned a different transaction id`);
-  }
-  if (awaitConfirmation) {
-    await config.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
