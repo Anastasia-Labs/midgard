@@ -209,13 +209,6 @@ const SUCCESSES: readonly WorkerOutput[] = [
     submittedHeaderHash: "22".repeat(28),
     submittedUtxosRoot: "33".repeat(32),
   },
-  {
-    type: "SuccessfulLocalFinalizationRecoveryOutput",
-    finalizedHeaderHash: "22".repeat(28),
-    mempoolTxsCount: 0,
-    sizeOfBlocksTxs: 0,
-    mempoolLedgerDeletedOutRefHexes: [],
-  },
 ];
 
 /** Outputs that wait or do nothing: none proves a commit went through. */

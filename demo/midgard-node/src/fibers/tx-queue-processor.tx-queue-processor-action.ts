@@ -76,9 +76,6 @@ export const txQueueProcessorAction = (
     const ledgerCache = yield* MempoolLedgerCache;
     yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
     const nodeConfig = yield* NodeConfig;
-    const localFinalizationPending = yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    );
 
     const expiredLeaseCount = recoverySweep
       ? yield* TxAdmissionsDB.requeueExpiredLeases
@@ -94,15 +91,6 @@ export const txQueueProcessorAction = (
     const totalQueueDepth = Number(durableBacklog);
     if (recoverySweep) {
       yield* validationQueueDepthGauge(Effect.succeed(durableBacklog));
-    }
-
-    if (localFinalizationPending) {
-      yield* validationBatchSizeGauge(Effect.succeed(0n));
-      yield* validationWorkerUtilizationGauge(Effect.succeed(0));
-      yield* Effect.logDebug(
-        "tx-queue processor paused while local finalization recovery is pending",
-      );
-      return { processed: false, claimedCount: 0, batchSize: 0 };
     }
 
     if (durableBacklog === 0n) {

@@ -95,7 +95,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
     );
   const [
     unconfirmedSubmittedBlockTxHash,
-    localFinalizationPending,
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
@@ -103,7 +102,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
   ] = yield* Effect.all(
     [
       Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-      Ref.get(globals.LOCAL_FINALIZATION_PENDING),
       Ref.get(globals.RESET_IN_PROGRESS),
       TxAdmissionsDB.countBacklog,
       MempoolDB.retrieveTxCount,
@@ -118,7 +116,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
     unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-    localFinalizationPending,
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
@@ -287,14 +284,8 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
     UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS <= 0
       ? 0
       : Date.now() - UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS;
-  const LOCAL_FINALIZATION_PENDING: boolean = yield* Ref.get(
-    globals.LOCAL_FINALIZATION_PENDING,
-  );
   const HEARTBEAT_BLOCK_COMMITMENT: number = yield* Ref.get(
     globals.HEARTBEAT_BLOCK_COMMITMENT,
-  );
-  const HEARTBEAT_BLOCK_CONFIRMATION: number = yield* Ref.get(
-    globals.HEARTBEAT_BLOCK_CONFIRMATION,
   );
   const HEARTBEAT_MERGE: number = yield* Ref.get(globals.HEARTBEAT_MERGE);
   const HEARTBEAT_TX_QUEUE_PROCESSOR: number = yield* Ref.get(
@@ -311,9 +302,7 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
   UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
   UNCONFIRMED_SUBMITTED_BLOCK_SINCE ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS > 0 ? new Date(Number(UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS)).toLocaleString() : "N/A"} (${unconfirmedSubmittedBlockAgeMs}ms)
-  LOCAL_FINALIZATION_PENDING ⋅⋅⋅⋅⋅⋅⋅⋅ ${LOCAL_FINALIZATION_PENDING}
   HEARTBEAT_BLOCK_COMMITMENT ⋅⋅ ${new Date(Number(HEARTBEAT_BLOCK_COMMITMENT)).toLocaleString()}
-  HEARTBEAT_BLOCK_CONFIRMATION ⋅ ${new Date(Number(HEARTBEAT_BLOCK_CONFIRMATION)).toLocaleString()}
   HEARTBEAT_MERGE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_MERGE)).toLocaleString()}
   HEARTBEAT_TX_QUEUE_PROCESSOR ⋅ ${new Date(Number(HEARTBEAT_TX_QUEUE_PROCESSOR)).toLocaleString()}
 `);

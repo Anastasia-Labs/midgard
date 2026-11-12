@@ -9,6 +9,7 @@ import {
 } from "../../src/database/index.js";
 import { Database } from "../../src/services/database.js";
 import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
+import { prepareUnderTestLease } from "./mutation-lease.js";
 
 const mode = process.argv[2] as "before" | "during" | "after" | undefined;
 const depositIdHex = process.argv[3];
@@ -92,7 +93,7 @@ const program = Effect.gen(function* () {
       produced: [],
     },
   };
-  yield* PendingBlockFinalizationsDB.preparePendingSubmission(input, {
+  yield* prepareUnderTestLease(input, {
     beforeJournalInsert: DepositsDB.markAwaitingAsProjected([depositId]).pipe(
       Effect.andThen(mode === "during" ? Effect.sync(killSelf) : Effect.void),
       Effect.as(undefined),

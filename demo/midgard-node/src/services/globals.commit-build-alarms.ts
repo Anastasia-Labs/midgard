@@ -50,7 +50,6 @@ export const settleCommitBuildAlarms = (
   switch (output.type) {
     case "SuccessfulSubmissionOutput":
     case "SubmittedAwaitingConfirmationOutput":
-    case "SubmittedAwaitingLocalFinalizationOutput":
       return {
         held: null,
         breaker: alarms.breakerThisBuild,
@@ -62,7 +61,6 @@ export const settleCommitBuildAlarms = (
     case "RegisteredDueWorkOutput":
     case "AwaitingCommitBaseOutput":
     case "AwaitingNextCommitWindowOutput":
-    case "SuccessfulLocalFinalizationRecoveryOutput":
       return { ...alarms, breakerThisBuild: [] };
   }
 };

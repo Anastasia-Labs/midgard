@@ -7,18 +7,17 @@ import "../services/follower-write-gate.js";
 import "../services/globals.js";
 import "../services/history-commit-window.js";
 import "../services/index.js";
-import "../services/native-mpf-local-finalization.js";
 import "../services/landed-state-queue.js";
 import "../workers/utils/commit-end-time.js";
 import "../workers/utils/common.js";
 import "../workers/utils/scheduler-refresh.js";
 import "./commit-worker-failure-classification.js";
-import "./da-publication-trigger.js";
 import "./native-mpf-worker-input.js";
 import "./queue-metrics.js";
 import "./resolve-worker-entry.js";
 import "./slot-aware-due-work.js";
 import "./worker-lifecycle.js";
+import "./block-commitment.abandon-unsigned-journal.js";
 import "./block-commitment.promote-or-recover-native-mpf.js";
 import "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import "./block-commitment.should-skip-for-registered-commit-due-work.js";
@@ -35,14 +34,12 @@ export {
   publishFullMempoolLedgerReload,
   recoverNativeMpfAfterCommitWorkerFailure,
   recoverNativeMpfFromSubmittedJournal,
-  resolveAuthoritativeLocalFinalizationPreflight,
   takeCommitWorkerOutput,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
 export {
   preLeaseCommitSchedulerTargetMs,
   publishCommitMempoolLedgerMutation,
   shouldAttemptCommitPipeline,
-  shouldDeferCommitWorkerForLocalFinalization,
 } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 export {
   releaseCommitMutationWorkerPhase,

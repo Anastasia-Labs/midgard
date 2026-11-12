@@ -4,6 +4,7 @@ import { describe, expect } from "vitest";
 
 import * as MutationJobsDB from "../src/database/mutationJobs.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   failedLocalJob,
   findJob,
@@ -112,9 +113,7 @@ describe("local-finalization job abandonment", () => {
           // A journal the correction path may not abandon: the whole
           // transaction fails and the job keeps its failure.
           const unsubmitted = header("unsubmitted");
-          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-            journalFixture(unsubmitted),
-          );
+          yield* prepareUnderTestLease(journalFixture(unsubmitted));
           yield* failedLocalJob(unsubmitted, "kept failure");
           const refused = yield* Effect.either(
             PendingBlockFinalizationsDB.markCorrectedAfterStateQueueRemoval(

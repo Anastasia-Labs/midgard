@@ -27,23 +27,21 @@ import {
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
-  runBlockConfirmation,
   runCommitWorker,
-  runLocalFinalizationRecoveryWorker,
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 import {
-  retainSignedIntentContinuationChildDa,
   signedIntentContinuationChildEvents,
   signedIntentContinuationChildRoots,
 } from "./helpers/signed-intent-continuation-child-da.js";
 
-/** Real accepted commitment with a lost provider response, then an authorized
- * event-only child recreating the parent outref. Synthetic transport ancestry;
- * block confirmation observes the parent through the recreated outref. */
-it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
+/** Real accepted commitment with a lost provider response, applied when it
+ * lands, then an authorized event-only child recreating the parent outref.
+ * Synthetic transport ancestry; the parent's journal stays as landing left
+ * it. */
+it("retains the original signed intent through landing and an accepted queue pointer continuation", async () => {
   const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const lucid = fixture.operatorLucid;
@@ -262,9 +260,9 @@ it("retains the original signed intent through an accepted queue pointer continu
     );
     diagnostic.afterResponseLoss = pending;
 
-    diagnostic.stage = "confirm-original-on-ledger-only";
+    diagnostic.stage = "original-lands";
     expect(await lucid.awaitTx(accepted.txHash)).toBe(true);
-    await h.synchronize();
+    await h.applyLanded(accepted.headerHash);
     const confirmedReceipts = h.receipts.filter(
       ({ transaction }) => transaction.txHash === accepted!.txHash,
     );
@@ -281,24 +279,26 @@ it("retains the original signed intent through an accepted queue pointer continu
         { key: deposit.idCbor, value: deposit.infoCbor },
       ]),
     );
+    // The lost response never recorded the submission: the journal keeps
+    // its signed intent, and landing applied it.
     const priorToContinuation = await readIntent(accepted.txHash);
     assertIntent(priorToContinuation, accepted.txHash, accepted.signedCbor);
     expect(priorToContinuation[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     expect(priorToContinuation[Pending.Columns.STATUS]).toBe(
-      Pending.Status.PendingSubmission,
+      Pending.Status.LocallyApplied,
     );
     const nativeBefore = await Effect.runPromise(
       Ref.get(globals.NATIVE_MPF_OWNER),
     );
     expect(nativeBefore).toBeDefined();
     const nativeBeforeContinuation = await nativeBefore!.diagnostics();
-    expect(nativeBeforeContinuation.durableRoot).not.toBe(
+    expect(nativeBeforeContinuation.durableRoot).toBe(
       accepted.header.utxosRoot,
     );
     expect(canonical.utxo.txHash).toBe(accepted.txHash);
     expect(canonical.datum.next).toBe("Empty");
 
-    diagnostic.stage = "authorized-child-before-node-confirmation";
+    diagnostic.stage = "authorized-child";
     await advanceEmulatorPastUnixTime(fixture, Number(accepted.header.endTime));
     vi.setSystemTime(fixture.emulator.now());
     await alignCommitSchedulerBeforeTestWorker({
@@ -308,15 +308,11 @@ it("retains the original signed intent through an accepted queue pointer continu
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
-    // At the parent's TTL the follower driver leaves the signed intent as it
-    // is: S6 and the landed-block rebase own it (whichever lands wins), and
-    // block confirmation records the landed block below.
+    // At the parent's TTL the follower driver leaves the applied journal
+    // and its signed intent as they are.
     const recordedAtTtl = await readIntent(accepted.txHash);
     assertIntent(recordedAtTtl, accepted.txHash, accepted.signedCbor);
-    expect(recordedAtTtl[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(recordedAtTtl[Pending.Columns.STATUS]).toBe(
-      Pending.Status.PendingSubmission,
-    );
+    expect(recordedAtTtl).toEqual(priorToContinuation);
     // The child takes the latest planner end allowed by the Q61 attestation
     // fence, history horizon, submit validity and current scheduler window.
     const childWindow = await Effect.runPromise(
@@ -441,9 +437,9 @@ it("retains the original signed intent through an accepted queue pointer continu
     });
     expect(childHeader.endTime).toBeGreaterThan(accepted.header.endTime);
     expect(childNode.datum.next).toBe("Empty");
-    const priorToConfirmation = await readIntent(accepted.txHash);
-    assertIntent(priorToConfirmation, accepted.txHash, accepted.signedCbor);
-    expect(priorToConfirmation).toEqual(recordedAtTtl);
+    const afterChild = await readIntent(accepted.txHash);
+    assertIntent(afterChild, accepted.txHash, accepted.signedCbor);
+    expect(afterChild).toEqual(recordedAtTtl);
     expect((await nativeBefore!.diagnostics()).durableRoot).toBe(
       nativeBeforeContinuation.durableRoot,
     );
@@ -454,62 +450,26 @@ it("retains the original signed intent through an accepted queue pointer continu
       childSignedCbor,
       childInputs,
       continuedParent: parent,
-      priorToConfirmation,
+      afterChild,
       nativeBeforeContinuation,
-      nativeBeforeConfirmation: await nativeBefore!.diagnostics(),
+      nativeAfterChild: await nativeBefore!.diagnostics(),
       submissionMode:
         "Authorized operator explicit event-only child builder, not automatic pending worker",
     };
-    diagnostic.stage = "canonical-confirmation-through-continuation";
-    diagnostic.childDa = await h.command(
-      retainSignedIntentContinuationChildDa(
-        accepted.headerHash,
-        child.headerHash,
-        childHeader,
-      ),
-    );
-    await runBlockConfirmation(
-      globals,
-      fixture.contracts,
-      lucidService,
-      production.nodeConfig,
-      production,
-    );
-    const observed = await readIntent(accepted.txHash);
-    assertIntent(observed, accepted.txHash, accepted.signedCbor);
-    // Confirmation through the recreated outref records the parent observed
-    // and must not acknowledge the child as though it were the transaction
-    // that signed the parent.
-    expect(observed[Pending.Columns.STATUS]).toBe(
-      Pending.Status.ObservedWaitingStability,
-    );
-    expect(observed[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    diagnostic.afterConfirmation = observed;
-    diagnostic.stage = "local-finalization";
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      production.nodeConfig,
-      { ...production, globals },
-    );
-    diagnostic.recovery = recovery;
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-      throw new Error("Canonical intent requires native local finalization");
-    expect(recovery.finalizedHeaderHash).toBe(accepted.headerHash);
-    await h.synchronize();
+    diagnostic.stage = "after-child";
+    // The node follows the chain past the child, another block to this
+    // node, never taken for the transaction that signed the parent: the
+    // parent's journal stays as landing left it.
+    const l2 = await h.command(utxosProgram(address));
+    expect(l2.utxoCount).toBe(1);
+    expect(l2.totals.lovelace).toBe(12_000_000n);
+    expect(await readIntent(accepted.txHash)).toEqual(recordedAtTtl);
     const native = await Effect.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
     expect(native).toBeDefined();
     expect((await native!.diagnostics()).durableRoot).toBe(
       accepted.header.utxosRoot,
     );
-    const l2 = await h.command(utxosProgram(address));
-    expect(l2.utxoCount).toBe(1);
-    expect(l2.totals.lovelace).toBe(12_000_000n);
-    diagnostic.localFinalization = {
-      recovery,
+    diagnostic.afterChild = {
       journal: await readIntent(accepted.txHash),
       native: await native!.diagnostics(),
       l2,
@@ -551,7 +511,7 @@ it("retains the original signed intent through an accepted queue pointer continu
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read; real authorized explicit event-only child submission recreates the parent queue outref before node acknowledgement/confirmation. Original signed intent identity preserved through canonical observation and native local finalization. Synthetic transport ancestry. No automatic-worker child, service restart, OS kill, or production FailureOutput mutation-lease classification coverage.",
+                "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read; the parent applied when it lands; real authorized explicit event-only child submission recreates the parent queue outref. Original signed intent identity preserved through landing and the child's submission; the child is not taken in. Synthetic transport ancestry. No automatic-worker child, service restart, OS kill, or production FailureOutput mutation-lease classification coverage.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

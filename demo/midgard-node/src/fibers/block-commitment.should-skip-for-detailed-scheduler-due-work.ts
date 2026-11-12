@@ -26,14 +26,8 @@ import {
   landedStateQueueSnapshot,
   type StateQueueSnapshot,
 } from "../services/landed-state-queue.js";
-import {
-  type SerializedStateQueueUTxO,
-  WorkerOutput,
-} from "../workers/utils/commit-block-header.js";
-import type {
-  CommitSchedulerStateQueueEvidence,
-  EarliestCommitSchedulerPlan,
-} from "../workers/utils/commit-block-planner.js";
+import { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import type { CommitSchedulerStateQueueEvidence } from "../workers/utils/commit-block-planner.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";
 import {
   fetchRealStateQueueWitnessContext,
@@ -61,7 +55,6 @@ export const publishCommitMempoolLedgerMutation = (
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (workerOutput.type) {
     case "SuccessfulSubmissionOutput":
-    case "SuccessfulLocalFinalizationRecoveryOutput":
       return workerOutput.mempoolLedgerDeletedOutRefHexes.length === 0
         ? Effect.void
         : publishMempoolLedgerDelta(
@@ -75,7 +68,6 @@ export const publishCommitMempoolLedgerMutation = (
           ).pipe(Effect.asVoid);
     // A failed attempt may have committed a commit-stage rejection's
     // mempool_ledger revert without its notice reaching the parent.
-    case "SubmittedAwaitingLocalFinalizationOutput":
     case "FailureOutput":
       return publishFullMempoolLedgerReload(globals, deltaLogMax);
     default:
@@ -92,24 +84,9 @@ const stateQueueEvidenceFromSnapshot = (
     snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
 });
 
-const localFinalizationPendingCommitSchedulerPlan =
-  (): EarliestCommitSchedulerPlan => ({
-    status: "proceed",
-    reason: "local_finalization_pending",
-    dependencyKey:
-      "planner=earliest_commit_scheduler_v1,local_finalization_pending=true",
-    invalidationKey:
-      "planner=earliest_commit_scheduler_v1,local_finalization_pending=true",
-  });
-
 export const planPreLeaseCommitSchedulerDueWork = Effect.gen(function* () {
-  const globals = yield* Globals;
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
-  if (LOCAL_FINALIZATION_PENDING) {
-    return localFinalizationPendingCommitSchedulerPlan();
-  }
   const snapshot = yield* landedStateQueueSnapshot(
     contracts.stateQueue,
     "commit_preflight",
@@ -120,7 +97,6 @@ export const planPreLeaseCommitSchedulerDueWork = Effect.gen(function* () {
     contracts,
     submitSlotSnapshot: lucid.submitSlotSnapshot,
     stateQueueEvidence: stateQueueEvidenceFromSnapshot(snapshot),
-    localFinalizationPending: LOCAL_FINALIZATION_PENDING,
     callerLabel: "commit-scheduler-preflight",
     discoveryStage: "pre_lease",
   });
@@ -155,36 +131,18 @@ const pendingUserEventCountUpTo = (
     );
   });
 
-export const shouldDeferCommitWorkerForLocalFinalization = ({
-  localFinalizationPending,
-  availableLocalFinalizationBlock,
-}: {
-  readonly localFinalizationPending: boolean;
-  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
-}): boolean =>
-  localFinalizationPending && availableLocalFinalizationBlock === "";
-
 export const shouldAttemptCommitPipeline = ({
-  localFinalizationPending,
-  availableLocalFinalizationBlock,
   mempoolTxCount,
   processedUnsubmittedTxCount,
   pendingUserEventCount,
 }: {
-  readonly localFinalizationPending: boolean;
-  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
   readonly mempoolTxCount: bigint;
   readonly processedUnsubmittedTxCount: number;
   readonly pendingUserEventCount: number;
 }): boolean =>
-  !shouldDeferCommitWorkerForLocalFinalization({
-    localFinalizationPending,
-    availableLocalFinalizationBlock,
-  }) &&
-  (localFinalizationPending ||
-    mempoolTxCount > 0n ||
-    processedUnsubmittedTxCount > 0 ||
-    pendingUserEventCount > 0);
+  mempoolTxCount > 0n ||
+  processedUnsubmittedTxCount > 0 ||
+  pendingUserEventCount > 0;
 
 const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
 
@@ -199,28 +157,6 @@ const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
 export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
   function* () {
     const globals = yield* Globals;
-    const localFinalizationPending = yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    );
-    const availableLocalFinalizationBlock = yield* Ref.get(
-      globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-    );
-    if (
-      shouldDeferCommitWorkerForLocalFinalization({
-        localFinalizationPending,
-        availableLocalFinalizationBlock,
-      })
-    ) {
-      yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
-      yield* logOnStateChange(
-        globals,
-        COMMIT_PIPELINE_SKIP_LOG_KEY,
-        "local_finalization_deferred",
-        "🔹 Local finalization is pending without a confirmed recovery block; skipping the commit worker until confirmation advances recovery.",
-      );
-      yield* emitQueueStateMetrics;
-      return true;
-    }
     const processedUnsubmittedTxCount = yield* Ref.get(
       globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
     );
@@ -234,8 +170,6 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
     });
     if (
       shouldAttemptCommitPipeline({
-        localFinalizationPending,
-        availableLocalFinalizationBlock,
         mempoolTxCount,
         processedUnsubmittedTxCount,
         pendingUserEventCount,

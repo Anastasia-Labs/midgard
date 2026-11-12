@@ -63,13 +63,9 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-/**
- * The production fold's ports with the view held; an own block's journal
- * reads as locally applied.
- */
+/** The production fold's ports with the view held. */
 const foldPorts = {
   confirmView: () => Effect.succeed(true),
-  ownJournal: () => Effect.succeed({ status: "locally_applied" }),
   write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
 } as unknown as LandedBlockPorts<never>;
 afterEach(() => {
@@ -226,7 +222,7 @@ describe(
             utxosRoot: R1,
             kind: "own",
             state: "processed",
-            // An own block is applied when processed (its journal live).
+            // Applied by an earlier rebase.
             applied: true,
             spent: [E0.outref],
             produced: [E1],
@@ -294,8 +290,8 @@ describe(
 
     it("keeps a transaction this node's own block included out of the rebuild after that block folds and a later rebuild rejects another", async () => {
       // frontier -> own O (E0 -> E1, includes b) -> foreign X (E2 out of
-      // nothing); a spends E1. The first rebuild leaves b out; O folds once
-      // its journal is locally applied; Y (E1 -> E3) on X then rejects a,
+      // nothing); a spends E1. The first rebuild leaves b out; O, applied,
+      // folds; Y (E1 -> E3) on X then rejects a,
       // and b stays out.
       const E2 = entry("e2", 4_000_000n);
       const E3 = entry("e3", 5_000_000n);

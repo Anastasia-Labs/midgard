@@ -32,8 +32,6 @@ export {
 } from "./pendingBlockFinalizations.assert-active-journal-payloads-complete.js";
 export {
   assertCanonicalEventMembers,
-  discardUnsubmittedPendingSubmission,
-  markLocalFinalizationComplete,
   markObservedWaitingStability,
   markSubmitted,
   recordSignedIntent,
@@ -78,7 +76,6 @@ export {
   assertNoUnreconciledSignedSubmission,
   retrieveByStateQueueLeaseToken,
   retrieveFinalizedMissingDaPayloads,
-  withdrawalMemberToAssignment,
 } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 export {
   hasActive,

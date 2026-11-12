@@ -24,14 +24,13 @@ import { expect, it, vi } from "vitest";
 
 import {
   advanceEmulatorPastLatestBlockEndTime,
-  commitConfirmRecoverAndMerge,
+  commitLandAndMerge,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import {
   attemptAppend,
   commitLocallyAppliedBlock,
   expectOneRoot,
-  finalizeLocally,
   type Lifecycle,
   observe,
   submitDeposit,
@@ -62,7 +61,7 @@ const clearWalletPins = (h: Lifecycle) => {
 };
 
 it("admits a landed correction, recomputes its rollback at cd + 1 and its relanding exactly once, then commits, merges and settles on the parent", async () => {
-  const h = await openProductionLifecycle({ landedBlocks: true });
+  const h = await openProductionLifecycle();
   const { fixture } = h;
   try {
     const { confirmationDepth: cd, automaticRecoveryMaxDepth: k } =
@@ -159,15 +158,14 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     expect(revived.childRestarts - admitted.childRestarts).toBeLessThanOrEqual(
       1,
     );
-    // Revived: its journal is the commit path's again, local finalization
-    // owed. B1 is on L1, so local finalization follows it. B1 is still past
-    // its DA attestation deadline, so the next append pauses until correction
-    // removes the expired suffix: a refusal, never a halt.
+    // Revived and applied again by the rebase that took B1 in. B1 is still
+    // past its DA attestation deadline, so the next append pauses until
+    // correction removes the expired suffix: a refusal, never a halt.
     expect(revived.journal).toMatchObject({
-      status: "observed_waiting_stability",
+      status: "locally_applied",
       corrected: true,
     });
-    await finalizeLocally(h, b1);
+    await h.applyLanded(b1);
     await expect(attemptAppend(h)).rejects.toThrow(
       "Commit paused until expired unattested suffix is corrected",
     );
@@ -199,7 +197,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
 
     // P7: the next commit builds on the parent, never on the removed B1, and
     // carries D1; merge and settlement follow with no intervention.
-    const merged = await commitConfirmRecoverAndMerge({
+    const merged = await commitLandAndMerge({
       fixture,
       lucidService: h.lucidService,
       globals: h.globals,

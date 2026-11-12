@@ -2,9 +2,9 @@
  * This node's own blocks in the landed-block fork simulator (N3): the block
  * journals the node keeps for blocks it committed, written as the commit
  * leaves them (one active journal at a time, its ledger delta and the
- * mempool transactions it included), and their status moves (finalized on
- * the merge, abandoned when its base leaves the queue, revived when it
- * lands anyway).
+ * mempool transactions it included), and their status moves (locally
+ * applied when the block lands, abandoned when its base leaves the queue,
+ * revived when it lands anyway).
  */
 import { createHash } from "node:crypto";
 
@@ -82,7 +82,12 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
       const anchor = journal.anchor ?? (yield* simCommitAnchor);
       yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
         header_hash: header,
-        submitted_tx_hash: null,
+        // Submitted, as the status says: a journal that never carried a
+        // transaction cannot land (the landing deletes such an abandoned
+        // journal superseded by the block it applies).
+        submitted_tx_hash: sha256(
+          Buffer.concat([Buffer.from("landed-sim:commit-tx:"), header]),
+        ),
         block_end_time: new Date(journal.at.getTime() + 1_000),
         block_time: new Date(journal.at.getTime() + 1_000),
         status: JournalStatus.SubmittedUnconfirmed,

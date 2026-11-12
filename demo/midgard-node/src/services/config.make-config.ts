@@ -166,9 +166,6 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
   ).pipe(Config.withDefault(1000));
-  const waitBetweenBlockConfirmation = yield* Config.integer(
-    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
-  ).pipe(Config.withDefault(2000));
   const operatorWatchdogEnabled = yield* Config.boolean(
     "OPERATOR_WATCHDOG_ENABLED",
   ).pipe(Config.withDefault(true));
@@ -188,12 +185,6 @@ const makeConfig = Effect.gen(function* () {
   const nodeBehind = yield* nodeBehindConfig;
   const blockExUnitsBudget = yield* blockExUnitsBudgetConfig;
   const importCheck = yield* importCheckConfig;
-  const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
-    "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
-  ).pipe(Config.withDefault(12_000));
-  const blockConfirmationAwaitRetries = yield* Config.integer(
-    "BLOCK_CONFIRMATION_AWAIT_RETRIES",
-  ).pipe(Config.withDefault(1));
   const unconfirmedBlockMaxAgeMs = yield* Config.integer(
     "UNCONFIRMED_BLOCK_MAX_AGE_MS",
   ).pipe(Config.withDefault(180_000));
@@ -889,11 +880,8 @@ const makeConfig = Effect.gen(function* () {
     DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
-    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     OPERATOR_WATCHDOG_ENABLED: operatorWatchdogEnabled,
     OPERATOR_WATCHDOG_PATIENCE_MS: operatorWatchdogPatienceMs,
-    BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: blockConfirmationAwaitTimeoutMs,
-    BLOCK_CONFIRMATION_AWAIT_RETRIES: blockConfirmationAwaitRetries,
     UNCONFIRMED_BLOCK_MAX_AGE_MS: unconfirmedBlockMaxAgeMs,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     MIN_QUEUE_LENGTH_FOR_MERGING: minQueueLengthForMerging,

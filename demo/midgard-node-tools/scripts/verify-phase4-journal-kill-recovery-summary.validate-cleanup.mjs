@@ -11,13 +11,13 @@ export const PHASE4_PROCESS_SUMMARY_MODE =
 /**
  * The default-path log lines the surviving node must print, in this order:
  * the lease is busy while the killed winner holds it, the survivor abandons
- * the winner's unsubmitted journal once the lease expires, and the survivor
- * then submits its own block.
+ * the winner's unsigned journal once it takes the expired lease over, and the
+ * survivor then submits its own block.
  */
 export const JOURNAL_KILL_SURVIVOR_MARKERS = [
   "Skipping block commitment trigger because the state-queue mutation lease is busy",
-  "abandoning unsubmitted journal and recovering canonical state_queue tip",
-  "Block submitted; local finalization is intentionally deferred until L1 confirmation.",
+  "Abandoned unsigned pending block journal",
+  "Block submitted; landed-block processing applies it once it lands.",
 ];
 
 export const JOURNAL_KILL_CHECKPOINT_MARKER =

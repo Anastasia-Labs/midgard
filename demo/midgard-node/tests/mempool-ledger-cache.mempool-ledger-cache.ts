@@ -164,7 +164,7 @@ describe("mempool ledger cache", () => {
     );
   });
 
-  it("publishes exact commit deletes and a full recovery marker only for ambiguous finalization or failure", async () => {
+  it("publishes exact commit deletes and a full recovery marker only for failure", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const globals = yield* Globals;
@@ -179,21 +179,6 @@ describe("mempool ledger cache", () => {
             sizeOfBlocksTxs: 1,
             blockEndTimeMs: 1,
             mempoolLedgerDeletedOutRefHexes: [deletedOutRefHex],
-          },
-          64,
-        );
-        yield* publishCommitMempoolLedgerMutation(
-          globals,
-          {
-            type: "SubmittedAwaitingLocalFinalizationOutput",
-            submittedTxHash: "commit-tx",
-            txSize: 1,
-            mempoolTxsCount: 1,
-            sizeOfBlocksTxs: 1,
-            blockEndTimeMs: 1,
-            error: "local finalization outcome is ambiguous",
-            submittedHeaderHash: "aa".repeat(28),
-            submittedUtxosRoot: "bb".repeat(32),
           },
           64,
         );
@@ -222,7 +207,7 @@ describe("mempool ledger cache", () => {
           64,
         );
         const journal = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-        expect(journal.version).toBe(3);
+        expect(journal.version).toBe(2);
         expect(journal.entries).toStrictEqual([
           {
             version: 1,
@@ -231,7 +216,6 @@ describe("mempool ledger cache", () => {
             deletes: [deletedOutRefHex],
           },
           { version: 2, full: true, upserts: [], deletes: [] },
-          { version: 3, full: true, upserts: [], deletes: [] },
         ]);
       }).pipe(Effect.provide(Globals.Default)),
     );

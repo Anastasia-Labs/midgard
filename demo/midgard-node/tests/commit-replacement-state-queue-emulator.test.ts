@@ -168,9 +168,11 @@ const oldCommitLands = async () => {
   expect(await j.node.intentStatus(old.txHash)).toMatchObject({
     kind: "landed",
   });
+  // Landed-block processing revives the old journal, and the rebase that
+  // takes its block in applies it.
   await j.node.processLanded();
   await synchronizeBounded(j.live);
-  expect(await j.statusOf(old)).toBe(S.ObservedWaitingStability);
+  expect(await j.statusOf(old)).toBe(S.LocallyApplied);
   expect(await j.statusOf(replacement)).toBe(S.Abandoned);
   expect(await nativeRoot(j.h)).toBe(old.root);
   await j.expectWinner(old);

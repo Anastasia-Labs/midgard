@@ -31,7 +31,7 @@ import {
   alignCommitSchedulerBeforeTestWorker,
   assetsToValue,
   CML,
-  commitConfirmRecoverAndMerge,
+  commitLandAndMerge,
   Data,
   Effect,
   ensureSeparateCollateralUtxo,
@@ -157,7 +157,7 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
-    const depositBlock = await commitConfirmRecoverAndMerge(context);
+    const depositBlock = await commitLandAndMerge(context);
     expect(depositBlock.queuedHeader.depositsRoot).toBe(
       await expectedAuthenticatedEventRoot(SDK.ROOT_DOMAINS.deposits, [
         { key: deposit.idCbor, value: deposit.infoCbor },
@@ -238,7 +238,7 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
-    const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
+    const withdrawalBlock = await commitLandAndMerge(context);
     const resolution = await h.command(
       resolveEventSettlementProofProgram({
         kind: "withdrawal",

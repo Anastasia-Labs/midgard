@@ -166,10 +166,8 @@ export const decodeArchitectureGCommitCandidateInput = (
     "Architecture G candidate worker data",
     [
       "availableConfirmedBlock",
-      "availableLocalFinalizationBlock",
       "currentBlockStartTimeMs",
       "forcedValidationSlotConfig",
-      "localFinalizationPending",
       "ledgerStoreLeaseOwner",
       "mempoolTxsCountSoFar",
       "sizeOfProcessedTxsSoFar",
@@ -217,8 +215,6 @@ export const decodeArchitectureGCommitCandidateInput = (
     input.corpusSha256 !== phase1FormalBinding.corpus.corpusSha256 ||
     aggregate.entryCount !== fixtureInitialUtxoCount ||
     data.availableConfirmedBlock !== "" ||
-    data.availableLocalFinalizationBlock !== "" ||
-    data.localFinalizationPending !== false ||
     !/^commit:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
       data.ledgerStoreLeaseOwner as string,
     ) ||

@@ -8,7 +8,6 @@ import {
   alertSignalsFiber,
   attestationTimeoutCorrectionFiber,
   blockCommitmentFiber,
-  blockConfirmationFiber,
   daPublicationReconcilerFiber,
   L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS,
   l1ProviderReadinessRefresherFiber,
@@ -135,10 +134,6 @@ export const nodeFibers = ({
     "blockCommitment",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
     blockCommitmentFiber,
-  ),
-  blockConfirmation: onHeadChange(
-    nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
-    blockConfirmationFiber,
   ),
   operatorWatchdog: heldSchedule(
     "operatorWatchdog",

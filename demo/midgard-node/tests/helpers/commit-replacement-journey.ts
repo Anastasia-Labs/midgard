@@ -26,7 +26,6 @@ import {
 import { openNodeServices } from "./commit-replacement-state-queue.js";
 import {
   closeLifecycle,
-  finalizeLocally,
   nativeRoot,
   readJournal,
   submitDeposit,
@@ -197,8 +196,9 @@ export const openCommitJourney = async () => {
         headerHash: journal.header,
         submittedTxHash: journal.txHash,
       });
-      await synchronizeBounded(h);
-      await finalizeLocally(h, journal.header);
+      await synchronizeBounded({
+        synchronize: () => h.applyLanded(journal.header),
+      });
       expect(await nativeRoot(h)).toBe(journal.root);
       state.winner = journal.header;
     },

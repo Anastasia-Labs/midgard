@@ -7,7 +7,6 @@ export * from "./alert-signals.js";
 export * from "./alert-signals.wallet-balances.js";
 export * from "./attestation-timeout-correction.js";
 export * from "./block-commitment.js";
-export * from "./block-confirmation.js";
 export * from "./da-publication-reconciler.js";
 export * from "./l1-provider-readiness-refresher.js";
 export * from "./l2-tx-peer-forwarder.js";

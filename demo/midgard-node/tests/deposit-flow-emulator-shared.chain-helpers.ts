@@ -13,39 +13,15 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import type { NodeConfigDep } from "../src/services/config.js";
-import {
-  FollowerWriteFixture,
-  runAtFollowerView,
-} from "../src/services/follower-write-gate.js";
-import {
-  Database,
-  Globals,
-  Lucid as LucidService,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
-import { runConfirmBlockCommitmentsWorkerProgram } from "../src/workers/confirm-block-commitments.js";
-import { WorkerError } from "../src/workers/utils/common.js";
-import {
-  type WorkerInput as ConfirmationWorkerInput,
-  type WorkerOutput as ConfirmationWorkerOutput,
-} from "../src/workers/utils/confirm-block-commitments.js";
-import {
-  getStateQueueDatumEndTime,
-  makeLucidRuntimeService,
-  type ProductionHistoryFixtureRuntime,
-} from "./deposit-flow-emulator-shared.commit-worker-program.js";
+import { getStateQueueDatumEndTime } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import {
   type EmulatorFixture,
   isEmulatorProvider,
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { stripPlutusV3WitnessByHash } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
-import { withEmulatorChain } from "./helpers/emulator-l1-follower.js";
 
 export const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
@@ -84,50 +60,6 @@ export const withEmulatorExtraneousScriptRetry = async <A>(
     provider.submitTx = originalSubmitTx;
   }
 };
-
-export const runBlockConfirmation = (
-  globals: Globals,
-  contracts: SDK.MidgardValidators,
-  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
-  nodeConfig?: NodeConfigDep,
-  production?: ProductionHistoryFixtureRuntime,
-) =>
-  Effect.runPromise(
-    buildBlockConfirmationAction(
-      (
-        input: ConfirmationWorkerInput,
-      ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
-        runConfirmBlockCommitmentsWorkerProgram(input).pipe(
-          // As the worker thread does: its own pool on the node database.
-          Effect.provide(Database.workerLayer),
-          Effect.provideService(LucidService, lucidService as any),
-          Effect.provideService(MidgardContracts, contracts as any),
-          nodeConfig === undefined
-            ? Effect.provide(NodeConfig.layer)
-            : Effect.provideService(NodeConfig, nodeConfig),
-          Effect.catchAllCause((cause) =>
-            Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: "Confirmation worker failed.",
-                cause,
-              }),
-            ),
-          ),
-        ),
-    ).pipe(
-      withEmulatorChain(lucidService.api),
-      (program) =>
-        // As the confirmation fiber runs it: at the driver's applied view.
-        production === undefined ? program : runAtFollowerView(program),
-      Effect.provideService(Globals, globals),
-      Effect.provide(Database.layer),
-      Effect.provideService(FollowerWriteFixture, true),
-      nodeConfig === undefined
-        ? Effect.provide(NodeConfig.layer)
-        : Effect.provideService(NodeConfig, nodeConfig),
-    ),
-  );
 
 /**
  * Runs the DA committee member's own payload validator over the payload the

@@ -28,7 +28,6 @@ const baseInput = {
   queueLength: 1,
   minQueueLength: 8,
   unresolvedSubmittedBlockTxHash: "",
-  localFinalizationPending: false,
   resetInProgress: false,
   durableAdmissionBacklog: 0n,
   mempoolTxCount: 0n,
@@ -74,15 +73,6 @@ describe("merge readiness planner", () => {
       }),
     ).toMatchObject({
       status: "skipped_unresolved_commitment",
-      bypassQueueLengthGuard: false,
-    });
-    expect(
-      planMergePreflight({
-        ...baseInput,
-        localFinalizationPending: true,
-      }),
-    ).toMatchObject({
-      status: "skipped_local_finalization_pending",
       bypassQueueLengthGuard: false,
     });
   });

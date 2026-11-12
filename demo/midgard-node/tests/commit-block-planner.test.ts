@@ -237,13 +237,12 @@ describe("commit block planner", () => {
     ).toBe(last[TxColumns.TIMESTAMPTZ].getTime());
   });
 
-  it("short-circuits idle commitment only when no recoverable work remains", () => {
+  it("short-circuits idle commitment only when no tx or event work remains", () => {
     expect(
       shouldShortCircuitIdleCommitAttempt({
         candidateTxCount: 0,
         processedPendingTxCount: 0,
         pendingUserEventCount: 0,
-        localFinalizationPending: false,
       }),
     ).toBe(true);
 
@@ -251,14 +250,12 @@ describe("commit block planner", () => {
       { candidateTxCount: 1 },
       { processedPendingTxCount: 1 },
       { pendingUserEventCount: 1 },
-      { localFinalizationPending: true },
     ]) {
       expect(
         shouldShortCircuitIdleCommitAttempt({
           candidateTxCount: 0,
           processedPendingTxCount: 0,
           pendingUserEventCount: 0,
-          localFinalizationPending: false,
           ...nonIdle,
         }),
       ).toBe(false);
@@ -527,7 +524,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshot,
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     });
 
@@ -574,7 +570,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshotError: new Error("slot unavailable"),
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     });
 
@@ -593,7 +588,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshot,
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     });
     expect(noActive).toMatchObject({
@@ -615,7 +609,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshot,
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     });
     expect(currentOperator).toMatchObject({
@@ -639,7 +632,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshot,
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     });
 
@@ -675,7 +667,6 @@ describe("commit block planner", () => {
       currentOperatorKeyHash: "this-operator",
       submitSlotSnapshot,
       stateQueueEvidence,
-      localFinalizationPending: false,
       maxInlineWaitMs: 60_000,
     } as const;
     const base = planEarliestCommitSchedulerDueWork(baseInput);
@@ -697,24 +688,18 @@ describe("commit block planner", () => {
         tailBlockEndTimeMs: stateQueueEvidence.tailBlockEndTimeMs + 1_000,
       },
     });
-    const localFinalizationPending = planEarliestCommitSchedulerDueWork({
-      ...baseInput,
-      localFinalizationPending: true,
-    });
 
     expect(base.status).toBe("register_due_work");
     expect(changedScheduler.status).toBe("register_due_work");
     expect(changedStateQueue.status).toBe("register_due_work");
     expect(changedTailEndTime.status).toBe("register_due_work");
-    expect(localFinalizationPending.status).toBe("proceed");
     if (
       base.status !== "register_due_work" ||
       changedScheduler.status !== "register_due_work" ||
       changedStateQueue.status !== "register_due_work" ||
-      changedTailEndTime.status !== "register_due_work" ||
-      localFinalizationPending.status !== "proceed"
+      changedTailEndTime.status !== "register_due_work"
     ) {
-      throw new Error("expected due-work and local-finalization proceed plans");
+      throw new Error("expected due-work plans");
     }
     expect(changedScheduler.dueWork.dependencyKey).not.toBe(
       base.dueWork.dependencyKey,
@@ -724,12 +709,6 @@ describe("commit block planner", () => {
     );
     expect(changedTailEndTime.dueWork.dependencyKey).not.toBe(
       base.dueWork.dependencyKey,
-    );
-    expect(localFinalizationPending.dependencyKey).not.toBe(
-      base.dueWork.dependencyKey,
-    );
-    expect(localFinalizationPending.dependencyKey).toContain(
-      "local_finalization_pending=true",
     );
   });
 });

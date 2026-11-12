@@ -36,7 +36,6 @@ import {
 
 const HEARTBEAT_WORKERS = members<keyof WorkerHeartbeats>({
   blockCommitment: null,
-  blockConfirmation: null,
   merge: null,
   txQueueProcessor: null,
 });
@@ -47,7 +46,6 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   reason("db_unhealthy"),
   reason("stale_heartbeat", oneOf(...HEARTBEAT_WORKERS), COUNT),
   reason("queue_depth_exceeded", COUNT, COUNT),
-  reason("local_finalization_pending"),
   reason("validation_worker_pool_degraded", COUNT, COUNT, COUNT),
   reason("validation_worker_job_timeout", COUNT, COUNT),
   reason("unresolved_block_submission", COUNT, COUNT),

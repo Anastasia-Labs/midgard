@@ -30,12 +30,9 @@ import "./submission.classify-submit-failure.js";
 import "./submission.submit-with-durable-intent.js";
 import "./submission.submit-deposit-only-commit.js";
 import "./submission.submit-tx-backed-commit.js";
-import "./submission.recover-local-finalization-against-confirmed-block.js";
+import "./submission.defer-processed-commit-payload.js";
 export { assertPreSubmitDaPayloadSize } from "./submission.assert-pre-submit-da-payload-size.js";
 export { commitUserEventSourceIdSetsAreExact } from "./submission.commit-event-sources.js";
-export {
-  deferProcessedCommitPayloadUntilConfirmation,
-  recoverLocalFinalizationAgainstConfirmedBlock,
-} from "./submission.recover-local-finalization-against-confirmed-block.js";
+export { deferProcessedCommitPayloadUntilConfirmation } from "./submission.defer-processed-commit-payload.js";
 export { submitDepositOnlyCommit } from "./submission.submit-deposit-only-commit.js";
 export { submitTxBackedCommit } from "./submission.submit-tx-backed-commit.js";

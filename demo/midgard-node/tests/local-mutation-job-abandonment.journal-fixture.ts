@@ -9,6 +9,7 @@ import { expect } from "vitest";
 import { assertStartupMutationJobsRecoverable } from "../src/commands/listen-startup.js";
 import * as MutationJobsDB from "../src/database/mutationJobs.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -117,9 +118,7 @@ export const journalFixture = (
 /** A submitted block awaiting stability, as the live f5215638 journal. */
 export const observedJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-      journalFixture(headerHash),
-    );
+    yield* prepareUnderTestLease(journalFixture(headerHash));
     yield* PendingBlockFinalizationsDB.markSubmitted(
       headerHash,
       Buffer.alloc(32, 7),

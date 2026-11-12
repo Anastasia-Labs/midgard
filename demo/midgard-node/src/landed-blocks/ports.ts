@@ -18,7 +18,6 @@ import type { WithdrawalMembership } from "./store.js";
 
 /** This node's journal of a block it committed, as processing reads it. */
 export type OwnJournal = Readonly<{
-  status: "active" | "locally_applied" | "abandoned";
   baseTailHeaderHash: string;
   baseUtxosRoot: string;
   expectedUtxosRoot: string;
@@ -29,12 +28,6 @@ export type OwnJournal = Readonly<{
   /** The withdrawals it included, with the classification it journaled. */
   withdrawals: readonly WithdrawalMembership[];
   txIds: readonly Buffer[];
-  /**
-   * Revived: its block landed after its journal was abandoned, and it waits
-   * for local finalization (`observed_waiting_stability`, abandonment digest
-   * kept).
-   */
-  revived: boolean;
 }>;
 
 export type LandedBlockPorts<R> = Readonly<{

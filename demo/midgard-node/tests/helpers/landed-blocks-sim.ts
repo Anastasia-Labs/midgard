@@ -403,8 +403,6 @@ export const landedBlocksSimProjection = (
       stats.ownerRestarts += 1;
     }
     const queue = canonicalQueue(canonical);
-    if (queue !== undefined)
-      await node.finalizeMerged(new Set(rootLineage(env.registry, queue.root)));
     const rowsBefore = new Set(
       (await run(retrieveRows)).map((row) => row.headerHash),
     );
@@ -416,6 +414,7 @@ export const landedBlocksSimProjection = (
       queue,
     );
     if ("error" in settled) return settled.error;
+    await node.followApplied();
     if (queue !== undefined) {
       const failed = await compare(
         store,

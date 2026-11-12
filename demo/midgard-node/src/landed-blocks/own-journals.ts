@@ -155,12 +155,21 @@ export const ownJournalDisposition = (
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const revive = rows
+    const landedOwn = rows
       .filter(
         (row) =>
           row.kind === "own" && row.state === "processed" && !row.applied,
       )
-      .map((row) => row.headerHash);
+      .map((row) => Buffer.from(row.headerHash, "hex"));
+    const revive =
+      landedOwn.length === 0
+        ? []
+        : (yield* sql<{ header_hash: Buffer }>`SELECT header_hash
+            FROM pending_block_finalizations
+            WHERE status = ${Status.Abandoned}
+              AND header_hash IN ${sql.in(landedOwn)}`).map((row) =>
+            row.header_hash.toString("hex"),
+          );
     const processed = new Set(
       rows
         .filter((row) => row.state === "processed")
@@ -292,8 +301,8 @@ const lockedRecord = (headerHash: string) =>
  * Disposes of `disposals` in the caller's transaction: each journal is
  * abandoned under its replacement digest, its transactions are pending
  * again (marks cleared, rows restored but for those a rebuild rejected
- * meanwhile, its local finalization undone), an
- * unfinished one's withdrawals lose their classification, and its
+ * meanwhile, its block's local effects undone), an unfinished one's
+ * withdrawals lose their classification, and its
  * state-queue lease is released. Event statuses and the working ledger are
  * the rebase's to recompute.
  */
@@ -381,23 +390,25 @@ const revivalDigest = (headerHash: Buffer) =>
 
 /**
  * Revives the abandoned journal of each processed own row `headers`: it is
- * observed again and waits for local finalization, its abandonment digest
- * kept (the mark of a revived block). Its members are in the landed block,
- * so a rejection recorded for one while the journal was abandoned is
- * deleted, with every rejection whose recorded causes are all deleted ones
- * (`TxRejectionsDB.deleteWithTracedRejections`), in the caller's
- * transaction. Returns the revived records.
+ * active again, its abandonment digest kept (the mark of a revived block),
+ * and the same rebase applies its block (`own-blocks.ts`). Its members are
+ * in the landed block, so a rejection recorded for one while the journal
+ * was abandoned is deleted, with every rejection whose recorded causes are
+ * all deleted ones (`TxRejectionsDB.deleteWithTracedRejections`), in the
+ * caller's transaction.
  */
 export const reviveJournals = (headers: readonly string[]) =>
-  Effect.forEach(headers, (headerHash) =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const record = yield* lockedRecord(headerHash);
-      if (record[C.STATUS] !== Status.Abandoned) return record;
-      const header = record[C.HEADER_HASH];
-      const digest =
-        signedIntentReplacementDigest(record) ?? revivalDigest(header);
-      const revived = yield* sql`UPDATE pending_block_finalizations
+  Effect.forEach(
+    headers,
+    (headerHash) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const record = yield* lockedRecord(headerHash);
+        if (record[C.STATUS] !== Status.Abandoned) return;
+        const header = record[C.HEADER_HASH];
+        const digest =
+          signedIntentReplacementDigest(record) ?? revivalDigest(header);
+        const revived = yield* sql`UPDATE pending_block_finalizations
         SET status = ${Status.ObservedWaitingStability},
           observed_confirmed_at_ms = COALESCE(observed_confirmed_at_ms,
             ${BigInt(Date.now())}),
@@ -406,16 +417,21 @@ export const reviveJournals = (headers: readonly string[]) =>
           updated_at = NOW()
         WHERE header_hash = ${header} AND status = ${Status.Abandoned}
         RETURNING header_hash`;
-      if (revived.length !== 1)
-        return yield* Effect.fail(
-          failure("Failed to revive a landed own block's journal", headerHash),
+        if (revived.length !== 1)
+          return yield* Effect.fail(
+            failure(
+              "Failed to revive a landed own block's journal",
+              headerHash,
+            ),
+          );
+        const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
+          record.txMembers.map((member) =>
+            Buffer.from(member[Member.MEMBER_ID]),
+          ),
         );
-      const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
-        record.txMembers.map((member) => Buffer.from(member[Member.MEMBER_ID])),
-      );
-      yield* Effect.logWarning(
-        `Revived own block ${headerHash}: it landed after its journal was abandoned; local finalization follows it.${cleared.length === 0 ? "" : ` Deleted ${cleared.length.toString()} rejections of its members and of transactions rejected after them.`}`,
-      );
-      return yield* lockedRecord(headerHash);
-    }),
+        yield* Effect.logWarning(
+          `Revived own block ${headerHash}: it landed after its journal was abandoned, and the rebase applies it.${cleared.length === 0 ? "" : ` Deleted ${cleared.length.toString()} rejections of its members and of transactions rejected after them.`}`,
+        );
+      }),
+    { discard: true },
   );

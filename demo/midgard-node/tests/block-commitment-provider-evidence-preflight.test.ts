@@ -258,34 +258,6 @@ describe("block commitment provider-evidence preflight", () => {
     });
   });
 
-  // The pending-finalization gate is evaluated before anything reaches the
-  // state-queue mutation lease. Asserted here as runtime behaviour rather than
-  // as the order of two symbols in `block-commitment.ts`: a reordering that
-  // took the lease first would leave a second commit worker building on a tail
-  // whose predecessor is still unconfirmed.
-  it("never reaches the mutation lease while local finalization awaits a confirmed recovery block", async () => {
-    const result = await runAction((globals) =>
-      Effect.gen(function* () {
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
-        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
-        // Plenty of queued work: only the pending finalization may hold the
-        // cycle back.
-        mempoolState.txCount = 127n;
-        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 127);
-      }),
-    );
-
-    expect(tryWithLeaseMock).not.toHaveBeenCalled();
-    expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
-    expect(
-      resolveEarliestCommitSchedulerDueWorkPlanMock,
-    ).not.toHaveBeenCalled();
-    expect(result).toStrictEqual({
-      commitWorkerActive: false,
-      pipelinePhase: "idle",
-    });
-  });
-
   it("never reaches the mutation lease when no commit work exists at all", async () => {
     const result = await runAction((globals) =>
       Effect.gen(function* () {

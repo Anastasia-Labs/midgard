@@ -26,11 +26,7 @@ import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
-import { signedCommitNode } from "../services/own-block-node.js";
-import {
-  deserializeStateQueueUTxO,
-  serializeStateQueueUTxO,
-} from "../workers/utils/commit-block-header.js";
+import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 /**
  * Startup's recovery over the journals of the canonical queue, and the local
@@ -284,8 +280,6 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
     if (Option.isNone(pending)) {
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
-      yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
-      yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
       return;
     }
 
@@ -294,31 +288,6 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
     const submittedTxHash =
       record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
     yield* setUnresolvedBlockSubmission(globals, record);
-    // An observed block's node may already be merged into the confirmed state
-    // (or removed), so no queue read ever yields it again: re-derive the node
-    // its retained signed commit created, which local finalization binds to
-    // the journal by every header root.
-    yield* Ref.set(
-      globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
-        ? yield* signedCommitNode(record, yield* MidgardContracts).pipe(
-            Effect.flatMap(({ node }) => serializeStateQueueUTxO(node)),
-            Effect.catchAll((cause) =>
-              Effect.logWarning(
-                `Observed journal ${record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")} retains no node its signed commit creates; local finalization waits for the confirmation path: ${formatUnknownError(cause)}`,
-              ).pipe(Effect.as("" as const)),
-            ),
-          )
-        : "",
-    );
-    yield* Ref.set(
-      globals.LOCAL_FINALIZATION_PENDING,
-      status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
-        status ===
-          PendingBlockFinalizationsDB.Status
-            .SubmittedLocalFinalizationPending ||
-        status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-    );
     yield* Effect.logInfo(
       `Hydrated pending block-finalization journal on startup for header ${record[
         PendingBlockFinalizationsDB.Columns.HEADER_HASH
@@ -337,21 +306,16 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
 );
 
 /**
- * Journal statuses of a submitted block whose local finalization has not
- * completed. An unfinished finalization attempt for such a block, failed or
- * killed mid-way, is owned by the runtime: the commit worker retries it while
- * the block is live (`start` re-arms the row, and the retry is idempotent:
- * ImmutableDB rows already written are filtered, every later step is a
- * guarded status update), and if the block is removed on L1 the correction
- * path abandons the journal and removes the moot job with it. Refusing
- * startup here would stop the correction observer from ever admitting that
- * removal.
+ * Journal statuses of a submitted block, landed or not. Landed-block
+ * processing applies such a block when it lands, with idempotent own effects,
+ * so a local-finalization job left unfinished for it has no work left.
  */
-const RUNTIME_OWNED_UNFINISHED_FINALIZATION_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
+const SUBMITTED_JOURNAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
   [
     PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
     PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
     PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+    PendingBlockFinalizationsDB.Status.LocallyApplied,
   ];
 
 export const LOCAL_FINALIZATION_JOB_ID_PATTERN = new RegExp(
@@ -382,19 +346,14 @@ export const unfinishedLocalFinalizationHeader = (
  * database or mid-way through any job: a running row is a process that died
  * (SIGKILL, OOM, power loss) before recording the outcome.
  *
- * "runtime" hands the job over:
- * - a confirmed-merge finalization, failed or running: it is idempotent, and
- *   every merge attempt first finalizes each merge L1 confirmed that this
- *   database has not (finalizeLandedMergesProgram);
- * - a failed or running local-finalization job whose own journal still
- *   records its submitted block as awaiting local finalization.
+ * "runtime" hands a confirmed-merge finalization, failed or running, over:
+ * it is idempotent, and every merge attempt first finalizes each merge L1
+ * confirmed that this database has not (finalizeLandedMergesProgram).
  *
- * "complete" closes a running or failed local-finalization job whose
- * journal is finalized: marking the journal finalized is the job's last
- * durable step, so only its completion record was lost, to a process that
- * died before markCompleted or to a transient that failed markCompleted (or
- * the ack of markFinalized's commit) after it. The commit worker closes the
- * same job the same way at runtime.
+ * "complete" closes a failed or running local-finalization job whose
+ * journal records its block as submitted: landed-block processing applies
+ * that block when it lands (`SUBMITTED_JOURNAL_STATUSES`), and nothing runs
+ * the job any more.
  *
  * Every other unfinished job refuses: a local finalization whose journal is
  * missing, abandoned or never submitted, and a malformed job id.
@@ -413,13 +372,7 @@ export const classifyUnfinishedMutationJobOnStartup = (
     journalStatus === undefined
   )
     return "refuse";
-  if (
-    RUNTIME_OWNED_UNFINISHED_FINALIZATION_JOURNAL_STATUSES.includes(
-      journalStatus,
-    )
-  )
-    return "runtime";
-  return journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied
+  return SUBMITTED_JOURNAL_STATUSES.includes(journalStatus)
     ? "complete"
     : "refuse";
 };

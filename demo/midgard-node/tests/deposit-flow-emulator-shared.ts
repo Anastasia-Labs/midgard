@@ -36,7 +36,6 @@ import "../src/database/confirmedLedger.js";
 import "../src/database/index.js";
 import "../src/database/utils/ledger.js";
 import "../src/fibers/block-commitment.js";
-import "../src/fibers/block-confirmation.js";
 import "../src/fibers/merge.js";
 import "../src/fibers/slot-aware-due-work.js";
 import "../src/lucid-time.js";
@@ -44,7 +43,6 @@ import "../src/mpf/index.js";
 import "../src/services/index.js";
 import "../src/services/landed-state-queue.js";
 import "../src/services/mempool-ledger-cache.js";
-import "../src/services/native-mpf-local-finalization.js";
 import "../src/services/native-mpf-startup.js";
 import "../src/services/write-behind.js";
 import "../src/transactions/da-attestation.js";
@@ -59,7 +57,6 @@ import "../src/tx-context.js";
 import "../src/workers/commit-block-header.js";
 import "../src/workers/commit-block-header/da-payload.js";
 import "../src/workers/commit-block-header/transition-roots.js";
-import "../src/workers/confirm-block-commitments.js";
 import "../src/workers/utils/commit-block-header.js";
 import "../src/workers/utils/commit-end-time.js";
 import "../src/workers/utils/common.js";
@@ -74,7 +71,7 @@ import "./test-env.js";
 import "./deposit-flow-emulator-shared.make-fixture.js";
 import "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import "./deposit-flow-emulator-shared.commit-worker-program.js";
-import "./deposit-flow-emulator-shared.run-block-confirmation.js";
+import "./deposit-flow-emulator-shared.chain-helpers.js";
 
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -144,7 +141,6 @@ import {
 } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
-import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
@@ -172,7 +168,6 @@ import {
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
-import { recoverNativeMpfForLocalFinalization } from "../src/services/native-mpf-local-finalization.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
@@ -188,7 +183,6 @@ import {
 } from "../src/transactions/register-active-operator.js";
 import { assetsToValue } from "../src/transactions/reserve-payout.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
-import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
 import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
@@ -201,14 +195,19 @@ import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitTimingBudget,
 } from "../src/workers/utils/commit-end-time.js";
-import { type WorkerOutput as ConfirmationWorkerOutput } from "../src/workers/utils/confirm-block-commitments.js";
 import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import {
+  fetchLatestCommittedBlock,
+  findUtxoWithUnit,
+  retainSubmittedHeaderPayload,
+  stateQueueFetchConfig,
+  withEmulatorExtraneousScriptRetry,
+} from "./deposit-flow-emulator-shared.chain-helpers.js";
 import {
   advanceEmulatorToDueWork,
   alignCommitSchedulerBeforeTestWorker,
   commitWorkerProgram,
   getStateQueueDatumEndTime,
-  makeGlobalsService,
   makeLucidRuntimeService,
   type OwnedCommitFixture,
   type ProductionHistoryFixtureRuntime,
@@ -217,21 +216,11 @@ import {
   EMULATOR_DEPLOYMENT_IDENTITY,
   type EmulatorFixture,
   fixtureDeploymentIdentity,
-  makeFixture,
   makeRuntimePaths,
   REGISTRATION_ACTIVATION_DELAY_SLOTS,
   REQUIRED_BOND_LOVELACE,
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
-import {
-  advanceEmulatorPastLatestBlockEndTime,
-  fetchLatestCommittedBlock,
-  findUtxoWithUnit,
-  retainSubmittedHeaderPayload,
-  runBlockConfirmation,
-  stateQueueFetchConfig,
-  withEmulatorExtraneousScriptRetry,
-} from "./deposit-flow-emulator-shared.run-block-confirmation.js";
 import {
   advanceEmulatorPastUnixTime,
   submitDepositWithDiagnostics,
@@ -244,6 +233,7 @@ import {
   syncEmulatorFollower,
   withEmulatorChain,
 } from "./helpers/emulator-l1-follower.js";
+import { materializeJournalLedger } from "./helpers/materialize-journal-ledger.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
@@ -642,50 +632,10 @@ const attachUnownedNativeOwner = (globals: Globals) =>
     if (owner !== undefined) yield* Ref.set(globals.NATIVE_MPF_OWNER, owner);
   });
 
-/** Stops this fixture's unowned native owner so a test can edit its LevelDB
- * directly (the owner holds the store's lock), runs `edit`, then starts the
- * owner again on the same store and republishes it to `globals`. */
-export const withUnownedNativeOwnerStopped = async <A>(
-  {
-    fixture,
-    lucidService,
-    globals,
-  }: {
-    readonly fixture: EmulatorFixture;
-    readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
-    readonly globals: Globals;
-  },
-  edit: () => Promise<A>,
-): Promise<A> => {
-  const ledgerMpfPath = activeRuntimePaths?.ledgerMpfPath;
-  const owner =
-    ledgerMpfPath === undefined
-      ? undefined
-      : unownedNativeOwners.get(ledgerMpfPath);
-  if (ledgerMpfPath === undefined || owner === undefined)
-    throw new Error("Expected a running unowned native owner to stop");
-  unownedNativeOwners.delete(ledgerMpfPath);
-  await Effect.runPromise(Ref.set(globals.NATIVE_MPF_OWNER, undefined));
-  await owner.close();
-  try {
-    return await edit();
-  } finally {
-    const nodeConfig = await makeNodeConfigForFixture(fixture);
-    await Effect.runPromise(
-      unownedNativeOwner(fixture.contracts, lucidService, nodeConfig).pipe(
-        withEmulatorChain(lucidService.api),
-        Effect.zipRight(attachUnownedNativeOwner(globals)),
-        Effect.provide(Database.layer),
-        Effect.provideService(FollowerWriteFixture, true),
-      ),
-    );
-  }
-};
-
 /** Runs one commit worker pass against the unowned native owner the way the
- * block-commitment fiber does: local-finalization recovery first, then the
- * worker on a port to the owner, then promotion of a submitted block. */
-export const runUnownedNativeCommit = (
+ * block-commitment fiber does: the worker on a port to the owner, then
+ * promotion of a submitted block. */
+const runUnownedNativeCommit = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   nodeConfig: NodeConfigDep,
@@ -698,15 +648,6 @@ export const runUnownedNativeCommit = (
       lucidService,
       nodeConfig,
     );
-    if (
-      input.data.localFinalizationPending &&
-      input.data.availableLocalFinalizationBlock !== ""
-    ) {
-      yield* recoverNativeMpfForLocalFinalization(
-        native,
-        input.data.availableLocalFinalizationBlock,
-      );
-    }
     const nativeMpf = {
       port: native.createWorkerPort(),
       durableRoot: (yield* Effect.promise(() => native.diagnostics()))
@@ -808,11 +749,9 @@ export const runCommitWorker = async (
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
       ),
-      availableLocalFinalizationBlock: "",
       currentBlockStartTimeMs,
       forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucidService.api),
       ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
-      localFinalizationPending: false,
       mempoolTxsCountSoFar: 0,
       sizeOfProcessedTxsSoFar: 0,
     },
@@ -1048,150 +987,6 @@ export const runBarrierRefresherForTest = async (
   );
 };
 
-export const runConfirmationJournalInsertionRace = async (
-  insertionPoint: "during_worker" | "after_snapshot_guard",
-) => {
-  vi.useRealTimers();
-  if (activeRuntimePaths !== null) {
-    await cleanupRuntimePaths(activeRuntimePaths);
-    activeRuntimePaths = null;
-  }
-  activeRuntimePaths = makeRuntimePaths();
-  await cleanupRuntimePaths(activeRuntimePaths);
-  await initializeNodeRuntime();
-  const fixture = await makeFixture();
-  await initializeProtocol(fixture);
-  const lucidService = await makeLucidRuntimeService(fixture);
-  const globals = await makeGlobalsService();
-  const testNodeConfig = await makeNodeConfigForFixture(fixture);
-  await advanceEmulatorPastLatestBlockEndTime(fixture);
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date(fixture.emulator.now()));
-
-  await submitDepositAndRefreshBarriers({
-    fixture,
-    lucidService,
-    globals,
-    lovelace: 12_000_000n,
-  });
-  const recoveredBase = await fetchLatestCommittedBlock(
-    fixture.operatorLucid,
-    fixture.contracts,
-  );
-  const serializedRecoveredBase = await Effect.runPromise(
-    serializeStateQueueUTxO(recoveredBase),
-  );
-  let insertedSubmission:
-    | Extract<
-        CommitWorkerOutput,
-        { readonly type: "SubmittedAwaitingConfirmationOutput" }
-      >
-    | undefined;
-  let insertedJournalStatus: PendingBlockFinalizationsDB.Status | undefined;
-  const insertSubmission = async () => {
-    insertedSubmission = await runCommitWorkerUntilSubmitted({
-      fixture,
-      lucidService,
-      latestBlock: recoveredBase,
-      nodeConfig: testNodeConfig,
-    });
-    const insertedJournal = await runNodeDatabaseEffect(
-      PendingBlockFinalizationsDB.retrieveActive(),
-    );
-    if (Option.isNone(insertedJournal)) {
-      throw new Error("Submitted race fixture is missing its active journal.");
-    }
-    insertedJournalStatus =
-      insertedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS];
-    await Effect.runPromise(
-      Effect.all(
-        [
-          Ref.set(globals.LOCAL_FINALIZATION_PENDING, true),
-          Ref.set(
-            globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-            serializedRecoveredBase,
-          ),
-          Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, ""),
-          Ref.set(
-            globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-            insertedSubmission.submittedTxHash,
-          ),
-          Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 123_456),
-        ],
-        { discard: true },
-      ),
-    );
-  };
-  const staleOutput: ConfirmationWorkerOutput = {
-    type: "SuccessfulConfirmationOutput",
-    latestBlocksUTxO: serializedRecoveredBase,
-    matchedPendingBlocksUTxO: null,
-    canonicalHeaders: [],
-  };
-
-  await Effect.runPromise(
-    buildBlockConfirmationAction(
-      () =>
-        insertionPoint === "during_worker"
-          ? Effect.promise(async () => {
-              await insertSubmission();
-              return staleOutput;
-            })
-          : Effect.succeed(staleOutput),
-      insertionPoint === "after_snapshot_guard"
-        ? {
-            afterPendingSnapshotGuard: () => Effect.promise(insertSubmission),
-          }
-        : {},
-    ).pipe(
-      Effect.provideService(Globals, globals),
-      Effect.provideService(NodeConfig, testNodeConfig),
-      Effect.provide(Database.layer),
-      Effect.provideService(FollowerWriteFixture, true),
-    ),
-  );
-
-  if (insertedSubmission === undefined) {
-    throw new Error("Race fixture did not create the submitted journal.");
-  }
-  const confirmedInsertedSubmission = insertedSubmission;
-  if (insertedJournalStatus === undefined) {
-    throw new Error(
-      "Race fixture did not capture the inserted journal status.",
-    );
-  }
-  const confirmedInsertedJournalStatus = insertedJournalStatus;
-  const active = await runNodeDatabaseEffect(
-    PendingBlockFinalizationsDB.retrieveActive(),
-  );
-  expect(Option.isSome(active)).toBe(true);
-  if (Option.isSome(active)) {
-    expect(
-      active.value[
-        PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-      ]?.toString("hex"),
-    ).toBe(confirmedInsertedSubmission.submittedTxHash);
-    expect(active.value[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
-      confirmedInsertedJournalStatus,
-    );
-  }
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      expect(yield* Ref.get(globals.LOCAL_FINALIZATION_PENDING)).toBe(true);
-      expect(
-        yield* Ref.get(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
-      ).toEqual(serializedRecoveredBase);
-      expect(yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK)).toBe("");
-      expect(yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH)).toBe(
-        confirmedInsertedSubmission.submittedTxHash,
-      );
-      expect(yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS)).toBe(
-        123_456,
-      );
-    }),
-  );
-};
-
 export const runNodeCommandProgram = <A>(
   effect: Effect.Effect<A, any, any>,
   {
@@ -1214,11 +1009,9 @@ export const runNodeCommandProgram = <A>(
         withEmulatorChain(lucidService.api),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
-        // The wave made the merge/settlement command paths require the
-        // deployment identity alongside the contract bytes, the same pairing
-        // `runLocalFinalizationRecoveryWorker` below already provides. Without
-        // it these commands die with
-        // `Service not found: ContractDeploymentIdentity`.
+        // The merge/settlement command paths require the deployment
+        // identity alongside the contract bytes. Without it these commands
+        // die with `Service not found: ContractDeploymentIdentity`.
         Effect.provideService(
           ContractDeploymentIdentity,
           fixtureDeploymentIdentity(fixture),
@@ -1231,74 +1024,6 @@ export const runNodeCommandProgram = <A>(
       ) as Effect.Effect<A, any, never>,
     );
   });
-
-export const runLocalFinalizationRecoveryWorker = async (
-  globals: Globals,
-  contracts: SDK.MidgardValidators,
-  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
-  deploymentIdentity: ContractDeploymentIdentityValue = EMULATOR_DEPLOYMENT_IDENTITY,
-  nodeConfig?: NodeConfigDep,
-  production?: OwnedCommitFixture,
-) => {
-  const workerInput = await Effect.runPromise(
-    Effect.gen(function* () {
-      return {
-        data: {
-          availableConfirmedBlock: yield* Ref.get(
-            globals.AVAILABLE_CONFIRMED_BLOCK,
-          ),
-          availableLocalFinalizationBlock: yield* Ref.get(
-            globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-          ),
-          currentBlockStartTimeMs: yield* Ref.get(
-            globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
-          ),
-          ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
-          localFinalizationPending: yield* Ref.get(
-            globals.LOCAL_FINALIZATION_PENDING,
-          ),
-          mempoolTxsCountSoFar: 0,
-          sizeOfProcessedTxsSoFar: 0,
-        },
-      } satisfies CommitWorkerInput;
-    }),
-  );
-
-  const output = await runWithoutFollower(
-    runFixtureCommitProgram(
-      contracts,
-      lucidService,
-      workerInput,
-      nodeConfig,
-      production,
-    ).pipe(
-      Effect.provideService(MidgardContracts, contracts as any),
-      Effect.provideService(
-        ContractDeploymentIdentity,
-        ContractDeploymentIdentity.make(deploymentIdentity),
-      ),
-      Effect.provide(Database.layer),
-      Effect.provideService(FollowerWriteFixture, true),
-      nodeConfig === undefined
-        ? Effect.provide(NodeConfig.layer)
-        : Effect.provideService(NodeConfig, nodeConfig),
-    ),
-  );
-  if (output.type === "SuccessfulLocalFinalizationRecoveryOutput") {
-    await Effect.runPromise(
-      Effect.all(
-        [
-          Ref.set(globals.LOCAL_FINALIZATION_PENDING, false),
-          Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, ""),
-          Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0),
-          Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0),
-        ],
-        { concurrency: "unbounded" },
-      ).pipe(Effect.asVoid),
-    );
-  }
-  return output;
-};
 
 export const attestQueuedStateQueueHeader = async ({
   fixture,
@@ -1405,7 +1130,12 @@ export const submitDepositAndRefreshBarriers = async ({
   return { submittedTxHash };
 };
 
-export const commitConfirmRecoverAndMerge = async ({
+/**
+ * Commits the next block (or takes `submitted`), takes it in as the node
+ * does once L1 holds it (`applyLanded`), attests it and merges it; returns
+ * the block and its settlement UTxO.
+ */
+export const commitLandAndMerge = async ({
   fixture,
   lucidService,
   globals,
@@ -1417,8 +1147,8 @@ export const commitConfirmRecoverAndMerge = async ({
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly globals: Globals;
   readonly expectedL2TxIds?: readonly Buffer[];
-  readonly production?: ProductionHistoryFixtureRuntime;
-  /** A commit the caller already submitted; this then confirms it. */
+  readonly production: ProductionHistoryFixtureRuntime;
+  /** A commit the caller already submitted; this then takes it in. */
   readonly submitted?: Awaited<
     ReturnType<typeof runCommitWorkerUntilSubmitted>
   >;
@@ -1432,28 +1162,11 @@ export const commitConfirmRecoverAndMerge = async ({
         fixture.operatorLucid,
         fixture.contracts,
       ),
-      nodeConfig: production?.nodeConfig,
-      production:
-        production === undefined ? undefined : { ...production, globals },
+      nodeConfig: production.nodeConfig,
+      production: { ...production, globals },
     }));
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
-  await production?.synchronize();
-  await runBlockConfirmation(
-    globals,
-    fixture.contracts,
-    lucidService,
-    production?.nodeConfig ?? (await makeNodeConfigForFixture(fixture)),
-    production,
-  );
-  const recoveryOutput = await runLocalFinalizationRecoveryWorker(
-    globals,
-    fixture.contracts,
-    lucidService,
-    fixtureDeploymentIdentity(fixture),
-    production?.nodeConfig ?? (await makeNodeConfigForFixture(fixture)),
-    production === undefined ? undefined : { ...production, globals },
-  );
-  expect(recoveryOutput.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+  await production.applyLanded(commitOutput.submittedHeaderHash);
 
   const sortedStateQueueBeforeMerge = await Effect.runPromise(
     SDK.fetchSortedStateQueueUTxOsProgram(
@@ -1471,13 +1184,7 @@ export const commitConfirmRecoverAndMerge = async ({
   const queuedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
-  if (recoveryOutput.type !== "SuccessfulLocalFinalizationRecoveryOutput") {
-    throw new Error(
-      `Expected local finalization recovery for ${queuedHeaderHash}, received ${recoveryOutput.type}`,
-    );
-  }
-  expect(recoveryOutput.finalizedHeaderHash).toBe(queuedHeaderHash);
-  expect(recoveryOutput.mempoolTxsCount).toBe(expectedL2TxIds.length);
+  expect(commitOutput.submittedHeaderHash).toBe(queuedHeaderHash);
   expect(
     await runNodeDatabaseEffect(
       BlocksDB.retrieveTxHashesByHeaderHash(
@@ -1664,6 +1371,17 @@ afterEach(async () => {
   }
 });
 export {
+  advanceEmulatorPastLatestBlockEndTime,
+  expectDaCommitteeAcceptsPersistedPayload,
+  expectedAuthenticatedEventRoot,
+  fetchLatestCommittedBlock,
+  fetchSchedulerDatum,
+  findUtxoWithUnit,
+  retainSubmittedHeaderPayload,
+  stateQueueFetchConfig,
+  withEmulatorExtraneousScriptRetry,
+} from "./deposit-flow-emulator-shared.chain-helpers.js";
+export {
   advanceEmulatorToDueWork,
   alignCommitSchedulerBeforeTestWorker,
   commitWorkerProgram,
@@ -1692,18 +1410,6 @@ export {
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 export {
-  advanceEmulatorPastLatestBlockEndTime,
-  expectDaCommitteeAcceptsPersistedPayload,
-  expectedAuthenticatedEventRoot,
-  fetchLatestCommittedBlock,
-  fetchSchedulerDatum,
-  findUtxoWithUnit,
-  retainSubmittedHeaderPayload,
-  runBlockConfirmation,
-  stateQueueFetchConfig,
-  withEmulatorExtraneousScriptRetry,
-} from "./deposit-flow-emulator-shared.run-block-confirmation.js";
-export {
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
   ensureSeparateCollateralUtxo,
@@ -1721,7 +1427,6 @@ export {
   addReserveFundsToPayoutProgram,
   assetsToValue,
   BlocksDB,
-  buildBlockConfirmationAction,
   buildTransferTx,
   canonicalSlotConfigForLucid,
   CML,
@@ -1750,7 +1455,7 @@ export {
   Ledger,
   LucidService,
   makeLucid,
-  materializeConfirmedLedgerSnapshot,
+  materializeJournalLedger,
   MempoolDB,
   MempoolLedgerDB,
   mergeMaturityWindow,

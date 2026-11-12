@@ -282,7 +282,6 @@ export const reconcileTxCommittedProgram = ({
       inImmutable: inImmutable.length > 0,
       inMempool: inMempool.length > 0,
       inProcessedMempool: inProcessedMempool.length > 0,
-      localFinalizationPending: Option.isSome(active),
     });
 
     const milestoneStatus: ReconciliationStatus =

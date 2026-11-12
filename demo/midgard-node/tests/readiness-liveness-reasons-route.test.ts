@@ -210,18 +210,21 @@ describe("GET /readyz liveness reasons", () => {
         );
         yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
         const failed = yield* readyz;
-        // A no-op can defer local finalization or exclude events beyond a
-        // source-owned end time, so it alone cannot clear a failed worker.
+        // A no-op can exclude events beyond a source-owned end time, so it
+        // alone cannot clear a failed worker.
         takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" }, 0);
         const noOp = yield* readyz;
         takeCommitWorkerOutput(
           globals,
           {
-            type: "SuccessfulLocalFinalizationRecoveryOutput",
-            finalizedHeaderHash: "ab".repeat(28),
+            type: "SubmittedAwaitingConfirmationOutput",
+            submittedTxHash: "cd".repeat(32),
+            txSize: 0,
             mempoolTxsCount: 0,
             sizeOfBlocksTxs: 0,
-            mempoolLedgerDeletedOutRefHexes: [],
+            blockEndTimeMs: 0,
+            submittedHeaderHash: "ab".repeat(28),
+            submittedUtxosRoot: "ef".repeat(32),
           },
           0,
         );

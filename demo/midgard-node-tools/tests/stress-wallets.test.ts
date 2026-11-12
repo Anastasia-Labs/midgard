@@ -804,7 +804,7 @@ describe("stress wallet commands", () => {
                 body: {
                   ...pending.body,
                   ready: false,
-                  reasons: ["local_finalization_pending"],
+                  reasons: ["commit_base_pending"],
                   mempoolTxCount: "1",
                 },
               };

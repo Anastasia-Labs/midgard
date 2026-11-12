@@ -33,7 +33,7 @@ Covered tables:
 These tables support four runtime concerns:
 
 - durable transaction admission and validation tracking;
-- durable pending block submission and local-finalization recovery;
+- durable pending block submission, applied locally once the block lands;
 - explicit migration metadata and fail-closed schema verification;
 - local mutation accountability after L1 submission or merge side effects.
 
@@ -261,16 +261,17 @@ Readers include:
 2. The commitment worker processes them into the persistent mempool MPT.
 3. If the node cannot submit a new block yet, the tx rows are moved from
    `mempool` into `processed_mempool`.
-4. On a later successful submission/local finalization path, deferred rows are
-   combined with current mempool rows and inserted into `immutable`/`blocks`.
-5. `processed_mempool` is cleared after local finalization
-   ([commit-submission.ts](src/workers/utils/commit-submission.ts)).
+4. On a later successful submission, deferred rows are combined with current
+   mempool rows in the block; landed-block processing inserts them into
+   `immutable`/`blocks` once the block lands.
+5. `processed_mempool` is cleared once the block's own effects are applied
+   ([own-blocks.ts](src/landed-blocks/own-blocks.ts)).
 
 ### Relationships
 
 - Related to the persistent mempool MPT root. The MPT contains the transaction
   root effects, while `processed_mempool` stores SQL-visible tx payloads needed
-  for later local finalization.
+  until the block lands and its own effects are applied.
 - Related to `mempool`: rows are moved from live mempool to processed mempool.
 - Related to `immutable` and `blocks`: deferred rows eventually become
   immutable tx payloads and block membership rows.
@@ -562,22 +563,20 @@ Commit construction prepares the journal before signing/submission
 [commit-block-header.ts](src/workers/commit-block-header.ts)).
 Submission success marks it submitted
 ([commit-block-header.ts](src/workers/commit-block-header.ts)).
-Local finalization marks it locally complete
-([commit-submission.ts](src/workers/utils/commit-submission.ts)).
-Confirmation observes, finalizes, or abandons it
-([block-confirmation.ts](src/fibers/block-confirmation.ts)).
+Landed-block processing applies its block once it lands and marks it locally
+applied ([own-blocks.ts](src/landed-blocks/own-blocks.ts)), and disposes of it
+when a rollback removes it ([own-journals.ts](src/landed-blocks/own-journals.ts)).
 
 ### Readers
 
 Readers include:
 
-- confirmation, which passes the active pending block to the worker
-  ([block-confirmation.ts](src/fibers/block-confirmation.ts));
+- landed-block processing, which takes an own block's delta, events and base
+  from its journal ([journal.ts](src/landed-blocks/journal.ts));
 - startup, which hydrates active recovery state and revives canonical abandoned
   rows where needed
   ([listen-startup.ts](src/commands/listen-startup.ts));
-- readiness, indirectly through local-finalization globals and active recovery
-  state.
+- the commit worker, which never builds on a base while a journal is active.
 
 ### Lifecycle
 
@@ -587,14 +586,11 @@ Typical successful tx-backed path:
    members.
 2. Submit succeeds or is recovered from L1.
 3. `markSubmitted` stores `submitted_tx_hash`.
-4. Local finalization inserts `immutable`/`blocks`, clears relevant mempool
-   state, preserves the deposit journal membership, and calls
-   `markLocalFinalizationComplete`.
-5. Confirmation observes the header on the L1 state queue and assigns deposit
-   header identities, making those projected rows spendable.
-6. The journal moves to `observed_waiting_stability` or `finalized`, depending
-   on whether local finalization still requires recovery.
-7. A stale or non-canonical submission can be marked `abandoned`.
+4. Once the block lands, landed-block processing inserts `immutable`/`blocks`,
+   clears relevant mempool state and marks the journal locally applied; the
+   rebase projects its events, and the fold finalizes them.
+5. An unsigned journal a later lease holder finds is marked `abandoned`; a
+   rollback that removes a landed block disposes of its journal.
 
 ### Relationships
 
@@ -749,8 +745,8 @@ Rows are read through `retrieveRecord`, ordered by `ordinal`
 
 1. A tx-backed commit is prepared.
 2. Tx ids planned for the block are inserted as ordered member rows.
-3. Confirmation and startup can use the parent record and members to decide
-   whether local finalization recovery is required.
+3. Landed-block processing applies the block from the parent record and
+   members once the block lands.
 4. Rows remain with the parent journal.
 
 ### Relationships
@@ -765,8 +761,8 @@ Expected invariants:
 
 - each tx id appears at most once per header;
 - ordinals are unique per header;
-- member rows should match the block payload that local finalization inserts
-  into `immutable`/`blocks`.
+- member rows should match the block payload that landed-block processing
+  inserts into `immutable`/`blocks`.
 
 Known gaps:
 
@@ -1058,16 +1054,15 @@ Expected invariants:
 Known gaps:
 
 - `plan_hash` exists in the schema but is not populated by the adapter.
-- Two kinds of job are retried automatically. `confirmed_merge_finalization`
-  jobs are retried by the merge fiber: every merge attempt first finalizes each
-  merge L1 confirmed that this database has not, and fails until that
-  succeeds; the merge builder does the same up to the confirmed state its merge
-  spends. A failed `local_block_finalization` job whose journal still awaits
-  local finalization is retried by the commit worker while its block is live.
-  Every other unfinished job needs recovery.
+- `confirmed_merge_finalization` jobs are retried by the merge fiber: every
+  merge attempt first finalizes each merge L1 confirmed that this database has
+  not, and fails until that succeeds; the merge builder does the same up to
+  the confirmed state its merge spends. Nothing runs a `local_block_finalization`
+  job any more: landed-block processing applies an own block when it lands.
 - Unfinished mutation jobs block listener startup until recovery is performed,
-  except confirmed-merge jobs and failed local-finalization jobs whose journal
-  still awaits local finalization, which startup leaves to the runtime.
+  except confirmed-merge jobs, which startup leaves to the runtime, and
+  local-finalization jobs whose journal records a submitted block, which
+  startup closes.
 
 ## `schema_migrations`
 

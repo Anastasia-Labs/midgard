@@ -5,12 +5,12 @@ import { beforeAll, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { insertLiveQueueNode } from "./helpers/queue-terminal-rows.js";
 import { recordMergeJob } from "./history-retention-prune.fixtures.js";
 import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
@@ -80,7 +80,7 @@ it.each(["pre-rollback", "restored"] as const)(
               [laterHeaderHash, 0],
             ] as const) {
               const fixture = journalFixture(hash);
-              yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+              yield* prepareUnderTestLease({
                 ...fixture,
                 metadata: {
                   ...fixture.metadata,

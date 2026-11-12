@@ -36,13 +36,6 @@ export const LANDED_BLOCK_INVALID = "landed_block_invalid";
  */
 export const LANDED_BLOCK_OWN_JOURNAL_MISMATCH =
   "landed_block_own_journal_mismatch";
-/**
- * This node's block landed after its journal was abandoned: blocks after it
- * wait until the rebase revived it and its local finalization ran (both
- * without operator action).
- */
-export const LANDED_BLOCK_OWN_REVIVAL_PENDING =
-  "landed_block_own_revival_pending";
 /** A foreign block's DA payload is not available yet, or it ends past what the view can know. */
 export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
 /**
@@ -165,9 +158,6 @@ export const CONFIRMED_LEDGER_BEHIND = "confirmed_ledger_behind";
  * what it produces. Refused, nothing written.
  */
 export const CONFIRMED_LEDGER_BASE_MISMATCH = "confirmed_ledger_base_mismatch";
-/** The merged root passed this node's own block, whose journal is not locally applied yet. */
-export const CONFIRMED_LEDGER_OWN_BLOCK_PENDING =
-  "confirmed_ledger_own_block_pending";
 /** The working ledger and native MPF wait for the rebase onto the processed blocks. */
 export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
 /** The rebase failed; the follower-change driver retries it on its backoff. */
@@ -205,8 +195,6 @@ const PRIORITY = [
   CONFIRMED_LEDGER_BASE_MISMATCH,
   LANDED_BLOCKS_WAITING,
   CONFIRMED_LEDGER_BEHIND,
-  LANDED_BLOCK_OWN_REVIVAL_PENDING,
-  CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
 ] as const;
 

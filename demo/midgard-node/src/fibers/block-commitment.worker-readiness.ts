@@ -41,9 +41,10 @@ export const COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE =
 /** The liveness source `commit_base_pending` is raised under. */
 export const COMMIT_BASE_SOURCE = "commit_base";
 /**
- * The commit waits for its base: a foreign tail landed-block processing has
- * not applied to the working ledger yet. It clears on the worker's next
- * output that is not this wait.
+ * The commit waits for its base: a tail landed-block processing has not
+ * applied to the working ledger yet, or this node's own block in flight,
+ * which is never a base until it lands and is applied. It clears on the
+ * worker's next output that is not this wait.
  */
 export const COMMIT_BASE_PENDING = "commit_base_pending";
 /** The liveness source `commit_window_pending` is raised under. */
@@ -180,7 +181,6 @@ const workerOutcomeReadiness = (
       );
     case "SuccessfulSubmissionOutput":
     case "SubmittedAwaitingConfirmationOutput":
-    case "SuccessfulLocalFinalizationRecoveryOutput":
       return clearCommitWorkerFailure(globals);
     case "SkippedSubmissionOutput":
       return output.submitRefusal === undefined
@@ -194,7 +194,6 @@ const workerOutcomeReadiness = (
           );
     case "NothingToCommitOutput":
     case "RegisteredDueWorkOutput":
-    case "SubmittedAwaitingLocalFinalizationOutput":
       return Effect.void;
   }
 };
@@ -227,7 +226,6 @@ const UNCLASSIFIABLE_CASE_TEXT: Readonly<
 const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
   "SuccessfulSubmissionOutput",
   "SubmittedAwaitingConfirmationOutput",
-  "SuccessfulLocalFinalizationRecoveryOutput",
 ]);
 
 /**

@@ -87,27 +87,6 @@ vi.mock("../src/database/index.js", async () => {
   };
 });
 
-vi.mock(
-  "../src/transactions/state-queue/confirmed-ledger-snapshot.js",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("../src/transactions/state-queue/confirmed-ledger-snapshot.js")
-    >("../src/transactions/state-queue/confirmed-ledger-snapshot.js");
-    return {
-      ...actual,
-      materializeConfirmedLedgerSnapshot: vi.fn(() =>
-        Effect.succeed({
-          entries: [],
-          baseRoot: "33".repeat(32),
-          root: "33".repeat(32),
-          deltaChain: [],
-          delta: { spent: [], produced: [] },
-        }),
-      ),
-    };
-  },
-);
-
 // The commit anchor caps no planned end time.
 vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
   ...(await importOriginal<
@@ -245,6 +224,7 @@ const fakeSql = Object.assign(
     Effect.succeed([])) as unknown as SqlClient.SqlClient,
   {
     array: vi.fn((values: readonly unknown[]) => values),
+    in: vi.fn((values: readonly unknown[]) => values),
     withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
   },
 ) as unknown as SqlClient.SqlClient;

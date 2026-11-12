@@ -141,11 +141,13 @@ const dueSince = (sinceMs: number) =>
 describe("block commitment beside a due validation-trace Defend", () => {
   beforeEach(() => {
     buildAndSubmitMock.mockReset();
-    buildAndSubmitMock.mockImplementation(() =>
+    buildAndSubmitMock.mockImplementation((leaseToken: string) =>
       Effect.gen(function* () {
-        yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-          journalFixture(header("defense-pause-next-block")),
-        );
+        const journal = journalFixture(header("defense-pause-next-block"));
+        yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+          ...journal,
+          metadata: { ...journal.metadata, stateQueueLeaseToken: leaseToken },
+        });
         return { type: "NothingToCommitOutput" };
       }),
     );

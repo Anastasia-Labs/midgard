@@ -231,7 +231,7 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `db_unhealthy`: the database check failed. Check Postgres and the node's
   connection settings.
 - `stale_heartbeat:<worker>:<age_ms>`: a worker (`blockCommitment`,
-  `blockConfirmation`, `merge`, `txQueueProcessor`) has not beaten within
+  `merge`, `txQueueProcessor`) has not beaten within
   `READINESS_MAX_HEARTBEAT_AGE_MS`. Read that worker's log lines; a worker
   that keeps failing names its error there.
 - `queue_depth_exceeded:<depth>:<limit>`: the durable admission backlog is
@@ -246,8 +246,6 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
   take its write, so `/submit` and `/peer/txs` answer 503. It clears by
   itself once the writes go through; check Postgres and the
   `admission_write_retry_total` log warnings if it persists.
-- `local_finalization_pending`: a submitted block's local finalization has
-  not run yet. Wait.
 - `validation_worker_pool_degraded:<live>:<configured>:<restarting>`: fewer
   validation workers are alive than configured. Wait for the restarts; read
   the worker errors in the log if they repeat.
@@ -320,8 +318,9 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 
 Commitment and liveness (raised by fibers, cleared by them):
 
-- `commit_base_pending`: the commit waits for a foreign tail block that
-  landed-block processing has not applied yet. Wait.
+- `commit_base_pending`: the commit waits for a tail block that
+  landed-block processing has not applied yet, or for this node's own block
+  in flight to land. Wait.
 - `commit_scheduler_alignment_failed`: commit work is pending, but this
   node's scheduler alignment failed on its last tick, so it cannot take or
   pass on the scheduler turn. It escalates after ten minutes. Read the
@@ -757,9 +756,8 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   with the detail.
 - `landed_blocks_waiting`: the follower write gate refused a write, or the
   follower moved off the run's view. Wait.
-- `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`,
-  `landed_block_rebase_pending`: this node's own block waits to be revived
-  or applied locally, or the working ledger waits for the rebase. Wait.
+- `landed_block_rebase_pending`: the working ledger waits for the rebase
+  onto the processed blocks, this node's own included. Wait.
 
 ## Watcher `/readyz` reasons
 

@@ -24,11 +24,8 @@ import {
 } from "../src/services/follower-write-gate.js";
 import { supersededDriver } from "./helpers/follower-write-gate.js";
 import {
-  failedLocalJob,
   header,
   isolatedDb,
-  localJobId,
-  observedJournal,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
 import { resetApplicationTables } from "./utils.js";
 
@@ -161,9 +158,15 @@ describe("startup retires state-queue leases of a killed node process", () => {
     () =>
       leaseDb(
         Effect.gen(function* () {
-          const live = header("gate-without-permit");
-          yield* observedJournal(live);
-          yield* failedLocalJob(live, "delta invalid");
+          // A job the gate hands to the runtime, so it writes nothing.
+          const mergeJobId = MutationJobsDB.confirmedMergeFinalizationJobId(
+            header("gate-without-permit").toString("hex"),
+          );
+          yield* MutationJobsDB.start({
+            jobId: mergeJobId,
+            kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+          });
+          yield* MutationJobsDB.markFailed(mergeJobId, "merge failed");
           const token = yield* leftBehind("block_commitment");
           // Called while a runtime is live, on a bare database layer: no
           // startup preparation, producer permit or fixture gate.
@@ -179,7 +182,7 @@ describe("startup retires state-queue leases of a killed node process", () => {
           // The same database: the gate saw the failed job and handed it over.
           expect(
             exit.value.map((job) => job[MutationJobsDB.Columns.JOB_ID]),
-          ).toEqual([localJobId(live)]);
+          ).toEqual([mergeJobId]);
           expect((yield* readLease(token))[L.STATUS]).toBe(
             StateQueueLeases.Status.Active,
           );

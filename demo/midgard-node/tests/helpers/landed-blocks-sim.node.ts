@@ -1,13 +1,11 @@
 /**
  * What the simulated node does around landed-block processing (N3, I3): it
- * admits pending transactions, commits its own block on the processed tip (the journal, then the
- * working-ledger move onto it), and finalizes its journal once the block is
- * merged (landed-block processing folds it into `confirmed_ledger`; the
- * transactions it included stay marked until that fold is final). The
- * rebase disposes of and revives its journals; the node keeps its book in
- * step with that, finalizes a revived block locally the way the commit path
- * does, and stands in for S6 deriving an active commit dead when its base
- * left without a rebase.
+ * admits pending transactions and commits its own block on the processed
+ * tip (the journal, then the working-ledger move onto it). The rebase that
+ * takes a landed own block in applies it and marks its journal locally
+ * applied, and disposes of and revives journals; the node keeps its book in
+ * step with that, and stands in for S6 deriving an active commit dead when
+ * its base left without a rebase.
  */
 import { Effect } from "effect";
 
@@ -33,7 +31,6 @@ import {
   JournalStatus,
   journalStatuses,
   ownBlockOn,
-  setJournalStatus,
 } from "./landed-blocks-sim.own.js";
 import type { LandedSimEnv } from "./landed-blocks-sim.ports.js";
 import { simDigest, simOutput } from "./landed-blocks-sim.universe.js";
@@ -44,6 +41,8 @@ type Run = <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>;
 
 export const simNode = (env: LandedSimEnv, run: Run) => {
   const { stats, mempool, book } = env;
+  // Journals seen locally applied, by header (hex).
+  const applied = new Set<string>();
 
   /**
    * A rebase that revives own blocks deletes their members' rejections. A
@@ -104,16 +103,6 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   };
 
   /**
-   * An own merged block's local finalization, as far as the simulation sees
-   * it: its journal is locally applied. The transactions it included stay
-   * in the mempool, marked by the block, until its fold is final.
-   */
-  const finalizeOwn = async (header: string) => {
-    await run(setJournalStatus(header, JournalStatus.LocallyApplied));
-    stats.ownMerges += 1;
-  };
-
-  /**
    * S6 derived the active commit dead (its base left the processed tip
    * without a rebase): the node disposes of its journal.
    */
@@ -148,24 +137,21 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     await reviveRejections(journals.revive);
   };
 
-  /** The commit path finalizes every revived block locally. */
-  const finalizeRevived = async () => {
-    const statuses = await run(journalStatuses);
-    let finalized = 0;
-    for (const [header, status] of statuses)
-      if (status === JournalStatus.ObservedWaitingStability) {
-        await run(setJournalStatus(header, JournalStatus.LocallyApplied));
-        if (book.active === header) book.active = undefined;
-        finalized += 1;
+  /**
+   * The rebase applied a landed own block: its journal is locally applied,
+   * and an active one is no longer in flight.
+   */
+  const followApplied = async () => {
+    for (const [header, status] of await run(journalStatuses)) {
+      if (status !== JournalStatus.LocallyApplied) {
+        applied.delete(header);
+        continue;
       }
-    return finalized;
-  };
-
-  /** The active journal's block was merged: its journal finalizes. */
-  const finalizeMerged = async (rooted: ReadonlySet<string>) => {
-    if (book.active === undefined || !rooted.has(book.active)) return;
-    await finalizeOwn(book.active);
-    book.active = undefined;
+      if (applied.has(header)) continue;
+      applied.add(header);
+      stats.ownApplied += 1;
+      if (book.active === header) book.active = undefined;
+    }
   };
 
   /**
@@ -272,8 +258,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     rebaseOnto,
     abandonActive,
     followDisposition,
-    finalizeRevived,
-    finalizeMerged,
+    followApplied,
     admit,
     candidateOn,
     commit,

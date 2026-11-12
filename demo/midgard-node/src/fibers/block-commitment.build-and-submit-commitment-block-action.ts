@@ -1,9 +1,6 @@
-import { Duration, Effect, Metric, Option, Ref, Runtime } from "effect";
+import { Duration, Effect, Metric, Ref, Runtime } from "effect";
 
-import {
-  MpfEngineStateDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
+import { MpfEngineStateDB } from "../database/index.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
   FollowerWrite,
@@ -21,12 +18,12 @@ import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
-import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
 import {
   WorkerInput,
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
+import { abandonUnsignedActiveJournal } from "./block-commitment.abandon-unsigned-journal.js";
 import { extendCommitmentHoldForBacklog } from "./block-commitment.commit-hold-budget.js";
 import { promoteCommitWorkerNativeResult } from "./block-commitment.native-result.js";
 import {
@@ -38,7 +35,6 @@ import {
   type CommitWorkerMessage,
   publishFullMempoolLedgerReload,
   recoverNativeMpfFromActiveJournalAfterWorkerFailure,
-  resolveAuthoritativeLocalFinalizationPreflight,
   takeCommitWorkerOutput,
   totalTxSizeGauge,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
@@ -61,75 +57,17 @@ export const buildAndSubmitCommitmentBlockAction = (
     const nodeConfig = yield* NodeConfig;
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    let AVAILABLE_LOCAL_FINALIZATION_BLOCK =
-      yield* globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK;
-    let LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
-    let AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
-      globals.AVAILABLE_CONFIRMED_BLOCK,
+    // The worker below prepares and signs under this lease, so an unsigned
+    // journal still active now was left by an attempt that stopped first.
+    yield* abandonUnsignedActiveJournal;
+    const snapshot = yield* landedStateQueueSnapshot(
+      contracts.stateQueue,
+      "commit_preflight",
     );
-    let CURRENT_BLOCK_START_TIME_MS = yield* Ref.get(
-      globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+    yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
+    yield* Effect.logInfo(
+      `🔹 Using live state-queue tail commit base ${snapshot.tailCommitBase.outRef} from snapshot ${snapshot.snapshotId}.`,
     );
-    let BASE_SNAPSHOT_ID: string | undefined;
-    let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
-    if (!LOCAL_FINALIZATION_PENDING) {
-      const snapshot = yield* landedStateQueueSnapshot(
-        contracts.stateQueue,
-        "commit_preflight",
-      );
-      yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
-      AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
-      CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
-      BASE_SNAPSHOT_ID = snapshot.snapshotId;
-      STATE_QUEUE_HAS_UNMERGED_TAIL =
-        snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
-      const activePending = yield* PendingBlockFinalizationsDB.retrieveActive();
-      const activeJournalHeaderHash = Option.match(activePending, {
-        onNone: () => null,
-        onSome: (row) =>
-          row[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
-      });
-      const activeJournalSubmittedTxHash = Option.match(activePending, {
-        onNone: () => null,
-        onSome: (row) =>
-          row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
-            "hex",
-          ) ?? null,
-      });
-      const activeJournalStatus = Option.match(activePending, {
-        onNone: () => null,
-        onSome: (row) => row[PendingBlockFinalizationsDB.Columns.STATUS],
-      });
-      const finalizationPreflight =
-        resolveAuthoritativeLocalFinalizationPreflight({
-          localFinalizationPending: LOCAL_FINALIZATION_PENDING,
-          availableLocalFinalizationBlock: AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-          activeJournalHeaderHash,
-          activeJournalSubmittedTxHash,
-          activeJournalStatus,
-          tailHeaderHash: snapshot.tailCommitBase.headerHash,
-          tailBlock: snapshot.tailCommitBase.utxo,
-        });
-      LOCAL_FINALIZATION_PENDING =
-        finalizationPreflight.localFinalizationPending;
-      AVAILABLE_LOCAL_FINALIZATION_BLOCK =
-        finalizationPreflight.availableLocalFinalizationBlock;
-      if (finalizationPreflight.localFinalizationPending) {
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
-        yield* Ref.set(
-          globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-          AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-        );
-        yield* Effect.logWarning(
-          finalizationPreflight.recoveredRacedJournal
-            ? `🔹 Recovered raced local-finalization preflight from authoritative journal and confirmed state-queue tail (header=${activeJournalHeaderHash ?? "unknown"}).`
-            : `🔹 Deferred commitment from authoritative submitted journal that is not yet the confirmed state-queue tail (header=${activeJournalHeaderHash ?? "unknown"}).`,
-        );
-      }
-      yield* Effect.logInfo(
-        `🔹 Using live state-queue tail commit base ${snapshot.tailCommitBase.outRef} from snapshot ${snapshot.snapshotId}.`,
-      );
-    }
     const PROCESSED_UNSUBMITTED_TXS_COUNT =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
@@ -142,15 +80,6 @@ export const buildAndSubmitCommitmentBlockAction = (
           message: "Architecture G native owner is not initialized",
           cause: "NATIVE_MPF_OWNER is absent",
         }),
-      );
-    }
-    if (
-      LOCAL_FINALIZATION_PENDING &&
-      AVAILABLE_LOCAL_FINALIZATION_BLOCK !== ""
-    ) {
-      yield* recoverNativeMpfForLocalFinalization(
-        nativeMpfOwner,
-        AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       );
     }
     const nativeMpfInput = yield* nativeMpfWorkerInput(
@@ -186,17 +115,16 @@ export const buildAndSubmitCommitmentBlockAction = (
           nativeMpf: nativeMpfInput,
           history,
           data: {
-            availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
-            availableLocalFinalizationBlock: AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-            currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
+            availableConfirmedBlock: snapshot.tailCommitBase.utxo,
+            currentBlockStartTimeMs: snapshot.tailCommitBase.blockEndTimeMs,
             forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucid.api),
-            localFinalizationPending: LOCAL_FINALIZATION_PENDING,
             ledgerStoreLeaseOwner,
             mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
             sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
             stateQueueLeaseToken,
-            baseSnapshotId: BASE_SNAPSHOT_ID,
-            stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
+            baseSnapshotId: snapshot.snapshotId,
+            stateQueueHasUnmergedTail:
+              snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
           },
         } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         transferList: [nativeMpfInput.port],
@@ -267,7 +195,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       case "SuccessfulSubmissionOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
         yield* Ref.set(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
@@ -280,7 +207,6 @@ export const buildAndSubmitCommitmentBlockAction = (
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           workerOutput.blockEndTimeMs,
         );
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
 
@@ -297,32 +223,9 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
         break;
       }
-      case "SubmittedAwaitingLocalFinalizationOutput": {
-        yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
-        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
-        yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-          workerOutput.submittedTxHash,
-        );
-        yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-          Date.now(),
-        );
-        yield* Ref.set(
-          globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
-          workerOutput.blockEndTimeMs,
-        );
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
-        yield* Effect.logWarning(
-          `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
-        );
-        break;
-      }
       case "SubmittedAwaitingConfirmationOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
         yield* Ref.set(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
@@ -335,19 +238,12 @@ export const buildAndSubmitCommitmentBlockAction = (
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           workerOutput.blockEndTimeMs,
         );
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
-        yield* Effect.logInfo(
-          "🔹 Block submitted; local finalization is intentionally deferred until L1 confirmation.",
-        );
-        break;
-      }
-      case "SuccessfulLocalFinalizationRecoveryOutput": {
-        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
-        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+        // The processed transactions the block took are no longer
+        // unsubmitted; landed-block processing applies the block.
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
         yield* Effect.logInfo(
-          "🔹 ☑️  Local finalization recovery completed for confirmed block.",
+          "🔹 Block submitted; landed-block processing applies it once it lands.",
         );
         break;
       }

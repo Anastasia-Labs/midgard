@@ -42,6 +42,7 @@ import type { DefenseMaterialWorker } from "../src/validation-trace-defense/mate
 import { validationTraceDefenseTick } from "../src/validation-trace-defense/tick.js";
 import { awaitEmulatorTipPastDeadline } from "./helpers/emulator-observed-tip.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   bondUnlockTimeOf,
   type DefenseScene,
@@ -89,7 +90,7 @@ const prepareSignedCommit = async (s: DefenseScene, commitHeader: Buffer) => {
   const intended = Buffer.alloc(32, 0x5c);
   await s.inNode(
     Effect.gen(function* () {
-      yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+      yield* prepareUnderTestLease({
         ...journalFixture(commitHeader),
         preparedTxHash: intended,
       });

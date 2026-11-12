@@ -1,11 +1,13 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import {
+  BlocksDB,
   MutationJobsDB,
+  PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
-import { mergeAction } from "../fibers/merge.js";
+import { mergeAction, type MergeActionResult } from "../fibers/merge.js";
 import {
   Database,
   Globals,
@@ -16,15 +18,13 @@ import {
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
   evidence,
+  optionRecordEvidence,
+  type ReconciliationEvidence,
   type ReconciliationResult,
+  type ReconciliationStatus,
   result,
 } from "./reconcile.parse-reconciliation-result.js";
-import {
-  mergeCompletionEvidence,
-  mergeCompletionVerdict,
-  mergeResultEvidence,
-  observeMergeCompletion,
-} from "./reconcile.reconcile-local-finalization-program.js";
+import { fetchCanonicalStateQueueHeaderHashes } from "./reconcile.reconcile-phas-registered-program.js";
 
 export const reconcileMergeCompleteProgram = ({
   headerHash,
@@ -133,3 +133,113 @@ export const reconcileMergeCompleteProgram = ({
       nextAction: verdict.nextAction,
     });
   });
+
+const confirmedMergeFinalizationJobEvidence = (
+  jobId: string,
+  job: MutationJobsDB.Entry | undefined,
+): ReconciliationEvidence =>
+  evidence(
+    "confirmed_merge_finalization_job",
+    job === undefined
+      ? { present: false, jobId }
+      : {
+          present: true,
+          jobId,
+          status: job[MutationJobsDB.Columns.STATUS],
+          attempts: job[MutationJobsDB.Columns.ATTEMPTS],
+          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+        },
+  );
+
+export type MergeCompletionObservation = {
+  readonly canonicalHeaders: readonly string[];
+  readonly canonical: boolean;
+  readonly txCount: number;
+  readonly job: MutationJobsDB.Entry | undefined;
+  readonly journal: Option.Option<PendingBlockFinalizationsDB.Record>;
+};
+
+export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
+  Effect.gen(function* () {
+    const canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
+    const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    return {
+      canonicalHeaders,
+      canonical: canonicalHeaders.includes(headerHash.toString("hex")),
+      txCount: txHashes.length,
+      job: yield* MutationJobsDB.retrieveByJobId(jobId),
+      journal:
+        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
+    } satisfies MergeCompletionObservation;
+  });
+
+/**
+ * A merge is complete only when the header has left the state queue AND its
+ * confirmed-merge local finalization job completed. The block's rows prove
+ * neither: they stay until its fold is final (`releaseFinalFolds`), well
+ * after its merge completed, and a block without L2 transactions never had
+ * rows.
+ */
+export const mergeCompletionVerdict = (
+  observed: MergeCompletionObservation,
+): {
+  readonly status: ReconciliationStatus;
+  readonly nextAction: string | null;
+} => {
+  if (observed.canonical)
+    return {
+      status: "pending",
+      nextAction:
+        "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied.",
+    };
+  const jobStatus = observed.job?.[MutationJobsDB.Columns.STATUS];
+  if (jobStatus === MutationJobsDB.Status.Completed)
+    return { status: "satisfied", nextAction: null };
+  if (observed.job !== undefined)
+    return {
+      status: "blocked",
+      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; the running node's merge fiber retries it before every merge while the follower-change driver's view is published, and no merge proceeds until it succeeds. If it keeps failing, inspect the job's last_error.`,
+    };
+  return {
+    status: "ambiguous",
+    nextAction:
+      "The header is not queued and this database holds no confirmed-merge finalization job for it: its merge landed and the running node's merge fiber has not finalized it yet (it does so before its next merge once the follower-change driver's view is published), it was merged before this database existed, or it was removed by state-queue correction; inspect pending_block_finalization.",
+  };
+};
+
+export const mergeCompletionEvidence = (
+  jobId: string,
+  observed: MergeCompletionObservation,
+): readonly ReconciliationEvidence[] => [
+  evidence("canonical_state_queue", {
+    containsHeader: observed.canonical,
+    headers: observed.canonicalHeaders,
+  }),
+  evidence("local_block_rows", { txCount: observed.txCount }),
+  confirmedMergeFinalizationJobEvidence(jobId, observed.job),
+  optionRecordEvidence(observed.journal),
+];
+
+/** The merge outcome as plain JSON: the reconciliation artifact rejects the
+ * raw state-queue snapshot and absent optional fields. */
+export const mergeResultEvidence = (
+  mergeResult: MergeActionResult,
+): ReconciliationEvidence =>
+  evidence(
+    "merge_result",
+    mergeResult.status === "merged"
+      ? {
+          status: mergeResult.status,
+          trigger: mergeResult.trigger,
+          headerHash: mergeResult.headerHash,
+          txHash: mergeResult.txHash,
+          // The root and the blocks, as the artifact has always counted them.
+          postMergeQueueNodeCount: mergeResult.postMergeSnapshot.blockCount + 1,
+        }
+      : Object.fromEntries(
+          Object.entries(mergeResult).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
+  );

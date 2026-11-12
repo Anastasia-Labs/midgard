@@ -1,7 +1,7 @@
 /**
  * The working-ledger rebase onto the processed landed blocks (plan §7.3,
- * N3): after a foreign block is processed, or a rollback removed one the
- * working ledger held, the follower-change driver's recompute
+ * N3): after a landed block is processed (foreign or this node's own), or
+ * a rollback removed one the working ledger held, the follower-change driver's recompute
  * (`services/l1-follower.recompute.ts`) moves the native MPF to the
  * target's root and recomputes `mempool_ledger` and the event statuses from
  * the target. It is rewind plus recompute; nothing is inverted.
@@ -24,35 +24,32 @@
  * target disposes of are abandoned and their members made pending again,
  * and the abandoned ones whose block landed are revived (`own-journals.ts`);
  * every event a removed block, a disposed-of journal or an unknown header
- * held goes back to `awaiting`; every event a processed foreign or revived
- * own block holds is projected to it; the shared working-ledger recompute
- * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger;
- * removed rows are deleted, processed ones marked applied, and the
- * ledger-store root stamp moves to the target.
+ * held goes back to `awaiting`; every event a processed block holds is
+ * projected to it; the shared working-ledger recompute
+ * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger; an
+ * own block the working ledger did not hold yet gets its local effects
+ * (`own-blocks.ts`); removed rows are deleted, processed ones marked
+ * applied, and the ledger-store root stamp moves to the target.
  *
- * Once that commits, the commit path's globals follow: a revived block's
- * local finalization is pending (its node read back from its signed
- * commit), and with the unfinished journal disposed of nothing is.
+ * Once that commits, the commit path's globals follow: a commit that
+ * landed is no longer awaiting confirmation.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Ref } from "effect";
 
 import * as ImportChecksDB from "../database/importChecks.js";
 import { MpfEngineStateDB } from "../database/index.js";
-import type * as Pending from "../database/pendingBlockFinalizations.js";
 import type { Globals } from "../services/globals.globals.js";
-import { MidgardContracts } from "../services/midgard-contracts.js";
 import {
   type NativeMpfOwnerService,
   NativeMpfRootNotRetained,
 } from "../services/mpf-native-owner/protocol.js";
 import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.js";
-import { signedCommitNode } from "../services/own-block-node.js";
 import { rebuildWorkingLedger } from "../services/working-ledger-recompute.js";
 import { sha256Hex } from "../sha256.js";
-import { serializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "./holds.js";
 import { depositOutputs } from "./ledger.js";
+import { applyOwnBlocks } from "./own-blocks.js";
 import { disposeJournals, reviveJournals } from "./own-journals.js";
 import {
   assignChainEvents,
@@ -180,12 +177,10 @@ export const rebaseSql = (target: RebaseTarget) =>
   Effect.gen(function* () {
     const { ledger, roots } = walkTarget(target);
     const { dispose, revive } = target.journals;
-    const reviving = new Set(revive);
+    // Every processed row, foreign or this node's own: one path applies
+    // both.
     const chained = target.steps.flatMap((step) =>
-      step.row !== undefined &&
-      (step.kind === "foreign" || reviving.has(step.headerHash))
-        ? [step.row]
-        : [],
+      step.row === undefined ? [] : [step.row],
     );
     const foreign = chained.filter((row) => row.kind === "foreign");
     const ownTxIds = target.steps.flatMap((step) =>
@@ -206,14 +201,11 @@ export const rebaseSql = (target: RebaseTarget) =>
       ...removed.map((row) => row.headerHash),
       ...dispose.map((disposal) => disposal.headerHash),
     ]);
-    const revived = yield* reviveJournals(revive);
+    yield* reviveJournals(revive);
     yield* assignChainEvents(chained);
     // A processed (landed) row marks the transactions it includes in the
     // pending tables; the live own block has not landed.
-    const processed = target.steps.flatMap((step) =>
-      step.row === undefined ? [] : [step.row],
-    );
-    yield* markRows(processed);
+    yield* markRows(chained);
     const rebuilt = yield* rebuildWorkingLedger({
       base: ledger,
       baseDeposits: new Map(
@@ -229,6 +221,9 @@ export const rebaseSql = (target: RebaseTarget) =>
       codes: REBASE_REJECTIONS,
     });
     yield* settleChainDeposits(chained, rebuilt.ledger, deposits);
+    const landedCommits = yield* applyOwnBlocks(
+      chained.filter((row) => !row.applied),
+    );
     yield* deleteRows(removed.map((row) => row.headerHash));
     yield* ImportChecksDB.deleteChecksOfBlocks(
       removed.map((row) => row.headerHash),
@@ -237,46 +232,34 @@ export const rebaseSql = (target: RebaseTarget) =>
     yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
     return {
       ...rebuilt,
-      revived,
+      landedCommits: new Set(landedCommits),
       disposedActive: dispose.some((disposal) => disposal.active),
     };
   });
 
 /**
- * The commit path's globals once a rebase that revived or disposed of own
- * journals committed: a revived block's local finalization is pending (the
- * hold on the blocks after it keeps it the newest), and with the unfinished
- * journal disposed of nothing is pending or awaiting confirmation.
+ * The commit path's globals once a rebase committed: a commit of this
+ * node's that landed is no longer awaiting confirmation, nor is any once
+ * the unfinished journal was disposed of.
  */
 export const followJournals = (
   globals: Globals,
   outcome: Readonly<{
-    revived: readonly Pending.Record[];
+    landedCommits: ReadonlySet<string>;
     disposedActive: boolean;
   }>,
 ) =>
   Effect.gen(function* () {
-    const winner = outcome.revived.at(-1);
-    if (winner === undefined && !outcome.disposedActive) return;
+    const awaiting = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+    );
+    if (
+      awaiting === "" ||
+      (!outcome.disposedActive && !outcome.landedCommits.has(awaiting))
+    )
+      return;
     yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
     yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
-    if (winner === undefined) {
-      yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
-      yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
-      return;
-    }
-    const contracts = yield* MidgardContracts;
-    const block = yield* signedCommitNode(winner, contracts).pipe(
-      Effect.flatMap(({ node }) => serializeStateQueueUTxO(node)),
-      Effect.catchAll((cause) =>
-        Effect.logWarning(
-          "A revived block's node cannot be read back from its signed commit; the commit preflight recovers its local finalization from the landed tail",
-          cause,
-        ).pipe(Effect.as("" as const)),
-      ),
-    );
-    yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
-    yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, block);
   });
 
 /**

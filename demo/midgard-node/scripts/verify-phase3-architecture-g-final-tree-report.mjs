@@ -67,7 +67,6 @@ export const PHASE3_FINAL_TREE_SUITES = Object.freeze(
         "tests/commit-block-header-state-queue-tail.test.ts",
         "tests/commit-recovery-planner.test.ts",
         "tests/commit-worker-failure-lease-classification.test.ts",
-        "tests/confirmation-finalization-race.test.ts",
         "--reporter=default",
       ],
       coverage: ["shared_phase4_lifecycle"],

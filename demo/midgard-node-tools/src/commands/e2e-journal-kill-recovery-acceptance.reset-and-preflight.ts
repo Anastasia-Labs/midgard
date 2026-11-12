@@ -26,12 +26,10 @@ const scenarioProcessEnv = ({
   port,
   metricsPort,
   commitIntervalMs = 250,
-  confirmationIntervalMs = 250,
 }: {
   readonly port: number;
   readonly metricsPort: number;
   readonly commitIntervalMs?: number;
-  readonly confirmationIntervalMs?: number;
 }): Readonly<Record<string, string | undefined>> => ({
   ...isolatedChildEnv(),
   POSTGRES_HOST: requiredIsolatedChildEnv("POSTGRES_HOST"),
@@ -39,9 +37,6 @@ const scenarioProcessEnv = ({
   PORT: port.toString(),
   PROM_METRICS_PORT: metricsPort.toString(),
   WAIT_BETWEEN_BLOCK_COMMITMENT: commitIntervalMs.toString(),
-  WAIT_BETWEEN_BLOCK_CONFIRMATION: confirmationIntervalMs.toString(),
-  BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: "2000",
-  BLOCK_CONFIRMATION_AWAIT_RETRIES: "1",
   MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
   MIDGARD_DEPLOYMENT_MANIFEST_PATH: requiredIsolatedChildEnv(
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
@@ -59,7 +54,6 @@ export const makeNodeSpec = ({
   metricsPort,
   timeoutMs,
   commitIntervalMs,
-  confirmationIntervalMs,
 }: {
   readonly cwd: string;
   readonly runDir: string;
@@ -69,7 +63,6 @@ export const makeNodeSpec = ({
   readonly metricsPort: number;
   readonly timeoutMs: number;
   readonly commitIntervalMs?: number;
-  readonly confirmationIntervalMs?: number;
 }): JournalKillNodeProcessSpec => {
   const ttlMs = positiveIntegerEnv(
     "MIDGARD_PHASE4_STATE_QUEUE_LEASE_TTL_MS",
@@ -95,7 +88,6 @@ export const makeNodeSpec = ({
         port,
         metricsPort,
         commitIntervalMs,
-        confirmationIntervalMs,
       }),
       rawLogPath: join(runDir, label, `${nodeId}.log`),
       timeoutMs,

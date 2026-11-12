@@ -45,7 +45,6 @@ export const seedBaseAndPayload = async ({
     port,
     metricsPort,
     timeoutMs: processAcceptanceTimeoutMs(),
-    confirmationIntervalMs: 600_000,
   });
   const stopFile = join(runDir, label, "seed.stop");
   const basePromise = superviseHostProcess({

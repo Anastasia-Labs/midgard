@@ -98,7 +98,6 @@ const observedEnums: ReadonlySet<string> = new Set([
   "whole_instant",
   "ordinary",
   "CommitPlanningNotice",
-  "skipped_local_finalization_pending",
   "skipped_unresolved_commitment",
   "skipped_reset_in_progress",
   "no_queued_block",

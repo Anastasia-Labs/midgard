@@ -15,7 +15,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   header,
   isolatedDb,
@@ -34,7 +34,7 @@ const abandonedJournal = (
   signed?: "intended" | "submitted",
 ) =>
   Effect.gen(function* () {
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+    yield* prepareUnderTestLease({
       ...journalFixture(headerHash),
       preparedTxHash: SIGNED_TX_HASH,
     });
@@ -79,16 +79,12 @@ describe("journal insert over an abandoned journal with the same header", () => 
           const sameWindow = header("same-window");
           yield* abandonedJournal(sameWindow, signed);
           const before = yield* rows;
-          const held =
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-              journalFixture(sameWindow),
-            );
+          const held = yield* prepareUnderTestLease(journalFixture(sameWindow));
           const afterHeld = yield* rows;
           const nextWindow = header("next-window");
-          const prepared =
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-              journalFixture(nextWindow),
-            );
+          const prepared = yield* prepareUnderTestLease(
+            journalFixture(nextWindow),
+          );
           return {
             before,
             held,
@@ -131,10 +127,9 @@ describe("journal insert over an abandoned journal with the same header", () => 
         const sameWindow = header("same-window");
         yield* abandonedJournal(sameWindow);
         const before = yield* rows;
-        const prepared =
-          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-            journalFixture(sameWindow),
-          );
+        const prepared = yield* prepareUnderTestLease(
+          journalFixture(sameWindow),
+        );
         return { before, prepared, after: yield* rows };
       }),
     );

@@ -80,26 +80,14 @@ export const mergeActionWithL1ControlPlaneHeld = (
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
-    const [
-      initialUnconfirmedSubmittedBlockTxHash,
-      initialLocalFinalizationPending,
-      initialResetInProgress,
-    ] = yield* Effect.all(
-      [
-        Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-        Ref.get(globals.LOCAL_FINALIZATION_PENDING),
-        Ref.get(globals.RESET_IN_PROGRESS),
-      ],
-      { concurrency: "unbounded" },
-    );
-    if (initialLocalFinalizationPending) {
-      const reason = "local_finalization_pending=true";
-      yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
-      return {
-        status: "skipped_local_finalization_pending",
-        reason,
-      } satisfies MergeActionResult;
-    }
+    const [initialUnconfirmedSubmittedBlockTxHash, initialResetInProgress] =
+      yield* Effect.all(
+        [
+          Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
+          Ref.get(globals.RESET_IN_PROGRESS),
+        ],
+        { concurrency: "unbounded" },
+      );
     if (initialUnconfirmedSubmittedBlockTxHash !== "") {
       const reason = `submitted_tx=${initialUnconfirmedSubmittedBlockTxHash}`;
       yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
@@ -267,7 +255,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
           );
           const [
             unconfirmedSubmittedBlockTxHash,
-            localFinalizationPending,
             resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,
@@ -275,7 +262,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
           ] = yield* Effect.all(
             [
               Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-              Ref.get(globals.LOCAL_FINALIZATION_PENDING),
               Ref.get(globals.RESET_IN_PROGRESS),
               TxAdmissionsDB.countBacklog,
               MempoolDB.retrieveTxCount,
@@ -289,7 +275,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
             queueLength,
             minQueueLength,
             unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-            localFinalizationPending,
             resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,

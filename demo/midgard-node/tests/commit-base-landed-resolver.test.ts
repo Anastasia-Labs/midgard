@@ -3,14 +3,19 @@
  * builds on it only once landed-block processing replayed it to its
  * header's root, the rebase applied it and the native root is that root.
  * Otherwise it waits (`LANDED_COMMIT_BASE_PENDING`), whichever of those is
- * missing; built on, the base is the landed ledger at that header.
+ * missing; built on, the base is the landed ledger at that header. It also
+ * waits while this node's own block is in flight, even one that leaves the
+ * tail's root unchanged.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { ConfirmedLedgerDB } from "../src/database/index.js";
+import {
+  ConfirmedLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "../src/database/index.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
@@ -29,7 +34,12 @@ import {
 } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { simHeader } from "./helpers/state-queue-sim.fixtures.js";
+import {
+  header as journalHeader,
+  journalFixture,
+} from "./local-mutation-job-abandonment.journal-fixture.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -225,5 +235,34 @@ describe("commit base on a foreign queue tail", { concurrent: false }, () => {
       row: { applied: false },
     });
     expectPending(await resolve(tail, r1), headerHash);
+  });
+
+  it("waits while this node's own block is in flight on the tail, though it leaves the root unchanged, and builds once none is", async () => {
+    const { tail, headerHash, r1 } = await fixture({
+      frontier: true,
+      row: {},
+    });
+    // An own block on the applied tail that leaves its root at r1: every
+    // tail check passes, only the live journal holds the commit.
+    const inFlight = journalHeader("unchanged-root-in-flight");
+    const journal = journalFixture(inFlight);
+    await run(
+      prepareUnderTestLease({
+        ...journal,
+        metadata: {
+          ...journal.metadata,
+          baseTailHeaderHash: Buffer.from(headerHash, "hex"),
+          baseRoots: { ...journal.metadata.baseRoots, utxosRoot: r1 },
+          expectedRoots: { ...journal.metadata.expectedRoots, utxosRoot: r1 },
+        },
+      }),
+    );
+    expectPending(await resolve(tail, r1), inFlight.toString("hex"));
+
+    // The journal disposed of, the same tail is a base.
+    await run(PendingBlockFinalizationsDB.markUnsubmittedAbandoned(inFlight));
+    const outcome = await resolve(tail, r1);
+    expect(Either.isRight(outcome)).toBe(true);
+    expect(Either.getOrThrow(outcome).source).toBe(`landed:${headerHash}`);
   });
 });

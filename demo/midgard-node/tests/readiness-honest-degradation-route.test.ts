@@ -6,7 +6,6 @@ import {
   ForcedTransactionsDB,
   StateQueueMutationLeasesDB as Leases,
 } from "../src/database/index.js";
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
@@ -18,6 +17,7 @@ import {
   type L1FollowerState,
 } from "../src/services/l1-follower.readiness.js";
 import { forcedProjectionEntry } from "./helpers/commit-da-frame-forced-projection.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { landedRow } from "./landed-blocks-rebase.fixture.js";
 import {
   header,
@@ -230,9 +230,7 @@ describe("GET /readyz under internal transients", () => {
 
     const unsigned = await readyz({
       journal: asJournalSetup(
-        PendingBlockFinalizationsDB.preparePendingSubmission(
-          journalFixture(header("readiness-unsigned")),
-        ),
+        prepareUnderTestLease(journalFixture(header("readiness-unsigned"))),
       ),
     });
     expect(unsigned.pendingFinalizationAgeMs).toEqual(expect.any(Number));
@@ -244,9 +242,7 @@ describe("GET /readyz under internal transients", () => {
     const signedPastBound = await readyz({
       journal: asJournalSetup(
         Effect.gen(function* () {
-          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-            journalFixture(signedHeader),
-          );
+          yield* prepareUnderTestLease(journalFixture(signedHeader));
           yield* signIntent(signedHeader);
           yield* backdateJournals(16 * 60_000);
         }),

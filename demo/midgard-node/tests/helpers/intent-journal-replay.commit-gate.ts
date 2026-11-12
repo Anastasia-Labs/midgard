@@ -22,9 +22,10 @@ import {
  * worker's `submitWithDurableIntent` seam, whose gate's history write
  * owns the transaction the journal's insert runs in. Its pending block
  * is put back as it stood when the worker signed it (prepared, nothing
- * signed or submitted), then restored as the flow left it once the gate
- * has run, so S6 reads the flow's rows. Its anchor is first rebound to the
- * replay's chain when `emulatorHeightOf` is given.
+ * signed or submitted, its state-queue mutation lease held), then
+ * restored as the flow left it once the gate has run, so S6 reads the
+ * flow's rows. Its anchor is first rebound to the replay's chain when
+ * `emulatorHeightOf` is given.
  */
 export const recordCommitThroughGate = async ({
   runtime,
@@ -48,10 +49,12 @@ export const recordCommitThroughGate = async ({
     readonly submitted_tx_hash: Buffer | null;
     readonly intended_tx_hash: Buffer | null;
     readonly signed_tx_cbor: Buffer | null;
+    readonly state_queue_lease_token: string;
   };
   const signedOf = (pending: SqlClient.SqlClient) =>
     pending<Signed>`SELECT status, submitted_tx_hash, intended_tx_hash,
-        signed_tx_cbor FROM pending_block_finalizations
+        signed_tx_cbor, state_queue_lease_token
+      FROM pending_block_finalizations
       WHERE header_hash = ${header}`.pipe(Effect.map((rows) => rows[0]));
   const flowLeft = await runtime.runPromise(signedOf(sql));
   if (flowLeft === undefined)
@@ -62,6 +65,11 @@ export const recordCommitThroughGate = async ({
     SET status = 'pending_submission', submitted_tx_hash = NULL,
       intended_tx_hash = NULL, signed_tx_cbor = NULL
     WHERE header_hash = ${header}`);
+  const lease = flowLeft.state_queue_lease_token;
+  await runtime.runPromise(sql`INSERT INTO state_queue_mutation_leases
+      (token, scope, holder, status, expires_at)
+    VALUES (${lease}, 'state_queue', 'commit-replay', 'active',
+      NOW() + INTERVAL '10 minutes')`);
   const outcome = await runtime.runPromise(
     Effect.either(
       submitWithDurableIntent(
@@ -89,6 +97,9 @@ export const recordCommitThroughGate = async ({
     ),
   );
   const written = await runtime.runPromise(signedOf(sql));
+  await runtime.runPromise(
+    sql`DELETE FROM state_queue_mutation_leases WHERE token = ${lease}`,
+  );
   await runtime.runPromise(sql`UPDATE pending_block_finalizations
     SET status = ${flowLeft.status},
       submitted_tx_hash = ${flowLeft.submitted_tx_hash},

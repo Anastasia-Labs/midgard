@@ -87,17 +87,17 @@ describe("pruning ended state-queue mutation leases", () => {
   it("keeps an ended lease past the window while a retained journal names it", async () => {
     const result = await run(
       Effect.gen(function* () {
-        yield* seed;
-        // The journal fixture names "lease-token".
+        // The journal fixture names "lease-token", ended since.
+        yield* journals([
+          { label: "named", status: "locally_applied", endedAgoMs: DAY_MS },
+        ]);
         yield* insertLease({
           token: "lease-token",
           status: "released",
           acquiredAgoMs: 40 * DAY_MS,
           releasedAgoMs: 40 * DAY_MS,
         });
-        yield* journals([
-          { label: "named", status: "locally_applied", endedAgoMs: DAY_MS },
-        ]);
+        yield* seed;
         const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
           olderThanMs: MANIFEST_WINDOW_MS,
         });

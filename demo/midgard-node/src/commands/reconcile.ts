@@ -18,7 +18,6 @@ import "./reconcile.parse-reconciliation-result.js";
 import "./reconcile.reconcile-phas-registered-program.js";
 import "./reconcile.reconcile-reference-scripts-complete-program.js";
 import "./reconcile.reconcile-da-attested-program.js";
-import "./reconcile.reconcile-local-finalization-program.js";
 import "./reconcile.reconcile-merge-complete-program.js";
 export {
   parseReconciliationResult,
@@ -35,9 +34,8 @@ export {
 export {
   type MergeCompletionObservation,
   mergeCompletionVerdict,
-  reconcileLocalFinalizationProgram,
-} from "./reconcile.reconcile-local-finalization-program.js";
-export { reconcileMergeCompleteProgram } from "./reconcile.reconcile-merge-complete-program.js";
+  reconcileMergeCompleteProgram,
+} from "./reconcile.reconcile-merge-complete-program.js";
 export { reconcilePhasRegisteredProgram } from "./reconcile.reconcile-phas-registered-program.js";
 export {
   type CanonicalDaAttestationDecision,

@@ -11,7 +11,6 @@ import { type ReconciliationCheck } from "./state-reconciliation.compares.js";
 import {
   type Context,
   finishCheck,
-  JOURNAL_STATUS,
   newAccumulator,
   plural,
   skipCheck,
@@ -181,20 +180,11 @@ export const checkWithdrawals = (
         `${label} is assigned to active journal ${header}, not on L1 yet`,
       );
     }
-    // Local finalization of the block (and the merge) marks its withdrawals
-    // finalized; before that they are projected.
-    const journalFinalized =
-      ctx.journals.get(header)?.status === JOURNAL_STATUS.LocallyApplied;
+    // Projected once its block is applied; the fold of the merge that takes
+    // the block marks it finalized.
     if (row.status === WithdrawalsDB.Status.Awaiting) {
       acc.failures.push(
         `${label}: assigned to ${placement} header ${header} but status is ${row.status}`,
-      );
-    } else if (
-      journalFinalized &&
-      row.status !== WithdrawalsDB.Status.Finalized
-    ) {
-      acc.failures.push(
-        `${label}: journal ${header} is finalized but the withdrawal status is ${row.status}, expected finalized`,
       );
     } else if (
       placement === "merged" &&

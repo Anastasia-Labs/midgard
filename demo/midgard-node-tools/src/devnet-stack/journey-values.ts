@@ -111,11 +111,6 @@ export const drainResidue = (status: Json): string[] => {
     queue?.unconfirmedSubmittedBlockTxHash === null,
   );
   expect(
-    "stateQueue.localFinalizationPending",
-    queue?.localFinalizationPending,
-    queue?.localFinalizationPending === false,
-  );
-  expect(
     "pendingBlockFinalizations.oldestActive",
     pending?.oldestActive,
     pending?.oldestActive === null,

@@ -5,12 +5,14 @@
  * follower-change driver over it (`makeEmulatorDriver`): its sink, its
  * recompute with the node's startup preparation (`prepareNodeOnStartup`)
  * and native MPF owner, the rebase the own-commit disposition makes due
- * and, with `landedBlocks`, the landed-block hook at each applied view.
- * Producers run at the driver's applied view (`runAtFollowerView`), as the
- * node's fibers do.
+ * and the landed-block hook at each applied view, as the node's follower
+ * runs it (`foreignBlockInclusion`). Producers run at the driver's applied
+ * view (`runAtFollowerView`), as the node's fibers do.
  *
  * - `synchronize` runs the driver at the emulator's tip until it applies
  *   there, then checks the validation cache against the durable ledger.
+ * - `applyLanded` takes in an own block whose commit is on L1, as the node
+ *   does: the landed-block processing and the rebase that applies it.
  * - `command` runs a producer, then synchronizes.
  * - `restartRuntime` stops every service of the running generation and
  *   starts the next on the same database and emulator, as a node restart
@@ -26,12 +28,23 @@
  * emulator come from `openPublishedLifecycle`.
  */
 import { SqlClient } from "@effect/sql";
-import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
+import {
+  Effect,
+  Exit,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Ref,
+  Scope,
+} from "effect";
 import { expect, vi } from "vitest";
 
 import { initializeNodeDatabase } from "../../src/commands/listen-startup.initialize-database.js";
 import { prepareNodeOnStartup } from "../../src/commands/listen-startup.prepare-node.js";
-import { MempoolLedgerDB } from "../../src/database/index.js";
+import {
+  MempoolLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "../../src/database/index.js";
 import type { DriverHold } from "../../src/l1-events/driver.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
@@ -73,9 +86,6 @@ export type ProductionLifecycleOptions = {
   /** The deployment's automatic rollback horizon k, overridden in this
    * fixture's in-memory identity only (the manifest pins 2160). */
   readonly rollbackHorizon?: number;
-  /** Each driver run also runs the node's landed-block hook at its view;
-   * `landedHold` reads its last hold. */
-  readonly landedBlocks?: boolean;
   /** Runs first in every startup preparation: observes the state a
    * generation starts from. */
   readonly beforePreparation?: (
@@ -203,21 +213,18 @@ export const openProductionLifecycle = async (
     const cache = await runtime.runPromise(MempoolLedgerCache);
     // The landed-block hook's rebase is the driver's recompute, made below.
     const late: { recompute?: DriverRecompute } = {};
-    const landed =
-      options.landedBlocks === true
-        ? await openLandedBlocks({
-            contracts: fixture.contracts,
-            nodeConfig,
-            securityParameter,
-            run: (effect) => runtime.runPromise(effect),
-            rebase: (reason) =>
-              Effect.suspend(() =>
-                late.recompute === undefined
-                  ? Effect.succeed(undefined)
-                  : late.recompute.rebaseIfDue(reason),
-              ),
-          })
-        : undefined;
+    const landed = await openLandedBlocks({
+      contracts: fixture.contracts,
+      nodeConfig,
+      securityParameter,
+      run: (effect) => runtime.runPromise(effect),
+      rebase: (reason) =>
+        Effect.suspend(() =>
+          late.recompute === undefined
+            ? Effect.succeed(undefined)
+            : late.recompute.rebaseIfDue(reason),
+        ),
+    });
     const before = options.beforePreparation;
     const driver = await runtime.runPromise(
       makeEmulatorDriver(fixture, {
@@ -227,7 +234,7 @@ export const openProductionLifecycle = async (
             : before(generation, globals).pipe(
                 Effect.zipRight(prepareNodeOnStartup),
               ),
-        ...(landed === undefined ? {} : { landed: landed.hook }),
+        landed: landed.hook,
       }),
     );
     late.recompute = driver.recompute;
@@ -324,7 +331,7 @@ export const openProductionLifecycle = async (
           await runtime.runPromise(Scope.close(scope, Exit.void));
         } finally {
           try {
-            await landed?.close();
+            await landed.close();
           } finally {
             await runtime.dispose();
           }
@@ -349,14 +356,47 @@ export const openProductionLifecycle = async (
       }
       throw error;
     }
+    /** The landed-block hook at the driver's applied view. */
+    const processLanded = async () => {
+      const view = driver.applied();
+      if (view === null) throw new Error("The driver has no applied view");
+      return landed.hook({ kind: "unchanged", view });
+    };
+    /**
+     * Own block `headerHash`, its commit on L1, taken in as the node takes
+     * it: the synchronization's landed-block processing and the rebase that
+     * applies it; the hook, run again at the applied view, then holds
+     * nothing, and the block's journal is locally applied.
+     */
+    const applyLanded = async (headerHash: string) => {
+      await synchronize();
+      expect(await processLanded()).toBeUndefined();
+      const journal = await runtime.runPromise(
+        PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          Buffer.from(headerHash, "hex"),
+        ),
+      );
+      expect(
+        Option.map(
+          journal,
+          (record) => record[PendingBlockFinalizationsDB.Columns.STATUS],
+        ),
+      ).toEqual(Option.some(PendingBlockFinalizationsDB.Status.LocallyApplied));
+    };
     const handle = {
       ...recorded,
       globals,
-      production: { cache, nodeConfig, synchronize, onCommitAttempt },
+      production: {
+        cache,
+        nodeConfig,
+        synchronize,
+        onCommitAttempt,
+        applyLanded,
+      },
       commitAttempts,
       synchronize,
-      /** The landed-block hook's hold at the last driver run (with
-       * `landedBlocks`; otherwise always undefined). */
+      applyLanded,
+      /** The landed-block hook's hold at the last driver run. */
       landedHold: () => landedHold,
       /** The hold of the rebase the last run's own-commit disposition made
        * due, if it did not finish. */
@@ -366,14 +406,7 @@ export const openProductionLifecycle = async (
       /** The driver's recompute when the rebase is due, as after S6. */
       rebaseIfDue: (reason: string) =>
         runtime.runPromise(driver.recompute.rebaseIfDue(reason)),
-      /** The landed-block hook at the driver's applied view (with
-       * `landedBlocks`). */
-      processLanded: async () => {
-        const view = driver.applied();
-        if (landed === undefined || view === null)
-          throw new Error("No landed-block hook or no applied view");
-        return landed.hook({ kind: "unchanged", view });
-      },
+      processLanded,
       command,
       runWithoutSynchronizing,
       evidence,

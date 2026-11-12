@@ -4,7 +4,6 @@ import { Deferred, Effect, Exit, Fiber, Option, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runCommitWorkerInThread } from "../src/fibers/block-commitment.run-commit-worker-in-thread.js";
-import { makeConfirmationWorkerRunner } from "../src/fibers/block-confirmation.run-confirmation-worker-in-thread.js";
 import type { SpawnWorker } from "../src/fibers/worker-lifecycle.js";
 import {
   Globals,
@@ -251,55 +250,6 @@ describe("commitment worker with a termination that never completes", () => {
     expect(output).toBe("committed");
     expect(stub.calls.terminate).toBe(1);
     expect(releases.count).toBe(1);
-  });
-});
-
-describe("confirmation worker bounds", () => {
-  it("an interrupted job with a hung termination returns within the bounded wait", async () => {
-    const stub = stubWorker({ terminateResolves: false });
-    const result = await within(
-      runWithGlobals(
-        Effect.gen(function* () {
-          const globals = yield* Globals;
-          const runner = makeConfirmationWorkerRunner({
-            workerEntry: "unused",
-            terminationWaitMs: 100,
-            spawnWorker: stub.spawnWorker,
-          });
-          const exit = yield* withL1ControlPlane(
-            globals,
-            { scope: "block_confirmation", maxHoldMs: 100 },
-            runner({ data: { firstRun: false, pendingBlock: null } } as never),
-          ).pipe(Effect.exit);
-          return exit;
-        }),
-      ),
-      3_000,
-    );
-    expect(result).not.toBe("hung");
-  });
-
-  it("fails a job that produces no output within its timeout and terminates the worker", async () => {
-    const stub = stubWorker({ terminateResolves: true });
-    const exit = await within(
-      Effect.runPromise(
-        makeConfirmationWorkerRunner({
-          workerEntry: "unused",
-          jobTimeoutMs: 100,
-          spawnWorker: stub.spawnWorker,
-        })({ data: { firstRun: false, pendingBlock: null } } as never).pipe(
-          Effect.exit,
-        ),
-      ),
-      3_000,
-    );
-    expect(exit).not.toBe("hung");
-    if (exit === "hung") return;
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(String(exit.cause)).toContain("produced no output within 100 ms");
-    }
-    expect(stub.calls.terminate).toBe(1);
   });
 });
 

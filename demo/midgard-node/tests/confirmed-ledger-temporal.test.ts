@@ -93,7 +93,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
   it("unfolds a merge a rollback undid back to the root's header, then folds it again", async () => {
     const { a, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     const deposit = makeDepositEntry({
       [DepositsDB.Columns.PROJECTED_HEADER_HASH]: Buffer.from(a.hash, "hex"),
       [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
@@ -105,6 +105,8 @@ describe("temporal confirmed_ledger on an own merged block", () => {
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), unmerged);
+        // The rebase applied `a` (its own suites cover the rebase).
+        yield* markApplied([a.hash]);
         // The fold and the unfold below read no whole ledger: O(delta).
         expect(
           yield* scansOf(processLandedQueue(ports(state), merged)),
@@ -144,7 +146,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
   it("refuses a fold on a wrong base by name, writing nothing", async () => {
     const { a, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     const deposit = makeDepositEntry({
       [DepositsDB.Columns.PROJECTED_HEADER_HASH]: Buffer.from(a.hash, "hex"),
       [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
@@ -155,6 +157,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
         const unchanged = Effect.gen(function* () {
           expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
           expect(yield* depositStatus(id)).toBe(DepositsDB.Status.Projected);
@@ -215,8 +218,8 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     );
     expect(a2.hash).not.toBe(a.hash);
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
-    state.journals.set(a2.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
+    state.journals.set(a2.hash, journalA);
     const deposit = makeDepositEntry({
       [DepositsDB.Columns.PROJECTED_HEADER_HASH]: Buffer.from(a.hash, "hex"),
       [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
@@ -227,6 +230,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
         yield* processLandedQueue(
           ports(state),
           queueOf(confirmedAt(a, ""), []),
@@ -241,6 +245,8 @@ describe("temporal confirmed_ledger on an own merged block", () => {
           createdAt(genesisQueue.nodes[0]!, 2),
           createdAt(mergedA2.root!, 3),
         ];
+        yield* processLandedQueue(ports(state), mergedA2);
+        yield* markApplied([a2.hash]);
         yield* processLandedQueue(ports(state), mergedA2);
         expect(yield* Frontier.retrieve).toEqual({
           headerHash: a2.hash,
@@ -261,7 +267,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
   it("releases a fold only once the prune boundary reaches its merge, never one a rollback unfolded", async () => {
     const { a, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     const unmerged = queueOf(genesisState, [a]);
     const merged = queueOf(confirmedAt(a, ""), []);
     const mergedAt7 = { ...merged, root: createdAt(merged.root!, 7) };
@@ -272,6 +278,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     await inNode(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), unmerged);
+        yield* markApplied([a.hash]);
         yield* processLandedQueue(ports(state), mergedAt7);
         expect((yield* retrieveMergeLinks).get(a.hash)?.merge?.slot).toBe(7);
         // Below the merge: not final, not released.
@@ -303,7 +310,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
   it("keeps a folded block's rows marked until its fold is final, and loses none when a rollback unfolds it first", async () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     // `a` (own) includes txA; the foreign `f` on it includes txF.
     const [txA] = journalA.txIds;
     const txF = simDigest("foreign:tx-f");
@@ -346,8 +353,8 @@ describe("temporal confirmed_ledger on an own merged block", () => {
           })),
         );
         yield* processLandedQueue(withIncludes, fCommitted);
-        // The rebase applied `f` (its own suites cover the rebase).
-        yield* markApplied([f.hash]);
+        // The rebase applied both (its own suites cover the rebase).
+        yield* markApplied([a.hash, f.hash]);
         const both = [marked(a.hash)(txA!), marked(f.hash)(txF)].sort();
         expect(yield* mempoolMarks).toEqual(both);
 

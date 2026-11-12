@@ -73,7 +73,7 @@ describe("L1 control-plane waiter wedge watchdog", () => {
         const waiter = yield* Effect.fork(
           withL1ControlPlane(
             globals,
-            { scope: "block_confirmation", maxHoldMs: 1_000 },
+            { scope: "state_queue_merge", maxHoldMs: 1_000 },
             Effect.succeed("ran"),
           ),
         );
@@ -97,11 +97,11 @@ describe("L1 control-plane waiter wedge watchdog", () => {
     expect(outcome.gaugeWhileWedged).toBe(1);
     expect(outcome.errorsWhileWedged).toBe(1);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("scope block_confirmation has waited");
+    expect(errors[0]).toContain("scope state_queue_merge has waited");
     expect(errors[0]).toContain("held by an unregistered holder");
     expect(
       outcome.reasonsWhileWedged.some((r) =>
-        r.startsWith("l1_control_plane_wedged:waiter=block_confirmation"),
+        r.startsWith("l1_control_plane_wedged:waiter=state_queue_merge"),
       ),
     ).toBe(true);
     expect(outcome.ran).toBe("ran");
@@ -134,7 +134,7 @@ describe("L1 control-plane waiter wedge watchdog", () => {
         yield* Deferred.await(entered);
         const ran = yield* withL1ControlPlane(
           globals,
-          { scope: "block_confirmation", maxHoldMs: 1_000 },
+          { scope: "state_queue_merge", maxHoldMs: 1_000 },
           Effect.succeed("ran"),
         );
         yield* Fiber.join(holder);
@@ -179,7 +179,7 @@ describe("L1 control-plane waiter wedge watchdog", () => {
         yield* Effect.sleep(5);
         const ran = yield* withL1ControlPlane(
           globals,
-          { scope: "block_confirmation", maxHoldMs: 1_000 },
+          { scope: "state_queue_merge", maxHoldMs: 1_000 },
           Effect.succeed("ran"),
         );
         yield* Fiber.join(first);

@@ -38,9 +38,7 @@ import {
   mergeMaturityWindow,
   MidgardContracts,
   NodeConfig,
-  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
@@ -229,7 +227,7 @@ const openMergeLifecycle = async () => {
     await h.synchronize();
     return hash;
   };
-  // One deposit, committed, confirmed, locally finalized and attested: a
+  // One deposit, committed, landed, applied and attested: a
   // block the merge fiber may fold once it matures.
   const commitDepositBlock = async (lovelace: bigint, mature = true) => {
     await ensureSeparateCollateralUtxo(wallet);
@@ -284,23 +282,7 @@ const openMergeLifecycle = async () => {
     expect(await fixture.operatorLucid.awaitTx(commit.submittedTxHash)).toBe(
       true,
     );
-    await h.synchronize();
-    await runBlockConfirmation(
-      h.globals,
-      fixture.contracts,
-      lucidService,
-      h.production.nodeConfig,
-      h.production,
-    );
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      h.globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      h.production.nodeConfig,
-      { ...h.production, globals: h.globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    await h.applyLanded(commit.submittedHeaderHash);
     const tail = (
       await Effect.runPromise(
         emulatorStateQueueSnapshot(
@@ -630,7 +612,7 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
   }
 });
 
-it("refuses to fold a landed merge whose retained journal names a different canonical parent", async () => {
+it("refuses to finalize a landed merge whose retained journal names a different canonical parent", async () => {
   const m = await openMergeLifecycle();
   try {
     await assertLandedMergeParentRefusal(m, mergeHooks, expectFinalizedOnce);

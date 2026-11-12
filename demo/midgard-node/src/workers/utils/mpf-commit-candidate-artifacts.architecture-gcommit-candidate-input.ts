@@ -124,14 +124,12 @@ export type ArchitectureGCommitCandidateInput = {
   readonly workerInput: {
     readonly data: {
       readonly availableConfirmedBlock: "";
-      readonly availableLocalFinalizationBlock: "";
       readonly currentBlockStartTimeMs: number;
       readonly forcedValidationSlotConfig: {
         readonly zeroTime: number;
         readonly zeroSlot: number;
         readonly slotLength: number;
       };
-      readonly localFinalizationPending: false;
       readonly ledgerStoreLeaseOwner: string;
       readonly mempoolTxsCountSoFar: 0;
       readonly sizeOfProcessedTxsSoFar: 0;

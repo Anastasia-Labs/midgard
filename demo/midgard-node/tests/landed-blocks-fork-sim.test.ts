@@ -51,9 +51,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 import fc from "fast-check";
 import { Level } from "level";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { MempoolLedgerDB } from "../src/database/index.js";
+import {
+  MempoolLedgerDB,
+  type PendingBlockFinalizationsDB,
+} from "../src/database/index.js";
 import { queueTerminalProjection } from "../src/l1-queue-terminals/index.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
@@ -81,6 +84,58 @@ import {
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
+
+// The simulator's own blocks are synthetic: their transactions are not
+// native payloads and their headers' roots do not commit their members. The
+// rebase that applies one inserts its transactions into `immutable` without
+// the native payload check, stores a fixture DA payload under its header and
+// seeds no publication outbox. Neither is part of the derivation compared
+// here.
+vi.mock("../src/database/immutable.js", async (original) => {
+  const actual =
+    await original<typeof import("../src/database/immutable.js")>();
+  return { ...actual, insertTxsValidatedNative: actual.insertTxs };
+});
+vi.mock(
+  "../src/workers/commit-block-header/da-payload.js",
+  async (original) => {
+    const { Effect } = await import("effect");
+    const { DaPayloadsDB, PendingBlockFinalizationsDB: Journals } =
+      await import("../src/database/index.js");
+    const { daPayloadInsertFixture } = await import(
+      "./database.test/fixtures.events.js"
+    );
+    return {
+      ...(await original<
+        typeof import("../src/workers/commit-block-header/da-payload.js")
+      >()),
+      buildDaPayloadInsert: ({
+        record,
+      }: {
+        record: PendingBlockFinalizationsDB.Record;
+      }) =>
+        Effect.succeed({
+          ...daPayloadInsertFixture("landed-sim"),
+          [DaPayloadsDB.Columns.HEADER_HASH]:
+            record[Journals.Columns.HEADER_HASH],
+          // The same payload whenever the block is applied again.
+          [DaPayloadsDB.Columns.BLOCK_START_TIME]:
+            record[Journals.Columns.BLOCK_START_TIME],
+          [DaPayloadsDB.Columns.BLOCK_END_TIME]:
+            record[Journals.Columns.BLOCK_END_TIME],
+          [DaPayloadsDB.Columns.BLOCK_TIME]:
+            record[Journals.Columns.BLOCK_TIME],
+        }),
+    };
+  },
+);
+vi.mock("../src/da/libp2p-producer.js", async (original) => {
+  const { Effect } = await import("effect");
+  return {
+    ...(await original<typeof import("../src/da/libp2p-producer.js")>()),
+    seedDaPayloadPublicationOutboxFromEnv: () => Effect.void,
+  };
+});
 
 const SIM_K = 6;
 const RUNS = Number(process.env.LANDED_BLOCKS_FORK_SIM_RUNS ?? "6");
@@ -272,7 +327,7 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "ownAppends",
     "liveRebases",
     "ownProcessed",
-    "ownMerges",
+    "ownApplied",
     "ownResolutions",
     "ownOnRemovedBase",
     "ownRevivals",

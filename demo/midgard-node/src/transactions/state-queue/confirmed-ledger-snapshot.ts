@@ -6,14 +6,10 @@ import {
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Option } from "effect";
 
-import {
-  ConfirmedLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "../../database/index.js";
+import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
-import { Database } from "../../services/index.js";
 
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];
@@ -336,16 +332,4 @@ export const materializeLedgerDeltaSuffix = ({
       ({ entries, root } = yield* applyJournalDelta(record, entries, delta));
     }
     return { entries, root };
-  });
-
-export const materializeConfirmedLedgerSnapshot = (
-  record: PendingBlockFinalizationsDB.Record,
-): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-    return yield* materializeConfirmedLedgerDeltaChain({
-      record,
-      confirmedEntries,
-      retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-    });
   });

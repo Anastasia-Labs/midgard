@@ -240,8 +240,7 @@ printf '%s\n' "$TRANSFER_STATUS_JSON" | jq -e \
 ```
 
 The deadline is 20 minutes plus the final request/poll interval. `committed`,
-`accepted`, `pending_commit`, and `awaiting_local_recovery` require further
-progress. A rejected transaction needs diagnosis; do not sign a replacement
+`accepted`, and `pending_commit` require further progress. A rejected transaction needs diagnosis; do not sign a replacement
 using an interrupted submission ID.
 
 ## 5. Wait For The Deposit To Reach The Reserve

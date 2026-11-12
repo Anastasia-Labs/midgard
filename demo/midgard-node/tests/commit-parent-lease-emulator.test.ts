@@ -37,8 +37,6 @@ import {
   fetchLatestCommittedBlock,
   getStateQueueDatumEndTime,
   mergeMaturityWindow,
-  runBlockConfirmation,
-  runLocalFinalizationRecoveryWorker,
   runMergeUntilMerged,
   SDK,
   serializeStateQueueUTxO,
@@ -50,7 +48,7 @@ import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 /** The real worker, follower-change driver, parent failure classifier and SQL
  * mutation lease, in process; provider acceptance and response loss are real
  * emulator actions (no worker IPC, listen, merge contention or restart). */
-it("fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent", async () => {
+it("fails the parent operation lease after accepted response loss while a later lease preserves the signed intent, then applies it at landing", async () => {
   const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const lucid = fixture.operatorLucid;
@@ -130,13 +128,11 @@ it("fails the parent operation lease after accepted response loss while a later 
                 {
                   data: {
                     availableConfirmedBlock,
-                    availableLocalFinalizationBlock: "",
                     currentBlockStartTimeMs,
                     forcedValidationSlotConfig: canonicalSlotConfigForLucid(
                       lucidService.api,
                     ),
                     ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
-                    localFinalizationPending: false,
                     mempoolTxsCountSoFar: 0,
                     sizeOfProcessedTxsSoFar: 0,
                     stateQueueLeaseToken,
@@ -413,9 +409,9 @@ it("fails the parent operation lease after accepted response loss while a later 
     };
     fixture.emulator.submitTx = observingSubmit;
 
-    diagnostic.stage = "canonical-confirmation";
+    diagnostic.stage = "landing";
     expect(await lucid.awaitTx(accepted.txHash)).toBe(true);
-    await h.synchronize();
+    await h.applyLanded(accepted.headerHash);
     const confirmedReceipts = h.receipts.filter(
       ({ transaction }) => transaction.txHash === accepted!.txHash,
     );
@@ -432,55 +428,12 @@ it("fails the parent operation lease after accepted response loss while a later 
         { key: deposit.idCbor, value: deposit.infoCbor },
       ]),
     );
-    const priorToConfirmation = await readIntent(accepted.txHash);
-    assertIntent(priorToConfirmation, accepted.txHash, accepted.signedCbor);
-    expect(priorToConfirmation[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    let reconciliationLeaseToken: string | undefined;
-    const reconciliation = await Effect.runPromise(
-      Leases.tryWithLease("history-parent-lease-reconciliation", (token) => {
-        reconciliationLeaseToken = token;
-        return Effect.tryPromise(() =>
-          runBlockConfirmation(
-            globals,
-            fixture.contracts,
-            lucidService,
-            production.nodeConfig,
-            production,
-          ),
-        );
-      }).pipe(Effect.provide(Database.layer)),
-    );
-    expect(reconciliation._tag).toBe("Ran");
-    expect(reconciliationLeaseToken).toBeDefined();
-    expect(reconciliationLeaseToken).not.toBe(attempts[0]!.token);
-    const reconciliationLease = await readLease(reconciliationLeaseToken!);
-    expect(reconciliationLease[Leases.Columns.STATUS]).toBe(
-      Leases.Status.Released,
-    );
-    diagnostic.reconciliationLease = reconciliationLease;
-    const observed = await readIntent(accepted.txHash);
-    assertIntent(observed, accepted.txHash, accepted.signedCbor);
-    expect(observed[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
-      accepted.txHash,
-    );
-    expect(observed[Pending.Columns.STATUS]).toBe(
-      Pending.Status.ObservedWaitingStability,
-    );
-    diagnostic.afterConfirmation = observed;
-    diagnostic.stage = "local-finalization";
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      production.nodeConfig,
-      { ...production, globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-      throw new Error("Canonical intent requires native local finalization");
-    expect(recovery.finalizedHeaderHash).toBe(accepted.headerHash);
-    await h.synchronize();
+    // The lost response never recorded the submission: the journal keeps
+    // its signed intent, and landing applied it.
+    const applied = await readIntent(accepted.txHash);
+    assertIntent(applied, accepted.txHash, accepted.signedCbor);
+    expect(applied[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
+    expect(applied[Pending.Columns.STATUS]).toBe(Pending.Status.LocallyApplied);
     const native = await Effect.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
     expect(native).toBeDefined();
     expect((await native!.diagnostics()).durableRoot).toBe(
@@ -489,9 +442,8 @@ it("fails the parent operation lease after accepted response loss while a later 
     const l2 = await h.command(utxosProgram(address));
     expect(l2.utxoCount).toBe(1);
     expect(l2.totals.lovelace).toBe(12_000_000n);
-    diagnostic.localFinalization = {
-      recovery,
-      journal: await readIntent(accepted.txHash),
+    diagnostic.landing = {
+      journal: applied,
       native: await native!.diagnostics(),
       l2,
     };
@@ -523,9 +475,7 @@ it("fails the parent operation lease after accepted response loss while a later 
     expect(settled).toHaveLength(1);
     const finalRow = await readIntent(accepted.txHash);
     assertIntent(finalRow, accepted.txHash, accepted.signedCbor);
-    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
-      accepted.txHash,
-    );
+    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     expect(finalRow[Pending.Columns.STATUS]).toBe(
       Pending.Status.LocallyApplied,
     );
@@ -552,7 +502,7 @@ it("fails the parent operation lease after accepted response loss while a later 
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance and lost response; real in-process parent classifier/lease/SQL composition under the follower-change driver; later operation and canonical reconciliation/native finalization/mature merge. Synthetic ancestry. No actual Worker IPC, full listen scheduling, native parent failure catcher, merge contention or restart acceptance.",
+                "Actual emulator acceptance and lost response; real in-process parent classifier/lease/SQL composition under the follower-change driver; later operation, landed-block application and mature merge. Synthetic ancestry. No actual Worker IPC, full listen scheduling, native parent failure catcher, merge contention or restart acceptance.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

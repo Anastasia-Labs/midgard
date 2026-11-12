@@ -52,6 +52,12 @@ export const reviveAbandonedCanonical = (
     ),
   );
 
+/**
+ * Marks the journal of a block that landed as locally applied, from
+ * whichever active status its commit path last wrote: the landed block
+ * proves its commit. The abandoned unsubmitted journals it supersedes are
+ * deleted with it.
+ */
 export const markFinalized = (
   headerHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -63,10 +69,7 @@ export const markFinalized = (
           SET ${sql(Columns.STATUS)} = ${Status.LocallyApplied},
               ${sql(Columns.UPDATED_AT)} = NOW()
           WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-            AND ${sql(Columns.STATUS)} IN (
-              ${Status.SubmittedUnconfirmed},
-              ${Status.ObservedWaitingStability}
-            )
+            AND ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
           RETURNING *`;
         const finalized = updated[0];
         if (finalized !== undefined) {

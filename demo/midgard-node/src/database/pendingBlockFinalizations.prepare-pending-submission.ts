@@ -39,6 +39,7 @@ import {
   retainedRootMemberEntry,
   withdrawalMemberEntry,
 } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
+import { holdMutationLease } from "./pendingBlockFinalizations.hold-mutation-lease.js";
 import {
   exactBytes,
   exactDate,
@@ -219,6 +220,10 @@ export const preparePendingSubmission = (
     );
     return yield* withFollowerWrite(
       Effect.gen(function* () {
+        yield* holdMutationLease(
+          metadata.stateQueueLeaseToken,
+          input.headerHash,
+        );
         const candidateHistory = yield* requireCandidateView;
         if (
           (Option.isSome(candidateHistory) &&

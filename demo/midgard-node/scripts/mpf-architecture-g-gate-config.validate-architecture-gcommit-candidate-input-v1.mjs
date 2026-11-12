@@ -117,10 +117,8 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
     input.workerInput.data,
     [
       "availableConfirmedBlock",
-      "availableLocalFinalizationBlock",
       "currentBlockStartTimeMs",
       "forcedValidationSlotConfig",
-      "localFinalizationPending",
       "ledgerStoreLeaseOwner",
       "mempoolTxsCountSoFar",
       "sizeOfProcessedTxsSoFar",
@@ -167,13 +165,11 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
     JSON.stringify(forcedValidationSlotConfig) !==
       JSON.stringify(verifiedSlotConfigDocument.slotConfig) ||
     data.availableConfirmedBlock !== "" ||
-    data.availableLocalFinalizationBlock !== "" ||
     !isPositiveSafeInteger(data.currentBlockStartTimeMs) ||
     !isNonNegativeSafeInteger(forcedValidationSlotConfig.zeroTime) ||
     !isNonNegativeSafeInteger(forcedValidationSlotConfig.zeroSlot) ||
     !isPositiveSafeInteger(forcedValidationSlotConfig.slotLength) ||
     !isNonNegativeSafeInteger(currentBlockSlot) ||
-    data.localFinalizationPending !== false ||
     !/^commit:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
       data.ledgerStoreLeaseOwner,
     ) ||

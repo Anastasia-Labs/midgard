@@ -101,6 +101,9 @@ export type ProductionHistoryFixtureRuntime = {
   readonly cache: MempoolLedgerCacheService;
   readonly nodeConfig: NodeConfigDep;
   readonly synchronize: () => Promise<void>;
+  /** Takes in own block `headerHash`, its commit on L1, as the node does
+   * (`ProductionLifecycle.applyLanded`). */
+  readonly applyLanded: (headerHash: string) => Promise<void>;
   readonly onCommitAttempt?: (
     receipt: Readonly<{
       permit: FollowerWritePermit;

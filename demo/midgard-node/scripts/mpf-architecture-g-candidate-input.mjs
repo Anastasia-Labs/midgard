@@ -177,10 +177,8 @@ const candidateInput = validateArchitectureGCommitCandidateInputV1({
   workerInput: {
     data: {
       availableConfirmedBlock: "",
-      availableLocalFinalizationBlock: "",
       currentBlockStartTimeMs: baseBlockEndTimeMs,
       forcedValidationSlotConfig: slotConfigArtifactDocument.slotConfig,
-      localFinalizationPending: false,
       ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
       mempoolTxsCountSoFar: 0,
       sizeOfProcessedTxsSoFar: 0,

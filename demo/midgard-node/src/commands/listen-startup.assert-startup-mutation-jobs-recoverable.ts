@@ -16,8 +16,8 @@ import {
  * It runs while this process holds the node instance lock, so no other node
  * process is live on this database; after pending history reconciliation (a
  * correction rewind that abandons a removed block's journal also removes its
- * job) and before any fiber starts. It closes a local finalization that
- * finished all but its markCompleted, and refuses to serve while any job
+ * job) and before any fiber starts. It closes a local finalization whose
+ * block landed-block processing applies, and refuses to serve while any job
  * needs operator recovery; see classifyUnfinishedMutationJobOnStartup.
  * Otherwise it only reads; the previous process's state-queue leases are a
  * separate startup step (releaseStateQueueLeasesOfPreviousNodeProcess).
@@ -46,15 +46,12 @@ export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
     if (disposition === "complete") {
       yield* MutationJobsDB.markCompleted(jobId).pipe(withFollowerWrite);
       yield* Effect.logWarning(
-        `Startup completed local mutation job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}): its journal is finalized, so the process that ran it ended after its last durable step and before recording completion.`,
+        `Startup completed local mutation job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}): landed-block processing applies its submitted block when it lands, so the job has no work left.`,
       );
       continue;
     }
     yield* Effect.logWarning(
-      job[MutationJobsDB.Columns.KIND] ===
-        MutationJobsDB.Kind.ConfirmedMergeFinalization
-        ? `Startup left ${job[MutationJobsDB.Columns.STATUS]} confirmed-merge finalization job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}) to the runtime: the merge fiber finalizes every merge L1 confirmed before it merges again, once the follower-change driver has published its view. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`
-        : `Startup left ${job[MutationJobsDB.Columns.STATUS]} local mutation job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}) to the runtime: finalization is retried while its block is live, and a correction removing the block also removes the job. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
+      `Startup left ${job[MutationJobsDB.Columns.STATUS]} confirmed-merge finalization job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}) to the runtime: the merge fiber finalizes every merge L1 confirmed before it merges again, once the follower-change driver has published its view. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
     );
   }
   if (refused.length > 0)

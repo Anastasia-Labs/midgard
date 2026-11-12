@@ -63,7 +63,6 @@ export {
   closeDaLibp2pPublicationTransport,
   getDaPublicationTransportForTest,
   publicationSatisfied,
-  publishDaPayloadInsertFromEnv,
   seedDaPayloadPublicationOutboxFromEnv,
 } from "./libp2p-producer.publish-da-payload-insert-from-env.js";
 export {

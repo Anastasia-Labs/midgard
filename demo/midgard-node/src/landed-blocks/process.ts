@@ -21,16 +21,16 @@
  *    is adopted from its journal and never replayed (its journal must
  *    describe the block and its delta reach the header's root on the
  *    parent's ledger, or it holds the local-fault
- *    `landed_block_own_journal_mismatch`); one whose journal was
- *    abandoned (whichever lands wins) is adopted unapplied for the rebase to
- *    revive, and the blocks after it hold `landed_block_own_revival_pending`
- *    until the commit path finalized it locally. A foreign block is
+ *    `landed_block_own_journal_mismatch`). It is adopted unapplied, as a
+ *    foreign block is, and the rebase applies it: one path for both kinds,
+ *    and one whose journal was abandoned (whichever lands wins) is revived
+ *    by the same rebase. A foreign block is
  *    replayed on its parent's ledger and must reach its header's root. A
  *    block that does not is never recorded: it holds `landed_block_invalid`
  *    and nothing after it is processed. A mismatch never feeds a fault-proof
  *    path.
- * 4. A row the working ledger does not hold yet (a foreign or a revived own
- *    one), or a removed row, runs the rebase (the driver's recompute, which
+ * 4. A row the working ledger does not hold yet (any new one), or a removed
+ *    row, runs the rebase (the driver's recompute, which
  *    also disposes of the own journals that cannot land). One that cannot
  *    finish yet holds its reason (`landed_block_rebase_pending` and its
  *    detail, or `landed_block_rebase_failed` with the failure), and the
@@ -76,7 +76,6 @@ import {
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
-  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCKS_WAITING,
 } from "./holds.js";
@@ -210,20 +209,19 @@ const newRow = <R>(
             `own block ${node.headerHash}'s journal delta reaches root ${root} on its parent's ledger, its header commits ${node.header.utxosRoot}`,
           ),
         } satisfies Step;
-      // An abandoned own block that landed anyway is revived by the rebase:
-      // its row waits unapplied, with its withdrawals, until the rebase took
-      // it in.
-      const abandoned = journal.status === "abandoned";
+      // The rebase applies it, as it does a foreign block: it projects its
+      // events (the withdrawals with its journal's classification) and
+      // writes its local effects; an abandoned one it revives first.
       return {
         kind: "row",
         row: {
           ...base,
           kind: "own",
-          applied: !abandoned,
+          applied: false,
           spent: journal.spent,
           produced: journal.produced,
           depositIds: journal.depositIds,
-          withdrawals: abandoned ? journal.withdrawals : [],
+          withdrawals: journal.withdrawals,
           forcedIds: journal.forcedIds,
           txIds: journal.txIds,
         },
@@ -285,25 +283,6 @@ const newRow = <R>(
       },
       due: importChecks(node.header.endTime, replayed.scriptChecks),
     } satisfies Step;
-  });
-
-/**
- * The hold before a node built on an own block that is revived and not yet
- * locally finalized here: the revived block stays the newest processed one
- * until the commit path finalized it.
- */
-const revivalHold = <R>(ports: LandedBlockPorts<R>, parent: Parent) =>
-  Effect.gen(function* () {
-    const journal = yield* ports.ownJournal(parent.headerHash);
-    if (
-      journal === undefined ||
-      (journal.status !== "abandoned" && !journal.revived)
-    )
-      return undefined;
-    return hold(
-      LANDED_BLOCK_OWN_REVIVAL_PENDING,
-      `own block ${parent.headerHash} landed after its journal was abandoned; the blocks after it wait for its revival and local finalization`,
-    );
   });
 
 /** Whether the working ledger and native MPF lag the processed rows. */
@@ -421,11 +400,6 @@ const run = <R>(
       const ledger = yield* ledgerAfter(walked);
       for (; next < sequence.length; next++) {
         const node = sequence[next]!;
-        const revival = yield* revivalHold(ports, parent);
-        if (revival !== undefined) {
-          holds.push(revival);
-          break;
-        }
         const step = yield* newRow(ports, queue.view, node, parent, ledger);
         if (step.kind === "held") {
           holds.push(step.hold);

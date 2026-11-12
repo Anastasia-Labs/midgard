@@ -38,6 +38,7 @@ import {
   type World,
 } from "./state-reconciliation.consistent-sql.js";
 import { registerDaAttestationReconciliationCases } from "./state-reconciliation.da-attestation-cases.js";
+import { registerWithdrawalStatusReconciliationCases } from "./state-reconciliation.withdrawal-status-cases.js";
 
 describe("state reconciliation evaluator", () => {
   it("passes every check on a consistent world", () => {
@@ -577,19 +578,7 @@ describe("state reconciliation evaluator", () => {
     }
   });
 
-  it("withdrawals fails alone when the SQL status contradicts a finalized journal", () => {
-    const report = evaluateStateReconciliation(
-      input(({ sql }) => ({
-        sql: {
-          ...sql,
-          withdrawals: sql.withdrawals.map((w) =>
-            w.projectedHeaderHash === TIP ? { ...w, status: "projected" } : w,
-          ),
-        },
-      })),
-    );
-    expectOnlyFailure(report, "withdrawals", "expected finalized");
-  });
+  registerWithdrawalStatusReconciliationCases();
 
   it("withdrawals fails alone when a SQL header assignment points nowhere", () => {
     const report = evaluateStateReconciliation(

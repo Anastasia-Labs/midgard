@@ -8,7 +8,6 @@ export const READINESS_ENDPOINT = "readyz";
  */
 export type WorkerHeartbeats = {
   readonly blockCommitment: number;
-  readonly blockConfirmation: number;
   readonly merge: number;
   readonly txQueueProcessor: number;
 };
@@ -22,7 +21,6 @@ export type ReadinessInput = {
   readonly maxQueueDepth: number;
   readonly queueDepth: number;
   readonly workerHeartbeats: WorkerHeartbeats;
-  readonly localFinalizationPending: boolean;
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
@@ -98,7 +96,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   const heartbeatThreshold = Math.max(1, input.maxHeartbeatAgeMs);
   const heartbeatEntries: readonly [string, number][] = [
     ["blockCommitment", input.workerHeartbeats.blockCommitment],
-    ["blockConfirmation", input.workerHeartbeats.blockConfirmation],
     ["merge", input.workerHeartbeats.merge],
     ["txQueueProcessor", input.workerHeartbeats.txQueueProcessor],
   ];
@@ -113,10 +110,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   const queueLimit = Math.max(0, input.maxQueueDepth);
   if (input.queueDepth > queueLimit) {
     reasons.push(`queue_depth_exceeded:${input.queueDepth}:${queueLimit}`);
-  }
-
-  if (input.localFinalizationPending) {
-    reasons.push("local_finalization_pending");
   }
 
   if (input.validationPool !== undefined) {

@@ -19,6 +19,7 @@ import {
 import { foldMerge } from "../src/landed-blocks/confirmed-merges.js";
 import type { LandedBlockRow } from "../src/landed-blocks/store.js";
 import { Globals } from "../src/services/index.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 export const DURABLE_ROOT = "ab".repeat(32);
@@ -109,7 +110,7 @@ export const journal = ({
   Effect.gen(function* () {
     const hash = Buffer.from(headerHash, "hex");
     const blockStartTime = new Date("2026-06-12T00:00:00.000Z");
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+    yield* prepareUnderTestLease({
       headerHash: hash,
       headerCbor: Buffer.from(
         LucidData.to(stored as never, SDK.Header as never),

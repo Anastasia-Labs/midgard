@@ -1,9 +1,9 @@
 /**
  * The landed-block fork simulator's settle step (N3, I3): the node's
  * landed-block hook at the follower's view, then the driver's recompute it
- * holds for (the rebase, which also disposes of and revives own journals),
- * the commit path's local finalization of a revived
- * block, and S6 deriving a commit dead whose base left without a rebase,
+ * holds for (the rebase, which applies landed own blocks and disposes of
+ * and revives own journals), and S6 deriving a commit dead whose base left
+ * without a rebase,
  * until nothing is left to do. A rebase is deferred now and then, and
  * every third one crashes after the native move and resumes after a
  * reopen.
@@ -14,7 +14,6 @@ import { Effect } from "effect";
 import type { DriverHold } from "../../src/l1-events/driver.js";
 import {
   LANDED_BLOCK_AWAITING_DA,
-  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
 } from "../../src/landed-blocks/holds.js";
@@ -147,9 +146,6 @@ export const simSettler = (
           rebuilds += 1;
           continue;
         }
-        if ((await node.finalizeRevived()) > 0) continue;
-        if (holdNames(hold, LANDED_BLOCK_OWN_REVIVAL_PENDING))
-          return { error: `a finalized revival held ${JSON.stringify(hold)}` };
         return { hold };
       }
       // A rebase due only for journals to dispose of is asked for after S6

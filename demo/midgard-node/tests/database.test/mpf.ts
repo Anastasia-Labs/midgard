@@ -25,7 +25,6 @@ import {
 } from "../../src/landed-blocks/confirmed-merges.js";
 import { Frontier } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/index.js";
-import { materializeConfirmedLedgerSnapshot } from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { finalizeConfirmedMergeTransaction } from "../../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
@@ -34,6 +33,8 @@ import {
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import { materializeJournalLedger } from "../helpers/materialize-journal-ledger.js";
+import { prepareUnderTestLease } from "../helpers/mutation-lease.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
 
 export const registerMpfTests = () => {
@@ -209,7 +210,7 @@ export const registerMpfTests = () => {
               produced: readonly LedgerUtils.Entry[],
             ) =>
               Effect.gen(function* () {
-                yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+                yield* prepareUnderTestLease({
                   headerHash: headers[index]!,
                   headerCbor: Buffer.from(
                     LucidData.to(
@@ -294,9 +295,7 @@ export const registerMpfTests = () => {
               );
             expect(found._tag).toBe("Some");
             if (found._tag === "None") return;
-            const snapshot = yield* materializeConfirmedLedgerSnapshot(
-              found.value,
-            );
+            const snapshot = yield* materializeJournalLedger(found.value);
             expect(snapshot.root).toBe(roots[3]);
             expect(
               snapshot.entries.map((item) =>
@@ -562,7 +561,7 @@ export const registerMpfTests = () => {
             expect(unexplainedDivergence._tag).toBe("Left");
 
             const headerHash = Buffer.alloc(28, 23);
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            yield* prepareUnderTestLease({
               headerHash,
               headerCbor: Buffer.from("d87980", "hex"),
               metadata: {
@@ -631,9 +630,7 @@ export const registerMpfTests = () => {
               );
             expect(journal._tag).toBe("Some");
             if (journal._tag === "None") return;
-            const materialized = yield* materializeConfirmedLedgerSnapshot(
-              journal.value,
-            );
+            const materialized = yield* materializeJournalLedger(journal.value);
             expect(materialized.root).toBe(expectedFinalUtxosRoot);
             expect(materialized.entries).toHaveLength(finalEntries.length);
           }),

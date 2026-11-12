@@ -214,7 +214,8 @@ const consistentSql = (): SqlStateSnapshot => ({
   withdrawals: [
     {
       payload: withdrawalPayload("d8799f0201", "a1"),
-      status: "finalized",
+      // Applied but not yet merged: projected until the fold.
+      status: "projected",
       validity: "WithdrawalIsValid",
       projectedHeaderHash: TIP,
     },

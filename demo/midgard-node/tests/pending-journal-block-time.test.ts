@@ -10,6 +10,7 @@ import { describe, expect } from "vitest";
 
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import type { DatabaseError } from "../src/database/utils/common.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   header,
   isolatedDb,
@@ -23,7 +24,7 @@ describe("pending journal block time", () => {
         const headerHash = header("catch-up");
         const input = journalFixture(headerHash);
         const blockTime = new Date(input.blockEndTime.getTime() + 3_600_000);
-        yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+        yield* prepareUnderTestLease({
           ...input,
           blockTime,
         });
@@ -45,7 +46,7 @@ describe("pending journal block time", () => {
       Effect.gen(function* () {
         const input = journalFixture(header("early-block-time"));
         const exit = yield* Effect.exit(
-          PendingBlockFinalizationsDB.preparePendingSubmission({
+          prepareUnderTestLease({
             ...input,
             blockTime: new Date(input.blockEndTime.getTime() - 1),
           }),

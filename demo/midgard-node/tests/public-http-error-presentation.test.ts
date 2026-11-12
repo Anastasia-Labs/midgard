@@ -20,7 +20,6 @@ describe("public error presentation", () => {
       inImmutable: false,
       inMempool: false,
       inProcessedMempool: false,
-      localFinalizationPending: false,
     });
     const publicBody = publicTxStatusPresentation(status, "preprod-public");
     expect(publicBody).toMatchObject({

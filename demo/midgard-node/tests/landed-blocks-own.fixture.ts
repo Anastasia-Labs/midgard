@@ -264,7 +264,6 @@ export const fixture = async (): Promise<Fixture> => {
     a,
     f,
     journalA: {
-      status: "active",
       baseTailHeaderHash: SDK.GENESIS_HEADER_HASH,
       baseUtxosRoot: genesisRoot,
       expectedUtxosRoot: a.header.utxosRoot,
@@ -274,7 +273,6 @@ export const fixture = async (): Promise<Fixture> => {
       withdrawals: [],
       forcedIds: [],
       txIds: [simDigest("own:tx-a")],
-      revived: false,
     },
   };
 };

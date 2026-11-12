@@ -27,7 +27,6 @@ export const planEarliestCommitSchedulerDueWork = ({
   submitSlotSnapshot,
   submitSlotSnapshotError,
   stateQueueEvidence,
-  localFinalizationPending,
   maxInlineWaitMs,
   plannerVersion = EARLIEST_COMMIT_SCHEDULER_PLANNER_VERSION,
 }: {
@@ -39,7 +38,6 @@ export const planEarliestCommitSchedulerDueWork = ({
   readonly submitSlotSnapshot?: SubmitSlotSnapshot;
   readonly submitSlotSnapshotError?: unknown;
   readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
-  readonly localFinalizationPending: boolean;
   readonly maxInlineWaitMs: number;
   readonly plannerVersion?: string;
 }): EarliestCommitSchedulerPlan => {
@@ -48,7 +46,6 @@ export const planEarliestCommitSchedulerDueWork = ({
     schedulerState,
     currentOperatorKeyHash,
     stateQueueEvidence,
-    localFinalizationPending,
     plannerVersion,
   });
   const proceed = (reason: string): EarliestCommitSchedulerPlan => ({
@@ -58,9 +55,6 @@ export const planEarliestCommitSchedulerDueWork = ({
     invalidationKey: dependencyKey,
   });
 
-  if (localFinalizationPending) {
-    return proceed("local_finalization_pending");
-  }
   if (
     stateQueueEvidence.tailCommitBaseOutRef.trim() === "" ||
     !Number.isSafeInteger(stateQueueEvidence.tailBlockEndTimeMs)

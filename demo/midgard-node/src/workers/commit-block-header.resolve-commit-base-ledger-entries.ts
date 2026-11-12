@@ -1,12 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
-import {
-  ConfirmedLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
-import { DatabaseError } from "../database/utils/common.js";
+import { ConfirmedLedgerDB } from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
+import { activeJournal } from "../landed-blocks/journal.js";
 import {
   landedLedger,
   ledgerAt,
@@ -19,7 +16,6 @@ import {
 } from "../mpf/index.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { Database, NodeConfig } from "../services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
@@ -32,10 +28,10 @@ export type ResolvedCommitBaseLedgerEntries = {
   readonly root: string;
 };
 
-/** Why a commit waits on a foreign tail landed-block processing has not
- * applied to the working ledger yet. */
+/** Why a commit waits on a tail landed-block processing has not applied to
+ * the working ledger yet, or on this node's own block in flight. */
 export const LANDED_COMMIT_BASE_PENDING =
-  "The foreign commit base is not a processed landed block the working ledger holds yet";
+  "The commit base is not a processed landed block the working ledger holds yet";
 
 export const resolveCommitBaseLedgerEntries = ({
   availableConfirmedBlock,
@@ -51,6 +47,19 @@ export const resolveCommitBaseLedgerEntries = ({
   Database | NodeConfig
 > =>
   Effect.gen(function* () {
+    // A live, unlanded own block is never a base, and the tail it builds on
+    // is not one either while it is in flight: the next block waits for it
+    // to land and be applied. This holds when it leaves the root unchanged,
+    // too, where the tail checks below would pass.
+    const inFlight = yield* activeJournal;
+    if (inFlight !== undefined)
+      return yield* Effect.fail(
+        new ForeignBlockVerificationError({
+          foreignHeaderHash: inFlight.headerHash,
+          reason: "missing",
+          detail: LANDED_COMMIT_BASE_PENDING,
+        }),
+      );
     if (availableConfirmedBlock !== "") {
       const latestBlock = yield* deserializeStateQueueUTxO(
         availableConfirmedBlock,
@@ -100,62 +109,10 @@ export const resolveCommitBaseLedgerEntries = ({
         );
         const currentLedgerRootHex = nativeMpfRoot;
         const headerHash = yield* SDK.hashBlockHeader(header);
-        const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-          Buffer.from(headerHash, "hex"),
-        );
-
-        if (Option.isSome(journal)) {
-          // The tail is this node's block whose journal was abandoned by a
-          // signed-intent replacement or a correction: local state does not
-          // hold it (its members were reopened). Never build on it; a
-          // replaced block that won its slot is revived first.
-          if (
-            journal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-              PendingBlockFinalizationsDB.Status.Abandoned &&
-            journal.value[
-              PendingBlockFinalizationsDB.Columns.CORRECTION_TRANSITION_DIGEST
-            ] != null
-          ) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: PendingBlockFinalizationsDB.tableName,
-                message:
-                  "Refusing to build on a state-queue tail whose local journal is abandoned; it must be revived or corrected first",
-                cause: `header_hash=${headerHash}`,
-              }),
-            );
-          }
-          if (!requireEntries && currentLedgerRootHex === header.utxosRoot) {
-            return {
-              source: "persistent-ledger-mpf",
-              root: header.utxosRoot,
-            } satisfies ResolvedCommitBaseLedgerEntries;
-          }
-          const snapshot = yield* materializeConfirmedLedgerSnapshot(
-            journal.value,
-          );
-          if (snapshot.root !== header.utxosRoot) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: PendingBlockFinalizationsDB.tableName,
-                message:
-                  "Refusing to use pending-finalization journal as commit base because its UTxO snapshot root does not match the state-queue tip",
-                cause: `header_hash=${headerHash},journal_root=${snapshot.root},state_queue_root=${header.utxosRoot}`,
-              }),
-            );
-          }
-          yield* Effect.logInfo(
-            `🔹 Commit base ledger snapshot resolved from pending-finalization journal ${headerHash} (entries=${snapshot.entries.length.toString()}).`,
-          );
-          return {
-            source: `pending-finalization:${headerHash}`,
-            entries: snapshot.entries,
-            root: snapshot.root,
-          } satisfies ResolvedCommitBaseLedgerEntries;
-        }
-        // A foreign tail is built on only once landed-block processing
-        // replayed it to its header's root and the rebase applied it: its
-        // post-state is the processed landed ledger at that header.
+        // A tail, foreign or this node's own, is built on only once
+        // landed-block processing took it in at its header's root and the
+        // rebase applied it: its post-state is the processed landed ledger
+        // at that header.
         const landed = yield* landedLedger(yield* retrieveRows);
         const at =
           landed === undefined ? undefined : ledgerAt(landed, headerHash);

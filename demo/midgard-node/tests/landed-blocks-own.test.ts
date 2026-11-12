@@ -1,22 +1,22 @@
 /**
  * This node's own landed blocks (plan §7.3, §15 N3), processed against stub
  * ports on the node database: an own block is adopted from its journal and
- * never replayed, exactly once across runs; one whose journal is abandoned
- * is adopted unapplied for the rebase to revive, and the blocks after it
- * wait for its local finalization; a journal that does not describe the
+ * never replayed, exactly once across runs, unapplied, as a foreign block
+ * is, and the rebase is asked to apply it (the rebase applies own and
+ * foreign blocks alike; an abandoned journal's block is revived by that
+ * rebase, with nothing held after it); a journal that does not describe the
  * landed block, or whose delta misses its header's root, holds the local
- * fault by name and records nothing; a merged own block folds
- * into `confirmed_ledger` once its journal is locally applied (N5), once,
- * whether the merge fiber folded it first or not; a foreign block after it
- * replays on the journal's
- * post-state, and one that misses its header's root is never adopted.
- * The holds by retry class: the waits (DA peers, the follower's facts, a
- * revival) and a foreign import's local failures are retried on the
- * driver's backoff, the local failures with the `landed_block_local_fault`
- * alarm; a verdict on the view and a replay failure not known to be
- * transient are `notRetried`, re-read on the next follower change; a
- * follower store whose origin is too late for the blocks after the landed
- * frontier is fatal.
+ * fault by name and records nothing; a merged own block folds into
+ * `confirmed_ledger` once the rebase applied it (N5), once, whether the
+ * merge fiber folded it first or not, and waits for that rebase until then;
+ * a foreign block after it replays on the journal's post-state, and one
+ * that misses its header's root is never adopted.
+ * The holds by retry class: the waits (DA peers, the follower's facts) and
+ * a foreign import's local failures are retried on the driver's backoff,
+ * the local failures with the `landed_block_local_fault` alarm; a verdict
+ * on the view and a replay failure not known to be transient are
+ * `notRetried`, re-read on the next follower change; a follower store whose
+ * origin is too late for the blocks after the landed frontier is fatal.
  */
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -35,7 +35,6 @@ import {
 } from "../src/landed-blocks/confirmed-merges.js";
 import {
   combineHolds,
-  CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_EVENT_UNKNOWN,
@@ -45,18 +44,23 @@ import {
   LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
-  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCKS_WAITING,
 } from "../src/landed-blocks/holds.js";
+import { processedChain } from "../src/landed-blocks/ledger.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { blockedRebaseHold } from "../src/landed-blocks/rebase-target.js";
 import type { ReplayOutcome } from "../src/landed-blocks/replay.js";
 import { landedBlockLocalFaultCounter } from "../src/landed-blocks/replay-outcome-hold.js";
-import { Frontier, retrieveRows } from "../src/landed-blocks/store.js";
+import {
+  Frontier,
+  markApplied,
+  retrieveRows,
+} from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
+import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import { hex32 } from "./helpers/state-queue-sim.fixtures.js";
 import {
   A1,
@@ -75,32 +79,52 @@ import {
   sortedKeys,
 } from "./landed-blocks-own.fixture.js";
 
+/**
+ * The processed rows in landed order: the chain from genesis by parent
+ * links, as processing reads it (`processed_at` is a wall-clock stamp, not
+ * an order).
+ */
+const landedRows = Effect.map(retrieveRows, (rows) =>
+  processedChain(rows, SDK.GENESIS_HEADER_HASH),
+);
+
 describe("own landed blocks", () => {
-  it("adopts an own block from its journal exactly once, never replaying it, and replays the next foreign block on its post-state", async () => {
+  it("adopts an own block from its journal unapplied exactly once, never replaying it, asks the rebase to apply it, and replays the next foreign block on its post-state", async () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, journalA);
+    const withdrawal = {
+      id: simDigest("own:withdrawal-a").toString("hex"),
+      validity: "WithdrawalIsValid",
+      detail: null,
+      settlement: "00",
+    };
+    state.journals.set(a.hash, { ...journalA, withdrawals: [withdrawal] });
     await inNode(
       Effect.gen(function* () {
         const process = (nodes: readonly Block[]) =>
           processLandedQueue(ports(state), queueOf(genesisState, nodes));
-        for (let run = 0; run < 3; run++) {
-          expect(yield* process([a])).toBeUndefined();
+        for (let run = 1; run <= 3; run++) {
+          // The rebase applies it, as it does a foreign block: until it
+          // ran, the run holds for it.
+          expect((yield* process([a]))?.reason).toBe(
+            LANDED_BLOCK_REBASE_PENDING,
+          );
+          expect(state.rebaseRequests).toBe(run);
           const rows = yield* retrieveRows;
           expect(rows).toHaveLength(1);
           expect(rows[0]).toMatchObject({
             headerHash: a.hash,
             kind: "own",
             state: "processed",
-            applied: true,
+            applied: false,
             parentHeaderHash: SDK.GENESIS_HEADER_HASH,
             utxosRoot: a.header.utxosRoot,
+            withdrawals: [withdrawal],
           });
           expect(rows[0]!.spent.map(hex)).toEqual([hex(G0.outref)]);
           expect(sortedKeys(rows[0]!.produced)).toEqual(sortedKeys([A1]));
         }
         expect(state.replays).toHaveLength(0);
-        expect(state.rebaseRequests).toBe(0);
         expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
 
         const held = yield* process([a, f]);
@@ -111,11 +135,11 @@ describe("own landed blocks", () => {
         expect(sortedKeys(state.replays[0]!.parentEntries)).toEqual(
           sortedKeys(AFTER_A),
         );
-        const rows = yield* retrieveRows;
+        const rows = yield* landedRows;
         expect(
           rows.map((row) => [row.headerHash, row.kind, row.applied]),
         ).toEqual([
-          [a.hash, "own", true],
+          [a.hash, "own", false],
           [f.hash, "foreign", false],
         ]);
         // Processed once: later runs neither replay nor re-record either block.
@@ -143,8 +167,9 @@ describe("own landed blocks", () => {
         expect(yield* Frontier.retrieve).toBeUndefined();
         expect(yield* retrieveRows).toHaveLength(0);
         state.viewHeld = true;
-        expect(yield* process([a])).toBeUndefined();
+        expect((yield* process([a]))?.reason).toBe(LANDED_BLOCK_REBASE_PENDING);
         expect(yield* retrieveRows).toHaveLength(1);
+        expect(state.rebaseRequests).toBe(1);
         // A processed block's write.
         state.viewHeld = false;
         expect(yield* process([a, f])).toEqual({
@@ -154,58 +179,15 @@ describe("own landed blocks", () => {
         expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
           a.hash,
         ]);
-        expect(state.rebaseRequests).toBe(0);
+        expect(state.rebaseRequests).toBe(1);
         state.viewHeld = true;
         expect((yield* process([a, f]))?.reason).toBe(
           LANDED_BLOCK_REBASE_PENDING,
         );
-        expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
+        expect((yield* landedRows).map((row) => row.headerHash)).toEqual([
           a.hash,
           f.hash,
         ]);
-      }),
-    );
-  }, 120_000);
-
-  it("adopts an own block whose journal is abandoned unapplied for the rebase to revive, and holds the blocks after it until its revival is finalized", async () => {
-    const { a, f, genesisState, journalA } = await fixture();
-    const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "abandoned" });
-    await inNode(
-      Effect.gen(function* () {
-        const process = (nodes: readonly Block[]) =>
-          processLandedQueue(ports(state), queueOf(genesisState, nodes));
-        const held = yield* process([a, f]);
-        expect(held?.reason).toBe(LANDED_BLOCK_OWN_REVIVAL_PENDING);
-        // A wait on this node's own commit path: retried on the backoff.
-        expect(isRetriedHold(held!)).toBe(true);
-        expect(held?.detail).toContain(a.hash);
-        expect(held?.detail).toContain(`also ${LANDED_BLOCK_REBASE_PENDING}:`);
-        const rows = yield* retrieveRows;
-        expect(rows).toHaveLength(1);
-        expect(rows[0]).toMatchObject({
-          headerHash: a.hash,
-          kind: "own",
-          state: "processed",
-          applied: false,
-        });
-        expect(state.replays).toHaveLength(0);
-        expect(state.rebaseRequests).toBe(1);
-        // Revived by the rebase, not yet finalized locally: still held.
-        state.journals.set(a.hash, { ...journalA, revived: true });
-        expect((yield* process([a, f]))?.reason).toBe(
-          LANDED_BLOCK_OWN_REVIVAL_PENDING,
-        );
-        expect(state.replays).toHaveLength(0);
-        // Finalized locally: the next block is processed.
-        state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
-        expect((yield* process([a, f]))?.reason).toBe(
-          LANDED_BLOCK_REBASE_PENDING,
-        );
-        expect(state.replays.map((input) => input.headerHash)).toEqual([
-          f.hash,
-        ]);
-        expect(yield* retrieveRows).toHaveLength(2);
       }),
     );
   }, 120_000);
@@ -267,6 +249,18 @@ describe("own landed blocks", () => {
     state.replayRoot = hex32(7);
     await inNode(
       Effect.gen(function* () {
+        const waiting = yield* processLandedQueue(
+          ports(state),
+          queueOf(genesisState, [a, f]),
+        );
+        expect(waiting?.reason).toBe(LANDED_BLOCK_INVALID);
+        // The own block before it still waits for the rebase, which the
+        // driver retries.
+        expect(waiting?.detail).toContain(LANDED_BLOCK_REBASE_PENDING);
+        expect(isRetriedHold(waiting!)).toBe(true);
+        expect(state.rebaseRequests).toBe(1);
+        // What the rebase marks once it applied `a` (the fixture's never runs).
+        yield* markApplied([a.hash]);
         const held = yield* processLandedQueue(
           ports(state),
           queueOf(genesisState, [a, f]),
@@ -279,7 +273,6 @@ describe("own landed blocks", () => {
         expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
           a.hash,
         ]);
-        expect(state.rebaseRequests).toBe(0);
       }),
     );
   }, 120_000);
@@ -349,6 +342,10 @@ describe("own landed blocks", () => {
           Metric.value(
             Metric.tagged(landedBlockLocalFaultCounter, "kind", kind),
           ).pipe(Effect.map(({ count }) => count));
+        // `a` adopted and applied, as the rebase leaves it: what holds is
+        // the foreign block's replay alone.
+        yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
         for (const [ends, reason, retried, alarm] of cases) {
           state.replayEnds = ends;
           const before = {
@@ -408,7 +405,7 @@ describe("own landed blocks", () => {
     expect(isRetriedHold(combineHolds([verdict()])!)).toBe(false);
   });
 
-  it("folds a merged own block into confirmed_ledger once its journal is locally applied", async () => {
+  it("folds a merged own block into confirmed_ledger once the rebase applied it, and not before", async () => {
     const { a, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
@@ -416,17 +413,17 @@ describe("own landed blocks", () => {
     await inNode(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
-        // Merged, but not locally applied yet: pending, by name.
+        // Merged, but not applied by the rebase yet: the fold waits for it.
         const pending = yield* processLandedQueue(ports(state), merged);
-        expect(pending?.reason).toBe(CONFIRMED_LEDGER_OWN_BLOCK_PENDING);
-        expect(pending?.detail).toContain(a.hash);
+        expect(pending?.reason).toBe(LANDED_BLOCK_REBASE_PENDING);
         expect((yield* Frontier.retrieve)?.headerHash).toBe(
           SDK.GENESIS_HEADER_HASH,
         );
         expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
         expect((yield* retrieveMergeLinks).size).toBe(0);
 
-        state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+        // What the rebase marks once it applied `a` (the fixture's never runs).
+        yield* markApplied([a.hash]);
         expect(yield* processLandedQueue(ports(state), merged)).toBeUndefined();
         expect(yield* Frontier.retrieve).toEqual({
           headerHash: a.hash,
@@ -447,11 +444,12 @@ describe("own landed blocks", () => {
   it("passes a merged own block the merge fiber already folded without folding it again", async () => {
     const { a, genesisState, journalA } = await fixture();
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     const merged = queueOf(confirmedAt(a, ""), []);
     await inNode(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
         // The merge fiber folded it first, through the same fold, with no
         // merge point (it reads no queue history).
         const [row] = yield* retrieveRows;

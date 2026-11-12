@@ -32,10 +32,8 @@ import {
   alignCommitSchedulerBeforeTestWorker,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
-  runBlockConfirmation,
   runCommitWorker,
   runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   SDK,
 } from "../deposit-flow-emulator-shared.js";
 import type { ProductionLifecycle } from "./production-lifecycle.js";
@@ -121,32 +119,6 @@ export const submitDeposit = async (h: Lifecycle, lovelace: bigint) => {
   return built.metadata.inclusionTime;
 };
 
-/** Confirm the committed block `headerHash` and apply it locally with the
- * production workers, as the running node does; it must succeed. */
-export const finalizeLocally = async (h: Lifecycle, headerHash: string) => {
-  const { fixture, lucidService, globals, production } = h;
-  await runBlockConfirmation(
-    globals,
-    fixture.contracts,
-    lucidService,
-    production.nodeConfig,
-    production,
-  );
-  const finalized = await runLocalFinalizationRecoveryWorker(
-    globals,
-    fixture.contracts,
-    lucidService,
-    fixture.runtimeOverrides!.deploymentIdentity,
-    production.nodeConfig,
-    { ...production, globals },
-  );
-  expect(finalized.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-  if (finalized.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-    throw new Error("The block must be applied locally");
-  expect(finalized.finalizedHeaderHash).toBe(headerHash);
-  await synchronizeBounded(h);
-};
-
 /** One production commit attempt on the landed tail, after synchronizing. */
 export const attemptAppend = async (h: Lifecycle) => {
   const { fixture, lucidService, globals, production } = h;
@@ -162,8 +134,8 @@ export const attemptAppend = async (h: Lifecycle) => {
 };
 
 /** Commit the next block on the landed tail with the production commit
- * worker once `inclusionTime` is due, wait for L1 to take it, then confirm
- * and apply it locally; returns its header hash. */
+ * worker once `inclusionTime` is due, wait for L1 to take it, then take it
+ * in as the node does (`applyLanded`); returns its header hash. */
 export const commitLocallyAppliedBlock = async (
   h: Lifecycle,
   inclusionTime: number,
@@ -185,8 +157,7 @@ export const commitLocallyAppliedBlock = async (
   expect(await fixture.operatorLucid.awaitTx(committed.submittedTxHash)).toBe(
     true,
   );
-  await h.synchronize();
-  await finalizeLocally(h, committed.submittedHeaderHash);
+  await h.applyLanded(committed.submittedHeaderHash);
   return committed.submittedHeaderHash;
 };
 

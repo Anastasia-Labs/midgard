@@ -257,14 +257,12 @@ export const commitSchedulerEvidenceKey = ({
   schedulerState,
   currentOperatorKeyHash,
   stateQueueEvidence,
-  localFinalizationPending,
   plannerVersion,
 }: {
   readonly schedulerOutRef: string;
   readonly schedulerState: CommitSchedulerState;
   readonly currentOperatorKeyHash: string;
   readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
-  readonly localFinalizationPending: boolean;
   readonly plannerVersion: string;
 }): string =>
   [
@@ -283,5 +281,4 @@ export const commitSchedulerEvidenceKey = ({
     ...(stateQueueEvidence.rootOutRef === undefined
       ? []
       : [`state_queue_root=${stateQueueEvidence.rootOutRef}`]),
-    `local_finalization_pending=${localFinalizationPending.toString()}`,
   ].join(",");

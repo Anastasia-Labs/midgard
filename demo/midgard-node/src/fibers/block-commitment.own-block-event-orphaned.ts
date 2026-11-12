@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 
 import {
   describePoisonedOwnHeaders,
@@ -23,9 +23,8 @@ export const L1_OWN_BLOCK_EVENT_ORPHANED = "l1_own_block_event_orphaned";
 
 /**
  * Raises or clears `l1_own_block_event_orphaned` from the poisoned own
- * headers, and answers whether this commitment tick plans nothing. A pending
- * local finalization recovery still runs: it builds no block. A failed read
- * plans nothing this tick and leaves the reason as it is; the next tick
+ * headers, and answers whether this commitment tick plans nothing. A failed
+ * read plans nothing this tick and leaves the reason as it is; the next tick
  * reads again. Never fails.
  */
 export const refuseCommitForOrphanedOwnBlockEvent = Effect.gen(function* () {
@@ -49,11 +48,5 @@ export const refuseCommitForOrphanedOwnBlockEvent = Effect.gen(function* () {
     L1_OWN_BLOCK_EVENT_ORPHANED,
     `${describePoisonedOwnHeaders(poisoned)}; every commit holds until a landed correction or a rollback removes the header`,
   );
-  const localFinalizationPending = yield* Ref.get(
-    globals.LOCAL_FINALIZATION_PENDING,
-  );
-  const localFinalizationBlock = yield* Ref.get(
-    globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-  );
-  return !(localFinalizationPending && localFinalizationBlock !== "");
+  return true;
 });

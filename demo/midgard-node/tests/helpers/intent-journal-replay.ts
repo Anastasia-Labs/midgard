@@ -204,6 +204,9 @@ export const replayJournaledOnFollower = async (input: {
       blocks.set(status.blockHeight, block);
     }
   const lastHeight = Math.max(0, ...blocks.keys());
+  // The replay starts at the block below the first that holds a
+  // transaction: a restored emulator's heights start far above 0.
+  const originHeight = Math.max(0, Math.min(lastHeight, ...blocks.keys()) - 1);
 
   const databases = testDatabases();
   const connectionString = await databases.create();
@@ -263,7 +266,10 @@ export const replayJournaledOnFollower = async (input: {
     if (started.kind !== "ready")
       throw new Error(`store start: ${JSON.stringify(started)}`);
     const origin = { slot: 0, hash: Buffer.alloc(32) };
-    const init = await store.initialize({ point: origin, height: 0 });
+    const init = await store.initialize({
+      point: origin,
+      height: originHeight,
+    });
     if (init.kind !== "initialized")
       throw new Error(`initialize: ${init.kind}`);
     const sql = await runtime.runPromise(SqlClient.SqlClient);
@@ -328,7 +334,7 @@ export const replayJournaledOnFollower = async (input: {
       log: () => undefined,
     });
 
-    let tip = { hash: origin.hash, height: 0, slot: origin.slot };
+    let tip = { hash: origin.hash, height: originHeight, slot: origin.slot };
     /**
      * Applies the emulator's blocks below `height` (all of them with none),
      * one per emulator height, so the follower's heights (and the horizon

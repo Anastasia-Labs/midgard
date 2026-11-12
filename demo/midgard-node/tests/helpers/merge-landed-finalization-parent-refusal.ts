@@ -10,11 +10,14 @@ const FOREIGN_BASE = Buffer.from("ff".repeat(28), "hex");
 
 /**
  * A merge lands while the node is down, and its retained journal names a
- * base other than the landed header's parent. The merge fiber's catch-up
- * (the landed merge's local finalization) refuses that journal by name on
- * every attempt and writes nothing: no fold, no first frontier at the
- * journal's base, no finalization job. With the journal's own base back, the
- * same catch-up folds the merge exactly once.
+ * base other than the landed header's parent. Landed-block processing folds
+ * the merged block at its canonical parent on restart, without the journal,
+ * and its deposits are consumed.
+ * The merge fiber's catch-up (the landed merge's local finalization) refuses
+ * that journal by name on every attempt and writes nothing: no further fold,
+ * no first frontier at the journal's base, no finalization job. With the
+ * journal's own base back, the same catch-up finalizes the merge exactly
+ * once, on the fold already made.
  */
 export const assertLandedMergeParentRefusal = async (
   m: MergeLifecycle,
@@ -56,6 +59,10 @@ export const assertLandedMergeParentRefusal = async (
     );
   });
   expect(await m.queuedBlocks()).toBe(0);
+  const landed = await confirmedRows();
+  expect(landed).not.toEqual(before);
+  const landedTemporal = await temporalRows();
+  expect(landedTemporal).toMatchObject([{ foreign_frontier: 0 }]);
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const failure = await m.catchUp().then(
       () => undefined,
@@ -66,10 +73,10 @@ export const assertLandedMergeParentRefusal = async (
     const refusal = inspect(failure, { depth: 20 });
     expect(refusal).toContain(CONFIRMED_MERGE_JOURNAL_UNBOUND);
     expect(refusal).toContain(`journal_base=${"ff".repeat(28)}/`);
-    expect(await confirmedRows()).toEqual(before);
-    expect(await temporalRows()).toEqual([{ merges: 0, foreign_frontier: 0 }]);
+    expect(await confirmedRows()).toEqual(landed);
+    expect(await temporalRows()).toEqual(landedTemporal);
     expect(await m.mergeJob(block)).toBeUndefined();
-    await m.expectDeposits(block, DepositsDB.Status.Projected);
+    await m.expectDeposits(block, DepositsDB.Status.Consumed);
   }
   expect(hooks.confirmedFinalizations).toEqual([]);
 
@@ -81,6 +88,7 @@ export const assertLandedMergeParentRefusal = async (
   );
   expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
   await expectFinalizedOnce(m, block, 1);
-  expect(await confirmedRows()).not.toEqual(before);
+  expect(await confirmedRows()).toEqual(landed);
+  expect(await temporalRows()).toEqual(landedTemporal);
   expect(hooks.confirmedFinalizations).toEqual([]);
 };

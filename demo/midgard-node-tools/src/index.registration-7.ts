@@ -324,8 +324,6 @@ program
                         nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
                       waitBetweenBlockCommitment:
                         nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
-                      waitBetweenBlockConfirmation:
-                        nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
                       waitBetweenMergeTxs: nodeConfig.WAIT_BETWEEN_MERGE_TXS,
                       validationBatchSize: nodeConfig.VALIDATION_BATCH_SIZE,
                       validationPhaseAConcurrency:

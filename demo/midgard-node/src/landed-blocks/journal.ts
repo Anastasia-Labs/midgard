@@ -12,20 +12,10 @@ const Journals = PendingBlockFinalizationsDB;
 const Member = Journals.MemberColumns;
 const WithdrawalMember = Journals.WithdrawalMemberColumns;
 
-const statusOf = (
-  status: PendingBlockFinalizationsDB.Status,
-): OwnJournal["status"] =>
-  status === Journals.Status.LocallyApplied
-    ? "locally_applied"
-    : status === Journals.Status.Abandoned
-      ? "abandoned"
-      : "active";
-
 export const ownJournalOf = (
   record: PendingBlockFinalizationsDB.Record,
 ): OwnJournal & { headerHash: string } => ({
   headerHash: record[Journals.Columns.HEADER_HASH].toString("hex"),
-  status: statusOf(record[Journals.Columns.STATUS]),
   baseTailHeaderHash:
     record[Journals.Columns.BASE_TAIL_HEADER_HASH].toString("hex"),
   baseUtxosRoot: record[Journals.Columns.BASE_UTXOS_ROOT],
@@ -41,10 +31,6 @@ export const ownJournalOf = (
     settlement: member[Member.PAYLOAD_CBOR].toString("hex"),
   })),
   txIds: record.mempoolTxIds,
-  revived:
-    record[Journals.Columns.STATUS] ===
-      Journals.Status.ObservedWaitingStability &&
-    record[Journals.Columns.CORRECTION_TRANSITION_DIGEST] != null,
 });
 
 /**

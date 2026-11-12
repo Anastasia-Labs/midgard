@@ -77,8 +77,7 @@ means the merge is final: `confirmedLedgerFinalized` turns `true` once the
 block is merged into the confirmed ledger and that merge is confirmation-depth
 deep. A rollback that takes the landed block off L1 clears that inclusion,
 and the transaction answers from the row this node still holds for it:
-`pending_commit` from `processed_mempool` (`awaiting_local_recovery` while a
-local block finalization is pending), `accepted` from `mempool`. Once no
+`pending_commit` from `processed_mempool`, `accepted` from `mempool`. Once no
 rollback can reach the block's merge, the node keeps a landed-block inclusion
 for as long as it keeps its own committed transactions, so the answer stays
 `committed`. `/pipeline-status` lists both meanings, as an

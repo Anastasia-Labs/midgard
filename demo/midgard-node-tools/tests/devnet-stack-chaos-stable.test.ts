@@ -262,7 +262,7 @@ describe("runDrills counts only a stable stack as recovered", () => {
   });
 
   it("keeps the window through a running service's unready spell, with no exit", async () => {
-    // A busy node answers unready (local finalization pending) and is not
+    // A busy node answers unready (a commit awaiting its base) and is not
     // crashing: once it is ready at the window's end the stack has recovered.
     const w = world();
     const busy = (from: number, to: number) => (at: number) =>
@@ -270,7 +270,7 @@ describe("runDrills counts only a stable stack as recovered", () => {
         service: "node",
         from: at + s(from),
         to: at + s(to),
-        reasons: ["local_finalization_pending"],
+        reasons: ["commit_base_pending"],
       });
     w.afterKill(busy(120, 140));
     // Unready across the window's end, too: waited for within the bound.
@@ -288,7 +288,7 @@ describe("runDrills counts only a stable stack as recovered", () => {
         service: "node",
         from: at + s(100),
         to: at + s(5_000),
-        reasons: ["local_finalization_pending"],
+        reasons: ["commit_base_pending"],
       }),
     );
     const { summary, log } = await killNode(w);
@@ -297,7 +297,7 @@ describe("runDrills counts only a stable stack as recovered", () => {
       /not stably ready within 900 s.*last because not ready at the window's end: services not ready after 540 s: node/,
     );
     expect(log[0]!.detail).toMatch(
-      /node: last not ready: \["local_finalization_pending"\]/,
+      /node: last not ready: \["commit_base_pending"\]/,
     );
   });
 

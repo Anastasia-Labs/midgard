@@ -23,9 +23,7 @@ export type WorkerInput = {
   };
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
-    availableLocalFinalizationBlock: "" | SerializedStateQueueUTxO;
     currentBlockStartTimeMs: number;
-    localFinalizationPending: boolean;
     /**
      * Parent-generated identity for the logical PostgreSQL ledger-MPF lease.
      * The parent uses the same identity to release a lease only after the
@@ -66,7 +64,7 @@ export type SuccessfulSubmissionOutput = {
 
 export type CommitCandidateRoots = {
   readonly utxos: string;
-  /** Raw transaction MPF root retained by the local finalization path. */
+  /** Raw transaction MPF root. */
   readonly rawTransactions: string;
   readonly transactions: string;
   readonly transitionTrace: string;
@@ -149,8 +147,9 @@ export type RegisteredDueWorkOutput = {
   dueWork: SlotAwareDueWork;
 };
 
-/** The commit waits for its base: a foreign tail landed-block processing
- * has not applied to the working ledger yet. */
+/** The commit waits for its base: a tail landed-block processing has not
+ * applied to the working ledger yet, or this node's own block still in
+ * flight. */
 export type AwaitingCommitBaseOutput = {
   readonly type: "AwaitingCommitBaseOutput";
   readonly baseHeaderHash: string;
@@ -168,19 +167,6 @@ export type AwaitingNextCommitWindowOutput = {
   readonly detail: string;
 };
 
-export type SubmittedAwaitingLocalFinalizationOutput = {
-  type: "SubmittedAwaitingLocalFinalizationOutput";
-  submittedTxHash: string;
-  txSize: number;
-  mempoolTxsCount: number;
-  sizeOfBlocksTxs: number;
-  blockEndTimeMs: number;
-  error: string;
-  submittedHeaderHash: string;
-  submittedUtxosRoot: string;
-  nativeMpfPromotion?: NativeMpfPromotion;
-};
-
 export type SubmittedAwaitingConfirmationOutput = {
   type: "SubmittedAwaitingConfirmationOutput";
   submittedTxHash: string;
@@ -193,14 +179,6 @@ export type SubmittedAwaitingConfirmationOutput = {
   nativeMpfPromotion?: NativeMpfPromotion;
 };
 
-export type SuccessfulLocalFinalizationRecoveryOutput = {
-  type: "SuccessfulLocalFinalizationRecoveryOutput";
-  finalizedHeaderHash: string;
-  mempoolTxsCount: number;
-  sizeOfBlocksTxs: number;
-  mempoolLedgerDeletedOutRefHexes: readonly string[];
-};
-
 export type WorkerOutput =
   | SuccessfulSubmissionOutput
   | SkippedSubmissionOutput
@@ -209,9 +187,7 @@ export type WorkerOutput =
   | RegisteredDueWorkOutput
   | AwaitingCommitBaseOutput
   | AwaitingNextCommitWindowOutput
-  | SubmittedAwaitingLocalFinalizationOutput
-  | SubmittedAwaitingConfirmationOutput
-  | SuccessfulLocalFinalizationRecoveryOutput;
+  | SubmittedAwaitingConfirmationOutput;
 
 /**
  * Posted by the commit worker ahead of its output, as soon as a commit-stage

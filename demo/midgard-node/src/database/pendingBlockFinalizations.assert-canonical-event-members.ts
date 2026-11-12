@@ -20,6 +20,7 @@ import {
   tableName,
 } from "./pendingBlockFinalizations.columns.js";
 import { validateSignedIntent } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
+import { holdMutationLease } from "./pendingBlockFinalizations.hold-mutation-lease.js";
 import { retrieveByHeaderHash } from "./pendingBlockFinalizations.retrieve-record.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as WithdrawalsDB from "./withdrawals.js";
@@ -182,6 +183,10 @@ export const recordSignedIntent = <J = never>(
               cause: headerHash.toString("hex"),
             }),
           );
+        yield* holdMutationLease(
+          record.value[Columns.STATE_QUEUE_LEASE_TOKEN],
+          headerHash,
+        );
         yield* assertCanonicalEventMembers(record.value);
         const rows = yield* sql`UPDATE ${sql(tableName)}
         SET intended_tx_hash = ${txHash}, signed_tx_cbor = ${signedCbor}, updated_at = clock_timestamp()
@@ -239,58 +244,6 @@ export const markSubmitted = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to mark pending block as submitted",
-    ),
-  );
-
-export const discardUnsubmittedPendingSubmission = (
-  headerHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`DELETE FROM ${sql(tableName)}
-      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
-        AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
-      AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
-  }).pipe(
-    withFollowerWrite,
-    Effect.withLogSpan(`discardUnsubmittedPendingSubmission ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to discard unsubmitted pending block journal",
-    ),
-  );
-
-export const markLocalFinalizationComplete = (
-  headerHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.STATUS)} = ${Status.SubmittedUnconfirmed},
-          ${sql(Columns.UPDATED_AT)} = NOW()
-      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} IN (
-          ${Status.SubmittedLocalFinalizationPending},
-          ${Status.SubmittedUnconfirmed}
-        )
-      RETURNING *`;
-    if (rows.length !== 1) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message:
-            "Failed to mark pending block as locally finalized and awaiting confirmation",
-          cause: `header_hash=${headerHash.toString("hex")}`,
-        }),
-      );
-    }
-  }).pipe(
-    withFollowerWrite,
-    Effect.withLogSpan(`markLocalFinalizationComplete ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark pending block local finalization complete",
     ),
   );
 

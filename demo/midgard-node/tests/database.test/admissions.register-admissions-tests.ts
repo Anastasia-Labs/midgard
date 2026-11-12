@@ -32,7 +32,6 @@ import { describe, expect } from "vitest";
 import { normalizeSubmitTxCanonicalCborToNative } from "../../src/commands/listen-utils.js";
 import {
   AddressHistoryDB,
-  BlocksDB,
   DepositsDB,
   LedgerUtils,
   MempoolDB,
@@ -77,7 +76,6 @@ import {
 import { WriteBehind } from "../../src/services/write-behind.js";
 import { breakDownTx, ProcessedTx } from "../../src/utils.js";
 import { selectCommitTxCandidates } from "../../src/workers/utils/commit-block-planner.js";
-import { finalizeCommittedBlockLocally } from "../../src/workers/utils/commit-submission.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -158,71 +156,6 @@ export const registerAdmissionsTests = () => {
               ),
             );
           }).pipe(Effect.provide(Globals.Default)),
-        ),
-    );
-
-    it.effect(
-      "finalizes local mempool rows and rolls back on a block conflict",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const successful = makeScriptProofSubmitTx(74);
-            const conflicting = makeScriptProofSubmitTx(75);
-            for (const attempt of [successful, conflicting]) {
-              yield* MempoolDB.insertMultipleCore([
-                {
-                  txId: attempt.txId,
-                  txCbor: attempt.txCanonicalCbor,
-                  spent: [],
-                  produced: [],
-                },
-              ]);
-            }
-            const page = yield* MempoolDB.retrievePage({ limit: 10 });
-            const entryById = new Map(
-              page.entries.map((entry) => [
-                entry[TxUtils.Columns.TX_ID].toString("hex"),
-                entry,
-              ]),
-            );
-            const resetCount = yield* Ref.make(0);
-            const transactionsMpf = {
-              resetToEmpty: () => Ref.update(resetCount, (count) => count + 1),
-            } as unknown as Parameters<typeof finalizeCommittedBlockLocally>[0];
-            yield* finalizeCommittedBlockLocally(
-              transactionsMpf,
-              [entryById.get(successful.txIdHex)!],
-              [successful.txId],
-              "31".repeat(28),
-              [],
-              { useAmbientProcessedMempool: false },
-            );
-            expect(yield* Ref.get(resetCount)).toBe(1);
-            expect(
-              yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
-                Effect.option,
-              ),
-            ).toEqual(Option.none());
-
-            yield* BlocksDB.insert(Buffer.from("41".repeat(28), "hex"), [
-              conflicting.txId,
-            ]);
-            const failed = yield* Effect.either(
-              finalizeCommittedBlockLocally(
-                transactionsMpf,
-                [entryById.get(conflicting.txIdHex)!],
-                [conflicting.txId],
-                "42".repeat(28),
-                [],
-                { useAmbientProcessedMempool: false },
-              ),
-            );
-            expect(failed._tag).toBe("Left");
-            expect(
-              yield* MempoolDB.retrieveTxCborByHash(conflicting.txId),
-            ).toEqual(conflicting.txCanonicalCbor);
-            expect(yield* Ref.get(resetCount)).toBe(1);
-          }),
         ),
     );
 

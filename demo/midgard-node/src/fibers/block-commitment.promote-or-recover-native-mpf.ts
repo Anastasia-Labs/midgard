@@ -7,7 +7,6 @@ import type {
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
 } from "../services/mpf-native-owner/index.js";
-import { type SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 export {
   type CommitWorkerMessage,
@@ -55,57 +54,6 @@ export const commitWorkerDurationTimer = Metric.timer(
   "commit_worker_duration",
   "Duration of one block commitment worker attempt in milliseconds",
 );
-
-export const resolveAuthoritativeLocalFinalizationPreflight = ({
-  localFinalizationPending,
-  availableLocalFinalizationBlock,
-  activeJournalHeaderHash,
-  activeJournalSubmittedTxHash,
-  activeJournalStatus,
-  tailHeaderHash,
-  tailBlock,
-}: {
-  readonly localFinalizationPending: boolean;
-  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
-  readonly activeJournalHeaderHash: string | null;
-  readonly activeJournalSubmittedTxHash: string | null;
-  readonly activeJournalStatus: PendingBlockFinalizationsDB.Status | null;
-  readonly tailHeaderHash: string | null;
-  readonly tailBlock: SerializedStateQueueUTxO;
-}): {
-  readonly localFinalizationPending: boolean;
-  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
-  readonly recoveredRacedJournal: boolean;
-} => {
-  const hasSubmittedActiveJournal =
-    (activeJournalSubmittedTxHash !== null ||
-      activeJournalStatus ===
-        PendingBlockFinalizationsDB.Status.ObservedWaitingStability) &&
-    (activeJournalStatus ===
-      PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed ||
-      activeJournalStatus ===
-        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
-      activeJournalStatus ===
-        PendingBlockFinalizationsDB.Status.ObservedWaitingStability);
-  const journalIsConfirmedTail =
-    hasSubmittedActiveJournal &&
-    activeJournalHeaderHash !== null &&
-    tailHeaderHash === activeJournalHeaderHash;
-  if (!hasSubmittedActiveJournal) {
-    return {
-      localFinalizationPending,
-      availableLocalFinalizationBlock,
-      recoveredRacedJournal: false,
-    };
-  }
-  return {
-    localFinalizationPending: true,
-    availableLocalFinalizationBlock: journalIsConfirmedTail ? tailBlock : "",
-    recoveredRacedJournal:
-      journalIsConfirmedTail &&
-      (!localFinalizationPending || availableLocalFinalizationBlock === ""),
-  };
-};
 
 export const BLOCK_COMMITMENT_DUE_WORK_KIND =
   "commit_scheduler_refresh" as const;

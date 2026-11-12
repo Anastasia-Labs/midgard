@@ -10,7 +10,6 @@ type ReadinessInput = Parameters<typeof evaluateReadiness>[0];
 
 const readyHeartbeats: ReadinessInput["workerHeartbeats"] = {
   blockCommitment: now - 1_000,
-  blockConfirmation: now - 2_000,
   merge: now - 2_000,
   txQueueProcessor: now - 1_000,
 };
@@ -26,7 +25,6 @@ const readinessInput = (
   maxHeartbeatAgeMs: 10_000,
   maxQueueDepth: 100,
   queueDepth: 10,
-  localFinalizationPending: false,
   dbHealthy: true,
   ...overrides,
   workerHeartbeats: {
@@ -82,19 +80,6 @@ describe("evaluateReadiness", () => {
     expect(
       evaluateReadiness(readinessInput({ maxQueueDepth, queueDepth: 9_501 })),
     ).toEqual({ ready: false, reasons: ["queue_depth_exceeded:9501:9500"] });
-  });
-
-  it("fails readiness when local finalization is pending", () => {
-    const readiness = evaluateReadiness(
-      readinessInput({
-        localFinalizationPending: true,
-      }),
-    );
-
-    expect(readiness.ready).toBe(false);
-    expect(
-      readiness.reasons.some((r) => r.includes("local_finalization_pending")),
-    ).toBe(true);
   });
 
   it("fails readiness when database health probe fails", () => {

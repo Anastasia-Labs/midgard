@@ -51,14 +51,12 @@ import {
   Globals,
   LucidService,
   makeGlobalsService,
-  materializeConfirmedLedgerSnapshot,
+  materializeJournalLedger,
   mergeMaturityWindow,
   MidgardContracts,
   MidgardMpf,
   NodeConfig,
-  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
@@ -101,7 +99,7 @@ vi.mock(
 );
 
 /**
- * Actual public deposits, commits, confirmations and local finalizations under
+ * Actual public deposits and commits, each applied when it lands, under
  * the production follower-change driver and Architecture G native owner; the
  * merges run through the admin GET /merge handler and `reconcile
  * merge-complete --repair` with no follower write permit taken by the test.
@@ -189,7 +187,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await h.synchronize();
     return hash;
   };
-  const depositCommitConfirmAndFinalize = async (lovelace: bigint) => {
+  const depositCommitAndLand = async (lovelace: bigint) => {
     await ensureSeparateCollateralUtxo(wallet);
     await advanceHistoryAdmissionClock(fixture, "deposit");
     await alignCommitSchedulerBeforeTestWorker({
@@ -243,23 +241,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await fixture.operatorLucid.awaitTx(commit.submittedTxHash)).toBe(
       true,
     );
-    await h.synchronize();
-    await runBlockConfirmation(
-      globals,
-      fixture.contracts,
-      lucidService,
-      production.nodeConfig,
-      production,
-    );
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      production.nodeConfig,
-      { ...production, globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    await h.applyLanded(commit.submittedHeaderHash);
     const tail = (await queue()).tailCommitBase;
     expect(tail.headerHash).not.toBeNull();
     // Attest before the DA window lapses; an expired unattested block pauses
@@ -396,7 +378,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
     // --- Bug A: one finalized, unmerged block. -----------------------------
-    const first = await depositCommitConfirmAndFinalize(12_000_000n);
+    const first = await depositCommitAndLand(12_000_000n);
     const tipRoot = await nativeDurableRoot();
     const confirmedEntries = await run(ConfirmedLedgerDB.retrieve);
     const firstJournal = await run(
@@ -406,7 +388,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     );
     expect(Option.isSome(firstJournal)).toBe(true);
     const tipSnapshot = await run(
-      materializeConfirmedLedgerSnapshot(Option.getOrThrow(firstJournal)),
+      materializeJournalLedger(Option.getOrThrow(firstJournal)),
     );
     expect(tipSnapshot.root).toBe(tipRoot);
 
@@ -473,7 +455,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await acknowledgeCleanAudit();
 
     // --- A second finalized block: the tip walk spans two journals. --------
-    const second = await depositCommitConfirmAndFinalize(7_000_000n);
+    const second = await depositCommitAndLand(7_000_000n);
     const twoBlockTip = await nativeDurableRoot();
     expect(await run(runLedgerPayloadAudit)).toMatchObject({
       matchedPoint: "tip",

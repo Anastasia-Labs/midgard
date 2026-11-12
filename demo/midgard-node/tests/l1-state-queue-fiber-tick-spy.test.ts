@@ -8,7 +8,7 @@
  * in the N2 report; this is its runtime half.
  *
  * Covered ticks: block commitment (the preflight snapshot, the tail, the
- * base revalidation and both append-fence reads), block confirmation, merge
+ * base revalidation and both append-fence reads), merge
  * (candidate readiness and the queue gauge), DA attestation, the retention
  * sweep, and attestation-timeout correction up to its first non-queue step.
  * The L1 slot comes from a registered tip source, as the follower's covered
@@ -51,7 +51,6 @@ import {
   resolveCommitAppendFenceEndTimeCapLocal,
   resolveCommitAppendFenceReferencesLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
-import { fetchSortedCommittedStateQueueBlocks } from "../src/workers/utils/confirm-block-commitments.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { attachTestL1Access } from "./helpers/l1-tip.js";
 import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
@@ -233,11 +232,6 @@ describe("the planner fibers' state-queue reads", () => {
         expect(
           yield* resolveCommitAppendFenceEndTimeCapLocal(lucid, fetchConfig),
         ).toBeTypeOf("number");
-
-        // Block confirmation.
-        expect(
-          yield* fetchSortedCommittedStateQueueBlocks(stateQueue as never),
-        ).toHaveLength(2);
 
         // Merge.
         const readiness = yield* fetchCanonicalMergeCandidateReadiness(

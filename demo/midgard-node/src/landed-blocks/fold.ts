@@ -4,12 +4,10 @@
  * order, through the stored-delta fold (`confirmed-merges.ts`), and the
  * frontier names the header `confirmed_ledger` is at.
  *
- * - A foreign block folds once the working-ledger rebase applied it (its
- *   events' rows are then projected to it).
- * - This node's own block folds the same way once its journal is locally
- *   applied (its events are then projected to it); until then the fold
- *   waits on `confirmed_ledger_own_block_pending`. The merge fiber may fold
- *   it first (`finalizeConfirmedMergeProgram`), through the same fold.
+ * - A block, foreign or this node's own, folds once the working-ledger
+ *   rebase applied it (its events' rows are then projected to it). The
+ *   merge fiber may fold an own block first
+ *   (`finalizeConfirmedMergeProgram`), through the same fold.
  * - A fold whose base is wrong is refused and holds
  *   `confirmed_ledger_base_mismatch`, writing nothing.
  * - A root that is no longer on the frontier's lineage (a rollback undid a
@@ -41,7 +39,6 @@ import { lineageBack, type QueueHistory } from "./history.js";
 import {
   CONFIRMED_LEDGER_BASE_MISMATCH,
   CONFIRMED_LEDGER_BEHIND,
-  CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
 } from "./holds.js";
 import { processedChain } from "./ledger.js";
 import { type LandedBlockPorts, viewChecked } from "./ports.js";
@@ -164,7 +161,7 @@ export type FoldOutcome =
   | Readonly<{ kind: "at_root" }>
   /** The root is not on the processed chain from the frontier. */
   | Readonly<{ kind: "off_chain"; frontier: HeaderRoot }>
-  /** A foreign block before the root waits for the rebase to apply it. */
+  /** A block before the root, foreign or own, waits for the rebase to apply it. */
   | Readonly<{ kind: "awaiting_rebase" }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
@@ -203,19 +200,8 @@ export const foldToRoot = <R>(
       if (!chain.some((row) => row.headerHash === root.headerHash))
         return { kind: "off_chain", frontier } satisfies FoldOutcome;
       const next = chain[0]!;
-      if (next.kind === "foreign" && !next.applied)
+      if (!next.applied)
         return { kind: "awaiting_rebase" } satisfies FoldOutcome;
-      if (next.kind === "own") {
-        const journal = yield* ports.ownJournal(next.headerHash);
-        if (journal?.status !== "locally_applied")
-          return {
-            kind: "held",
-            hold: {
-              reason: CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
-              detail: `own merged block ${next.headerHash} is not locally applied yet (journal ${journal?.status ?? "missing"})`,
-            },
-          } satisfies FoldOutcome;
-      }
       const point = yield* mergePoint(next.headerHash);
       const refused = yield* checkedFold(ports, view, foldMerge(next, point));
       if (refused !== undefined)

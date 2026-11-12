@@ -355,7 +355,6 @@ describe("journey accounting", () => {
       stateQueue: {
         queueLength: 0,
         unconfirmedSubmittedBlockTxHash: null,
-        localFinalizationPending: false,
       },
       pendingBlockFinalizations: { oldestActive: null },
       localMutationJobs: { unfinished: "0" },

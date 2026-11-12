@@ -31,6 +31,10 @@ import {
   writeFollowerTip,
 } from "./helpers/follower-view.js";
 import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
+import {
+  prepareUnderTestLease,
+  withTestMutationLease,
+} from "./helpers/mutation-lease.js";
 import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
 import {
   deterministicFixtureBytes,
@@ -99,22 +103,21 @@ const journalUnder = (
 ) =>
   Effect.gen(function* () {
     const anchor = anchorOf(block(permit.view.height - D));
-    const prepared =
-      yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-        { ...journalFixture(headerHash), preparedTxHash: txHash },
-        {
-          beforeJournalInsert: assertCommitUserEventSourceCompleteness({
-            blockEndTimeMs:
-              modelSlotTime(anchor.slot) + EVENT_WAIT_DURATION_MS - 1,
-            commitAnchor: anchor,
-            depth: D,
-            slotToUnixTime: modelSlotTime,
-            includedDepositEntries: [],
-            includedForcedTransactionEntries: [],
-            includedWithdrawalEntries: [],
-          }),
-        },
-      ).pipe(Effect.provideService(FollowerWrite, permit));
+    const prepared = yield* prepareUnderTestLease(
+      { ...journalFixture(headerHash), preparedTxHash: txHash },
+      {
+        beforeJournalInsert: assertCommitUserEventSourceCompleteness({
+          blockEndTimeMs:
+            modelSlotTime(anchor.slot) + EVENT_WAIT_DURATION_MS - 1,
+          commitAnchor: anchor,
+          depth: D,
+          slotToUnixTime: modelSlotTime,
+          includedDepositEntries: [],
+          includedForcedTransactionEntries: [],
+          includedWithdrawalEntries: [],
+        }),
+      },
+    ).pipe(Effect.provideService(FollowerWrite, permit));
     return { prepared, anchor };
   });
 
@@ -129,7 +132,12 @@ const sign = (
         headerHash,
         txHash,
         cbor,
-      ).pipe(Effect.provideService(FollowerWrite, permit)),
+      ).pipe(
+        Effect.provideService(FollowerWrite, permit),
+        withTestMutationLease(
+          journalFixture(headerHash).metadata.stateQueueLeaseToken,
+        ),
+      ),
     ),
   );
 
@@ -209,7 +217,7 @@ describe("commit anchor at journaling and signing", () => {
     );
     const refused = await run(
       Effect.either(
-        PendingBlockFinalizationsDB.preparePendingSubmission({
+        prepareUnderTestLease({
           ...journalFixture(header("anchorless")),
           preparedTxHash: signedTx().txHash,
         }).pipe(Effect.provideService(FollowerWrite, permit)),

@@ -91,7 +91,8 @@ export type LandedSimStats = TrafficStats & {
    */
   liveRebases: number;
   ownProcessed: number;
-  ownMerges: number;
+  /** Own blocks the rebase applied when they landed (journal locally applied). */
+  ownApplied: number;
   /** Own journals abandoned because their base left the processed tip. */
   ownResolutions: number;
   /** ...because their base was a foreign block a rollback removed. */
@@ -151,7 +152,7 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   ownCommits: 0,
   liveRebases: 0,
   ownProcessed: 0,
-  ownMerges: 0,
+  ownApplied: 0,
   ownResolutions: 0,
   ownOnRemovedBase: 0,
   ownRevivals: 0,

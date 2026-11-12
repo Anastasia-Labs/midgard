@@ -47,13 +47,13 @@ describe("merging another operator's block", () => {
     const { a, f, genesisState, journalA } = await fixture();
     expect(f.header.operatorVkey).not.toBe(OWN_OPERATOR);
     const state = harness();
-    state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+    state.journals.set(a.hash, journalA);
     const landed = ports(state);
     await inNodeWithGlobals(
       Effect.gen(function* () {
         yield* processLandedQueue(landed, queueOf(genesisState, [a, f]));
-        // The rebase applied F (its own suites cover the rebase).
-        yield* markApplied([f.hash]);
+        // The rebase applied A and F (its own suites cover the rebase).
+        yield* markApplied([a.hash, f.hash]);
         yield* processLandedQueue(landed, queueOf(confirmedAt(a, ""), [f]));
         expect((yield* Frontier.retrieve)?.headerHash).toBe(a.hash);
         expect(yield* confirmedKeys).toEqual(sortedKeys(AFTER_A));

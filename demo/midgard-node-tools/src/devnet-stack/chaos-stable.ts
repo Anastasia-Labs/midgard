@@ -142,7 +142,7 @@ const names = (reports: readonly ServiceReadiness[]) =>
  * window: a supervisor event (an exit, a start, a hang), a PID change, or a
  * service (or the supervisor) that is not running. A running service that
  * answers unready inside the window does not, since the node's /readyz goes
- * unready on a healthy, busy stack (local finalization pending, a slow L1
+ * unready on a healthy, busy stack (a commit awaiting its base, a slow L1
  * provider); every service must be ready again at the window's end, waited
  * for within the bound. A restart keeps the bound (`deadline`) running; once
  * it has run out the recovery fails, naming each service's exits, restarts

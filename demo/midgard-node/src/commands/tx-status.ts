@@ -23,7 +23,6 @@ export type ResolveTxStatusInput = {
   readonly inImmutable: boolean;
   readonly inMempool: boolean;
   readonly inProcessedMempool: boolean;
-  readonly localFinalizationPending: boolean;
   /** Which block holds the tx: this node's own (`own_block`) or a landed
    * block of any operator that includes a tx this node accepted
    * (`landed_block`). */
@@ -63,7 +62,6 @@ export type ResolvedTxStatus =
         | "committed"
         | "accepted"
         | "pending_commit"
-        | "awaiting_local_recovery"
         | "validating"
         | "queued"
         | "not_found";
@@ -101,13 +99,6 @@ export const resolveTxStatus = (
         ? {}
         : { mergeStatus: input.mergeStatus }),
       confirmedLedgerFinalized: input.confirmedLedgerFinalized ?? false,
-    };
-  }
-
-  if (input.localFinalizationPending && input.inProcessedMempool) {
-    return {
-      txId: input.txIdHex,
-      status: "awaiting_local_recovery",
     };
   }
 
@@ -167,7 +158,6 @@ export type ResolveTxStatusBatchInput = {
   readonly immutableTxIds: ReadonlySet<string>;
   readonly mempoolTxIds: ReadonlySet<string>;
   readonly processedMempoolTxIds: ReadonlySet<string>;
-  readonly localFinalizationPending: boolean;
   readonly headerEvidenceByTxId?: ReadonlyMap<
     string,
     {
@@ -192,7 +182,6 @@ export const resolveTxStatusBatch = (
       inImmutable: input.immutableTxIds.has(txIdHex),
       inMempool: input.mempoolTxIds.has(txIdHex),
       inProcessedMempool: input.processedMempoolTxIds.has(txIdHex),
-      localFinalizationPending: input.localFinalizationPending,
       ...(headerEvidence === undefined ? {} : headerEvidence),
     });
   });

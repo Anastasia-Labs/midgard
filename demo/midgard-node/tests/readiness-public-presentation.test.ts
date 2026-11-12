@@ -227,11 +227,9 @@ it("retains actual typed readiness refusals and commit coordination phases", () 
     queueDepth: 11,
     workerHeartbeats: {
       blockCommitment: 1,
-      blockConfirmation: 1,
       merge: 1,
       txQueueProcessor: 1,
     },
-    localFinalizationPending: false,
     unresolvedBlockSubmissionAgeMs: 1_200,
     maxUnresolvedBlockSubmissionAgeMs: 1_000,
     dbHealthy: true,

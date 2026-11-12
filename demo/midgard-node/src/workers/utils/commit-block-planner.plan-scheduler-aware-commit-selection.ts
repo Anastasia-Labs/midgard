@@ -217,26 +217,12 @@ export const selectCommitRoots = ({
   };
 };
 
-export const shouldAttemptLocalFinalizationRecovery = (input: {
-  readonly localFinalizationPending: boolean;
-  readonly hasAvailableConfirmedBlock: boolean;
-}): boolean =>
-  input.localFinalizationPending && input.hasAvailableConfirmedBlock;
-
-export const shouldDeferCommitSubmission = (input: {
-  readonly localFinalizationPending: boolean;
-  readonly hasAvailableConfirmedBlock: boolean;
-}): boolean =>
-  input.localFinalizationPending && !input.hasAvailableConfirmedBlock;
-
 export const shouldSkipIdleCommitBehindUnmergedTail = (input: {
-  readonly localFinalizationPending: boolean;
   readonly stateQueueHasUnmergedTail: boolean;
   readonly mempoolTxCount: number;
   readonly processedTxCount: number;
   readonly pendingUserEventCount: number;
 }): boolean =>
-  !input.localFinalizationPending &&
   input.stateQueueHasUnmergedTail &&
   input.mempoolTxCount === 0 &&
   input.processedTxCount === 0 &&

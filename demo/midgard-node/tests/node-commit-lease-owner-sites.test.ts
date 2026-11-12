@@ -76,6 +76,23 @@ vi.mock("../src/fibers/native-mpf-worker-input.js", async () => {
       }),
   };
 });
+// The state-queue preflight reads a landed snapshot; its tail is all the
+// site hands the worker.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
+  const { Effect } = await import("effect");
+  return {
+    ...(await importOriginal<
+      typeof import("../src/services/landed-state-queue.js")
+    >()),
+    landedStateQueueSnapshot: () =>
+      Effect.succeed({
+        snapshotId: "commit-preflight:root#0:tail#0",
+        root: { outRef: "root#0" },
+        tailCommitBase: { outRef: "tail#0", blockEndTimeMs: 0, utxo: "" },
+      }),
+    refreshStateQueueGlobalsFromSnapshot: () => Effect.void,
+  };
+});
 vi.mock("../src/lucid-time.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/lucid-time.js")>()),
   canonicalSlotConfigForLucid: () => ({
@@ -182,8 +199,6 @@ describe("node commit sites take the ledger MPF lease as a node process", () => 
             ...local,
             epoch,
           }));
-          // A pending local finalization skips the L1 state-queue preflight.
-          yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
         }),
     );
     expect(Exit.isFailure(exit)).toBe(true);

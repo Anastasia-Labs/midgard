@@ -86,7 +86,6 @@ export const resolveEarliestCommitSchedulerDueWorkPlan = ({
   contracts,
   submitSlotSnapshot,
   stateQueueEvidence,
-  localFinalizationPending,
   callerLabel,
   discoveryStage,
 }: {
@@ -94,7 +93,6 @@ export const resolveEarliestCommitSchedulerDueWorkPlan = ({
   readonly contracts: SDK.MidgardValidators;
   readonly submitSlotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
   readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
-  readonly localFinalizationPending: boolean;
   readonly callerLabel: string;
   readonly discoveryStage: CommitSchedulerDiscoveryStage;
 }): Effect.Effect<EarliestCommitSchedulerPlan, SDK.StateQueueError> =>
@@ -150,7 +148,6 @@ export const resolveEarliestCommitSchedulerDueWorkPlan = ({
           ? submitSlotEvidence.left
           : undefined,
       stateQueueEvidence,
-      localFinalizationPending,
       maxInlineWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
     });
   });

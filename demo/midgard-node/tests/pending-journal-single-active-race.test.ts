@@ -10,6 +10,7 @@ import {
   isSingleActiveIndexViolation,
   SINGLE_ACTIVE_INDEX,
 } from "../src/database/pendingBlockFinalizations.single-active-refusal.js";
+import { withTestMutationLease } from "./helpers/mutation-lease.js";
 import {
   header,
   journalFixture,
@@ -71,7 +72,12 @@ const raceThroughThePreCheck = (first: Side) =>
     yield* Deferred.succeed(go[second], undefined);
     const loser = yield* Fiber.join(fibers[second]);
     return { winner, loser, pendingSubmissions: yield* pendingSubmissions };
-  });
+  }).pipe(
+    withTestMutationLease(
+      journalFixture(header("single-active-race-a")).metadata
+        .stateQueueLeaseToken,
+    ),
+  );
 
 describe("single-active pending journal under a concurrent prepare", () => {
   it.each<Side>(["a", "b"])(

@@ -2,7 +2,6 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { MutationJobsDB } from "../database/index.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
@@ -13,7 +12,6 @@ import {
 } from "../transactions/phas-membership-registration.js";
 import {
   evidence,
-  type ReconciliationEvidence,
   type ReconciliationResult,
   result,
 } from "./reconcile.parse-reconciliation-result.js";
@@ -51,33 +49,6 @@ export const fetchCanonicalStateQueueHeaderHashes =
   fetchCanonicalStateQueueHeaders.pipe(
     Effect.map((headers) => headers.map((header) => header.headerHash)),
   );
-
-export const localFinalizationJobId = (headerHashHex: string): string =>
-  `local_block_finalization:${headerHashHex}`;
-
-export const unfinishedLocalFinalizationJobEvidence = (
-  headerHashHex: string,
-  jobs: readonly MutationJobsDB.Entry[],
-): ReconciliationEvidence => {
-  const jobId = localFinalizationJobId(headerHashHex);
-  const job = jobs.find(
-    (entry) => entry[MutationJobsDB.Columns.JOB_ID] === jobId,
-  );
-  return evidence(
-    "local_finalization_job",
-    job === undefined
-      ? { present: false, jobId }
-      : {
-          present: true,
-          jobId,
-          kind: job[MutationJobsDB.Columns.KIND],
-          status: job[MutationJobsDB.Columns.STATUS],
-          attempts: job[MutationJobsDB.Columns.ATTEMPTS],
-          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
-          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
-        },
-  );
-};
 
 export const reconcilePhasRegisteredProgram = ({
   repair,

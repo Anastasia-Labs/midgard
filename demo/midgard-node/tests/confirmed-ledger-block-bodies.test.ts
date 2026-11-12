@@ -33,7 +33,7 @@ import {
 } from "../src/landed-blocks/confirmed-merges.js";
 import type { OwnJournal } from "../src/landed-blocks/ports.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
-import { Frontier } from "../src/landed-blocks/store.js";
+import { Frontier, markApplied } from "../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import {
   diagnoseMissingBlockTxs,
@@ -115,11 +115,7 @@ const pruneIn = (slot: number) =>
 const setUp = async () => {
   const { a, genesisState, journalA } = await fixture();
   const tx = nativeTx();
-  const journal: OwnJournal = {
-    ...journalA,
-    status: "locally_applied",
-    txIds: [tx.txId],
-  };
+  const journal: OwnJournal = { ...journalA, txIds: [tx.txId] };
   const state = harness();
   state.journals.set(a.hash, journal);
   const unmerged = queueOf(genesisState, [a]);
@@ -132,7 +128,7 @@ const setUp = async () => {
     unmerged,
     // The merge created the root at slot 7.
     mergedAt7: { ...merged, root: createdAt(merged.root!, 7) },
-    // What commit-time local finalization stored for the block.
+    // What applying the block when it landed stored for it.
     commitBodies: Effect.gen(function* () {
       yield* ImmutableDB.insertTxsValidatedNative([
         { tx_id: tx.txId, tx: tx.tx },
@@ -149,6 +145,8 @@ describe("an own block's bodies live until its fold is final", () => {
       Effect.gen(function* () {
         yield* s.commitBodies;
         yield* processLandedQueue(ports(s.state), s.unmerged);
+        // The rebase applied `a` (its own suites cover the rebase).
+        yield* markApplied([s.a.hash]);
 
         // The merge lands; the merge fiber finalizes it, then processing
         // records its merge point.
@@ -210,6 +208,8 @@ describe("an own block's bodies live until its fold is final", () => {
         // Another block's rows, which no release touches.
         yield* BlocksDB.insert(Buffer.from(other, "hex"), [otherTx]);
         yield* processLandedQueue(ports(s.state), s.unmerged);
+        // The rebase applied `a` (its own suites cover the rebase).
+        yield* markApplied([s.a.hash]);
         yield* finalizeConfirmedMergeTransaction({
           journal: s.record,
         });

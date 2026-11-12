@@ -5,13 +5,12 @@
  *   projected to a header that is neither a processed landed block nor one
  *   of this node's unabandoned journals, goes back to `awaiting` (a
  *   withdrawal also loses its classification);
- * - every event a processed foreign block, or a revived own block, holds is
+ * - every event a processed block holds, foreign or this node's own, is
  *   projected to it, a withdrawal with the classification its replay (or
  *   its journal) gave; a deposit is `consumed` once its output left the
  *   working ledger.
  *
- * This node's other own blocks' events are its commit and finalization
- * paths'.
+ * The fold finalizes them (`confirmed-merges.ts`).
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -86,12 +85,12 @@ const requireAll = (table: (typeof TABLES)[number], ids: readonly Buffer[]) =>
       );
   });
 
-/** Projects every event a processed foreign or revived own block holds to it. */
-export const assignChainEvents = (foreign: readonly LandedBlockRow[]) =>
+/** Projects every event a processed block holds to it. */
+export const assignChainEvents = (rows: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
-    for (const row of foreign) {
+    for (const row of rows) {
       const header = Buffer.from(row.headerHash, "hex");
       const withdrawalIds = row.withdrawals.map((member) =>
         Buffer.from(member.id, "hex"),
@@ -126,11 +125,11 @@ export const assignChainEvents = (foreign: readonly LandedBlockRow[]) =>
   });
 
 /**
- * A processed foreign block's deposit is `consumed` once its output left
- * the working ledger `ledger`, `projected` while it is there.
+ * A processed block's deposit is `consumed` once its output left the
+ * working ledger `ledger`, `projected` while it is there.
  */
 export const settleChainDeposits = (
-  foreign: readonly LandedBlockRow[],
+  rows: readonly LandedBlockRow[],
   ledger: ReadonlyMap<string, Buffer>,
   outputs: ReadonlyMap<string, { readonly eventId: Buffer }>,
 ) =>
@@ -138,7 +137,7 @@ export const settleChainDeposits = (
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
     const ids = new Set(
-      foreign.flatMap((row) => row.depositIds.map((id) => id.toString("hex"))),
+      rows.flatMap((row) => row.depositIds.map((id) => id.toString("hex"))),
     );
     const present: Buffer[] = [];
     const spent: Buffer[] = [];

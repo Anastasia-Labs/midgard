@@ -13,7 +13,6 @@ import {
   releaseCommitMutationWorkerPhase,
   releaseCommitSchedulerAlignmentPhase,
   shouldAttemptCommitPipeline,
-  shouldDeferCommitWorkerForLocalFinalization,
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
@@ -28,10 +27,7 @@ import {
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
 } from "../src/workers/commit-block-header.js";
-import type {
-  SerializedStateQueueUTxO,
-  WorkerOutput,
-} from "../src/workers/utils/commit-block-header.js";
+import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveHistoryCommitBlockTime,
@@ -56,8 +52,6 @@ const dueWork = {
   dependencyKey: "dep",
   invalidationKey: "dep",
 } as const;
-
-const confirmedRecoveryBlock = {} as SerializedStateQueueUTxO;
 
 describe("commit block worker output handling", () => {
   it("materializes worker pre-ingestion scheduler due-work as normal worker output", () => {
@@ -147,21 +141,12 @@ describe("commit block worker output handling", () => {
 
   it("skips the pre-lease commit pipeline only when all commit work sources are empty", () => {
     const base = {
-      localFinalizationPending: false,
-      availableLocalFinalizationBlock: "" as const,
       mempoolTxCount: 0n,
       processedUnsubmittedTxCount: 0,
       pendingUserEventCount: 0,
     };
 
     expect(shouldAttemptCommitPipeline(base)).toBe(false);
-    expect(
-      shouldAttemptCommitPipeline({
-        ...base,
-        localFinalizationPending: true,
-        availableLocalFinalizationBlock: confirmedRecoveryBlock,
-      }),
-    ).toBe(true);
     expect(
       shouldAttemptCommitPipeline({
         ...base,
@@ -182,84 +167,26 @@ describe("commit block worker output handling", () => {
     ).toBe(true);
   });
 
-  it("does not reacquire the commit lease while local finalization awaits a confirmed recovery block", () => {
-    const pendingWithoutConfirmedBlock = {
-      localFinalizationPending: true,
-      availableLocalFinalizationBlock: "",
-    } as const;
-
-    // The v17 failure had 127 mempool transactions, but they cannot form a new
-    // commitment until the submitted predecessor is confirmed and finalized.
+  it("short-circuits idle attempts only after tx and event work are absent", () => {
+    const idle = {
+      candidateTxCount: 0,
+      processedPendingTxCount: 0,
+      pendingUserEventCount: 0,
+    };
+    expect(shouldShortCircuitIdleCommitAttempt(idle)).toBe(true);
     expect(
-      shouldAttemptCommitPipeline({
-        localFinalizationPending: true,
-        availableLocalFinalizationBlock: "",
-        mempoolTxCount: 127n,
-        processedUnsubmittedTxCount: 127,
-        pendingUserEventCount: 0,
-      }),
-    ).toBe(false);
-    expect(
-      shouldDeferCommitWorkerForLocalFinalization(pendingWithoutConfirmedBlock),
-    ).toBe(true);
-    // Confirmation is the bounded wake-up: once it publishes the matching
-    // block, the next scheduled tick may run the local recovery worker.
-    expect(
-      shouldDeferCommitWorkerForLocalFinalization({
-        localFinalizationPending: true,
-        availableLocalFinalizationBlock: confirmedRecoveryBlock,
-      }),
-    ).toBe(false);
-    expect(
-      shouldAttemptCommitPipeline({
-        localFinalizationPending: true,
-        availableLocalFinalizationBlock: confirmedRecoveryBlock,
-        mempoolTxCount: 127n,
-        processedUnsubmittedTxCount: 127,
-        pendingUserEventCount: 0,
-      }),
-    ).toBe(true);
-  });
-
-  it("short-circuits idle attempts only after tx, event, and recovery work are absent", () => {
-    expect(
-      shouldShortCircuitIdleCommitAttempt({
-        candidateTxCount: 0,
-        processedPendingTxCount: 0,
-        pendingUserEventCount: 0,
-        localFinalizationPending: false,
-      }),
-    ).toBe(true);
-    expect(
-      shouldShortCircuitIdleCommitAttempt({
-        candidateTxCount: 1,
-        processedPendingTxCount: 0,
-        pendingUserEventCount: 0,
-        localFinalizationPending: false,
-      }),
+      shouldShortCircuitIdleCommitAttempt({ ...idle, candidateTxCount: 1 }),
     ).toBe(false);
     expect(
       shouldShortCircuitIdleCommitAttempt({
-        candidateTxCount: 0,
+        ...idle,
         processedPendingTxCount: 1,
-        pendingUserEventCount: 0,
-        localFinalizationPending: false,
       }),
     ).toBe(false);
     expect(
       shouldShortCircuitIdleCommitAttempt({
-        candidateTxCount: 0,
-        processedPendingTxCount: 0,
+        ...idle,
         pendingUserEventCount: 1,
-        localFinalizationPending: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldShortCircuitIdleCommitAttempt({
-        candidateTxCount: 0,
-        processedPendingTxCount: 0,
-        pendingUserEventCount: 0,
-        localFinalizationPending: true,
       }),
     ).toBe(false);
   });
@@ -318,20 +245,6 @@ describe("commit block worker output handling", () => {
       },
       preserve: true,
     },
-    SubmittedAwaitingLocalFinalizationOutput: {
-      output: {
-        type: "SubmittedAwaitingLocalFinalizationOutput",
-        submittedTxHash: "tx",
-        txSize: 1,
-        mempoolTxsCount: 1,
-        sizeOfBlocksTxs: 1,
-        blockEndTimeMs: 1,
-        error: "local finalization pending",
-        submittedHeaderHash: "aa".repeat(28),
-        submittedUtxosRoot: "bb".repeat(32),
-      },
-      preserve: true,
-    },
     SuccessfulSubmissionOutput: {
       output: {
         type: "SuccessfulSubmissionOutput",
@@ -349,16 +262,6 @@ describe("commit block worker output handling", () => {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount: 0,
         sizeOfProcessedTxs: 0,
-      },
-      preserve: true,
-    },
-    SuccessfulLocalFinalizationRecoveryOutput: {
-      output: {
-        type: "SuccessfulLocalFinalizationRecoveryOutput",
-        finalizedHeaderHash: "cc".repeat(28),
-        mempoolTxsCount: 1,
-        sizeOfBlocksTxs: 1,
-        mempoolLedgerDeletedOutRefHexes: [],
       },
       preserve: true,
     },

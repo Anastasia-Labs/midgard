@@ -27,9 +27,7 @@ import {
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
-  runBlockConfirmation,
   runCommitWorker,
-  runLocalFinalizationRecoveryWorker,
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
@@ -38,7 +36,7 @@ import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 /** Recreate the follower-change driver, Globals, cache, managed runtime and native child using
  * retained SQL/Level state after a real provider response loss. The test process
  * and accepted emulator chain remain alive; this is not an OS-process crash. */
-it("recreates production services after accepted response loss, preserves intent without promotion, then confirms and finalizes the canonical header", async () => {
+it("recreates production services after accepted response loss, preserves the intent, then applies the landed header on the restarted node", async () => {
   const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
@@ -270,14 +268,14 @@ it("recreates production services after accepted response loss, preserves intent
     );
     diagnostic.afterResponseLoss = pending;
 
-    diagnostic.stage = "service-restart-before-local-confirmation";
+    diagnostic.stage = "service-restart-before-landing-processed";
     const beforeRestart = await h.evidence();
     expect(beforeRestart.native?.durableRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
     expect(beforeRestart.native?.durableRoot).not.toBe(
       accepted.header.utxosRoot,
     );
     diagnostic.beforeRestart = beforeRestart;
-    // L1 confirms independently; no node confirmation/acknowledgement has run.
+    // L1 confirms independently; the node has not followed it yet.
     expect(await lucid.awaitTx(accepted.txHash)).toBe(true);
     const beforeDisposal = await readIntent(accepted.txHash);
     assertIntent(beforeDisposal, accepted.txHash, accepted.signedCbor);
@@ -311,32 +309,28 @@ it("recreates production services after accepted response loss, preserves intent
     expect(restartedEvidence.native?.ownerEpoch).not.toEqual(
       beforeRestart.native?.ownerEpoch,
     );
+    // The restarted node's first synchronization takes the landed block in:
+    // its rebase applies it, and the journal keeps its signed intent.
     expect(restartedEvidence.native?.durableRoot).toBe(
-      beforeRestart.native?.durableRoot,
-    );
-    expect(restartedEvidence.native?.durableRoot).not.toBe(
       accepted.header.utxosRoot,
     );
-    const restartedPending = await readIntent(accepted.txHash);
-    assertIntent(restartedPending, accepted.txHash, accepted.signedCbor);
-    expect(restartedPending[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    expect(restartedPending[Pending.Columns.STATUS]).toBe(
-      Pending.Status.PendingSubmission,
+    const restartedApplied = await readIntent(accepted.txHash);
+    assertIntent(restartedApplied, accepted.txHash, accepted.signedCbor);
+    expect(restartedApplied[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
+    expect(restartedApplied[Pending.Columns.STATUS]).toBe(
+      Pending.Status.LocallyApplied,
     );
     expect(
       await Effect.runPromise(
         Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
       ),
-    ).toBe(accepted.txHash);
-    expect(
-      await Effect.runPromise(Ref.get(globals.LOCAL_FINALIZATION_PENDING)),
-    ).toBe(true);
+    ).toBe("");
     diagnostic.afterRestart = {
-      journal: restartedPending,
+      journal: restartedApplied,
       evidence: restartedEvidence,
       oldProducer,
     };
-    diagnostic.stage = "canonical-confirmation";
+    diagnostic.stage = "landed";
     const confirmedReceipts = h.receipts.filter(
       ({ transaction }) => transaction.txHash === accepted!.txHash,
     );
@@ -353,39 +347,9 @@ it("recreates production services after accepted response loss, preserves intent
         { key: deposit.idCbor, value: deposit.infoCbor },
       ]),
     );
-    const priorToConfirmation = await readIntent(accepted.txHash);
-    assertIntent(priorToConfirmation, accepted.txHash, accepted.signedCbor);
-    expect(priorToConfirmation[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
-    await runBlockConfirmation(
-      globals,
-      fixture.contracts,
-      lucidService,
-      production.nodeConfig,
-      production,
-    );
-    const observed = await readIntent(accepted.txHash);
-    assertIntent(observed, accepted.txHash, accepted.signedCbor);
-    expect(observed[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
-      accepted.txHash,
-    );
-    expect(observed[Pending.Columns.STATUS]).toBe(
-      Pending.Status.ObservedWaitingStability,
-    );
-    diagnostic.afterConfirmation = observed;
-    diagnostic.stage = "local-finalization";
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      production.nodeConfig,
-      { ...production, globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-      throw new Error("Canonical intent requires native local finalization");
-    expect(recovery.finalizedHeaderHash).toBe(accepted.headerHash);
-    await h.synchronize();
+    // Taken in once: the hook, run again, holds nothing and changes nothing.
+    await h.applyLanded(accepted.headerHash);
+    expect(await readIntent(accepted.txHash)).toEqual(restartedApplied);
     const native = await Effect.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
     expect(native).toBeDefined();
     expect((await native!.diagnostics()).durableRoot).toBe(
@@ -394,8 +358,7 @@ it("recreates production services after accepted response loss, preserves intent
     const l2 = await h.command(utxosProgram(address));
     expect(l2.utxoCount).toBe(1);
     expect(l2.totals.lovelace).toBe(12_000_000n);
-    diagnostic.localFinalization = {
-      recovery,
+    diagnostic.landed = {
       journal: await readIntent(accepted.txHash),
       native: await native!.diagnostics(),
       l2,
@@ -403,9 +366,7 @@ it("recreates production services after accepted response loss, preserves intent
 
     const finalRow = await readIntent(accepted.txHash);
     assertIntent(finalRow, accepted.txHash, accepted.signedCbor);
-    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
-      accepted.txHash,
-    );
+    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     expect(finalRow[Pending.Columns.STATUS]).toBe(
       Pending.Status.LocallyApplied,
     );
@@ -427,7 +388,7 @@ it("recreates production services after accepted response loss, preserves intent
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance followed by one lost provider response, disposal and recreation of the follower-change driver/Globals/cache/runtime/native child using unchanged SQL/Level/deployment state, then canonical confirmation/native finalization. Synthetic transport ancestry; no OS-process kill, queue continuation, or production failure-to-lease classification coverage.",
+                "Actual emulator acceptance followed by one lost provider response, disposal and recreation of the follower-change driver/Globals/cache/runtime/native child using unchanged SQL/Level/deployment state, whose first synchronization applies the landed header. Synthetic transport ancestry; no OS-process kill, queue continuation, or production failure-to-lease classification coverage.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

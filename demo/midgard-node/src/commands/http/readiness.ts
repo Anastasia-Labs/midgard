@@ -112,18 +112,12 @@ export const getReadinessHandler = Effect.gen(function* () {
   const blockCommitmentHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_BLOCK_COMMITMENT,
   );
-  const blockConfirmationHeartbeat = yield* Ref.get(
-    globals.HEARTBEAT_BLOCK_CONFIRMATION,
-  );
   const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
   const txQueueProcessorHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
   );
   const attestationTimeoutCorrection = yield* Ref.get(
     globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
-  );
-  const localFinalizationPending = yield* Ref.get(
-    globals.LOCAL_FINALIZATION_PENDING,
   );
   const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
     globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
@@ -217,11 +211,9 @@ export const getReadinessHandler = Effect.gen(function* () {
     queueDepth: Number(durableAdmissionBacklog),
     workerHeartbeats: {
       blockCommitment: blockCommitmentHeartbeat,
-      blockConfirmation: blockConfirmationHeartbeat,
       merge: mergeHeartbeat,
       txQueueProcessor: txQueueProcessorHeartbeat,
     },
-    localFinalizationPending,
     unresolvedBlockSubmissionAgeMs,
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy: true,
@@ -401,7 +393,6 @@ export const getReadinessHandler = Effect.gen(function* () {
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
     unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-    localFinalizationPending,
     resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,

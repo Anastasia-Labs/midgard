@@ -108,7 +108,6 @@ const roleViolations = async (entry: string) => {
 const ROLE_ENTRIES = [
   "midgard-node/src/commands/listen.cli-runtime.ts",
   "midgard-node/src/workers/commit-block-header.ts",
-  "midgard-node/src/workers/confirm-block-commitments.ts",
   "midgard-node/src/workers/settlement.ts",
   "midgard-node/src/workers/validation.ts",
   "midgard-node/src/workers/mpf-root-builder.ts",

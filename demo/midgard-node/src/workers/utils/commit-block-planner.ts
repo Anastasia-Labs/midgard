@@ -47,8 +47,6 @@ export {
   rootsMatchConfirmedHeader,
   schedulerAwareCommitWindowBudgets,
   selectCommitRoots,
-  shouldAttemptLocalFinalizationRecovery,
-  shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
 } from "./commit-block-planner.plan-scheduler-aware-commit-selection.js";
 export {

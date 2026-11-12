@@ -58,7 +58,7 @@ Optional isolated port/path controls:
 - `MIDGARD_PHASE4_NODE_B_METRICS_PORT` (default `4102`)
 - `MIDGARD_PHASE4_STATE_QUEUE_LEASE_TTL_MS` (default `5000`)
 - `MIDGARD_PHASE4_PROCESS_TIMEOUT_MS` (default `600000`; must cover the
-  journal validity bound plus the 30-second unsubmitted-recovery grace)
+  journal validity bound)
 - `MIDGARD_PHASE4_PROCESS_RUN_DIR` (default timestamped directory under
   `logs/`)
 
@@ -75,9 +75,9 @@ node must then log, in this order:
 
 1. `Skipping block commitment trigger because the state-queue mutation lease is busy`
    while the killed winner's lease is still live;
-2. `abandoning unsubmitted journal and recovering canonical state_queue tip`
-   after the lease has expired and the recovery grace has passed;
-3. `Block submitted; local finalization is intentionally deferred until L1 confirmation.`
+2. `Abandoned unsigned pending block journal`
+   once it takes the expired lease over;
+3. `Block submitted; landed-block processing applies it once it lands.`
    for its own block.
 
 After the run, Postgres must hold exactly one active journal (the survivor's)

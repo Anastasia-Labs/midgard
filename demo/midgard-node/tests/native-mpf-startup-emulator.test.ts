@@ -23,16 +23,14 @@ import {
   assetsToValue,
   attestQueuedStateQueueHeader,
   CML,
-  commitConfirmRecoverAndMerge,
+  commitLandAndMerge,
   Database,
   emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   mergeMaturityWindow,
   paymentCredentialOf,
-  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   runMergeUntilMerged,
   SDK,
   utxosProgram,
@@ -134,7 +132,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
-    diagnostic.depositSettlement = await commitConfirmRecoverAndMerge(context);
+    diagnostic.depositSettlement = await commitLandAndMerge(context);
     const l2 = await h.command(utxosProgram(address));
     expect(l2.utxoCount).toBe(1);
     expect(l2.totals.lovelace).toBe(12_000_000n);
@@ -241,24 +239,8 @@ it("restarts the production native initializer after withdrawal empties an unmer
     expect(await fixture.operatorLucid.awaitTx(commit.submittedTxHash)).toBe(
       true,
     );
-    await h.synchronize();
-    await runBlockConfirmation(
-      globals,
-      fixture.contracts,
-      lucidService,
-      production.nodeConfig,
-      production,
-    );
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      production.nodeConfig,
-      { ...production, globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    diagnostic.withdrawalCommit = { commit, recovery };
+    await h.applyLanded(commit.submittedHeaderHash);
+    diagnostic.withdrawalCommit = { commit };
     expect((await (await native()).diagnostics()).durableRoot).toBe(
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );

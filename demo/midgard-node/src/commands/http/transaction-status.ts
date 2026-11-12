@@ -2,12 +2,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Option } from "effect";
 
 import { publicTxCborByHash } from "../../database/http-read-lookups.js";
 import { readHttpTxStatusFacts } from "../../database/http-tx-status-facts.js";
 import { TxAdmissionsDB } from "../../database/index.js";
-import { AdmissionWriter, Globals } from "../../services/index.js";
+import { AdmissionWriter } from "../../services/index.js";
 import { publicReadDataLimitResponse } from "../listen-http-read.js";
 import {
   includePrivateHttpDiagnosticDetails,
@@ -70,7 +70,6 @@ export const getTxStatusHandler = Effect.gen(function* () {
     );
   }
 
-  const globals = yield* Globals;
   // A tx the admission writer still holds has no row yet: it is queued.
   // Checked before the database read, so an acknowledged tx never reads as
   // not_found while its write is pending.
@@ -88,9 +87,6 @@ export const getTxStatusHandler = Effect.gen(function* () {
           inImmutable: false,
           inMempool: false,
           inProcessedMempool: false,
-          localFinalizationPending: yield* Ref.get(
-            globals.LOCAL_FINALIZATION_PENDING,
-          ),
         }),
       ),
     );
@@ -116,9 +112,6 @@ export const getTxStatusHandler = Effect.gen(function* () {
     inImmutable: facts.in_immutable,
     inMempool: facts.in_mempool,
     inProcessedMempool: facts.in_processed_mempool,
-    localFinalizationPending: yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    ),
   });
 
   if (resolved.status === "not_found") {
@@ -196,7 +189,6 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
   }
   const txIds = txIdBytes as Buffer[];
   const sql = yield* SqlClient;
-  const globals = yield* Globals;
   const writer = yield* Effect.serviceOption(AdmissionWriter);
   const pendingTxIds = new Set(
     Option.isSome(writer)
@@ -273,9 +265,6 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
     immutableTxIds,
     mempoolTxIds,
     processedMempoolTxIds,
-    localFinalizationPending: yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    ),
     headerEvidenceByTxId,
   });
   return yield* HttpServerResponse.json({

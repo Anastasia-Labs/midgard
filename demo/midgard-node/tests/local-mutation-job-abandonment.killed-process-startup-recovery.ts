@@ -5,13 +5,9 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import * as MempoolDB from "../src/database/mempool.js";
 import * as MutationJobsDB from "../src/database/mutationJobs.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
-import { Columns as TxColumns } from "../src/database/utils/tx.js";
-import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.finalize-committed-block-locally.js";
-import { withLocalBlockFinalizationJob } from "../src/workers/utils/commit-submission.with-local-block-finalization-job.js";
-import { makeProofSubmitTx } from "./database.test/fixtures.submission.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   failedLocalJob,
   header,
@@ -19,7 +15,6 @@ import {
   J,
   journalFixture,
   localJobId,
-  observedJournal,
   readJob,
   runningLocalJob,
   startupGate,
@@ -43,17 +38,15 @@ const submittedJournal = (
   status: PendingBlockFinalizationsDB.Status,
 ) =>
   Effect.gen(function* () {
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-      journalFixture(headerHash),
-    );
+    yield* prepareUnderTestLease(journalFixture(headerHash));
     // Leaves the journal submitted_local_finalization_pending.
     yield* PendingBlockFinalizationsDB.markSubmitted(
       headerHash,
       Buffer.concat([headerHash, Buffer.alloc(4)]),
     );
     if (status === Status.SubmittedUnconfirmed) {
-      // Its only writer, markLocalFinalizationComplete, has no caller; startup
-      // still honours rows written before, so it is set directly.
+      // Nothing writes this status any more; startup still honours rows
+      // written before, so it is set directly.
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE pending_block_finalizations SET status = ${status}
         WHERE header_hash = ${headerHash}`;
@@ -77,7 +70,7 @@ describe("startup after a process killed mid local finalization", () => {
     Status.ObservedWaitingStability,
   ])
     it.effect(
-      `hands a running job of a ${status} block to the runtime untouched`,
+      `closes a running job of a ${status} block, leaving its journal for landed-block processing`,
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -87,10 +80,10 @@ describe("startup after a process killed mid local finalization", () => {
             const { result, logs } = yield* withLogs(startupGate);
             expect(result).toBeUndefined();
             expect(logs.join("\n")).toContain(
-              `Startup left running local mutation job ${localJobId(killed)}`,
+              `Startup completed local mutation job ${localJobId(killed)}`,
             );
             const job = yield* readJob(localJobId(killed));
-            expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Running);
+            expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
             expect(job[J.ATTEMPTS]).toBe(1);
             expect(yield* journalStatus(killed)).toBe(status);
           }),
@@ -134,9 +127,7 @@ describe("startup after a process killed mid local finalization", () => {
           yield* runningLocalJob(removed);
           expect(yield* journalStatus(removed)).toBe(Status.Abandoned);
           const unsubmitted = header("running-unsubmitted");
-          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-            journalFixture(unsubmitted),
-          );
+          yield* prepareUnderTestLease(journalFixture(unsubmitted));
           yield* runningLocalJob(unsubmitted);
           const orphan = header("running-orphan");
           yield* runningLocalJob(orphan);
@@ -152,89 +143,6 @@ describe("startup after a process killed mid local finalization", () => {
             expect((yield* readJob(localJobId(headerHash)))[J.STATUS]).toBe(
               MutationJobsDB.Status.Running,
             );
-        }),
-      ),
-  );
-
-  it.effect(
-    "lets the runtime retry a finalization killed after its SQL commit without applying the block twice",
-    () =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const killed = header("killed-after-finalization-sql");
-          const headerHex = killed.toString("hex");
-          yield* observedJournal(killed);
-          const tx = makeProofSubmitTx();
-          yield* MempoolDB.insertMultipleCore([
-            {
-              txId: tx.txId,
-              txCbor: tx.txCanonicalCbor,
-              spent: [],
-              produced: [],
-            },
-          ]);
-          const entry = (yield* MempoolDB.retrievePage({
-            limit: 10,
-          })).entries.find((row) => row[TxColumns.TX_ID].equals(tx.txId))!;
-          const transactionsMpf = {
-            resetToEmpty: () => Effect.void,
-          } as unknown as Parameters<typeof finalizeCommittedBlockLocally>[0];
-          const finalize = finalizeCommittedBlockLocally(
-            transactionsMpf,
-            [entry],
-            [tx.txId],
-            headerHex,
-            [],
-            { useAmbientProcessedMempool: false },
-          );
-          // The killed attempt: the job started and the finalization SQL
-          // committed; the process died before markFinalized/markCompleted.
-          yield* MutationJobsDB.start({
-            jobId: localJobId(killed),
-            kind: MutationJobsDB.Kind.LocalBlockFinalization,
-          });
-          yield* finalize;
-
-          expect(yield* startupGate).toBeUndefined();
-
-          // The runtime's retry, shaped as successfulLocalFinalizationRecoveryProgram.
-          yield* withLocalBlockFinalizationJob(
-            {
-              headerHash: headerHex,
-              mempoolTxCount: 1,
-              includedDepositCount: 0,
-              includedForcedTransactionCount: 0,
-              includedWithdrawalCount: 0,
-            },
-            finalize.pipe(
-              Effect.zipRight(
-                PendingBlockFinalizationsDB.markFinalized(killed),
-              ),
-            ),
-          );
-          const job = yield* readJob(localJobId(killed));
-          expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
-          expect(job[J.ATTEMPTS]).toBe(2);
-          expect(yield* journalStatus(killed)).toBe(Status.LocallyApplied);
-          const immutable = yield* sql<{ readonly count: string }>`SELECT
-            COUNT(*)::text AS count FROM immutable WHERE tx_id = ${tx.txId}`;
-          const blocks = yield* sql<{ readonly count: string }>`SELECT
-            COUNT(*)::text AS count FROM blocks
-            WHERE header_hash = ${killed} AND tx_id = ${tx.txId}`;
-          // The included row stays, marked by the block, until it folds.
-          const mempool = yield* sql<{ readonly count: string }>`SELECT
-            COUNT(*)::text AS count FROM mempool
-            WHERE tx_id = ${tx.txId} AND included_by IS NULL`;
-          const marks = yield* sql<{ readonly included_by: Buffer }>`SELECT
-            included_by FROM mempool WHERE tx_id = ${tx.txId}`;
-          expect(marks.map((row) => Buffer.from(row.included_by))).toEqual([
-            killed,
-          ]);
-          expect(
-            [immutable, blocks, mempool].map((rows) => rows[0]!.count),
-          ).toEqual(["1", "1", "0"]);
-          expect(yield* startupGate).toBeUndefined();
         }),
       ),
   );

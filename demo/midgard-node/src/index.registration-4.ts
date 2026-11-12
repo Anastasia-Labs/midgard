@@ -53,40 +53,6 @@ reconcile
   });
 
 reconcile
-  .command("local-finalization")
-  .description(
-    "Reconcile local finalization for a canonical committed block header",
-  )
-  .requiredOption("--header-hash <hex>", "28-byte block header hash")
-  .option(
-    "--repair",
-    "Replay local finalization from the durable pending-finalization journal",
-  )
-  .option("--json", "Print machine-readable JSON output", true)
-  .action(
-    async (options: {
-      readonly headerHash: string;
-      readonly repair?: boolean;
-    }) => {
-      let headerHash: Buffer;
-      try {
-        headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
-      } catch (error) {
-        failCli("reconcile local-finalization", error);
-        return;
-      }
-      const mainEffect = provideDatabaseTxServices(
-        ReconcileCommand.reconcileLocalFinalizationProgram({
-          headerHash,
-          repair: options.repair === true,
-        }).pipe(tapJson()),
-      );
-
-      runCliEffect(mainEffect);
-    },
-  );
-
-reconcile
   .command("merge-complete")
   .description("Reconcile merge completion for a committed block header")
   .requiredOption("--header-hash <hex>", "28-byte block header hash")

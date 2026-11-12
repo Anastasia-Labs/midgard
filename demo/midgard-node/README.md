@@ -382,14 +382,6 @@ pnpm listen
   of them ship in this operator binary.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
-### Confirmation polling default
-
-As of the throughput Phase 4 work, `WAIT_BETWEEN_BLOCK_CONFIRMATION` defaults
-to `2000` ms instead of `10000` ms. Pending submissions use a targeted tx probe
-before a periodic full state-queue scan, so the shorter detection interval does
-not turn every poll into an O(queue length) provider request. Operators can set
-the variable back to `10000` as an operational rollback.
-
 The ledger MPF is always the Architecture G native owner, and the node
 refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
 `MPF_NATIVE_OWNER_BINARY_SHA256` (lowercase 64-hex) and

@@ -57,35 +57,19 @@ vi.mock("../src/fibers/queue-metrics.js", async () => {
 // Only the parent's independent pending-work query proves the node is idle.
 describe("failed commit worker readiness at the canonical idle preflight", () => {
   it.each([
-    ["empty chain", {}, 0, false, true, []],
+    ["empty chain", {}, 0, true, []],
     [
       "due projected deposits",
       { deposits: 5 },
       0,
       false,
-      false,
       ["commit_worker_failed"],
     ],
-    [
-      "queued transfers",
-      { mempool: 2 },
-      0,
-      false,
-      false,
-      ["commit_worker_failed"],
-    ],
-    ["processed transfers", {}, 2, false, false, ["commit_worker_failed"]],
-    ["pending local finalization", {}, 0, true, true, ["commit_worker_failed"]],
+    ["queued transfers", { mempool: 2 }, 0, false, ["commit_worker_failed"]],
+    ["processed transfers", {}, 2, false, ["commit_worker_failed"]],
   ] as const)(
     "%s",
-    async (
-      _name,
-      pending,
-      processed,
-      finalizationPending,
-      expectedSkip,
-      expectedReasons,
-    ) => {
+    async (_name, pending, processed, expectedSkip, expectedReasons) => {
       Object.assign(
         backlog,
         { mempool: 0, deposits: 0, forced: 0, withdrawals: 0 },
@@ -95,10 +79,6 @@ describe("failed commit worker readiness at the canonical idle preflight", () =>
         Effect.gen(function* () {
           const globals = yield* Globals;
           yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, processed);
-          yield* Ref.set(
-            globals.LOCAL_FINALIZATION_PENDING,
-            finalizationPending,
-          );
           yield* raiseLivenessIncident(
             globals,
             "commit_worker",

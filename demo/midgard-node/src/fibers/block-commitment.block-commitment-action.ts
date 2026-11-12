@@ -30,10 +30,6 @@ import {
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
 import { shouldSkipForDueValidationTraceDefense } from "./block-commitment.validation-trace-defense-pause.js";
-import {
-  publishFinalizedDaPayloadBestEffort,
-  runAfterL1ControlPlaneRelease,
-} from "./da-publication-trigger.js";
 
 export const SKIPPED_ACTIVE_PENDING_FINALIZATION =
   "skipped_active_pending_finalization";
@@ -47,17 +43,9 @@ let reportedOverBound = false;
  * would only refuse at its signed-submission preflight, so the tick takes
  * neither the L1 control plane nor the state-queue lease and spawns no
  * worker. Logged once per journal, again once it outlives the bound, and once
- * when it resolves. A pending local finalization recovery always runs.
+ * when it resolves.
  */
 export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const localFinalizationPending = yield* Ref.get(
-    globals.LOCAL_FINALIZATION_PENDING,
-  );
-  const localFinalizationBlock = yield* Ref.get(
-    globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-  );
-  if (localFinalizationPending && localFinalizationBlock !== "") return false;
   const signed = yield* retrieveUnreconciledSignedSubmission;
   if (signed === undefined) {
     if (reportedHeaderHex !== undefined) {
@@ -124,57 +112,50 @@ export const blockCommitmentAction: Effect.Effect<
       return;
     }
     if (yield* shouldSkipForDueValidationTraceDefense) return;
-    yield* runAfterL1ControlPlaneRelease(
-      withL1ControlPlane(
-        globals,
-        { scope: "block_commitment", maxHoldMs: 180_000 },
-        Effect.gen(function* () {
-          if (yield* shouldSkipForRegisteredCommitDueWork) {
-            return;
-          }
-          if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
-            return;
-          }
-          if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
-            return;
-          }
-          const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
-          if (!acquired.acquired) {
-            yield* Effect.logInfo(
-              `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
-            );
-            return;
-          }
+    yield* withL1ControlPlane(
+      globals,
+      { scope: "block_commitment", maxHoldMs: 180_000 },
+      Effect.gen(function* () {
+        if (yield* shouldSkipForRegisteredCommitDueWork) {
+          return;
+        }
+        if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
+          return;
+        }
+        if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
+          return;
+        }
+        const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
+        if (!acquired.acquired) {
+          yield* Effect.logInfo(
+            `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
+          );
+          return;
+        }
 
-          yield* Effect.logInfo("🔹 New block commitment process started.");
-          const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
-            "block_commitment",
-            (leaseToken) =>
-              buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
-                Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-              ),
-            {
-              ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
-              renewIntervalMs:
-                nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
-            },
-          ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
-          if (leaseResult._tag === "Busy") {
-            yield* Effect.logInfo(
-              `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
-                leaseResult.activeLease,
-              )}).`,
-            );
-            return undefined;
-          }
-          return leaseResult.value;
-        }),
-      ),
-      (workerOutput) =>
-        workerOutput?.type === "SuccessfulLocalFinalizationRecoveryOutput"
-          ? workerOutput.finalizedHeaderHash
-          : undefined,
-      publishFinalizedDaPayloadBestEffort,
+        yield* Effect.logInfo("🔹 New block commitment process started.");
+        const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
+          "block_commitment",
+          (leaseToken) =>
+            buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
+              Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+            ),
+          {
+            ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
+            renewIntervalMs:
+              nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
+          },
+        ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
+        if (leaseResult._tag === "Busy") {
+          yield* Effect.logInfo(
+            `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
+              leaseResult.activeLease,
+            )}).`,
+          );
+          return undefined;
+        }
+        return leaseResult.value;
+      }),
     );
   }
 });

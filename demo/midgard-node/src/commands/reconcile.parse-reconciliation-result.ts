@@ -58,7 +58,6 @@ export const RECONCILIATION_MILESTONES = [
   "tx-committed",
   "da-attested",
   "block-committed",
-  "local-finalization",
   "merge-complete",
 ] as const;
 

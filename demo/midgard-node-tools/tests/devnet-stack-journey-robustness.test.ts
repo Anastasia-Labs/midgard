@@ -214,7 +214,6 @@ describe("journey drain and payout name the settlement worker's state", () => {
     stateQueue: {
       queueLength: 0,
       unconfirmedSubmittedBlockTxHash: null,
-      localFinalizationPending: false,
     },
     pendingBlockFinalizations: { oldestActive: null },
     localMutationJobs: { unfinished: "0" },

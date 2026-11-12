@@ -107,15 +107,15 @@ describe("operator membership holds duties", () => {
   );
 
   it.effect("leaves non-duty L1 work to run while removed", () =>
-    // The halt source holds the duties (see `FIBER_HALT_SOURCES`); block
-    // confirmation, ingestion and the readiness refreshers keep the permit.
+    // The halt source holds the duties (see `FIBER_HALT_SOURCES`);
+    // ingestion and the readiness refreshers keep the permit.
     Effect.gen(function* () {
       const globals = yield* Globals;
       yield* publishOperatorMembership(membership("removed"));
       let ran = false;
       yield* withL1ControlPlane(
         globals,
-        { scope: "block_confirmation" },
+        { scope: "l1_provider_readiness_refresh" },
         Effect.sync(() => {
           ran = true;
         }),

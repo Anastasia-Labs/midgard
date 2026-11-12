@@ -8,9 +8,8 @@
  * is built on anything but `T` (a base it cannot place yet): S6 derives that
  * commit dead or landed. Nor can it run while a pending-table row is marked
  * by a block the target neither holds nor disposes of, nor `confirmed_ledger`
- * holds (this node's block between its local finalization and its
- * processing): that row is neither pending nor in the base until processing
- * takes the block in or the reopening of its journal clears the mark. A
+ * holds: that row is neither pending nor in the base until processing takes
+ * the block in or a rollback clears the mark. A
  * folded block's rows stay marked until its fold is final (`final-folds.ts`);
  * they are in the base, so they never block.
  */

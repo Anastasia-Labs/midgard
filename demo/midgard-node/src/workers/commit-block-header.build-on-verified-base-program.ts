@@ -61,7 +61,6 @@ import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import { getLatestBlockDatumEndTime } from "./commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
-  recoverLocalFinalizationAgainstConfirmedBlock,
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "./commit-block-header/submission.js";
@@ -87,7 +86,6 @@ import {
   planSchedulerAwareCommitSelection,
   schedulerAwareCommitWindowBudgets,
   selectCommitTxCandidates,
-  shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
 } from "./utils/commit-block-planner.js";
 import {
@@ -189,13 +187,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       processedMempoolTxs: processedPendingTxs,
     });
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
-    const availableLocalFinalizationBlock =
-      workerInput.data.availableLocalFinalizationBlock;
-    const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
-    const hasAvailableLocalFinalizationBlock =
-      availableLocalFinalizationBlock !== "";
-    const canBuildOnConfirmedBlock =
-      hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
+    const canBuildOnConfirmedBlock = availableConfirmedBlock !== "";
     let latestBlockForSchedulerPlanning: SDK.StateQueueUTxO | undefined;
     let latestEndTimeMsForSchedulerPlanning: number | undefined;
     if (canBuildOnConfirmedBlock) {
@@ -222,7 +214,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           contracts,
           submitSlotSnapshot: lucid.submitSlotSnapshot,
           stateQueueEvidence,
-          localFinalizationPending: workerInput.data.localFinalizationPending,
           callerLabel: "commit-scheduler-worker-pre-ingestion",
           discoveryStage: "worker_pre_ingestion",
         }),
@@ -378,41 +369,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     );
     const effectiveUserEventOnlyEndTime =
       schedulerAwareCommitSelection.userEventOnlyEndTime;
-    if (
-      shouldDeferCommitSubmission({
-        localFinalizationPending: workerInput.data.localFinalizationPending,
-        hasAvailableConfirmedBlock: hasAvailableLocalFinalizationBlock,
-      })
-    ) {
-      yield* Effect.logInfo(
-        "🔹 Local finalization pending and no recoverable confirmed block is available yet; deferring new submission.",
-      );
-      return {
-        type: "NothingToCommitOutput",
-      } satisfies WorkerOutput;
-    }
-
-    const recoverableLocalFinalizationBlock =
-      workerInput.data.localFinalizationPending &&
-      hasAvailableLocalFinalizationBlock
-        ? availableLocalFinalizationBlock
-        : undefined;
-    if (recoverableLocalFinalizationBlock !== undefined) {
-      const recoverableConfirmedBlock = yield* deserializeStateQueueUTxO(
-        recoverableLocalFinalizationBlock,
-      );
-      const lucid = yield* acquireCommitLucidOnce;
-      return yield* recoverLocalFinalizationAgainstConfirmedBlock({
-        latestBlock: recoverableConfirmedBlock,
-        transactionsMpf,
-        processedMempoolTxs: [],
-        mempoolTxHashes: [],
-        workerInput,
-        sizeOfProcessedTxs: 0,
-        consensusProfile: deploymentIdentity.consensusProfile,
-      }).pipe(Effect.provideService(Lucid, lucid));
-    }
-
     const lucidForEventPlan = yield* acquireCommitLucidOnce;
     const eventPlan = yield* planHistoryCommitEventWindow({
       latestEndTime:
@@ -457,7 +413,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       pendingUserEventCounts.withdrawals;
     if (
       shouldSkipIdleCommitBehindUnmergedTail({
-        localFinalizationPending: workerInput.data.localFinalizationPending,
         stateQueueHasUnmergedTail:
           workerInput.data.stateQueueHasUnmergedTail ?? false,
         mempoolTxCount: mempoolTxs.length,
@@ -476,7 +431,6 @@ export const buildOnVerifiedCommitBaseProgram = (
         candidateTxCount: candidateSelection.candidateTxs.length,
         processedPendingTxCount: processedPendingTxs.length,
         pendingUserEventCount,
-        localFinalizationPending: workerInput.data.localFinalizationPending,
       })
     ) {
       yield* Effect.logInfo(
@@ -696,7 +650,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       if (
         nativeMpfHandle === undefined ||
         (output.type !== "SubmittedAwaitingConfirmationOutput" &&
-          output.type !== "SubmittedAwaitingLocalFinalizationOutput" &&
           output.type !== "SuccessfulSubmissionOutput")
       ) {
         return output;

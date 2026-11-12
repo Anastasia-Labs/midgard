@@ -13,42 +13,42 @@ import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
   attestQueuedStateQueueHeader,
-  configureEmulatorDaRuntimeManifest,
   Effect,
-  fetchLatestCommittedBlock,
-  initializeNodeRuntime,
-  initializeProtocol,
-  makeFixture,
   makeGlobalsService,
-  makeLucidRuntimeService,
   mergeMaturityWindow,
-  resetActiveRuntimePaths,
-  runBlockConfirmation,
-  runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   runMergeUntilMerged,
   runNodeCommandProgram,
   runNodeDatabaseEffect,
   SDK,
   SqlClient,
   stateQueueFetchConfig,
-  submitDepositWithDiagnostics,
-  withUnownedNativeOwnerStopped,
 } from "./deposit-flow-emulator-shared.js";
+import {
+  closeLifecycle,
+  commitLocallyAppliedBlock,
+  submitDeposit,
+} from "./helpers/correction-admission-scenario.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /**
  * The reconciliation command against a real node pipeline: Lucid emulator L1,
- * the worker's Postgres shard, and the native owner's LevelDB. A committed,
- * locally finalized deposit block must reconcile clean; one introduced SQL or
- * native inconsistency at a time must fail the check that compares it.
+ * the worker's Postgres shard, and the native owner's LevelDB. A committed
+ * deposit block the node applied at landing must reconcile clean; one
+ * introduced SQL or native inconsistency at a time must fail the check that
+ * compares it.
  */
 
-type Harness = Parameters<typeof runNodeCommandProgram>[1];
+type Reconciling = {
+  readonly runWithoutSynchronizing: (
+    effect: ReturnType<typeof stateReconciliationProgram>,
+  ) => Promise<ReconciliationReport>;
+};
 
-const reconcile = (harness: Harness, allowInFlight = false) =>
-  runNodeCommandProgram(
-    stateReconciliationProgram({ allowInFlight, maxAttempts: 1 }),
-    harness,
+/** `reconcile-state` on the running node, without following the chain
+ * first: an injected inconsistency is read as it was written. */
+const reconcile = (h: Reconciling) =>
+  h.runWithoutSynchronizing(
+    stateReconciliationProgram({ allowInFlight: false, maxAttempts: 1 }),
   );
 
 const describeReport = (report: ReconciliationReport) =>
@@ -95,11 +95,11 @@ const sqlMutation = <A>(
 const withMutation = async (
   apply: () => Promise<unknown>,
   restore: () => Promise<unknown>,
-  harness: Harness,
+  h: Reconciling,
 ): Promise<ReconciliationReport> => {
   await apply();
   try {
-    return await reconcile(harness);
+    return await reconcile(h);
   } finally {
     await restore();
   }
@@ -136,365 +136,354 @@ describe(
   "state reconciliation against the emulator pipeline",
   { concurrent: false },
   () => {
-    it("reconciles a committed deposit block, fails the targeted check per injected inconsistency, and reconciles again after merge", async () => {
-      await resetActiveRuntimePaths();
-      await initializeNodeRuntime();
-      await configureEmulatorDaRuntimeManifest();
+    it("reconciles a committed deposit block applied at landing, fails the targeted check per injected inconsistency, and reconciles again after merge", async () => {
+      const initial = await openProductionLifecycle();
+      let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
+      const { fixture, lucidService } = initial;
+      try {
+        await advanceEmulatorPastLatestBlockEndTime(fixture);
+        await commitLocallyAppliedBlock(
+          initial,
+          await submitDeposit(initial, 12_000_000n),
+        );
 
-      const fixture = await makeFixture();
-      await initializeProtocol(fixture);
-      const lucidService = await makeLucidRuntimeService(fixture);
-      await advanceEmulatorPastLatestBlockEndTime(fixture);
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-
-      const l2Address = await fixture.depositorLucid.wallet().address();
-      await submitDepositWithDiagnostics(fixture, {
-        l2Address,
-        l2Datum: null,
-        lovelace: 12_000_000n,
-        additionalAssets: {},
-      });
-      const depositUtxos = await Effect.runPromise(
-        SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
-          ...SDK.eventHistoryDeploymentFromContracts(
-            SDK.requireEventHistoryContracts(fixture.contracts).deposit,
+        const queue = await Effect.runPromise(
+          SDK.fetchSortedStateQueueUTxOsProgram(
+            fixture.operatorLucid,
+            stateQueueFetchConfig(fixture.contracts),
           ),
-        }),
-      );
-      expect(depositUtxos).toHaveLength(1);
-      fixture.emulator.awaitSlot(
-        fixture.operatorLucid.unixTimeToSlot(
-          Number(depositUtxos[0]!.facts.inclusion_time),
-        ) + 1,
-      );
-      vi.setSystemTime(new Date(fixture.emulator.now()));
+        );
+        expect(queue).toHaveLength(2);
+        const queuedNode = await Effect.runPromise(
+          SDK.getStateQueueNodeFromStateQueueDatum(queue[1]!.datum),
+        );
+        const queuedHeader = queuedNode.header;
+        const headerHash = await Effect.runPromise(
+          SDK.hashBlockHeader(queuedHeader),
+        );
+        const headerHashBuffer = Buffer.from(headerHash, "hex");
 
-      const commitOutput = await runCommitWorkerUntilSubmitted({
-        fixture,
-        lucidService,
-        latestBlock: await fetchLatestCommittedBlock(
-          fixture.operatorLucid,
-          fixture.contracts,
-        ),
-      });
-      await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
-      const globals = await makeGlobalsService();
-      await runBlockConfirmation(globals, fixture.contracts, lucidService);
-      await runLocalFinalizationRecoveryWorker(
-        globals,
-        fixture.contracts,
-        lucidService,
-      );
-      const harness: Harness = { fixture, lucidService, globals };
+        // Positive polarity: a live, consistent pipeline.
+        const clean = await reconcile(h);
+        expect(clean.ok, describeReport(clean)).toBe(true);
+        expect(clean.exitCode).toBe(0);
+        expectStatuses(clean, {}, "PASS");
+        expect(clean.snapshot.nativeRoot).toContain(queuedHeader.utxosRoot);
+        expect(clean.snapshot.finalizedTip).toContain(headerHash);
+        expect(
+          clean.checks.find((c) => c.id === "da-attestation")?.notes.join("\n"),
+        ).toContain(`header ${headerHash}`);
 
-      const queue = await Effect.runPromise(
-        SDK.fetchSortedStateQueueUTxOsProgram(
-          fixture.operatorLucid,
-          stateQueueFetchConfig(fixture.contracts),
-        ),
-      );
-      expect(queue).toHaveLength(2);
-      const queuedNode = await Effect.runPromise(
-        SDK.getStateQueueNodeFromStateQueueDatum(queue[1]!.datum),
-      );
-      const queuedHeader = queuedNode.header;
-      const headerHash = await Effect.runPromise(
-        SDK.hashBlockHeader(queuedHeader),
-      );
-      const headerHashBuffer = Buffer.from(headerHash, "hex");
+        // da-attestation: the same Unattested header read after its deadline
+        // (block_time + the deployment profile's da_attestation_timeout_ms).
+        const daDeadlineMs = Number(
+          queuedNode.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS,
+        );
+        vi.setSystemTime(new Date(daDeadlineMs + 1_000));
+        const lateReport = await reconcile(h);
+        vi.setSystemTime(new Date(fixture.emulator.now()));
+        expectStatuses(lateReport, { "da-attestation": "FAIL" }, "PASS");
+        expect(
+          lateReport.checks
+            .find((c) => c.id === "da-attestation")
+            ?.failures.join("\n"),
+        ).toContain(
+          `header ${headerHash} (${queue[1]!.utxo.txHash}#${queue[1]!.utxo.outputIndex.toString()}) is Unattested past its DA-attestation deadline ${new Date(daDeadlineMs).toISOString()} (${daDeadlineMs.toString()} ms) by 1000 ms`,
+        );
 
-      // Positive polarity: a live, consistent pipeline.
-      const clean = await reconcile(harness);
-      expect(clean.ok, describeReport(clean)).toBe(true);
-      expect(clean.exitCode).toBe(0);
-      expectStatuses(clean, {}, "PASS");
-      expect(clean.snapshot.nativeRoot).toContain(queuedHeader.utxosRoot);
-      expect(clean.snapshot.finalizedTip).toContain(headerHash);
-      expect(
-        clean.checks.find((c) => c.id === "da-attestation")?.notes.join("\n"),
-      ).toContain(`header ${headerHash}`);
-
-      // da-attestation: the same Unattested header read after its deadline
-      // (block_time + the deployment profile's da_attestation_timeout_ms).
-      const daDeadlineMs = Number(
-        queuedNode.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS,
-      );
-      vi.setSystemTime(new Date(daDeadlineMs + 1_000));
-      const lateReport = await reconcile(harness);
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-      expectStatuses(lateReport, { "da-attestation": "FAIL" }, "PASS");
-      expect(
-        lateReport.checks
-          .find((c) => c.id === "da-attestation")
-          ?.failures.join("\n"),
-      ).toContain(
-        `header ${headerHash} (${queue[1]!.utxo.txHash}#${queue[1]!.utxo.outputIndex.toString()}) is Unattested past its DA-attestation deadline ${new Date(daDeadlineMs).toISOString()} (${daDeadlineMs.toString()} ms) by 1000 ms`,
-      );
-
-      // confirmed-root: a well-formed but foreign confirmed_ledger entry (a
-      // copy of a real L2 output under a different outref). The journal
-      // chain's base no longer matches, so the ledger points become
-      // unrecomputable (SKIPPED, pointing at confirmed-root) rather than being
-      // reported a second time.
-      const template = await sqlMutation(
-        (sql) =>
-          sql<{
-            readonly tx_id: Buffer;
-            readonly outref: Buffer;
-            readonly output: Buffer;
-            readonly address: string;
-          }>`SELECT tx_id, outref, output, address FROM mempool_ledger LIMIT 1`,
-      );
-      expect(template).toHaveLength(1);
-      const foreignOutref = Buffer.from(template[0]!.outref);
-      foreignOutref[10] = foreignOutref[10]! ^ 0xff;
-      const confirmedRootReport = await withMutation(
-        () =>
-          sqlMutation(
-            (
-              sql,
-            ) => sql`INSERT INTO confirmed_ledger (tx_id, outref, output, address)
+        // confirmed-root: a well-formed but foreign confirmed_ledger entry (a
+        // copy of a real L2 output under a different outref). The journal
+        // chain's base no longer matches, so the ledger points become
+        // unrecomputable (SKIPPED, pointing at confirmed-root) rather than being
+        // reported a second time.
+        const template = await sqlMutation(
+          (sql) =>
+            sql<{
+              readonly tx_id: Buffer;
+              readonly outref: Buffer;
+              readonly output: Buffer;
+              readonly address: string;
+            }>`SELECT tx_id, outref, output, address FROM mempool_ledger LIMIT 1`,
+        );
+        expect(template).toHaveLength(1);
+        const foreignOutref = Buffer.from(template[0]!.outref);
+        foreignOutref[10] = foreignOutref[10]! ^ 0xff;
+        const confirmedRootReport = await withMutation(
+          () =>
+            sqlMutation(
+              (
+                sql,
+              ) => sql`INSERT INTO confirmed_ledger (tx_id, outref, output, address)
               VALUES (${template[0]!.tx_id}, ${foreignOutref}, ${template[0]!.output}, ${template[0]!.address})`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) =>
-              sql`DELETE FROM confirmed_ledger WHERE outref = ${foreignOutref}`,
-          ),
-        harness,
-      );
-      expectStatuses(
-        confirmedRootReport,
-        {
-          "confirmed-root": "FAIL",
-          "native-root": "SKIPPED",
-          "ledger-cache": "SKIPPED",
-        },
-        "PASS",
-      );
-      expect(
-        confirmedRootReport.checks.find((c) => c.id === "confirmed-root")
-          ?.reason,
-      ).toContain("SQL confirmed_ledger root");
-      expect(
-        confirmedRootReport.checks.find((c) => c.id === "native-root")?.reason,
-      ).toContain("reported by confirmed-root");
+            ),
+          () =>
+            sqlMutation(
+              (sql) =>
+                sql`DELETE FROM confirmed_ledger WHERE outref = ${foreignOutref}`,
+            ),
+          h,
+        );
+        expectStatuses(
+          confirmedRootReport,
+          {
+            "confirmed-root": "FAIL",
+            "native-root": "SKIPPED",
+            "ledger-cache": "SKIPPED",
+          },
+          "PASS",
+        );
+        expect(
+          confirmedRootReport.checks.find((c) => c.id === "confirmed-root")
+            ?.reason,
+        ).toContain("SQL confirmed_ledger root");
+        expect(
+          confirmedRootReport.checks.find((c) => c.id === "native-root")
+            ?.reason,
+        ).toContain("reported by confirmed-root");
 
-      // confirmed-root: an entry that cannot be encoded at all is reported,
-      // not a crash of the whole command.
-      const bogusOutref = Buffer.from("ee".repeat(34), "hex");
-      const unencodableReport = await withMutation(
-        () =>
-          sqlMutation(
-            (
-              sql,
-            ) => sql`INSERT INTO confirmed_ledger (tx_id, outref, output, address)
+        // confirmed-root: an entry that cannot be encoded at all is reported,
+        // not a crash of the whole command.
+        const bogusOutref = Buffer.from("ee".repeat(34), "hex");
+        const unencodableReport = await withMutation(
+          () =>
+            sqlMutation(
+              (
+                sql,
+              ) => sql`INSERT INTO confirmed_ledger (tx_id, outref, output, address)
               VALUES (${Buffer.alloc(32, 0xee)}, ${bogusOutref}, ${Buffer.from("a0", "hex")}, 'addr_test_bogus')`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) =>
-              sql`DELETE FROM confirmed_ledger WHERE outref = ${bogusOutref}`,
-          ),
-        harness,
-      );
-      expectStatuses(
-        unencodableReport,
-        {
-          "confirmed-root": "FAIL",
-          "native-root": "SKIPPED",
-          "ledger-cache": "SKIPPED",
-        },
-        "PASS",
-      );
-      expect(
-        unencodableReport.checks.find((c) => c.id === "confirmed-root")?.reason,
-      ).toContain("cannot be encoded");
+            ),
+          () =>
+            sqlMutation(
+              (sql) =>
+                sql`DELETE FROM confirmed_ledger WHERE outref = ${bogusOutref}`,
+            ),
+          h,
+        );
+        expectStatuses(
+          unencodableReport,
+          {
+            "confirmed-root": "FAIL",
+            "native-root": "SKIPPED",
+            "ledger-cache": "SKIPPED",
+          },
+          "PASS",
+        );
+        expect(
+          unencodableReport.checks.find((c) => c.id === "confirmed-root")
+            ?.reason,
+        ).toContain("cannot be encoded");
 
-      // state-queue-journal: the journal's expected deposits root diverges from
-      // the on-chain header's.
-      const journalReport = await withMutation(
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE pending_block_finalizations
+        // state-queue-journal: the journal's expected deposits root diverges from
+        // the on-chain header's.
+        const journalReport = await withMutation(
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE pending_block_finalizations
             SET expected_deposits_root = ${"ab".repeat(32)}
             WHERE header_hash = ${headerHashBuffer}`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE pending_block_finalizations
+            ),
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE pending_block_finalizations
             SET expected_deposits_root = ${queuedHeader.depositsRoot}
             WHERE header_hash = ${headerHashBuffer}`,
-          ),
-        harness,
-      );
-      expectStatuses(journalReport, { "state-queue-journal": "FAIL" }, "PASS");
-      expect(
-        journalReport.checks
-          .find((c) => c.id === "state-queue-journal")
-          ?.failures.join("\n"),
-      ).toContain("deposits root differs");
+            ),
+          h,
+        );
+        expectStatuses(
+          journalReport,
+          { "state-queue-journal": "FAIL" },
+          "PASS",
+        );
+        expect(
+          journalReport.checks
+            .find((c) => c.id === "state-queue-journal")
+            ?.failures.join("\n"),
+        ).toContain("deposits root differs");
 
-      // state-queue-journal: blocks still references a header nobody has.
-      const phantomHeader = Buffer.alloc(28, 0x5a);
-      const blocksReport = await withMutation(
-        () =>
-          sqlMutation(
-            (sql) => sql`INSERT INTO blocks (header_hash, tx_id)
+        // state-queue-journal: blocks still references a header nobody has.
+        const phantomHeader = Buffer.alloc(28, 0x5a);
+        const blocksReport = await withMutation(
+          () =>
+            sqlMutation(
+              (sql) => sql`INSERT INTO blocks (header_hash, tx_id)
             VALUES (${phantomHeader}, ${Buffer.alloc(32, 0x5a)})`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) =>
-              sql`DELETE FROM blocks WHERE header_hash = ${phantomHeader}`,
-          ),
-        harness,
-      );
-      expectStatuses(blocksReport, { "state-queue-journal": "FAIL" }, "PASS");
+            ),
+          () =>
+            sqlMutation(
+              (sql) =>
+                sql`DELETE FROM blocks WHERE header_hash = ${phantomHeader}`,
+            ),
+          h,
+        );
+        expectStatuses(blocksReport, { "state-queue-journal": "FAIL" }, "PASS");
 
-      // deposits: the included deposit is assigned to a header nobody has.
-      const depositReport = await withMutation(
-        () =>
-          sqlMutation(
-            (
-              sql,
-            ) => sql`UPDATE deposits_utxos SET projected_header_hash = ${Buffer.alloc(28, 0x6b)}
+        // deposits: the included deposit is assigned to a header nobody has.
+        const depositReport = await withMutation(
+          () =>
+            sqlMutation(
+              (
+                sql,
+              ) => sql`UPDATE deposits_utxos SET projected_header_hash = ${Buffer.alloc(28, 0x6b)}
             WHERE projected_header_hash = ${headerHashBuffer}`,
-          ),
-        () =>
-          sqlMutation(
-            (
-              sql,
-            ) => sql`UPDATE deposits_utxos SET projected_header_hash = ${headerHashBuffer}
+            ),
+          () =>
+            sqlMutation(
+              (
+                sql,
+              ) => sql`UPDATE deposits_utxos SET projected_header_hash = ${headerHashBuffer}
             WHERE projected_header_hash = ${Buffer.alloc(28, 0x6b)}`,
-          ),
-        harness,
-      );
-      expectStatuses(depositReport, { deposits: "FAIL" }, "PASS");
-      expect(
-        depositReport.checks
-          .find((c) => c.id === "deposits")
-          ?.failures.join("\n"),
-      ).toContain("not on the L1 queue, not merged");
+            ),
+          h,
+        );
+        expectStatuses(depositReport, { deposits: "FAIL" }, "PASS");
+        expect(
+          depositReport.checks
+            .find((c) => c.id === "deposits")
+            ?.failures.join("\n"),
+        ).toContain("not on the L1 queue, not merged");
 
-      // ledger-cache: a row the ledger does not contain.
-      const cacheOutref = Buffer.from("cd".repeat(34), "hex");
-      const cacheReport = await withMutation(
-        () =>
-          sqlMutation(
-            (
-              sql,
-            ) => sql`INSERT INTO mempool_ledger (tx_id, outref, output, address)
+        // ledger-cache: a row the ledger does not contain.
+        const cacheOutref = Buffer.from("cd".repeat(34), "hex");
+        const cacheReport = await withMutation(
+          () =>
+            sqlMutation(
+              (
+                sql,
+              ) => sql`INSERT INTO mempool_ledger (tx_id, outref, output, address)
             VALUES (${Buffer.alloc(32, 0xcd)}, ${cacheOutref}, ${Buffer.from("a0", "hex")}, 'addr_test_bogus')`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) =>
-              sql`DELETE FROM mempool_ledger WHERE outref = ${cacheOutref}`,
-          ),
-        harness,
-      );
-      expectStatuses(cacheReport, { "ledger-cache": "FAIL" }, "PASS");
-      expect(
-        cacheReport.checks.find((c) => c.id === "ledger-cache")?.reason,
-      ).toContain("unexpected outref");
+            ),
+          () =>
+            sqlMutation(
+              (sql) =>
+                sql`DELETE FROM mempool_ledger WHERE outref = ${cacheOutref}`,
+            ),
+          h,
+        );
+        expectStatuses(cacheReport, { "ledger-cache": "FAIL" }, "PASS");
+        expect(
+          cacheReport.checks.find((c) => c.id === "ledger-cache")?.reason,
+        ).toContain("unexpected outref");
 
-      // Native root: a divergent persisted marker. The native root is the one
-      // value both native-root (against SQL) and state-queue-tail-root (against
-      // L1) compare, so exactly those two fail.
-      // The native owner holds its LevelDB lock, so it is stopped for the
-      // edit and restarted on the restored store.
-      const nativeReport = await withUnownedNativeOwnerStopped(harness, () =>
-        withNativeRootMarker("ab".repeat(32), () => reconcile(harness)),
-      );
-      expectStatuses(
-        nativeReport,
-        { "native-root": "FAIL", "state-queue-tail-root": "FAIL" },
-        "PASS",
-      );
+        // Native root: a divergent persisted marker. The native root is the one
+        // value both native-root (against SQL) and state-queue-tail-root (against
+        // L1) compare, so exactly those two fail.
+        // The native owner holds its LevelDB lock: the node is stopped, the
+        // command reads its stores as an operator's would, and the node starts
+        // again on the restored store.
+        let nativeReport: ReconciliationReport | undefined;
+        h = await initial.restartRuntime({
+          afterStop: async () => {
+            nativeReport = await withNativeRootMarker(
+              "ab".repeat(32),
+              async () =>
+                runNodeCommandProgram(
+                  stateReconciliationProgram({ maxAttempts: 1 }),
+                  {
+                    fixture,
+                    lucidService,
+                    globals: await makeGlobalsService(),
+                  },
+                ),
+            );
+          },
+        });
+        if (nativeReport === undefined)
+          throw new Error("The stopped node was not reconciled");
+        expectStatuses(
+          nativeReport,
+          { "native-root": "FAIL", "state-queue-tail-root": "FAIL" },
+          "PASS",
+        );
 
-      // Every mutation was restored.
-      const restored = await reconcile(harness);
-      expect(restored.ok, describeReport(restored)).toBe(true);
+        // Every mutation was restored.
+        const restored = await reconcile(h);
+        expect(restored.ok, describeReport(restored)).toBe(true);
 
-      // Merge the block: confirmed state, settlement and SQL all advance.
-      await attestQueuedStateQueueHeader({
-        fixture,
-        lucidService,
-        globals,
-        headerHash,
-      });
-      // An attested header is not owed a timeout correction, even when read
-      // after the deadline.
-      vi.setSystemTime(new Date(daDeadlineMs + 1_000));
-      const attestedReport = await reconcile(harness);
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-      const attestedCheck = attestedReport.checks.find(
-        (c) => c.id === "da-attestation",
-      );
-      expect(attestedCheck?.status, describeReport(attestedReport)).toBe(
-        "PASS",
-      );
-      expect(attestedCheck?.notes).toEqual([]);
-      await advanceEmulatorPastUnixTime(
-        fixture,
-        mergeMaturityWindow(
-          fixture.operatorLucid,
-          Number(queuedNode.block_time),
-        ).readyAfterUnixTime,
-      );
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-      await runMergeUntilMerged({ fixture, lucidService, globals });
+        // Merge the block: confirmed state, settlement and SQL all advance.
+        await attestQueuedStateQueueHeader({
+          fixture,
+          lucidService,
+          globals: h.globals,
+          headerHash,
+        });
+        // An attested header is not owed a timeout correction, even when read
+        // after the deadline.
+        vi.setSystemTime(new Date(daDeadlineMs + 1_000));
+        const attestedReport = await reconcile(h);
+        vi.setSystemTime(new Date(fixture.emulator.now()));
+        const attestedCheck = attestedReport.checks.find(
+          (c) => c.id === "da-attestation",
+        );
+        expect(attestedCheck?.status, describeReport(attestedReport)).toBe(
+          "PASS",
+        );
+        expect(attestedCheck?.notes).toEqual([]);
+        await advanceEmulatorPastUnixTime(
+          fixture,
+          mergeMaturityWindow(
+            fixture.operatorLucid,
+            Number(queuedNode.block_time),
+          ).readyAfterUnixTime,
+        );
+        vi.setSystemTime(new Date(fixture.emulator.now()));
+        await runMergeUntilMerged({
+          fixture,
+          lucidService,
+          globals: h.globals,
+          production: h.production,
+        });
 
-      const merged = await reconcile(harness);
-      expect(merged.ok, describeReport(merged)).toBe(true);
-      expectStatuses(merged, {}, "PASS");
-      expect(
-        merged.checks.find((c) => c.id === "settlements")?.reason,
-      ).toContain("1 settlement datum equal");
+        const merged = await reconcile(h);
+        expect(merged.ok, describeReport(merged)).toBe(true);
+        expectStatuses(merged, {}, "PASS");
+        expect(
+          merged.checks.find((c) => c.id === "settlements")?.reason,
+        ).toContain("1 settlement datum equal");
 
-      // settlements: after the merge the journal's expected withdrawals root is
-      // what the settlement is compared against.
-      const settlementReport = await withMutation(
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE pending_block_finalizations
+        // settlements: after the merge the journal's expected withdrawals root is
+        // what the settlement is compared against.
+        const settlementReport = await withMutation(
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE pending_block_finalizations
             SET expected_withdrawals_root = ${"ab".repeat(32)}
             WHERE header_hash = ${headerHashBuffer}`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE pending_block_finalizations
+            ),
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE pending_block_finalizations
             SET expected_withdrawals_root = ${queuedHeader.withdrawalsRoot}
             WHERE header_hash = ${headerHashBuffer}`,
-          ),
-        harness,
-      );
-      expectStatuses(settlementReport, { settlements: "FAIL" }, "PASS");
+            ),
+          h,
+        );
+        expectStatuses(settlementReport, { settlements: "FAIL" }, "PASS");
 
-      // deposits after merge: a merged header's deposit must be consumed.
-      const mergedDepositReport = await withMutation(
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE deposits_utxos SET status = 'projected'
+        // deposits after merge: a merged header's deposit must be consumed.
+        const mergedDepositReport = await withMutation(
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE deposits_utxos SET status = 'projected'
             WHERE projected_header_hash = ${headerHashBuffer}`,
-          ),
-        () =>
-          sqlMutation(
-            (sql) => sql`UPDATE deposits_utxos SET status = 'consumed'
+            ),
+          () =>
+            sqlMutation(
+              (sql) => sql`UPDATE deposits_utxos SET status = 'consumed'
             WHERE projected_header_hash = ${headerHashBuffer}`,
-          ),
-        harness,
-      );
-      expectStatuses(mergedDepositReport, { deposits: "FAIL" }, "PASS");
-      expect(
-        mergedDepositReport.checks.find((c) => c.id === "deposits")?.reason,
-      ).toContain("expected consumed");
+            ),
+          h,
+        );
+        expectStatuses(mergedDepositReport, { deposits: "FAIL" }, "PASS");
+        expect(
+          mergedDepositReport.checks.find((c) => c.id === "deposits")?.reason,
+        ).toContain("expected consumed");
 
-      const final = await reconcile(harness);
-      expect(final.ok, describeReport(final)).toBe(true);
-      vi.useRealTimers();
+        const final = await reconcile(h);
+        expect(final.ok, describeReport(final)).toBe(true);
+      } finally {
+        await closeLifecycle(h);
+      }
     }, 900_000);
   },
 );

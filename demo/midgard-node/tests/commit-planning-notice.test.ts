@@ -123,9 +123,7 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
             history: { view: currentGate!.applied!, epoch: currentGate!.epoch },
             data: {
               availableConfirmedBlock: "",
-              availableLocalFinalizationBlock: "",
               currentBlockStartTimeMs: 100,
-              localFinalizationPending: false,
               ledgerStoreLeaseOwner:
                 "commit:12345678-1234-4123-8123-123456789abc",
               mempoolTxsCountSoFar: 0,

@@ -18,6 +18,10 @@ import { DatabaseError } from "../../src/database/utils/common.js";
 import { makeCardanoSignedMapOutputTxBytes } from ".././helpers/cardano-native-fixtures.js";
 import { provideDatabaseLayers } from ".././utils.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import {
+  prepareUnderTestLease,
+  withTestMutationLease,
+} from "../helpers/mutation-lease.js";
 import { databaseTestDirectory } from "./finalization.database-test-directory.js";
 import {
   bundleChildProcessHelper,
@@ -125,7 +129,7 @@ export const registerFinalizationTests = () => {
             hash.free();
             body.free();
             tx.free();
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            yield* prepareUnderTestLease({
               ...input,
               preparedTxHash: txHash,
             });
@@ -141,28 +145,19 @@ export const registerFinalizationTests = () => {
                 ),
               ))._tag,
             ).toBe("Left");
-            yield* PendingBlockFinalizationsDB.recordSignedIntent(
-              headerHash,
-              txHash,
-              cbor,
-            );
-            yield* PendingBlockFinalizationsDB.recordSignedIntent(
-              headerHash,
-              txHash,
-              cbor,
-            );
+            const signUnderLease = (signedTxHash: Buffer) =>
+              PendingBlockFinalizationsDB.recordSignedIntent(
+                headerHash,
+                signedTxHash,
+                cbor,
+              ).pipe(
+                withTestMutationLease(input.metadata.stateQueueLeaseToken),
+              );
+            yield* signUnderLease(txHash);
+            yield* signUnderLease(txHash);
             expect(
-              (yield* Effect.either(
-                PendingBlockFinalizationsDB.recordSignedIntent(
-                  headerHash,
-                  Buffer.alloc(32, 3),
-                  cbor,
-                ),
-              ))._tag,
+              (yield* Effect.either(signUnderLease(Buffer.alloc(32, 3))))._tag,
             ).toBe("Left");
-            yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
-              headerHash,
-            );
             expect(
               yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
                 headerHash,
@@ -174,9 +169,7 @@ export const registerFinalizationTests = () => {
               ))._tag,
             ).toBe("Left");
             expect(
-              (yield* Effect.either(
-                PendingBlockFinalizationsDB.preparePendingSubmission(input),
-              ))._tag,
+              (yield* Effect.either(prepareUnderTestLease(input)))._tag,
             ).toBe("Left");
             expect(
               (yield* Effect.either(
@@ -231,7 +224,7 @@ export const registerFinalizationTests = () => {
     );
 
     it.effect(
-      "can discard and replace no-submission pending journals for retry recovery",
+      "can abandon and replace no-submission pending journals for retry recovery",
       (_) =>
         isolatedDb(
           Effect.gen(function* () {
@@ -241,19 +234,21 @@ export const registerFinalizationTests = () => {
             );
             const input = pendingSubmissionFixture(headerHash);
 
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
-            yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
-              headerHash,
-            );
+            yield* prepareUnderTestLease(input);
+            expect(
+              yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
+                headerHash,
+              ),
+            ).toBe(true);
             let active = yield* PendingBlockFinalizationsDB.retrieveActive();
             expect(active._tag).toBe("None");
 
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
+            yield* prepareUnderTestLease(input);
             yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
             active = yield* PendingBlockFinalizationsDB.retrieveActive();
             expect(active._tag).toBe("None");
 
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
+            yield* prepareUnderTestLease(input);
             active = yield* PendingBlockFinalizationsDB.retrieveActive();
             expect(active._tag).toBe("Some");
             if (active._tag === "Some") {
@@ -289,9 +284,7 @@ export const registerFinalizationTests = () => {
               "missing-validation-trace-header",
               28,
             );
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-              pendingSubmissionFixture(headerHash),
-            );
+            yield* prepareUnderTestLease(pendingSubmissionFixture(headerHash));
             const sql = yield* SqlClient.SqlClient;
             yield* sql`UPDATE ${sql(PendingBlockFinalizationsDB.tableName)}
             SET ${sql(
@@ -335,7 +328,7 @@ export const registerFinalizationTests = () => {
               28,
             );
             const input = pendingSubmissionFixture(headerHash);
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            yield* prepareUnderTestLease({
               ...input,
               metadata: {
                 ...input.metadata,
@@ -409,7 +402,7 @@ export const registerFinalizationTests = () => {
               ]),
               eventCount: 2,
             };
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+            yield* prepareUnderTestLease({
               ...input,
               nativeMpfReplay: replay,
             });
@@ -419,11 +412,11 @@ export const registerFinalizationTests = () => {
               expect(active.value.nativeMpfReplay).toEqual(replay);
             }
 
-            yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
+            yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
               headerHash,
             );
             const invalid = yield* Effect.either(
-              PendingBlockFinalizationsDB.preparePendingSubmission({
+              prepareUnderTestLease({
                 ...pendingSubmissionFixture(
                   databaseFixtureBytes("architecture-g-invalid-header", 28),
                 ),
@@ -453,7 +446,7 @@ export const registerFinalizationTests = () => {
             );
             const submittedTxHash = databaseTxHash("submitted-cas-tx");
 
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            yield* prepareUnderTestLease(
               pendingSubmissionFixture(unsubmittedHeaderHash),
             );
             const unsubmittedAbandoned =
@@ -478,7 +471,7 @@ export const registerFinalizationTests = () => {
               ).toBeNull();
             }
 
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            yield* prepareUnderTestLease(
               pendingSubmissionFixture(submittedHeaderHash),
             );
             yield* PendingBlockFinalizationsDB.markSubmitted(
@@ -561,24 +554,21 @@ export const registerFinalizationTests = () => {
               duringDeposit,
             );
             const duringResult = yield* Effect.either(
-              PendingBlockFinalizationsDB.preparePendingSubmission(
-                duringInput,
-                {
-                  beforeJournalInsert: DepositsDB.markAwaitingAsProjected([
-                    duringDeposit[DepositsDB.Columns.ID],
-                  ]).pipe(
-                    Effect.andThen(
-                      Effect.fail(
-                        new DatabaseError({
-                          table: PendingBlockFinalizationsDB.tableName,
-                          message: "Injected crash during journal preparation",
-                          cause: "crash_during_prepare",
-                        }),
-                      ),
+              prepareUnderTestLease(duringInput, {
+                beforeJournalInsert: DepositsDB.markAwaitingAsProjected([
+                  duringDeposit[DepositsDB.Columns.ID],
+                ]).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new DatabaseError({
+                        table: PendingBlockFinalizationsDB.tableName,
+                        message: "Injected crash during journal preparation",
+                        cause: "crash_during_prepare",
+                      }),
                     ),
                   ),
-                },
-              ),
+                ),
+              }),
             );
             expect(duringResult._tag).toBe("Left");
             const duringRows = yield* DepositsDB.retrieveAllEntries();
@@ -603,14 +593,11 @@ export const registerFinalizationTests = () => {
             const afterDeposit = makeDepositEntry();
             yield* insertDeposits([afterDeposit]);
             const afterInput = makeInput("atomic-after-header", afterDeposit);
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-              afterInput,
-              {
-                beforeJournalInsert: DepositsDB.markAwaitingAsProjected([
-                  afterDeposit[DepositsDB.Columns.ID],
-                ]).pipe(Effect.as(undefined)),
-              },
-            );
+            yield* prepareUnderTestLease(afterInput, {
+              beforeJournalInsert: DepositsDB.markAwaitingAsProjected([
+                afterDeposit[DepositsDB.Columns.ID],
+              ]).pipe(Effect.as(undefined)),
+            });
             const afterRows = yield* DepositsDB.retrieveAllEntries();
             const afterProjected = afterRows.find((entry) =>
               entry[DepositsDB.Columns.ID].equals(

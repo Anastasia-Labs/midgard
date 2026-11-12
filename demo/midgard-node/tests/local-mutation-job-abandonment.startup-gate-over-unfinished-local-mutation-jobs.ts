@@ -7,8 +7,6 @@ import { describe, expect } from "vitest";
 import { classifyUnfinishedMutationJobOnStartup } from "../src/commands/listen-startup.js";
 import * as MutationJobsDB from "../src/database/mutationJobs.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
-import { DatabaseError } from "../src/database/utils/common.js";
-import { describeLocalFinalizationFailure } from "../src/workers/utils/commit-submission.js";
 import {
   failedLocalJob,
   header,
@@ -25,7 +23,7 @@ import {
 
 describe("startup gate over unfinished local mutation jobs", () => {
   it.effect(
-    "hands a failed local finalization of a live submitted block to the runtime without closing it",
+    "closes a failed local finalization of a submitted block, which landed-block processing applies, leaving its journal as it is",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -34,8 +32,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
           yield* failedLocalJob(live, "delta invalid");
           expect(yield* startupGate).toBeUndefined();
           const job = yield* readJob(localJobId(live));
-          expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Failed);
-          expect(job[J.LAST_ERROR]).toBe("delta invalid");
+          expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
           expect(
             (yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
               live,
@@ -50,7 +47,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
   );
 
   it.effect(
-    "hands a running job from a crash to the runtime for a live submitted block, instead of refusing every restart",
+    "closes a running job from a crash for a submitted block, instead of refusing every restart",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -59,14 +56,14 @@ describe("startup gate over unfinished local mutation jobs", () => {
           yield* runningLocalJob(crashed);
           expect(yield* startupGate).toBeUndefined();
           expect((yield* readJob(localJobId(crashed)))[J.STATUS]).toBe(
-            MutationJobsDB.Status.Running,
+            MutationJobsDB.Status.Completed,
           );
         }),
       ),
   );
 
   it.effect(
-    "refuses a failed local finalization without a journal and leaves failed and running merge finalizations to the runtime",
+    "refuses a failed local finalization without a journal, closes one of a submitted block, and leaves failed and running merge finalizations to the runtime",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -93,6 +90,9 @@ describe("startup gate over unfinished local mutation jobs", () => {
           });
           const { result: refused, logs } = yield* withLogs(startupGate);
           expect(refused).toEqual([localJobId(orphan)]);
+          expect((yield* readJob(localJobId(live)))[J.STATUS]).toBe(
+            MutationJobsDB.Status.Completed,
+          );
           const handOffs = logs.filter((line) =>
             line.includes("confirmed-merge finalization job"),
           );
@@ -123,7 +123,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
     ),
   );
 
-  it("classifies merge finalizations and an unfinished local finalization of a submitted, unfinalized block as runtime-owned", () => {
+  it("leaves merge finalizations to the runtime and closes an unfinished local finalization of a submitted block", () => {
     const job = (
       overrides: Partial<Record<MutationJobsDB.Columns, unknown>>,
     ): MutationJobsDB.Entry =>
@@ -139,29 +139,23 @@ describe("startup gate over unfinished local mutation jobs", () => {
         [J.COMPLETED_AT]: null,
         ...overrides,
       }) as MutationJobsDB.Entry;
-    const runtime: readonly PendingBlockFinalizationsDB.Status[] = [
+    // Landed-block processing applies a submitted block when it lands;
+    // nothing runs the job any more.
+    const complete: readonly PendingBlockFinalizationsDB.Status[] = [
       Status.SubmittedLocalFinalizationPending,
       Status.SubmittedUnconfirmed,
       Status.ObservedWaitingStability,
+      Status.LocallyApplied,
     ];
-    // A failed job whose journal is finalized lost only its completion
-    // record, to a transient after markFinalized committed.
     for (const status of Object.values(Status))
       expect(
         classifyUnfinishedMutationJobOnStartup(job({}), status),
         status,
-      ).toBe(
-        runtime.includes(status)
-          ? "runtime"
-          : status === Status.LocallyApplied
-            ? "complete"
-            : "refuse",
-      );
+      ).toBe(complete.includes(status) ? "complete" : "refuse");
     expect(classifyUnfinishedMutationJobOnStartup(job({}), undefined)).toBe(
       "refuse",
     );
-    // A running job is a process killed mid-way: the same retry owns it, and a
-    // finalized journal records that only markCompleted was lost.
+    // A running job is a process killed mid-way: the same.
     for (const status of Object.values(Status))
       expect(
         classifyUnfinishedMutationJobOnStartup(
@@ -169,13 +163,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
           status,
         ),
         `running/${status}`,
-      ).toBe(
-        runtime.includes(status)
-          ? "runtime"
-          : status === Status.LocallyApplied
-            ? "complete"
-            : "refuse",
-      );
+      ).toBe(complete.includes(status) ? "complete" : "refuse");
     expect(
       classifyUnfinishedMutationJobOnStartup(
         job({ [J.STATUS]: MutationJobsDB.Status.Running }),
@@ -208,41 +196,5 @@ describe("startup gate over unfinished local mutation jobs", () => {
         Status.ObservedWaitingStability,
       ),
     ).toBe("refuse");
-  });
-});
-
-describe("local finalization failure diagnostics", () => {
-  it("includes the DatabaseError's cause chain, bounded and cycle-safe", () => {
-    const reason = new Error(
-      "ledger delta spends an outref absent from its authenticated base: abab",
-    );
-    const error = new DatabaseError({
-      table: "confirmed_ledger",
-      message:
-        "Pending-finalization ledger delta is invalid for its authenticated base",
-      cause: reason,
-    });
-    const text = describeLocalFinalizationFailure(error);
-    expect(text).toContain(
-      "Pending-finalization ledger delta is invalid for its authenticated base",
-    );
-    expect(text).toContain(
-      "cause=Error: ledger delta spends an outref absent from its authenticated base: abab",
-    );
-    const cyclic = new Error("outer") as Error & { cause?: unknown };
-    cyclic.cause = cyclic;
-    expect(describeLocalFinalizationFailure(cyclic)).toBe("Error: outer");
-    const huge = new DatabaseError({
-      table: "t",
-      message: "x".repeat(10_000),
-      cause: new Error("y".repeat(10_000)),
-    });
-    expect(describeLocalFinalizationFailure(huge).length).toBe(4000);
-    let deep: unknown = new Error("root");
-    for (let i = 0; i < 20; i += 1)
-      deep = new Error(`level ${i}`, { cause: deep });
-    expect(
-      describeLocalFinalizationFailure(deep).split("; cause=").length,
-    ).toBe(8);
   });
 });

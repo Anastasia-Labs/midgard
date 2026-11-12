@@ -18,8 +18,7 @@
  * `landed_block_replay_stuck`, `landed_block_replay_held`,
  * `landed_block_replay_incomplete`,
  * `landed_block_replay_failed`, `confirmed_ledger_base_mismatch`,
- * `landed_blocks_waiting`, `confirmed_ledger_behind`,
- * `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`
+ * `landed_blocks_waiting`, `confirmed_ledger_behind`
  * and `landed_block_rebase_pending`, the first by priority named as the
  * reason and the rest in its detail), the intent stage's
  * (`wallet_seed_pending`, `intent_reconcile_failed`,

@@ -188,6 +188,44 @@ describe("DA libp2p runtime manifest profiles", () => {
     }
   });
 
+  it("refuses node startup without a DA manifest path, naming the variable", async () => {
+    const deploymentInfo = await writeFinalizedDeploymentInfo();
+    const identity = readFinalizedDeploymentIdentity(deploymentInfo.path);
+    vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", "");
+    vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", PRODUCER_KEY);
+    try {
+      const startup = await Effect.runPromise(
+        Effect.either(
+          prepareDaHardeningStartup.pipe(
+            Effect.provideService(NodeConfig, {
+              MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+            } as NodeConfigDep),
+            Effect.provideService(
+              ContractDeploymentIdentity,
+              new ContractDeploymentIdentity({
+                kind: "manifest",
+                manifestId: identity.manifestId,
+                deploymentMarker: makeDeploymentMarker(identity.manifestId),
+                manifest: identity.manifest,
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              }),
+            ),
+          ),
+        ),
+      );
+      expect(startup._tag).toBe("Left");
+      if (startup._tag !== "Left") return;
+      expect(startup.left.message).toBe(
+        "Failed to load DA manifest for startup threshold assertion",
+      );
+      expect(String(startup.left.cause)).toContain(
+        "MIDGARD_DEPLOYMENT_MANIFEST_PATH is required for libp2p DA",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("persists the exact runtime manifest atomically", async () => {
     const deploymentInfo = await writeFinalizedDeploymentInfo();
     const manifest = await generateDaLibp2pRuntimeManifest({

@@ -151,7 +151,6 @@ const idlePipeline = {
   durableAdmission: { backlog: "0" },
   stateQueue: {
     unconfirmedSubmittedBlockTxHash: null,
-    localFinalizationPending: false,
   },
 };
 

@@ -4,7 +4,6 @@ import { Effect, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
-import { mergeAction } from "../src/fibers/merge.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
@@ -23,20 +22,19 @@ import {
   mergeMaturityWindow,
   MidgardContracts,
   NodeConfig,
-  runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
-  runLocalFinalizationRecoveryWorker,
   runMergeUntilMerged,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /**
- * A node restarted while its own block waits for stability on L1: the block
- * is confirmed, so the restart holds no unresolved submission. Merge stays
- * held only until the block's local finalization, then merges it.
+ * A node restarted after its own block landed on L1 but before it followed
+ * the landing: the restarted node's first synchronization takes the block in
+ * (its rebase applies it), so the restart holds no unresolved submission,
+ * and merge follows.
  */
-it("a restart while the own block waits for stability leaves no unresolved submission, so merge follows its local finalization", async () => {
+it("a restart before the node followed its own block's landing applies the block and leaves no unresolved submission, so merge follows", async () => {
   const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
@@ -122,44 +120,18 @@ it("a restart while the own block waits for stability leaves no unresolved submi
     expect(await fixture.operatorLucid.awaitTx(commit.submittedTxHash)).toBe(
       true,
     );
-    await h.synchronize();
-    await runBlockConfirmation(
-      h.globals,
-      fixture.contracts,
-      lucidService,
-      h.production.nodeConfig,
-      h.production,
-    );
-    const observed = Option.getOrThrow(
-      await run(PendingBlockFinalizationsDB.retrieveActive()),
-    );
-    expect(observed[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
-      PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
-    );
-    const headerHash =
-      observed[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
+    const headerHash = commit.submittedHeaderHash;
 
     h = await initial.restartRuntime();
+    await h.applyLanded(headerHash);
     expect(await submission()).toEqual({ txHash: "", sinceMs: 0 });
-    // The observed block's local finalization still holds merge.
-    expect(await run(Ref.get(h.globals.LOCAL_FINALIZATION_PENDING))).toBe(true);
-    expect((await run(mergeAction(true))).status).toBe(
-      "skipped_local_finalization_pending",
+    const applied = Option.getOrThrow(
+      await run(
+        PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          Buffer.from(headerHash, "hex"),
+        ),
+      ),
     );
-
-    const recovery = await runLocalFinalizationRecoveryWorker(
-      h.globals,
-      fixture.contracts,
-      lucidService,
-      fixture.runtimeOverrides!.deploymentIdentity,
-      h.production.nodeConfig,
-      { ...h.production, globals: h.globals },
-    );
-    expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
-      throw new Error("The observed block must finalize locally");
-    expect(recovery.finalizedHeaderHash).toBe(headerHash);
-    await h.synchronize();
 
     await attestQueuedStateQueueHeader({
       fixture,
@@ -171,7 +143,7 @@ it("a restart while the own block waits for stability leaves no unresolved submi
       fixture,
       mergeMaturityWindow(
         fixture.operatorLucid,
-        observed[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime(),
+        applied[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime(),
       ).readyAfterUnixTime,
     );
     vi.setSystemTime(fixture.emulator.now());

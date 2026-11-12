@@ -135,9 +135,6 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
     { concurrency: "unbounded" },
   );
   const queueLength = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const localFinalizationPending = yield* Ref.get(
-    globals.LOCAL_FINALIZATION_PENDING,
-  );
   const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
     globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
   );
@@ -180,7 +177,6 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
           unconfirmedSubmittedBlockSinceMs <= 0
             ? 0
             : Math.max(0, now.getTime() - unconfirmedSubmittedBlockSinceMs),
-        localFinalizationPending,
       },
       stateQueueMutationLease:
         StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection),

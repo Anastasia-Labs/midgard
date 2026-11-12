@@ -26,12 +26,11 @@ import { replayJournaledOnFollower } from "./intent-journal-replay.js";
  */
 const DEPLOYMENT = ["reference_funding", "reference_publication"] as const;
 
-/** The operator's families from the fixture's registration to a merged block. */
+/**
+ * The operator's families on a restored deployment, up to a merged block: the
+ * deployment registered and activated the operator.
+ */
 export const TO_MERGED_BLOCK: readonly NodeIntentFamily[] = [
-  "script_reward_registration",
-  "phas_membership",
-  "register",
-  "activate",
   "scheduler_refresh",
   "commit",
   "attest",

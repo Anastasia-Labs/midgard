@@ -34,6 +34,7 @@ export const fakeSql = Object.assign(
     Effect.succeed([])) as unknown as SqlClient.SqlClient,
   {
     array: vi.fn((values: readonly unknown[]) => values),
+    in: vi.fn((values: readonly unknown[]) => values),
     withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
   },
 ) as unknown as SqlClient.SqlClient;

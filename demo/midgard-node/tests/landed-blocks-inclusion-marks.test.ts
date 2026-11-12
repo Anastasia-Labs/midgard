@@ -4,13 +4,13 @@
  * working-ledger rebase (the follower-change driver's `rebaseIfDue`, with
  * the modelled native MPF owner of `landed-blocks-rebase.fixture.ts`):
  *
- * - this node's local finalization of its own block, and the processing
- *   insert of a landed block, keep the block's rows in the pending tables,
- *   marked by the block; the rollback of the block clears the marks, so a
- *   later rebuild reads its members as pending again;
- * - an own block that lands and folds with no rebase between leaves its
- *   rows marked until its fold is final (`final-folds.ts`), so a later
- *   rebase neither re-applies nor rejects them;
+ * - the processing insert of a landed block, own or foreign, keeps the
+ *   block's rows in the pending tables, marked by the block; the rollback
+ *   of the block clears the marks, so a later rebuild reads its members as
+ *   pending again;
+ * - an own block that folds leaves its rows marked until its fold is final
+ *   (`final-folds.ts`), so a later rebase neither re-applies nor rejects
+ *   them;
  * - commit selection reads no marked row;
  * - a skipped submission moves its selected mempool rows to the processed
  *   mempool with the marks they hold at the move, not at the selection.
@@ -50,10 +50,7 @@ import {
 } from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
-import {
-  finalizeCommittedBlockLocally,
-  skippedSubmissionProgram,
-} from "../src/workers/utils/commit-submission.js";
+import { skippedSubmissionProgram } from "../src/workers/utils/commit-submission.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {
   admitPending,
@@ -170,33 +167,6 @@ const pendingPage = (globals: Globals) =>
     page.entries.map((row) => hex(row[TxUtils.Columns.TX_ID])),
   );
 
-/** This node's local finalization of its own block `header` including `txs`. */
-const finalizeOwnLocally = async (
-  globals: Globals,
-  header: string,
-  txs: readonly SimPendingTx[],
-) => {
-  const ids = new Set(txs.map((tx) => hex(tx.id)));
-  const entries = (
-    await run(globals, MempoolDB.retrievePage({ limit: 100 }))
-  ).entries.filter((row) => ids.has(hex(row[TxUtils.Columns.TX_ID])));
-  expect(entries).toHaveLength(txs.length);
-  const transactionsMpf = {
-    resetToEmpty: () => Effect.void,
-  } as unknown as Parameters<typeof finalizeCommittedBlockLocally>[0];
-  await run(
-    globals,
-    finalizeCommittedBlockLocally(
-      transactionsMpf,
-      entries,
-      txs.map((tx) => tx.id),
-      header,
-      [],
-      { useAmbientProcessedMempool: false },
-    ).pipe(testWrite),
-  );
-};
-
 /** Every marked row of the pending tables: table, transaction id, marking header. */
 const markedRows = (globals: Globals) =>
   run(
@@ -234,9 +204,7 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     const native: Native = freshNative();
     const globals = await processOf(native);
     await seedFrontier(globals);
-    await run(globals, admitPending([b, d]));
-    await finalizeOwnLocally(globals, OWN, [b, d]);
-    await run(globals, admitPending([a]));
+    await run(globals, admitPending([b, d, a]));
     await processLanded(globals, {
       headerHash: OWN,
       kind: "own",
@@ -324,18 +292,15 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     );
   });
 
-  it("keeps the members of an own block that landed and folded with no rebase between out of a later rebuild that rejects another", async () => {
+  it("keeps the members of a folded own block out of a later rebuild that rejects another", async () => {
     // frontier (E0) -> own block O (E0 -> E1, includes b); a spends E1. O
-    // lands and folds with no rebase between; foreign Y (E1 -> E2) on O
-    // then rejects a.
+    // lands, applied, and folds; foreign Y (E1 -> E2) on O then rejects a.
     const b = nativeTx(21, [], 1);
     const a = nativeTx(22, [E1.outref], 2);
     const native: Native = freshNative();
     const globals = await processOf(native);
     await seedFrontier(globals);
-    await run(globals, admitPending([b]));
-    await finalizeOwnLocally(globals, OWN, [b]);
-    await run(globals, admitPending([a]));
+    await run(globals, admitPending([b, a]));
     await processLanded(globals, {
       headerHash: OWN,
       kind: "own",
@@ -346,7 +311,6 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     const foldPorts = {
       confirmView: () => Effect.succeed(true),
       write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-      ownJournal: () => Effect.succeed({ status: "locally_applied" }),
     } as unknown as LandedBlockPorts<never>;
     await sqlRun(globals, () =>
       foldToRoot(
@@ -383,8 +347,8 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
   });
 
   it("selects no row a block marked for a new block", async () => {
-    // m2 is in this node's locally finalized own block; foreign X includes
-    // m1 and the processed-mempool row p1.
+    // Foreign X includes m1 and the processed-mempool row p1; m2 is in
+    // this node's own block on X.
     const [m1, m2, m3] = [31, 32, 33].map((label, at) =>
       nativeTx(label, [], at + 1),
     );
@@ -400,10 +364,19 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
         })),
       ),
     );
-    await finalizeOwnLocally(globals, OWN, [m2!]);
     await processLanded(globals, {
       headerHash: FOREIGN,
       txIds: [m1!.id, p1!.id],
+    });
+    await processLanded(globals, {
+      headerHash: OWN,
+      kind: "own",
+      parentHeaderHash: FOREIGN,
+      parentUtxosRoot: R1,
+      utxosRoot: R2,
+      spent: [],
+      produced: [],
+      txIds: [m2!.id],
     });
 
     // The commit worker's selection reads.

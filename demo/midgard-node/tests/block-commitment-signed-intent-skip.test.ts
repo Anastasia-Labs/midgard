@@ -9,6 +9,10 @@ import { Globals, NodeConfig } from "../src/services/index.js";
 import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import {
+  prepareUnderTestLease,
+  withTestMutationLease,
+} from "./helpers/mutation-lease.js";
+import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
@@ -84,7 +88,7 @@ const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
 const signedIntentJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const txHash = Buffer.alloc(32, 9);
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+    yield* prepareUnderTestLease({
       ...journalFixture(headerHash),
       preparedTxHash: txHash,
     });
@@ -127,12 +131,16 @@ describe("block commitment over an unreconciled signed intent", () => {
   beforeEach(() => {
     prepared.count = 0;
     buildAndSubmitMock.mockReset();
-    buildAndSubmitMock.mockImplementation(() =>
+    buildAndSubmitMock.mockImplementation((leaseToken: string) =>
       Effect.gen(function* () {
         prepared.count += 1;
-        yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-          journalFixture(header(`next-block-${prepared.count.toString()}`)),
+        const journal = journalFixture(
+          header(`next-block-${prepared.count.toString()}`),
         );
+        yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+          ...journal,
+          metadata: { ...journal.metadata, stateQueueLeaseToken: leaseToken },
+        });
         return { type: "NothingToCommitOutput" };
       }),
     );
@@ -201,7 +209,7 @@ describe("block commitment over an unreconciled signed intent", () => {
   it("still runs the worker for an active journal without a signed intent", async () => {
     const result = await runWithNode(
       Effect.gen(function* () {
-        yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+        yield* prepareUnderTestLease(
           journalFixture(header("unsigned-pending")),
         );
         const outcome = yield* Effect.either(blockCommitmentAction);
@@ -236,6 +244,10 @@ describe("block commitment over an unreconciled signed intent", () => {
             ),
           ],
           { concurrency: "unbounded" },
+        ).pipe(
+          withTestMutationLease(
+            journalFixture(header("planner-a")).metadata.stateQueueLeaseToken,
+          ),
         );
         return {
           tags: outcomes.map((outcome) => outcome._tag).sort(),

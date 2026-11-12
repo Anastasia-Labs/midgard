@@ -14,20 +14,20 @@ import {
 
 /**
  * Default commit path log line printed after the L1 commit transaction is
- * submitted and local finalization waits for L1 confirmation.
+ * submitted; landed-block processing applies the block once it lands.
  */
 export const BLOCK_SUBMITTED_MARKER =
-  "Block submitted; local finalization is intentionally deferred until L1 confirmation.";
+  "Block submitted; landed-block processing applies it once it lands.";
 
 /**
  * The default-path log lines the surviving node must print, in this order:
  * its commit trigger finds the lease busy while the killed winner holds it,
- * it abandons the winner's unsubmitted journal once the lease has expired and
- * the recovery grace has passed, and it then submits its own block.
+ * it abandons the winner's unsigned journal once it takes the expired lease
+ * over, and it then submits its own block.
  */
 export const JOURNAL_KILL_SURVIVOR_MARKERS = [
   "Skipping block commitment trigger because the state-queue mutation lease is busy",
-  "abandoning unsubmitted journal and recovering canonical state_queue tip",
+  "Abandoned unsigned pending block journal",
   BLOCK_SUBMITTED_MARKER,
 ] as const;
 

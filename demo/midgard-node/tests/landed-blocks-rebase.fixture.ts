@@ -236,7 +236,7 @@ export const rejectionCauses = (globals: Globals) =>
 
 /**
  * A processed row, the seeded block's fields under `row`: foreign by default;
- * an own one is applied, as an own block processed with its journal live.
+ * an own one is applied, as the rebase that took it in leaves it.
  */
 export const landedRow = (row: Partial<LandedBlockRow>): LandedBlockRow => ({
   headerHash: BLOCK,

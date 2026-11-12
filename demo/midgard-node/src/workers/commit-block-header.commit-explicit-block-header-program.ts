@@ -34,7 +34,6 @@ import {
   type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type RegisteredDueWorkOutput,
-  type SuccessfulLocalFinalizationRecoveryOutput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
 import { type CommitDaFrameNotice } from "./utils/commit-block-planner.commit-da-frame-notice.js";
@@ -76,13 +75,8 @@ export const alignCommitMpfsToBase = ({
 export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
   switch (output.type) {
     case "SubmittedAwaitingConfirmationOutput":
-    case "SubmittedAwaitingLocalFinalizationOutput":
     case "SuccessfulSubmissionOutput":
     case "SkippedSubmissionOutput":
-      return true;
-    case "SuccessfulLocalFinalizationRecoveryOutput":
-      // Local finalization intentionally advances durable DB state and resets
-      // the transactions MPF root; rolling back would undo recovery.
       return true;
     case "FailureOutput":
     case "AwaitingCommitBaseOutput":
@@ -107,17 +101,14 @@ export const shouldShortCircuitIdleCommitAttempt = ({
   candidateTxCount,
   processedPendingTxCount,
   pendingUserEventCount,
-  localFinalizationPending,
 }: {
   readonly candidateTxCount: number;
   readonly processedPendingTxCount: number;
   readonly pendingUserEventCount: number;
-  readonly localFinalizationPending: boolean;
 }): boolean =>
   candidateTxCount === 0 &&
   processedPendingTxCount === 0 &&
-  pendingUserEventCount === 0 &&
-  !localFinalizationPending;
+  pendingUserEventCount === 0;
 
 export type ExplicitBlockHeaderCommitParams = {
   readonly utxosRoot: string;
@@ -300,7 +291,6 @@ export const commitExplicitBlockHeaderProgram = (
 /** Posts a message to the parent ahead of the worker's output. */
 export type NotifyCommitWorkerParent = (
   message:
-    | SuccessfulLocalFinalizationRecoveryOutput
     | MempoolLedgerRevertedNotice
     | CommitDaFrameNotice
     | CommitPlanningNotice

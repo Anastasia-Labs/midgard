@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { MutationJobsDB } from "../src/database/index.js";
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
   header,
   journalFixture,
@@ -63,7 +63,7 @@ export const journals = (specs: readonly JournalSpec[]) =>
     for (const spec of specs) {
       const headerHash = header(spec.label);
       const fixture = journalFixture(headerHash);
-      yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+      yield* prepareUnderTestLease({
         ...fixture,
         metadata: {
           ...fixture.metadata,

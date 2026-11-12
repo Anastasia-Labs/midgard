@@ -1,11 +1,6 @@
-import { Effect, Logger, LogLevel, Option, Ref } from "effect";
+import { Effect, Logger, LogLevel, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  CONFIRMATION_IDLE_BACKOFF_KEY,
-  recordConfirmationTickIdleness,
-  skipIdleConfirmationTick,
-} from "../src/fibers/block-confirmation.idle-backoff.js";
 import {
   MERGE_IDLE_BACKOFF_KEY,
   recordMergeTickIdleness,
@@ -17,8 +12,6 @@ import { Globals } from "../src/services/index.js";
 
 const runWithGlobals = <A, E>(effect: Effect.Effect<A, E, Globals>) =>
   Effect.runPromise(effect.pipe(Effect.provide(Globals.Default)));
-
-const confirmedTip = { utxo: "confirmed" } as never;
 
 describe("idle backoff", () => {
   it("grows exponentially from the base up to the cap", () => {
@@ -32,70 +25,6 @@ describe("idle backoff", () => {
       delays.push(state.skipUntilMs);
     }
     expect(delays).toEqual([4_000, 8_000, 16_000, 30_000, 30_000, 30_000]);
-  });
-});
-
-describe("confirmation idle backoff", () => {
-  it("skips refreshes only while provably idle and resets on any sign of work", async () => {
-    const outcome = await runWithGlobals(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, confirmedTip);
-        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
-        const none = Option.none();
-        const beforeAnyIdleTick = yield* skipIdleConfirmationTick(
-          globals,
-          none,
-        );
-        yield* recordConfirmationTickIdleness(globals, none, 1_000);
-        const whileIdle = yield* skipIdleConfirmationTick(globals, none);
-        const withPendingJournal = yield* skipIdleConfirmationTick(
-          globals,
-          Option.some("journal"),
-        );
-        const resetByJournal = !(yield* Ref.get(globals.IDLE_BACKOFF)).has(
-          CONFIRMATION_IDLE_BACKOFF_KEY,
-        );
-        yield* recordConfirmationTickIdleness(globals, none, 1_000);
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "ab");
-        const withSubmittedBlock = yield* skipIdleConfirmationTick(
-          globals,
-          none,
-        );
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-        yield* recordConfirmationTickIdleness(globals, none, 1_000);
-        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
-        const withCommitWork = yield* skipIdleConfirmationTick(globals, none);
-        return {
-          beforeAnyIdleTick,
-          whileIdle,
-          withPendingJournal,
-          resetByJournal,
-          withSubmittedBlock,
-          withCommitWork,
-        };
-      }),
-    );
-    expect(outcome).toEqual({
-      beforeAnyIdleTick: false,
-      whileIdle: true,
-      withPendingJournal: false,
-      resetByJournal: true,
-      withSubmittedBlock: false,
-      withCommitWork: false,
-    });
-  });
-
-  it("never backs off before a confirmed tip is published", async () => {
-    const skipped = await runWithGlobals(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
-        yield* recordConfirmationTickIdleness(globals, Option.none(), 1_000);
-        return yield* skipIdleConfirmationTick(globals, Option.none());
-      }),
-    );
-    expect(skipped).toBe(false);
   });
 });
 

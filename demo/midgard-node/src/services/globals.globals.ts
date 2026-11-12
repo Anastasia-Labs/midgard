@@ -117,16 +117,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       lastLedgerSlot: null,
     });
 
-    // The state queue UTxO confirmed by the confirmation worker, unused for
-    // block commitment.
+    // The state queue's tail commit base, from the last landed state-queue
+    // snapshot.
     const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.make<
-      "" | SerializedStateQueueUTxO
-    >("");
-
-    // The specific confirmed state_queue block whose roots must be used for
-    // local finalization recovery when a submission succeeded on-chain but the
-    // node crashed or failed during local persistence.
-    const AVAILABLE_LOCAL_FINALIZATION_BLOCK = yield* Ref.make<
       "" | SerializedStateQueueUTxO
     >("");
 
@@ -219,13 +212,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const ADMISSION_INPUT_CLAIMS: AdmissionInputClaims =
       makeAdmissionInputClaims();
 
-    // Indicates that on-chain block submission succeeded but local persistence
-    // failed and must be retried against the confirmed block.
-    const LOCAL_FINALIZATION_PENDING = yield* Ref.make<boolean>(false);
-
     // Worker liveness signals used by readiness checks.
     const HEARTBEAT_BLOCK_COMMITMENT = yield* Ref.make<number>(now);
-    const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
     const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
     const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
 
@@ -303,7 +291,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       L1_PROVIDER_DIRECT_PROBE,
       L1_PROVIDER_HEALTH,
       AVAILABLE_CONFIRMED_BLOCK,
-      AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
@@ -320,9 +307,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       L2_PEER_HELD_TXS,
       ADMISSION_BACKLOG_GAUGE,
       ADMISSION_INPUT_CLAIMS,
-      LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,
-      HEARTBEAT_BLOCK_CONFIRMATION,
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,

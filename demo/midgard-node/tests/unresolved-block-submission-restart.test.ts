@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { hydratePendingBlockFinalizationOnStartup } from "../src/commands/listen-startup.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
-import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
 import { classifyCommitWorkerOutputAgainstLeaseJournal } from "../src/fibers/commit-worker-failure-classification.js";
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
@@ -25,8 +24,7 @@ import { provideDatabaseLayers } from "./utils.js";
  * The unresolved block submission (`UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH` and
  * its `_SINCE_MS`): a submitted block neither confirmed nor resolved. A
  * restart rebuilds it from the active journal: unresolved while a signed
- * commit may be on L1 unobserved, never for a commit the confirmation has
- * already observed. A failed commit attempt sets it the same way from its
+ * commit may be on L1 unobserved, never for a commit already observed. A failed commit attempt sets it the same way from its
  * lease's journal rows.
  */
 
@@ -96,9 +94,6 @@ const JOURNALS: readonly {
   },
 ];
 
-const SUBMITTED = JOURNALS.find(
-  ({ status }) => status === Pending.Status.SubmittedUnconfirmed,
-)!;
 const OBSERVED = JOURNALS.find(
   ({ status }) => status === Pending.Status.ObservedWaitingStability,
 )!;
@@ -180,17 +175,6 @@ describe("startup hydration of the unresolved block submission", () => {
     },
   );
 
-  it("keeps merge held by the local finalization of an observed journal", async () => {
-    const localFinalizationPending = await withGlobals((globals) =>
-      Effect.gen(function* () {
-        yield* writeJournal(OBSERVED);
-        yield* hydrate(globals);
-        return yield* Ref.get(globals.LOCAL_FINALIZATION_PENDING);
-      }),
-    );
-    expect(localFinalizationPending).toBe(true);
-  });
-
   it("reports no unresolved_block_submission on /readyz after a restart while the block waits for stability", async () => {
     const response = await readyz({
       journal: writeJournal(OBSERVED),
@@ -235,40 +219,4 @@ describe("a failed commit attempt", () => {
       );
     },
   );
-});
-
-describe("a confirmation tick", () => {
-  const tick = (globals: Globals) =>
-    buildBlockConfirmationAction(() =>
-      Effect.succeed({ type: "NoTxForConfirmationOutput" as const }),
-    ).pipe(Effect.provideService(Globals, globals));
-
-  const submittedBefore = (globals: Globals) =>
-    Effect.all([
-      Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, E.hash),
-      Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 1_000),
-    ]);
-
-  it("clears a submission no active journal holds", async () => {
-    const submission = await withGlobals((globals) =>
-      Effect.gen(function* () {
-        yield* submittedBefore(globals);
-        yield* tick(globals);
-        return yield* submissionOf(globals);
-      }),
-    );
-    expect(submission).toEqual(NO_SUBMISSION);
-  });
-
-  it("keeps the submission of the active journal", async () => {
-    const submission = await withGlobals((globals) =>
-      Effect.gen(function* () {
-        yield* writeJournal(SUBMITTED);
-        yield* submittedBefore(globals);
-        yield* tick(globals);
-        return yield* submissionOf(globals);
-      }),
-    );
-    expect(submission).toEqual({ txHash: E.hash, sinceMs: 1_000 });
-  });
 });

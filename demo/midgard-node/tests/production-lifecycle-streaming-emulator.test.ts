@@ -21,7 +21,7 @@ import {
   alignCommitSchedulerBeforeTestWorker,
   assetsToValue,
   CML,
-  commitConfirmRecoverAndMerge,
+  commitLandAndMerge,
   Data,
   Database,
   Effect,
@@ -163,7 +163,7 @@ it("streams public raw events through production reconciliation, native commitme
     await h.deployment.chain.awaitLedgerTime(chosen[0]);
   };
   const assertCommitWindow = async (
-    block: Awaited<ReturnType<typeof commitConfirmRecoverAndMerge>>,
+    block: Awaited<ReturnType<typeof commitLandAndMerge>>,
     futureEvent?: SDK.DepositUTxO | SDK.WithdrawalUTxO,
     slice: "normal" | "catch_up" = "normal",
   ) => {
@@ -312,7 +312,7 @@ it("streams public raw events through production reconciliation, native commitme
         row[DepositsDB.Columns.ID].equals(deposit.idCbor),
       )?.status,
     ).toBe(DepositsDB.Status.Awaiting);
-    const depositBlock = await commitConfirmRecoverAndMerge(context);
+    const depositBlock = await commitLandAndMerge(context);
     await assertCommitWindow(depositBlock, deposit);
     const depositRoot = await expectedAuthenticatedEventRoot(
       SDK.ROOT_DOMAINS.deposits,
@@ -519,7 +519,7 @@ it("streams public raw events through production reconciliation, native commitme
     if (staleOutput.type !== "SubmittedAwaitingConfirmationOutput")
       throw new Error("Expected the stale-source attempt to submit");
     expect(staleOutput.mempoolTxsCount).toBe(0);
-    const invalidBlock = await commitConfirmRecoverAndMerge({
+    const invalidBlock = await commitLandAndMerge({
       ...context,
       submitted: staleOutput,
     });
@@ -774,7 +774,7 @@ it("streams public raw events through production reconciliation, native commitme
         row[WithdrawalsDB.Columns.ID].equals(withdrawal.idCbor),
       )?.status,
     ).toBe(WithdrawalsDB.Status.Awaiting);
-    const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
+    const withdrawalBlock = await commitLandAndMerge(context);
     await assertCommitWindow(withdrawalBlock, withdrawal);
     // Time after the catch-up slice stayed due: the next block resumes there.
     expect(withdrawalBlock.queuedHeader.startTime).toBe(
