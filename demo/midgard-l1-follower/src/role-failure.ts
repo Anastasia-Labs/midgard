@@ -43,6 +43,8 @@ export const CONNECTION_ERRNOS = [
   "EAI_AGAIN",
   "EHOSTUNREACH",
   "ENETUNREACH",
+  "ENETDOWN",
+  "EHOSTDOWN",
 ] as const;
 
 export type ConnectionErrno = (typeof CONNECTION_ERRNOS)[number];

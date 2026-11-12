@@ -48,6 +48,8 @@ export const ROLE_FAILURE_ROWS: readonly RoleFailureRow[] = [
     "EAI_AGAIN",
     "EHOSTUNREACH",
     "ENETUNREACH",
+    "ENETDOWN",
+    "EHOSTDOWN",
   ].map((errno) =>
     row(`a socket failing ${errno}`, "transient", () =>
       coded(`connect ${errno}`, errno, "connect"),

@@ -182,38 +182,41 @@ const minuteClock = () => {
 };
 
 describe("followChain: the transient store budget", () => {
-  it("stops exhausted once transient store failures outlast the budget with no event settled", async () => {
-    const store = openStore();
-    let starts = 0;
-    const proxy: FactStore = {
-      ...store,
-      start: () => {
-        starts += 1;
-        return Promise.reject(coded("read ECONNRESET", "ECONNRESET"));
-      },
-    };
-    try {
-      const s = script(short);
-      const { final, log } = await follow({
-        store: proxy,
-        script: s,
-        transientBudgetMs: 5 * 60_000,
-        now: minuteClock(),
-        until: appliedAll(s),
-        timeoutMs: 3_000,
-      });
-      // Failing for 0, 1, ... 5 minutes: the sixth start reaches the budget.
-      expect(starts).toBe(6);
-      expect(final.state).toBe("exhausted");
-      expect(final.stuck).toBeNull();
-      expect(reasons(final)).toContain(FOLLOWER_TRANSIENT_EXHAUSTED);
-      expect(log.join("\n")).toContain(
-        "follower exhausted its transient budget",
-      );
-    } finally {
-      await store.close();
-    }
-  });
+  it.each(["ECONNRESET", "ENETDOWN", "EHOSTDOWN"])(
+    "stops exhausted once transient store failures (%s) outlast the budget with no event settled",
+    async (errno) => {
+      const store = openStore();
+      let starts = 0;
+      const proxy: FactStore = {
+        ...store,
+        start: () => {
+          starts += 1;
+          return Promise.reject(coded(`read ${errno}`, errno));
+        },
+      };
+      try {
+        const s = script(short);
+        const { final, log } = await follow({
+          store: proxy,
+          script: s,
+          transientBudgetMs: 5 * 60_000,
+          now: minuteClock(),
+          until: appliedAll(s),
+          timeoutMs: 3_000,
+        });
+        // Failing for 0, 1, ... 5 minutes: the sixth start reaches the budget.
+        expect(starts).toBe(6);
+        expect(final.state).toBe("exhausted");
+        expect(final.stuck).toBeNull();
+        expect(reasons(final)).toContain(FOLLOWER_TRANSIENT_EXHAUSTED);
+        expect(log.join("\n")).toContain(
+          "follower exhausted its transient budget",
+        );
+      } finally {
+        await store.close();
+      }
+    },
+  );
 
   it("reopens a transiently failing stream past the budget: waiting on the L1 node has no bound", async () => {
     const store = openStore();
