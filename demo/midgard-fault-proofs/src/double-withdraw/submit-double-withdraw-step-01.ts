@@ -36,20 +36,17 @@ import { Effect } from "effect";
 import { parseHex, requireRecord } from "../json-file.js";
 import type { PreparedDoubleWithdrawInclusion } from "../prepare-double-withdraw.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { requireInitialStepDatum, selectFeeInput } from "../step-support.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import {
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
@@ -236,8 +233,7 @@ export const submitDoubleWithdrawStep01 = async ({
     committedWithdrawal,
   });
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const funding = await fundStep(lucid, { signer });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step02State },
     DoubleWithdrawStep02Datum,
@@ -291,9 +287,7 @@ export const submitDoubleWithdrawStep01 = async ({
       DoubleWithdrawStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const base = funding.tx
     .collectFrom([threadUtxo], redeemer)
     .readFrom([hubOracleUtxo, stateQueueBlockUtxo])
     .pay.ToContract(
@@ -303,8 +297,7 @@ export const submitDoubleWithdrawStep01 = async ({
         lovelace: threadUtxo.assets.lovelace ?? 0n,
         [threadToken.unit]: 1n,
       },
-    )
-    .addSignerKey(signer.paymentKeyHash);
+    );
   const tx = base.readFrom([
     requireDoubleWithdrawReferenceScript({
       utxo: referenceScriptUtxo,
@@ -312,13 +305,11 @@ export const submitDoubleWithdrawStep01 = async ({
       stepIndex: 0,
     }),
   ]);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const signed = await completeStep(tx, funding);
   if (layout === undefined) {
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-withdraw step-01",
@@ -327,15 +318,8 @@ export const submitDoubleWithdrawStep01 = async ({
       }),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw doubleWithdrawSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
