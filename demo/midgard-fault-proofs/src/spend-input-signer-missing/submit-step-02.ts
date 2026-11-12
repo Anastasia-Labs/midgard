@@ -20,18 +20,17 @@ import {
   publishFaultProofFieldCarriage,
   reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
 import {
@@ -40,7 +39,6 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
@@ -147,7 +145,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
   });
-  signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
     ownOutputs,
     lucid,
@@ -291,7 +288,8 @@ export const submitSpendInputSignerMissingStep02 = async ({
       SpendInputSignerStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const { feeInput, walletInputs } = await stepWalletFunding(lucid, {
+  const funding = await fundStep(lucid, {
+    signer,
     excluding: carriageUtxos,
   });
   const withMembership = (tx: TxBuilder): TxBuilder =>
@@ -312,27 +310,25 @@ export const submitSpendInputSignerMissingStep02 = async ({
             }),
           ),
         );
-  const unsigned = await withMembership(
-    lucid
-      .newTx()
-      .collectFrom([feeInput])
-      .collectFrom([threadUtxo], redeemer)
-      .readFrom(referenceInputs)
-      .pay.ToContract(
-        contracts.steps[nextStepIndex].spendingScriptAddress,
-        { kind: "inline", value: nextDatum },
-        {
-          lovelace: threadUtxo.assets.lovelace ?? 0n,
-          [threadToken.unit]: 1n,
-        },
-      )
-      .addSignerKey(signer.paymentKeyHash),
-  ).complete({ localUPLCEval: true, ...walletInputs });
+  const signed = await completeStep(
+    withMembership(
+      funding.tx
+        .collectFrom([threadUtxo], redeemer)
+        .readFrom(referenceInputs)
+        .pay.ToContract(
+          contracts.steps[nextStepIndex].spendingScriptAddress,
+          { kind: "inline", value: nextDatum },
+          {
+            lovelace: threadUtxo.assets.lovelace ?? 0n,
+            [threadToken.unit]: 1n,
+          },
+        ),
+    ),
+    funding,
+  );
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const txHash = await submitStep(lucid, signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "spend-input-signer-missing-step-02",
@@ -350,14 +346,8 @@ export const submitSpendInputSignerMissingStep02 = async ({
           ]),
     ],
     boundary: preSubmitBoundary,
+    awaitConfirmation,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedHash)
-    throw new Error(
-      "spend-input-signer-missing: step-02 transaction hash changed",
-    );
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
