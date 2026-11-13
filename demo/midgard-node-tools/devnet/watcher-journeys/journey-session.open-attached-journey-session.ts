@@ -22,6 +22,7 @@ import {
   createWatcherEvidenceReader,
   type WatcherEvidenceExec,
 } from "./watcher-evidence-reader.js";
+import { createWatcherProgress } from "./watcher-progress.js";
 
 type AttachedWatcherStatus = Readonly<{
   deploymentFingerprint: string;
@@ -185,18 +186,8 @@ export const openAttachedJourneySession = async (
         status: await operations("/v1/status").catch(String),
         metrics: await operations("/v1/metrics").catch(String),
       }),
-      // The watcher's own named readiness reasons, null while its operations
-      // endpoint does not answer.
-      watcherProgress: async (): Promise<string | null> => {
-        const status = (await operations("/v1/status").catch(
-          () => undefined,
-        )) as Partial<AttachedWatcherStatus> | undefined;
-        if (status === undefined) return null;
-        return JSON.stringify({
-          readinessReasons: status.readinessReasons ?? null,
-          l1Readiness: status.l1Readiness ?? null,
-        });
-      },
+      // The stack watcher's own progress count (`createWatcherProgress`).
+      watcherProgress: createWatcherProgress(operations),
     });
     return {
       mode: "attached" as const,

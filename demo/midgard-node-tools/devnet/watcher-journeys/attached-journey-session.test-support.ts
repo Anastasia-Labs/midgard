@@ -140,6 +140,44 @@ const warmStackReplay = (runDirectory: string) =>
  * Its prover holds `proverLovelace`, by default the configured minimum.
  * The run's replay store is warmed unless `replay` is `cold`.
  */
+/** One completed decision pass, as the watcher's `l1_source` diagnostics hold it. */
+export type L1SourceDiagnostic = Readonly<{
+  kind: "l1_source";
+  sequence: string;
+  blockHash: string;
+  blockNo: string;
+}>;
+
+/** The decision pass at `blockNo`, numbered `sequence` by its process. */
+export const decidedAt = (
+  sequence: number,
+  blockNo: number,
+): L1SourceDiagnostic => ({
+  kind: "l1_source",
+  sequence: sequence.toString(),
+  blockHash: blockNo.toString(16).padStart(64, "0"),
+  blockNo: blockNo.toString(),
+});
+
+/** The watcher's diagnostics page: records after `cursor`, at most `limit`. */
+const l1SourcePage = (
+  records: readonly L1SourceDiagnostic[],
+  query: URLSearchParams,
+) => {
+  const after = BigInt(query.get("cursor") ?? "0");
+  const limit = Number(query.get("limit") ?? "50");
+  const matching = records.filter(({ sequence }) => BigInt(sequence) > after);
+  const page = matching.slice(0, limit);
+  return {
+    kind: "l1_source",
+    records: page,
+    nextCursor:
+      matching.length > page.length
+        ? (page.at(-1)?.sequence ?? query.get("cursor"))
+        : null,
+  };
+};
+
 export const runningStackWatcher = async (
   status: Record<string, unknown>,
   {
@@ -165,21 +203,44 @@ export const runningStackWatcher = async (
       watcherConfig: { storage: { path: storePath } },
     }),
   );
-  const served: { status: Record<string, unknown>; nodeReadyz: unknown } = {
+  const served: {
+    status: Record<string, unknown>;
+    nodeReadyz: unknown;
+    /**
+     * When set, answers each `/v1/status` read in place of `status`, given
+     * how many it answered before: a status, or `unavailable` for a 503.
+     */
+    statusRead?: (reads: number) => Record<string, unknown> | "unavailable";
+    /** The watcher's `l1_source` diagnostics, oldest first. */
+    l1Source: L1SourceDiagnostic[];
+  } = {
     status,
     nodeReadyz: { ready: true, reasons: [] },
+    l1Source: [],
   };
   const requests: string[] = [];
+  let statusReads = 0;
   const server = createServer((request, response) => {
     requests.push(request.url ?? "");
+    const url = new URL(request.url ?? "/", "http://watcher");
+    const answer =
+      url.pathname === "/v1/status" && served.statusRead !== undefined
+        ? served.statusRead(statusReads++)
+        : undefined;
     const body =
-      request.url === "/v1/status"
-        ? served.status
-        : request.url === "/v1/metrics"
-          ? { queuedProofCount: "0" }
-          : undefined;
-    response.statusCode = body === undefined ? 404 : 200;
-    response.end(JSON.stringify(body ?? {}));
+      answer === "unavailable"
+        ? undefined
+        : request.url === "/v1/status"
+          ? (answer ?? served.status)
+          : request.url === "/v1/metrics"
+            ? { queuedProofCount: "0" }
+            : url.pathname === "/v1/diagnostics" &&
+                url.searchParams.get("kind") === "l1_source"
+              ? l1SourcePage(served.l1Source, url.searchParams)
+              : undefined;
+    response.statusCode =
+      answer === "unavailable" ? 503 : body === undefined ? 404 : 200;
+    response.end(JSON.stringify(body ?? { error: "starting" }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   servers.push(server);

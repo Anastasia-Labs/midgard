@@ -32,7 +32,7 @@ export const awaitHealthyWatcher = async <T>({
   observe: () => Promise<T | undefined>;
   status: () => Promise<JourneyHealthyWatcherStatus>;
   polls: Pick<JourneyRunPolls, "pollWhileReplaying">;
-  progress: () => Promise<string | null>;
+  progress: () => Promise<number>;
   stallTimeoutMs: number;
 }): Promise<{ decision: T; status: JourneyHealthyWatcherStatus }> => {
   let activeAlerts: unknown[] = [];

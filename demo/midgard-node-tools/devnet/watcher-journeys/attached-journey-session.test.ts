@@ -47,10 +47,6 @@ describe("attached journey session", () => {
       expect(await session.watcher.operations("/v1/status")).toEqual(
         liveStatus(),
       );
-      expect(JSON.parse((await session.watcher.watcherProgress())!)).toEqual({
-        readinessReasons: liveStatus().readinessReasons,
-        l1Readiness: liveStatus().l1Readiness,
-      });
       expect(await session.watcher.diagnostics()).toEqual({
         status: liveStatus(),
         metrics: { queuedProofCount: "0" },

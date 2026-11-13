@@ -113,7 +113,7 @@ describe("a family's bounded waits", () => {
           if (reads === 1) await fetch(endpoint);
           return "healthy";
         },
-        () => Promise.resolve(null),
+        () => Promise.resolve(0),
         30_000,
       ),
     ).resolves.toBe("healthy");

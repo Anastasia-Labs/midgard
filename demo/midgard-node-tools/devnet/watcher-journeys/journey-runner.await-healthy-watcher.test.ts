@@ -51,7 +51,7 @@ const run = (stack: ReturnType<typeof watcher>, attempts: number) =>
     observe: () => Promise.resolve("healthy decision"),
     status: stack.status,
     polls: pollsOf(attempts),
-    progress: () => Promise.resolve(null),
+    progress: () => Promise.resolve(0),
     stallTimeoutMs: 1_800_000,
   });
 

@@ -45,6 +45,7 @@ import { openJourneyReplayedLedger } from "./replayed-ledger.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
 import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
+import { createWatcherProgress } from "./watcher-progress.js";
 import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
 
 /** One immutable deployment and service lifetime, explicitly owned by its suite. */
@@ -385,19 +386,8 @@ export const openJourneySession = async (runDirectory: string) => {
         status: await readOperations("/v1/status").catch(String),
         metrics: await readOperations("/v1/metrics").catch(String),
       });
-      // Progress while the watcher serves operations: the chain the recorder
-      // admitted and the watcher's own named L1 readiness reasons. Null while
-      // the operations endpoint does not answer.
-      const watcherProgress = async (): Promise<string | null> => {
-        const status = (await readOperations("/v1/status").catch(
-          () => undefined,
-        )) as { l1Readiness?: unknown } | undefined;
-        if (status === undefined) return null;
-        return JSON.stringify({
-          recordedBlockNo: native.observedBlockNo()?.toString() ?? null,
-          l1Readiness: status.l1Readiness ?? null,
-        });
-      };
+      // The watcher's own progress count (`createWatcherProgress`).
+      const watcherProgress = createWatcherProgress(readOperations);
 
       return {
         config,

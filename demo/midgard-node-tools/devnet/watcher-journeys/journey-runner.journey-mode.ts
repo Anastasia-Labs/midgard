@@ -23,11 +23,14 @@ export type JourneyRunPolls = Readonly<{
     action: () => Promise<T | undefined>,
     timeoutMs?: number,
   ): Promise<T>;
-  /** A wait budgeted by the watcher's progress rather than wall clock. */
+  /**
+   * A wait budgeted by the watcher's progress rather than wall clock: it
+   * fails once `progress`, a count, has not risen for `stallTimeoutMs`.
+   */
   pollWhileReplaying<T>(
     name: string,
     action: () => Promise<T | undefined>,
-    progress: () => Promise<string | null>,
+    progress: () => Promise<number>,
     stallTimeoutMs: number,
   ): Promise<T>;
 }>;

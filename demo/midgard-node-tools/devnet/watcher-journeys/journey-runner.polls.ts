@@ -61,12 +61,12 @@ export const createJourneyRunPolls = ({
   // not by wall clock. The watcher's follower walks every L1 block it missed
   // before it can classify a header, so a long L1 gap (a node outage, a frozen
   // devnet) legitimately takes hours. The stage fails only when the watcher's
-  // progress stops for the whole allowance; the journey timeout still bounds
-  // the total.
+  // progress count (`createWatcherProgress`) stops rising for the whole
+  // allowance; the journey timeout still bounds the total.
   const pollWhileReplaying = async <T>(
     name: string,
     action: () => Promise<T | undefined>,
-    progress: () => Promise<string | null>,
+    progress: () => Promise<number>,
     stallTimeoutMs: number,
   ): Promise<T> =>
     stage(name, async () => {
@@ -77,7 +77,7 @@ export const createJourneyRunPolls = ({
         const result = await attempt(action, failure);
         if (result !== undefined) return result;
         const current = await progress();
-        if (current !== lastProgress) {
+        if (current > lastProgress) {
           lastProgress = current;
           deadline = performance.now() + stallTimeoutMs;
         }
