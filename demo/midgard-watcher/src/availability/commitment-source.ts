@@ -1,6 +1,10 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, type LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToTxOutput,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 
 /** Re-assembles the full transaction CBOR from an admitted raw-L1 read. */
 export const watcherRawTransactionCbor = (
@@ -40,6 +44,49 @@ const burnsUnit = (
   } finally {
     body.free();
   }
+};
+
+const holdsUnit = (outputCbor: string, unit: string): boolean => {
+  const output = CML.TransactionOutput.from_cbor_hex(outputCbor);
+  try {
+    return coreToTxOutput(output).assets[unit] === 1n;
+  } finally {
+    output.free();
+  }
+};
+
+/**
+ * The transactions that produced Apply's inputs whose outputs, as the
+ * follower resolved them for Apply, all hold no `unit`. The SDK reads a
+ * producer only to find the output holding `unit`, so such a producer
+ * changes nothing and is never read: its creating transaction may be one
+ * the follower never stored, such as the submitter's fee UTxO, which a
+ * pruned store refuses to place.
+ */
+const producersWithout = (
+  apply: FraudProofRawL1Transaction,
+  unit: string,
+): Set<string> => {
+  const resolved = new Map(
+    apply.resolvedInputs.map(({ outRef, outputCbor }) => [outRef, outputCbor]),
+  );
+  const holds = new Map<string, boolean>();
+  const body = CML.TransactionBody.from_cbor_hex(apply.bodyCbor);
+  try {
+    const inputs = body.inputs();
+    for (let i = 0; i < inputs.len(); i++) {
+      const input = inputs.get(i);
+      const txHash = input.transaction_id().to_hex();
+      const cbor = resolved.get(`${txHash}#${input.index().toString()}`);
+      const holding = cbor === undefined || holdsUnit(cbor, unit);
+      holds.set(txHash, (holds.get(txHash) ?? false) || holding);
+    }
+  } finally {
+    body.free();
+  }
+  return new Set(
+    [...holds].flatMap(([txHash, holding]) => (holding ? [] : [txHash])),
+  );
 };
 
 /**
@@ -85,6 +132,10 @@ export const recoverWatcherAttestedCommitment = async (input: {
   const known = new Map(
     history.map((transaction) => [transaction.txHash, transaction]),
   );
+  const unread = producersWithout(
+    applies[0]!,
+    input.daAttestationPolicyId + attestationName,
+  );
   const recovered = await SDK.recoverDaAvailabilityCommitmentFromApplyTx(
     input.lucid,
     {
@@ -92,7 +143,11 @@ export const recoverWatcherAttestedCommitment = async (input: {
       daAttestationPolicyId: input.daAttestationPolicyId,
       expectedCommitmentHash: input.expectedCommitmentHash,
       fetchTransactionCbor: async (txHash) => {
-        const raw = known.get(txHash) ?? (await input.readTransaction(txHash));
+        const raw =
+          known.get(txHash) ??
+          (unread.has(txHash)
+            ? undefined
+            : await input.readTransaction(txHash));
         return raw === undefined ? undefined : watcherRawTransactionCbor(raw);
       },
     },

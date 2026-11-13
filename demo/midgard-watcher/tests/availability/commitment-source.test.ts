@@ -9,6 +9,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { recoverWatcherAttestedCommitment } from "../../src/availability/commitment-source.js";
+import { refusalError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 
 const HEADER = "22".repeat(28);
 const QUEUE_POLICY = "55".repeat(28);
@@ -162,6 +163,61 @@ describe("watcher Attested commitment recovery (spec #685 E1)", () => {
     expect(SDK.daAvailabilityCommitmentHash(recovered.commitment)).toBe(
       commitmentHash,
     );
+  });
+
+  // Apply's fee input comes from the submitter's untracked wallet: once the
+  // follower has pruned, it cannot say whether that input's producer landed
+  // inside the pruned window, so reading the producer is refused. Apply's
+  // own resolved inputs already show the output holds no DAAT token.
+  it("recovers when a fee input before the DAAT input has an unreadable producer", async () => {
+    const init = rawTransaction(
+      [["ab".repeat(32), 0n]],
+      [plain(), daatOutput()],
+      1n,
+    );
+    const append = rawTransaction([["cd".repeat(32), 0n]], [plain()]);
+    const fee = "01".repeat(32);
+    const resolved = (outRef: string, output: CML.TransactionOutput) => ({
+      outRef,
+      outputCbor: output.to_cbor_hex(),
+      datumCbor: null,
+      referenceScriptCbor: null,
+    });
+    const apply = {
+      ...rawTransaction(
+        [
+          [fee, 0n],
+          [append.txHash, 0n],
+          [init.txHash, 1n],
+        ],
+        [plain()],
+        -1n,
+      ),
+      resolvedInputs: [
+        resolved(`${fee}#0`, plain()),
+        resolved(`${append.txHash}#0`, plain()),
+        resolved(`${init.txHash}#1`, daatOutput()),
+      ],
+    };
+    const recovered = await recover(
+      {
+        init,
+        readHistory: vi.fn(async () => [append, apply]),
+        readTransaction: vi.fn(async (txHash: string) => {
+          if (txHash === init.txHash) return init;
+          throw refusalError(
+            "beyond_retention",
+            `${txHash} is not stored and may have landed at or below slot 1`,
+          );
+        }),
+      },
+      commitmentHash,
+    );
+    expect(recovered.commitmentHash).toBe(commitmentHash);
+    expect(recovered.attestationOutRef).toEqual({
+      txHash: init.txHash,
+      outputIndex: 1,
+    });
   });
 
   it("refuses a commitment that does not hash to the node's commitment_hash", async () => {
