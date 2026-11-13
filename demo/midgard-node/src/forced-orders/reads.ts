@@ -1,8 +1,9 @@
 /**
  * Reads of the forced-order projection at a point: each live order with its
- * row and its order output, in one transaction after checking the point is
- * canonical in the follower store. An `unreadable` order is never a live
- * order; the admitted orders report it as such.
+ * row and its order output (and, on request, each order spent since), in
+ * one transaction after checking the point is canonical in the follower
+ * store. An `unreadable` order is never a live order; the admitted orders
+ * report it as such.
  */
 import {
   changedUtxosIn,
@@ -16,6 +17,7 @@ import {
   pointStatusIn,
   type StoredOutput,
 } from "@al-ft/midgard-l1-follower";
+import type * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { ForcedOrderConfig } from "./config.js";
@@ -24,10 +26,12 @@ import { FORCED_ORDER_UNREADABLE, FORCED_ORDERS_TABLE } from "./schema.js";
 
 export type ForcedOrderStatus = "resolved" | "carriage_pending" | "malformed";
 
-/** One live forced order at a point. */
+/** One forced order at a point: live, or spent since (`spent`). */
 export type ForcedOrderRow = Readonly<{
   outRef: OutRef;
   utxo: UTxO;
+  /** Its order output is spent at the point. */
+  spent: boolean;
   status: ForcedOrderStatus;
   /** The point before the order's block (§12.3 step 2 acquires here). */
   parent: Point;
@@ -62,43 +66,51 @@ const decodeReferenceInputs = (bytes: Buffer): OutRef[] => {
 
 const STATUSES = new Set<string>(["resolved", "carriage_pending", "malformed"]);
 
-/** Every live forced order at `at`, unreadable ones aside. */
+/**
+ * Every live forced order at `at`, unreadable ones aside; with `spent`, the
+ * retained orders spent since too, from their retained outputs.
+ */
 export const forcedOrdersAt = (
   store: FactStore,
   at: Point,
+  spent = false,
 ): Promise<ForcedOrdersRead> =>
   store.transaction("read", async (tx): Promise<ForcedOrdersRead> => {
     const status = await pointStatusIn(tx, store.dialect, at);
     if (status.kind !== "canonical") return status;
     const rows = await tx.query(
       `SELECT order_tx_hash, order_output_index, parent_slot, parent_hash, inclusion_time, status,
-         reference_inputs, mint_redeemer, block_datums, field_preimages, detail
+         reference_inputs, mint_redeemer, block_datums, field_preimages, detail, spent_slot
        FROM ${FORCED_ORDERS_TABLE}
-       WHERE order_slot <= ? AND (spent_slot IS NULL OR spent_slot > ?)
+       WHERE order_slot <= ?${spent ? "" : " AND (spent_slot IS NULL OR spent_slot > ?)"}
          AND status <> ?
        ORDER BY order_slot, order_tx_hash, order_output_index`,
-      [at.slot, at.slot, FORCED_ORDER_UNREADABLE],
+      spent
+        ? [at.slot, FORCED_ORDER_UNREADABLE]
+        : [at.slot, at.slot, FORCED_ORDER_UNREADABLE],
     );
     const outRefs = rows.map((row) => ({
       txHash: buf(row.order_tx_hash),
       index: num(row.order_output_index),
     }));
-    const live = new Map<string, StoredOutput>();
+    const outputs = new Map<string, StoredOutput>();
     if (outRefs.length > 0) {
-      const read = await liveUtxosIn(
-        tx,
-        store.dialect,
-        { by: "outref", outRefs },
-        at,
-      );
+      const filter = { by: "outref", outRefs } as const;
+      const read = spent
+        ? await changedUtxosIn(tx, store.dialect, filter, null)
+        : await liveUtxosIn(tx, store.dialect, filter, at);
       if (read.kind !== "ok") return read;
-      for (const utxo of read.utxos) live.set(outRefLabel(utxo.outRef), utxo);
+      for (const utxo of read.utxos)
+        outputs.set(outRefLabel(utxo.outRef), utxo);
     }
     const orders: ForcedOrderRow[] = [];
     for (const [index, row] of rows.entries()) {
       const outRef = outRefs[index]!;
-      const output = live.get(outRefLabel(outRef));
+      const output = outputs.get(outRefLabel(outRef));
       const rowStatus = String(row.status);
+      const spentAt = row.spent_slot != null && num(row.spent_slot) <= at.slot;
+      // A spent order whose output the prune passed is no longer known.
+      if (output === undefined && spentAt) continue;
       if (output === undefined || !STATUSES.has(rowStatus))
         return {
           kind: "unhealthy",
@@ -107,6 +119,7 @@ export const forcedOrdersAt = (
       orders.push({
         outRef,
         utxo: lucidUtxo(outRef, output.output),
+        spent: spentAt,
         status: rowStatus as ForcedOrderStatus,
         parent: { slot: num(row.parent_slot), hash: buf(row.parent_hash) },
         inclusionTime: BigInt(row.inclusion_time as number | string),
@@ -136,7 +149,12 @@ export type AdmittedForcedOrder = Readonly<{
   outRef: OutRef;
   inclusionTime: bigint;
   read:
-    | Readonly<{ kind: "order"; idCbor: Buffer; datum: Buffer }>
+    | Readonly<{
+        kind: "order";
+        idCbor: Buffer;
+        datum: Buffer;
+        order: SDK.TxOrderUTxOV1;
+      }>
     | Readonly<{ kind: "unreadable"; idCbor: Buffer; detail: string }>
     | null;
 }>;
@@ -164,6 +182,7 @@ const admittedRead = (
         kind: "order",
         idCbor: Buffer.from(reading.order.idCbor),
         datum: Buffer.from(datum, "hex"),
+        order: reading.order,
       };
 };
 

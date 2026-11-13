@@ -9,6 +9,9 @@
  * - A projected event without a row is inserted with its follower admission
  *   identity (event key, admission outref). One with a row of the same
  *   identity keeps the row's L2 state; only a withdrawal's location moves.
+ *   A retired one without a row is inserted only while a processed landed
+ *   block names it (a foreign block may include an event this node never
+ *   saw live); any other is skipped.
  * - One bad event never fails the run: an event that does not decode into a
  *   node row (`l1_event_undecodable`), or whose public id has a row under
  *   another live identity or none (`l1_event_identity_conflict`), is refused
@@ -26,6 +29,10 @@
  * - The ingestion point is recorded for the commit horizon.
  *
  * Decoding (`readUserEvent`) runs only for events the node has no row for.
+ *
+ * Processing a foreign landed block writes the rows of the events it names
+ * through the same insert (`recordNamedEvents`), in the transaction that
+ * records the block, from the follower facts its replay checked.
  */
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient, type Statement } from "@effect/sql";
@@ -38,11 +45,17 @@ import {
   type EventRefusal,
   type IngestionPlan,
 } from "../l1-events/driver.js";
-import { readUserEvent } from "../l1-events/entries.js";
+import {
+  readUserEvent,
+  type UserEventEntry,
+  type UserEventReading,
+} from "../l1-events/entries.js";
+import { unrecordedNamedEvents } from "../landed-blocks/store.js";
 import * as Deposits from "./deposits.js";
 import { identityOf, rowOf } from "./follower-events.row-of.js";
 import { countOrphansAwaitingRecovery } from "./follower-orphan-repair.js";
 import { followerViewValid } from "./follower-schema.js";
+import * as ForcedTransactions from "./forcedTransactions.js";
 import {
   type AdmissionKind,
   canonicalAdmission,
@@ -106,15 +119,17 @@ export type FollowerIngestionOutcome =
   | Readonly<{ kind: "stale" }>
   | Readonly<{ kind: "applied"; ingestion: FollowerIngestion }>;
 
-/** One kind's walk over the plan, in chunks, under row locks. */
+/** One kind's walk over `events`, in chunks, under row locks. */
 const ingestKind = (
   kind: AdmissionKind,
   events: readonly ProjectedEvent[],
-  network: Network,
+  read: (event: ProjectedEvent) => UserEventReading,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const eventTable = EVENT_TABLE[kind];
+    // Read once, and only for a retired event without a row.
+    let named: ReadonlySet<string> | undefined;
     let inserted = 0;
     let locationsMoved = 0;
     let retiredUnseen = 0;
@@ -147,18 +162,21 @@ const ingestKind = (
         const identity = identityOf(event);
         if (row === undefined) {
           if (event.retirement !== null) {
-            // Retired before the node saw it: the event left the list in an
-            // L1 tx, so no block of this node can include it, and there is no
-            // L2 association to carry. Nothing to ingest.
-            retiredUnseen += 1;
+            named ??= yield* unrecordedNamedEvents(kind);
+            // Retired before the node saw it. A processed landed block that
+            // names it (another operator's, while this node was down) needs
+            // its row; with none, there is no L2 association to carry.
+            if (!named.has(event.idCbor)) {
+              retiredUnseen += 1;
+              continue;
+            }
+          }
+          const reading = read(event);
+          if (reading.kind === "undecodable") {
+            refuse(event, EVENT_UNDECODABLE, reading.detail);
             continue;
           }
-          const read = readUserEvent(event, network);
-          if (read.kind === "undecodable") {
-            refuse(event, EVENT_UNDECODABLE, read.detail);
-            continue;
-          }
-          const payload = rowOf(event, read.entry);
+          const payload = rowOf(event, reading.entry);
           inserts.push(
             kind === "withdrawal"
               ? {
@@ -343,15 +361,16 @@ export const reconcileFollowerEvents = (
     const sql = yield* SqlClient.SqlClient;
     if (!(yield* followerViewValid(plan.view)))
       return { kind: "stale" } as FollowerIngestionOutcome;
+    const read = (event: ProjectedEvent) => readUserEvent(event, input.network);
     const deposits = yield* ingestKind(
       "deposit",
       plan.events.filter((event) => event.kind === "deposit"),
-      input.network,
+      read,
     );
     const withdrawals = yield* ingestKind(
       "withdrawal",
       plan.events.filter((event) => event.kind === "withdrawal"),
-      input.network,
+      read,
     );
     // Every row is either backed by its canonical admission or an orphan the
     // recovery removes; an unassociated row is never eligible.
@@ -390,6 +409,60 @@ export const reconcileFollowerEvents = (
       },
     } as FollowerIngestionOutcome;
   }).pipe(sqlErrorToDatabaseError(table, "Failed follower event ingestion"));
+
+/** A deposit or withdrawal as the projection reads it at a view, decoded. */
+export type ReadEvent = Readonly<{
+  event: ProjectedEvent;
+  entry: UserEventEntry;
+}>;
+
+/**
+ * The events a replayed foreign block names, from the follower facts its
+ * replay checked them against: the deposits and withdrawals as read at the
+ * view, and the forced orders' rows (`forcedOrderEntry`).
+ */
+export type NamedEvents = Readonly<{
+  events: readonly ReadEvent[];
+  forced: readonly ForcedTransactions.Entry[];
+}>;
+
+/**
+ * Writes the node rows of the events a processed landed block names, in
+ * the caller's transaction, after the block's row: through ingestion's
+ * inserts, so each row is the one ingestion writes from the same fact and
+ * whichever write comes second leaves it as it is. A retired event is
+ * written too, as the block that names it is processed: once its
+ * retirement is pruned from the follower, nothing else could. An id that
+ * already has a row keeps it, whatever admission wrote it, as ingestion
+ * keeps it.
+ */
+export const recordNamedEvents = (named: NamedEvents) =>
+  Effect.gen(function* () {
+    const entries = new Map(
+      named.events.map(({ event, entry }) => [event.idCbor, entry] as const),
+    );
+    const read = (event: ProjectedEvent): UserEventReading => ({
+      kind: "readable",
+      entry: entries.get(event.idCbor)!,
+    });
+    for (const kind of ["deposit", "withdrawal"] as const)
+      yield* ingestKind(
+        kind,
+        named.events
+          .filter(({ event }) => event.kind === kind)
+          .map(({ event }) => event),
+        read,
+      );
+    if (named.forced.length === 0) return;
+    const lacking = yield* unrecordedNamedEvents("forced");
+    yield* ForcedTransactions.insertEntries(
+      named.forced.filter((entry) =>
+        lacking.has(
+          entry[ForcedTransactions.Columns.TX_ORDER_ID].toString("hex"),
+        ),
+      ),
+    );
+  }).pipe(sqlErrorToDatabaseError(table, "Failed to record named events"));
 
 /**
  * The view the driver last ingested events through, while it is still on

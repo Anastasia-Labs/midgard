@@ -1,8 +1,9 @@
 /**
  * The forced-order ingestion hook of the follower-change driver (plan §12.3
  * steps 2 to 4, §7.3). On every driver run it reads the live forced orders
- * at the follower's view, and for each one the node has no
- * `forced_transaction_utxos` row yet:
+ * at the follower's view, and the spent ones a processed landed block names
+ * (a foreign block may include an order this node never saw live), and for
+ * each one the node has no `forced_transaction_utxos` row yet:
  *
  * - `resolved`: rebuilds the order's transaction from the stored field
  *   preimages;
@@ -65,6 +66,7 @@ import {
   type DriverHook,
   EVENTS_ORPHAN_RECOVERY,
 } from "../l1-events/driver.js";
+import { unrecordedNamedEvents } from "../landed-blocks/store.js";
 import type { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import {
@@ -139,6 +141,17 @@ const DETAIL_LIMIT = 1_000;
 
 const failureText = <E>(exit: Exit.Exit<unknown, E>): string =>
   Exit.isFailure(exit) ? Cause.pretty(exit.cause) : "";
+
+const ingestionFailed = <E>(exit: Exit.Exit<unknown, E>): DriverHold => ({
+  reason: FORCED_ORDER_INGESTION_FAILED,
+  detail: failureText(exit),
+});
+
+/** The id (hex) of the order a row's output authenticates as, if it does. */
+const orderIdOf = (row: ForcedOrderRow, policyId: string): string | null => {
+  const order = authenticOrder(row.utxo, policyId);
+  return order === null ? null : Buffer.from(order.idCbor).toString("hex");
+};
 
 /** The outrefs of orders that already have a node row. */
 const ingestedOrders = (orders: readonly ForcedOrderRow[]) =>
@@ -411,7 +424,13 @@ export const forcedOrderIngestionHook = (
   return async () => {
     const view = await options.store.currentView();
     if (view === null) return undefined;
-    const read = await forcedOrdersAt(options.store, view.point);
+    const named = await options.run(unrecordedNamedEvents("forced"));
+    if (Exit.isFailure(named)) return ingestionFailed(named);
+    const read = await forcedOrdersAt(
+      options.store,
+      view.point,
+      named.value.size > 0,
+    );
     if (read.kind === "point_not_canonical") return undefined; // the next run reads the new view
     if (read.kind !== "ok")
       return {
@@ -422,16 +441,14 @@ export const forcedOrderIngestionHook = (
       read.orders.length === 0
         ? Exit.succeed(new Set<string>())
         : await options.run(ingestedOrders(read.orders));
-    if (Exit.isFailure(done))
-      return {
-        reason: FORCED_ORDER_INGESTION_FAILED,
-        detail: failureText(done),
-      };
+    if (Exit.isFailure(done)) return ingestionFailed(done);
     const entries: ForcedTransactionsDB.Entry[] = [];
     const pending: string[] = [];
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
+      const id = row.spent ? orderIdOf(row, options.config.policyId) : null;
+      if (row.spent && (id === null || !named.value.has(id))) continue;
       const outcome = await entryOf(options, await preimagesOf(options, row));
       if (outcome.kind === "entry") entries.push(outcome.entry);
       else if (outcome.kind === "pending") pending.push(outcome.detail);

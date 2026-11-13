@@ -108,6 +108,44 @@ export const decodeRow = (row: RawRow): LandedBlockRow => {
   };
 };
 
+const NAMED_EVENT_TABLES = {
+  deposit: { table: "deposits_utxos", id: "event_id", ids: "deposit_ids" },
+  withdrawal: { table: "withdrawal_utxos", id: "event_id", ids: null },
+  forced: {
+    table: "forced_transaction_utxos",
+    id: "tx_order_id",
+    ids: "forced_ids",
+  },
+} as const;
+
+/**
+ * The ids (hex) of the events of `kind` that a processed row names and the
+ * node has no event row for.
+ */
+export const unrecordedNamedEvents = (kind: keyof typeof NAMED_EVENT_TABLES) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const { table, id, ids } = NAMED_EVENT_TABLES[kind];
+    const named =
+      ids === null
+        ? sql`SELECT DISTINCT decode(w ->> 'id', 'hex') AS id
+            FROM node_landed_blocks b, jsonb_array_elements(b.withdrawals) w
+            WHERE b.state = 'processed'`
+        : sql`SELECT DISTINCT n.id
+            FROM node_landed_blocks b, unnest(b.${sql(ids)}) n(id)
+            WHERE b.state = 'processed'`;
+    const rows = yield* sql<{
+      id: Buffer;
+    }>`SELECT named.id FROM (${named}) named
+      WHERE NOT EXISTS (SELECT 1 FROM ${sql(table)} e WHERE e.${sql(id)} = named.id)`;
+    return new Set(rows.map((row) => Buffer.from(row.id).toString("hex")));
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to read the events landed blocks name",
+    ),
+  );
+
 /** Every row, processed and removed. */
 export const retrieveRows = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
