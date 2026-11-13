@@ -128,9 +128,8 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       );
       expect(projectedUtxosBeforeLanding.utxoCount).toEqual(0);
 
-      // Submitted, not landed. This lifecycle submits unjournaled
-      // (`IntentJournalWithoutFollower`), so S6 holds no intent for the
-      // commit and its journal is not live here.
+      // Submitted, not landed: the node's journal holds the commit's signed
+      // intent, and its own block derives unlanded until the commit lands.
       const submittedHeaderHash = Buffer.from(
         commitOutput.submittedHeaderHash,
         "hex",

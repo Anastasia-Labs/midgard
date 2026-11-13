@@ -43,7 +43,6 @@ import {
   serializeStateQueueUTxO,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { openNodeServices } from "./helpers/commit-replacement-state-queue.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 import {
   expectSignedCommit,
@@ -74,10 +73,7 @@ it("fails the parent operation lease after accepted response loss while a later 
     | undefined;
 
   const attempts: { token: string; output?: WorkerOutput }[] = [];
-  const runParentComposedAttempt = async (
-    latestBlock: SDK.StateQueueUTxO,
-    node: Awaited<ReturnType<typeof openNodeServices>>,
-  ) => {
+  const runParentComposedAttempt = async (latestBlock: SDK.StateQueueUTxO) => {
     const availableConfirmedBlock = await Effect.runPromise(
       serializeStateQueueUTxO(latestBlock),
     );
@@ -101,7 +97,7 @@ it("fails the parent operation lease after accepted response loss while a later 
               const port = native.createWorkerPort();
               const output = yield* commitWorkerProgram(
                 fixture.contracts,
-                node.nodeLucid,
+                lucidService,
                 {
                   data: {
                     availableConfirmedBlock,
@@ -151,7 +147,7 @@ it("fails the parent operation lease after accepted response loss while a later 
           ),
         ),
         Effect.provide(Database.layer),
-        Effect.provideService(IntentJournal, node.journal),
+        Effect.provideService(IntentJournal, production.journal),
       ),
     );
   };
@@ -290,11 +286,9 @@ it("fails the parent operation lease after accepted response loss while a later 
       throw new Error(responseLoss);
     };
 
-    // The node's services as `runNode` provides them: the follower's
-    // journal records the commit's signed bytes before they reach the
-    // provider, over the wallet view the node signs with.
-    const node = await openNodeServices(h);
-    const firstAttempt = await runParentComposedAttempt(latestBefore, node);
+    // The node's journal records the commit's signed bytes before they
+    // reach the provider, over the wallet view the node signs with.
+    const firstAttempt = await runParentComposedAttempt(latestBefore);
     expect(firstAttempt._tag).toBe("Left");
     if (firstAttempt._tag !== "Left")
       throw new Error("Parent must reject retained-intent worker failure");
@@ -340,8 +334,7 @@ it("fails the parent operation lease after accepted response loss while a later 
     const retainedJournal = await readJournalSnapshot();
     const providerCallsBeforeSecondAttempt = providerCalls;
     diagnostic.stage = "second-operation-before-confirmation";
-    const secondAttempt = await runParentComposedAttempt(latestBefore, node);
-    await node.close();
+    const secondAttempt = await runParentComposedAttempt(latestBefore);
     diagnostic.secondAttemptOutcome = {
       result: secondAttempt,
       failure:

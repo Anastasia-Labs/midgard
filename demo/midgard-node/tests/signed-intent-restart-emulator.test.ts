@@ -194,12 +194,11 @@ it("recreates production services after accepted response loss, preserves the in
         receiptsBefore = h.receipts.length;
         output = await runCommitWorker(
           fixture.contracts,
-          node.nodeLucid,
+          lucidService,
           latestBefore,
           production.nodeConfig,
           fixture.runtimeOverrides!.deploymentIdentity,
           { ...production, globals },
-          node.journal,
         );
         if (output.type !== "RegisteredDueWorkOutput") break;
         expect(providerCalls).toBe(0);

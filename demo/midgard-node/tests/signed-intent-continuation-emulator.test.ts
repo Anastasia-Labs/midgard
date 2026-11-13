@@ -186,12 +186,11 @@ it("retains the original signed intent through landing and an accepted queue poi
         receiptsBefore = h.receipts.length;
         output = await runCommitWorker(
           fixture.contracts,
-          node.nodeLucid,
+          lucidService,
           latestBefore,
           production.nodeConfig,
           fixture.runtimeOverrides!.deploymentIdentity,
           { ...production, globals },
-          node.journal,
         );
         if (output.type !== "RegisteredDueWorkOutput") break;
         expect(providerCalls).toBe(0);

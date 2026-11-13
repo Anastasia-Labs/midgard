@@ -182,12 +182,11 @@ it("retains the exact durable signed commitment after an accepted submission los
         receiptsBefore = h.receipts.length;
         output = await runCommitWorker(
           fixture.contracts,
-          node.nodeLucid,
+          lucidService,
           latestBefore,
           production.nodeConfig,
           fixture.runtimeOverrides!.deploymentIdentity,
           { ...production, globals },
-          node.journal,
         );
         if (output.type !== "RegisteredDueWorkOutput") break;
         expect(providerCalls).toBe(0);

@@ -68,8 +68,7 @@ export const openCommitJourney = async () => {
   /** One commit attempt through the production worker with the follower's
    * journal, up to its first output that is not a scheduler wait. */
   const commitOutput = async () => {
-    const { fixture, globals, production } = h;
-    const lucidService = node.nodeLucid;
+    const { fixture, lucidService, globals, production } = h;
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       await alignCommitSchedulerBeforeTestWorker({
         fixture,
@@ -88,7 +87,6 @@ export const openCommitJourney = async () => {
         production.nodeConfig,
         fixture.runtimeOverrides!.deploymentIdentity,
         { ...production, globals },
-        node.journal,
       );
       if (
         output?.type === "AwaitingCommitBaseOutput" &&
@@ -211,7 +209,7 @@ export const openCommitJourney = async () => {
       });
       await retainAndAttestSubmittedHeader({
         fixture: h.fixture,
-        lucidService: node.nodeLucid,
+        lucidService: h.lucidService,
         globals: h.globals,
         headerHash: journal.header,
         submittedTxHash: journal.txHash,

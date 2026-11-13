@@ -7,7 +7,8 @@
  *   the emulator's genesis outputs as they stood before its first
  *   submission (`helpers/emulator-chain-capture.ts`).
  * - Every journaled intent a flow hands to the journal of a process with no
- *   follower is kept (`withoutFollowerJournal`, `helpers/intent-journal.ts`).
+ *   follower is kept (`withoutFollowerJournal`, `helpers/intent-journal.ts`),
+ *   as is each the production lifecycle's commit worker journals.
  * - `replayJournaledOnFollower` opens a follower store over the node's
  *   index (`nodeIndexSpec`: its projections, its recorded tracked set, and
  *   its own wallets and reference-script addresses seeded at the origin),

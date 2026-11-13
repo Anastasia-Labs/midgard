@@ -161,10 +161,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
-import {
-  IntentJournal,
-  type IntentJournalService,
-} from "../src/services/intent-journal.js";
+import { IntentJournal } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
@@ -737,9 +734,9 @@ export const runCommitWorker = async (
   latestBlock: SDK.StateQueueUTxO,
   nodeConfig?: NodeConfigDep,
   deploymentIdentity: ContractDeploymentIdentityValue = EMULATOR_DEPLOYMENT_IDENTITY,
+  /** The production lifecycle's services, its journal among them; without
+   * them the run journals as a process with no follower does. */
   production?: OwnedCommitFixture,
-  /** The run's journal; by default, a process's with no follower. */
-  journal?: IntentJournalService,
 ) => {
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
@@ -779,9 +776,9 @@ export const runCommitWorker = async (
       ),
       Effect.provide(Database.layer),
       Effect.provideService(FollowerWriteFixture, true),
-      journal === undefined
+      production === undefined
         ? (effect) => effect
-        : Effect.provideService(IntentJournal, journal),
+        : Effect.provideService(IntentJournal, production.journal),
     ),
   );
   if (leaseResult._tag === "Busy") {

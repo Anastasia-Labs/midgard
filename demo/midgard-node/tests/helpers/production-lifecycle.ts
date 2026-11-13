@@ -22,7 +22,10 @@
  *
  * Each generation first runs the node's database initialization
  * (`initializeNodeDatabase`), before it follows the chain or starts the
- * driver, as `runNode` does.
+ * driver, as `runNode` does. Its services journal their intents in the node
+ * database (`IntentJournalLive`), as `runNode`'s journal does; the commit
+ * worker journals in the same journal (`production.journal`), which keeps
+ * what it journals for the flow's replay.
  *
  * The deployment, the receipts of every transaction confirmed on it and the
  * emulator come from `openPublishedLifecycle`.
@@ -46,7 +49,10 @@ import {
   runAtFollowerView,
 } from "../../src/services/follower-write-gate.js";
 import { Globals } from "../../src/services/globals.js";
-import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
+import {
+  IntentJournal,
+  IntentJournalLive,
+} from "../../src/services/intent-journal.js";
 import type { DriverRecompute } from "../../src/services/l1-follower.recompute.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
@@ -58,6 +64,7 @@ import {
   MidgardContracts,
 } from "../../src/services/midgard-contracts.js";
 import { WriteBehindLive } from "../../src/services/write-behind.js";
+import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import {
   makeGlobalsService,
   makeNodeConfigForFixture,
@@ -70,6 +77,7 @@ import { followEmulatorChain } from "./emulator-l1-follower.js";
 import { openLandedBlocks } from "./emulator-landed-blocks.js";
 import type { emulatorState } from "./emulator-snapshot.js";
 import { bindNodeFollower } from "./follower-emulator.host.js";
+import { keepingJournaled } from "./intent-journal.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
 import { openPublishedLifecycle } from "./published-lifecycle.js";
 
@@ -99,7 +107,27 @@ export const openProductionLifecycle = async (
   const recorded = await openPublishedLifecycle(
     options.eventHistoryProtectionDurationMs,
   );
-  const { fixture, lucidService } = recorded;
+  const { fixture } = recorded;
+  // As the node's Lucid service does: its wallets are selected with
+  // `selectNodeWallet`, so under the follower they sign over their wallet
+  // views. The emulator's follower tracks no defense pocket, so the
+  // operator wallet is selected without one.
+  const selectOperator = Effect.sync(() =>
+    selectNodeWallet(fixture.operatorLucid, fixture.operatorAccount.seedPhrase),
+  );
+  const lucidService: typeof recorded.lucidService = {
+    ...recorded.lucidService,
+    switchToOperatorsMainWallet: selectOperator,
+    switchToOperatorsMergingWallet: selectOperator,
+    switchToReferenceScriptWallet: Effect.sync(() =>
+      selectNodeWallet(
+        fixture.referenceScriptsLucid,
+        fixture.referenceScriptsAccount.seedPhrase,
+      ),
+    ),
+  };
+  Effect.runSync(selectOperator);
+  Effect.runSync(lucidService.switchToReferenceScriptWallet);
   const deployedIdentity = fixture.runtimeOverrides!.deploymentIdentity;
   const identity =
     options.rollbackHorizon === undefined ||
@@ -171,7 +199,7 @@ export const openProductionLifecycle = async (
       Layer.mergeAll(
         mempoolLedgerCacheLayer,
         WriteBehindLive,
-        IntentJournalWithoutFollower,
+        IntentJournalLive,
       ).pipe(Layer.provideMerge(services)),
     );
     if (generation === 0) {
@@ -203,6 +231,8 @@ export const openProductionLifecycle = async (
       ),
     );
     const cache = await runtime.runPromise(MempoolLedgerCache);
+    // Kept for the flow's replay (`replayJournaledOnFollower`).
+    const journal = keepingJournaled(await runtime.runPromise(IntentJournal));
     // The landed-block hook's rebase is the driver's recompute, made below.
     const late: { recompute?: DriverRecompute } = {};
     const landed = await openLandedBlocks({
@@ -373,10 +403,12 @@ export const openProductionLifecycle = async (
     };
     const handle = {
       ...recorded,
+      lucidService,
       globals,
       production: {
         cache,
         nodeConfig,
+        journal,
         synchronize,
         onCommitAttempt,
         applyLanded,

@@ -3,9 +3,10 @@
  *
  * - `withoutFollowerJournal` provides the journal of a process with no
  *   follower, as the CLI commands and protocol init run: every submission
- *   goes out unjournaled. It keeps each journaled intent it is handed, so
- *   a real flow's intents can be replayed onto a follower
- *   (`replayJournaledOnFollower`, `helpers/intent-journal-replay.ts`).
+ *   goes out unjournaled. It keeps each journaled intent it is handed, as
+ *   `keepingJournaled` does for any journal, so a real flow's intents can be
+ *   replayed onto a follower (`replayJournaledOnFollower`,
+ *   `helpers/intent-journal-replay.ts`).
  * - `TEST_INTENT` is the intent a submission-mechanics test passes, under
  *   `TEST_PLAN`, the plan of a view at generation 0.
  * - `recordingIntentJournal` remembers what it was asked to record, in
@@ -16,6 +17,7 @@ import { Effect, Layer } from "effect";
 
 import {
   IntentJournal,
+  type IntentJournalService,
   IntentJournalWithoutFollower,
   type IntentPlan,
   journaledIntent,
@@ -52,7 +54,7 @@ export type RecordedIntent = Readonly<{
 
 const journaledWithoutFollower: RecordedIntent[] = [];
 
-/** The journaled intents `withoutFollowerJournal` was handed since the last drain, in order. */
+/** The journaled intents `withoutFollowerJournal` or a `keepingJournaled` journal was handed since the last drain, in order. */
 export const drainJournaledWithoutFollower = (): RecordedIntent[] =>
   journaledWithoutFollower.splice(0);
 
@@ -60,20 +62,31 @@ const noFollower = Effect.runSync(
   Effect.provide(IntentJournal, IntentJournalWithoutFollower),
 );
 
-const keepingJournaled = Layer.succeed(IntentJournal, {
-  ...noFollower,
+/**
+ * `journal`, keeping each journaled intent it is handed for
+ * `drainJournaledWithoutFollower`.
+ */
+export const keepingJournaled = (
+  journal: IntentJournalService,
+): IntentJournalService => ({
+  ...journal,
   record: (intent, signedTxCbor, txHash, purpose, gate) =>
     Effect.suspend(() => {
       if (intent.kind === "journaled")
         journaledWithoutFollower.push({ intent, signedTxCbor, txHash });
-      return noFollower.record(intent, signedTxCbor, txHash, purpose, gate);
+      return journal.record(intent, signedTxCbor, txHash, purpose, gate);
     }),
 });
+
+const keepingWithoutFollower = Layer.succeed(
+  IntentJournal,
+  keepingJournaled(noFollower),
+);
 
 export const withoutFollowerJournal = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, Exclude<R, IntentJournal>> =>
-  Effect.provide(effect, keepingJournaled);
+  Effect.provide(effect, keepingWithoutFollower);
 
 export const recordingIntentJournal = () => {
   const recorded: RecordedIntent[] = [];

@@ -13,6 +13,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import { type IntentJournalService } from "../src/services/intent-journal.js";
 import { type MempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
 import {
@@ -100,6 +101,9 @@ export const makeLucidRuntimeService = async ({
 export type ProductionHistoryFixtureRuntime = {
   readonly cache: MempoolLedgerCacheService;
   readonly nodeConfig: NodeConfigDep;
+  /** The node's journal (`IntentJournalLive`): the commit worker records
+   * its signed commit there before broadcast. */
+  readonly journal: IntentJournalService;
   readonly synchronize: () => Promise<void>;
   /** Takes in own block `headerHash`, its commit on L1, as the node does
    * (`ProductionLifecycle.applyLanded`). */

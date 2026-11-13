@@ -28,10 +28,7 @@ import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
 import { Globals } from "../../src/services/globals.js";
-import {
-  makeIntentJournal,
-  readIntentStatus,
-} from "../../src/services/intent-journal.js";
+import { readIntentStatus } from "../../src/services/intent-journal.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { RESUBMIT_REJECTIONS_TO_ABANDON } from "../../src/services/l1-follower.intents.js";
 import { Lucid } from "../../src/services/lucid.js";
@@ -39,7 +36,6 @@ import {
   availabilityParametersFromExplicitEnvironment,
   ContractDeploymentIdentity,
 } from "../../src/services/midgard-contracts.js";
-import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
 import { syncEmulatorChain } from "./emulator-l1-follower.js";
@@ -49,18 +45,6 @@ import { nodeFactStore } from "./emulator-operator-set.js";
 export const openNodeServices = async (life: Lifecycle) => {
   const { fixture, lucidService } = life;
   const contracts = fixture.contracts;
-  // As the node's Lucid service does: under a follower the node signs over
-  // its wallet view, so its wallets are selected with `selectNodeWallet`.
-  const seed = fixture.operatorAccount.seedPhrase;
-  const selectOperator = Effect.sync(() =>
-    selectNodeWallet(fixture.operatorLucid, seed),
-  );
-  const nodeLucid: typeof lucidService = {
-    ...lucidService,
-    switchToOperatorsMainWallet: selectOperator,
-    switchToOperatorsMergingWallet: selectOperator,
-  };
-  Effect.runSync(selectOperator);
   const operatorAddress = await fixture.operatorLucid.wallet().address();
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
@@ -69,7 +53,7 @@ export const openNodeServices = async (life: Lifecycle) => {
       Layer.succeed(
         Lucid,
         Lucid.make({
-          ...nodeLucid,
+          ...lucidService,
           operatorMainAddress: operatorAddress,
           operatorMergeAddress: operatorAddress,
           referenceScriptsWalletAddress: await fixture.referenceScriptsLucid
@@ -104,9 +88,6 @@ export const openNodeServices = async (life: Lifecycle) => {
     program: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown>,
   ) => runtime.runPromise(Effect.flatMap(SqlClient.SqlClient, program));
   return {
-    nodeLucid,
-    /** The production journal (`IntentJournalLive`) over the node database. */
-    journal: await runtime.runPromise(makeIntentJournal),
     /** The follower run's landed-block hook at the driver's applied view. */
     processLanded: () =>
       runtime.runPromise(

@@ -350,11 +350,12 @@ it("audits the native MPF root at the committed tip, and merges manually only un
         ledger_delta_produced = ${fields.ledger_delta_produced}::text::jsonb
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
-  /** Sets the state of `headerHash`'s landed row: a landed transaction
-   * removed the block (`removed`), or it is processed again. */
-  const setLandedState = (headerHash: string, state: "processed" | "removed") =>
+  /** Sets whether the working ledger took in `headerHash`'s landed block.
+   * The block stays landed: an unlanded one whose journaled commit is live
+   * would be the live journal, and the audit skips while one exists. */
+  const setApplied = (headerHash: string, applied: boolean) =>
     sqlRun(
-      (sql) => sql`UPDATE node_landed_blocks SET state = ${state}
+      (sql) => sql`UPDATE node_landed_blocks SET applied = ${applied}
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
   /** The recompute the follower write gate holds writes for, if any. */
@@ -484,10 +485,10 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     );
     expect(secondFields.base_utxos_root).toBe(tipRoot);
 
-    // A correction removes the second block (its journal is no longer
-    // applied) and resets the native root to its base: the tip is the
-    // surviving journal again.
-    await setLandedState(second.headerHash, "removed");
+    // A correction takes the second block out of the working ledger (its
+    // journal is no longer applied) and resets the native root to its base:
+    // the tip is the surviving journal again.
+    await setApplied(second.headerHash, false);
     expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
       matchedPoint: "tip",
       recomputedRoot: tipRoot,
@@ -496,16 +497,16 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
     expect(await auditHealthy()).toBe(true);
-    // A native root still at the removed block's post-state diverges.
+    // A native root still at the unapplied block's post-state diverges.
     expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
       recomputedRoot: tipRoot,
       diverged: true,
     });
-    await setLandedState(second.headerHash, "processed");
+    await setApplied(second.headerHash, true);
     await acknowledgeCleanAudit();
 
     // A base journal that is no longer applied cannot anchor its child.
-    await setLandedState(first.headerHash, "removed");
+    await setApplied(first.headerHash, false);
     const orphaned = await auditWithNativeRoot(twoBlockTip);
     expect(orphaned).toMatchObject({
       skippedReason: "tip_unverifiable",
@@ -513,7 +514,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
     expect(orphaned.tipUnverifiable).toContain(tipRoot);
-    await setLandedState(first.headerHash, "processed");
+    await setApplied(first.headerHash, true);
     await acknowledgeCleanAudit();
 
     // A tampered ledger delta does not fold to its journal's root.
