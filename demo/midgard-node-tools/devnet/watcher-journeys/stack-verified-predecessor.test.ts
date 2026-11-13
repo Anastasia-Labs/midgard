@@ -47,6 +47,16 @@ describe("the stack's verified predecessor before a family", () => {
     ]);
   });
 
+  it("reads the tail again after its first read loses its connection, and passes the verified tail", async () => {
+    const drill = await verifiedPredecessorDrill();
+    drill.watcher.record(drill.rootBlock, "verified");
+    drill.l1.loseQueueReads(1);
+    await expect(
+      ensureStackVerifiedPredecessor(drill.ports()),
+    ).resolves.toEqual({ kind: "verified", block: drill.rootBlock });
+    expect(drill.node.submitted).toEqual([]);
+  });
+
   it("heals a root block the watcher released unverified with one transfer, then waits for its block to be attested and verified", async () => {
     const drill = await verifiedPredecessorDrill();
     drill.watcher.record(drill.rootBlock, "unverified_merged");

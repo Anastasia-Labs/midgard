@@ -90,20 +90,28 @@ export const answerOrNotYet = async <T>(
 /**
  * Runs the read `read` again after a transport failure
  * (`isTransientTransportError`), pausing with `pause` between tries, until it
- * answers or `boundMs` has passed since the first try. Any other error is
- * rethrown at once; at the bound the last transport failure is rethrown.
+ * answers or `boundMs` has passed since the first try, on the clock `now`
+ * (by default the process's monotonic clock). Any other error is rethrown at
+ * once; at the bound the last transport failure is rethrown.
  */
 export const readThroughTransportFailures = async <T>(
   read: () => Promise<T>,
-  { boundMs, pause }: Readonly<{ boundMs: number; pause(): Promise<unknown> }>,
+  {
+    boundMs,
+    pause,
+    now = () => performance.now(),
+  }: Readonly<{
+    boundMs: number;
+    pause(): Promise<unknown>;
+    now?: () => number;
+  }>,
 ): Promise<T> => {
-  const deadline = performance.now() + boundMs;
+  const deadline = now() + boundMs;
   for (;;) {
     try {
       return await read();
     } catch (error) {
-      if (!isTransientTransportError(error) || performance.now() >= deadline)
-        throw error;
+      if (!isTransientTransportError(error) || now() >= deadline) throw error;
     }
     await pause();
   }

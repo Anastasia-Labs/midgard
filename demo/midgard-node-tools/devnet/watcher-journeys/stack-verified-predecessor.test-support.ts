@@ -123,6 +123,8 @@ export const verifiedPredecessorDrill = async () => {
     removed: new Set<string>(),
     /** How long a committed block stays out of the queue as it is read. */
     queueLagMs: 0,
+    /** How many queue reads next lose their connection. */
+    lostQueueReads: 0,
   };
   const queued = (hash: string) =>
     l1.queue.find(({ block }) => block.headerHash === hash);
@@ -147,13 +149,25 @@ export const verifiedPredecessorDrill = async () => {
   };
   const queuePorts = {
     ...settledStateQueue<{ headerHash: string; entry: QueueEntry }, QueueNode>({
-      readQueue: () =>
-        Promise.resolve({
+      readQueue: () => {
+        if (l1.lostQueueReads > 0) {
+          l1.lostQueueReads -= 1;
+          // As fetch rejects a request whose connection the server reset.
+          return Promise.reject(
+            new TypeError("fetch failed", {
+              cause: Object.assign(new Error("read ECONNRESET"), {
+                code: "ECONNRESET",
+              }),
+            }),
+          );
+        }
+        return Promise.resolve({
           root: rootState(),
           blocks: l1.queue
             .filter(({ blockTime }) => blockTime + BigInt(l1.queueLagMs) <= now)
             .map((entry) => ({ headerHash: entry.block.headerHash, entry })),
-        }),
+        });
+      },
       decodeBlock: ({ entry }: { entry: QueueEntry }) =>
         Promise.resolve({
           headerHash: entry.block.headerHash,
@@ -331,6 +345,10 @@ export const verifiedPredecessorDrill = async () => {
     },
     attest: (hash: string) => {
       queued(hash)!.attested = true;
+    },
+    /** The next `reads` queue reads lose their connection. */
+    loseQueueReads: (reads: number) => {
+      l1.lostQueueReads = reads;
     },
     /** The queue's first block merges into the root. */
     merge: (hash: string) => {

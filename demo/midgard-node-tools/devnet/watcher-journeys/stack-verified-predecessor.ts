@@ -62,7 +62,10 @@ import { stackJourneyDa } from "./stack-journey-da.js";
 import { STACK_ABSORB_WITHIN_MS } from "./stack-ledger-owner.js";
 import { stackJourneyTransactions } from "./stack-transactions.js";
 import { leftQueueByMerge } from "./state-queue-root-anchor.js";
-import { answerOrNotYet } from "./transport-failure.js";
+import {
+  answerOrNotYet,
+  readThroughTransportFailures,
+} from "./transport-failure.js";
 import {
   keepJourneyDecision,
   readJourneyVerificationRecords,
@@ -229,7 +232,12 @@ export const ensureStackVerifiedPredecessor = async (
       transferTxId: string;
     }>
 > => {
-  const tail = await ports.readAttestedTail();
+  // A read that got no answer is tried again within the decision bound.
+  const tail = await readThroughTransportFailures(ports.readAttestedTail, {
+    boundMs: ports.decisionWithinMs,
+    pause: ports.pause,
+    now: ports.now,
+  });
   const decided = await awaitDecision(ports, tail);
   if (decided.kind === "verified") return { kind: "verified", block: tail };
   if (decided.kind === "payload-mismatch")
