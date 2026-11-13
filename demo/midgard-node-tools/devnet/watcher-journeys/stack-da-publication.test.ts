@@ -98,7 +98,11 @@ const stack = (
   removal: () => Promise<StackDaAgedOut> = async () => {
     throw new Error("no removal expected");
   },
-  options: { startAt?: number; savedDelivery?: StackDaDelivery } = {},
+  options: {
+    startAt?: number;
+    savedDelivery?: StackDaDelivery;
+    role?: "history" | "fault";
+  } = {},
 ) => {
   let clock = options.startAt ?? Number(BLOCK_TIME);
   let poll = 0;
@@ -113,6 +117,7 @@ const stack = (
         typeof states === "function"
           ? states(clock)
           : states[Math.min(poll++, states.length - 1)]!,
+      role: options.role ?? "history",
       publish,
       readRemoval: removal,
       now: () => clock,
@@ -137,6 +142,7 @@ const unattested: StackDaTarget = {
   blockTime: BLOCK_TIME,
 };
 const attested: StackDaTarget = { kind: "attested", txHash: "ab".repeat(32) };
+const merged: StackDaTarget = { kind: "merged", txHash: "ab".repeat(32) };
 const agedOut: StackDaAgedOut = {
   kind: "agedOut",
   headerHash,
@@ -398,6 +404,27 @@ describe("producer-path DA publication on an attached stack", () => {
   });
 });
 
+describe("a block that merged before its DA outcome was read", () => {
+  it("was attested when it is history", async () => {
+    for (const states of [[merged], [unattested, merged]])
+      await expect(
+        publishAs("attestation", [{}], states).outcome,
+      ).resolves.toEqual(attested);
+  });
+
+  it("fails by name when it is a fault, which then escaped its fraud proof", async () => {
+    for (const expectation of ["attestation", "refusal"] as const)
+      for (const states of [[merged], [unattested, merged]])
+        await expect(
+          publishAs(expectation, [{}], states, undefined, { role: "fault" })
+            .outcome,
+        ).rejects.toMatchObject({
+          name: "StackDaFaultMergedError",
+          message: `Fault ${headerHash} merged into the confirmed state before its fraud proof`,
+        });
+  });
+});
+
 describe("a refused block's removal on an attached stack", () => {
   const follow = (
     states: Parameters<typeof stack>[0],
@@ -423,6 +450,12 @@ describe("a refused block's removal on an attached stack", () => {
     await expect(
       follow([unattested, attested], async () => agedOut),
     ).rejects.toThrow(/attested header .* must refuse/u);
+  });
+
+  it("fails by name when it merged, which only an attested node allows", async () => {
+    await expect(
+      follow([unattested, merged], async () => agedOut),
+    ).rejects.toThrow(`Fault ${headerHash} merged into the confirmed state`);
   });
 
   it("fails when it outlives its deadline by another attestation timeout", async () => {

@@ -17,6 +17,7 @@ import {
 } from "midgard-watcher";
 import { expect } from "vitest";
 
+import { queueEndOutput } from "./state-queue-root-anchor.js";
 import type { JourneyWatcherEvidence } from "./watcher-evidence-reader.js";
 
 export const transactionOutputs = (transaction: CML.Transaction) => {
@@ -32,23 +33,22 @@ export const transactionOutputs = (transaction: CML.Transaction) => {
   );
 };
 
-/** Read correction's authenticated tail at its immutable transaction output. */
+/**
+ * Read correction's authenticated tail at its immutable transaction output:
+ * the predecessor's node, or the root holding it once it merged.
+ */
 export const verifyJourneyCorrectedTail = async (
   transaction: CML.Transaction,
-  expected: { address: string; unit: string; headerHash: string },
+  expected: { address: string; policyId: string; headerHash: string },
 ) => {
   expect(transaction.is_valid()).toBe(true);
-  const matches = transactionOutputs(transaction).filter(
-    ({ address, assets }) =>
-      address === expected.address && assets[expected.unit] === 1n,
-  );
-  expect(matches).toHaveLength(1);
-  const node = await Effect.runPromise(
-    SDK.getLinkedListNodeViewFromUTxO(matches[0]!),
-  );
-  expect(node.key).toEqual({ Key: { key: expected.headerHash } });
-  expect(node.next).toBe("Empty");
-  return matches[0]!;
+  return queueEndOutput(transactionOutputs(transaction), {
+    stateQueue: {
+      spendingScriptAddress: expected.address,
+      policyId: expected.policyId,
+    },
+    headerHash: expected.headerHash,
+  });
 };
 
 /** Derive scheduler continuation from the removal's authenticated list inputs.

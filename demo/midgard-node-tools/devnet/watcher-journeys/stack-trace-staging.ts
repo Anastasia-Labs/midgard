@@ -113,7 +113,10 @@ export const stackTraceAttachedStack = async (
     onStage,
   });
   return {
-    attest: (block) => da.publish(block, "attestation", [input.checkpointPath]),
+    attest: (block) =>
+      da.publish(block, { role: "history", expectation: "attestation" }, [
+        input.checkpointPath,
+      ]),
     shiftWorkMs,
     beforeFaultCommit,
     beforeTraceDeposit: (operatorVkey, tailEndTimeMs) =>

@@ -3,8 +3,6 @@ import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
-import * as SDK from "@al-ft/midgard-sdk";
-import { toUnit } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { writeJourneyArtifact } from "./artifacts.js";
@@ -29,6 +27,7 @@ import type {
 } from "./journey-session.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { measureJourneyStage } from "./stage-timing.js";
+import { onQueueOrMerged } from "./state-queue-root-anchor.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
 /** One shared service lifecycle for a family's acceptance journey. */
@@ -246,11 +245,6 @@ export const runJourney = async (
         `Staging reconciled removal ${staged.target.removalTxHash} but the watcher's authenticated correction is ${completion.correction.removalTxHash}`,
       );
     const { contracts } = deployment;
-    const headerUnit = (hash: string) =>
-      toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
-      );
     const {
       successor,
       stage: successorStage,
@@ -267,12 +261,18 @@ export const runJourney = async (
           successor,
         );
         if (decision === undefined) return undefined;
+        // Our node merges the successor once it matures, which can come
+        // first on a long wait or a resumed run.
         expect(
-          await provider.getUtxosWithUnit(
-            contracts.stateQueue.spendingScriptAddress,
-            headerUnit(successor.headerHash),
-          ),
-        ).toHaveLength(1);
+          await onQueueOrMerged({
+            provider,
+            kupoUrl: context.kupoUrl,
+            stateQueue: contracts.stateQueue,
+            headerHash: successor.headerHash,
+            readConfirmedTransaction: (txHash) =>
+              mode.transactions.transaction(txHash),
+          }),
+        ).toBe(true);
         return decision;
       },
       status: async () =>

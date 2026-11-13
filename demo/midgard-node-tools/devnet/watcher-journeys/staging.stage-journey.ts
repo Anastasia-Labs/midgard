@@ -37,6 +37,7 @@ import {
   type StagingCheckpoint,
 } from "./staging.decode-journey-retained-block.js";
 import { journeyDaPath } from "./staging.journey-da-path.js";
+import { stagingAppendPoint } from "./state-queue-root-anchor.js";
 import { buildJourneyTransactionControl } from "./transaction-cases.js";
 
 export async function stageJourney(
@@ -119,22 +120,14 @@ export async function stageJourney(
     }
     return ` ${tail}`;
   };
-  // The queue output holding this block, only while it is the exact tail.
-  const tailOutput = async (block: JourneyBlock) => {
-    const output = await headerOutput(block.headerHash);
-    if (output === undefined) return undefined;
-    const node = await Effect.runPromise(
-      SDK.getLinkedListNodeViewFromUTxO(output),
-    );
-    const header = await Effect.runPromise(
-      SDK.getHeaderFromStateQueueDatum(node),
-    );
-    return node.next === "Empty" &&
-      SDK.encodeHeaderCbor(header).toString("hex") ===
-        SDK.encodeHeaderCbor(block.header).toString("hex")
-      ? output
-      : undefined;
-  };
+  // tailOutput(block): what a block built on `block` is committed on, its
+  // node while it is the exact tail or the root once it merged. queueHead:
+  // the queue's first block, absent when the queue is empty.
+  const { tailOutput, queueHead } = stagingAppendPoint({
+    provider,
+    stateQueue: contracts.stateQueue,
+    readNode: headerOutput,
+  });
   const assertTail = async (block: JourneyBlock) => {
     const output = await tailOutput(block);
     if (output === undefined)
@@ -142,19 +135,6 @@ export async function stageJourney(
         `Retained healthy head ${block.headerHash} differs from the actual state queue tail${await describeQueueTail()}`,
       );
     return output;
-  };
-  const queueHead = async () => {
-    const roots = await provider.getUtxosWithUnit(
-      contracts.stateQueue.spendingScriptAddress,
-      toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
-    );
-    if (roots.length !== 1) throw new Error("Expected one state queue root");
-    const root = await Effect.runPromise(
-      SDK.getLinkedListNodeViewFromUTxO(roots[0]!),
-    );
-    if (root.next === "Empty")
-      throw new Error("Journey predecessor is absent from the queue");
-    return requireHeader(root.next.Key.key);
   };
   /**
    * Resume a header commitment whose signed bytes were persisted before
@@ -417,14 +397,9 @@ export async function stageJourney(
         ...history.block,
         commitTxHash: history.commitTxHash,
       };
-      const historyNode = await Effect.runPromise(
-        SDK.getLinkedListNodeViewFromUTxO(
-          await requireHeader(history.block.headerHash),
-        ),
-      );
       if (
         history.block.headerHash === predecessor.headerHash ||
-        historyNode.next === "Empty"
+        (await tailOutput(history.block)) !== undefined
       ) {
         predecessor = historyBlock;
         retainedPredecessor = await decodeRetained(predecessor);

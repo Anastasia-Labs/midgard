@@ -24,11 +24,16 @@ import {
   classifyStackDaRemoval,
   publishStackDaPayload,
   type StackDaDelivery,
-  type StackDaExpectation,
   StackDaPayloadAgedOutError,
   StackDaRefusalNotObserved,
+  type StackDaSubject,
   type StackDaTarget,
 } from "./stack-da-publication.js";
+import {
+  leftQueueDaTarget,
+  rebuildMergedRootBlock,
+  settledStateQueue,
+} from "./state-queue-root-anchor.js";
 
 const decodeStateQueueNode = (output: UTxO, stateQueuePolicyId: string) =>
   Effect.runPromise(
@@ -196,6 +201,25 @@ export const stackJourneyDa = (
       contracts.stateQueue.policyId,
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
     );
+  /** The stack's state queue: its root's confirmed state and its blocks. */
+  const readQueue = async () => {
+    const sorted = await Effect.runPromise(
+      SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      }),
+    );
+    if (sorted[0] === undefined) throw new Error("State queue has no root");
+    const { data: root } = await Effect.runPromise(
+      SDK.getConfirmedStateFromStateQueueDatum(sorted[0].datum),
+    );
+    const blocks = sorted.flatMap((entry) =>
+      entry.datum.key === "Empty"
+        ? []
+        : [{ headerHash: entry.datum.key.Key.key, utxo: entry.utxo }],
+    );
+    return { root, blocks };
+  };
   const readTarget = async (headerHash: string): Promise<StackDaTarget> => {
     const outputs = await provider.getUtxosWithUnit(
       contracts.stateQueue.spendingScriptAddress,
@@ -204,7 +228,15 @@ export const stackJourneyDa = (
     if (outputs.length > 1)
       throw new Error(`Ambiguous state queue header ${headerHash}`);
     const output = outputs[0];
-    if (output === undefined) return { kind: "absent" };
+    // A block attested and merged between polls is still the attested target.
+    if (output === undefined)
+      return leftQueueDaTarget({
+        headerHash,
+        root: (await readQueue()).root,
+        kupoUrl,
+        stateQueue: contracts.stateQueue,
+        readConfirmedTransaction: input.readConfirmedTransaction,
+      });
     const node = await decodeStateQueueNode(
       output,
       contracts.stateQueue.policyId,
@@ -240,26 +272,6 @@ export const stackJourneyDa = (
       attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
     });
   };
-  /** The stack's state queue's blocks, root excluded, root first. */
-  const readQueueBlocks = async () => {
-    const sorted = await Effect.runPromise(
-      SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-        stateQueuePolicyId: contracts.stateQueue.policyId,
-      }),
-    );
-    if (sorted.length === 0) throw new Error("State queue has no root");
-    const blocks = sorted.flatMap((entry) =>
-      entry.datum.key === "Empty"
-        ? []
-        : [{ headerHash: entry.datum.key.Key.key, utxo: entry.utxo }],
-    );
-    if (blocks.length === 0)
-      throw new Error(
-        "The stack's state queue holds no committed block to extend",
-      );
-    return blocks;
-  };
   const decodeQueueBlock = async (
     block: Readonly<{ headerHash: string; utxo: UTxO }>,
   ) => {
@@ -271,33 +283,43 @@ export const stackJourneyDa = (
       headerHash: block.headerHash,
       blockTime: node.block_time,
       attested: node.da_attestation !== SDK.NO_DA_ATTESTATION,
-      header: node.header,
       // The transaction whose output now holds the block: its commit or its
       // DA apply. Either carries the committed header on L1.
-      commitTxHash: block.utxo.txHash,
+      block: async () => ({
+        header: node.header,
+        commitTxHash: block.utxo.txHash,
+      }),
     };
   };
   const queuePorts = () => ({
-    readTail: async () => decodeQueueBlock((await readQueueBlocks()).at(-1)!),
-    readFrom: async (headerHash: string) => {
-      const blocks = await readQueueBlocks();
-      const index = blocks.findIndex(
-        (block) => block.headerHash === headerHash,
-      );
-      return index === -1
-        ? undefined
-        : Promise.all(blocks.slice(index).map(decodeQueueBlock));
-    },
+    ...settledStateQueue({
+      readQueue,
+      decodeBlock: decodeQueueBlock,
+      // On an idle stack every block merged: extend the one the root holds.
+      mergedRoot: (root, node) => ({
+        ...node,
+        block: () =>
+          rebuildMergedRootBlock({
+            root,
+            kupoUrl,
+            stateQueue: contracts.stateQueue,
+            readConfirmedTransaction: input.readConfirmedTransaction,
+          }),
+      }),
+    }),
     now: () => chain.now(),
     pause,
     attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
     onStage: input.onStage,
   });
   const withPublicPayload = async (
-    headerHash: string,
-    header: SDK.Header,
-    commitTxHash: string,
+    tail: Readonly<{
+      headerHash: string;
+      block(): Promise<{ header: SDK.Header; commitTxHash: string }>;
+    }>,
   ): Promise<JourneySuccessor> => {
+    const { headerHash } = tail;
+    const { header, commitTxHash } = await tail.block();
     const { payloadEnvelopeCbor } = await fetchJourneyPublicDaPayload({
       watcherConfig: await readStackJourneyWatcherConfig(
         context.watcher.processConfigPath,
@@ -325,7 +347,7 @@ export const stackJourneyDa = (
      */
     publish: async (
       block: JourneyBlock,
-      expectation: StackDaExpectation,
+      { role, expectation }: StackDaSubject,
       checkpointPaths: readonly string[],
       delivery?: {
         saved?: StackDaDelivery;
@@ -335,6 +357,7 @@ export const stackJourneyDa = (
       try {
         return await publishStackDaPayload(block, expectation, {
           ...followPorts(block.headerHash),
+          role,
           publish,
           committeeThreshold: context.daProducer.manifest.threshold,
           ...(delivery === undefined ? {} : { delivery }),
@@ -361,21 +384,17 @@ export const stackJourneyDa = (
      * with the payload public DA serves for it. A tail that ages out instead
      * is replaced by the next tail.
      */
-    readAttestedTail: async (): Promise<JourneySuccessor> => {
-      const { headerHash, header, commitTxHash } =
-        await awaitAttestedStackQueueTail(queuePorts());
-      return withPublicPayload(headerHash, header, commitTxHash);
-    },
+    readAttestedTail: async (): Promise<JourneySuccessor> =>
+      withPublicPayload(await awaitAttestedStackQueueTail(queuePorts())),
     /**
      * The newest attested block at or after the stack's queue tail as this
      * call first reads it, with its payload from public DA: the state the
      * stack has committed to by then, however many newer unattested tails
      * arrive meanwhile. That first tail must be attested within its bound.
      */
-    readAttestedAtOrAfterTail: async (): Promise<JourneySuccessor> => {
-      const { headerHash, header, commitTxHash } =
-        await awaitAttestedAtOrAfterStackQueueTail(queuePorts());
-      return withPublicPayload(headerHash, header, commitTxHash);
-    },
+    readAttestedAtOrAfterTail: async (): Promise<JourneySuccessor> =>
+      withPublicPayload(
+        await awaitAttestedAtOrAfterStackQueueTail(queuePorts()),
+      ),
   };
 };

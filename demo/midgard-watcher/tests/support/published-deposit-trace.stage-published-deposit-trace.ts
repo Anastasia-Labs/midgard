@@ -111,7 +111,7 @@ export const stagePublishedDepositTrace = async (
     contracts.stateQueue.policyId,
     SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   );
-  const { nodeUnit, readQueueEnds, ledgerPairs, readBase, readAppendPoint } =
+  const { nodeUnit, readQueueEnds, ledgerPairs, readBase, commitAfterParent } =
     publishedDepositTraceQueue({ contracts, lucid: () => lucid, liveTail });
   const publisher = deployment.publisherLucid;
   let actor = await createPublishedWatcherBlockActor({
@@ -481,8 +481,6 @@ export const stagePublishedDepositTrace = async (
       throw new Error("Successor activation did not produce its active node");
   };
   await activateDanglingSuccessorRegistration();
-  // Abandoned-header removal continues the root in a new output.
-  let { anchor, head } = await readAppendPoint();
   const commits: string[] = [...prepared.commits];
   const checkpoint: PublishedDepositTraceCheckpoint = {
     predecessor: empty,
@@ -504,22 +502,24 @@ export const stagePublishedDepositTrace = async (
         "unbuilt",
         expiryMs,
       );
-    const txHash = await actor.commit(block, anchor, head);
-    commits.push(txHash);
-    anchor = await one(
-      contracts.stateQueue.spendingScriptAddress,
-      nodeUnit(block.headerHash),
+    // Read at each attempt: abandoned-header removal continues the root in
+    // a new output, and the parent can merge into the root meanwhile.
+    commits.push(
+      await commitAfterParent(
+        block,
+        (anchor, head) => actor.commit(block, anchor, head),
+        onStage,
+      ),
     );
-    head = (await readQueueEnds()).first?.utxo;
   };
   /** Continue after the honest predecessor's current queue output. */
-  const anchorAtPredecessor = async () => {
-    anchor = await one(
+  const anchorAtPredecessor = async () => ({
+    anchor: await one(
       contracts.stateQueue.spendingScriptAddress,
       nodeUnit(empty.headerHash),
-    );
-    head = (await readQueueEnds()).first?.utxo;
-  };
+    ),
+    head: (await readQueueEnds()).first?.utxo,
+  });
   const attest = async (block: PublishedWatcherBlock) => {
     const outcome = await (attachedStack ?? actor).attest(block);
     if (outcome.kind !== "attested")
@@ -554,18 +554,14 @@ export const stagePublishedDepositTrace = async (
           checkpoint.depositMetadata = depositMetadata;
           checkpoint.priorDeposits = again.priorDeposits;
           preparedPriorDeposits = again.priorDeposits;
-          ({ anchor, head } = await readAppendPoint());
         }
       }
       await onCheckpoint(checkpoint);
-    } else if (commits.length === 1) {
-      await anchorAtPredecessor();
     }
     if (commits.length === 1) {
       // The event wait can outlast an unattested head's append deadline, so
       // attest the predecessor first and continue from its queue output.
       await attest(empty);
-      await anchorAtPredecessor();
       await chain.awaitLedgerTime(depositMetadata.inclusionTime);
       for (;;) {
         try {
@@ -653,9 +649,8 @@ export const stagePublishedDepositTrace = async (
         resumedBlock === undefined
           ? undefined
           : await headerOutput(resumedBlock.headerHash);
-      await anchorAtPredecessor();
       const predecessorDatum = await Effect.runPromise(
-        SDK.getLinkedListNodeViewFromUTxO(anchor),
+        SDK.getLinkedListNodeViewFromUTxO((await anchorAtPredecessor()).anchor),
       );
       const predecessor = await Effect.runPromise(
         SDK.getHeaderFromStateQueueDatum(predecessorDatum),
@@ -719,8 +714,6 @@ export const stagePublishedDepositTrace = async (
       if (landed !== undefined && resumedBlock !== undefined) {
         const commitTxHash = successorResume?.commitTxHash ?? landed.txHash;
         commits.push(commitTxHash);
-        anchor = landed;
-        head = landed;
         await onSuccessorCheckpoint({ block: resumedBlock, commitTxHash });
         await attest(resumedBlock);
         return { ...resumedBlock, commitTxHash };
@@ -766,7 +759,7 @@ export const stagePublishedDepositTrace = async (
         // Removal spent the predecessor to update its link and replaced the
         // lock. Refetch both through the ordinary commit path before
         // constructing inputs.
-        await anchorAtPredecessor();
+        const { anchor, head } = await anchorAtPredecessor();
         await beforeCommit(block);
         const checkpoint = successorCheckpoint;
         try {
@@ -784,11 +777,6 @@ export const stagePublishedDepositTrace = async (
         }
       }
       commits.push(txHash);
-      anchor = await one(
-        contracts.stateQueue.spendingScriptAddress,
-        nodeUnit(block.headerHash),
-      );
-      head = (await readQueueEnds()).first?.utxo;
       successorCheckpoint.commitTxHash = txHash;
       await onSuccessorCheckpoint(successorCheckpoint);
       await attest(block);

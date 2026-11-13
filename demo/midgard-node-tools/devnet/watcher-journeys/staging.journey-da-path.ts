@@ -186,7 +186,11 @@ export const journeyDaPath = async (
       beforeUserEvent: (actor, tailEndTimeMs) =>
         userEvents.beforeEvent(actor.operatorVkey, tailEndTimeMs),
       attestHistory: async (_actor, block, checkpointPaths) => {
-        const outcome = await da.publish(block, "attestation", checkpointPaths);
+        const outcome = await da.publish(
+          block,
+          { role: "history", expectation: "attestation" },
+          checkpointPaths,
+        );
         if (outcome.kind === "refused")
           throw new Error(
             `The DA committee refused history ${block.headerHash}`,
@@ -194,13 +198,18 @@ export const journeyDaPath = async (
         return outcome;
       },
       settleFault: ({ block, category, checkpoint, checkpointPath }) =>
-        da.publish(block, stackDaExpectation(category), [checkpointPath], {
-          saved: checkpoint.daDelivery,
-          save: async (delivery) => {
-            checkpoint.daDelivery = delivery;
-            await writeJourneyArtifact(checkpointPath, checkpoint);
+        da.publish(
+          block,
+          { role: "fault", expectation: stackDaExpectation(category) },
+          [checkpointPath],
+          {
+            saved: checkpoint.daDelivery,
+            save: async (delivery) => {
+              checkpoint.daDelivery = delivery;
+              await writeJourneyArtifact(checkpointPath, checkpoint);
+            },
           },
-        }),
+        ),
     };
   }
   const { deployment, accounts } = context;

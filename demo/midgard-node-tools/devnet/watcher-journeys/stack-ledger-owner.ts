@@ -24,7 +24,10 @@ import type { OperatorPause } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
 import { stackUserEventPublicationGate } from "./stack-late-shift.js";
-import { readKupoTransactionInclusion } from "./stack-transactions.js";
+import {
+  readKupoTransactionInclusion,
+  stackJourneyTransactions,
+} from "./stack-transactions.js";
 import { decodeJourneyRetainedBlock } from "./staging.decode-journey-retained-block.js";
 
 /** A deposit to the drill's L2 ledger owner, recorded before it is submitted. */
@@ -342,7 +345,17 @@ export const fundStackLedgerOwner = async (
     "work/journeys/ledger-owner-deposit.json",
   );
   const ourLedger = nodeLedger(context.stackConfig.endpoint);
-  const da = stackJourneyDa(context, { onStage });
+  // On an idle stack every block merged: rebuilding the one the root holds
+  // reads its transaction, whose evidence is kept beside the pending deposit.
+  await mkdir(dirname(pendingPath), { recursive: true });
+  const da = stackJourneyDa(context, {
+    readConfirmedTransaction: stackJourneyTransactions({
+      kupoUrl: context.kupoUrl,
+      ogmiosUrl: context.ogmiosUrl,
+      directory: dirname(pendingPath),
+    }).transaction,
+    onStage,
+  });
   const operator2 = paymentCredentialOf(
     await operatorLucid.wallet().address(),
   ).hash;

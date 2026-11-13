@@ -28,21 +28,9 @@ const unit = toUnit(
   SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
 );
 
-const transactionWithTail = (next: SDK.LinkedListNodeView["next"]) => {
+const transactionWithOutput = (output: UTxO) => {
   const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    utxoToCore({
-      txHash: "00".repeat(32),
-      outputIndex: 0,
-      address,
-      assets: { lovelace: 5_000_000n, [unit]: 1n },
-      datum: SDK.encodeLinkedListNodeView({
-        key: { Key: { key: headerHash } },
-        next,
-        data: 0n,
-      }),
-    }).output(),
-  );
+  outputs.add(utxoToCore(output).output());
   return CML.Transaction.new(
     CML.TransactionBody.new(CML.TransactionInputList.new(), outputs, 200_000n),
     CML.TransactionWitnessSet.new(),
@@ -50,10 +38,50 @@ const transactionWithTail = (next: SDK.LinkedListNodeView["next"]) => {
   );
 };
 
+const transactionWithTail = (next: SDK.LinkedListNodeView["next"]) =>
+  transactionWithOutput({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    address,
+    assets: { lovelace: 5_000_000n, [unit]: 1n },
+    datum: SDK.encodeLinkedListNodeView({
+      key: { Key: { key: headerHash } },
+      next,
+      data: 0n,
+    }),
+  });
+
+/** A removal that leaves the queue empty: the root holds `confirmed`. */
+const transactionWithRoot = (
+  confirmed: string,
+  next: SDK.LinkedListNodeView["next"] = "Empty",
+) =>
+  transactionWithOutput({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    address,
+    assets: {
+      lovelace: 5_000_000n,
+      [toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
+    },
+    datum: SDK.encodeLinkedListNodeView({
+      key: "Empty",
+      next,
+      data: SDK.castConfirmedStateToData({
+        headerHash: confirmed,
+        prevHeaderHash: "e5".repeat(28),
+        utxoRoot: "55".repeat(32),
+        startTime: 0n,
+        endTime: 1_000n,
+        protocolVersion: 0n,
+      }) as SDK.LinkedListNodeView["data"],
+    }),
+  });
+
 it("verifies the recorded correction after a later successor changes the live tail", async () => {
   const correction = transactionWithTail("Empty");
   const later = transactionWithTail({ Key: { key: successorHash } });
-  const expected = { address, unit, headerHash };
+  const expected = { address, policyId, headerHash };
   await expect(verifyJourneyCorrectedTail(later, expected)).rejects.toThrow();
   const verified = await verifyJourneyCorrectedTail(correction, expected);
   expect(verified.txHash).toBe(
@@ -67,12 +95,38 @@ it("refuses an unrelated empty tail as evidence for the expected predecessor", a
   await expect(
     verifyJourneyCorrectedTail(correction, {
       address,
-      unit: toUnit(
-        policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + successorHash,
-      ),
+      policyId,
       headerHash: successorHash,
     }),
+  ).rejects.toThrow();
+});
+
+it("verifies a correction that leaves the queue ending at the root holding the predecessor", async () => {
+  // The predecessor merged before the fault was committed on the root.
+  const correction = transactionWithRoot(headerHash);
+  const verified = await verifyJourneyCorrectedTail(correction, {
+    address,
+    policyId,
+    headerHash,
+  });
+  expect(verified.txHash).toBe(
+    CML.hash_transaction(correction.body()).to_hex(),
+  );
+});
+
+it("refuses a root that holds another block, or is followed, as the predecessor's tail", async () => {
+  await expect(
+    verifyJourneyCorrectedTail(transactionWithRoot(successorHash), {
+      address,
+      policyId,
+      headerHash,
+    }),
+  ).rejects.toThrow();
+  await expect(
+    verifyJourneyCorrectedTail(
+      transactionWithRoot(headerHash, { Key: { key: successorHash } }),
+      { address, policyId, headerHash },
+    ),
   ).rejects.toThrow();
 });
 

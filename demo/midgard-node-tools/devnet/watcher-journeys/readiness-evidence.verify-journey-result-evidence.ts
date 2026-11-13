@@ -36,6 +36,7 @@ import {
   readJourneyNativeEvidencePath,
   sha256,
 } from "./readiness-evidence.read-journey-canonical-transactions.js";
+import { queueEndOutput } from "./state-queue-root-anchor.js";
 import {
   readJourneySuccessorPredecessor,
   verifyJourneyVerifiedHeaders,
@@ -347,15 +348,12 @@ export const verifyJourneyResultEvidence = async (
     referenceInputs !== undefined &&
       inputLabels(referenceInputs).includes(completion.proofToken.outRef),
   );
-  const tails = outputsOf(removal).filter(
-    (utxo) => utxo.assets[headerUnit(staged.predecessor.headerHash)] === 1n,
-  );
-  assert.equal(tails.length, 1);
-  assert.equal(
-    (await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(tails[0]!)))
-      .next,
-    "Empty",
-  );
+  // The removal leaves the queue ending at the predecessor: its node, or the
+  // root holding it once our node merged it.
+  await queueEndOutput(outputsOf(removal), {
+    stateQueue: contracts.stateQueue,
+    headerHash: staged.predecessor.headerHash,
+  });
   const bond = output(completion.economics.operatorBondInputOutRef);
   const reward = output(completion.economics.proverRewardOutputOutRef);
   assert.equal(

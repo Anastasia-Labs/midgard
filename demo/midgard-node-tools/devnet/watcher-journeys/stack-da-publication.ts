@@ -38,6 +38,12 @@ export const STACK_DA_REFUSED_CATEGORIES: ReadonlySet<JourneyCategory> =
 /** What the stack's honest committee does with a block's payload. */
 export type StackDaExpectation = "attestation" | "refusal";
 
+/** A published block's place in the drill, and what the committee does. */
+export type StackDaSubject = Readonly<{
+  role: StackDaPublicationPorts["role"];
+  expectation: StackDaExpectation;
+}>;
+
 export const stackDaExpectation = (
   category: JourneyCategory,
 ): StackDaExpectation =>
@@ -138,11 +144,26 @@ export class StackDaPayloadAgedOutError extends Error {
   }
 }
 
-/** A header's state queue node as L1 holds it now. */
+/**
+ * A header's state queue node as L1 holds it now, or the merge that took it
+ * into the confirmed state, which only an attested node allows: `txHash`
+ * created the output that held the attested node.
+ */
 export type StackDaTarget =
   | { readonly kind: "absent" }
   | { readonly kind: "unattested"; readonly blockTime: bigint }
-  | { readonly kind: "attested"; readonly txHash: string };
+  | { readonly kind: "attested"; readonly txHash: string }
+  | { readonly kind: "merged"; readonly txHash: string };
+
+/** A fault merged into the confirmed state, where no fraud proof can reach. */
+export class StackDaFaultMergedError extends Error {
+  constructor(readonly headerHash: string) {
+    super(
+      `Fault ${headerHash} merged into the confirmed state before its fraud proof`,
+    );
+    this.name = "StackDaFaultMergedError";
+  }
+}
 
 /**
  * Authenticate a vanished target's removal. A fraud correction of the exact
@@ -192,6 +213,11 @@ export const classifyStackDaRemoval = async (input: {
 
 export type StackDaPublicationPorts = {
   readTarget(): Promise<StackDaTarget>;
+  /**
+   * What the block is to the drill. A history block that merged was
+   * attested; a fault that merged escaped its fraud proof.
+   */
+  readonly role: "history" | "fault";
   publish(
     insert: DaPayloadsDB.InsertInput,
   ): Promise<DaProducerPublicationReport>;
@@ -359,7 +385,13 @@ export const publishStackDaPayload = async (
       removal: agedOut,
     };
   };
-  let target = await ports.readTarget();
+  const readTarget = async () => {
+    const read = await ports.readTarget();
+    if (read.kind !== "merged") return read;
+    if (ports.role === "fault") throw new StackDaFaultMergedError(headerHash);
+    return { kind: "attested" as const, txHash: read.txHash };
+  };
+  let target = await readTarget();
   if (target.kind === "absent") return removed();
   if (target.kind === "attested")
     return expectation === "attestation" ? target : refusedAttested(headerHash);
@@ -397,7 +429,7 @@ export const publishStackDaPayload = async (
           );
       }
     }
-    target = await ports.readTarget();
+    target = await readTarget();
     if (target.kind === "attested")
       return expectation === "attestation"
         ? target
@@ -426,7 +458,8 @@ export const publishStackDaPayload = async (
 /**
  * Follow a refused block, unattested past its attestation deadline, to its
  * authenticated timeout removal within one more attestation timeout. Its
- * attestation or fraud correction fails the drill.
+ * attestation or fraud correction fails the drill, and so does its merge:
+ * the refused block is a fault.
  */
 export const awaitStackDaAgedOut = async (
   headerHash: string,
@@ -438,6 +471,7 @@ export const awaitStackDaAgedOut = async (
 ): Promise<StackDaAgedOut> => {
   for (;;) {
     const target = await ports.readTarget();
+    if (target.kind === "merged") throw new StackDaFaultMergedError(headerHash);
     if (target.kind === "attested") return refusedAttested(headerHash);
     if (target.kind === "absent")
       return requireAgedOut(headerHash, await ports.readRemoval());

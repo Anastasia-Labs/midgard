@@ -36,6 +36,7 @@ import {
   type JourneyWatcherStartStatus,
 } from "./correction.watcher-start-deadline.js";
 import type { loadJourneyContext } from "./live-context.js";
+import { onQueueOrMerged } from "./state-queue-root-anchor.js";
 
 type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
 
@@ -402,14 +403,19 @@ export const verifyJourneyCorrection = async ({
         );
       },
     });
-    const predecessors = await provider.getUtxosWithUnit(
-      contracts.stateQueue.spendingScriptAddress,
-      headerUnit(predecessorHeaderHash),
-    );
-    expect(predecessors).toHaveLength(1);
+    // The predecessor is live, or our node merged it after it matured.
+    expect(
+      await onQueueOrMerged({
+        provider,
+        kupoUrl: context.kupoUrl,
+        stateQueue: contracts.stateQueue,
+        headerHash: predecessorHeaderHash,
+        readConfirmedTransaction: (txHash) => transactions.transaction(txHash),
+      }),
+    ).toBe(true);
     await verifyJourneyCorrectedTail(removal, {
       address: contracts.stateQueue.spendingScriptAddress,
-      unit: headerUnit(predecessorHeaderHash),
+      policyId: contracts.stateQueue.policyId,
       headerHash: predecessorHeaderHash,
     });
     const expectedProofUnit = toUnit(
