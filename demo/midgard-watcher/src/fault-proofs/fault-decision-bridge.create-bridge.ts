@@ -84,9 +84,19 @@ export const createBridge = (input: {
     mergedRecorder.reset();
   };
 
+  /**
+   * Prepares `candidate` over its decided prefix. `failed` is the failure of
+   * the first header whose classification failed, which postponed itself and
+   * every later header; the caller reports it once the prefix is acted on.
+   */
   const prepare = async (
     candidate: WatcherAuthenticatedStateQueueObservation,
-  ): Promise<WatcherFaultDecisionBridgeResult> => {
+  ): Promise<
+    Readonly<{
+      prepared: WatcherFaultDecisionBridgeResult;
+      failed: Readonly<{ failure: unknown }> | null;
+    }>
+  > => {
     input.dependencies.assertObservation(candidate);
     if (candidate.deploymentIdentityDigest !== deploymentFingerprint) {
       throw new Error(
@@ -175,6 +185,8 @@ export const createBridge = (input: {
     );
     let nextHeaderIndex = 0;
     let deferredFromIndex = candidate.finalizedHeaders.length;
+    let failedIndex = candidate.finalizedHeaders.length;
+    let headerFailure: unknown;
     let classificationFailed = false;
     let classificationFailure: unknown;
     const classifyNext = async (): Promise<void> => {
@@ -300,6 +312,7 @@ export const createBridge = (input: {
             );
           }
           verification.recordDecision(authenticatedObservationDigest, decision);
+          mergedRecorder.decided(header.headerHash, decision.decision);
           classifiedBindings.set(header.headerHash, { predecessor, deadline });
           classifications[index] = decision;
           misses.classified(header.headerHash);
@@ -313,15 +326,23 @@ export const createBridge = (input: {
             verification,
             subjectDigest: verificationSubjectDigest,
           });
-          if (miss.outcome === "fail") {
+          if (
+            miss.outcome === "fail" &&
+            error instanceof WatcherFaultDecisionRetired
+          ) {
             classificationFailed = true;
             classificationFailure = miss.failure;
             return;
           }
-          // A deferral keeps only the classified prefix and retries this
-          // suffix on a later wake, through the same path as a pending
-          // predecessor attestation; a skip goes on with the next header.
-          if (miss.outcome === "defer")
+          // Classification reads only a header and its predecessors, so a
+          // failure, like a deferral, keeps the classified prefix and retries
+          // this header and the rest on a later pass, which then reports the
+          // failure. A skip goes on with the next header.
+          if (miss.outcome === "fail" && index < failedIndex) {
+            failedIndex = index;
+            headerFailure = miss.failure;
+          }
+          if (miss.outcome !== "skip")
             deferredFromIndex = Math.min(deferredFromIndex, index);
           classifications[index] = null;
         }
@@ -460,7 +481,13 @@ export const createBridge = (input: {
     input.dependencies.retainDecisionAuthorities(
       selected?.decisionDigest ?? null,
     );
-    return preparedResult;
+    return {
+      prepared: preparedResult,
+      failed:
+        failedIndex < candidate.finalizedHeaders.length
+          ? { failure: headerFailure }
+          : null,
+    };
   };
 
   const serializedPrepare = (
@@ -468,7 +495,7 @@ export const createBridge = (input: {
     dispatch: boolean,
   ): Promise<WatcherFaultDecisionBridgeResult> => {
     const result = serial.then(async () => {
-      let prepared: WatcherFaultDecisionBridgeResult;
+      let prepared: Awaited<ReturnType<typeof prepare>>;
       try {
         prepared = await prepare(candidate);
       } catch (error) {
@@ -485,7 +512,9 @@ export const createBridge = (input: {
         await holds.finishUntargeted();
         await dispatchPrepared();
       }
-      return prepared;
+      // A failed header is reported once the prefix before it is handled.
+      if (prepared.failed !== null) throw prepared.failed.failure;
+      return prepared.prepared;
     });
     serial = result.then(
       () => undefined,

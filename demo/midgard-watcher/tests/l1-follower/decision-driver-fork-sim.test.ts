@@ -244,6 +244,7 @@ const watcherOver = (
           seen.bridgeInvalidations += 1;
         },
         readiness: () => [],
+        status: () => ({ observationDigest: null, target: null }),
       },
       availability: {
         // The availability actor reads its L1 payloads at the pass's tip.

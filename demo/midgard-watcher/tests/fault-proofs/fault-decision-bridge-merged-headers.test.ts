@@ -203,6 +203,37 @@ describe("fault decision bridge behind an L1 merge", () => {
     ).toEqual([merged.headerHash, merged.headerHash]);
   });
 
+  it("does not report a header it verified as merged unverified", async () => {
+    const { current, merged, live } = behindMerge();
+    const observability = operations();
+    const warnings: string[] = [];
+    let mergedOnL1 = false;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [merged.headerHash]: "doubleSpend",
+        [live.headerHash]: "transitionTrace",
+      },
+      operationsSink: observability.sink,
+      warn: (warning) => warnings.push(warning.event),
+      mergedHeaders: async () =>
+        new Map(
+          mergedOnL1 ? [[merged.headerHash, proof(merged.headerHash)]] : [],
+        ),
+      classifyOverride: (fresh) => ({ ...fresh, decision: "healthy" }),
+    });
+    await h.bridge.reconcileAndDispatch(current);
+    mergedOnL1 = true;
+    await h.bridge.reconcileAndDispatch(current);
+    // Its verified record stays its last word; the merge is not classified.
+    expect(
+      records(observability)
+        .filter(({ headerHash }) => headerHash === merged.headerHash)
+        .map(({ outcome }) => outcome),
+    ).toEqual(["verified"]);
+    expect(warnings).not.toContain("unverified_merged");
+  });
+
   it("does not demand a runnable classification for a locked target L1 already merged", async () => {
     const headers = [headerFixture("01"), headerFixture("02")];
     const target = encodedHeader(headers[0]!).hash;

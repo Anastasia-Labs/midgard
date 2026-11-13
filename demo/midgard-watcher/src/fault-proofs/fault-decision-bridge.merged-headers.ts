@@ -1,3 +1,5 @@
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+
 import type {
   WatcherAuthenticatedStateQueueObservation,
   WatcherReleasedHeaderProof,
@@ -17,7 +19,9 @@ import {
  * Classification skips it before any DA read; the operations sink records
  * `unverified_merged` or `unverified_removed`, and the operator is warned,
  * once per header and L1 transaction. No decision is journaled and nothing
- * is deleted.
+ * is deleted. A header whose last classification in this process found it
+ * healthy merged verified: its `verified` record stands and nothing is
+ * recorded for the merge.
  */
 export const unverifiedMergedRecorder = (
   dependencies: Pick<
@@ -26,6 +30,9 @@ export const unverifiedMergedRecorder = (
   >,
 ) => {
   const recorded = new Set<string>();
+  // Queued headers whose last classification since the last rollback was
+  // healthy; one leaves the set once its merge is seen.
+  const verified = new Set<string>();
   const record = async (
     observation: WatcherAuthenticatedStateQueueObservation,
     header: WatcherStateQueueHeaderObservation,
@@ -40,6 +47,10 @@ export const unverifiedMergedRecorder = (
     if (proof.headerHash !== header.headerHash)
       throw new Error("release proof names another state-queue header");
     if (recorded.has(key)) return;
+    if (removal === null && verified.delete(header.headerHash)) {
+      recorded.add(key);
+      return;
+    }
     const subjectDigest = await dependencies.observationDigest(
       authenticatedHeaderObservation(observation, header),
     );
@@ -83,7 +94,19 @@ export const unverifiedMergedRecorder = (
         if (proof !== undefined) await record(observation, header, proof);
       }
     },
-    /** A rollback may return a header to the queue; it is recorded afresh. */
-    reset: (): void => recorded.clear(),
+    /** The header's latest classification decision in this process. */
+    decided: (
+      headerHash: string,
+      decision: HeaderDecision["decision"],
+    ): void => {
+      if (decision === "healthy") verified.add(headerHash);
+      else verified.delete(headerHash);
+    },
+    /** A rollback may return a header to the queue, and may move what its
+     * healthy decision read: it is recorded afresh. */
+    reset: (): void => {
+      recorded.clear();
+      verified.clear();
+    },
   });
 };

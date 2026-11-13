@@ -100,6 +100,7 @@ export type WatcherDecisionDriverInput = Readonly<{
     | "reconcileAndDispatch"
     | "invalidateForRollback"
     | "readiness"
+    | "status"
   >;
   availability: Pick<
     WatcherAvailabilityRuntime,
@@ -389,8 +390,17 @@ export const createWatcherDecisionDriver = (
       try {
         await input.bridge.prepareForRecovery(tip.observation);
       } catch (error) {
-        recoveryPending = true;
-        throw error;
+        // A later header's classification failure leaves the decided prefix
+        // of this tip prepared: recovery is done, and the reconciliation
+        // below dispatches that prefix and reports the failure. Any other
+        // failure prepared nothing, and recovery stays owed.
+        if (
+          input.bridge.status().observationDigest !==
+          tip.observation.observationDigest
+        ) {
+          recoveryPending = true;
+          throw error;
+        }
       }
     }
     await input.bridge.reconcileAndDispatch(tip.observation);

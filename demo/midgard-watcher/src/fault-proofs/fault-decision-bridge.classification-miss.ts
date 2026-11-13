@@ -45,7 +45,9 @@ class WatcherReplayLocalFaultWaiting extends Error {
  * - `defer`: keep the classified prefix and retry this header and the rest of
  *   the queue on a later wake. Nothing is journaled.
  * - `skip`: record the header unverified and go on with the next one.
- * - `fail`: the existing fail-closed path.
+ * - `fail`: record the header `failed`; like a deferral it keeps the
+ *   classified prefix and retries this header and the rest of the queue on
+ *   a later wake, and the pass then fails with the error.
  */
 export type WatcherClassificationMiss = "defer" | "skip" | "fail";
 
