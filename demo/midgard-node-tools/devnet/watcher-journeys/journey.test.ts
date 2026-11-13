@@ -66,16 +66,22 @@ beforeAll(async () => {
   });
 }, 0);
 
-// Before every family, also outside its timer, the block it will build on
-// must be one the stack's watcher verified from its payload. A watcher that
-// restarted after that block merged can no longer verify it, so the check
-// heals it with one honest transfer through our node and waits, within the
-// funding's absorption bound and the family's decision allowance, for the
-// new block to be attested and verified. It does nothing once the session
-// has closed, and nothing for a family resuming its staging.
+// Before every family, also outside its timer, the previous family's run
+// must have unwound: a family stopped by its time limit closes the session
+// only once its work has stopped, and the session refuses to start another
+// family before then.
+//
+// On a stack, the block the family will build on must then be one the
+// stack's watcher verified from its payload. A watcher that restarted after
+// that block merged can no longer verify it, so the check heals it with one
+// honest transfer through our node and waits, within the funding's
+// absorption bound and the family's decision allowance, for the new block to
+// be attested and verified. It does nothing once the session has closed, and
+// nothing for a family resuming its staging.
 const familyTitle = (category: string) =>
   `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
 beforeEach(async ({ task }) => {
+  await (await session?.catch(() => undefined))?.familyUnwound();
   if (source?.mode !== "stack") return;
   const fixture = fixtures.find(
     ({ category }) => familyTitle(category) === task.name,
@@ -108,7 +114,9 @@ beforeEach(async ({ task }) => {
 // stack it also waits for operator-2's shift to hold the family's staging
 // shift cover C: at worst the rest of one of its shifts, our node's whole
 // shift, and C of the next. The run's last family also resumes operator-2's
-// node and waits for it to report ready.
+// node and waits for it to report ready. When a family's limit passes,
+// Vitest aborts its signal: the family's waits stop, and the session closes
+// once its work has stopped, starting operator-2 again only then.
 const options = { actionDepth: JOURNEY_ACTION_DEPTH };
 const stackTimeoutsMs =
   stackTimingPaths !== undefined
@@ -137,7 +145,7 @@ for (const [index, fixture] of fixtures.entries()) {
         stackTimeoutsMs?.[index];
   it.skipIf(source === undefined)(
     familyTitle(fixture.category),
-    async () => {
+    async ({ signal }) => {
       const activeSession = await openSession();
       const last = fixture === fixtures.at(-1);
       await runAutonomousWatcherJourney(
@@ -148,12 +156,14 @@ for (const [index, fixture] of fixtures.entries()) {
         {
           session: activeSession,
           waitForAnchors: last,
+          limit: signal,
+          // Operator-2's node stays held through every family's fault phase;
+          // the completed run starts it again and proves it live.
+          ...(activeSession.mode === "attached" && last
+            ? { afterJourney: () => activeSession.operator2.resume() }
+            : {}),
         },
       );
-      // Operator-2's node stays held through every family's fault phase; the
-      // completed run starts it again and proves it live.
-      if (activeSession.mode === "attached" && last)
-        await activeSession.operator2.resume();
     },
     timeoutMs,
   );

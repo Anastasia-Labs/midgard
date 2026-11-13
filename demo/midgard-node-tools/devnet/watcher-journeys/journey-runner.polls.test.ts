@@ -16,7 +16,9 @@ afterAll(() =>
   ),
 );
 
-const familyPolls = async () => {
+const familyPolls = async (
+  signal: AbortSignal = new AbortController().signal,
+) => {
   const directory = await mkdtemp(join(tmpdir(), "journey-polls-"));
   directories.push(directory);
   const stages: string[] = [];
@@ -27,6 +29,7 @@ const familyPolls = async () => {
       onStage: (name) => {
         stages.push(name);
       },
+      signal,
     }),
   };
 };
@@ -118,5 +121,54 @@ describe("a family's bounded waits", () => {
       ),
     ).resolves.toBe("healthy");
     expect(reads).toBe(2);
+  });
+
+  describe("once the family is aborted", () => {
+    const aborted = new Error("the family's time limit passed");
+
+    it.each([
+      [
+        "a wait",
+        (polls: Awaited<ReturnType<typeof familyPolls>>) =>
+          polls.poll(
+            "watcher decision",
+            () => Promise.resolve(undefined),
+            3_000,
+          ),
+      ],
+      [
+        "a wait budgeted by the watcher's progress",
+        (polls: Awaited<ReturnType<typeof familyPolls>>) =>
+          polls.pollWhileReplaying(
+            "healthy processing",
+            () => Promise.resolve(undefined),
+            () => Promise.resolve(0),
+            3_000,
+          ),
+      ],
+    ])("stop %s at once, with the abort's reason", async (_, wait) => {
+      const family = new AbortController();
+      const polls = await familyPolls(family.signal);
+      const started = performance.now();
+      const waited = wait(polls);
+      setTimeout(() => family.abort(aborted), 200);
+      await expect(waited).rejects.toBe(aborted);
+      expect(performance.now() - started).toBeLessThan(1_500);
+    });
+
+    it("start no stage", async () => {
+      const family = new AbortController();
+      const polls = await familyPolls(family.signal);
+      family.abort(aborted);
+      let ran = false;
+      await expect(
+        polls.stage("invalid commitment and DA attestations", () => {
+          ran = true;
+          return Promise.resolve("staged");
+        }),
+      ).rejects.toBe(aborted);
+      expect(ran).toBe(false);
+      expect(polls.stages).toEqual([]);
+    });
   });
 });

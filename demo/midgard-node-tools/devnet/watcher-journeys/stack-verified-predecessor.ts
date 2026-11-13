@@ -39,19 +39,19 @@
  *   transfer.
  *
  * The transfer is signed by the ledger owner alone. Nothing here signs as
- * operator-2 or holds or resumes its node.
+ * operator-2 or holds or resumes its node. A closing session stops each wait.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
 import type { WatcherVerificationDiagnostic } from "midgard-watcher";
 
 import { nodeLedger } from "../../src/full-stack/journey.js";
+import { pauseUnlessAborted } from "./abortable-pause.js";
 import type { JourneyBlock } from "./fixture.js";
 import { readIndexedStateQueueHeader } from "./honest-successor.observables.js";
 import { successorTransfer } from "./honest-successor.transfer.js";
@@ -492,7 +492,7 @@ export const checkStackVerifiedPredecessor = async (
         transferLovelace: BigInt(context.stackConfig.journey.transferLovelace),
       }),
     now: () => chain.now(),
-    pause: () => delay(POLL_MS),
+    pause: () => pauseUnlessAborted(POLL_MS, session.signal),
     absorbWithinMs: STACK_ABSORB_WITHIN_MS,
     decisionWithinMs: timing.allowances.automaticDecisionMs,
     onStage: input.onStage,

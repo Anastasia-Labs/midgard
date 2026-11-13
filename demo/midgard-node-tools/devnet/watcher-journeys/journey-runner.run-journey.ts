@@ -29,11 +29,16 @@ import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { onQueueOrMerged } from "./state-queue-root-anchor.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
-/** One shared service lifecycle for a family's acceptance journey. */
+/**
+ * One shared service lifecycle for a family's acceptance journey. Every
+ * stage, wait and staging step checks the family's `signal` and stops with
+ * its reason once it aborts.
+ */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
   session: JourneySession | AttachedJourneySession,
+  signal: AbortSignal,
 ) => {
   const { context } = session;
   if (context.runDirectory !== runDirectory)
@@ -55,6 +60,7 @@ export const runJourney = async (
     onStage: (name) => {
       activeStage = name;
     },
+    signal,
   });
   const { stage, poll, pollWhileReplaying } = polls;
   let successorPort: JourneySuccessorPort | undefined;
@@ -89,7 +95,9 @@ export const runJourney = async (
     const staged = await stage("invalid commitment and DA attestations", () =>
       mode.stageFixture(fixture, {
         directory,
+        // Each step staging reports first checks the family's abort.
         onStage: (name) => {
+          signal.throwIfAborted();
           activeStage = name;
           console.info(`Live fixture: ${name}`);
         },

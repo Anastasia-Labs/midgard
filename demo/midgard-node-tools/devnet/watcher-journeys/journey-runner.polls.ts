@@ -1,24 +1,28 @@
-import { setTimeout as pause } from "node:timers/promises";
-
+import { pauseUnlessAborted } from "./abortable-pause.js";
 import type { JourneyRunPolls } from "./journey-runner.journey-mode.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { isTransientTransportError } from "./transport-failure.js";
 
 /**
  * A family's bounded waits: each stage measured in the family's directory,
- * and `onStage` told which stage is active.
+ * and `onStage` told which stage is active. Each stage and each wait's every
+ * read checks the family's `signal` first, and a wait's pause ends when it
+ * aborts: the family's run stops at once with the abort's reason.
  */
 export const createJourneyRunPolls = ({
   directory,
   onStage,
+  signal,
 }: Readonly<{
   directory: string;
   onStage(name: string): void;
+  signal: AbortSignal;
 }>): JourneyRunPolls => {
   const stage = async <T>(
     name: string,
     action: () => Promise<T>,
   ): Promise<T> => {
+    signal.throwIfAborted();
     onStage(name);
     return await measureJourneyStage(directory, name, action);
   };
@@ -29,6 +33,7 @@ export const createJourneyRunPolls = ({
     action: () => Promise<T | undefined>,
     failure: { last?: unknown },
   ): Promise<T | undefined> => {
+    signal.throwIfAborted();
     try {
       return await action();
     } catch (cause) {
@@ -54,7 +59,7 @@ export const createJourneyRunPolls = ({
         const result = await attempt(action, failure);
         if (result !== undefined) return result;
         if (performance.now() >= deadline) throw timedOut(name, failure);
-        await pause(1000);
+        await pauseUnlessAborted(1000, signal);
       }
     });
   // A stage that waits on the watcher's L1 catch-up is budgeted by progress,
@@ -82,8 +87,8 @@ export const createJourneyRunPolls = ({
           deadline = performance.now() + stallTimeoutMs;
         }
         if (performance.now() >= deadline) throw timedOut(name, failure);
-        await pause(1000);
+        await pauseUnlessAborted(1000, signal);
       }
     });
-  return Object.freeze({ stage, poll, pollWhileReplaying });
+  return Object.freeze({ signal, stage, poll, pollWhileReplaying });
 };

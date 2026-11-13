@@ -17,6 +17,8 @@ import type { JourneyChainTransactions } from "./stack-transactions.js";
 
 /** The runner's bounded waits, shared by both modes. */
 export type JourneyRunPolls = Readonly<{
+  /** The family's abort signal, which every stage and wait checks. */
+  signal: AbortSignal;
   stage<T>(name: string, action: () => Promise<T>): Promise<T>;
   poll<T>(
     name: string,

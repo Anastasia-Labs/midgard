@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { nodeLedger } from "../../src/full-stack/journey.js";
+import { pauseUnlessAborted } from "./abortable-pause.js";
 import { stackSuccessorPort } from "./honest-successor.js";
 import { LANDED_BLOCK_AWAITING_DA } from "./honest-successor.observables.js";
 import { stackTransferBeforeFault } from "./honest-successor.transfer.js";
@@ -17,7 +18,7 @@ import {
   verifyStackJourneyPublicDa,
 } from "./public-da-preflight.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
-import { stackJourneyDa } from "./stack-journey-da.js";
+import { STACK_DA_POLL_MS, stackJourneyDa } from "./stack-journey-da.js";
 import { stackLateShiftWindowOpensMs } from "./stack-late-shift.js";
 import {
   stackJourneyTransactions,
@@ -191,6 +192,7 @@ export const attachedJourneyMode = (
           stackJourneyDa(context, {
             readConfirmedTransaction: transactions.transaction,
             onStage: (name) => console.info(`Live fixture: ${name}`),
+            pause: () => pauseUnlessAborted(STACK_DA_POLL_MS, polls.signal),
           }).awaitAgedOut(fault.headerHash, refused.attestationDeadlineMs),
         ));
       const failure = await holdWatch.stop();

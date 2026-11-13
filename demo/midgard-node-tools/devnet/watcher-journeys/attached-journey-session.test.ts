@@ -248,14 +248,20 @@ describe("attached journey session", () => {
     expect(stack.operator2.calls).toEqual([]);
   });
 
-  it("closes when the watcher stops serving this deployment, and stays closed", async () => {
+  it("closes when a family finds the watcher no longer serving this deployment, and stays closed", async () => {
     const stack = await runningStackWatcher(liveStatus());
     const session = await openAttachedJourneySession(
       stack.context,
       stack.options(),
     );
     stack.served.status = { ...liveStatus(), liveness: "stopping" };
+    // The check alone refuses; the family it fails closes the session.
     await expect(session.assertHealthy()).rejects.toThrow(/not live/u);
+    expect(session.isClosed()).toBe(false);
+    await expect(
+      session.runFamily(() => session.assertHealthy()),
+    ).rejects.toThrow(/not live/u);
+    expect(session.isClosed()).toBe(true);
     const served = stack.requests.length;
     expect(() => session.watcher.requireLive()).toThrow(/closed/u);
     await expect(session.watcher.operations("/v1/status")).rejects.toThrow(

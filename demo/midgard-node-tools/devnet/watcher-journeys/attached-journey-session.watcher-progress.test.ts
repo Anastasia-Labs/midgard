@@ -51,6 +51,7 @@ const healthyWait = async (
     return await createJourneyRunPolls({
       directory,
       onStage: () => {},
+      signal: new AbortController().signal,
     }).pollWhileReplaying(
       STAGE,
       () => Promise.resolve((reads += 1) >= 6 ? "healthy decision" : undefined),

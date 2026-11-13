@@ -53,8 +53,17 @@ export const openJourneySession = async (runDirectory: string) => {
   const context = await loadJourneyContext(runDirectory);
   const { deployment, provider, accounts, runEnv } = context;
   const runtimeDirectory = join(context.runDirectory, "work/journeys/runtime");
-  const { directory, onClose, isClosed, close, stage } =
-    await openJourneySessionCore(context.runDirectory);
+  const {
+    directory,
+    onClose,
+    isClosed,
+    close,
+    requestClose,
+    runFamily,
+    familyUnwound,
+    signal,
+    stage,
+  } = await openJourneySessionCore(context.runDirectory);
   try {
     const publishedAuthority = await stage("signed deployment authority", () =>
       createPublishedWatcherDeploymentAuthority({
@@ -411,14 +420,14 @@ export const openJourneySession = async (runDirectory: string) => {
           running.requireLive();
         }
       } catch (cause) {
-        await close();
+        await requestClose();
         throw cause;
       }
     };
     const ensureWatcher = async () => {
       await assertHealthy();
       return await (started ??= launch().catch(async (cause: unknown) => {
-        await close();
+        await requestClose();
         throw cause;
       }));
     };
@@ -441,6 +450,9 @@ export const openJourneySession = async (runDirectory: string) => {
       watcherStarted: () => started !== undefined,
       assertHealthy,
       close,
+      runFamily,
+      familyUnwound,
+      signal,
     };
   } catch (cause) {
     await close();

@@ -98,8 +98,16 @@ export const openAttachedJourneySession = async (
     operator2Control?: OperatorNodeControl;
   }>,
 ) => {
-  const { directory, onClose, isClosed, close, stage } =
-    await openJourneySessionCore(context.runDirectory);
+  const {
+    directory,
+    onClose,
+    isClosed,
+    close,
+    runFamily,
+    familyUnwound,
+    signal,
+    stage,
+  } = await openJourneySessionCore(context.runDirectory);
   try {
     // On a public stack every node API this process reads, our node's and
     // operator-2's, is HTTPS under the stack's certificate authority.
@@ -162,16 +170,12 @@ export const openAttachedJourneySession = async (
       deploymentFingerprint,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
+    // A family it refuses fails, and the family's run closes the session.
     const assertHealthy = async () => {
-      try {
-        assertAttachedWatcherStatus(
-          await operations("/v1/status"),
-          deploymentFingerprint,
-        );
-      } catch (cause) {
-        await close();
-        throw cause;
-      }
+      assertAttachedWatcherStatus(
+        await operations("/v1/status"),
+        deploymentFingerprint,
+      );
     };
     await stage("attached watcher status", assertHealthy);
     // The first read proves the evidence comes from this stack's watcher.
@@ -210,6 +214,11 @@ export const openAttachedJourneySession = async (
       /** Whether the session has closed, as it does after a failed family. */
       isClosed,
       close,
+      /** Runs one family; see `openJourneySessionCore`. */
+      runFamily,
+      familyUnwound,
+      /** Aborted once the session starts to close. */
+      signal,
     };
   } catch (cause) {
     await close();

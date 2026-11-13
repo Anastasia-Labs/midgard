@@ -63,7 +63,7 @@ export const archiveAgedOutCheckpoints = (
 };
 
 /** Polls L1 and DA no faster than this while the committee works. */
-const STACK_DA_POLL_MS = 10_000;
+export const STACK_DA_POLL_MS = 10_000;
 
 /** A block of the stack's state queue as one poll reads it. */
 export type StackQueueNode = Readonly<{
