@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
-import { Effect, Metric, Option, Schedule } from "effect";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { Effect, Either, Metric, Option, Schedule } from "effect";
 
 import {
   type DaProducerCommitteePeer,
@@ -18,6 +19,11 @@ import { DatabaseError } from "../database/utils/common.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
 import { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
+import { Globals } from "../services/globals.js";
+import {
+  clearLivenessIncident,
+  raiseLivenessIncident,
+} from "../services/liveness-halt.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 
 const daPublishReconcilerAttemptsCounter = Metric.counter(
@@ -26,8 +32,31 @@ const daPublishReconcilerAttemptsCounter = Metric.counter(
 );
 const daPublishReconcilerBacklogGauge = Metric.gauge(
   "da_publish_reconciler_backlog",
-  { description: "Incomplete durable DA peer publication rows" },
+  {
+    description:
+      "Incomplete durable DA peer publication rows; while the DA manifest is unavailable, the payloads awaiting outbox seeding",
+  },
 );
+
+/** The source `da_publication_manifest_unavailable` is raised under. */
+const DA_PUBLICATION_RECONCILER_SOURCE = "da_publication_reconciler";
+
+/**
+ * The DA manifest a reconciler pass read is missing or invalid: the pass
+ * seeds and delivers nothing, and the next pass reads the manifest again.
+ * Nothing owed is lost meanwhile: the landed-block rebase stores an own
+ * block's payload with no manifest read, and the first pass with a valid
+ * manifest clears the reason, seeds the payloads stored since the last seed
+ * and delivers them.
+ */
+export const DA_PUBLICATION_MANIFEST_UNAVAILABLE =
+  "da_publication_manifest_unavailable";
+/** How long `da_publication_manifest_unavailable` stays raised before it is
+ * escalated: ten minutes (twenty passes at the default reconcile interval).
+ * A manifest read while it is being replaced fails one pass and the next
+ * clears it, so a failure that outlasts this is a manifest left missing or
+ * invalid. */
+const DA_PUBLICATION_MANIFEST_UNAVAILABLE_ESCALATION_MS = 10 * 60_000;
 
 /**
  * How far outbox seeding has reached. The reconciler fiber holds one across
@@ -43,8 +72,29 @@ export type DaPublicationSeedState = {
 /**
  * A payload whose insert began up to this long before a seed and committed
  * after it is still seeded by the next one.
+ *
+ * Delivery of a stored payload depends on this bound. `da_payloads.created_at`
+ * is stamped with its inserting transaction's start (`DEFAULT now()`), not
+ * its commit. A payload whose transaction (the landed-block rebase, for an
+ * own block) commits more than `SEED_OVERLAP_MS` after it began, with a seed
+ * run while it was open, is older than every later incremental seed's
+ * cursor: it gets no outbox row, so no delivery, until the next full seed,
+ * which is the first pass after a restart or after the committee's peer set
+ * or the retention window changes. Nothing bounds that transaction's length.
+ * Selecting every retained payload with no outbox row in each pass instead
+ * would close this, but costs a scan of the whole retention window per pass
+ * and per peer (Postgres plans a hash anti join over both tables: about
+ * 0.2 s per statement at 300,000 retained payloads, against about 5 ms for
+ * the cursor's index range), which the cursor exists to avoid.
  */
 const SEED_OVERLAP_MS = 60 * 60 * 1_000;
+
+/** Where an incremental seed from `state` starts: the last seed less
+ * `SEED_OVERLAP_MS`; none before the first seed. */
+const seedCursor = (state: DaPublicationSeedState): Date | undefined =>
+  state.seededFrom === undefined
+    ? undefined
+    : new Date(state.seededFrom.getTime() - SEED_OVERLAP_MS);
 
 /**
  * Seeds the peer publication and announcement outboxes. The first seed, and
@@ -70,10 +120,7 @@ export const seedPublicationOutboxes = (
         .map(({ peerId, signerIndex }) => `${signerIndex.toString()}:${peerId}`)
         .sort(),
     });
-    const since =
-      state.key === key && state.seededFrom !== undefined
-        ? new Date(state.seededFrom.getTime() - SEED_OVERLAP_MS)
-        : undefined;
+    const since = state.key === key ? seedCursor(state) : undefined;
     const startedAt = yield* DaPayloadPublicationsDB.databaseNow;
     yield* DaPayloadPublicationsDB.seedRecentPayloads({
       peers,
@@ -86,7 +133,9 @@ export const seedPublicationOutboxes = (
   });
 
 export type DaPublicationReconcileSummary = {
-  readonly configured: boolean;
+  /** False when the DA manifest did not load: the pass seeded and delivered
+   * nothing. */
+  readonly manifestLoaded: boolean;
   readonly claimed: number;
   readonly attempted: number;
   readonly conflicts: number;
@@ -110,27 +159,44 @@ export const reconcileDaPublicationsOnce = ({
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
   DatabaseError,
-  Database | NodeConfig
+  Database | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
-    const manifest = yield* Effect.tryPromise({
-      try: () => loadDaProducerPublicationManifestFromEnv(),
-      catch: (cause) =>
-        new DatabaseError({
-          table: DaPayloadPublicationsDB.tableName,
-          message: "Failed to load DA manifest for publication reconciliation",
-          cause,
-        }),
-    });
-    if (manifest === null) {
+    const globals = yield* Globals;
+    const loaded = yield* Effect.either(
+      Effect.tryPromise({
+        try: () => loadDaProducerPublicationManifestFromEnv(),
+        catch: (cause) => cause,
+      }),
+    );
+    if (Either.isLeft(loaded)) {
+      yield* raiseLivenessIncident(
+        globals,
+        DA_PUBLICATION_RECONCILER_SOURCE,
+        DA_PUBLICATION_MANIFEST_UNAVAILABLE,
+        `DA publication holds until the DA manifest loads: ${formatUnknownError(loaded.left)}`,
+        { escalateAfterMs: DA_PUBLICATION_MANIFEST_UNAVAILABLE_ESCALATION_MS },
+      );
+      // The backlog while held: the payloads the next seed has to seed,
+      // counted from the cursor over its index range. A process that has
+      // not seeded has no cursor, and with no manifest no retention window
+      // to bound the count by, so it leaves the gauge alone.
+      const since = seedCursor(seed);
+      let backlog = 0;
+      if (since !== undefined) {
+        backlog = yield* DaPayloadAnnouncementsDB.awaitingSeedCount(since);
+        yield* daPublishReconcilerBacklogGauge(Effect.succeed(backlog));
+      }
       return {
-        configured: false,
+        manifestLoaded: false,
         claimed: 0,
         attempted: 0,
         conflicts: 0,
-        backlog: 0,
+        backlog,
       };
     }
+    yield* clearLivenessIncident(globals, DA_PUBLICATION_RECONCILER_SOURCE);
+    const manifest = loaded.right;
     const retentionDays = manifest.retentionDays;
     const nodeConfig = yield* NodeConfig;
     const concurrency = Math.max(
@@ -138,8 +204,9 @@ export const reconcileDaPublicationsOnce = ({
       Math.min(limit, nodeConfig.MIDGARD_DA_PUBLISH_CONCURRENCY),
     );
     const peerLeaseToken = randomUUID();
-    // This scan closes the crash window after da_payloads commit but before
-    // per-peer outbox rows are seeded, and also seeds newly added peers.
+    // The one seeding of the outboxes: the landed-block rebase stores an
+    // own block's payload alone, so its rows are seeded here, as are a
+    // newly added peer's.
     yield* seedPublicationOutboxes(seed, {
       peers: manifest.committeePeers,
       retentionDays,
@@ -313,7 +380,7 @@ export const reconcileDaPublicationsOnce = ({
     const backlog = peerBacklog + announcementBacklog;
     yield* daPublishReconcilerBacklogGauge(Effect.succeed(backlog));
     return {
-      configured: true,
+      manifestLoaded: true,
       claimed: claimed.length,
       attempted,
       conflicts,
@@ -326,7 +393,7 @@ export const daPublicationReconcilerFiber = (
 ): Effect.Effect<
   void,
   never,
-  Database | ContractDeploymentIdentity | NodeConfig
+  Database | ContractDeploymentIdentity | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");

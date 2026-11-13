@@ -5,6 +5,7 @@
  * (`readiness-catalogue.ts`).
  */
 import type { WorkerHeartbeats } from "../commands/readiness.js";
+import { DA_PUBLICATION_MANIFEST_UNAVAILABLE } from "../fibers/da-publication-reconciler.js";
 import {
   NATIVE_MPF_OWNER_RECOVERY_PENDING,
   NATIVE_MPF_OWNER_STUCK,
@@ -63,6 +64,7 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   reason("durable_admission_oldest_age_exceeded", COUNT, COUNT),
   reason("admission_writer_stalled", COUNT, COUNT),
   reason("da_publication_conflict", COUNT),
+  reason(DA_PUBLICATION_MANIFEST_UNAVAILABLE),
   reason("provider_query_unhealthy", oneOf("l1-provider")),
   detail("provider_query_degraded", oneOf("l1-provider"), COUNT),
   detail("pending_finalization_age", COUNT, COUNT),

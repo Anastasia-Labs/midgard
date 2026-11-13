@@ -38,6 +38,7 @@ import {
   DaPayloadsDB,
 } from "../src/database/index.js";
 import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
+import { Globals } from "../src/services/globals.js";
 import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
 import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
@@ -223,7 +224,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       const interrupted = await runReconciler("phase5-joined-before-restart");
       const interruptedState = await publicationState(fixture.headerHash);
       expect(interrupted).toMatchObject({
-        configured: true,
+        manifestLoaded: true,
         claimed: 3,
         attempted: 3,
         conflicts: 0,
@@ -288,7 +289,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
         ),
       ).resolves.toBe(0);
       expect(recovered).toMatchObject({
-        configured: true,
+        manifestLoaded: true,
         conflicts: 0,
         backlog: 0,
       });
@@ -324,7 +325,9 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
 const runReconciler = (leaseOwner: string) =>
   Effect.runPromise(
     provideDatabaseLayers(
-      reconcileDaPublicationsOnce({ leaseOwner, limit: 3 }),
+      reconcileDaPublicationsOnce({ leaseOwner, limit: 3 }).pipe(
+        Effect.provide(Globals.Default),
+      ),
     ),
   );
 

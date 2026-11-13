@@ -286,6 +286,11 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `da_publication_conflict:<n>`: a DA committee member answered `conflict`
   for a retained payload this node owes. Read `last_error` on the
   `da_payload_publications` rows with status `conflict`.
+- `da_publication_manifest_unavailable`: the DA publication reconciler
+  could not load the DA manifest (`MIDGARD_DEPLOYMENT_MANIFEST_PATH`
+  missing, unreadable or invalid), so no payload is delivered to the
+  committee. Landed blocks still apply and their payloads are stored. Fix
+  the manifest; the next pass delivers every payload held meanwhile.
 - `native_mpf_owner_unavailable`, `native_mpf_owner_unhealthy`: the native
   MPF owner has not started, or its diagnostics call failed. Wait; read the
   owner's log if it stays.

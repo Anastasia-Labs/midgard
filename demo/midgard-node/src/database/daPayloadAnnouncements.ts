@@ -28,21 +28,6 @@ export type Row = {
   readonly updated_at: Date;
 };
 
-export const seedForPayload = (
-  headerHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`
-      INSERT INTO ${sql(tableName)} (
-        header_hash, status, attempts, next_retry_at
-      ) VALUES (${headerHash}, 'pending', 0, NOW())
-      ON CONFLICT (header_hash) DO NOTHING
-    `;
-  }).pipe(
-    sqlErrorToDatabaseError(tableName, "Failed to seed DA announcement outbox"),
-  );
-
 /**
  * Seeds an announcement row for every payload within the retention window;
  * with `since`, only for payloads created at or after it.
@@ -67,6 +52,32 @@ export const seedRecentPayloads = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to seed recent DA announcement outbox rows",
+    ),
+  );
+
+/**
+ * Counts the payloads created at or after `since` that have no announcement
+ * row, so no outbox row: those a seed covering `since` has still to seed.
+ */
+export const awaitingSeedCount = (
+  since: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ readonly count: string | number | bigint }>`
+      SELECT COUNT(*) AS count
+      FROM da_payloads payload
+      WHERE payload.created_at >= ${since}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sql(tableName)} announcement
+          WHERE announcement.header_hash = payload.header_hash
+        )
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to count DA payloads awaiting outbox seeding",
     ),
   );
 
