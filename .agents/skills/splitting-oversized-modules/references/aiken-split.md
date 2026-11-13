@@ -74,8 +74,8 @@ validator title, the `hash` and a SHA-256 of `compiledCode`.
 It also prints the blueprint `definitions` keys found on only one side, and
 still exits 0 for them: a type moved to another module changes its key. Anything
 that pins such a key needs updating in the same commit (`21760c5f1` updated
-three tests, a fixture generator and evidence pins, including
-`demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts`).
+three tests, a fixture generator and evidence pins, including the schema
+parity test, now `demo/midgard-sdk/tests/sdk-aiken-schema-parity.test.ts`).
 
 Blind spots: it cannot tell how the blueprints were built. Two builds with
 different trace levels differ for reasons that have nothing to do with the

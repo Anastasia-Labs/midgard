@@ -2044,9 +2044,10 @@ ticket and benchmark ids.
     replacement-abandoned journals
     (`demo/midgard-node/src/workers/commit-block-header.resolve-commit-base-ledger-entries.ts:149-167`)
     and relies on revival running first
-    (`demo/midgard-node/src/services/canonical-journal-recovery.ts:171`). Under this plan the
-    own-block status is derived (I1), so P7 needs no revival step: a landed
-    replaced block is followed directly. Topology health is kept as O2.
+    (`demo/midgard-node/src/services/canonical-journal-recovery.ts:171`, since
+    deleted by I1, #806). Under this plan the own-block status is derived (I1),
+    so P7 needs no revival step: a landed replaced block is followed directly.
+    Topology health is kept as O2. <!-- doc-links:historical -->
 11. **New artefacts.** The deletion list with line counts (§13), the
     projection catalogue (§5.5), the F9 devnet fork drill, and carriage
     resolved off-chain from the order block's parent ledger state, with a
