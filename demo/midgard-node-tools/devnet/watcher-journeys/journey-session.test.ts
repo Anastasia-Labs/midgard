@@ -110,7 +110,7 @@ it("restarts only the failed-closed watcher with the same bindings and live serv
   }
 });
 
-it("gates operations on the restarted listener without retrying normal connection failures", async () => {
+it("gates operations on the restarted listener, reading a refused connection through only within one read's tries", async () => {
   const session = await openJourneySession(state.runDirectory);
   try {
     const running = await session.ensureWatcher();
@@ -120,8 +120,16 @@ it("gates operations on the restarted listener without retrying normal connectio
       }),
     });
     const fetch = vi.mocked(globalThis.fetch);
-    fetch.mockRejectedValueOnce(refusal);
+    // One read tries a refused connection three times, then fails with it;
+    // a running watcher's refusal restarts nothing.
+    const reads = fetch.mock.calls.length;
+    fetch
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal);
     await expect(running.operations("/v1/status")).rejects.toBe(refusal);
+    expect(fetch.mock.calls.length - reads).toBe(3);
+    expect(running.observe().pid).toBe(1);
     state.watcherState = { state: "exited", exitCode: 70 };
     fetch
       .mockRejectedValueOnce(refusal)
@@ -137,6 +145,8 @@ it("gates operations on the restarted listener without retrying normal connectio
         state.watcherState = { state: "exited", exitCode: 70 };
         throw refusal;
       })
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal)
       .mockResolvedValueOnce(Response.json({ readiness: "ready" }));
     await expect(running.operations("/v1/status")).resolves.toEqual({
       readiness: "ready",
