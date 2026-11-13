@@ -6,7 +6,11 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DaPayloadsDB } from "../src/database/index.js";
+import {
+  DaPayloadAnnouncementsDB,
+  DaPayloadPublicationsDB,
+  DaPayloadsDB,
+} from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import {
   type DaPublicationSeedState,
@@ -176,6 +180,63 @@ describe("DA publication outbox seeding", () => {
           [PEER_B.peerId]: stored,
           announced: stored,
         });
+      }),
+    );
+  });
+
+  it("claims a seeded row in its pass even when the database clock stepped back", async () => {
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const header = Buffer.from(yield* storeUnseeded("stepped"), "hex");
+        yield* seedPublicationOutboxes(
+          {},
+          { peers: [PEER_A], retentionDays: RETENTION_DAYS },
+        );
+        // The claims read a NOW() a minute behind the seed's, as a time sync
+        // stepping the server's clock back between them leaves it.
+        yield* sql`UPDATE da_payload_publications
+          SET next_retry_at = NOW() + INTERVAL '1 minute'`;
+        yield* sql`UPDATE da_payload_announcements
+          SET next_retry_at = NOW() + INTERVAL '1 minute'`;
+        const claim = {
+          retentionDays: RETENTION_DAYS,
+          limit: 10,
+          leaseOwner: "reconciler",
+          leaseMs: 30_000,
+        };
+        const claimed = () =>
+          Effect.all([
+            DaPayloadPublicationsDB.claimDue({ ...claim, leaseToken: "peer" }),
+            DaPayloadAnnouncementsDB.claimDue({
+              ...claim,
+              leaseToken: "gossip",
+            }),
+          ]);
+        const [peers, announcements] = yield* claimed();
+        expect(peers.map((row) => row.peer_id)).toEqual([PEER_A.peerId]);
+        expect(announcements).toHaveLength(1);
+
+        // A failed attempt still waits out its backoff.
+        const backoff = { retryBackoffMs: 60_000, retryBackoffMaxMs: 60_000 };
+        expect(
+          yield* DaPayloadPublicationsDB.recordAttempt({
+            headerHash: header,
+            peer: PEER_A,
+            status: "transport_error",
+            ...backoff,
+            lease: { owner: "reconciler", token: "peer" },
+          }),
+        ).toBe(true);
+        expect(
+          yield* DaPayloadAnnouncementsDB.recordAttempt({
+            headerHash: header,
+            published: false,
+            ...backoff,
+            lease: { owner: "reconciler", token: "gossip" },
+          }),
+        ).toBe(true);
+        expect(yield* claimed()).toEqual([[], []]);
       }),
     );
   });

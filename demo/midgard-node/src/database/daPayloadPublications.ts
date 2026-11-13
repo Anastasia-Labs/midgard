@@ -216,6 +216,12 @@ export const recordAttempt = ({
  * The filter is evaluated per claim: a rollback of the removal, or a dead
  * block that lands after all, makes the payload due again without any row
  * rewrite.
+ *
+ * A row never attempted is due whatever its `next_retry_at`, the `NOW()` of
+ * the seed that wrote it: a claim later in the same pass reads a `NOW()`
+ * behind it when the database host's clock is stepped back in between, as a
+ * time sync does, which would hold the payload a whole pass. Backoff starts
+ * with the first attempt.
  */
 export const claimDue = ({
   retentionDays,
@@ -244,7 +250,7 @@ export const claimDue = ({
         INNER JOIN da_payloads payload
           ON payload.header_hash = publication.header_hash
         WHERE publication.status IN ('pending', 'rejected', 'transport_error')
-          AND publication.next_retry_at <= NOW()
+          AND (publication.attempts = 0 OR publication.next_retry_at <= NOW())
           AND (publication.lease_expires_at IS NULL OR publication.lease_expires_at <= NOW())
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
           AND ${owedPayload(sql, deploymentIdentityDigest, dead)}

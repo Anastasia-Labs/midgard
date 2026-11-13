@@ -81,7 +81,8 @@ export const awaitingSeedCount = (
     ),
   );
 
-/** Removed headers and dead own journals are not re-announced; see the publication claim. */
+/** Removed headers and dead own journals are not re-announced, and a row
+ * never attempted is due at once; see the publication claim. */
 export const claimDue = ({
   retentionDays,
   limit,
@@ -109,7 +110,7 @@ export const claimDue = ({
         INNER JOIN da_payloads payload
           ON payload.header_hash = announcement.header_hash
         WHERE announcement.status IN ('pending', 'failed')
-          AND announcement.next_retry_at <= NOW()
+          AND (announcement.attempts = 0 OR announcement.next_retry_at <= NOW())
           AND (
             announcement.lease_expires_at IS NULL
             OR announcement.lease_expires_at <= NOW()
