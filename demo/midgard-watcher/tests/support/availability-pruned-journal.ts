@@ -174,6 +174,7 @@ export const pass = (
   pin: (
     txHashes: readonly string[],
   ) => Promise<void> = watcherAvailabilityTransactionPins(fx.store),
+  minimumConfirmationDepth = 1,
 ) =>
   reconcileWatcherAvailabilityJournal(
     {
@@ -181,7 +182,7 @@ export const pass = (
       actor: ACTOR,
       stateQueuePolicyId: "46".repeat(28),
       journal,
-      minimumConfirmationDepth: 1,
+      minimumConfirmationDepth,
       transactionLimits: {
         maxTxSize: 16_384,
         maxTxExMem: 0n,

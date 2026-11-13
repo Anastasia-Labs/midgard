@@ -229,6 +229,70 @@ describe("availability journal transactions on a pruning follower", () => {
     expect(await stored(fx, intent.txHash)).toBe("beyond_retention");
   });
 
+  // A confirmation depth no transaction here reaches: every landed one
+  // reads as included.
+  const UNREACHED = 100_000;
+
+  it("holds an included transaction the follower would have pruned", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const { tx, intent } = recorded(fx, journal, "prepare");
+    await fx.forward([tx]);
+    await fx.forward([]);
+    const included = () => pass(fx, journal, MANIFEST, undefined, UNREACHED);
+    expect(await included()).toMatchObject([
+      { status: "included", txHash: intent.txHash },
+    ]);
+    // The pass after it lands holds it as included, not as pending.
+    expect(await included()).toMatchObject([
+      { status: "included", txHash: intent.txHash },
+    ]);
+    await spendOutput(fx, intent.txHash);
+    await advance(fx, K + 2);
+    expect(await stored(fx, intent.txHash)).toBe("ok");
+    expect(await included()).toMatchObject([
+      { status: "included", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)?.state).toBe("included");
+  });
+
+  // A confirmed parent whose child is confirmed too is no anchor, and no
+  // pass reads it while the child stays confirmed. Once the child reads as
+  // unfinalized again, here because a restart demands a deeper
+  // confirmation, the pass audits the parent from the follower.
+  it("holds a confirmed ancestor behind a confirmed child, for when the child is unfinalized again", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const parent = recorded(fx, journal, "prepare");
+    await fx.forward([parent.tx]);
+    await fx.forward([]);
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: parent.intent.txHash },
+    ]);
+    const child = recorded(fx, journal, "open", {
+      inputs: [{ txHash: Buffer.from(parent.intent.txHash, "hex"), index: 0 }],
+    });
+    await fx.forward([child.tx]);
+    await fx.forward([]);
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: child.intent.txHash },
+    ]);
+    // The child is now the anchor; the parent is held as an ancestor.
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: child.intent.txHash },
+    ]);
+    await advance(fx, K + 2);
+    expect(await stored(fx, parent.intent.txHash)).toBe("ok");
+    const audit = await pass(fx, journal, MANIFEST, undefined, UNREACHED);
+    expect(audit).toContainEqual(
+      expect.objectContaining({
+        status: "included",
+        txHash: parent.intent.txHash,
+      }),
+    );
+    expect(journal.get(parent.intent.id)?.state).toBe("included");
+  });
+
   it("holds an earlier deployment's confirmed anchor until this deployment's pass retires it", async () => {
     const fx = await harness();
     const journal = openJournal();
