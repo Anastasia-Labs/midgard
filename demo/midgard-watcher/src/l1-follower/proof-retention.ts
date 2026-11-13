@@ -301,6 +301,13 @@ export const createWatcherProofRetention = (
     release: async ({ category, headerHash }) => {
       const header = headerBytes(headerHash);
       const last = await store.transaction("write", async (tx) => {
+        // A prune step holds the cursor row for its whole transaction, and
+        // its record hooks read the pins before its deletes run. Taking the
+        // row first commits this release before such a step or after it,
+        // never between its hooks and its deletes, as `pinRetainedIn` does.
+        await tx.query(
+          `SELECT 1 AS one FROM l1_follower_cursor${store.dialect.lockClause("update")}`,
+        );
         await tx.query(
           `DELETE FROM ${WATCHER_PROOF_PINS_TABLE} WHERE header_hash = ? AND category = ?`,
           [header, category],

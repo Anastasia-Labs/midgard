@@ -114,3 +114,63 @@ describe.each(["sqlite", "postgres"] as const)(
     });
   },
 );
+
+// A prune step holds the cursor row for its whole transaction: its record
+// hooks read the pins, then later statements delete what no pin holds. A
+// release that commits between the two would let the step delete a
+// header's history without recording it. On Postgres write transactions are
+// plain READ COMMITTED, so only the cursor lock keeps a release out of a
+// step in flight. The holder below stands in for that step; the test waits
+// until the release has either finished or is blocked behind the holder.
+describe("releasing a pin while a prune step is in flight (postgres)", () => {
+  it("waits for the step to commit before deleting the pin", async () => {
+    const r = await removedHeader({
+      pin: true,
+      resolveAtIngest: true,
+      open: await schemas.open(),
+    });
+    let locked!: (pid: number) => void;
+    const holderPid = new Promise<number>((resolve) => {
+      locked = resolve;
+    });
+    let finishStep!: () => void;
+    const stepDone = new Promise<void>((resolve) => {
+      finishStep = resolve;
+    });
+    const step = r.h.store.transaction("write", async (tx) => {
+      const [row] = await tx.query("SELECT pg_backend_pid() AS pid");
+      await tx.query("SELECT 1 AS one FROM l1_follower_cursor FOR UPDATE");
+      locked(Number(row!.pid));
+      await stepDone;
+    });
+    // A failed assertion must still end the step, or closing the store
+    // waits on its connection forever.
+    let released = false;
+    let release: Promise<void> = Promise.resolve();
+    try {
+      const pid = await holderPid;
+      release = r.retention.release(r.target).then(() => {
+        released = true;
+      });
+      const blockedBehindStep = async () =>
+        (
+          await r.h.store.transaction("read", (tx) =>
+            tx.query(
+              "SELECT 1 AS one FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid))",
+              [pid],
+            ),
+          )
+        ).length > 0;
+      while (!released && !(await blockedBehindStep()));
+      expect(released, "the release committed inside the prune step").toBe(
+        false,
+      );
+      expect(await headerPins(r)).toBe(1);
+    } finally {
+      finishStep();
+      await step;
+    }
+    await release;
+    expect(await headerPins(r)).toBe(0);
+  });
+});
