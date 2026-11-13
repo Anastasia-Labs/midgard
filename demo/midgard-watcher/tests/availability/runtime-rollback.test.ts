@@ -125,6 +125,7 @@ const fixture = () =>
     proverWalletAddress: "prover",
     onDaBondPool: () => undefined,
     onDaBondPoolReadFailure: () => undefined,
+    pinJournalTransactions: async () => undefined,
   });
 
 let dir: string;

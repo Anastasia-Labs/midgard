@@ -20,3 +20,6 @@ export const WATCHER_TX_INPUTS_TABLE = "watcher_tx_inputs";
 export const WATCHER_PRUNED_UNITS_TABLE = "watcher_pruned_units";
 /** Class B: the headers a prune step deleted closed queue history rows of. */
 export const WATCHER_PRUNED_HEADERS_TABLE = "watcher_pruned_headers";
+/** Class B: the availability journal's transactions, held while it reconciles them. */
+export const WATCHER_AVAILABILITY_TX_PINS_TABLE =
+  "watcher_availability_tx_pins";

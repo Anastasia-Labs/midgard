@@ -25,6 +25,7 @@ import {
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
 import type { WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { deriveWatcherNativeGenesisIdentity } from "../l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
+import { watcherAvailabilityTransactionPins } from "../l1-follower/availability-pins.js";
 import {
   openWatcherDeploymentFollower,
   watcherFollowedScripts,
@@ -362,6 +363,7 @@ export const startWatcherRuntime = async (
       ),
       onDaBondPoolReadFailure:
         watcherDaBondPoolReadFailureReporter(operationsSink),
+      pinJournalTransactions: watcherAvailabilityTransactionPins(store),
     });
     availability = activeAvailability;
     const activeBridge = await createWatcherFaultDecisionBridge({

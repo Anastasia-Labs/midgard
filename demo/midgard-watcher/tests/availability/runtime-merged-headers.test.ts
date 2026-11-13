@@ -17,6 +17,8 @@ const io = vi.hoisted(() => ({
 }));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
+    actorSnapshot: () => ({ retainedAttempts: [] }),
+    finalizedAnchors: () => [],
     workflows: () => [],
     unsettledReleases: () => [],
     close() {},
@@ -150,6 +152,7 @@ const fixture = (
     proverWalletAddress: "prover",
     onDaBondPool: () => undefined,
     onDaBondPoolReadFailure: () => undefined,
+    pinJournalTransactions: async () => undefined,
   });
 
 beforeEach(() => {

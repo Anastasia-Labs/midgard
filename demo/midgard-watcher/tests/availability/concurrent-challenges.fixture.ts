@@ -375,6 +375,7 @@ export const runtime = (
     >[0]["l1"],
     confirmationDepth: 17,
     proverWalletAddress: "prover",
+    pinJournalTransactions: async () => undefined,
   });
 
 export const observation = (

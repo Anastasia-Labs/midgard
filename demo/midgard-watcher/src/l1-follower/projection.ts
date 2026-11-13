@@ -36,6 +36,7 @@ import {
 } from "./projection.schema.js";
 import { prunedKeyHooks } from "./pruned-keys.js";
 import {
+  WATCHER_AVAILABILITY_TX_PINS_TABLE,
   WATCHER_DA_ATTESTATIONS_TABLE,
   WATCHER_DEPARTED_HEADERS_TABLE,
   WATCHER_PROTOCOL_INIT_FAULTS_TABLE,
@@ -439,6 +440,8 @@ export const watcherProjection = (
         // A followed unit's history (a challenge's tranche walk, a
         // family snapshot's unit history), while the unit is on chain.
         { table: WATCHER_UNIT_HISTORY_TABLE, column: "tx_hash" },
+        // The availability journal's own transactions, while it reconciles them.
+        { table: WATCHER_AVAILABILITY_TX_PINS_TABLE, column: "tx_hash" },
       ],
     },
     pruneHooks: prunedKeyHooks(WATCHER_TEMPORAL_TABLES),

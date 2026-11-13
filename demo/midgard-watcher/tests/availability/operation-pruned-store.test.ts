@@ -1,18 +1,34 @@
-import type { AvailabilityOperationIntent } from "@al-ft/midgard-core/availability-operation-journal";
-import type * as SDK from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import {
+  type AvailabilityOperationIntent,
+  type AvailabilityOperationJournal,
+  openAvailabilityOperationJournal,
+} from "@al-ft/midgard-core/availability-operation-journal";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { encodeTxBody, type SimTx } from "@al-ft/midgard-l1-follower/testing";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { reconcileWatcherAvailabilityJournal } from "../../src/availability/journal-pins.js";
 import { createWatcherAvailabilityObservation } from "../../src/availability/observation.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import { watcherAvailabilityTransactionPins } from "../../src/l1-follower/availability-pins.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  type Fixture,
   fixture,
+  harness,
+  K,
   pruneFixture,
   random,
+  reasonOf,
+  T,
+  X,
 } from "../support/l1-follower-raw-reads-fixture.js";
 
 /**
@@ -24,8 +40,10 @@ import {
 
 const MANIFEST = "a1".repeat(32);
 
+type Chain = Awaited<ReturnType<typeof harness>>;
+
 /** The tip of the fixture chain, admitted as a finalized observation. */
-const tipObservation = (fx: Fixture) => {
+const tipObservation = (fx: Chain) => {
   const tip = fx.tipPoint();
   const value = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
@@ -96,7 +114,7 @@ const intentSpending = (
   };
 };
 
-const intake = (fx: Fixture) =>
+const intake = (fx: Chain) =>
   createWatcherAvailabilityObservation({
     identity: {
       manifestId: MANIFEST,
@@ -135,7 +153,10 @@ describe("availability operation reconcile on a pruned follower store", () => {
   // creating transaction never reached the store, as when a rollback drops
   // the parent intent whose output a child spends.
   it.each([
-    ["spent and pruned", (fx: Fixture) => `${fx.hashes.a}#0`],
+    [
+      "spent and pruned",
+      (fx: Awaited<ReturnType<typeof fixture>>) => `${fx.hashes.a}#0`,
+    ],
     ["never stored", () => `${random(0x77)}#0`],
   ])(
     "reads an input whose row is %s as missing, not as a refusal",
@@ -153,4 +174,214 @@ describe("availability operation reconcile on a pruned follower store", () => {
       });
     },
   );
+});
+
+/**
+ * The availability journal's transactions on a follower that prunes them.
+ * The store keeps K blocks, so a transaction whose outputs are all spent is
+ * pruned long before the journal retires it past the recovery depth; the
+ * journal, the reads and the reconciliation pass are the real ones.
+ */
+describe("availability journal transactions on a pruning follower", () => {
+  const RECOVERY = DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth;
+  const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x5a));
+  const ACTOR = KEY.to_public().hash().to_hex();
+  const HEADER = "4c".repeat(28);
+  const directories: string[] = [];
+  const journals: AvailabilityOperationJournal[] = [];
+  afterEach(() => {
+    for (const journal of journals.splice(0)) journal.close();
+    for (const directory of directories.splice(0))
+      rmSync(directory, { recursive: true, force: true });
+  });
+
+  const openJournal = (): AvailabilityOperationJournal => {
+    const directory = mkdtempSync(join(tmpdir(), "availability-pins-"));
+    directories.push(directory);
+    const journal = openAvailabilityOperationJournal(
+      join(directory, "journal.sqlite"),
+    );
+    journals.push(journal);
+    return journal;
+  };
+
+  /** A transaction the actor signs and records, paying the tracked address. */
+  const recorded = (
+    fx: Chain,
+    journal: AvailabilityOperationJournal,
+    action: "prepare" | "open",
+    deploymentIdentity = MANIFEST,
+  ): Readonly<{ tx: SimTx; intent: AvailabilityOperationIntent }> => {
+    const tx: SimTx = {
+      inputs: [fx.chain.outsideInput()],
+      collaterals: [fx.chain.outsideInput()],
+      outputs: [{ address: T, lovelace: 2_000_000n }],
+      invalidBefore: 0,
+      invalidAfter: 1_000_000,
+      nonce: fx.chain.nonce(),
+    };
+    const body = CML.TransactionBody.from_cbor_bytes(encodeTxBody(tx));
+    const vkeys = CML.VkeywitnessList.new();
+    vkeys.add(CML.make_vkey_witness(CML.hash_transaction(body), KEY));
+    const witnesses = CML.TransactionWitnessSet.new();
+    witnesses.set_vkeywitnesses(vkeys);
+    const intent = SDK.inspectDaAvailabilitySignedIntent({
+      deploymentIdentity,
+      actor: ACTOR,
+      headerHash: HEADER,
+      action,
+      signedCbor: CML.Transaction.new(
+        body,
+        witnesses,
+        true,
+        undefined,
+      ).to_cbor_hex(),
+    });
+    const lease = journal.acquire(ACTOR, "test", Date.now(), 60_000);
+    journal.persist(lease, intent, Date.now());
+    journal.release(lease);
+    return { tx, intent };
+  };
+
+  /** One reconciliation pass at the follower's tip. */
+  const pass = (
+    fx: Chain,
+    journal: AvailabilityOperationJournal,
+    deploymentIdentity = MANIFEST,
+  ) =>
+    reconcileWatcherAvailabilityJournal(
+      {
+        deploymentIdentity,
+        actor: ACTOR,
+        stateQueuePolicyId: "46".repeat(28),
+        journal,
+        minimumConfirmationDepth: 1,
+        transactionLimits: {
+          maxTxSize: 16_384,
+          maxTxExMem: 0n,
+          maxTxExSteps: 0n,
+          coinsPerUtxoByte: 0n,
+          feeCeilings: {},
+        },
+        assertActuationCurrent: () => undefined,
+        observe: (intent) => intake(fx).operation(tipObservation(fx), intent),
+        submit: () => Promise.reject(new Error("nothing is submitted")),
+      },
+      watcherAvailabilityTransactionPins(fx.store),
+    );
+
+  /** Spends the transaction's only output, so pruning may delete it. */
+  const spendOutput = (fx: Chain, txHash: string) =>
+    fx.forward([
+      {
+        inputs: [{ txHash: Buffer.from(txHash, "hex"), index: 0 }],
+        outputs: [{ address: X, lovelace: 1_000_000n }],
+        nonce: fx.chain.nonce(),
+      },
+    ]);
+
+  const advance = async (fx: Chain, blocks: number): Promise<void> => {
+    for (let i = 0; i < blocks; i += 1) await fx.forward([]);
+    await fx.pruneAll();
+  };
+
+  /** The follower's answer for the transaction: `ok` while it is stored. */
+  const stored = async (fx: Chain, txHash: string): Promise<string> =>
+    reasonOf(await fx.reads().transactionInclusion(txHash));
+
+  it("reads a confirmed transaction the follower would have pruned, and releases it once the journal retires it", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const { tx, intent } = recorded(fx, journal, "prepare");
+    await fx.forward([tx]);
+    await fx.forward([]);
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    await spendOutput(fx, intent.txHash);
+    await advance(fx, K + 2);
+    // Still confirmed in the journal, which keeps it for the recovery depth.
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)?.state).toBe("confirmed");
+    expect(await stored(fx, intent.txHash)).toBe("ok");
+
+    await advance(fx, RECOVERY + 1);
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)).toBeNull();
+    // The next pass releases it, and the follower prunes it.
+    expect(await pass(fx, journal)).toEqual([]);
+    await advance(fx, 1);
+    expect(await stored(fx, intent.txHash)).toBe("beyond_retention");
+  });
+
+  it("holds an Open whose workflow is live past the recovery depth, and releases it with the workflow", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const { tx, intent } = recorded(fx, journal, "open");
+    await fx.forward([tx]);
+    await fx.forward([]);
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    await spendOutput(fx, intent.txHash);
+    await advance(fx, RECOVERY + 1);
+    // A live challenge workflow keeps its Open in the journal at any depth.
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)?.state).toBe("confirmed");
+    expect(await stored(fx, intent.txHash)).toBe("ok");
+
+    // Someone else's terminal step ended the challenge, final past recovery.
+    const lease = journal.acquire(ACTOR, "test", Date.now(), 60_000);
+    journal.releaseWorkflow(
+      lease,
+      MANIFEST,
+      HEADER,
+      {
+        openIntentId: intent.id,
+        reason: "challenge-closed",
+        txHash: random(0x6c),
+        spendPoint: `1:${random(0x6d)}`,
+        confirmationDepth: RECOVERY + 1,
+        recoveryDepth: RECOVERY,
+      },
+      Date.now(),
+    );
+    journal.release(lease);
+    await pass(fx, journal);
+    expect(journal.get(intent.id)).toBeNull();
+    expect(await pass(fx, journal)).toEqual([]);
+    await advance(fx, 1);
+    expect(await stored(fx, intent.txHash)).toBe("beyond_retention");
+  });
+
+  it("holds an earlier deployment's confirmed anchor until this deployment's pass retires it", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const earlier = "b2".repeat(32);
+    const { tx, intent } = recorded(fx, journal, "prepare", earlier);
+    await fx.forward([tx]);
+    await fx.forward([]);
+    expect(await pass(fx, journal, earlier)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
+    await spendOutput(fx, intent.txHash);
+    await advance(fx, K + 2);
+    // A redeploy reads the earlier anchor only to retire it.
+    expect(await pass(fx, journal)).toEqual([]);
+    expect(journal.get(intent.id)?.state).toBe("confirmed");
+    expect(await stored(fx, intent.txHash)).toBe("ok");
+
+    await advance(fx, RECOVERY + 1);
+    expect(await pass(fx, journal)).toEqual([]);
+    expect(journal.get(intent.id)).toBeNull();
+    await pass(fx, journal);
+    await advance(fx, 1);
+    expect(await stored(fx, intent.txHash)).toBe("beyond_retention");
+  });
 });

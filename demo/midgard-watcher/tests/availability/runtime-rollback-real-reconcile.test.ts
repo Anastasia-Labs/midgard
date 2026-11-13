@@ -195,6 +195,7 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
       proverWalletAddress: "prover",
       onDaBondPool: () => undefined,
       onDaBondPoolReadFailure: () => undefined,
+      pinJournalTransactions: async () => undefined,
     });
     const state = () => {
       const journal = openAvailabilityOperationJournal(journalPath);

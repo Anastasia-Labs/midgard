@@ -22,6 +22,7 @@ import {
   watcherProjection,
 } from "../../src/l1-follower/projection.js";
 import {
+  WATCHER_AVAILABILITY_TX_PINS_TABLE,
   WATCHER_PROOF_PIN_EVENTS_TABLE,
   WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_PROOF_PINS_TABLE,
@@ -93,7 +94,7 @@ const PROJECTION_SOURCES = [
 ];
 
 describe("watcher projection lints (F2 schema, F4 determinism)", () => {
-  it("declares eight class D-t tables, registered as temporal, the proof-retention tables, the pruned-key records and the decision driver's handled generation, on both dialects", () => {
+  it("declares eight class D-t tables, registered as temporal, the proof-retention tables, the pruned-key records, the decision driver's handled generation and the availability journal's transaction pins, on both dialects", () => {
     const registry = createTemporalRegistry(projection.temporalTables);
     for (const dialect of ["postgres", "sqlite"] as const) {
       const sets = [projection.migrations(dialect)];
@@ -119,6 +120,7 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_PRUNED_HEADERS_TABLE, "B"],
         [WATCHER_FOLLOWER_GENERATION_TABLE, "B"],
         [WATCHER_PROOF_PIN_EVENTS_TABLE, "B"],
+        [WATCHER_AVAILABILITY_TX_PINS_TABLE, "B"],
       ]);
     }
   });

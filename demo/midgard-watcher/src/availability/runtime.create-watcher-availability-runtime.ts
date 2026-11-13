@@ -30,6 +30,7 @@ import {
 } from "./action.js";
 import { createWatcherAvailabilityDeployment } from "./deployment.js";
 import type { WatcherAvailabilityL1 } from "./follower-reads.js";
+import { reconcileWatcherAvailabilityJournal } from "./journal-pins.js";
 import { createWatcherAvailabilityObservation } from "./observation.js";
 import {
   deriveWatcherDaBondPoolObservation,
@@ -96,6 +97,14 @@ export const createWatcherAvailabilityRuntime = async (input: {
    * production passes `watcherDaBondPoolReadFailureReporter`.
    */
   onDaBondPoolReadFailure: (error: string) => void;
+  /**
+   * Holds exactly the given transactions in the follower, past its pruning.
+   * Each reconciliation pins the journal's transactions with it, so a
+   * confirmed one stays readable until the journal retires it. Required, so
+   * a composition root cannot drop it; production passes
+   * `watcherAvailabilityTransactionPins` over the follower's store.
+   */
+  pinJournalTransactions: (txHashes: readonly string[]) => Promise<void>;
 }): Promise<WatcherAvailabilityRuntime> => {
   const lucid = await Lucid(input.l1.provider, input.identity.network, {
     evaluator: createScalusEvaluator(),
@@ -386,7 +395,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
           submit: (cbor) =>
             required(lucid.config().provider, "local provider").submitTx(cbor),
         }));
-        const recovered = await SDK.reconcileDaAvailabilityOperations(context);
+        const recovered = await reconcileWatcherAvailabilityJournal(
+          context,
+          input.pinJournalTransactions,
+        );
         // P20: after our own steps reconcile and before any admission, rows
         // whose challenge someone else's terminal step ended are released,
         // in every deployment of this actor.

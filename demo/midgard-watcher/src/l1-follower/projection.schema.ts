@@ -4,6 +4,7 @@ import type {
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
 
+import { availabilityTxPinsMigrationSql } from "./availability-pins.js";
 import {
   CHECKPOINT_TEMPORAL_TABLES,
   checkpointMigrationSql,
@@ -167,6 +168,10 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0011_watcher_proof_event_pins",
       sql: proofEventPinsMigrationSql(dialect),
+    },
+    {
+      id: "0012_watcher_availability_tx_pins",
+      sql: availabilityTxPinsMigrationSql(dialect),
     },
   ],
 });
