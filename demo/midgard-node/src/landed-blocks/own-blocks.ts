@@ -10,10 +10,11 @@
  * every rejection whose recorded causes are all deleted ones
  * (`TxRejectionsDB.deleteWithTracedRejections`). The journal derives
  * landed, then applied, from the landed row; all that is written to it is
- * when this landing was taken in (`observed_confirmed_at_ms`), the landed
- * time the throughput metrics read after the landed row is folded away. A
- * block that lands again after a rollback is taken in again, so the time
- * is that of the landing that stuck.
+ * when its landing was first taken in (`observed_confirmed_at_ms`), the
+ * landed time the throughput metrics read after the landed row is folded
+ * away. The rebase that reverts the landing clears it (`rebase.ts`), so a
+ * block that lands again after a rollback is stamped again: the time is
+ * that of the landing that stuck.
  *
  * Each other write is idempotent by header: a rebase that runs again over
  * the same block writes nothing new.
@@ -94,7 +95,9 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
           );
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE ${sql(Journals.tableName)}
-          SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = ${BigInt(Date.now())}
+          SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = COALESCE(
+            ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)},
+            ${BigInt(Date.now())})
           WHERE ${sql(Journals.Columns.HEADER_HASH)} = ${header}`.pipe(
           Effect.mapError((cause) =>
             failure("Failed to record a landed own block's landed time", cause),
@@ -104,3 +107,23 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
         return intended == null ? [] : [intended.toString("hex")];
       }),
   ).pipe(Effect.map((hashes) => hashes.flat()));
+
+/**
+ * Clears the landed time of each own row of `removed`, whose landing the
+ * rebase reverts (see above).
+ */
+export const clearOwnLandedTimes = (removed: readonly LandedBlockRow[]) =>
+  Effect.gen(function* () {
+    const own = removed.filter((row) => row.kind === "own");
+    if (own.length === 0) return;
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE ${sql(Journals.tableName)}
+      SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = NULL
+      WHERE ${sql(Journals.Columns.HEADER_HASH)} IN ${sql.in(
+        own.map((row) => Buffer.from(row.headerHash, "hex")),
+      )}`.pipe(
+      Effect.mapError((cause) =>
+        failure("Failed to clear a reverted own block's landed time", cause),
+      ),
+    );
+  });

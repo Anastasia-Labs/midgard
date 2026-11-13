@@ -51,7 +51,12 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   // Each journal row as its commit wrote it, by header.
   const written = new Map<string, string>();
 
-  /** Every journal row, column by column, by header. */
+  /**
+   * Every journal row, column by column, by header, but its landed time
+   * (`observed_confirmed_at_ms`): the rebase that takes the block's landing
+   * in stamps it with the wall clock for the throughput metrics
+   * (`own-blocks.ts`), so no derivation from the chain can reproduce it.
+   */
   const journalRows = async () =>
     new Map(
       (
@@ -64,7 +69,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
               >`SELECT * FROM pending_block_finalizations`,
           ),
         )
-      ).map((row) => [
+      ).map(({ observed_confirmed_at_ms: _landedTime, ...row }) => [
         hex(row.header_hash as Buffer),
         JSON.stringify(row, (_, value: unknown) =>
           typeof value === "bigint" ? value.toString() : value,

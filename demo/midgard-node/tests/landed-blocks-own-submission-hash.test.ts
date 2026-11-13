@@ -11,6 +11,10 @@
  * The tick runs at the follower view (`runAtFollowerView`), so the driver
  * drains it before its rebase: the rebase applies the block only after the
  * tick has set the hash, and clears it.
+ *
+ * The rebase stamps the block's journal with its landed time, and no other
+ * journal; applying the block again keeps the stamp, and the rebase that
+ * reverts its landing after a rollback clears it.
  */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +27,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
+import { applyOwnBlocks } from "../src/landed-blocks/own-blocks.js";
+import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
 import { Globals, Lucid, MidgardContracts } from "../src/services/index.js";
 import type { SubmittedAwaitingConfirmationOutput } from "../src/workers/utils/commit-block-header.js";
@@ -41,11 +47,13 @@ import {
 } from "./helpers/mutation-lease.js";
 import { ownJournal } from "./landed-blocks-own-journal.fixture.js";
 import {
+  attempt,
   freshNative,
   processOf,
   R1,
   run,
   seed,
+  sqlRun,
 } from "./landed-blocks-rebase.fixture.js";
 
 const { worker } = vi.hoisted(() => ({
@@ -171,6 +179,23 @@ const shown = Effect.gen(function* () {
   };
 });
 
+/** Another header's journal: a copy of the own block's, never stamped. */
+const OTHER = Buffer.alloc(28, 0xee);
+
+/** Each journal's landed time, by header. */
+const landedTimes = Effect.flatMap(
+  SqlClient.SqlClient,
+  (sql) => sql<{ header_hash: Buffer; at: string | null }>`SELECT header_hash,
+      observed_confirmed_at_ms::text AS at
+    FROM pending_block_finalizations ORDER BY header_hash`,
+).pipe(
+  Effect.map((rows) =>
+    Object.fromEntries(
+      rows.map((row) => [row.header_hash.toString("hex"), row.at]),
+    ),
+  ),
+);
+
 describe("the unresolved submission of an own block that lands while its tick runs", () => {
   it("is set by the tick, then cleared by the rebase that applies the block", async () => {
     const globals = await processOf(freshNative());
@@ -272,5 +297,36 @@ describe("the unresolved submission of an own block that lands while its tick ru
       applied: [true],
       landedTime: true,
     });
+
+    // Applying the block again stamps only its journal, and keeps its time.
+    await sqlRun(
+      globals,
+      (sql) => sql`INSERT INTO pending_block_finalizations
+        SELECT (jsonb_populate_record(NULL::pending_block_finalizations,
+          to_jsonb(p) || jsonb_build_object(
+            'header_hash', ${OTHER}::bytea,
+            'observed_confirmed_at_ms', NULL))).*
+        FROM pending_block_finalizations p WHERE p.header_hash = ${HEADER}`,
+    );
+    const stamped = await run(globals, landedTimes);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [row] = await run(globals, retrieveRows);
+    await run(
+      globals,
+      testWrite(applyOwnBlocks([{ ...row!, applied: false }])),
+    );
+    expect(await run(globals, landedTimes)).toEqual(stamped);
+    expect(stamped[OTHER.toString("hex")]).toBeNull();
+    expect(stamped[HEADER.toString("hex")]).not.toBeNull();
+
+    // A rollback takes the block off the landed chain: the rebase that
+    // reverts the landing clears its time.
+    await sqlRun(globals, () => rollBackRows([row!], []));
+    const reverted = await attempt(globals);
+    expect(reverted.hold).toBeUndefined();
+    expect(reverted.applied).toEqual([]);
+    expect((await run(globals, landedTimes))[HEADER.toString("hex")]).toBe(
+      null,
+    );
   });
 });

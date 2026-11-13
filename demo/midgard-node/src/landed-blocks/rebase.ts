@@ -27,8 +27,9 @@
  * projected to it; the shared working-ledger recompute
  * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger; an
  * own block the working ledger did not hold yet gets its local effects
- * (`own-blocks.ts`); removed rows are deleted, processed ones marked
- * applied, and the ledger-store root stamp moves to the target.
+ * (`own-blocks.ts`); removed rows are deleted (an own one's landed time
+ * cleared with it), processed ones marked applied, and the ledger-store
+ * root stamp moves to the target.
  *
  * Once that commits, the commit path's globals follow: a commit that
  * landed, or whose journal is dead, is no longer awaiting confirmation.
@@ -48,7 +49,7 @@ import { rebuildWorkingLedger } from "../services/working-ledger-recompute.js";
 import { sha256Hex } from "../sha256.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "./holds.js";
 import { depositOutputs } from "./ledger.js";
-import { applyOwnBlocks } from "./own-blocks.js";
+import { applyOwnBlocks, clearOwnLandedTimes } from "./own-blocks.js";
 import { disposeJournals } from "./own-journals.js";
 import {
   assignChainEvents,
@@ -227,6 +228,7 @@ export const rebaseSql = (target: RebaseTarget) =>
     const landedCommits = yield* applyOwnBlocks(
       chained.filter((row) => !row.applied),
     );
+    yield* clearOwnLandedTimes(removed);
     yield* deleteRows(removed.map((row) => row.headerHash));
     yield* ImportChecksDB.deleteChecksOfBlocks(
       removed.map((row) => row.headerHash),
