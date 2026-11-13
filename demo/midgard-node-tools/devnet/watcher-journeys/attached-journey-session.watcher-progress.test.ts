@@ -130,6 +130,26 @@ describe("a wait budgeted by the stack watcher's progress", () => {
     await expect(waited).resolves.toBe("healthy decision");
   });
 
+  it("counts the blocks a restarted watcher decides while its new passes stay below the pass it last read", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const waited = healthyWait(stack, (served) => {
+      // The first read meets a watcher that made 50 decision passes.
+      served.l1Source = Array.from({ length: 50 }, (_, pass) =>
+        decidedAt(pass + 1, pass + 100),
+      );
+      // From the second read on, a restarted process numbers its passes from
+      // 1 again, deciding each a new block, and never reaches pass 50.
+      served.statusRead = (reads) => {
+        if (reads > 0)
+          served.l1Source = Array.from({ length: reads }, (_, pass) =>
+            decidedAt(pass + 1, pass + 150),
+          );
+        return liveStatus();
+      };
+    });
+    await expect(waited).resolves.toBe("healthy decision");
+  });
+
   it("fails at its bound while a restarted watcher decides again only blocks it decided before", async () => {
     const stack = await runningStackWatcher(liveStatus());
     const waited = healthyWait(stack, (served) => {
