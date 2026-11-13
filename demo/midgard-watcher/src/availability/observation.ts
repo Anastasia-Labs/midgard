@@ -350,8 +350,14 @@ export const createWatcherAvailabilityObservation = (input: {
     ): Promise<SDK.DaAvailabilityOperationObservation> {
       return await capture(observation, async () => {
         const signed = CML.Transaction.from_cbor_hex(intent.signedCbor);
+        // The ledger admits the transaction no earlier than its validity
+        // start, so a pruned store still proves it absent above that slot.
+        const validFrom = signed.body().validity_interval_start();
         const inclusion = required(
-          await reads.transactionInclusion(intent.txHash),
+          await reads.transactionInclusion(
+            intent.txHash,
+            validFrom === undefined ? undefined : Number(validFrom),
+          ),
         );
         if (inclusion !== null) {
           if (
