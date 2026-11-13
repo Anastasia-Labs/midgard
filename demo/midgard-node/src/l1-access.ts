@@ -25,7 +25,7 @@ import {
   type SlotClock,
 } from "@al-ft/midgard-l1-follower/heads";
 import * as LE from "@lucid-evolution/lucid";
-import { Data, Effect } from "effect";
+import { Data, Effect, Metric } from "effect";
 
 /** No tip has been observed yet, so no L1 decision may be taken: retry. */
 export class L1SlotUnknownError extends Data.TaggedError("L1SlotUnknownError")<{
@@ -44,6 +44,21 @@ export type ToolL1AccessKind = (typeof TOOL_L1_ACCESS_KINDS)[number];
 
 /** A tip read is reused for this long before `slotNow` reads again. */
 export const L1_TIP_REFRESH_MS = 1_000;
+
+/**
+ * `slotNow` minus the latest observed tip slot, set on every `slotNow` (so
+ * it holds its last value while nothing asks for `slotNow`). It normally
+ * stays within one gap between blocks; a lead that keeps growing means the
+ * tip has stopped advancing. After a rollback it also includes the rollback
+ * depth, because `slotNow` never moves back.
+ */
+export const l1SlotNowLeadGauge = Metric.gauge(
+  "midgard_l1_slot_now_lead_slots",
+  {
+    description:
+      "Slots the L1 slotNow estimate stands ahead of the latest observed L1 tip slot",
+  },
+);
 
 /** What one adapter supplies. */
 export type L1AccessAdapter = Readonly<{
@@ -138,10 +153,11 @@ export const openL1Access = <A extends L1AccessAdapter>(
     });
     return clock;
   });
-  // max(tip slot, last tip slot + elapsed / slotLength) on a monotonic clock
-  // (plan §3.6). The tip is read again when the last read is older than
-  // `L1_TIP_REFRESH_MS`; a failed read keeps the estimate from the last good
-  // one. Unknown only while no tip has ever been read.
+  // The newest tip slot + the slots elapsed since it arrived, on a monotonic
+  // clock and never decreasing (`createSlotClock`, plan §3.6). The tip is read
+  // again when the last read is older than `L1_TIP_REFRESH_MS`; a failed read
+  // keeps the estimate from the last good one. Unknown only while no tip has
+  // ever been read.
   const slotNow = (): Effect.Effect<number, L1SlotUnknownError> =>
     Effect.gen(function* () {
       const slotClock = yield* ensureClock;
@@ -164,6 +180,10 @@ export const openL1Access = <A extends L1AccessAdapter>(
             cause: readFailure,
           }),
         );
+      yield* Metric.set(
+        l1SlotNowLeadGauge,
+        slot - (slotClock.tipSlot() ?? slot),
+      );
       return slot;
     });
   const access: L1Access<A> = {

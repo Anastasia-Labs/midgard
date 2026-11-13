@@ -7,10 +7,10 @@ import {
   type Provider,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect, Either } from "effect";
+import { Effect, Either, Metric } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { openL1Access } from "../src/l1-access.js";
+import { l1SlotNowLeadGauge, openL1Access } from "../src/l1-access.js";
 import {
   L1_TIP_REFRESH_MS,
   l1NowUnixTimeMs,
@@ -61,10 +61,15 @@ describe("l1SlotNow", () => {
     tip = null;
     monotonicMs += 7_500;
     expect(await Effect.runPromise(l1SlotNow(api))).toBe(1_007);
+    // The exported lead of "now" over the tip shows the stalled source.
+    const lead = async (): Promise<number> =>
+      (await Effect.runPromise(Metric.value(l1SlotNowLeadGauge))).value;
+    expect(await lead()).toBe(7);
     // A tip behind the estimate (a rollback) never moves it back.
     tip = 990;
     monotonicMs += L1_TIP_REFRESH_MS;
     expect(await Effect.runPromise(l1SlotNow(api))).toBe(1_008);
+    expect(await lead()).toBe(18);
   });
 
   it("reads the tip at most once per refresh window, and counts observed reads", async () => {

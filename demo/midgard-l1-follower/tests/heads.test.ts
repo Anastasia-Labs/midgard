@@ -147,6 +147,107 @@ describe("slotNow", () => {
     expect(clock.slotNow()).toBe(135);
   });
 
+  it("stays within one block gap's drift of the chain over 12 hours on a monotonic clock 2.5% fast", () => {
+    // The chain's slots follow real time; a block lands every 20 s and the
+    // node reads the tip once a second. The host's monotonic clock runs 2.5%
+    // fast against real time, as measured on a live host.
+    const slotLengthMs = 1_000;
+    const blockGapMs = 20_000;
+    const rate = 1.025;
+    let realMs = 1_000_000;
+    const clock = createSlotClock({
+      slotLengthMs,
+      monotonicNowMs: () => realMs * rate,
+    });
+    const realSlot = (): number => Math.floor(realMs / slotLengthMs);
+    const chainTip = (): number =>
+      Math.floor(realMs / blockGapMs) * (blockGapMs / slotLengthMs);
+    // Across one gap the fast clock gains 2.5% of 20 s = 0.5 s: at most one
+    // slot after flooring.
+    const oneGapDriftSlots = Math.ceil(
+      ((rate - 1) * blockGapMs) / slotLengthMs,
+    );
+    let maxLead = Number.NEGATIVE_INFINITY;
+    let maxLag = Number.NEGATIVE_INFINITY;
+    let previous: number | null = null;
+    let decreases = 0;
+    for (let tick = 0; tick < 12 * 3_600; tick += 1) {
+      realMs += 1_000;
+      clock.observeTipSlot(chainTip());
+      // Read "now" a few times between tip reads, as the node's fibers do.
+      for (let sample = 0; sample < 4; sample += 1) {
+        const slot = clock.slotNow();
+        if (slot === null) throw new Error("a tip has been observed");
+        if (previous !== null && slot < previous) decreases += 1;
+        previous = slot;
+        maxLead = Math.max(maxLead, slot - realSlot());
+        maxLag = Math.max(maxLag, realSlot() - slot);
+        realMs += 250;
+      }
+      realMs -= 1_000;
+    }
+    expect(decreases).toBe(0);
+    expect(maxLead).toBeLessThanOrEqual(oneGapDriftSlots);
+    // Behind by at most the time a new block waits for the next tip read.
+    expect(maxLag).toBeLessThanOrEqual(1_000 / slotLengthMs + 1);
+  });
+
+  it("never moves back when a newer tip re-anchors it below an earlier extrapolation", () => {
+    let nowMs = 0;
+    const clock = createSlotClock({
+      slotLengthMs: 1_000,
+      monotonicNowMs: () => nowMs,
+    });
+    clock.observeTipSlot(100);
+    nowMs = 20_000;
+    expect(clock.slotNow()).toBe(120);
+    // The next block arrives with a slot below the extrapolation (the clock
+    // ran fast): "now" holds until the new anchor catches up, then counts
+    // from the new tip.
+    clock.observeTipSlot(115);
+    expect(clock.slotNow()).toBe(120);
+    nowMs += 3_000;
+    expect(clock.slotNow()).toBe(120);
+    nowMs += 3_000;
+    expect(clock.slotNow()).toBe(121);
+  });
+
+  it("does not re-anchor on the same tip read again every second", () => {
+    let nowMs = 0;
+    const clock = createSlotClock({
+      slotLengthMs: 1_000,
+      monotonicNowMs: () => nowMs,
+    });
+    clock.observeTipSlot(100);
+    for (let second = 1; second <= 10; second += 1) {
+      nowMs = second * 1_000;
+      clock.observeTipSlot(100);
+      expect(clock.slotNow()).toBe(100 + second);
+    }
+  });
+
+  it("keeps the newest tip's anchor through a rollback and a stale source re-reading it", () => {
+    let nowMs = 0;
+    const clock = createSlotClock({
+      slotLengthMs: 1_000,
+      monotonicNowMs: () => nowMs,
+    });
+    nowMs = 10_000;
+    clock.observeTipSlot(130);
+    nowMs = 12_000;
+    clock.observeTipSlot(90);
+    expect(clock.tipSlot()).toBe(90);
+    expect(clock.slotNow()).toBe(132);
+    nowMs = 14_000;
+    clock.observeTipSlot(130);
+    nowMs = 16_000;
+    expect(clock.slotNow()).toBe(136);
+    // A new branch's block below the newest tip does not re-anchor either.
+    clock.observeTipSlot(128);
+    nowMs = 18_000;
+    expect(clock.slotNow()).toBe(138);
+  });
+
   it("does not move when the wall clock is 10 minutes fast", () => {
     const clock = createSlotClock({ slotLengthMs: 1_000 });
     clock.observeTipSlot(5_000);

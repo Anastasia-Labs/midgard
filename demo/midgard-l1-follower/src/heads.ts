@@ -13,10 +13,11 @@
  *   (the node never rolls back more; the fact store raises
  *   `rollback_beyond_k` only beyond k), and a rollback of k blocks removes
  *   depths 1..k. Only depth k + 1 and deeper survives every legal rollback.
- * - `slotNow` = max(tip slot, last tip slot + elapsed / slotLength), with the
- *   elapsed time taken from a monotonic clock. It is the only "now" allowed
- *   for an L1 validity decision: a wall clock that runs fast or jumps cannot
- *   move it.
+ * - `slotNow` = the newest tip slot + the slots elapsed since that tip
+ *   arrived, timed on a monotonic clock, held so it never decreases. It is
+ *   the only "now" allowed for an L1 validity decision: a wall clock that runs
+ *   fast or jumps cannot move it, and a monotonic clock that runs fast only
+ *   extrapolates across one gap between blocks.
  *
  * Other modules never compare a depth against `confirmationDepth` or
  * `automaticRecoveryMaxDepth` themselves; the lint
@@ -151,8 +152,14 @@ export type SlotClock = Readonly<{
   /** The latest observed tip slot, or null before the first observation. */
   tipSlot(): number | null;
   /**
-   * max(tip slot, last tip slot + elapsed / slotLength), never decreasing.
-   * Null until a tip has been observed: no L1 decision may then be taken.
+   * The newest tip slot plus the whole slots elapsed on the monotonic clock
+   * since that tip arrived, and never less than a value returned before.
+   * Each tip with a slot above every earlier one re-anchors the estimate at
+   * its arrival, so a monotonic clock that runs fast or slow against the
+   * chain errs only across one gap between blocks, not across the uptime.
+   * A tip at or below the newest one (a re-read, a rollback, a stale source)
+   * neither re-anchors it nor moves it back. Null until a tip has been
+   * observed: no L1 decision may then be taken.
    */
   slotNow(): number | null;
 }>;
@@ -169,26 +176,29 @@ export const createSlotClock = (options: SlotClockOptions): SlotClock => {
   const slotLengthMs = options.slotLengthMs;
   const now = options.monotonicNowMs ?? monotonicNow;
   let tip: number | null = null;
-  // The slot estimate is anchored at one observation and advances with the
-  // monotonic clock from there.
+  // The newest tip (the highest slot observed) and when it arrived. The
+  // monotonic clock extrapolates only from here, so its rate error counts
+  // across one gap between blocks.
   let anchor: { slot: number; atMs: number } | null = null;
-  const estimate = (atMs: number): number | null =>
-    anchor === null
-      ? null
-      : anchor.slot +
-        Math.max(0, Math.floor((atMs - anchor.atMs) / slotLengthMs));
+  // The highest value `slotNow` has returned: a re-anchor below an earlier
+  // extrapolation never moves "now" back.
+  let highWater: number | null = null;
   return {
     observeTipSlot(slot) {
       assertCount("tip slot", slot, 0);
       tip = slot;
-      const atMs = now();
-      const current = estimate(atMs);
-      // A tip behind the estimate (a rollback, or a stale source) never pulls
-      // "now" back; a tip ahead of it re-anchors.
-      if (current === null || slot > current) anchor = { slot, atMs };
+      if (anchor === null || slot > anchor.slot) anchor = { slot, atMs: now() };
     },
     tipSlot: () => tip,
-    slotNow: () => estimate(now()),
+    slotNow() {
+      if (anchor === null) return null;
+      const elapsedSlots = Math.max(
+        0,
+        Math.floor((now() - anchor.atMs) / slotLengthMs),
+      );
+      highWater = Math.max(highWater ?? 0, anchor.slot + elapsedSlots);
+      return highWater;
+    },
   };
 };
 

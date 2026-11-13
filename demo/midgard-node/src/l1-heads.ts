@@ -2,9 +2,11 @@
  * The node's heads (plan §9): its L1 "now" and the block below its tip.
  *
  * `l1SlotNow(api)` is the only "now" for an L1 validity decision in the node
- * (plan §3.6): max(tip slot, last tip slot + elapsed / slotLength), from
- * `@al-ft/midgard-l1-follower/heads`, with the elapsed time read from a
- * monotonic clock. A wall clock that runs fast or jumps cannot move it. The
+ * (plan §3.6): the newest tip slot plus the slots elapsed since that tip
+ * arrived, never decreasing, from `@al-ft/midgard-l1-follower/heads`, with
+ * the elapsed time read from a monotonic clock. A wall clock that runs fast
+ * or jumps cannot move it, and a monotonic clock that runs fast only
+ * extrapolates across one gap between blocks. The
  * wall clock may still pick `valid_to` for a new tx, never declare anything
  * due, expired or mature.
  *

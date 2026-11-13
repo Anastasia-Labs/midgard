@@ -443,12 +443,15 @@ always reported with that tx's level). Final is strictly deeper than k: a
 rollback of k blocks is legal (`rewind` refuses only deeper ones) and
 removes depths 1..k.
 
-`slotNow()` is max(tip slot, last tip slot + elapsed / slotLength), with
-elapsed time from `performance.now()`. A wall clock that runs fast or jumps
-does not move it, and a tip behind the estimate (a rollback, a stale source)
-never moves it back. It is null until the first tip observation; a caller
-then takes no L1 decision and retries. It is the only "now" for an L1
-validity decision.
+`slotNow()` is the newest tip slot plus the slots elapsed since that tip
+arrived, with elapsed time from `performance.now()`, and it never decreases.
+Every tip with a slot above every earlier one re-anchors it at its arrival,
+so a monotonic clock that runs fast or slow against the chain errs only
+across one gap between blocks, not across the process's uptime. A wall clock
+that runs fast or jumps does not move it, and a tip at or below the newest
+one (a re-read, a rollback, a stale source) neither re-anchors it nor moves
+it back. It is null until the first tip observation; a caller then takes no
+L1 decision and retries. It is the only "now" for an L1 validity decision.
 
 No module outside `src/heads.ts` compares a value against
 `confirmationDepth` or `automaticRecoveryMaxDepth`; the ESLint rule
