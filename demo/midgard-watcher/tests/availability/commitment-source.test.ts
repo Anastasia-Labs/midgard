@@ -220,6 +220,54 @@ describe("watcher Attested commitment recovery (spec #685 E1)", () => {
     });
   });
 
+  // One producer made both the DAAT output Apply spends and a plain input
+  // Apply spends after it: it must still be read for the DAAT output.
+  it("recovers when the DAAT input's producer also made a plain Apply input", async () => {
+    const init = rawTransaction(
+      [["ab".repeat(32), 0n]],
+      [daatOutput(), plain()],
+      1n,
+    );
+    const append = rawTransaction([["cd".repeat(32), 0n]], [plain()]);
+    const resolved = (outRef: string, output: CML.TransactionOutput) => ({
+      outRef,
+      outputCbor: output.to_cbor_hex(),
+      datumCbor: null,
+      referenceScriptCbor: null,
+    });
+    const apply = {
+      ...rawTransaction(
+        [
+          [append.txHash, 0n],
+          [init.txHash, 0n],
+          [init.txHash, 1n],
+        ],
+        [plain()],
+        -1n,
+      ),
+      resolvedInputs: [
+        resolved(`${append.txHash}#0`, plain()),
+        resolved(`${init.txHash}#0`, daatOutput()),
+        resolved(`${init.txHash}#1`, plain()),
+      ],
+    };
+    const recovered = await recover(
+      {
+        init,
+        readHistory: vi.fn(async () => [append, apply]),
+        readTransaction: vi.fn(async (txHash: string) =>
+          txHash === init.txHash ? init : undefined,
+        ),
+      },
+      commitmentHash,
+    );
+    expect(recovered.commitmentHash).toBe(commitmentHash);
+    expect(recovered.attestationOutRef).toEqual({
+      txHash: init.txHash,
+      outputIndex: 0,
+    });
+  });
+
   it("refuses a commitment that does not hash to the node's commitment_hash", async () => {
     await expect(refusal(recover(scenario(), "99".repeat(32)))).resolves.toBe(
       "commitment-hash-mismatch",
