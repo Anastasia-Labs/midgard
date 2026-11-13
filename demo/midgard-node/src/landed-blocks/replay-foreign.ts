@@ -36,7 +36,7 @@ import {
   attributeWithdrawalClassificationFault,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
-import type { FactStore, OutRef, View } from "@al-ft/midgard-l1-follower";
+import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -47,16 +47,13 @@ import {
   type ForeignDaBinding,
   foreignDaFetchMemo,
 } from "../da/foreign-retained-da.js";
+import type { ReadEvent } from "../database/follower-events.js";
 import {
   DaPayloadsDB,
   ForcedTransactionsDB,
   WithdrawalsDB,
 } from "../database/index.js";
-import {
-  type ForcedOrderConfig,
-  forcedOrdersAdmittedAt,
-  outRefLabel,
-} from "../forced-orders/index.js";
+import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import { readUserEvent } from "../l1-events/entries.js";
 import {
   canonicalSlotConfigForLucid,
@@ -84,6 +81,7 @@ import {
   unknownAt,
   userAbsentWhere,
 } from "./replay-foreign.complete.js";
+import { forcedEntries, forcedInWindow } from "./replay-foreign.forced.js";
 import {
   payloadOf,
   type Refetching,
@@ -97,47 +95,6 @@ import {
 } from "./replay-foreign.verdict.js";
 import type { WithdrawalMembership } from "./store.js";
 
-/**
- * The forced orders admitted in the block's window at the view: order id
- * hex to raw datum, from the facts, and the in-window unreadable ones, id
- * hex to why. An in-window order whose output cannot be read back there is
- * a wait.
- */
-const forcedInWindow = (
-  store: FactStore,
-  config: ForcedOrderConfig,
-  view: View,
-  inWindow: (time: bigint) => boolean,
-) =>
-  Effect.gen(function* () {
-    const read = yield* Effect.promise(() =>
-      forcedOrdersAdmittedAt(store, config, view.point),
-    );
-    if (read.kind !== "ok")
-      return yield* Effect.fail(
-        missing(`the forced orders are unreadable: ${read.kind}`),
-      );
-    const forced = new Map<string, Buffer>();
-    const seen = new Set<string>();
-    const unreadable = new Map<string, string>();
-    for (const admitted of read.orders) {
-      const order = admitted.read;
-      if (order !== null) seen.add(order.idCbor.toString("hex"));
-      if (!inWindow(admitted.inclusionTime)) continue;
-      if (order === null)
-        return yield* Effect.fail(
-          new Verdict(
-            "forced_order_pending",
-            `forced order ${outRefLabel(admitted.outRef)} is admitted in the window but its output cannot be read at the view`,
-          ),
-        );
-      if (order.kind === "unreadable")
-        unreadable.set(order.idCbor.toString("hex"), order.detail);
-      else forced.set(order.idCbor.toString("hex"), order.datum);
-    }
-    return { forced, seen, unreadable };
-  });
-
 const depositLedgerKey = (idCbor: string) => {
   const outRef = LucidData.from(idCbor, SDK.OutputReference);
   return outRefToCbor({
@@ -146,7 +103,10 @@ const depositLedgerKey = (idCbor: string) => {
   });
 };
 
-/** The user-event and forced-source checks of the replay. */
+/**
+ * The user-event and forced-source checks of the replay, and the field
+ * preimages of each forced order whose source check passed, by id hex.
+ */
 export const foreignReplayMaterial = (
   deposits: ReadonlyMap<string, { key: string; output: Buffer; info: string }>,
   withdrawals: ReadonlyMap<
@@ -157,6 +117,7 @@ export const foreignReplayMaterial = (
   memberships: WithdrawalMembership[],
   absent: Absent = unknownAt,
 ) => {
+  const preimages = new Map<string, readonly Uint8Array[]>();
   const replayUserEvent: ImportedBlockReplayContext["replayUserEvent"] = ({
     step,
     source,
@@ -217,7 +178,7 @@ export const foreignReplayMaterial = (
           );
         // Every step reads only the order's L1 bytes and the payload's
         // bytes, so a throw is the block's fault, never a local one.
-        yield* Effect.try({
+        const fieldPreimages = yield* Effect.try({
           try: () => {
             const payload = SDK.decodeTxOrderDatumCbor(datum).event.tx;
             const derived = deriveMidgardForcedTxFaultEvidenceMaterial(
@@ -248,6 +209,7 @@ export const foreignReplayMaterial = (
             });
             if (!reconstructed.equals(canonicalTransactionCbor))
               throw new Error("it differs from the order's commitments");
+            return derived.fieldPreimages;
           },
           catch: (cause) =>
             invalid(
@@ -267,8 +229,9 @@ export const foreignReplayMaterial = (
           return yield* Effect.fail(
             invalid("a forced transaction's verdict differs from its replay"),
           );
+        preimages.set(source[0], fieldPreimages);
       });
-  return { replayUserEvent, verifyForcedSource };
+  return { replayUserEvent, verifyForcedSource, preimages };
 };
 
 /** What the replayer holds of the payload it is replaying. */
@@ -329,6 +292,8 @@ export const foreignBlockReplayer = (deps: {
       >();
       const seen = new Set<string>();
       const undecodable = new Map<string, string>();
+      // The in-window decoded events: by `exact`, the ones the block names.
+      const events: ReadEvent[] = [];
       for (const list of deps.events.lists) {
         const read = yield* Effect.promise(() =>
           eventsAt(deps.store, list, view.point),
@@ -346,6 +311,7 @@ export const foreignBlockReplayer = (deps: {
             continue;
           }
           const decoded = reading.entry;
+          events.push({ event, entry: decoded });
           if (decoded.kind === "deposit")
             deposits.set(decoded.entry.idCbor, {
               key: depositLedgerKey(decoded.entry.idCbor).toString("hex"),
@@ -363,6 +329,7 @@ export const foreignBlockReplayer = (deps: {
       }
       const {
         forced,
+        orders,
         seen: seenForced,
         unreadable,
       } = yield* forcedInWindow(deps.store, deps.forcedOrders, view, inWindow);
@@ -418,14 +385,15 @@ export const foreignBlockReplayer = (deps: {
         );
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];
+      const { preimages, ...material } = foreignReplayMaterial(
+        deposits,
+        withdrawals,
+        forced,
+        memberships,
+        absent,
+      );
       const imported = yield* verifyAndImportBlock({
-        ...foreignReplayMaterial(
-          deposits,
-          withdrawals,
-          forced,
-          memberships,
-          absent,
-        ),
+        ...material,
         header,
         headerHash,
         parentHeaderHash: input.parentHeaderHash,
@@ -445,6 +413,11 @@ export const foreignBlockReplayer = (deps: {
         ),
         l1SlotConfig: canonicalSlotConfigForLucid(lucid.api),
       });
+      const forcedRows = yield* forcedEntries(
+        body.forced_transactions.map(([key]) => key),
+        orders,
+        preimages,
+      );
       // Only a block that replayed keeps the payload it fetched, and only a
       // bound copy is retained; an unbound one waits for its commitment.
       if (acquired !== undefined && bound)
@@ -462,6 +435,7 @@ export const foreignBlockReplayer = (deps: {
         ),
         txIds: body.transactions.map(([key]) => Buffer.from(key, "hex")),
         scriptChecks: imported.scriptChecks,
+        named: { events, forced: forcedRows },
       } satisfies ReplayOutcome;
     }).pipe(
       Effect.catchAll((error) => {

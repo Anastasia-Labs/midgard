@@ -304,6 +304,7 @@ export const simPorts = (
           : [],
         withdrawals: [],
         forcedIds: [],
+        named: { events: [], forced: [] },
         txIds,
         scriptChecks: {
           context: {

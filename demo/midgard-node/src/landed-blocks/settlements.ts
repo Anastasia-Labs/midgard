@@ -4,10 +4,16 @@
  * transaction (the processing insert, a reland, and the rebase that applies
  * the row), and a rollback that takes the block off the landed chain clears
  * them (`mempoolInclusions.ts`). A block's import checks leave with its
- * row (`importChecks.ts`).
+ * row (`importChecks.ts`). A foreign block's named events get the node's
+ * rows as it is processed (`recordNamedEvents`); they are ingestion's rows,
+ * so nothing here removes them.
  */
 import { Effect } from "effect";
 
+import {
+  type NamedEvents,
+  recordNamedEvents,
+} from "../database/follower-events.js";
 import * as ImportChecksDB from "../database/importChecks.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import type { ImportChecks } from "../import-check/deadline.js";
@@ -28,11 +34,17 @@ export const markRows = (
     { discard: true },
   );
 
-/** Processes a landed block: inserts its row, marks the pending-table rows
- * it includes, and records the import checks it leaves. */
-export const processRow = (row: LandedBlockRow, checks?: ImportChecks) =>
+/** Processes a landed block: inserts its row, writes the rows of the
+ * events it names that the node lacks (`named`, from its replay), marks the
+ * pending-table rows it includes, and records the import checks it leaves. */
+export const processRow = (
+  row: LandedBlockRow,
+  checks?: ImportChecks,
+  named?: NamedEvents,
+) =>
   Effect.gen(function* () {
     yield* insertRow(row);
+    if (named !== undefined) yield* recordNamedEvents(named);
     yield* markRows([row]);
     if (checks !== undefined)
       yield* ImportChecksDB.recordChecks(

@@ -11,6 +11,7 @@
 import type { View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import type { NamedEvents } from "../database/follower-events.js";
 import type * as Ledger from "../database/utils/ledger.js";
 import type { ImportBlockChecks } from "../mpf/verified-block-import.js";
 import type { WithdrawalMembership } from "./store.js";
@@ -50,6 +51,9 @@ export type Replayed = Readonly<{
   /** The transactions the replay applied by their committed verdicts, for
    * the import checker. */
   scriptChecks: ImportBlockChecks;
+  /** The events the block names, as the follower facts the replay checked
+   * them against, for the node's rows (`recordNamedEvents`). */
+  named: NamedEvents;
 }>;
 
 /**

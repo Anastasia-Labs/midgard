@@ -210,6 +210,7 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
         depositIds: [],
         withdrawals: [],
         forcedIds: [],
+        named: { events: [], forced: [] },
         txIds: [],
         scriptChecks: {
           context: {

@@ -49,6 +49,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import type { NamedEvents } from "../database/follower-events.js";
 import { type ImportChecks, importChecks } from "../import-check/deadline.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
@@ -156,7 +157,12 @@ const linkageFault = (node: LandedNode, parent: Parent): string | undefined =>
         : undefined;
 
 type Step =
-  | Readonly<{ kind: "row"; row: LandedBlockRow; due?: ImportChecks }>
+  | Readonly<{
+      kind: "row";
+      row: LandedBlockRow;
+      due?: ImportChecks;
+      named?: NamedEvents;
+    }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
 /** The row a new node makes, or the hold that stops processing at it. */
@@ -282,6 +288,7 @@ const newRow = <R>(
         txIds: replayed.txIds,
       },
       due: importChecks(node.header.endTime, replayed.scriptChecks),
+      named: replayed.named,
     } satisfies Step;
   });
 
@@ -405,7 +412,11 @@ const run = <R>(
           holds.push(step.hold);
           break;
         }
-        yield* viewChecked(ports, queue.view, processRow(step.row, step.due));
+        yield* viewChecked(
+          ports,
+          queue.view,
+          processRow(step.row, step.due, step.named),
+        );
         options.committed?.(step.row.headerHash);
         applyDelta(ledger, step.row);
         parent = {
