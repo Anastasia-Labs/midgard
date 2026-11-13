@@ -9,6 +9,7 @@
 import type { DepthParameters, FactStore } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";
 
+import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import type { DriverHook } from "../l1-events/driver.js";
 import {
   readLandedStateQueueFrom,
@@ -34,6 +35,9 @@ export const landedBlockHook =
     /** Called with each block's header hash once processing committed its
      * row (`ProcessOptions.committed`). */
     readonly committed?: (headerHash: string) => void;
+    /** Where processing names a forced row's admission divergence
+     * (`ProcessOptions.divergences`). */
+    readonly divergences?: ForcedAdmissionDivergences;
     /** Publishes where `confirmed_ledger` stands after each run. */
     readonly publish?: Readonly<{
       depth: DepthParameters;
@@ -57,6 +61,9 @@ export const landedBlockHook =
         ...(options.committed === undefined
           ? {}
           : { committed: options.committed }),
+        ...(options.divergences === undefined
+          ? {}
+          : { divergences: options.divergences }),
       }),
     );
     if (options.ports.bindRetained !== undefined)

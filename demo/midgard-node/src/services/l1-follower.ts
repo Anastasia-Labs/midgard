@@ -275,6 +275,7 @@ const followL1 = <R>(
             config: plan.stateQueue,
             ports: landedPorts,
             committed: progress.committed,
+            divergences: admissionDivergences,
             run: (effect) =>
               Runtime.runPromise(dbRuntime)(
                 withDriverView(change.view)(effect),

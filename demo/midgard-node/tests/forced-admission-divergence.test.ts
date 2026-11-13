@@ -7,13 +7,15 @@
  * distinct orders observed. The order is still ingested and classified to a
  * verdict leaf, and the node stays ready. An order the screen admits raises
  * nothing. A transaction the screen cannot read is a divergence too, never
- * an ingestion failure.
+ * an ingestion failure. A row the processing of a landed block writes first
+ * is screened as it is written, and the intake then raises nothing again.
  */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect, HashMap, Logger, Metric } from "effect";
+import { Effect, Exit, HashMap, Logger, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
@@ -23,12 +25,17 @@ import {
   forcedAdmissionRefusal,
   SCREEN_FAILED,
 } from "../src/forced-orders/admission-divergence.js";
+import { authenticOrder } from "../src/forced-orders/derive.js";
 import {
+  decodeFieldPreimages,
   FORCED_ADMISSION_DIVERGENCES_REPORTED,
   forcedAdmissionDivergences,
+  forcedOrderEntry,
   forcedOrderIngestionHook,
+  forcedOrdersAt,
   type RunDatabase,
 } from "../src/forced-orders/index.js";
+import { processRow } from "../src/landed-blocks/settlements.js";
 import { classifyForcedTransactions } from "../src/mpf/index.js";
 import { l1FollowerReadiness } from "../src/services/l1-follower.readiness.js";
 import {
@@ -46,6 +53,7 @@ import {
   runDatabase,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
+import { landedRow } from "./landed-blocks-rebase.fixture.js";
 import { runningFollower } from "./readiness-l1-follower.fixture.js";
 
 const follow = nodeFollowerLifecycle();
@@ -94,7 +102,22 @@ const intake = (
       ...runningFollower(),
       forcedAdmissionDivergences: () => divergences.details(),
     });
-  return { hook, errors, readiness };
+  return { hook, errors, readiness, run, divergences };
+};
+
+/** The row the intake builds for the view's one forced order. */
+const orderEntry = async (store: FactStore) => {
+  const view = (await store.currentView())!;
+  const read = await forcedOrdersAt(store, view.point);
+  if (read.kind !== "ok") throw new Error(`forcedOrdersAt: ${read.kind}`);
+  const [row] = read.orders;
+  return Effect.runPromise(
+    forcedOrderEntry({
+      order: authenticOrder(row!.utxo, FORCED_CONFIG.policyId)!,
+      fieldPreimages: decodeFieldPreimages(row!.fieldPreimages!),
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    }),
+  );
 };
 
 /** The verdict reason classification gives the node's one forced row. */
@@ -156,6 +179,45 @@ describe("the forced-order intake's admission screen", () => {
     expect(await classifiedReason()).toBe("EmptyInputs");
 
     // A later run raises nothing again for the same order.
+    expect(await hook(UNCHANGED)).toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(await divergenceCount("has_a_spend_input(body)")).toBe(counted + 1n);
+    expect(readiness().details).toEqual([detail]);
+  });
+
+  it("names an order whose row a landed block's processing wrote first, and the intake raises nothing again", async () => {
+    const { store, chain } = await follow();
+    await chain.forward([inlineOrder(chain.chain, honest())]);
+    const entry = await orderEntry(store);
+    const orderId = entry[ForcedTransactionsDB.Columns.TX_ORDER_ID];
+    const { hook, errors, readiness, run, divergences } = intake(store);
+    const counted = await divergenceCount("has_a_spend_input(body)");
+    // A foreign block including the order is processed before the intake
+    // ingests it (its carriage pending here, or the node restarted).
+    const processed = await run(
+      processRow(
+        landedRow({ forcedIds: [orderId] }),
+        undefined,
+        { events: [], forced: [entry] },
+        divergences,
+      ),
+    );
+    expect(Exit.isSuccess(processed)).toBe(true);
+    expect(await rows()).toHaveLength(1);
+    const detail = `forced_admission_divergence:${orderId.toString("hex")}:has_a_spend_input(body)`;
+    expect(readiness()).toMatchObject({ reasons: [], details: [detail] });
+    expect(await divergenceCount("has_a_spend_input(body)")).toBe(counted + 1n);
+    expect(errors).toEqual([
+      {
+        annotations: expect.objectContaining({
+          event: "ForcedAdmissionDivergence",
+          orderId: orderId.toString("hex"),
+          refusalCode: "has_a_spend_input(body)",
+        }),
+      },
+    ]);
+
+    // The intake finds the row written and raises nothing again.
     expect(await hook(UNCHANGED)).toBeUndefined();
     expect(errors).toHaveLength(1);
     expect(await divergenceCount("has_a_spend_input(body)")).toBe(counted + 1n);

@@ -11,7 +11,7 @@
 import type { View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk";
 
-import type { NamedEvents } from "../database/follower-events.js";
+import type { NamedEvents } from "../database/follower-events.named.js";
 import type * as Ledger from "../database/utils/ledger.js";
 import type { ImportBlockChecks } from "../mpf/verified-block-import.js";
 import type { WithdrawalMembership } from "./store.js";

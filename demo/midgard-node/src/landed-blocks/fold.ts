@@ -22,6 +22,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { ConfirmedLedgerDB } from "../database/index.js";
+import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
@@ -264,6 +265,11 @@ export type ProcessOptions = Readonly<{
   prunedThroughSlot?: number;
   /** Called with each block's header hash once its row is committed. */
   committed?: (headerHash: string) => void;
+  /**
+   * Where processing names the admission divergence of a forced row it
+   * writes (`screenForcedAdmissions`): the forced-order hook's register.
+   */
+  divergences?: ForcedAdmissionDivergences;
 }>;
 
 /**

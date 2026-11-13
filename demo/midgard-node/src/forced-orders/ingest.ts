@@ -50,7 +50,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Cause, Effect, Exit, Metric } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
 import {
@@ -70,11 +70,8 @@ import { unrecordedNamedEvents } from "../landed-blocks/store.js";
 import type { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import {
-  FORCED_ADMISSION_DIVERGENCE_EVENT,
-  forcedAdmissionDivergenceCounter,
   type ForcedAdmissionDivergences,
   forcedAdmissionDivergences,
-  forcedAdmissionRefusal,
 } from "./admission-divergence.js";
 import {
   carriageFieldPreimages,
@@ -84,7 +81,7 @@ import {
 } from "./carriage.js";
 import type { ForcedOrderConfig } from "./config.js";
 import { authenticOrder, outRefLabel } from "./derive.js";
-import { forcedOrderEntry } from "./entry.js";
+import { forcedOrderEntry, screenForcedAdmissions } from "./entry.js";
 import {
   L1_OWN_BLOCK_FORCED_ORDER_ORPHANED,
   type OwnLandedForcedOrphan,
@@ -141,11 +138,6 @@ const DETAIL_LIMIT = 1_000;
 
 const failureText = <E>(exit: Exit.Exit<unknown, E>): string =>
   Exit.isFailure(exit) ? Cause.pretty(exit.cause) : "";
-
-const ingestionFailed = <E>(exit: Exit.Exit<unknown, E>): DriverHold => ({
-  reason: FORCED_ORDER_INGESTION_FAILED,
-  detail: failureText(exit),
-});
 
 /** The id (hex) of the order a row's output authenticates as, if it does. */
 const orderIdOf = (row: ForcedOrderRow, policyId: string): string | null => {
@@ -358,46 +350,6 @@ export const forcedOrderIngestionHook = (
   const warned = new Set<string>();
   const divergences = options.divergences ?? forcedAdmissionDivergences();
   /**
-   * Screens each ingested order with the off-chain twin of the tx-order
-   * mint's admission check. A refusal is an alarm only: the row is already
-   * written and is classified as any other, and the node stays ready.
-   */
-  const screenIngested = async (
-    entries: readonly ForcedTransactionsDB.Entry[],
-  ) => {
-    const C = ForcedTransactionsDB.Columns;
-    for (const entry of entries) {
-      const refusal = forcedAdmissionRefusal(entry[C.NATIVE_TX_CBOR]);
-      if (refusal === null) continue;
-      const orderId = entry[C.TX_ORDER_ID].toString("hex");
-      if (!divergences.record(orderId, refusal.refusalCode)) continue;
-      await options.run(
-        Effect.logError(FORCED_ADMISSION_DIVERGENCE_EVENT).pipe(
-          Effect.zipRight(
-            Metric.increment(
-              Metric.tagged(
-                forcedAdmissionDivergenceCounter,
-                "refusal_code",
-                refusal.refusalCode,
-              ),
-            ),
-          ),
-          Effect.annotateLogs({
-            event: FORCED_ADMISSION_DIVERGENCE_EVENT,
-            orderId,
-            orderOutRef: outRefLabel({
-              txHash: entry[C.TX_ORDER_L1_TX_HASH],
-              index: entry[C.TX_ORDER_L1_OUTPUT_INDEX],
-            }),
-            txId: entry[C.TX_ID].toString("hex"),
-            refusalCode: refusal.refusalCode,
-            refusalDetail: refusal.detail,
-          }),
-        ),
-      );
-    }
-  };
-  /**
    * Warns once per landed own header with a forced order that left the
    * chain. The node follows it; this becomes a hold once a fault proof for
    * a fabricated forced transaction exists (NIFP-04).
@@ -424,8 +376,14 @@ export const forcedOrderIngestionHook = (
   return async () => {
     const view = await options.store.currentView();
     if (view === null) return undefined;
+    // Spent orders are read only while a processed landed block names one
+    // the node has no row for.
     const named = await options.run(unrecordedNamedEvents("forced"));
-    if (Exit.isFailure(named)) return ingestionFailed(named);
+    if (Exit.isFailure(named))
+      return {
+        reason: FORCED_ORDER_INGESTION_FAILED,
+        detail: failureText(named),
+      };
     const read = await forcedOrdersAt(
       options.store,
       view.point,
@@ -441,14 +399,23 @@ export const forcedOrderIngestionHook = (
       read.orders.length === 0
         ? Exit.succeed(new Set<string>())
         : await options.run(ingestedOrders(read.orders));
-    if (Exit.isFailure(done)) return ingestionFailed(done);
+    if (Exit.isFailure(done))
+      return {
+        reason: FORCED_ORDER_INGESTION_FAILED,
+        detail: failureText(done),
+      };
     const entries: ForcedTransactionsDB.Entry[] = [];
     const pending: string[] = [];
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
-      const id = row.spent ? orderIdOf(row, options.config.policyId) : null;
-      if (row.spent && (id === null || !named.value.has(id))) continue;
+      if (row.spent) {
+        // Spent before the node saw it: only a processed landed block that
+        // names it (another operator's, while this node was down) needs its
+        // row.
+        const id = orderIdOf(row, options.config.policyId);
+        if (id === null || !named.value.has(id)) continue;
+      }
       const outcome = await entryOf(options, await preimagesOf(options, row));
       if (outcome.kind === "entry") entries.push(outcome.entry);
       else if (outcome.kind === "pending") pending.push(outcome.detail);
@@ -462,7 +429,7 @@ export const forcedOrderIngestionHook = (
       const { deleted } = written.value;
       orphaned.push(...written.value.orphaned);
       await warnOwnLanded(written.value.ownLanded);
-      await screenIngested(entries);
+      await options.run(screenForcedAdmissions(entries, divergences));
       if (entries.length > 0)
         options.log?.(
           `ingested ${entries.length.toString()} forced order(s) at ${view.point.slot.toString()}`,

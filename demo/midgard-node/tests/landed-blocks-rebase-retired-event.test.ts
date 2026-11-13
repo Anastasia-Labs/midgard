@@ -14,11 +14,13 @@
  * - a block processed before that, its retired event not yet ingested,
  *   converges as ingestion writes the row while a processed block names it;
  * - either write leaves the other's row as it is, and both write the same
- *   bytes.
+ *   bytes;
+ * - an event retired unseen that only a removed block names, or none,
+ *   still gets no row, and a deposit no mempool projection.
  *
  * Each kind runs on a real follower store in the node database, on a
- * simulated chain, with the production replayer where the bench has an
- * honest block for the kind (a deposit, a forced order).
+ * simulated chain, with the production replayer on an honest block naming
+ * it.
  */
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import { type EventKind, eventsAt } from "@al-ft/midgard-l1-follower/events";
@@ -30,7 +32,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type NamedEvents,
   recordNamedEvents,
-} from "../src/database/follower-events.js";
+} from "../src/database/follower-events.named.js";
+import * as MempoolLedgerDB from "../src/database/mempoolLedger.js";
 import { readUserEvent } from "../src/l1-events/entries.js";
 import { rebasePlan } from "../src/landed-blocks/rebase-target.js";
 import { processRow } from "../src/landed-blocks/settlements.js";
@@ -77,6 +80,7 @@ import {
   retainedRow,
 } from "./landed-blocks-replay-foreign.fixture.js";
 import { spendTx } from "./landed-blocks-replay-foreign.window.js";
+import { withdrawalBlock } from "./landed-blocks-replay-foreign.withdrawal.js";
 
 const opened: FactStore[] = [];
 beforeEach(() => {
@@ -170,10 +174,11 @@ const KINDS: Record<
     }),
     retire: async (store, chain, nonce) => {
       await admitAndRetire(chain, "withdrawal", nonce);
-      return {
-        events: [await readAt(store, "withdrawal", idKey(nonce))],
-        forced: [],
-      };
+      const read = await readAt(store, "withdrawal", idKey(nonce));
+      const { block } = await withdrawalBlock(store, nonce);
+      const named = await replayed(store, block);
+      expect(named).toEqual({ events: [read], forced: [] });
+      return named;
     },
   },
   forced: {
@@ -198,16 +203,32 @@ const idOf = (kind: Kind, nonce: OutRef) =>
   idKey(kind === "forced" ? FIXTURE_ORDER_ID : nonce);
 
 /**
- * A restarted node with the frontier ledger the rebase fixture seeds, its
- * foreign block already processed when `processed` (naming the event, its
- * row never written: a block processed before the fix), and a follower
- * store over the chain the event is retired on.
+ * How the seeded foreign block names the event: as a processed block (its
+ * row never written: a block processed before the fix), as a block a
+ * rollback took off the landed chain, or not at all.
  */
-const restarted = async (kind: Kind, processed: boolean) => {
+type Naming = "processed" | "removed" | "none";
+
+const seeded = (kind: Kind, id: string, naming: Naming) =>
+  naming === "none"
+    ? {}
+    : {
+        ...KINDS[kind].names(id),
+        ...(naming === "removed"
+          ? ({ state: "removed", applied: true } as const)
+          : {}),
+      };
+
+/**
+ * A restarted node with the frontier ledger the rebase fixture seeds, its
+ * foreign block naming the event as `naming` says, and a follower store
+ * over the chain the event is retired on.
+ */
+const restarted = async (kind: Kind, naming: Naming) => {
   const nonce = nonceRef();
   const id = idOf(kind, nonce);
   const globals = await processOf(freshNative());
-  await seed(globals, processed ? KINDS[kind].names(id) : {});
+  await seed(globals, seeded(kind, id, naming));
   const { store, chain } = await followChain();
   opened.push(store);
   const named = await KINDS[kind].retire(store, chain, nonce);
@@ -229,8 +250,15 @@ const processBlock = ({ globals, id, named }: Restarted, kind: Kind) =>
     ),
   );
 
-/** Ingestion of the event at the follower's view: the sink's, or the forced-order hook. */
-const ingest = async ({ globals, store }: Restarted, kind: Kind) => {
+/**
+ * Ingestion of the event at the follower's view: the sink's, projecting
+ * the deposits due by `cutoffMs`, or the forced-order hook.
+ */
+const ingest = async (
+  { globals, store }: Restarted,
+  kind: Kind,
+  cutoffMs = 0,
+) => {
   if (kind === "forced") {
     expect(await ingestionHook(store, FORCED_CONFIG).hook(UNCHANGED)).toBe(
       undefined,
@@ -245,7 +273,7 @@ const ingest = async ({ globals, store }: Restarted, kind: Kind) => {
       reconcileOverDead(read.plan, {
         network: NETWORK,
         slotToUnixTime: (slot) => slot * 1_000,
-        cutoffMs: 0,
+        cutoffMs,
       }),
     ),
   );
@@ -279,7 +307,7 @@ const rebased = async ({ globals, store, id }: Restarted, kind: Kind) => {
       (recompute) => recompute.rebaseIfDue("restart after downtime"),
     ),
   );
-  expect(hold?.detail).toBeUndefined();
+  expect(hold).toBeUndefined();
   expect((await run(globals, rebasePlan())).kind).toBe("none");
   expect((await run(globals, retrieveRows)).map((row) => row.applied)).toEqual([
     true,
@@ -295,7 +323,7 @@ describe.each<{ kind: Kind; retired: string }>([
   "a restarted node rebases onto a foreign block whose $retired while it was down",
   ({ kind }) => {
     it("writes the event's row as it processes the block, so the rebase finds it once the prune took the event", async () => {
-      const node = await restarted(kind, false);
+      const node = await restarted(kind, "none");
       await processBlock(node, kind);
       for (let block = 0; block < K + 3; block++) await node.chain.forward([]);
       await node.store.prune();
@@ -305,13 +333,13 @@ describe.each<{ kind: Kind; retired: string }>([
     });
 
     it("converges for a block processed before its row was written, the event still in the follower's view", async () => {
-      const node = await restarted(kind, true);
+      const node = await restarted(kind, "processed");
       await ingest(node, kind);
       await rebased(node, kind);
     });
 
     it("writes the row ingestion writes, and either write leaves the other's row as it is", async () => {
-      const node = await restarted(kind, false);
+      const node = await restarted(kind, "none");
       await processBlock(node, kind);
       const written = await rowsOf(node, kind);
       expect(written).toHaveLength(1);
@@ -331,3 +359,28 @@ describe.each<{ kind: Kind; retired: string }>([
     });
   },
 );
+
+describe.each<{ kind: Kind; retired: string }>([
+  { kind: "deposit", retired: "deposit absorbed" },
+  { kind: "withdrawal", retired: "withdrawal paid out" },
+  { kind: "forced", retired: "forced order spent" },
+])("a $retired before the node saw it", ({ kind }) => {
+  it.each<{ naming: Naming; by: string }>([
+    { naming: "removed", by: "only a removed landed block" },
+    { naming: "none", by: "no landed block" },
+  ])("gets no row when $by names it", async ({ naming }) => {
+    const node = await restarted(kind, naming);
+    // Past every inclusion time: a deposit row would be projected.
+    await ingest(node, kind, Date.UTC(2100, 0));
+    expect(await rowsOf(node, kind)).toEqual([]);
+    expect(
+      await run(
+        node.globals,
+        Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql`SELECT 1 FROM ${sql(MempoolLedgerDB.tableName)}`,
+        ),
+      ),
+    ).toEqual([]);
+  });
+});

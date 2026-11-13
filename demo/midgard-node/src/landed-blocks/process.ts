@@ -49,7 +49,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import type { NamedEvents } from "../database/follower-events.js";
+import type { NamedEvents } from "../database/follower-events.named.js";
 import { type ImportChecks, importChecks } from "../import-check/deadline.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
@@ -415,7 +415,7 @@ const run = <R>(
         yield* viewChecked(
           ports,
           queue.view,
-          processRow(step.row, step.due, step.named),
+          processRow(step.row, step.due, step.named, options.divergences),
         );
         options.committed?.(step.row.headerHash);
         applyDelta(ledger, step.row);

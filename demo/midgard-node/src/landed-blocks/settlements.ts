@@ -13,9 +13,10 @@ import { Effect } from "effect";
 import {
   type NamedEvents,
   recordNamedEvents,
-} from "../database/follower-events.js";
+} from "../database/follower-events.named.js";
 import * as ImportChecksDB from "../database/importChecks.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
+import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import type { ImportChecks } from "../import-check/deadline.js";
 import {
   deleteRows,
@@ -35,16 +36,18 @@ export const markRows = (
   );
 
 /** Processes a landed block: inserts its row, writes the rows of the
- * events it names that the node lacks (`named`, from its replay), marks the
+ * events it names that the node lacks (`named`, from its replay; a forced
+ * row's admission divergence is named in `divergences`), marks the
  * pending-table rows it includes, and records the import checks it leaves. */
 export const processRow = (
   row: LandedBlockRow,
   checks?: ImportChecks,
   named?: NamedEvents,
+  divergences?: ForcedAdmissionDivergences,
 ) =>
   Effect.gen(function* () {
     yield* insertRow(row);
-    if (named !== undefined) yield* recordNamedEvents(named);
+    if (named !== undefined) yield* recordNamedEvents(named, divergences);
     yield* markRows([row]);
     if (checks !== undefined)
       yield* ImportChecksDB.recordChecks(

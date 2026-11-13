@@ -1,14 +1,22 @@
 /**
  * A forced order's `forced_transaction_utxos` row, from the order and the
- * nine field preimages its carriage supplied.
+ * nine field preimages its carriage supplied, and the admission screen
+ * every row the node writes goes through (`screenForcedAdmissions`).
  */
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 
 import { ForcedTransactionsDB } from "../database/index.js";
 import type { DatabaseError } from "../database/utils/common.js";
+import {
+  FORCED_ADMISSION_DIVERGENCE_EVENT,
+  forcedAdmissionDivergenceCounter,
+  type ForcedAdmissionDivergences,
+  forcedAdmissionRefusal,
+} from "./admission-divergence.js";
 import { reconstructTxOrderMaterial } from "./carriage.js";
+import { outRefLabel } from "./derive.js";
 
 const lucidError = (message: string, cause: unknown) =>
   new SDK.LucidError({ message, cause });
@@ -86,3 +94,53 @@ export const forcedOrderEntry = (input: {
       [C.STATUS]: ForcedTransactionsDB.Status.Awaiting,
     };
   });
+
+/**
+ * Screens each written row with the off-chain twin of the tx-order mint's
+ * admission check (`admission-divergence.ts`), whichever write wrote it:
+ * the forced-order hook's, or the processing of a landed block that names
+ * the order. A refusal is an alarm only: the row is written and is
+ * classified as any other, and the node stays ready. An order `divergences`
+ * already names raises nothing again; without it every refusal raises.
+ */
+export const screenForcedAdmissions = (
+  entries: readonly ForcedTransactionsDB.Entry[],
+  divergences?: ForcedAdmissionDivergences,
+) =>
+  Effect.forEach(
+    entries,
+    (entry) => {
+      const C = ForcedTransactionsDB.Columns;
+      const refusal = forcedAdmissionRefusal(entry[C.NATIVE_TX_CBOR]);
+      if (refusal === null) return Effect.void;
+      const orderId = entry[C.TX_ORDER_ID].toString("hex");
+      if (
+        divergences !== undefined &&
+        !divergences.record(orderId, refusal.refusalCode)
+      )
+        return Effect.void;
+      return Effect.logError(FORCED_ADMISSION_DIVERGENCE_EVENT).pipe(
+        Effect.zipRight(
+          Metric.increment(
+            Metric.tagged(
+              forcedAdmissionDivergenceCounter,
+              "refusal_code",
+              refusal.refusalCode,
+            ),
+          ),
+        ),
+        Effect.annotateLogs({
+          event: FORCED_ADMISSION_DIVERGENCE_EVENT,
+          orderId,
+          orderOutRef: outRefLabel({
+            txHash: entry[C.TX_ORDER_L1_TX_HASH],
+            index: entry[C.TX_ORDER_L1_OUTPUT_INDEX],
+          }),
+          txId: entry[C.TX_ID].toString("hex"),
+          refusalCode: refusal.refusalCode,
+          refusalDetail: refusal.detail,
+        }),
+      );
+    },
+    { discard: true },
+  );

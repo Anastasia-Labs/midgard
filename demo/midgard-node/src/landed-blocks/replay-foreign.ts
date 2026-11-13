@@ -47,7 +47,7 @@ import {
   type ForeignDaBinding,
   foreignDaFetchMemo,
 } from "../da/foreign-retained-da.js";
-import type { ReadEvent } from "../database/follower-events.js";
+import type { ReadEvent } from "../database/follower-events.named.js";
 import {
   DaPayloadsDB,
   ForcedTransactionsDB,
