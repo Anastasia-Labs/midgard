@@ -34,6 +34,10 @@
 -- - MIGRATION_0037_APPLIED_JOURNAL_UNDERIVABLE: a locally applied journal
 --   that would derive neither applied nor folded. One whose landed row a
 --   rollback removed derives unlanded, as it should, and is exempt.
+-- - MIGRATION_0037_SUBMITTED_COMMIT_NOT_PREPARED: a journal that records a
+--   submitted hash, no intended one, and a prepared hash other than the
+--   submitted one. The submitted hash becomes its intended one below, which
+--   must be the prepared one.
 --
 -- The follower's tables (`l1_intents`, `node_l1_queue_terminals`) are
 -- installed after the node migrations, so a database that never ran a
@@ -45,7 +49,8 @@ DECLARE
 BEGIN
     SELECT p.header_hash INTO offending
     FROM pending_block_finalizations p
-    WHERE p.status IN ('submitted_local_finalization_pending',
+    WHERE p.status IN ('pending_submission',
+        'submitted_local_finalization_pending',
         'submitted_unconfirmed', 'observed_waiting_stability')
       AND p.intended_tx_hash IS NULL AND p.submitted_tx_hash IS NOT NULL
     ORDER BY p.created_at, p.header_hash
@@ -124,6 +129,18 @@ BEGIN
         RAISE EXCEPTION 'MIGRATION_0037_APPLIED_JOURNAL_UNDERIVABLE: locally applied journal % is neither applied by a landed row nor folded', encode(offending, 'hex')
             USING HINT = 'Let the release before this one process the landed chain past the block, then migrate again.';
     END IF;
+
+    SELECT p.header_hash INTO offending
+    FROM pending_block_finalizations p
+    WHERE p.intended_tx_hash IS NULL AND p.submitted_tx_hash IS NOT NULL
+      AND p.prepared_tx_hash IS NOT NULL
+      AND p.prepared_tx_hash <> p.submitted_tx_hash
+    ORDER BY p.created_at, p.header_hash
+    LIMIT 1;
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'MIGRATION_0037_SUBMITTED_COMMIT_NOT_PREPARED: journal % records a submitted commit other than the one it prepared, and no intended one', encode(offending, 'hex')
+            USING HINT = 'The migration cannot tell which of the two commits the journal signed; resolve the journal with the release before this one, then migrate again.';
+    END IF;
 END;
 $own_block_status$;
 
@@ -142,15 +159,20 @@ DELETE FROM pending_block_finalizations p
     AND NOT EXISTS (SELECT 1 FROM node_confirmed_ledger_frontier frontier
       WHERE frontier.header_hash = p.header_hash);
 
--- An abandoned journal whose commit was submitted unjournaled records only
--- the submitted hash. Once that column goes it would read as never signed,
--- and an unsigned unlanded journal is never pruned. Its submitted hash
--- becomes its intended one, so it derives as the signed journal it is: dead
--- once its header is no live queue node (no intent row holds its commit),
--- and pruned once no disposal effect is left. Such a journal may have no
--- prepared hash, so the prepared hash is checked only where there is one;
--- every journal the node signs now has one (`recordSignedIntent` signs only
--- the prepared hash).
+-- A journal whose commit was submitted unjournaled (the fixture mode's
+-- submission with no intended hash) records only the submitted hash: an
+-- abandoned journal, or a locally applied one, whatever it derives (an
+-- active one was refused above). Once that column goes it would read as
+-- never signed, and the next commit tick deletes every unsigned journal
+-- (`discardStoppedUnsignedJournals`), whatever it derives and before any
+-- disposal effect of it is undone: an applied or folded journal would go
+-- with the block it describes. Its submitted hash becomes its intended one,
+-- so it derives as the signed journal it is; an unlanded one is dead once
+-- its header is no live queue node (no intent row holds its commit), and
+-- pruned once no disposal effect is left. Such a journal may have no
+-- prepared hash, so the prepared hash is checked only where there is one
+-- (one naming another commit was refused above); every journal the node
+-- signs now has one (`recordSignedIntent` signs only the prepared hash).
 ALTER TABLE pending_block_finalizations
   DROP CONSTRAINT pending_signed_intent_pair,
   DROP CONSTRAINT pending_signed_ack_matches_intent,
@@ -160,8 +182,7 @@ ALTER TABLE pending_block_finalizations
       OR intended_tx_hash = prepared_tx_hash);
 UPDATE pending_block_finalizations
   SET intended_tx_hash = submitted_tx_hash
-  WHERE status = 'abandoned' AND intended_tx_hash IS NULL
-    AND submitted_tx_hash IS NOT NULL;
+  WHERE intended_tx_hash IS NULL AND submitted_tx_hash IS NOT NULL;
 
 -- One live journal at a time is held by row locks taken before the prepare's
 -- live check, not by an index over a stored status: in production the
