@@ -237,7 +237,8 @@ export const decodePendingBlockFinalizationRow = (
         (preparedHash != null && preparedHash.length !== 32) ||
         (intendedHash != null && intendedHash.length !== 32) ||
         (intendedHash != null &&
-          (preparedHash == null || !preparedHash.equals(intendedHash)))
+          preparedHash != null &&
+          !preparedHash.equals(intendedHash))
       )
         throw new Error(
           "Signed intent does not match prepared transaction body hash",

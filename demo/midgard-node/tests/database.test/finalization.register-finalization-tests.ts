@@ -204,6 +204,47 @@ export const registerFinalizationTests = () => {
     );
 
     it.effect(
+      "never signs a journal prepared without a transaction body hash",
+      () =>
+        isolatedDb(
+          Effect.gen(function* () {
+            // A signed journal always records its prepared hash, so a signed
+            // journal with none is one 0037 carried over from a commit
+            // submitted unjournaled.
+            const headerHash = databaseFixtureBytes(
+              "unprepared-signed-intent-header",
+              28,
+            );
+            const input = pendingSubmissionFixture(headerHash);
+            yield* prepareUnderTestLease(input, anchored);
+            const cbor = Buffer.from(makeCardanoSignedMapOutputTxBytes());
+            const tx = CML.Transaction.from_cbor_bytes(cbor);
+            const body = tx.body();
+            const hash = CML.hash_transaction(body);
+            const txHash = Buffer.from(hash.to_hex(), "hex");
+            hash.free();
+            body.free();
+            tx.free();
+            const refused = yield* Effect.either(
+              Journals.recordSignedIntent(headerHash, txHash, cbor).pipe(
+                withTestMutationLease(input.metadata.stateQueueLeaseToken),
+              ),
+            );
+            expect(refused._tag).toBe("Left");
+            if (refused._tag === "Left")
+              expect(refused.left.message).toBe(
+                "Signed intent conflicts with the pending journal",
+              );
+            const journal = Option.getOrThrow(
+              yield* Journals.retrieveByHeaderHash(headerHash),
+            );
+            expect(journal[Journals.Columns.PREPARED_TX_HASH]).toBeNull();
+            expect(journal[Journals.Columns.INTENDED_TX_HASH]).toBeNull();
+          }),
+        ),
+    );
+
+    it.effect(
       "discards an unsigned journal, and a prepare of its header supersedes it",
       () =>
         isolatedDb(

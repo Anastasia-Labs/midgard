@@ -10,6 +10,9 @@
  *   journal holds with its exact bytes; and an unfinished local
  *   finalization of a submitted journal. It deletes an abandoned journal
  *   never signed, and drops the status, its columns and the job table.
+ * - An abandoned journal whose commit was submitted unjournaled (a submitted
+ *   hash and no prepared or intended one) carries over signed under its
+ *   submitted hash: a dead journal, pruned once its effects clear.
  * - It refuses, leaving every row as it was, with
  *   `MIGRATION_0037_SIGNED_JOURNAL_WITHOUT_INTENT` a submitted hash with no
  *   intended one, an active signed journal the intent journal holds with
@@ -19,14 +22,21 @@
  *   a locally applied journal nothing applied or folded.
  */
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { installFollowerSchema } from "../src/database/follower-schema.js";
-import { MIGRATIONS } from "../src/database/migrations/index.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import {
+  MIGRATION_MANIFEST_HASH,
+  MIGRATIONS,
+} from "../src/database/migrations/index.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { splitSqlStatements } from "../src/database/migrations/runner.js";
 import { ownBlockStatusSql } from "../src/database/pendingBlockFinalizations.derived-status.js";
+import { pruneFoldedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { insertRow } from "../src/landed-blocks/store.js";
+import { BatchSql } from "../src/services/database.js";
 import {
   simCommitTxHash,
   simJournalRow,
@@ -34,6 +44,7 @@ import {
 import { insertCommitIntent } from "./helpers/own-block-facts.js";
 import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import { landedRow } from "./landed-blocks-rebase.fixture.js";
+import { testDatabaseName } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const ZERO_ROOT = "00".repeat(32);
@@ -194,8 +205,8 @@ const migrate = <E>(
                     WHERE table_schema = 'public'
                       AND table_name = 'pending_block_finalizations'
                       AND column_name IN ('status', 'submitted_tx_hash',
-                        'signed_tx_cbor', 'observed_confirmed_at_ms',
-                        'correction_transition_digest')) AS columns,
+                        'signed_tx_cbor', 'correction_transition_digest'))
+                    AS columns,
                   to_regclass('local_mutation_jobs') IS NOT NULL AS jobs`;
               return yield* Effect.fail(
                 new RolledBack({
@@ -227,6 +238,49 @@ type Shown = Readonly<{
   shape?: Readonly<{ columns: number; jobs: boolean }>;
 }>;
 
+/**
+ * Runs `populate` on a database a node with a follower left at version 36,
+ * then the migration runner and `after`, all committed (a prune's follower
+ * write gate must own its transaction), as the runner's own tests do.
+ */
+const migrateCommitted = <E, A>(
+  populate: Effect.Effect<void, E, SqlClient.SqlClient>,
+  after: Effect.Effect<A, unknown, SqlClient.SqlClient>,
+) =>
+  Effect.runPromise(
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        const sql = yield* BatchSql;
+        const [database] = yield* sql<{
+          name: string;
+        }>`SELECT current_database() AS name`;
+        expect(database!.name).toBe(testDatabaseName());
+        const withSql = Effect.provideService(SqlClient.SqlClient, sql);
+        yield* sql.unsafe("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+        yield* withSql(MigrationRunner.getStatus);
+        for (const migration of MIGRATIONS.filter(
+          (entry) => entry.version <= 36,
+        )) {
+          for (const statement of splitSqlStatements(migration.sql))
+            yield* sql.unsafe(statement);
+          yield* sql`INSERT INTO schema_migrations
+            (version, name, checksum_sha256, manifest_hash_sha256, app_version, execution_ms, applied_by)
+            VALUES (${migration.version}, ${migration.name}, ${migration.checksumSha256},
+              ${MIGRATION_MANIFEST_HASH}, 'own-block-predecessor', 1, 'own-block-test')`;
+        }
+        yield* withSql(installFollowerSchema);
+        yield* withSql(populate);
+        yield* withSql(
+          MigrationRunner.migrate({
+            appVersion: "own-block-test",
+            actor: "own-block-upgrade",
+          }),
+        );
+        return yield* after;
+      }),
+    ),
+  );
+
 const APPLIED = header(0x01);
 const REMOVED = header(0x02);
 const MERGED = header(0x03);
@@ -234,6 +288,7 @@ const DEAD_SIGNED = header(0x04);
 const NEVER_SIGNED = header(0x05);
 const SUBMITTED = header(0x06);
 const FINALIZING = header(0x07);
+const SUBMITTED_UNJOURNALED = header(0x08);
 
 describe("migration 0037 on a populated node database", () => {
   it.each([false, true])(
@@ -302,6 +357,68 @@ describe("migration 0037 on a populated node database", () => {
     ).toEqual({
       statuses: { [SUBMITTED]: "unlanded" },
       shape: { columns: 0, jobs: false },
+    });
+  });
+
+  it("carries over an abandoned journal submitted unjournaled as a dead signed journal, pruned once its effects clear", async () => {
+    const headerHash = bytes(SUBMITTED_UNJOURNALED);
+    const prune = pruneFoldedBeyondChallengeability({
+      challengeableCutoff: new Date(Date.now() - 24 * 60 * 60_000),
+      view: {
+        confirmedHeadHash: bytes(header(0xf1)),
+        liveQueueHeaderHashes: [],
+      },
+      deploymentIdentityDigest: Buffer.alloc(32, 7),
+    });
+    expect(
+      await migrateCommitted(
+        Effect.gen(function* () {
+          yield* insertJournal(
+            SUBMITTED_UNJOURNALED,
+            { status: "abandoned", submitted: "unsigned" },
+            8,
+          );
+          // Its block row: a disposal effect still pending.
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO blocks (height, header_hash, tx_id)
+            VALUES (1, ${headerHash}, ${Buffer.alloc(32, 9)})`;
+        }),
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const [status] = yield* sql<{ status: string }>`SELECT
+            ${ownBlockStatusSql(sql, "p")} AS status
+            FROM pending_block_finalizations p`;
+          // It decodes, as disposal reads it.
+          const journal = Option.getOrThrow(
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
+          );
+          const dead = yield* PendingBlockFinalizationsDB.deadJournals;
+          const whilePending = yield* prune;
+          yield* sql`DELETE FROM blocks WHERE header_hash = ${headerHash}`;
+          const onceCleared = yield* prune;
+          const [left] = yield* sql<{ journals: number }>`SELECT COUNT(*)::int
+            AS journals FROM pending_block_finalizations`;
+          return {
+            status: status?.status,
+            intended:
+              journal[
+                PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH
+              ]?.toString("hex"),
+            prepared:
+              journal[PendingBlockFinalizationsDB.Columns.PREPARED_TX_HASH],
+            dead: dead.causes.has(SUBMITTED_UNJOURNALED),
+            pruned: [whilePending, onceCleared],
+            journals: left?.journals,
+          };
+        }),
+      ),
+    ).toEqual({
+      status: "unlanded",
+      intended: Buffer.alloc(32, 8).toString("hex"),
+      prepared: null,
+      dead: true,
+      pruned: [0, 1],
+      journals: 0,
     });
   });
 

@@ -4,10 +4,12 @@
 -- ledger's folds and frontier and the queue terminals. No journal stores a
 -- copy, so the status column goes, with the columns only the status machine
 -- wrote: the submitted hash and the signed bytes (the intent journal's
--- `l1_intents` row holds them; `intended_tx_hash` is the link), the observed
--- time and the correction digest. Block confirmation's local-finalization
--- jobs go with `local_mutation_jobs`: landing applies an own block, and the
--- fold is derived.
+-- `l1_intents` row holds them; `intended_tx_hash` is the link) and the
+-- correction digest. `observed_confirmed_at_ms` stays: the rebase that takes
+-- an own block's landing in records when it did (`own-blocks.ts`), so the
+-- throughput metrics read a landed time that outlives the landed row's fold.
+-- Block confirmation's local-finalization jobs go with `local_mutation_jobs`:
+-- landing applies an own block, and the fold is derived.
 --
 -- The migration refuses a database it cannot carry over:
 --
@@ -140,6 +142,27 @@ DELETE FROM pending_block_finalizations p
     AND NOT EXISTS (SELECT 1 FROM node_confirmed_ledger_frontier frontier
       WHERE frontier.header_hash = p.header_hash);
 
+-- An abandoned journal whose commit was submitted unjournaled records only
+-- the submitted hash. Once that column goes it would read as never signed,
+-- and an unsigned unlanded journal is never pruned. Its submitted hash
+-- becomes its intended one, so it derives as the signed journal it is: dead
+-- once its header is no live queue node (no intent row holds its commit),
+-- and pruned once no disposal effect is left. Such a journal may have no
+-- prepared hash, so the prepared hash is checked only where there is one;
+-- every journal the node signs now has one (`recordSignedIntent` signs only
+-- the prepared hash).
+ALTER TABLE pending_block_finalizations
+  DROP CONSTRAINT pending_signed_intent_pair,
+  DROP CONSTRAINT pending_signed_ack_matches_intent,
+  DROP CONSTRAINT pending_signed_intent_matches_prepared,
+  ADD CONSTRAINT pending_signed_intent_matches_prepared CHECK (
+    intended_tx_hash IS NULL OR prepared_tx_hash IS NULL
+      OR intended_tx_hash = prepared_tx_hash);
+UPDATE pending_block_finalizations
+  SET intended_tx_hash = submitted_tx_hash
+  WHERE status = 'abandoned' AND intended_tx_hash IS NULL
+    AND submitted_tx_hash IS NOT NULL;
+
 -- One live journal at a time is held by row locks taken before the prepare's
 -- live check, not by an index over a stored status: in production the
 -- follower write gate row (`withFollowerWrite`), in the fixture mode the
@@ -147,14 +170,11 @@ DELETE FROM pending_block_finalizations p
 DROP INDEX uniq_pending_block_finalizations_single_active;
 DROP INDEX idx_pending_block_finalizations_status;
 ALTER TABLE pending_block_finalizations
-  DROP CONSTRAINT pending_signed_intent_pair,
-  DROP CONSTRAINT pending_signed_ack_matches_intent,
   DROP CONSTRAINT pending_block_finalizations_submitted_tx_hash_key,
   DROP CONSTRAINT pending_block_finalizations_status_check,
   DROP COLUMN status,
   DROP COLUMN submitted_tx_hash,
   DROP COLUMN signed_tx_cbor,
-  DROP COLUMN observed_confirmed_at_ms,
   DROP COLUMN correction_transition_digest;
 DROP INDEX idx_local_mutation_jobs_status_updated;
 DROP TABLE local_mutation_jobs;
