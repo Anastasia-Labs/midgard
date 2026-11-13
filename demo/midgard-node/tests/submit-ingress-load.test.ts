@@ -382,9 +382,12 @@ describe("submit-ingress load cpu readings", () => {
     expect(mainThreadSeconds).toBeGreaterThan(endEarly - startLate - 2 * tick);
     expect(mainThreadSeconds).toBeLessThan(endLate - startEarly + 2 * tick);
     // The kernel rounds the thread and process totals to ticks separately,
-    // so the process total can trail the main thread's by one tick.
-    expect(shares.processCores * shares.seconds).toBeGreaterThanOrEqual(
-      mainThreadSeconds - tick,
-    );
+    // so the process total can trail the main thread's by one tick. Both are
+    // whole ticks, compared as such: in seconds the float products can put
+    // an exact one-tick trail a hair below the bound.
+    const ticksOf = (seconds: number) => Math.round(seconds / tick);
+    expect(
+      ticksOf(shares.processCores * shares.seconds),
+    ).toBeGreaterThanOrEqual(ticksOf(mainThreadSeconds) - 1);
   });
 });
