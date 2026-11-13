@@ -37,7 +37,20 @@ export type DaAvailabilityOperationObservation =
       foreignSpends?: readonly DaAvailabilityForeignSpend[];
     }>
   | Readonly<{ status: "unknown"; reason: string }>
-  | Readonly<{ status: "conflicting_spend"; reason: string }>;
+  | Readonly<{ status: "conflicting_spend"; reason: string }>
+  /**
+   * The source no longer holds the history that would show whether the
+   * transaction landed: it has pruned past the transaction's validity start,
+   * does not hold the transaction, and no normal input is unspent or spent by
+   * another transaction at the point. Had it landed, everything it created
+   * that the source tracks is spent and pruned as well.
+   */
+  | Readonly<{
+      status: "beyond_retention";
+      currentSlot: number;
+      currentBlockNo: number;
+      reason: string;
+    }>;
 
 /** A canonical, verified spend of one of an intent's missing refs. */
 export type DaAvailabilityForeignSpend = Readonly<{

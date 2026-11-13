@@ -13,6 +13,7 @@ import {
   authenticates,
   reconcile,
   retireIncluded,
+  retireUnretained,
 } from "./availability-challenge-operation.reconcile.js";
 
 export const reconcileDaAvailabilityOperations = (
@@ -154,8 +155,9 @@ export const reconcileDaAvailabilityOperations = (
     // A redeploy leaves earlier deployments' confirmed intents behind. This
     // deployment never reconciles, rewinds or rebroadcasts them, but they
     // retire under the same rules: authenticated inclusion frees their inputs
-    // past validity and prunes them past recovery depth. Other evidence
-    // changes nothing and is read again on the next pass.
+    // past validity and prunes them past recovery depth, as does a source
+    // that no longer holds them. Other evidence changes nothing and is read
+    // again on the next pass.
     for (const { intent } of anchors) {
       if (intent.deploymentIdentity === context.deploymentIdentity) continue;
       const scope = observationScope();
@@ -172,6 +174,8 @@ export const reconcileDaAvailabilityOperations = (
         observed.confirmationDepth >= context.minimumConfirmationDepth
       )
         retireIncluded(context, lease, intent, observed);
+      else if (observed.status === "beyond_retention")
+        retireUnretained(context, lease, intent, observed);
     }
     return results;
   });

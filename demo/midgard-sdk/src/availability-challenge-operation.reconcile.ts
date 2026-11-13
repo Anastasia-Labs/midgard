@@ -58,6 +58,30 @@ export const retireIncluded = (
   );
 
 /**
+ * Applies the journal's retention to a confirmed intent whose transaction the
+ * source no longer holds. Nothing contradicts its recorded inclusion, so it
+ * stays confirmed and retires on the depth the journal counts from its first
+ * retention height, as a stored one does.
+ */
+export const retireUnretained = (
+  context: DaAvailabilityOperationContext,
+  lease: AvailabilityOperationLease,
+  intent: AvailabilityOperationIntent,
+  observed: Observed<"beyond_retention">,
+): void =>
+  context.journal.retire(
+    lease,
+    intent.id,
+    {
+      confirmationDepth: 0,
+      currentSlot: observed.currentSlot,
+      currentBlockNo: observed.currentBlockNo,
+      recoveryDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+    },
+    (context.nowMs ?? Date.now)(),
+  );
+
+/**
  * Whether missing inputs prove the intent can never land: the detail its
  * expiry records, `undefined` while they prove nothing, or `invalid` for an
  * observation that is not canonical missing-input evidence.
@@ -131,6 +155,12 @@ const missingInputExpiry = (
     missingNormal.length < intent.spentOutRefs.length
   )
     return "Expired with a normal input spent elsewhere and another still unspent";
+  // Only collateral is missing. A valid landing spends every normal input,
+  // so none still unspent proves the intent did not land valid; a failed
+  // landing changed nothing but its collateral. Past its validity it never
+  // can land, whatever spent the collateral.
+  if (missingNormal.length === 0)
+    return "Expired with every normal input canonically unspent";
   // Every normal input may be gone, as when another watcher's Timeout on
   // the same header landed first. Absence never proves anything, but one
   // normal input consumed by another valid canonical transaction at
@@ -227,6 +257,12 @@ export const reconcile = async (
             if (expiry === undefined) return result("waiting");
             break;
           }
+          case "beyond_retention":
+            // Nothing contradicts the recorded inclusion: the source only
+            // no longer holds it. The intent stays confirmed and retires on
+            // the journal's own depth count.
+            retireUnretained(context, lease, intent, observation);
+            return result("confirmed", observation.reason);
           case "unspent":
           case "conflicting_spend":
             break;
@@ -320,6 +356,42 @@ export const reconcile = async (
             );
           }
           return result("waiting");
+        }
+        case "beyond_retention": {
+          if (
+            !Number.isSafeInteger(observation.currentSlot) ||
+            observation.currentSlot < 0
+          ) {
+            throw new Error(
+              "Availability operation reconciliation requires an authoritative slot",
+            );
+          }
+          // Whether it landed is lost, so it waits only while it still could
+          // land. Past its validity it never can, and had it landed, nothing
+          // it created is unspent: it expires under this name rather than
+          // waiting on evidence the source will never hold again.
+          if (observation.currentSlot < intent.validUntilSlot) {
+            if (context.journal.get(intent.id)?.state === "included") {
+              context.journal.transition(
+                lease,
+                intent.id,
+                "pending",
+                null,
+                observation.reason,
+                now(),
+              );
+            }
+            return result("waiting", observation.reason);
+          }
+          context.journal.transition(
+            lease,
+            intent.id,
+            "expired",
+            null,
+            "Expired beyond the source's retention: past its validity it can never land, and whether it landed is no longer held",
+            now(),
+          );
+          return result("expired");
         }
         case "unspent": {
           if (

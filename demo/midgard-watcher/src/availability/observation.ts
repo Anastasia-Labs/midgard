@@ -352,13 +352,17 @@ export const createWatcherAvailabilityObservation = (input: {
         const signed = CML.Transaction.from_cbor_hex(intent.signedCbor);
         // The ledger admits the transaction no earlier than its validity
         // start, so a pruned store still proves it absent above that slot.
+        // Below it the store may have pruned it: the inputs decide below.
         const validFrom = signed.body().validity_interval_start();
-        const inclusion = required(
-          await reads.transactionInclusion(
-            intent.txHash,
-            validFrom === undefined ? undefined : Number(validFrom),
-          ),
+        const bounded = await reads.transactionInclusion(
+          intent.txHash,
+          validFrom === undefined ? undefined : Number(validFrom),
         );
+        const unretained =
+          bounded.kind === "refused" && bounded.reason === "beyond_retention"
+            ? bounded
+            : undefined;
+        const inclusion = unretained === undefined ? required(bounded) : null;
         if (inclusion !== null) {
           if (
             BigInt(inclusion.blockNo) > BigInt(observation.nativePoint.blockNo)
@@ -401,10 +405,37 @@ export const createWatcherAvailabilityObservation = (input: {
         );
         // A row the store pruned, or one whose creating transaction it never
         // held (a parent a rollback dropped), is not unspent here: the store
-        // keeps every unspent tracked output. The bounded read above proved
-        // this intent did not land, so such an input reads as missing, as an
-        // unknown row does; only a foreign spend proves anything more.
+        // keeps every unspent tracked output. The bounded read above, or the
+        // inputs below, proved this intent did not land, so such an input
+        // reads as missing, as an unknown row does; only a foreign spend
+        // proves anything more.
         const unspent = new Set(observed.outputs.map(({ outRef }) => outRef));
+        // The store holds no copy of the transaction, so it did not land above
+        // its pruned slot, but it may have landed at or below it. The store
+        // keeps every unspent tracked row and marks every spend of one, and a
+        // valid landing spends every normal input, so one normal input unspent
+        // at the point, or spent there by another transaction, proves it did
+        // not land valid. A failed landing spends only collateral, which the
+        // reads below and the SDK weigh as they do when the bounded read
+        // answers. With no such input, whether it landed is lost.
+        if (
+          unretained !== undefined &&
+          !intent.spentOutRefs.some(
+            (ref) =>
+              unspent.has(ref) ||
+              observed.spends.some(
+                (spend) =>
+                  spend.outRef === ref &&
+                  spend.spendingTxHash !== intent.txHash,
+              ),
+          )
+        )
+          return {
+            status: "beyond_retention",
+            currentSlot: Number(slot),
+            currentBlockNo: Number(blockNo),
+            reason: `${unretained.detail}, and no normal input is unspent or spent by another transaction at the point`,
+          };
         if (consumed.every((ref) => unspent.has(ref))) {
           return {
             status: "unspent",
