@@ -6,10 +6,8 @@
  * endpoint shaped like that wallet, in a worker thread under the real limit.
  */
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -21,7 +19,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { build as bundleWithTsup } from "tsup";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { SETTLEMENT_WORKER_HEAP_MB } from "../src/fibers/settlement.js";
@@ -31,8 +28,8 @@ import type {
   SettlementHeapProbeInput,
   SettlementHeapProbeResult,
 } from "./helpers/settlement-worker-heap-probe.js";
+import { bundleWorkerProbe } from "./helpers/worker-probe-bundle.js";
 
-const packageRoot = join(import.meta.dirname, "..");
 /** The lc1 wallet: 945 UTxOs, 940 of them carrying a ~9 KB script. */
 const WALLET_UTXOS = 945;
 const SCRIPT_BYTES = 9_000;
@@ -119,37 +116,14 @@ const serveKupo = async () => {
 
 describe("settlement reference-script resolution under the worker heap limit", () => {
   let kupo: Awaited<ReturnType<typeof serveKupo>>;
-  let bundleDir: string;
+  let probe: Awaited<ReturnType<typeof bundleWorkerProbe>>;
   beforeAll(async () => {
     kupo = await serveKupo();
-    bundleDir = await mkdtemp(join(packageRoot, ".settlement-heap-"));
-    // A worker thread resolves workspace packages through their dist; bundle
-    // them from source, as tests/da-multi-process-10k-integration.test.ts does.
-    await bundleWithTsup({
-      entry: [
-        join(packageRoot, "tests/helpers/settlement-worker-heap-probe.ts"),
-      ],
-      format: ["esm"],
-      platform: "node",
-      target: "node22",
-      outDir: bundleDir,
-      config: false,
-      splitting: false,
-      silent: true,
-      noExternal: [/^@al-ft\//],
-      loader: { ".sql": "text" },
-      banner: {
-        js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
-      },
-      esbuildOptions(options) {
-        options.conditions = ["midgard-source", ...(options.conditions ?? [])];
-      },
-    });
+    probe = await bundleWorkerProbe("settlement-worker-heap-probe.ts");
   }, 300_000);
   afterAll(async () => {
     await new Promise((resolve) => kupo?.server.close(resolve));
-    if (bundleDir !== undefined)
-      await rm(bundleDir, { recursive: true, force: true });
+    await probe?.remove();
   });
 
   it("resolves every settlement target within the worker's heap limit", async () => {
@@ -162,13 +136,10 @@ describe("settlement reference-script resolution under the worker heap limit", (
         script: lucidScript(targetScripts.get(name)!),
       })),
     };
-    const worker = new Worker(
-      join(bundleDir, "settlement-worker-heap-probe.js"),
-      {
-        workerData: input,
-        resourceLimits: { maxOldGenerationSizeMb: SETTLEMENT_WORKER_HEAP_MB },
-      },
-    );
+    const worker = new Worker(probe.file, {
+      workerData: input,
+      resourceLimits: { maxOldGenerationSizeMb: SETTLEMENT_WORKER_HEAP_MB },
+    });
     let result: SettlementHeapProbeResult;
     try {
       result = await new Promise<SettlementHeapProbeResult>(

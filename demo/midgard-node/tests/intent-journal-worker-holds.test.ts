@@ -8,8 +8,6 @@
  * A refusal whose hold write fails in the worker is handed to the main
  * process, which names it and writes it until it lands.
  */
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 
 import { type FollowStatus } from "@al-ft/midgard-l1-follower";
@@ -17,7 +15,6 @@ import { decodeTransaction } from "@al-ft/midgard-l1-follower";
 import { encodeSimTx } from "@al-ft/midgard-l1-follower/testing";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { build as bundleWithTsup } from "tsup";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
@@ -37,43 +34,20 @@ import type {
   IntentJournalWorkerProbeResult,
 } from "./helpers/intent-journal-worker-probe.js";
 import { QUEUE_ADDRESS } from "./helpers/state-queue-sim.fixtures.js";
+import { bundleWorkerProbe } from "./helpers/worker-probe-bundle.js";
 import { resetApplicationTables } from "./utils.js";
 
-const packageRoot = join(import.meta.dirname, "..");
-let bundleDir: string;
+let probe: Awaited<ReturnType<typeof bundleWorkerProbe>>;
 
 beforeAll(async () => {
-  bundleDir = await mkdtemp(join(packageRoot, ".intent-journal-worker-"));
-  // A worker thread resolves workspace packages through their dist; bundle
-  // them from source, as tests/settlement-worker-heap.test.ts does.
-  await bundleWithTsup({
-    entry: [join(packageRoot, "tests/helpers/intent-journal-worker-probe.ts")],
-    format: ["esm"],
-    platform: "node",
-    target: "node22",
-    outDir: bundleDir,
-    config: false,
-    splitting: false,
-    silent: true,
-    noExternal: [/^@al-ft\//],
-    loader: { ".sql": "text" },
-    banner: {
-      js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
-    },
-    esbuildOptions(options) {
-      options.conditions = ["midgard-source", ...(options.conditions ?? [])];
-    },
-  });
+  probe = await bundleWorkerProbe("intent-journal-worker-probe.ts");
 }, 300_000);
-afterAll(async () => {
-  if (bundleDir !== undefined)
-    await rm(bundleDir, { recursive: true, force: true });
-});
+afterAll(() => probe?.remove());
 
 const runProbe = async (
   input: IntentJournalWorkerProbeInput,
 ): Promise<IntentJournalWorkerProbeResult> => {
-  const worker = new Worker(join(bundleDir, "intent-journal-worker-probe.js"), {
+  const worker = new Worker(probe.file, {
     workerData: input,
   });
   try {
