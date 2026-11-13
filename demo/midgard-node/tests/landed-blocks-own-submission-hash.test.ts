@@ -161,6 +161,13 @@ const shown = Effect.gen(function* () {
     hash: yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
     journal: yield* Journals.retrieveStatusByHeaderHash(HEADER),
     applied: (yield* retrieveRows).map((row) => row.applied),
+    // The landed time the throughput metrics read once the row is folded.
+    landedTime: (yield* Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql<{ recorded: boolean }>`SELECT
+        observed_confirmed_at_ms IS NOT NULL AS recorded
+        FROM pending_block_finalizations WHERE header_hash = ${HEADER}`,
+    ))[0]?.recorded,
   };
 });
 
@@ -252,6 +259,7 @@ describe("the unresolved submission of an own block that lands while its tick ru
       hash: "",
       journal: Journals.OwnBlockStatus.Landed,
       applied: [false],
+      landedTime: false,
     });
     // The tick took the worker's output: the branch that sets the hash ran.
     expect(outcome.output.type).toBe("SubmittedAwaitingConfirmationOutput");
@@ -262,6 +270,7 @@ describe("the unresolved submission of an own block that lands while its tick ru
       hash: "",
       journal: Journals.OwnBlockStatus.Applied,
       applied: [true],
+      landedTime: true,
     });
   });
 });

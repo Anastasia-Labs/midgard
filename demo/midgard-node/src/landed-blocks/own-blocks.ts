@@ -8,12 +8,17 @@
  * payload's publication outbox. Its transactions are in a landed block, so
  * a rejection recorded for one while its journal was dead is deleted, with
  * every rejection whose recorded causes are all deleted ones
- * (`TxRejectionsDB.deleteWithTracedRejections`). The journal is not
- * written: it derives landed, then applied, from the landed row.
+ * (`TxRejectionsDB.deleteWithTracedRejections`). The journal derives
+ * landed, then applied, from the landed row; all that is written to it is
+ * when this landing was taken in (`observed_confirmed_at_ms`), the landed
+ * time the throughput metrics read after the landed row is folded away. A
+ * block that lands again after a rollback is taken in again, so the time
+ * is that of the landing that stuck.
  *
- * Each write is idempotent by header: a rebase that runs again over the
- * same block writes nothing new.
+ * Each other write is idempotent by header: a rebase that runs again over
+ * the same block writes nothing new.
  */
+import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import { seedDaPayloadPublicationOutboxFromEnv } from "../da/libp2p-producer.js";
@@ -87,6 +92,14 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
           yield* Effect.logWarning(
             `Own block ${row.headerHash} landed: deleted ${cleared.length.toString()} rejections of its transactions and of transactions rejected after them.`,
           );
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ${sql(Journals.tableName)}
+          SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = ${BigInt(Date.now())}
+          WHERE ${sql(Journals.Columns.HEADER_HASH)} = ${header}`.pipe(
+          Effect.mapError((cause) =>
+            failure("Failed to record a landed own block's landed time", cause),
+          ),
+        );
         const intended = record[Journals.Columns.INTENDED_TX_HASH];
         return intended == null ? [] : [intended.toString("hex")];
       }),

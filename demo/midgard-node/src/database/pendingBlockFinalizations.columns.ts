@@ -73,6 +73,7 @@ export enum Columns {
   COMMIT_ANCHOR_HASH = "commit_anchor_hash",
   COMMIT_ANCHOR_HEIGHT = "commit_anchor_height",
   COMMIT_ANCHOR_SLOT = "commit_anchor_slot",
+  OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
@@ -152,6 +153,9 @@ export type Row = {
   [Columns.COMMIT_ANCHOR_HASH]?: Buffer | null;
   [Columns.COMMIT_ANCHOR_HEIGHT]?: PgBigInt | null;
   [Columns.COMMIT_ANCHOR_SLOT]?: PgBigInt | null;
+  /** When the rebase that applied the block's landing ran (ms since the
+   * epoch): the throughput metrics' landed time, kept past the fold. */
+  [Columns.OBSERVED_CONFIRMED_AT_MS]?: PgBigInt | null;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };

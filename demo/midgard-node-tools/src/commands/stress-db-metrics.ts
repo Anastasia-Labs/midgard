@@ -14,16 +14,12 @@ export const percentile = percentileOfSorted;
 /**
  * An own block's journal columns the commit metrics read, for the journal
  * aliased `pending`: its derived status, when it was written, and when the
- * node processed its landing (null before, and once its fold dropped the
- * landed row).
+ * node took its landing in (null before; kept past the landed row's fold,
+ * for as long as the journal is).
  */
 export const ownCommitColumns = (sql: SqlClient.SqlClient) =>
   sql`${PendingBlockFinalizationsDB.ownBlockStatusSql(sql, "pending")} AS status,
-    pending.created_at,
-    (SELECT (EXTRACT(EPOCH FROM landed.processed_at) * 1000)::bigint
-      FROM node_landed_blocks landed
-      WHERE landed.header_hash = pending.header_hash
-        AND landed.state = 'processed') AS observed_confirmed_at_ms`;
+    pending.created_at, pending.observed_confirmed_at_ms`;
 
 /** SQL condition: the journal aliased `pending` is applied or folded. */
 const finalized = (sql: SqlClient.SqlClient) =>

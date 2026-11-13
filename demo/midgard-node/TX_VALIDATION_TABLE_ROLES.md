@@ -484,8 +484,9 @@ Known gaps:
 
 `pending_block_finalizations` is the durable journal of a block this node
 committed: what it built (header, base, expected roots, members and ledger
-delta) and the signed commit it intends to submit. Nothing writes a journal
-after its commit; its status is derived from the facts, never stored
+delta) and the signed commit it intends to submit. After its commit a
+journal records only when its landing was taken in; its status is derived
+from the facts, never stored
 (`ownBlockStatusSql`,
 [pendingBlockFinalizations.derived-status.ts](src/database/pendingBlockFinalizations.derived-status.ts)):
 
@@ -522,6 +523,9 @@ Principal columns:
 - `ledger_delta_spent`, `ledger_delta_produced`
 - `block_start_time TIMESTAMPTZ NOT NULL`
 - `block_end_time TIMESTAMPTZ NOT NULL`
+- `observed_confirmed_at_ms BIGINT`: when the rebase that applied the
+  block's landing ran, the landed time the throughput metrics read once the
+  landed row is folded away
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
@@ -545,10 +549,11 @@ the status and dropped the stored one.
   challenge window, from the retention sweeper
   ([retention-sweeper.ts](src/fibers/retention-sweeper.ts)).
 
-Landed-block processing applies an own block once it lands
-([own-blocks.ts](src/landed-blocks/own-blocks.ts)) and disposes of a dead
-journal's effects ([own-journals.ts](src/landed-blocks/own-journals.ts));
-neither writes the journal.
+Landed-block processing applies an own block once it lands, recording
+when in `observed_confirmed_at_ms`
+([own-blocks.ts](src/landed-blocks/own-blocks.ts)), and disposes of a dead
+journal's effects ([own-journals.ts](src/landed-blocks/own-journals.ts)),
+which does not write the journal.
 
 ### Readers
 
