@@ -15,7 +15,7 @@ import {
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
 import { splitSqlStatements } from "../../src/database/migrations/runner.js";
 import { ownBlockStatusSql } from "../../src/database/pendingBlockFinalizations.status-sql.js";
-import { insertRow } from "../../src/landed-blocks/store.js";
+import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
 import { BatchSql } from "../../src/services/database.js";
 import { landedRow } from "../landed-blocks-rebase.fixture.js";
 import { testDatabaseName } from "../test-env.js";
@@ -26,6 +26,7 @@ import { insertCommitIntent } from "./own-block-facts.js";
 const ZERO_ROOT = "00".repeat(32);
 const ANCHOR = { hash: Buffer.alloc(32, 0xa1), height: 1, slot: 10 };
 export const header = (n: number) => n.toString(16).padStart(2, "0").repeat(28);
+const BASE = header(0xf0);
 export const bytes = (headerHash: string) => Buffer.from(headerHash, "hex");
 const signedBytes = (headerHash: string) =>
   Buffer.concat([Buffer.from("own-block-migration:"), bytes(headerHash)]);
@@ -59,7 +60,7 @@ export const insertJournal = (
     const row = simJournalRow(
       {
         headerHash,
-        baseHeaderHash: header(0xf0),
+        baseHeaderHash: BASE,
         baseUtxosRoot: ZERO_ROOT,
         expectedUtxosRoot: ZERO_ROOT,
         spent: [],
@@ -99,6 +100,17 @@ export const insertJob = (headerHash: string, status: "running" | "failed") =>
       VALUES (${`local_block_finalization:${headerHash}`},
         'local_block_finalization', ${status})`,
   );
+
+/**
+ * Every journal's commit anchor on the follower's chain and its base the
+ * landed frontier, so only its commit can make it dead.
+ */
+export const anchorAndBaseOnChain = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+    VALUES (${ANCHOR.slot}, ${ANCHOR.hash}, ${ANCHOR.height}, NULL, 0)`;
+  yield* Frontier.upsert({ headerHash: BASE, utxosRoot: ZERO_ROOT });
+});
 
 /** A landed row the working ledger took in; a removed row always is. */
 export const land = (headerHash: string, state: "processed" | "removed") =>

@@ -2,7 +2,7 @@ import { inspect } from "node:util";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect, Logger } from "effect";
+import { Effect, Logger, Option } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
@@ -18,12 +18,20 @@ import {
 import {
   insertCommitIntent,
   land,
+  ownBlockStatuses,
   ownLandedRow,
 } from "./helpers/own-block-facts.js";
 import { header, journalFixture } from "./helpers/own-journal-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-const prepared = vi.hoisted(() => ({ count: 0 }));
+const prepared = vi.hoisted(() => ({
+  count: 0,
+  // The base the worker builds the next block on; the fixture's by default.
+  base: undefined as Buffer | undefined,
+  // Whether it anchors the next block at the follower's tip, as the real
+  // worker does, so it can be the live journal.
+  anchored: false,
+}));
 const buildAndSubmitMock = vi.hoisted(() => vi.fn());
 
 // The commit worker itself: each run prepares one fresh journal under the
@@ -103,10 +111,13 @@ const baseOnFrontier = Frontier.upsert({
  * journal is the node's live journal, unless another one is. */
 const anchored = { beforeJournalInsert: Effect.orDie(simCommitAnchor) };
 
+/** The signed commit of `signedIntentJournal`. */
+const SIGNED_TX_HASH = Buffer.alloc(32, 9);
+
 /** A live journal holding a signed commit intent nothing has resolved yet. */
 const signedIntentJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
-    const txHash = Buffer.alloc(32, 9);
+    const txHash = SIGNED_TX_HASH;
     yield* baseOnFrontier;
     yield* prepareUnderTestLease(
       { ...journalFixture(headerHash), preparedTxHash: txHash },
@@ -154,6 +165,8 @@ const collectLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 describe("block commitment over an unreconciled signed intent", () => {
   beforeEach(() => {
     prepared.count = 0;
+    prepared.base = undefined;
+    prepared.anchored = false;
     buildAndSubmitMock.mockReset();
     buildAndSubmitMock.mockImplementation((leaseToken: string) =>
       Effect.gen(function* () {
@@ -161,10 +174,18 @@ describe("block commitment over an unreconciled signed intent", () => {
         const journal = journalFixture(
           header(`next-block-${prepared.count.toString()}`),
         );
-        yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-          ...journal,
-          metadata: { ...journal.metadata, stateQueueLeaseToken: leaseToken },
-        });
+        yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+          {
+            ...journal,
+            metadata: {
+              ...journal.metadata,
+              stateQueueLeaseToken: leaseToken,
+              baseTailHeaderHash:
+                prepared.base ?? journal.metadata.baseTailHeaderHash,
+            },
+          },
+          prepared.anchored ? anchored : undefined,
+        );
         return { type: "NothingToCommitOutput" };
       }),
     );
@@ -237,6 +258,79 @@ describe("block commitment over an unreconciled signed intent", () => {
       ),
     ).toBe(true);
   });
+
+  // The follower prunes an intent once it was terminal for k blocks (landed,
+  // expired, an input spent, a dependency dead), even before it reaches its
+  // tip: a node stopped that long past its commit's settling, or a rebase
+  // held that long, finds the live journal's intent row gone. The prune is
+  // stood in for by its delete (`pruneIntentsIn`); the commit tick, the
+  // derivation and the prepare are the node's.
+  it.each([
+    {
+      landed: false,
+      status: PendingBlockFinalizationsDB.OwnBlockStatus.Unlanded,
+    },
+    {
+      landed: true,
+      status: PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
+    },
+  ])(
+    "derives a live journal whose signed intent the follower pruned and commits the next block (landed $landed)",
+    async ({ landed, status }) => {
+      const result = await runWithNode(
+        Effect.gen(function* () {
+          const signed = header("pruned-intent");
+          const signedHex = signed.toString("hex");
+          prepared.anchored = true;
+          yield* signedIntentJournal(signed);
+          yield* blockCommitmentAction;
+          const workerCallsWhileSigned = buildAndSubmitMock.mock.calls.length;
+
+          if (landed) {
+            yield* land(
+              ownLandedRow(signedHex, BASE.toString("hex"), { applied: true }),
+            );
+            prepared.base = signed;
+          }
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM l1_intents WHERE tx_hash = ${SIGNED_TX_HASH}`;
+          const statusAfterPrune = (yield* ownBlockStatuses).get(signedHex);
+          const cause =
+            (yield* PendingBlockFinalizationsDB.deadJournals).causes.get(
+              signedHex,
+            );
+
+          yield* blockCommitmentAction;
+          const live = yield* PendingBlockFinalizationsDB.retrieveLive();
+          return {
+            workerCallsWhileSigned,
+            statusAfterPrune,
+            cause,
+            workerCalls: buildAndSubmitMock.mock.calls.length,
+            counts: yield* counts,
+            live: Option.map(live, (record) =>
+              record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString(
+                "hex",
+              ),
+            ),
+          };
+        }),
+      );
+
+      expect(result).toEqual({
+        workerCallsWhileSigned: 0,
+        statusAfterPrune: status,
+        cause: landed
+          ? undefined
+          : `its signed commit ${SIGNED_TX_HASH.toString("hex")} is no longer journaled`,
+        // The next block went through: the worker prepared it, and it is the
+        // live journal now.
+        workerCalls: 1,
+        counts: { leases: 1, journals: 2 },
+        live: Option.some(header("next-block-1").toString("hex")),
+      });
+    },
+  );
 
   it("still runs the worker for a live journal without a signed intent", async () => {
     const result = await runWithNode(

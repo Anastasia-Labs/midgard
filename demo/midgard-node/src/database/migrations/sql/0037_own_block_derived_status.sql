@@ -15,18 +15,27 @@
 --
 -- - MIGRATION_0037_SIGNED_JOURNAL_WITHOUT_INTENT: a journal in an active
 --   status (pending submission with a signed intent, submitted, observed
---   waiting stability) whose signed commit the intent journal does not hold
---   with these exact bytes, or that records a submitted hash with no
---   intended one. Its commit may still be on its way to L1, and once the
---   signed bytes go, only the intent journal can say what became of it.
---   Locally applied and abandoned journals are exempt: nothing reads their
---   signed bytes again, and the follower prunes an intent row once it has
---   been terminal for k blocks, so a long-lived database holds such journals
---   with no intent row by design. An abandoned journal is not necessarily
---   dead once derived: one that is unlanded and whose block can still land
---   (its commit's intent not dead, its base still on the landed chain, see
---   `deadJournals`) is the live journal until its commit settles, which
---   derives it landed or dead.
+--   waiting stability) that records a submitted hash with no intended one,
+--   that is signed on a database with no intent journal, or whose intent row
+--   holds other bytes than its signed ones (a corruption guard: the node
+--   writes both in one transaction, `recordSignedIntent`). Its commit may
+--   still be on its way to L1, and once the signed bytes go, only the intent
+--   journal can say what became of it.
+--   A signed journal with no intent row is carried, whatever its status:
+--   the follower prunes an intent row once it has been terminal for k
+--   blocks, so a long-lived database holds such journals by design. An
+--   active one among them is a node stopped for more than k blocks past its
+--   commit's settling: on restart the follower's catch-up prunes the intent
+--   before the release before this one disposes of the journal. Nothing
+--   reads their signed bytes again. Once derived, such a journal is landed
+--   or applied if its block landed, and otherwise dead once its header is no
+--   live queue node (the `intent_pruned` clause of `deadJournals`,
+--   `pendingBlockFinalizations.derived-status.ts`). Its intended hash stays,
+--   so the commit tick's unsigned-journal discard leaves it.
+--   An abandoned journal is not necessarily dead once derived: one that is
+--   unlanded and whose block can still land (its commit's intent not dead,
+--   its base still on the landed chain, see `deadJournals`) is the live
+--   journal until its commit settles, which derives it landed or dead.
 -- - MIGRATION_0037_UNRECOVERABLE_LOCAL_FINALIZATION: an unfinished (running
 --   or failed) local-finalization job that startup would have refused: its
 --   id names no header, its journal is gone, or its journal was never
@@ -72,15 +81,15 @@ BEGIN
                     'submitted_local_finalization_pending',
                     'submitted_unconfirmed', 'observed_waiting_stability')
                   AND p.intended_tx_hash IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM l1_intents intent
+                  AND EXISTS (SELECT 1 FROM l1_intents intent
                     WHERE intent.tx_hash = p.intended_tx_hash
-                      AND intent.tx_cbor = p.signed_tx_cbor)
+                      AND intent.tx_cbor <> p.signed_tx_cbor)
                 ORDER BY p.created_at, p.header_hash
                 LIMIT 1$signed$ INTO offending;
         END IF;
     END IF;
     IF offending IS NOT NULL THEN
-        RAISE EXCEPTION 'MIGRATION_0037_SIGNED_JOURNAL_WITHOUT_INTENT: journal % records a signed or submitted commit the intent journal does not hold with its exact bytes', encode(offending, 'hex')
+        RAISE EXCEPTION 'MIGRATION_0037_SIGNED_JOURNAL_WITHOUT_INTENT: journal % records a signed or submitted commit with no intended hash, no intent journal to hold it, or an intent row with other bytes', encode(offending, 'hex')
             USING HINT = 'Run the release before this one until the commit lands or its intent is dead, then migrate again.';
     END IF;
 

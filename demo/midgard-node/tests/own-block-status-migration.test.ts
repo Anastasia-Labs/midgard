@@ -7,7 +7,9 @@
  * - It carries over a locally applied journal a processed landed row
  *   applied, or a rollback removed, or the state queue merged; an abandoned
  *   signed journal with no intent row; an active signed journal the intent
- *   journal holds with its exact bytes; and an unfinished local
+ *   journal holds with its exact bytes, or whose intent row the follower
+ *   pruned (dead once derived, or applied if its block landed, and kept by
+ *   the commit tick's unsigned-journal discard); and an unfinished local
  *   finalization of a submitted journal. It deletes an abandoned journal
  *   never signed, and drops the status, its columns and the job table.
  * - A journal whose commit was submitted unjournaled (a submitted hash and
@@ -35,6 +37,7 @@ import { ownBlockStatusSql } from "../src/database/pendingBlockFinalizations.sta
 import { discardStoppedUnsignedJournals } from "../src/fibers/block-commitment.discard-unsigned-journals.js";
 import { simCommitTxHash } from "./helpers/landed-blocks-sim.own.js";
 import {
+  anchorAndBaseOnChain,
   bytes,
   header,
   insertIntent,
@@ -139,6 +142,73 @@ describe("migration 0037 on a populated node database", () => {
       ),
     ).toEqual({
       statuses: { [SUBMITTED]: "unlanded" },
+      intended: { [SUBMITTED]: commitOf(SUBMITTED) },
+      shape: { columns: 0, jobs: false },
+    });
+  });
+
+  // The follower prunes an intent row once it was terminal for k blocks: a
+  // node stopped longer than that past its commit's settling restarts to a
+  // catch-up that prunes the intent before disposition reads the journal.
+  it.each([
+    { status: "pending_submission" },
+    { status: "submitted_unconfirmed", submitted: "signed" },
+  ] as const)(
+    "carries over an active signed journal ($status) whose intent row the follower pruned as a dead journal the unsigned-journal discard leaves",
+    async (journal) => {
+      expect(
+        await migrateCommitted(
+          Effect.gen(function* () {
+            yield* insertJournal(SUBMITTED, { ...journal, signed: true }, 6);
+            yield* anchorAndBaseOnChain;
+          }),
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const [row] = yield* sql<{ status: string; intended: string }>`
+              SELECT ${ownBlockStatusSql(sql, "p")} AS status,
+                encode(p.intended_tx_hash, 'hex') AS intended
+              FROM pending_block_finalizations p`;
+            const dead = yield* PendingBlockFinalizationsDB.deadJournals;
+            const discarded = yield* discardStoppedUnsignedJournals;
+            const [left] = yield* sql<{ journals: number }>`SELECT
+              COUNT(*)::int AS journals FROM pending_block_finalizations`;
+            return {
+              ...row,
+              cause: dead.causes.get(SUBMITTED),
+              discarded,
+              journals: left?.journals,
+            };
+          }),
+        ),
+      ).toEqual({
+        status: "unlanded",
+        intended: commitOf(SUBMITTED),
+        cause: `its signed commit ${commitOf(SUBMITTED)} is no longer journaled`,
+        discarded: [],
+        journals: 1,
+      });
+    },
+  );
+
+  it("carries over an active signed journal whose intent row the follower pruned as applied once its block landed", async () => {
+    expect(
+      await migrate(
+        true,
+        Effect.gen(function* () {
+          yield* insertJournal(
+            SUBMITTED,
+            {
+              status: "observed_waiting_stability",
+              signed: true,
+              submitted: "signed",
+            },
+            6,
+          );
+          yield* land(SUBMITTED, "processed");
+        }),
+      ),
+    ).toEqual({
+      statuses: { [SUBMITTED]: "applied" },
       intended: { [SUBMITTED]: commitOf(SUBMITTED) },
       shape: { columns: 0, jobs: false },
     });
