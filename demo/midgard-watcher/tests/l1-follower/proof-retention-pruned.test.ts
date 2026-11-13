@@ -151,18 +151,23 @@ describe("proof retention: units held by the header pin, or with no history rows
     );
   });
 
-  it("writes the hold for a unit with no history rows, reports a unit a prune step deleted rows of, and leaves the refusal to the raw read", async () => {
+  it("writes the hold for a unit with no history rows and reads it empty, and reports a unit a prune step deleted rows of, whose raw read refuses", async () => {
     const r = await removedHeader({
       pin: true,
       resolveAtIngest: true,
       followUnit: true,
     });
     await r.passK();
-    // FOLLOWED_UNIT's rows were pruned; `unminted` never had any.
+    // FOLLOWED_UNIT's rows were pruned; `unminted` never had any (a proof's
+    // own token before the proof's first step).
     const unminted = `${FOLLOWED_UNIT.slice(0, 56)}bb`;
+    const read = (unit: string) =>
+      r.h.reads().unitHistoryAtPoint(unit, r.h.tipPoint());
     expect(
       await r.count(WATCHER_UNIT_HISTORY_TABLE, "unit", FOLLOWED_UNIT),
     ).toBe(0);
+    // Unheld, no rows after pruning: it may be a pruned history.
+    expect(reasonOf(await read(unminted))).toBe("beyond_retention");
     expect(
       await r.retention.holdUnits(r.header, [FOLLOWED_UNIT, unminted]),
     ).toEqual({ kind: "already_pruned", units: [FOLLOWED_UNIT] });
@@ -171,10 +176,8 @@ describe("proof retention: units held by the header pin, or with no history rows
     expect(r.retention.degradations()).toMatchObject([
       { reason: L1_PROOF_HISTORY_PRUNED, count: 1 },
     ]);
-    for (const unit of [FOLLOWED_UNIT, unminted])
-      expect(
-        reasonOf(await r.h.reads().unitHistoryAtPoint(unit, r.h.tipPoint())),
-      ).toBe("beyond_retention");
+    expect(reasonOf(await read(FOLLOWED_UNIT))).toBe("beyond_retention");
+    expect(okValue(await read(unminted)).transactions).toEqual([]);
   });
 
   it("keeps a unit's degradation once pruning has deleted the rest of its history", async () => {

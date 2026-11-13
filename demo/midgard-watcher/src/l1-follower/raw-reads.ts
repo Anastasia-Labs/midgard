@@ -222,13 +222,6 @@ export const createFollowerRawReads = (
           `SELECT tx_hash, block_hash, block_height, from_slot FROM ${history.table} WHERE ${history.column} = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
           [key, block.value.slot],
         );
-        // A unit's rows go once its removal (or burn) is k deep: after any
-        // pruning, no rows may be a history that was pruned.
-        if (prunedThrough !== null && rows.length === 0)
-          return refused(
-            "beyond_retention",
-            `no history of ${unit} is retained; it may have been pruned`,
-          );
         const unheld = async (): Promise<boolean> =>
           (
             await tx.query(
@@ -236,6 +229,23 @@ export const createFollowerRawReads = (
               [key],
             )
           ).length === 0;
+        // A unit's rows go once its removal (or burn) is k deep: after any
+        // pruning, no rows of an unheld key may be a history that was
+        // pruned, and a read for no open objective refuses it. A held key
+        // with no rows and no pruned-key record has an empty history (a
+        // proof's own token before the proof's first step): a prune step
+        // records every key it deletes rows of before deleting them
+        // (`prunedKeyHooks`), a hold refuses a recorded key, and a held row
+        // is never pruned.
+        if (
+          prunedThrough !== null &&
+          rows.length === 0 &&
+          ((await unheld()) || (await prunedRows(tx, key)))
+        )
+          return refused(
+            "beyond_retention",
+            `no history of ${unit} is retained; it may have been pruned`,
+          );
         // A key's rows (a followed unit's, a header's queue history) all
         // close together and it can have rows again later; once a prune step
         // deleted its earlier rows, the rows left are not its whole history,

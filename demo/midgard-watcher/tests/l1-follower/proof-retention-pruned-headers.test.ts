@@ -81,6 +81,21 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(await headerRecords(r)).toBe(1);
     });
 
+    it("reads an empty queue history for a header pinned before it had any, past pruning, where an unpinned one refuses", async () => {
+      const r = await removed(false);
+      const pinned = "c4".repeat(28);
+      const unpinned = "c5".repeat(28);
+      expect(
+        await r.retention.pin({ category: "doubleSpend", headerHash: pinned }),
+      ).toEqual({ kind: "pinned" });
+      await r.passK();
+      expect(await headerRecords(r)).toBe(1);
+      const read = (header: string) =>
+        r.h.reads().unitHistoryAtPoint(nodeUnit(header), r.h.tipPoint());
+      expect(okValue(await read(pinned)).transactions).toEqual([]);
+      expect(reasonOf(await read(unpinned))).toBe("beyond_retention");
+    });
+
     it("records nothing for a pinned header and reads it whole past pruning and its next commit", async () => {
       const r = await removed(true);
       await r.passK();

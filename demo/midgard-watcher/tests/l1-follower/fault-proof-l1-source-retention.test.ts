@@ -155,4 +155,48 @@ describe("fault-proof L1 source: unit hold results", () => {
     ]);
     expect(retention.degradations()).toEqual([]);
   });
+
+  it("over the follower's own retention, after a prune: captures a pinned header's unminted proof token as an empty history, and refuses it unpinned", async () => {
+    const fx = await fixture();
+    const retention = createWatcherProofRetention(fx.store, {
+      unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+      stateQueuePolicyId: D.stateQueueMint,
+    });
+    await pruneFixture(fx);
+    const source = createWatcherFaultProofL1Source({
+      store: fx.store,
+      rawReads: fx.reads(),
+      node: nodeDouble().node,
+      sourceId: SOURCE_ID,
+      proofRetention: retention,
+    });
+    // The proof's own per-header token: minted only by the proof's first
+    // step, so no transaction has touched it yet.
+    const token = `${D.fraudProofMint}0000000a${fx.header}`;
+    const capture = () =>
+      source
+        .snapshotAuthority({
+          releaseFinality: RELEASE,
+          observationDepth: "release_finality",
+        })
+        .capture(
+          requestFor(fx.header, {
+            historyUnits: [nodeUnit(fx.header), token],
+          }),
+        ) as Promise<FraudProofRawL1Snapshot>;
+    // No pin: a read for no open objective, past pruning, is refused.
+    await expect(capture()).rejects.toMatchObject({
+      reason: "beyond_retention",
+    });
+    expect(
+      await retention.pin({ category: "doubleSpend", headerHash: fx.header }),
+    ).toEqual({ kind: "pinned" });
+    const snapshot = await capture();
+    expect(snapshot.history.map(({ unit }) => unit)).toEqual([
+      nodeUnit(fx.header),
+      token,
+    ]);
+    expect(snapshot.history[1]!.transactionHashes).toEqual([]);
+    expect(retention.degradations()).toEqual([]);
+  });
 });
