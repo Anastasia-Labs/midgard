@@ -7,9 +7,9 @@
  *   landed, its transaction is in neither `immutable` nor `blocks`, no DA
  *   payload is stored and its withdrawal is unassigned; the rebase moves the
  *   working ledger and the native root onto it, writes its transaction to
- *   `immutable` and `blocks` once, its DA payload and that payload's
- *   publication outbox, and its journal derives applied; applying it again
- *   writes nothing new;
+ *   `immutable` and `blocks` once and its DA payload, but no publication
+ *   outbox row (the DA publication reconciler seeds those from the payload),
+ *   and its journal derives applied; applying it again writes nothing new;
  * - its withdrawal is `projected` to the block from that rebase, as a
  *   foreign block's is, so it is not yet payout-eligible and refuses a new
  *   classification, and `finalized` only once the block folds;
@@ -21,14 +21,11 @@
  *   it once the rebase has applied it.
  */
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import type { View } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Effect, Either, Option } from "effect";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   DaPayloadsDB,
@@ -49,10 +46,6 @@ import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import type { Globals } from "../src/services/globals.js";
 import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
 import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
-import {
-  manifestFixture,
-  PRODUCER_PRIVATE_KEY_SOURCE,
-} from "./da-payload-libp2p-producer.manifest-fixture.js";
 import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.events.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
@@ -83,31 +76,16 @@ let OWN: string;
 const WITHDRAWAL = makeHistoryWithdrawalEntry();
 const WITHDRAWAL_ID = WITHDRAWAL[WithdrawalsDB.Columns.ID];
 const SETTLEMENT = Buffer.from("d87980", "hex");
-const COMMITTEE_PEERS = (
-  manifestFixture().da_committee as { members: { roles: string[] }[] }
-).members.filter((member) => member.roles.includes("committee")).length;
 const ADMISSION_KEY = Buffer.alloc(32, 0x5a);
 const ADMISSION_ORIGIN = Buffer.concat([
   Buffer.alloc(32, 0x5b),
   Buffer.alloc(2),
 ]);
 
-// The node's DA manifest: applying an own block seeds its payload's
-// publication outbox for the manifest's committee.
-let manifestDirectory: string;
 beforeAll(async () => {
   ({ journal, tx: TX } = await ownJournal());
   HEADER = journal.headerHash;
   OWN = HEADER.toString("hex");
-  manifestDirectory = await mkdtemp(join(tmpdir(), "landed-own-da-"));
-  const manifestPath = join(manifestDirectory, "manifest.json");
-  await writeFile(manifestPath, JSON.stringify(manifestFixture()));
-  vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", manifestPath);
-  vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", PRODUCER_PRIVATE_KEY_SOURCE);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await rm(manifestDirectory, { recursive: true, force: true });
 });
 
 /** The production fold's ports with the view held. */
@@ -169,7 +147,7 @@ const landOwn = async (
 
 /**
  * The block's derived status, its transaction's `immutable` and `blocks`
- * rows, DA payload and withdrawal as stored.
+ * rows, DA payload, publication outbox rows and withdrawal as stored.
  */
 const shownOwn = (globals: Globals) =>
   run(
@@ -213,7 +191,7 @@ const appliedOwn = () => ({
   immutable: [TX.cbor.toString("hex")],
   blocks: [OWN],
   da: true,
-  outbox: { peers: COMMITTEE_PEERS, announcements: 1 },
+  outbox: { peers: 0, announcements: 0 },
   withdrawal: { status: WithdrawalsDB.Status.Projected, header: OWN },
 });
 
@@ -282,7 +260,7 @@ describe(
       const globals = await landOwn(freshNative());
       const landed = await shownOwn(globals);
       // The DA payload write, after the `immutable` and `blocks` writes and
-      // before the outbox and the journal's mark, fails.
+      // before the journal's mark, fails.
       await sqlRun(globals, (sql) =>
         sql.unsafe(`CREATE FUNCTION refuse_da_payload() RETURNS trigger
           LANGUAGE plpgsql AS $refuse$

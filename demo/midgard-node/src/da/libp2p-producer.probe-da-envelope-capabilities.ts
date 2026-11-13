@@ -1,4 +1,4 @@
-import "./libp2p-producer.publish-da-payload-insert-from-env.js";
+import "./libp2p-producer.publication-transport.js";
 
 import {
   type DaCapabilitiesResponse,

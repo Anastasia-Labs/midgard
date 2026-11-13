@@ -21,7 +21,7 @@ import {
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
-import { getPublicationTransport } from "./libp2p-producer.publish-da-payload-insert-from-env.js";
+import { getPublicationTransport } from "./libp2p-producer.publication-transport.js";
 import { decodeStoredPayload } from "./stored-payload.js";
 
 /** Construct a retained row from the canonical header, the acquired bytes and

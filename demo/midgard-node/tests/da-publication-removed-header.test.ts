@@ -167,12 +167,12 @@ const seedPayloads = (labels: readonly string[]) =>
     for (const label of labels) {
       const payload = payloadFixture(label);
       yield* DaPayloadsDB.upsertAvailable(payload);
-      yield* DaPayloadPublicationsDB.seedForPayload(
-        payload[DaPayloadsDB.Columns.HEADER_HASH],
-        [peer],
-      );
       hashes.push(payload[DaPayloadsDB.Columns.HEADER_HASH]);
     }
+    yield* DaPayloadPublicationsDB.seedRecentPayloads({
+      peers: [peer],
+      retentionDays: RETENTION_DAYS,
+    });
     yield* DaPayloadAnnouncementsDB.seedRecentPayloads(RETENTION_DAYS);
     return hashes;
   });
@@ -207,11 +207,11 @@ describe("DA reconciliation of removed headers", () => {
         const removed = payloadFixture("removed");
         for (const payload of [live, merged, removed]) {
           yield* DaPayloadsDB.upsertAvailable(payload);
-          yield* DaPayloadPublicationsDB.seedForPayload(
-            payload[DaPayloadsDB.Columns.HEADER_HASH],
-            [peer],
-          );
         }
+        yield* DaPayloadPublicationsDB.seedRecentPayloads({
+          peers: [peer],
+          retentionDays: RETENTION_DAYS,
+        });
         yield* DaPayloadAnnouncementsDB.seedRecentPayloads(RETENTION_DAYS);
         const liveHash = live[DaPayloadsDB.Columns.HEADER_HASH];
         const mergedHash = merged[DaPayloadsDB.Columns.HEADER_HASH];

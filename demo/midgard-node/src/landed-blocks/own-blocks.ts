@@ -4,10 +4,13 @@
  * events are projected and their delta reaches the working ledger and the
  * native MPF there. What only an own block has is written here, from its
  * journal, in the rebase's transaction: its transactions in `immutable` and
- * `blocks` (what the merge of the block reads), its DA payload and that
- * payload's publication outbox. Its transactions are in a landed block, so
- * a rejection recorded for one while its journal was dead is deleted, with
- * every rejection whose recorded causes are all deleted ones
+ * `blocks` (what the merge of the block reads) and its DA payload. The DA
+ * publication reconciler seeds that payload's publication outboxes from the
+ * stored payload and delivers it, under the DA manifest it reads itself
+ * (`fibers/da-publication-reconciler.ts`): a missing or corrupt manifest
+ * holds delivery, never this rebase. Its transactions are in a landed
+ * block, so a rejection recorded for one while its journal was dead is
+ * deleted, with every rejection whose recorded causes are all deleted ones
  * (`TxRejectionsDB.deleteWithTracedRejections`). The journal derives
  * landed, then applied, from the landed row; all that is written to it is
  * when its landing was first taken in (`observed_confirmed_at_ms`), the
@@ -22,7 +25,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { seedDaPayloadPublicationOutboxFromEnv } from "../da/libp2p-producer.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -83,9 +85,9 @@ export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
           header,
           entries.map((entry) => entry[TxColumns.TX_ID]),
         );
-        const payload = yield* buildDaPayloadInsert({ record });
-        yield* DaPayloadsDB.upsertAvailable(payload);
-        yield* seedDaPayloadPublicationOutboxFromEnv(payload);
+        yield* DaPayloadsDB.upsertAvailable(
+          yield* buildDaPayloadInsert({ record }),
+        );
         const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
           entries.map((entry) => entry[TxColumns.TX_ID]),
         );

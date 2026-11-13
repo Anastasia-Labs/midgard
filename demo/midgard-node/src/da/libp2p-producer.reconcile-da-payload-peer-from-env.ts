@@ -35,8 +35,8 @@ import {
   type DaProducerPublicationManifest,
 } from "./libp2p-producer.parse-committee-peers.js";
 import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
+import { getPublicationTransport } from "./libp2p-producer.publication-transport.js";
 import { submitPayloadToPeer } from "./libp2p-producer.publish-da-payload-insert.js";
-import { getPublicationTransport } from "./libp2p-producer.publish-da-payload-insert-from-env.js";
 
 export const reconcileDaPayloadPeerFromEnv = (
   insert: DaPayloadsDB.InsertInput,

@@ -37,45 +37,6 @@ export type Row = {
   readonly updated_at: Date;
 };
 
-export const seedForPayload = (
-  headerHash: Buffer,
-  peers: readonly DaProducerCommitteePeer[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (peers.length === 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    yield* Effect.forEach(
-      peers,
-      (peer) =>
-        sql`
-          INSERT INTO ${sql(tableName)} (
-            header_hash,
-            peer_id,
-            signer_index,
-            status,
-            attempts,
-            next_retry_at
-          ) VALUES (
-            ${headerHash},
-            ${peer.peerId},
-            ${peer.signerIndex},
-            'pending',
-            0,
-            NOW()
-          )
-          ON CONFLICT (header_hash, peer_id) DO NOTHING
-        `,
-      { concurrency: 1, discard: true },
-    );
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to seed durable DA publication peer rows",
-    ),
-  );
-
 /** The database's clock, the one `da_payloads.created_at` is stamped by. */
 export const databaseNow: Effect.Effect<Date, DatabaseError, Database> =
   Effect.gen(function* () {

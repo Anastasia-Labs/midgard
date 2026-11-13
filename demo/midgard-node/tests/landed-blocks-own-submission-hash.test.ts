@@ -16,14 +16,10 @@
  * journal; applying the block again keeps the stamp, and the rebase that
  * reverts its landing after a rollback clears it.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Deferred, Effect, Fiber, Ref, Schedule } from "effect";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
@@ -32,10 +28,6 @@ import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
 import { Globals, Lucid, MidgardContracts } from "../src/services/index.js";
 import type { SubmittedAwaitingConfirmationOutput } from "../src/workers/utils/commit-block-header.js";
-import {
-  manifestFixture,
-  PRODUCER_PRIVATE_KEY_SOURCE,
-} from "./da-payload-libp2p-producer.manifest-fixture.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { testDriverRecompute, testWrite } from "./helpers/driver-recompute.js";
 import { writeFollowerTip } from "./helpers/follower-view.js";
@@ -144,21 +136,9 @@ const submitted = (): SubmittedAwaitingConfirmationOutput => ({
   submittedUtxosRoot: R1,
 });
 
-// The node's DA manifest: applying an own block seeds its payload's
-// publication outbox for the manifest's committee.
-let manifestDirectory: string;
 beforeAll(async () => {
   ({ journal, tx: TX } = await ownJournal());
   HEADER = journal.headerHash;
-  manifestDirectory = await mkdtemp(join(tmpdir(), "landed-own-hash-"));
-  const manifestPath = join(manifestDirectory, "manifest.json");
-  await writeFile(manifestPath, JSON.stringify(manifestFixture()));
-  vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", manifestPath);
-  vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", PRODUCER_PRIVATE_KEY_SOURCE);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await rm(manifestDirectory, { recursive: true, force: true });
 });
 
 /** The unresolved submission, the journal's derived status and the row's

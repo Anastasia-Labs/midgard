@@ -136,13 +136,6 @@ vi.mock(
     };
   },
 );
-vi.mock("../src/da/libp2p-producer.js", async (original) => {
-  const { Effect } = await import("effect");
-  return {
-    ...(await original<typeof import("../src/da/libp2p-producer.js")>()),
-    seedDaPayloadPublicationOutboxFromEnv: () => Effect.void,
-  };
-});
 
 const SIM_K = 6;
 const RUNS = Number(process.env.LANDED_BLOCKS_FORK_SIM_RUNS ?? "6");

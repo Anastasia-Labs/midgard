@@ -15,7 +15,7 @@ import "./libp2p-producer.parse-da-producer-publication-manifest.js";
 import "./libp2p-producer.create-da-libp2p-retained-payload-request-handlers.js";
 import "./libp2p-producer.create-da-libp2p-producer-transport.js";
 import "./libp2p-producer.publish-da-payload-insert.js";
-import "./libp2p-producer.publish-da-payload-insert-from-env.js";
+import "./libp2p-producer.publication-transport.js";
 import "./libp2p-producer.reconcile-da-payload-peer-from-env.js";
 import "./libp2p-producer.run-da-libp2p-preflight.js";
 import "./libp2p-producer.probe-da-envelope-capabilities.js";
@@ -58,13 +58,11 @@ export {
   runDaLibp2pPreflightFromEnv,
   writeSharedDaFrameChunksForTest,
 } from "./libp2p-producer.probe-da-envelope-capabilities.js";
-export { publishDaPayloadInsert } from "./libp2p-producer.publish-da-payload-insert.js";
 export {
   closeDaLibp2pPublicationTransport,
   getDaPublicationTransportForTest,
-  publicationSatisfied,
-  seedDaPayloadPublicationOutboxFromEnv,
-} from "./libp2p-producer.publish-da-payload-insert-from-env.js";
+} from "./libp2p-producer.publication-transport.js";
+export { publishDaPayloadInsert } from "./libp2p-producer.publish-da-payload-insert.js";
 export {
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
