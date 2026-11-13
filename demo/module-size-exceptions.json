@@ -830,11 +830,6 @@
     "reason": "Retained test registration “commit end-time resolver” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/commit-parent-lease-emulator.test.ts",
-    "max": 590,
-    "reason": "Retained test registration “fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent” (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/commit-stage-eviction.test.ts",
     "max": 745,
     "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault or a non-reproducing failure holds), plus coverage deferral and rejection."
