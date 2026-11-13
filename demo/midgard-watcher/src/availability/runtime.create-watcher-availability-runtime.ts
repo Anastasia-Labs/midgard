@@ -99,8 +99,8 @@ export const createWatcherAvailabilityRuntime = async (input: {
   onDaBondPoolReadFailure: (error: string) => void;
   /**
    * Holds exactly the given transactions in the follower, past its pruning.
-   * Each reconciliation pins the journal's transactions with it, so a
-   * confirmed one stays readable until the journal retires it. Required, so
+   * Each pass and each submission pins the journal's transactions with it,
+   * so a confirmed one stays readable until the journal retires it. Required, so
    * a composition root cannot drop it; production passes
    * `watcherAvailabilityTransactionPins` over the follower's store.
    */
@@ -375,6 +375,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           observation,
           attempt: (scope) => attempt(scope ?? readScope()),
           assertCurrent: () => assertCurrent(epoch),
+          pin: input.pinJournalTransactions,
         })(() => ({
           deploymentIdentity: input.identity.manifestId,
           actor,

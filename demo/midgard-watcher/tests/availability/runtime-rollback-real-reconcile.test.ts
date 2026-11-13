@@ -168,6 +168,7 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
   it("keeps a confirmed intent on inconclusive evidence, and rewinds and rebroadcasts its exact bytes once it left the chain", async () => {
     const journalPath = join(dir, "journal.sqlite");
     const intent = await confirmedIntent(journalPath);
+    const pins = vi.fn(async (_txHashes: readonly string[]) => undefined);
     const runtime = await createWatcherAvailabilityRuntime({
       config: {
         watcherConfig: {
@@ -195,7 +196,7 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
       proverWalletAddress: "prover",
       onDaBondPool: () => undefined,
       onDaBondPoolReadFailure: () => undefined,
-      pinJournalTransactions: async () => undefined,
+      pinJournalTransactions: pins,
     });
     const state = () => {
       const journal = openAvailabilityOperationJournal(journalPath);
@@ -228,6 +229,17 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
       await runtime.reconcile(observation(6), false);
       expect(state()).toBe("pending");
       expect(io.submit.mock.calls).toEqual([[intent.signedCbor]]);
+      // The follower is told to hold it after the pass decided to send it
+      // and before it went out.
+      const [sent] = io.submit.mock.invocationCallOrder;
+      const decided = io.operation.mock.invocationCallOrder
+        .filter((order) => order < sent!)
+        .at(-1)!;
+      const pinned = pins.mock.invocationCallOrder.findIndex(
+        (order) => order > decided && order < sent!,
+      );
+      expect(pinned).toBeGreaterThanOrEqual(0);
+      expect(pins.mock.calls[pinned]![0]).toContain(intent.txHash);
       expect(runtime.status()).toMatchObject({
         phase: "waiting",
         txHash: intent.txHash,

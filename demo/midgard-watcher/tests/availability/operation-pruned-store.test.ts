@@ -2,6 +2,8 @@ import type { AvailabilityOperationIntent } from "@al-ft/midgard-core/availabili
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { pinnedWatcherAvailabilitySubmit } from "../../src/availability/journal-pins.js";
+import { watcherAvailabilityTransactionPins } from "../../src/l1-follower/availability-pins.js";
 import {
   ACTOR,
   advance,
@@ -291,6 +293,34 @@ describe("availability journal transactions on a pruning follower", () => {
       }),
     );
     expect(journal.get(parent.intent.id)?.state).toBe("included");
+  });
+
+  // A pass pins at its start, so an intent signed and submitted later in
+  // the pass, as an actuated step is, must be pinned when it is submitted:
+  // a watcher that then stays down past the retained depth finds it
+  // landed, spent and otherwise pruned.
+  it("holds a transaction submitted after the pass pinned, through a restart past the retained depth", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    expect(await pass(fx, journal)).toEqual([]);
+    const { tx, intent } = recorded(fx, journal, "prepare");
+    const submit = pinnedWatcherAvailabilitySubmit(
+      { journal, actor: ACTOR, deploymentIdentity: MANIFEST },
+      watcherAvailabilityTransactionPins(fx.store),
+      async () => {
+        await fx.forward([tx]);
+        return intent.txHash;
+      },
+    );
+    await expect(submit(intent.signedCbor)).resolves.toBe(intent.txHash);
+    // Down: it lands, its output is spent, and the follower prunes past it.
+    await fx.forward([]);
+    await spendOutput(fx, intent.txHash);
+    await advance(fx, K + 2);
+    expect(await stored(fx, intent.txHash)).toBe("ok");
+    expect(await pass(fx, journal)).toMatchObject([
+      { status: "confirmed", txHash: intent.txHash },
+    ]);
   });
 
   it("holds an earlier deployment's confirmed anchor until this deployment's pass retires it", async () => {

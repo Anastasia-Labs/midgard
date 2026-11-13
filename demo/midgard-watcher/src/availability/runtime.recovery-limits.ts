@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import { pinnedWatcherAvailabilitySubmit } from "./journal-pins.js";
 import type { createWatcherAvailabilityReadAttempt } from "./runtime.read-attempt.js";
 
 /** A signed intent gets current limits from its own bounded canonical read,
@@ -71,13 +72,16 @@ export const watcherAvailabilityRecoveryLimits = (input: {
 };
 
 /** Wire only signed recovery around the caller's existing authority ports.
- * The thunk preserves initial limits/state creation before context construction. */
+ * The thunk preserves initial limits/state creation before context construction.
+ * A submission admitted by recovery is pinned in the follower before it is
+ * broadcast ({@link pinnedWatcherAvailabilitySubmit}). */
 export const watcherAvailabilityRecoveryContext = (
   input: Omit<
     Parameters<typeof watcherAvailabilityRecoveryLimits>[0],
     "initial"
   > & {
     lucid: LucidEvolution;
+    pin: (txHashes: readonly string[]) => Promise<void>;
   },
 ) => {
   const recovery = watcherAvailabilityRecoveryLimits({
@@ -94,6 +98,11 @@ export const watcherAvailabilityRecoveryContext = (
     >,
   ): SDK.DaAvailabilityOperationContext => {
     const context = ports();
+    const submit = pinnedWatcherAvailabilitySubmit(
+      context,
+      input.pin,
+      context.submit,
+    );
     return {
       ...context,
       get transactionLimits() {
@@ -102,7 +111,7 @@ export const watcherAvailabilityRecoveryContext = (
       observe: recovery.observe,
       submit: (cbor) => {
         recovery.assertSubmission(cbor);
-        return context.submit(cbor);
+        return submit(cbor);
       },
     };
   };
