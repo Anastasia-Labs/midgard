@@ -20,6 +20,7 @@ import {
   type BridgeApplication,
   type BridgeDependencies,
   exactInstalledScope,
+  failureHoldsTarget,
   MAXIMUM_CLASSIFICATION_CONCURRENCY,
   observationPreservesTarget,
   preservesObservationAuthority,
@@ -84,11 +85,9 @@ export const createBridge = (input: {
     mergedRecorder.reset();
   };
 
-  /**
-   * Prepares `candidate` over its decided prefix. `failed` is the failure of
-   * the first header whose classification failed, which postponed itself and
-   * every later header; the caller reports it once the prefix is acted on.
-   */
+  /** Prepares `candidate` over its decided prefix. `failed` is the first header
+   * failure, which postponed that header and every later one; the caller
+   * reports it once the prefix is acted on. */
   const prepare = async (
     candidate: WatcherAuthenticatedStateQueueObservation,
   ): Promise<
@@ -360,6 +359,7 @@ export const createBridge = (input: {
       ),
     );
     if (classificationFailed) throw classificationFailure;
+    if (failureHoldsTarget(candidate, target, failedIndex)) throw headerFailure;
     for (
       let index = deferredFromIndex;
       index < classifications.length;

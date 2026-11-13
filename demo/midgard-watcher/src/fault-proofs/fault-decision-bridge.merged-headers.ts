@@ -47,7 +47,7 @@ export const unverifiedMergedRecorder = (
     if (proof.headerHash !== header.headerHash)
       throw new Error("release proof names another state-queue header");
     if (recorded.has(key)) return;
-    if (removal === null && verified.delete(header.headerHash)) {
+    if (verified.delete(header.headerHash) && removal === null) {
       recorded.add(key);
       return;
     }

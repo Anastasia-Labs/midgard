@@ -2,7 +2,9 @@
  * A header whose classification fails postpones itself and every later
  * header, as a deferral does; a fault already decided earlier in the queue
  * is journaled, selected and dispatched in the same pass, and the pass still
- * rejects with the header's failure so the driver names it.
+ * rejects with the header's failure so the driver names it. A failure at or
+ * before a target already in flight fails the pass and leaves the target as
+ * it was.
  */
 import { describe, expect, it } from "vitest";
 
@@ -157,5 +159,50 @@ describe("fault decision bridge with a failing header", () => {
     expect(h.appended).toEqual([]);
     expect(h.enqueued).toEqual([]);
     expect(h.bridge.status().target).toBeNull();
+  });
+
+  it("keeps a target in flight when a header at or before it fails", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [earlier, targeted] = current.finalizedHeaders as [
+      (typeof current.finalizedHeaders)[number],
+      (typeof current.finalizedHeaders)[number],
+    ];
+    const failure = new Error("replay of the earlier block threw");
+    let failing = false;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [earlier.headerHash]: "invalidRange",
+        [targeted.headerHash]: "doubleSpend",
+      },
+      classifyOverride: (fresh: ReturnType<typeof decision>) => {
+        if (fresh.headerHash === earlier.headerHash) {
+          if (failing) throw failure;
+          return { ...fresh, decision: "healthy" as const };
+        }
+        return fresh;
+      },
+    });
+    const target = (await h.bridge.reconcileAndDispatch(current)).target;
+    expect(target?.headerHash).toBe(targeted.headerHash);
+    expect(h.controllerGenerations).toEqual(["1"]);
+
+    failing = true;
+    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(failure);
+    // The target, its permit and its retained replay context stand.
+    expect(h.bridge.status().target).toEqual(target);
+    expect(h.revocations).toEqual([]);
+    expect(h.retainedDecisionAuthorities.at(-1)).toBe(target?.decisionDigest);
+
+    // Once the earlier header classifies, the same permit and rollback
+    // generation carry on.
+    failing = false;
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toEqual(
+      target,
+    );
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(h.revocations).toEqual([]);
+    expect(h.enqueuedGenerations).toEqual(["1", "1"]);
+    expect(h.retainedDecisionAuthorities.at(-1)).toBe(target?.decisionDigest);
   });
 });
