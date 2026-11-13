@@ -6,10 +6,10 @@ import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { StackQueueTailUnattestedError } from "./stack-journey-da.js";
+import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
 import {
   ensureStackVerifiedPredecessor,
   StackVerifiedPredecessorRefusal,
-  verifiedPredecessorBeforeFamily,
 } from "./stack-verified-predecessor.js";
 import {
   ABSORB_WITHIN_MS,

@@ -18,10 +18,8 @@ import {
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { readStackJourneyTimingPaths } from "./stack-context.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
-import {
-  checkStackVerifiedPredecessor,
-  verifiedPredecessorBeforeFamily,
-} from "./stack-verified-predecessor.js";
+import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
+import { checkStackVerifiedPredecessor } from "./stack-verified-predecessor.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
 // skips without it; stack mode attaches to a running e2e-stack.
