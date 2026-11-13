@@ -168,6 +168,63 @@ describe("a wait budgeted by the stack watcher's progress", () => {
     await expect(waited).rejects.toThrow(stalled);
   });
 
+  describe("a restarted watcher's startup", () => {
+    // A starting watcher's status, at `stage`, with its latest report.
+    const starting = (stage: string, error?: string) => ({
+      liveness: "live",
+      readiness: "not_ready",
+      readinessReasons: [`startup:${stage}`],
+      l1Readiness: [],
+      startup: {
+        stage,
+        outcome: "pending",
+        ...(error === undefined ? {} : { error }),
+      },
+    });
+    // Its L1 follower held below the node's tip, as startup reports it.
+    const catchingUp = (cursorHeight: number, tipHeight: number) =>
+      starting(
+        "l1_follower_ready",
+        `the L1 follower is not ready: l1_follower_catching_up: cursor height ${cursorHeight.toString()}, node tip height ${tipHeight.toString()}`,
+      );
+
+    it("stays open past its bound while the follower's cursor rises through one long catch-up stage", async () => {
+      const stack = await runningStackWatcher(liveStatus());
+      const waited = healthyWait(stack, (served) => {
+        served.l1Source.push(decidedAt(1, 100));
+        // Serving first, then restarted and catching up from the L1 node.
+        served.statusRead = (reads) =>
+          reads === 0 ? liveStatus() : catchingUp(100 + reads, 5_000);
+      });
+      await expect(waited).resolves.toBe("healthy decision");
+    });
+
+    it("fails at its bound while the follower's cursor holds and only the node's tip and the text move", async () => {
+      const stack = await runningStackWatcher(liveStatus());
+      const waited = healthyWait(stack, (served) => {
+        served.l1Source.push(decidedAt(1, 100));
+        served.statusRead = (reads) =>
+          reads === 0 ? liveStatus() : catchingUp(101, 5_000 + reads);
+      });
+      await expect(waited).rejects.toThrow(stalled);
+    });
+
+    it("counts again the startup stages a watcher begins after it restarted from serving", async () => {
+      const stack = await runningStackWatcher(liveStatus());
+      const waited = healthyWait(stack, (served) => {
+        // Stages 0 to 2 of a first startup, serving, then a restart that
+        // begins the same stages again.
+        served.statusRead = (reads) =>
+          reads < 3
+            ? starting(`stage-${reads.toString()}`)
+            : reads === 3
+              ? liveStatus()
+              : starting(`stage-${(reads - 4).toString()}`);
+      });
+      await expect(waited).resolves.toBe("healthy decision");
+    });
+  });
+
   it("counts each startup stage the watcher begins, not a stage retrying with new error text", async () => {
     const starting = (stage: string, error?: string) => ({
       liveness: "live",

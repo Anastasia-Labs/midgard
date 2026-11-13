@@ -230,6 +230,8 @@ export const runningStackWatcher = async (
   };
   const requests: string[] = [];
   let statusReads = 0;
+  // Whether the latest status was a starting watcher's (it names `startup`).
+  let starting = false;
   const server = createServer((request, response) => {
     requests.push(request.url ?? "");
     const url = new URL(request.url ?? "/", "http://watcher");
@@ -237,8 +239,12 @@ export const runningStackWatcher = async (
       url.pathname === "/v1/status" && served.statusRead !== undefined
         ? served.statusRead(statusReads++)
         : undefined;
+    if (url.pathname === "/v1/status" && answer !== "unavailable")
+      starting = "startup" in (answer ?? served.status);
+    // A starting watcher answers its status; every other route 503s.
+    const startingRoute = starting && url.pathname !== "/v1/status";
     const body =
-      answer === "unavailable"
+      answer === "unavailable" || startingRoute
         ? undefined
         : request.url === "/v1/status"
           ? (answer ?? served.status)
@@ -249,7 +255,11 @@ export const runningStackWatcher = async (
               ? l1SourcePage(served.l1Source, url.searchParams)
               : undefined;
     response.statusCode =
-      answer === "unavailable" ? 503 : body === undefined ? 404 : 200;
+      answer === "unavailable" || startingRoute
+        ? 503
+        : body === undefined
+          ? 404
+          : 200;
     response.end(JSON.stringify(body ?? { error: "starting" }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
