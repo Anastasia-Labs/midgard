@@ -23,21 +23,23 @@ CREATE TABLE ${WATCHER_AVAILABILITY_TX_PINS_TABLE} (
  * Holds exactly `txHashes`: pins the ones not held yet and releases every
  * other pin. A transaction the follower does not store gains nothing from a
  * pin, and one it already pruned stays pruned.
+ *
+ * The write takes no lock against pruning. Only a prune step's last
+ * transaction delete reads these pins, in a single statement, and no prune
+ * hook reads them. A pin committed while a step runs therefore holds the
+ * transaction if that statement sees it, and otherwise the transaction is
+ * gone, which is what a pin written after the step gets anyway. A release
+ * is the same in reverse. So the write needs no ordering against a prune
+ * step, unlike a pin that must report `already_pruned` (`pinRetainedIn`).
  */
 export const watcherAvailabilityTransactionPins =
-  (store: Pick<FactStore, "transaction" | "dialect">) =>
+  (store: Pick<FactStore, "transaction">) =>
   async (txHashes: readonly string[]): Promise<void> => {
     const wanted = new Set(txHashes);
     for (const txHash of wanted)
       if (!/^[0-9a-f]{64}$/u.test(txHash))
         throw new Error(`Invalid availability transaction pin ${txHash}`);
     await store.transaction("write", async (tx) => {
-      // A prune step holds the cursor row for its whole transaction. Taking
-      // the row first commits these pins before such a step or after it,
-      // never between its reads and its deletes, as `pinRetainedIn` does.
-      await tx.query(
-        `SELECT 1 AS one FROM l1_follower_cursor${store.dialect.lockClause("update")}`,
-      );
       const held = new Set(
         (
           await tx.query(
