@@ -102,6 +102,8 @@ export const PROVER_MINIMUM_LOVELACE = 3_000_000_000n;
 
 /** The deployment's operator bond, in lovelace: preprod-testing's 900 ADA. */
 export const STACK_REQUIRED_BOND_LOVELACE = 900_000_000n;
+/** The stack configuration's ledger-owner deposit (`journey.depositLovelace`). */
+export const STACK_DEPOSIT_LOVELACE = 25_000_000n;
 
 /**
  * A public stack's TLS: the CA its configuration names, and the certificate
@@ -359,6 +361,7 @@ export const runningStackWatcher = async (
           minimumLovelace: PROVER_MINIMUM_LOVELACE.toString(),
         },
       },
+      journey: { depositLovelace: STACK_DEPOSIT_LOVELACE.toString() },
     },
     watcher: {
       composeProject: "midgard-node-drill",

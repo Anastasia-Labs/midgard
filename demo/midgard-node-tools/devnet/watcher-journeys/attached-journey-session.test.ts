@@ -13,9 +13,11 @@ import {
   removeStackDirectories,
   runningStackWatcher,
   seedWorkflowStarted,
+  STACK_DEPOSIT_LOVELACE,
   STACK_REQUIRED_BOND_LOVELACE,
   watcherContainer,
 } from "./attached-journey-session.test-support.js";
+import { selectJourneyFixtures } from "./catalogue.js";
 import {
   captureJourneyWorkflowBaseline,
   openAttachedJourneySession,
@@ -146,16 +148,27 @@ describe("attached journey session", () => {
 
   describe("operator-2's and the drill funding wallet's funding for the families it runs", () => {
     // Two families the committee attests, each ending in operator-2's
-    // conviction, and one it refuses before it signs.
-    const families = [
-      { category: "doubleSpend" },
-      { category: "fabricatedWithdrawal" },
-      { category: "canonicalDecodability" },
-    ] as const;
-    // Each attested family re-posts operator-2's bond. Each family also
-    // locks its header node (5 ADA) and pays three L1 commands, each kept 5
-    // ADA of fee headroom.
-    const worstCase = 2n * STACK_REQUIRED_BOND_LOVELACE + 3n * 20_000_000n;
+    // conviction, then one it refuses before it signs. doubleWithdraw
+    // publishes two withdrawal orders; withdrawnInput commits one history
+    // block and publishes one withdrawal order.
+    const families = selectJourneyFixtures(
+      "doubleWithdraw,withdrawnInput,canonicalDecodability",
+    );
+    // Each L1 transaction is kept 5 ADA of fee headroom.
+    const worstCase =
+      // operator-2's first onboarding, and one after each conviction that a
+      // family follows, the refused one too.
+      3n * STACK_REQUIRED_BOND_LOVELACE +
+      // Four header nodes (three faults and one history block), 5 ADA each,
+      // and their commits.
+      4n * (5_000_000n + 5_000_000n) +
+      // Three user events, 10 ADA each, and their publications.
+      3n * (10_000_000n + 5_000_000n) +
+      // Each family's onboarding and bond top-up.
+      3n * 2n * 5_000_000n +
+      // The funding wallet's ledger-owner deposit and its transaction.
+      STACK_DEPOSIT_LOVELACE +
+      5_000_000n;
     const funded = (fundingLovelace: bigint) =>
       runningStackWatcher(liveStatus(), {
         operator2Lovelace: STACK_REQUIRED_BOND_LOVELACE,
@@ -177,7 +190,7 @@ describe("attached journey session", () => {
       expect(stack.operator2.calls).toEqual([]);
     });
 
-    it("opens with two wallets that together hold exactly the worst case, which no refused family adds a bond to", async () => {
+    it("opens with two wallets that together hold exactly the worst case", async () => {
       const stack = await funded(worstCase - STACK_REQUIRED_BOND_LOVELACE);
       const session = await openAttachedJourneySession(
         stack.context,

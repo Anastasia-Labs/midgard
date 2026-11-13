@@ -9,6 +9,7 @@ import {
 import { trustNodeTls } from "../../src/full-stack/node-tls.js";
 import type { JourneyOperator2Node } from "./deployment-source.js";
 import type { JourneyCategory } from "./fixture.js";
+import { JOURNEY_USER_EVENT_LOVELACE } from "./history-event-staging.js";
 import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { readJourneyOperations } from "./operations.js";
@@ -86,42 +87,67 @@ const lovelaceAt = async (context: StackJourneyContext, address: string) =>
     0n,
   );
 
+/** What a family's staging spends from operator-2's wallet. */
+type FundedFamily = Readonly<{
+  category: JourneyCategory;
+  historyBlocks?: number;
+  userEvents?: number;
+}>;
+
 /**
  * Refuses a drill whose operator-2 and funding wallets together hold less
- * than the worst case of the families it runs. Each family the committee
- * attests ends in operator-2's conviction, which consumes its whole bond;
- * the next fault's onboarding posts it again, from operator-2's wallet, which
- * the funding wallet tops up (`manifest.economics.requiredBondLovelace`).
- * Every family, refused ones too, also locks its fault's header node
- * (`STATE_QUEUE_NODE_MIN_LOVELACE`) and pays three L1 transactions from these
- * wallets: operator-2's onboarding, the fault's commit and the bond's top-up,
- * each allowed the node's operator-command fee headroom
+ * than the worst case of the families it runs, in their order. Every L1
+ * transaction below is allowed the node's operator-command fee headroom
  * (`OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE`).
+ * - Operator-2's bond (`manifest.economics.requiredBondLovelace`): posted
+ *   at the first family's onboarding, as when operator-2 starts unbonded,
+ *   and again by the family after each one the committee attests, which
+ *   ends in operator-2's conviction and consumes its whole bond. The
+ *   funding wallet tops operator-2's wallet up for it.
+ * - Each family's onboarding and bond top-up, and its fault's header node
+ *   (`STATE_QUEUE_NODE_MIN_LOVELACE`) and commit.
+ * - Each history block a family commits: its header node and commit.
+ * - Each user event a family publishes from operator-2's wallet, at the
+ *   deposit's own amount (`JOURNEY_USER_EVENT_LOVELACE`); a withdrawal or
+ *   tx order's amount is the SDK's quote, assumed to be no more.
+ * - The ledger owner's deposit from the funding wallet
+ *   (`journey.depositLovelace`), made once when the owner is not funded.
  */
 const assertStackOperatorFunded = async (
   context: StackJourneyContext,
-  families: readonly Readonly<{ category: JourneyCategory }>[],
+  families: readonly FundedFamily[],
 ) => {
+  const fee = OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE;
   const bond = BigInt(
     context.deployment.manifest.economics.requiredBondLovelace,
   );
-  const perFamily =
-    3n * OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE +
-    SDK.STATE_QUEUE_NODE_MIN_LOVELACE;
-  const attested = BigInt(
-    families.filter(
-      ({ category }) => stackDaExpectation(category) !== "refusal",
-    ).length,
+  const convicted = families
+    .slice(0, -1)
+    .filter(({ category }) => stackDaExpectation(category) !== "refusal");
+  const bonds = families.length === 0 ? 0n : BigInt(1 + convicted.length);
+  const nodes = families.reduce(
+    (total, family) => total + 1 + (family.historyBlocks ?? 0),
+    0,
   );
-  const count = BigInt(families.length);
-  const required = attested * bond + count * perFamily;
+  const events = families.reduce(
+    (total, family) => total + (family.userEvents ?? 0),
+    0,
+  );
+  const deposit = BigInt(context.stackConfig.journey.depositLovelace);
+  const required =
+    bonds * bond +
+    BigInt(families.length) * 2n * fee +
+    BigInt(nodes) * (SDK.STATE_QUEUE_NODE_MIN_LOVELACE + fee) +
+    BigInt(events) * (JOURNEY_USER_EVENT_LOVELACE + fee) +
+    deposit +
+    fee;
   const { operator, funding } = context.accounts;
   const balance =
     (await lovelaceAt(context, operator.address)) +
     (await lovelaceAt(context, funding.address));
   if (balance < required)
     throw new Error(
-      `The drill's operator-2 wallet ${operator.address} and funding wallet ${funding.address} hold ${balance.toString()} lovelace together, ${(required - balance).toString()} lovelace short of the worst case of its ${count.toString()} families, ${required.toString()} lovelace: ${attested.toString()} attested × operator-2's bond of ${bond.toString()} (manifest economics.requiredBondLovelace), plus ${count.toString()} × ${perFamily.toString()} for each family's header node and fees; fund them before the drill`,
+      `The drill's operator-2 wallet ${operator.address} and funding wallet ${funding.address} hold ${balance.toString()} lovelace together, ${(required - balance).toString()} lovelace short of the worst case of its ${families.length.toString()} families, ${required.toString()} lovelace: ${bonds.toString()} × operator-2's bond of ${bond.toString()} (manifest economics.requiredBondLovelace), ${nodes.toString()} header nodes, ${events.toString()} user events, the ledger owner's deposit of ${deposit.toString()} (journey.depositLovelace) and their fees; fund them before the drill`,
     );
 };
 
@@ -144,7 +170,7 @@ export const openAttachedJourneySession = async (
     /** Operator-2's node, the second stack instance the drill pauses. */
     operator2: JourneyOperator2Node;
     /** The families the drill runs, whose worst case the wallets must hold. */
-    families: readonly Readonly<{ category: JourneyCategory }>[];
+    families: readonly FundedFamily[];
     exec?: WatcherEvidenceExec;
     /** Operator-2's node control, by default `docker compose` on its project. */
     operator2Control?: OperatorNodeControl;

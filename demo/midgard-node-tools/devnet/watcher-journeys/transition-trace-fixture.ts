@@ -35,6 +35,10 @@ export const createTransitionTraceJourneyFixture = ({
   liveTail: boolean;
 }): JourneyFixture => ({
   category: "transitionTrace",
+  // On an attached stack: the predecessor deposit and the trace deposit,
+  // and the empty block the fault waits for.
+  userEvents: 2,
+  historyBlocks: 1,
   // The cover the attached trace's staging asks of operator-2's shift
   // (`stackTraceAttachedStack`), from the deposit history's protection.
   stackShiftCoverMs: ({ timing, eventHistoryProtectionMs, profile }) =>

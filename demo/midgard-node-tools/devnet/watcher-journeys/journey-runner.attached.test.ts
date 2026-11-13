@@ -17,6 +17,7 @@ import {
   runningStackWatcher,
   seedWorkflowStarted,
   STACK_GENESIS,
+  STACK_REQUIRED_BOND_LOVELACE,
 } from "./attached-journey-session.test-support.js";
 import type {
   JourneyBlock,
@@ -205,8 +206,10 @@ describe("journey runner on an attached stack", () => {
         const operator2 = await composedPublicOperator2(stackTls);
         await operator2.up();
         vi.stubEnv("PATH", operator2.path);
+        // Operator-2 holds the bond its one family may post.
         const stack = await runningStackWatcher(liveStatus(), {
           tls: stackTls,
+          operator2Lovelace: STACK_REQUIRED_BOND_LOVELACE,
         });
         stack.served.nodeReadyz = awaitingDa;
         // The journey's own Compose control of operator-2, not a stand-in.

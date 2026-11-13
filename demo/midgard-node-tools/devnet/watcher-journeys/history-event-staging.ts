@@ -338,6 +338,13 @@ export const publishJourneyWithdrawals = (
     ),
   );
 
+/**
+ * The lovelace a family's deposit locks, paid from operator-2's wallet. The
+ * attached drill's funding check allows each user event of a family this
+ * much.
+ */
+export const JOURNEY_USER_EVENT_LOVELACE = 10_000_000n;
+
 /** The exact ordinary deposit the SDK publishes for this owner credential. */
 export const journeyDepositEventRequest = (input: {
   deployment: EventDeployment;
@@ -350,7 +357,7 @@ export const journeyDepositEventRequest = (input: {
   });
   return {
     name: "deposit",
-    identity: `${address}/10000000/no-datum`,
+    identity: `${address}/${JOURNEY_USER_EVENT_LOVELACE.toString()}/no-datum`,
     build: async () => {
       const reference = deployment.references.get("depositMint");
       if (reference === undefined)
@@ -362,7 +369,7 @@ export const journeyDepositEventRequest = (input: {
           {
             l2Address: address,
             l2Datum: null,
-            lovelace: 10_000_000n,
+            lovelace: JOURNEY_USER_EVENT_LOVELACE,
             additionalAssets: {},
             referenceScripts: { depositMinting: reference },
           },

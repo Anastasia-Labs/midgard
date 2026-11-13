@@ -47,6 +47,7 @@ export const createPreparedJourneyFixture = (
     });
   return {
     category,
+    ...options,
     stackShiftCoverMs,
     stage: (input) =>
       stageJourney(input, { ...options, category, prepare, stackShiftCoverMs }),

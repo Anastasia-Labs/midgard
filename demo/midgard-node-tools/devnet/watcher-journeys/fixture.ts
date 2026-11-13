@@ -100,4 +100,14 @@ export type JourneyFixture = {
    * time limit is derived from. Refuses when no shift holds it.
    */
   stackShiftCoverMs(input: StackShiftCoverInput): number;
+  /**
+   * How many history blocks its staging commits, from operator-2's wallet
+   * (none when absent).
+   */
+  historyBlocks?: number;
+  /**
+   * How many user events (deposits, withdrawals, tx orders) its staging
+   * publishes from operator-2's wallet (none when absent).
+   */
+  userEvents?: number;
 };
