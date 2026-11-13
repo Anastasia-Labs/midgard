@@ -16,6 +16,7 @@ import {
   readSignedTransactionRecovery,
   type SignedTransactionRecovery,
 } from "./signed-transaction-recovery.js";
+import { httpAnswerFailure } from "./transport-failure.js";
 
 /** A confirmed transaction's exact bytes and the block that carries it. */
 export type JourneyConfirmedTransaction = Readonly<{
@@ -57,7 +58,8 @@ const kupoCreationPoint = async (
     { signal: AbortSignal.timeout(30_000) },
   );
   if (!response.ok)
-    throw new Error(
+    throw httpAnswerFailure(
+      response.status,
       `Kupo ${path} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
     );
   const matches = (await response.json()) as unknown;
@@ -185,7 +187,8 @@ export const readKupoTransactionInclusion = async (
     { signal: AbortSignal.timeout(30_000) },
   );
   if (!response.ok)
-    throw new Error(
+    throw httpAnswerFailure(
+      response.status,
       `Kupo ${path} failed with ${response.status.toString()}${await httpFailureDetail(response)}`,
     );
   const matches = (await response.json()) as unknown;

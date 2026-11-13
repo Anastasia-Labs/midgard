@@ -155,7 +155,7 @@ it("propagates the final timeout after exactly three attempts", async () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it.each([400, 401, 403, 503])("does not retry HTTP %s", async (status) => {
+it.each([400, 401, 403, 404])("does not retry HTTP %s", async (status) => {
   const fetch = vi
     .spyOn(globalThis, "fetch")
     .mockResolvedValue(new Response("failure", { status }));
@@ -176,17 +176,26 @@ it("does not retry malformed JSON even if its signal timed out", async () => {
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+it("does not retry an abort that is not its own timeout", async () => {
+  const error = new DOMException("External abort", "AbortError");
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(error);
+  await expect(
+    readJourneyOperations("http://localhost:1234", "/v1/status"),
+  ).rejects.toBe(error);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
 it.each([
-  new TypeError("fetch failed"),
-  new DOMException("External abort", "AbortError"),
-  new DOMException("Unrelated timeout", "TimeoutError"),
-])(
-  "does not retry an error without its own timeout signal: %s",
-  async (error) => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(error);
-    await expect(
-      readJourneyOperations("http://localhost:1234", "/v1/status"),
-    ).rejects.toBe(error);
-    expect(fetch).toHaveBeenCalledTimes(1);
-  },
-);
+  ["a refused connection", refused()],
+  ["a 503 answer", new Response("starting", { status: 503 })],
+])("retries %s, which carried no answer", async (_label, failure) => {
+  const health = { ready: true, activeAlerts: [] };
+  const fetch = vi.spyOn(globalThis, "fetch");
+  if (failure instanceof Response) fetch.mockResolvedValueOnce(failure);
+  else fetch.mockRejectedValueOnce(failure);
+  fetch.mockResolvedValueOnce(Response.json(health));
+  const result = readJourneyOperations("http://localhost:1234", "/v1/status");
+  await vi.advanceTimersByTimeAsync(250);
+  expect(await result).toEqual(health);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});

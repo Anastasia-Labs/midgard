@@ -63,6 +63,7 @@ import { stackJourneyDa } from "./stack-journey-da.js";
 import { STACK_ABSORB_WITHIN_MS } from "./stack-ledger-owner.js";
 import { stackJourneyTransactions } from "./stack-transactions.js";
 import { leftQueueByMerge } from "./state-queue-root-anchor.js";
+import { answerOrNotYet } from "./transport-failure.js";
 import {
   keepJourneyDecision,
   readJourneyVerificationRecords,
@@ -181,16 +182,21 @@ const awaitDecision = async (
 ): Promise<Exclude<Decision, { kind: "undecided" }>> => {
   let deadline: number | undefined;
   for (;;) {
-    const found = await classify(ports, block);
-    if (found.kind !== "undecided") return found;
-    const standing = await ports.standing(block.headerHash);
-    if (standing === "merged") {
-      // A record written just before the merge still counts.
-      const last = await classify(ports, block);
+    const found = await answerOrNotYet(() => classify(ports, block));
+    if (found !== undefined && found.kind !== "undecided") return found;
+    const standing = await answerOrNotYet(() =>
+      ports.standing(block.headerHash),
+    );
+    // A record written just before the merge still counts; a read of it
+    // that got no answer is tried again within the bound.
+    const last =
+      standing === "merged"
+        ? await answerOrNotYet(() => classify(ports, block))
+        : undefined;
+    if (last !== undefined)
       return last.kind === "undecided"
         ? { kind: "released", outcome: "merged with no verified record" }
         : last;
-    }
     if (standing === "removed")
       throw new StackVerifiedPredecessorRefusal(
         "left-queue-unmerged",
@@ -247,15 +253,18 @@ export const ensureStackVerifiedPredecessor = async (
   const transfer = ports.transfer(directory);
   const intent = (await transfer.saved(tail)) ?? (await transfer.build(tail));
   const deadline = ports.now() + ports.absorbWithinMs;
-  await transfer.send(intent);
+  // A send that got no answer is "not yet": the next /tx-status read says
+  // whether to send again, as for a dropped transfer.
+  await answerOrNotYet(() => transfer.send(intent));
   let committed: string | undefined;
   for (;;) {
-    const status = await transfer.txStatus(intent.txId);
-    if (status.status === "committed" && status.headerHash !== undefined) {
+    const status = await answerOrNotYet(() => transfer.txStatus(intent.txId));
+    if (status?.status === "committed" && status.headerHash !== undefined) {
       committed = status.headerHash;
       break;
     }
-    if (status.status === "not_found") await transfer.send(intent);
+    if (status?.status === "not_found")
+      await answerOrNotYet(() => transfer.send(intent));
     if (ports.now() > deadline)
       throw new StackVerifiedPredecessorRefusal(
         "transfer-not-committed",
@@ -266,7 +275,8 @@ export const ensureStackVerifiedPredecessor = async (
   }
   ports.onStage(`our node committed the transfer in ${committed}`);
   let carrying: SDK.Header | undefined;
-  while ((carrying = await ports.headerOnL1(committed)) === undefined) {
+  const onL1 = () => answerOrNotYet(() => ports.headerOnL1(committed!));
+  while ((carrying = await onL1()) === undefined) {
     if (ports.now() > deadline)
       throw new StackVerifiedPredecessorRefusal(
         "transfer-block-not-on-l1",
@@ -283,16 +293,16 @@ export const ensureStackVerifiedPredecessor = async (
   const isNew = (read: JourneyBlock) =>
     read.headerHash !== tail.headerHash &&
     (read.headerHash === committed || read.header.endTime > endTime);
-  let block = await ports.readAttestedAtOrAfterTail();
-  while (!isNew(block)) {
+  let block = await answerOrNotYet(() => ports.readAttestedAtOrAfterTail());
+  while (block === undefined || !isNew(block)) {
     if (ports.now() > deadline)
       throw new StackVerifiedPredecessorRefusal(
         "healed-block-not-in-queue",
         committed,
-        `the stack's queue still read ${block.headerHash}, not our node's block or a later one, after ${ports.absorbWithinMs.toString()} ms`,
+        `the stack's queue still read ${block?.headerHash ?? "nothing it could answer"}, not our node's block or a later one, after ${ports.absorbWithinMs.toString()} ms`,
       );
     await ports.pause();
-    block = await ports.readAttestedAtOrAfterTail();
+    block = await answerOrNotYet(() => ports.readAttestedAtOrAfterTail());
   }
   const healed = await awaitDecision(ports, block);
   if (healed.kind === "verified")

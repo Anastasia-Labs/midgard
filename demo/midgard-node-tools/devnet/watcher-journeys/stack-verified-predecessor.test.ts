@@ -79,6 +79,20 @@ describe("the stack's verified predecessor before a family", () => {
     });
   });
 
+  it("reads through our node's /tx-status answering 502 for a moment while it commits the transfer", async () => {
+    const drill = await verifiedPredecessorDrill();
+    drill.watcher.record(drill.rootBlock, "unverified_merged");
+    const committed = drill.ourNodeCommits(
+      () => drill.rootBlock.headerHash,
+      "verified",
+    );
+    drill.node.unavailableStatusReads = 2;
+    const healed = await ensureStackVerifiedPredecessor(drill.ports());
+    expect(healed).toMatchObject({ kind: "healed", block: committed[0] });
+    expect(drill.node.unavailableStatusReads).toBe(0);
+    expect(drill.node.submitted).toHaveLength(1);
+  });
+
   it("heals a root block a restarted watcher holds no record of", async () => {
     const drill = await verifiedPredecessorDrill();
     drill.watcher.record(drill.rootBlock, "verified");

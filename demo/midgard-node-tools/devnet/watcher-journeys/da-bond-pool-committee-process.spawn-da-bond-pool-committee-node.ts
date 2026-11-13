@@ -12,7 +12,7 @@ import {
 } from "./da-bond-pool-committee-process.build-da-bond-pool-committee-env.js";
 import type { DaBondPoolJourneyStep } from "./da-bond-pool-journey.js";
 import { parseDaBondPoolReadyz } from "./da-bond-pool-process-evidence.js";
-import { isTransientTransportError } from "./ledger-tip.js";
+import { isTransientTransportError } from "./transport-failure.js";
 
 /**
  * Polls `/readyz` until the node has read the pool after `since` and its pool

@@ -46,3 +46,65 @@ it("reads a watcher's status when it answers", async () => {
     liveness: "live",
   });
 });
+
+it("reads through a watcher that answers 5xx for a moment", async () => {
+  let answered = 0;
+  server = createServer((_request, response) => {
+    answered += 1;
+    response.writeHead(answered === 1 ? 503 : 200, {
+      "content-type": "application/json",
+    });
+    response.end(
+      JSON.stringify(answered === 1 ? { error: "starting" } : { ok: true }),
+    );
+  });
+  await new Promise<void>((resolve) =>
+    server!.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port.toString()}`;
+  await expect(readJourneyOperations(endpoint, "/v1/status")).resolves.toEqual({
+    ok: true,
+  });
+  expect(answered).toBe(2);
+});
+
+it("reads through a refused connection while the watcher's listener comes back", async () => {
+  const probe = createServer();
+  await new Promise<void>((resolve) =>
+    probe.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const read = readJourneyOperations(
+    `http://127.0.0.1:${port.toString()}`,
+    "/v1/status",
+  );
+  // The first try finds nothing listening; the listener is back before the
+  // next one.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ liveness: "live" }));
+  });
+  await new Promise<void>((resolve) =>
+    server!.listen(port, "127.0.0.1", () => resolve()),
+  );
+  await expect(read).resolves.toEqual({ liveness: "live" });
+});
+
+it("fails at once, by name, on an answer that refuses the read", async () => {
+  let answered = 0;
+  server = createServer((_request, response) => {
+    answered += 1;
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_cursor" }));
+  });
+  await new Promise<void>((resolve) =>
+    server!.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port.toString()}`;
+  await expect(readJourneyOperations(endpoint, "/v1/status")).rejects.toThrow(
+    'Operations HTTP returned 400: {"error":"invalid_cursor"}',
+  );
+  expect(answered).toBe(1);
+});

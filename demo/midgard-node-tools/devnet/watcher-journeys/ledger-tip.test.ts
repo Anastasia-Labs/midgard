@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   awaitLedgerTipSlot,
-  isTransientTransportError,
   readOgmiosTipSlot,
   retryOgmiosTransport,
 } from "./ledger-tip.js";
+import { isTransientTransportError } from "./transport-failure.js";
 
 const fetchFailed = () =>
   new TypeError("fetch failed", { cause: new Error("ECONNREFUSED") });

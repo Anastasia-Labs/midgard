@@ -8,6 +8,10 @@ import {
   JOURNEY_RESTART_TIMEOUT_MS,
 } from "./operations.js";
 import { armOperatorReleaseGuard } from "./operator-release-guard.js";
+import {
+  JourneyTransportError,
+  readThroughTransportFailures,
+} from "./transport-failure.js";
 import { projectOnlyEnvironment } from "./watcher-evidence-reader.js";
 
 /** The Compose service of an operator's node in its stack. */
@@ -84,7 +88,9 @@ const compose = (project: string, args: readonly string[]) =>
         if (error === null) resolve(stdout);
         else
           reject(
-            new Error(
+            // The Docker CLI exited without an answer; for a read
+            // (`runningServices`) that is a transport failure.
+            new JourneyTransportError(
               `docker compose -p ${project} ${args.join(" ")} failed: ${stderr.trim().split("\n").slice(-5).join(" | ") || error.message}`,
               { cause: error },
             ),
@@ -305,6 +311,14 @@ export const createOperatorPause = (
   let stopped = false;
   let resuming: Promise<OperatorResumedEvidence | undefined> | undefined;
   let guard: { disarm(): void } | undefined;
+  // A proof whose reads got no answer (a Docker CLI or `/readyz` transport
+  // failure) is read again within one Compose command's bound; a node that
+  // answers it is running refuses at once.
+  const proveStopped = () =>
+    readThroughTransportFailures(() => proveOperatorNodeStopped(control), {
+      boundMs: OPERATOR_COMPOSE_TIMEOUT_MS,
+      pause: () => pause(pollIntervalMs),
+    });
   const hold = async () => {
     if (resuming !== undefined)
       throw new Error("Operator-2's node was already resumed by this drill");
@@ -318,14 +332,14 @@ export const createOperatorPause = (
       });
     stopped = true;
     await control.stop();
-    return await proveOperatorNodeStopped(control);
+    return await proveStopped();
   };
   const assertStopped = async () => {
     if (!stopped || resuming !== undefined)
       throw new Error(
         "Operator-2's node is not held stopped by this drill; refusing to sign as operator-2",
       );
-    return await proveOperatorNodeStopped(control);
+    return await proveStopped();
   };
   const resume = () =>
     (resuming ??= (async () => {

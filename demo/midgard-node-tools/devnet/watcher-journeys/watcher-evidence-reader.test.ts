@@ -1,61 +1,39 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   chmod,
   copyFile,
   mkdir,
-  mkdtemp,
   readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 
 import {
   COMPLETE_CANONICAL_REPLAY,
-  computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
   HEADER_CLASSIFIER,
   HEADER_DECISION,
 } from "@al-ft/midgard-fault-proofs";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "midgard-watcher";
-import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { captureJourneyWorkflowBaseline } from "./journey-session.js";
 import {
   composeWatcherEvidenceExec,
   createWatcherEvidenceReader,
-  type WatcherEvidenceExec,
 } from "./watcher-evidence-reader.js";
+import {
+  appendWorkflow,
+  directories,
+  FINGERPRINT,
+  localExec,
+  recordedWatcher,
+  watcherImage,
+} from "./watcher-evidence-reader.test-support.js";
 
-/** The watcher package as its image installs it: `dist/index.js` in the working directory. */
-const watcherImage = fileURLToPath(
-  new URL("../../../midgard-watcher/", import.meta.url),
-);
-
-/** Runs the reader with this machine's Node in the watcher package, as the container would. */
-const localExec =
-  (cwd = watcherImage): WatcherEvidenceExec =>
-  ({ script, request }) =>
-    new Promise((resolve, reject) => {
-      execFile(
-        process.execPath,
-        ["--input-type=module", "-e", script, request],
-        { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-        (error, stdout, stderr) =>
-          error === null ? resolve(stdout) : reject(new Error(stderr)),
-      );
-    });
-
-const directories: string[] = [];
 afterAll(() =>
   Promise.all(
     directories.map((path) => rm(path, { recursive: true, force: true })),
@@ -64,73 +42,6 @@ afterAll(() =>
 afterEach(() => {
   vi.unstubAllEnvs();
 });
-
-const FINGERPRINT = "ab".repeat(32);
-
-/** A watcher's state as its container sees it: its process configuration and journals. */
-const recordedWatcher = async () => {
-  const root = await mkdtemp(join(tmpdir(), "watcher-evidence-"));
-  directories.push(root);
-  const journalDirectory = join(root, "workflows");
-  await mkdir(journalDirectory);
-  const storePath = join(root, "watcher.sqlite");
-  const processConfigPath = join(root, "watcher-process.json");
-  await writeFile(
-    processConfigPath,
-    JSON.stringify({
-      workflowJournalDirectory: journalDirectory,
-      watcherConfig: { storage: { path: storePath } },
-    }),
-  );
-  const reader = (exec: WatcherEvidenceExec = localExec()) =>
-    createWatcherEvidenceReader({
-      exec,
-      hostProcessConfigPath: processConfigPath,
-      containerProcessConfigPath: processConfigPath,
-      deploymentFingerprint: FINGERPRINT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
-  return { root, journalDirectory, storePath, processConfigPath, reader };
-};
-
-const appendWorkflow = async (
-  storePath: string,
-  category: FraudProofCatalogueCategoryName,
-  headerHash: string,
-  count: number,
-  fingerprint = FINGERPRINT,
-) => {
-  const workflows = openWatcherWorkflowStoreForTest(storePath);
-  try {
-    const identity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: fingerprint,
-      category,
-      target: { kind: "state_queue_header" as const, headerHash },
-    };
-    const store = workflows.forObjective({ category, headerHash });
-    for (let sequence = 0; sequence < count; sequence += 1) {
-      const entry: FraudProofWorkflowJournalEntry = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId: computeFraudProofWorkflowId(identity),
-        identity,
-        sequence,
-        recordedAt: "2026-10-29T00:00:00.000Z",
-        event:
-          sequence === 0
-            ? { kind: "started" }
-            : {
-                kind: "prepared",
-                artifact: {},
-                artifactDigest: createHash("sha256").update("{}").digest("hex"),
-              },
-      };
-      await store.append(entry, sequence);
-    }
-  } finally {
-    workflows.close();
-  }
-};
 
 /** The watcher's canonical JSON for records of strings and string lists. */
 const canonical = (value: unknown): string =>

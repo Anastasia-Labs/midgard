@@ -1,28 +1,12 @@
 import { setTimeout as pause } from "node:timers/promises";
 
+import { isTransientTransportError } from "./transport-failure.js";
+
 /** How long one Ogmios state query may take before it counts as a blip. */
 export const OGMIOS_QUERY_TIMEOUT_MS = 10_000;
 
 /** How long Ogmios may stay unreachable before a read gives up. */
 export const OGMIOS_MAX_TRANSPORT_OUTAGE_MS = 120_000;
-
-/**
- * An HTTP read that failed without the server's answer: the request timed out
- * or was aborted (`AbortSignal.timeout`), or undici's fetch lost its
- * connection (`TypeError("fetch failed")` wraps a refused or reset
- * connection; `"terminated"` is a body reset mid-read). An answer that says
- * something is wrong (an Ogmios JSON-RPC error, a missing or malformed
- * result, a non-200 status) is never one.
- */
-export const isTransientTransportError = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  const { name, message } = error as { name?: unknown; message?: unknown };
-  if (name === "TimeoutError" || name === "AbortError") return true;
-  return (
-    error instanceof TypeError &&
-    (message === "fetch failed" || message === "terminated")
-  );
-};
 
 /**
  * Runs the read-only Ogmios query `read` again after a transport blip

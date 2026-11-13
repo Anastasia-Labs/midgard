@@ -1,6 +1,5 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
 import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import { expect } from "vitest";
@@ -21,12 +20,12 @@ import {
 } from "./journey-runner.await-healthy-watcher.js";
 import { devnetJourneyMode } from "./journey-runner.devnet-mode.js";
 import type { JourneyExecution } from "./journey-runner.journey-execution.js";
+import { createJourneyRunPolls } from "./journey-runner.polls.js";
 import type {
   AttachedJourneySession,
   JourneySession,
 } from "./journey-session.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
-import { measureJourneyStage } from "./stage-timing.js";
 import { onQueueOrMerged } from "./state-queue-root-anchor.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
@@ -51,57 +50,13 @@ export const runJourney = async (
   let activeStage = "services";
   let diagnostics: (() => Promise<unknown>) | undefined;
   let succeeded = false;
-  const stage = async <T>(
-    name: string,
-    action: () => Promise<T>,
-  ): Promise<T> => {
-    activeStage = name;
-    return await measureJourneyStage(directory, name, action);
-  };
-  const poll = async <T>(
-    name: string,
-    action: () => Promise<T | undefined>,
-    timeoutMs = 300_000,
-  ): Promise<T> =>
-    stage(name, async () => {
-      const deadline = performance.now() + timeoutMs;
-      for (;;) {
-        const result = await action();
-        if (result !== undefined) return result;
-        if (performance.now() >= deadline)
-          throw new Error(`Timed out waiting for ${name}`);
-        await pause(1000);
-      }
-    });
-  // A stage that waits on the watcher's L1 catch-up is budgeted by progress,
-  // not by wall clock. The watcher's follower walks every L1 block it missed
-  // before it can classify a header, so a long L1 gap (a node outage, a frozen
-  // devnet) legitimately takes hours. The stage fails only when the watcher's
-  // progress stops for the whole allowance; the journey timeout still bounds
-  // the total.
-  const pollWhileReplaying = async <T>(
-    name: string,
-    action: () => Promise<T | undefined>,
-    progress: () => Promise<string | null>,
-    stallTimeoutMs: number,
-  ): Promise<T> =>
-    stage(name, async () => {
-      let lastProgress = await progress();
-      let deadline = performance.now() + stallTimeoutMs;
-      for (;;) {
-        const result = await action();
-        if (result !== undefined) return result;
-        const current = await progress();
-        if (current !== lastProgress) {
-          lastProgress = current;
-          deadline = performance.now() + stallTimeoutMs;
-        }
-        if (performance.now() >= deadline)
-          throw new Error(`Timed out waiting for ${name}`);
-        await pause(1000);
-      }
-    });
-  const polls = { stage, poll, pollWhileReplaying };
+  const polls = createJourneyRunPolls({
+    directory,
+    onStage: (name) => {
+      activeStage = name;
+    },
+  });
+  const { stage, poll, pollWhileReplaying } = polls;
   let successorPort: JourneySuccessorPort | undefined;
   let closeMode: (() => Promise<void>) | undefined;
   try {

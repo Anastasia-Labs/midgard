@@ -15,6 +15,7 @@ import type { ResolvedTxStatus } from "midgard-node/commands/tx-status";
 import { type JourneyLedger } from "../../src/full-stack/journey.js";
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock } from "./fixture.js";
+import { httpAnswerFailure } from "./transport-failure.js";
 
 /**
  * The drill's transfer to our node, saved for the predecessor it builds on;
@@ -70,7 +71,8 @@ export const successorTransfer = (input: SuccessorTransferInput) => {
         ? status.status !== "not_found"
         : response.status === 404 && status.status === "not_found");
     if (!known || status === undefined)
-      throw new Error(
+      throw httpAnswerFailure(
+        response.status,
         `Our node's /tx-status answered ${response.status.toString()} for ${txId}: ${text}`,
       );
     if (status.status === "rejected")

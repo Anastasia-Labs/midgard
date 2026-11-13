@@ -17,6 +17,7 @@ import {
   stackJourneyTransactions,
   stackSignedCommitRecovery,
 } from "./stack-transactions.js";
+import { isTransientTransportError } from "./transport-failure.js";
 
 // Real preprod Kupo v2.11.0 and Ogmios v7.0.0 answers, served through the
 // reader's own fetch and WebSocket.
@@ -170,6 +171,39 @@ describe("stack transaction reads", () => {
         recordedFetch(recording) as typeof fetch,
       ),
     ).rejects.toThrow(refusal);
+    // A 5xx is no answer about the transaction: a wait reads it again.
+    expect(
+      isTransientTransportError(
+        await (await readerOf(recording))
+          .transaction(id)
+          .catch((error: unknown) => error),
+      ),
+    ).toBe(true);
+  });
+
+  it("never takes Kupo's refusal of a malformed read for a lost answer", async () => {
+    const recording = loadL1Recording(REMOVAL);
+    const { id } = recording.transaction!;
+    const outputs = recording.exchanges.find(
+      (exchange) =>
+        exchange.surface === "kupo" &&
+        exchange.request.path === `/matches/*@${id}?resolve_hashes`,
+    )!;
+    Object.assign(outputs, {
+      response: {
+        ...outputs.response,
+        status: 400,
+        body: { hint: "Invalid pattern" },
+        bodyText: undefined,
+      },
+    });
+    const failure = await (await readerOf(recording))
+      .transaction(id)
+      .catch((error: unknown) => error);
+    expect((failure as Error).message).toMatch(
+      /failed with 400: .*Invalid pattern/u,
+    );
+    expect(isTransientTransportError(failure)).toBe(false);
   });
 
   it("settles a signed commit the stack's Kupo indexed as included, and reports how far Kupo had indexed", async () => {

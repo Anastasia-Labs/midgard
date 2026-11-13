@@ -218,6 +218,8 @@ export const verifiedPredecessorDrill = async () => {
     /** Every transaction handed to our node's /submit, in order. */
     submitted: [] as string[],
     loseNextResponse: false,
+    /** How many next /tx-status reads its ingress answers 502 instead. */
+    unavailableStatusReads: 0,
     ownerHolds: true,
     onSubmit: undefined as ((txId: string) => void) | undefined,
   };
@@ -260,6 +262,12 @@ export const verifiedPredecessorDrill = async () => {
     const url = new URL(input instanceof Request ? input.url : input);
     if (url.pathname !== "/tx-status")
       return Promise.resolve(Response.json({}, { status: 404 }));
+    if (node.unavailableStatusReads > 0) {
+      node.unavailableStatusReads -= 1;
+      return Promise.resolve(
+        new Response("<html>502 Bad Gateway</html>", { status: 502 }),
+      );
+    }
     const txId = url.searchParams.get("tx_hash");
     const status = node.statuses.get(txId ?? "") ?? { status: "not_found" };
     return Promise.resolve(

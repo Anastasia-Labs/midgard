@@ -8,6 +8,8 @@ import type {
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
+import { JourneyTransportError } from "./transport-failure.js";
+
 /** Where the stack's watcher Compose service mounts its process configuration. */
 export const WATCHER_CONTAINER_PROCESS_CONFIG_PATH =
   "/etc/midgard/watcher-process.json";
@@ -18,7 +20,10 @@ export const WATCHER_CONTAINER_PROCESS_CONFIG_PATH =
  * its mounted process configuration, opens the decision journal through the
  * image's exported `readWatcherFaultDecisionEvidence` and the workflow
  * journal as a read-only SQLite connection, and prints one JSON envelope
- * carrying the configuration's digest. Its one argument is the request.
+ * carrying the configuration's digest. A read that fails prints the failure
+ * as its envelope instead, with SQLite's result code when it has one, so the
+ * host tells a named failure from a busy journal (`errcode` 5). Its one
+ * argument is the request.
  */
 export const WATCHER_EVIDENCE_READER_SCRIPT = `
 import { createHash } from "node:crypto";
@@ -27,9 +32,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const request = JSON.parse(process.argv[process.argv.length - 1]);
-const configBytes = readFileSync(request.processConfigPath);
-const config = JSON.parse(configBytes.toString("utf8"));
-const read = async () => {
+const read = async (config) => {
   if (request.read === "decisions") {
     const directory = config.workflowJournalDirectory;
     if (!existsSync(join(directory, "watcher-journals.sqlite"))) return [];
@@ -59,11 +62,22 @@ const read = async () => {
   }
   throw new Error("Unknown watcher evidence read");
 };
-const evidence = await read();
-process.stdout.write(JSON.stringify({
-  processConfigSha256: createHash("sha256").update(configBytes).digest("hex"),
-  evidence,
-}));
+try {
+  const configBytes = readFileSync(request.processConfigPath);
+  const evidence = await read(JSON.parse(configBytes.toString("utf8")));
+  process.stdout.write(JSON.stringify({
+    processConfigSha256: createHash("sha256").update(configBytes).digest("hex"),
+    evidence,
+  }));
+} catch (cause) {
+  process.stdout.write(JSON.stringify({
+    error: {
+      message: String(cause?.message ?? cause),
+      ...(typeof cause?.code === "string" ? { code: cause.code } : {}),
+      ...(typeof cause?.errcode === "number" ? { errcode: cause.errcode } : {}),
+    },
+  }));
+}
 `;
 
 /** One evidence read, as the reader script receives it. */
@@ -101,7 +115,9 @@ export const projectOnlyEnvironment = (): NodeJS.ProcessEnv =>
 /**
  * The stack's watcher, by `docker compose -p <project> exec -T watcher`. It
  * runs from `/` with no `COMPOSE_*` variables, so no Compose file on the
- * caller's path can redefine the project's services.
+ * caller's path can redefine the project's services. An exec that fails
+ * (the daemon, the container or its Node did not answer; the reader prints
+ * its own failures as an answer) is a `JourneyTransportError`.
  */
 export const composeWatcherEvidenceExec =
   (composeProject: string): WatcherEvidenceExec =>
@@ -133,7 +149,7 @@ export const composeWatcherEvidenceExec =
           if (error === null) resolve(stdout);
           else
             reject(
-              new Error(
+              new JourneyTransportError(
                 `Could not read the stack watcher's evidence in Compose project ${composeProject}: ${stderr.trim().split("\n").slice(-5).join(" | ") || error.message}`,
                 { cause: error },
               ),
@@ -200,6 +216,16 @@ export const createWatcherEvidenceReader = (input: {
       envelope = JSON.parse(output);
     } catch {
       throw new Error("The stack watcher's evidence reader printed no JSON");
+    }
+    if (isRecord(envelope) && isRecord(envelope.error)) {
+      const { message, code, errcode } = envelope.error;
+      throw Object.assign(
+        new Error(
+          `The stack watcher's evidence reader failed: ${String(message)}`,
+        ),
+        typeof code === "string" ? { code } : {},
+        typeof errcode === "number" ? { errcode } : {},
+      );
     }
     if (
       !isRecord(envelope) ||
