@@ -308,23 +308,6 @@ describe("availability captures on the follower's reads", () => {
     expect(io.status).not.toHaveBeenCalled();
   });
 
-  it("refuses an operation whose inputs may have been pruned instead of reading them as missing", async () => {
-    const { intake } = fixture();
-    const spent = `${"aa".repeat(32)}#0`;
-    io.outrefs.mockResolvedValue({
-      outputs: [],
-      spends: [],
-      beyondRetention: [spent],
-    });
-    await expect(
-      intake.operation(observation(11), {
-        ...intent(),
-        spentOutRefs: [spent],
-        collateralOutRefs: [],
-      }),
-    ).rejects.toThrow("may have been pruned");
-  });
-
   describe("workflow release readers (P20)", () => {
     const released = {
       reason: "challenge-closed",

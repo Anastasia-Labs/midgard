@@ -399,12 +399,11 @@ export const createWatcherAvailabilityObservation = (input: {
         const observed = required(
           await reads.utxosByOutRefAtPoint(consumed, pointOf(observation)),
         );
-        // A pruned row cannot be told from a spend: never read it as missing.
-        if (observed.beyondRetention.length > 0)
-          throw refusalError(
-            "beyond_retention",
-            `availability inputs ${observed.beyondRetention.join(", ")} may have been pruned`,
-          );
+        // A row the store pruned, or one whose creating transaction it never
+        // held (a parent a rollback dropped), is not unspent here: the store
+        // keeps every unspent tracked output. The bounded read above proved
+        // this intent did not land, so such an input reads as missing, as an
+        // unknown row does; only a foreign spend proves anything more.
         const unspent = new Set(observed.outputs.map(({ outRef }) => outRef));
         if (consumed.every((ref) => unspent.has(ref))) {
           return {

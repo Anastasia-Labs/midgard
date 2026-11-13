@@ -12,6 +12,7 @@ import {
   type Fixture,
   fixture,
   pruneFixture,
+  random,
 } from "../support/l1-follower-raw-reads-fixture.js";
 
 /**
@@ -129,4 +130,27 @@ describe("availability operation reconcile on a pruned follower store", () => {
       ),
     ).rejects.toThrow(/beyond_retention/u);
   });
+
+  // A#0 was spent and its creating transaction pruned; the second input's
+  // creating transaction never reached the store, as when a rollback drops
+  // the parent intent whose output a child spends.
+  it.each([
+    ["spent and pruned", (fx: Fixture) => `${fx.hashes.a}#0`],
+    ["never stored", () => `${random(0x77)}#0`],
+  ])(
+    "reads an input whose row is %s as missing, not as a refusal",
+    async (_, spent) => {
+      const fx = await fixture();
+      const prunedThrough = await pruneFixture(fx);
+      const found = await intake(fx).operation(
+        tipObservation(fx),
+        intentSpending(spent(fx), prunedThrough + 1),
+      );
+      expect(found).toEqual({
+        status: "inputs_missing",
+        currentSlot: Number(fx.tipPoint().slot),
+        missingOutRefs: [spent(fx)],
+      });
+    },
+  );
 });
