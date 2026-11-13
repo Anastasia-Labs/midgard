@@ -107,7 +107,7 @@ describe("trace walk producers", () => {
     .map((name) => join(MACHINE_ROOT, name));
 
   it("are found, and the replay modules they must not name exist", () => {
-    expect(producers.length).toBeGreaterThanOrEqual(12);
+    expect(producers.length).toBeGreaterThanOrEqual(26);
     expect(REPLAY_MODULES.filter((path) => !existsSync(path))).toEqual([]);
   });
 
