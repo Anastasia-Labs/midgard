@@ -14,7 +14,8 @@ import {
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
-import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
+import { writeFollowerTip } from "./helpers/follower-view.js";
+import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
@@ -193,9 +194,13 @@ describe("node commit sites take the ledger MPF lease as a node process", () => 
       >,
       (globals) =>
         Effect.gen(function* () {
-          // A driver that applied a view: the producer's permit is taken at once.
+          // A driver that applied the follower's view: the producer's permit
+          // is taken at once, and the tick's unsigned-journal discard writes
+          // under it.
           yield* resetApplicationTables;
-          const { epoch } = yield* openFollowerWriteGate;
+          const { epoch } = yield* openFollowerWriteGateAt(
+            yield* writeFollowerTip(10),
+          );
           yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
             ...local,
             epoch,

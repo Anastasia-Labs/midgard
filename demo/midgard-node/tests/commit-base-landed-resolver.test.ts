@@ -33,6 +33,7 @@ import {
   resolveCommitBaseLedgerEntries,
 } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
@@ -243,19 +244,23 @@ describe("commit base on a foreign queue tail", { concurrent: false }, () => {
       row: {},
     });
     // An own block on the applied tail that leaves its root at r1: every
-    // tail check passes, only the live journal holds the commit.
+    // tail check passes, only the live journal holds the commit. It is
+    // anchored on the follower's chain: a journal with no anchor is dead.
     const inFlight = journalHeader("unchanged-root-in-flight");
     const journal = journalFixture(inFlight);
     await run(
-      prepareUnderTestLease({
-        ...journal,
-        metadata: {
-          ...journal.metadata,
-          baseTailHeaderHash: Buffer.from(headerHash, "hex"),
-          baseRoots: { ...journal.metadata.baseRoots, utxosRoot: r1 },
-          expectedRoots: { ...journal.metadata.expectedRoots, utxosRoot: r1 },
+      prepareUnderTestLease(
+        {
+          ...journal,
+          metadata: {
+            ...journal.metadata,
+            baseTailHeaderHash: Buffer.from(headerHash, "hex"),
+            baseRoots: { ...journal.metadata.baseRoots, utxosRoot: r1 },
+            expectedRoots: { ...journal.metadata.expectedRoots, utxosRoot: r1 },
+          },
         },
-      }),
+        { beforeJournalInsert: Effect.orDie(simCommitAnchor) },
+      ),
     );
     expectPending(await resolve(tail, r1), inFlight.toString("hex"));
 
