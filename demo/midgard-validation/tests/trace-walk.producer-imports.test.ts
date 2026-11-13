@@ -13,9 +13,12 @@ import { describe, expect, it } from "vitest";
 const SOURCE_ROOT = fileURLToPath(new URL("../src/", import.meta.url));
 const MACHINE_ROOT = join(SOURCE_ROOT, "validation-machine");
 
-/** Every module the walk hands a phase to. */
+/**
+ * Every module the walk hands a phase to: the prepare and complete halves,
+ * the per-phase producers and what they share.
+ */
 const PRODUCER_MODULE =
-  /^trace-builder-(?:prepare|complete)(?:\.[\w-]+)?\.ts$/u;
+  /^(?:trace-builder-(?:prepare|complete)|[\w-]+-producers?|native-script-scan)(?:\.[\w-]+)?\.ts$/u;
 
 /** Replay and its verdict: the producers may name none of these. */
 const REPLAY_MODULES = [
@@ -104,7 +107,7 @@ describe("trace walk producers", () => {
     .map((name) => join(MACHINE_ROOT, name));
 
   it("are found, and the replay modules they must not name exist", () => {
-    expect(producers.length).toBeGreaterThanOrEqual(2);
+    expect(producers.length).toBeGreaterThanOrEqual(12);
     expect(REPLAY_MODULES.filter((path) => !existsSync(path))).toEqual([]);
   });
 
