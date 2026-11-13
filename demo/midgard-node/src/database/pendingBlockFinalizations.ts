@@ -19,6 +19,7 @@ import "./pendingBlockFinalizations.parse-ledger-delta.js";
 import "./pendingBlockFinalizations.parse-pending-block-finalization-metadata.js";
 import "./pendingBlockFinalizations.parse-pending-block-finalization.js";
 import "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
+import "./pendingBlockFinalizations.status-sql.js";
 import "./pendingBlockFinalizations.derived-status.js";
 import "./pendingBlockFinalizations.retrieve-record.js";
 import "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
@@ -51,18 +52,10 @@ export {
 } from "./pendingBlockFinalizations.columns.js";
 export { validateForcedTransactionJournalMembers } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 export {
-  appliedOrFolded,
-  deadEffectPending,
-  deadHeader,
-  type DeadHeaders,
   deadHeadersOf,
   type DeadJournals,
   deadJournals,
   LIVE_JOURNAL_REFUSAL,
-  notAppliedOrFolded,
-  OWN_BLOCK_STATUSES,
-  OwnBlockStatus,
-  ownBlockStatusSql,
   retrieveStatusByHeaderHash,
 } from "./pendingBlockFinalizations.derived-status.js";
 export {
@@ -95,4 +88,14 @@ export {
   retrieveNewestApplied,
   retrieveNewestAppliedWithExpectedRoot,
 } from "./pendingBlockFinalizations.retrieve-record.js";
+export {
+  appliedOrFolded,
+  deadEffectPending,
+  deadHeader,
+  type DeadHeaders,
+  notAppliedOrFolded,
+  OWN_BLOCK_STATUSES,
+  OwnBlockStatus,
+  ownBlockStatusSql,
+} from "./pendingBlockFinalizations.status-sql.js";
 export { txMemberToEntry } from "./pendingBlockFinalizations.tx-member-to-entry.js";

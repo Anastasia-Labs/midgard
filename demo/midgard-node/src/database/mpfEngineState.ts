@@ -5,7 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
 import { Database } from "../services/database.js";
-import { appliedOrFolded } from "./pendingBlockFinalizations.derived-status.js";
+import { appliedOrFolded } from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";

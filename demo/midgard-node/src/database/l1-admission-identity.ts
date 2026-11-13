@@ -15,7 +15,7 @@ import {
   deadHeader,
   type DeadHeaders,
   notAppliedOrFolded,
-} from "./pendingBlockFinalizations.derived-status.js";
+} from "./pendingBlockFinalizations.status-sql.js";
 
 export type AdmissionKind = "deposit" | "withdrawal";
 

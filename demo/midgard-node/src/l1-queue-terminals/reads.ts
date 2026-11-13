@@ -16,6 +16,7 @@ import {
 } from "../database/utils/common.js";
 import { Database } from "../services/database.js";
 import { QUEUE_TERMINALS_TABLE } from "./schema.js";
+import { newestTerminalOutcome } from "./terminal-outcome.js";
 
 /** The verified manifest ID of the running deployment, if it has one. */
 export const deploymentIdentityDigestOf = (identity: {
@@ -79,16 +80,6 @@ export const latestMergedHeader = (
       AND ${finalThroughHeight === undefined ? sql`TRUE` : sql`terminal.height <= ${finalThroughHeight}`}
     ORDER BY terminal.height DESC, terminal.tx_index DESC
     LIMIT 1) AS latest)`;
-
-/** The newest terminal outcome of `headerColumn`'s header, or NULL. */
-export const newestTerminalOutcome = (
-  sql: SqlClient.SqlClient,
-  headerColumn: string,
-) => sql`(
-  SELECT terminal.terminal_outcome FROM ${sql(QUEUE_TERMINALS_TABLE)} AS terminal
-  WHERE terminal.header_hash = ${sql(headerColumn)}
-  ORDER BY terminal.height DESC, terminal.tx_index DESC
-  LIMIT 1)`;
 
 /**
  * True when `headerColumn` names a header whose newest terminal row is a

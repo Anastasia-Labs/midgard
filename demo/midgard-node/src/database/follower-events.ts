@@ -48,7 +48,7 @@ import {
   canonicalAdmission,
 } from "./l1-admission-identity.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import type { DeadHeaders } from "./pendingBlockFinalizations.derived-status.js";
+import type { DeadHeaders } from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import { backfillWithdrawalLedgerOutRefs } from "./withdrawal-ledger-outref.backfill.js";
 import * as Withdrawals from "./withdrawals.js";

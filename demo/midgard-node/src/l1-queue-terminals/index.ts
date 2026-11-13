@@ -10,7 +10,6 @@ export {
   followerCoveredTipHeight,
   latestMergedHeader,
   liveQueueNodeHeader,
-  newestTerminalOutcome,
   nonFinalTerminalHeader,
   owedPayload,
   pruneFinalQueueTerminals,
@@ -21,3 +20,4 @@ export {
   QUEUE_TERMINALS_TABLE,
   queueTerminalMigrations,
 } from "./schema.js";
+export { newestTerminalOutcome } from "./terminal-outcome.js";

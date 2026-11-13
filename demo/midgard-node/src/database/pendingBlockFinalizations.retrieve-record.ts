@@ -25,13 +25,15 @@ import {
   withdrawalClassificationDigest,
 } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import {
-  appliedOrFolded,
-  type DeadHeaders,
   deadHeadersOf,
   deadJournals,
   liveJournalSql,
 } from "./pendingBlockFinalizations.derived-status.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
+import {
+  appliedOrFolded,
+  type DeadHeaders,
+} from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as WithdrawalsDB from "./withdrawals.js";
 

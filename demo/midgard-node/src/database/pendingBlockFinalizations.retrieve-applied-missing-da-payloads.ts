@@ -15,19 +15,21 @@ import {
 } from "./pendingBlockFinalizations.columns.js";
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import {
-  appliedOrFolded,
-  deadEffectPending,
-  deadHeader,
-  type DeadHeaders,
   deadHeadersOf,
   deadJournals,
   LIVE_JOURNAL_REFUSAL,
   liveJournalSql,
-  type OwnBlockStatus,
-  ownBlockStatusSql,
 } from "./pendingBlockFinalizations.derived-status.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
+import {
+  appliedOrFolded,
+  deadEffectPending,
+  deadHeader,
+  type DeadHeaders,
+  type OwnBlockStatus,
+  ownBlockStatusSql,
+} from "./pendingBlockFinalizations.status-sql.js";
 import {
   challengeRelevantHeader,
   orphanMemberJournal,

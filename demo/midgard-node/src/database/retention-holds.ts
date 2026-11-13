@@ -3,7 +3,7 @@ import { Clock, Effect } from "effect";
 
 import { finalityHeldPayload, type RetentionL1View } from "./daPayloads.js";
 import { orphanedAdmission } from "./l1-admission-identity.js";
-import { notAppliedOrFolded } from "./pendingBlockFinalizations.derived-status.js";
+import { notAppliedOrFolded } from "./pendingBlockFinalizations.status-sql.js";
 
 /**
  * What a housekeeping prune reads to keep challenge-relevant rows: the

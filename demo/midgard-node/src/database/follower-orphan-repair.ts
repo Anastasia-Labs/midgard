@@ -53,7 +53,7 @@ import {
 import {
   deadHeader,
   type DeadHeaders,
-} from "./pendingBlockFinalizations.derived-status.js";
+} from "./pendingBlockFinalizations.status-sql.js";
 import { sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "follower_orphan_repair";

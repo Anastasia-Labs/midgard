@@ -38,11 +38,9 @@ import {
   withdrawalMemberEntry,
 } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import {
-  deadHeader,
   deadHeadersOf,
   deadJournals,
   LIVE_JOURNAL_REFUSAL,
-  notAppliedOrFolded,
 } from "./pendingBlockFinalizations.derived-status.js";
 import { holdMutationLease } from "./pendingBlockFinalizations.hold-mutation-lease.js";
 import {
@@ -58,6 +56,10 @@ import {
   txMemberEntry,
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
 import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
+import {
+  deadHeader,
+  notAppliedOrFolded,
+} from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as TxTable from "./utils/tx.js";
 import * as WithdrawalsDB from "./withdrawals.js";
