@@ -44,6 +44,8 @@ const openSession = () =>
       : source!.open().then((context) =>
           openAttachedJourneySession(context, {
             operator2: source!.operator2,
+            // The session opens once, before every family of the run.
+            families: fixtures,
           }),
         ));
 afterAll(async () => {

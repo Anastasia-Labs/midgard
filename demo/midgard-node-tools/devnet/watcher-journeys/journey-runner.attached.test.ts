@@ -216,6 +216,7 @@ describe("journey runner on an attached stack", () => {
             composeProject: operator2.composeProject,
             endpoint: operator2.endpoint,
           },
+          families: [{ category: "canonicalDecodability" }],
         });
         try {
           const before = (await operator2.invocations()).length;

@@ -27,6 +27,7 @@ import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/sup
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { expect } from "vitest";
 
+import type { JourneyCategory } from "./fixture.js";
 import { warmJourneyReplayStore } from "./journey-replay-warm-up.js";
 import type { OperatorNodeControl } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
@@ -99,6 +100,9 @@ export const STACK_GENESIS = Object.freeze({
 /** The stack configuration's prover funding minimum, in lovelace. */
 export const PROVER_MINIMUM_LOVELACE = 3_000_000_000n;
 
+/** The deployment's operator bond, in lovelace: preprod-testing's 900 ADA. */
+export const STACK_REQUIRED_BOND_LOVELACE = 900_000_000n;
+
 /**
  * A public stack's TLS: the CA its configuration names, and the certificate
  * for the public origin's hostname that its HTTPS ports serve on loopback.
@@ -137,7 +141,9 @@ const warmStackReplay = (runDirectory: string) =>
 
 /**
  * A running stack watcher: its operations endpoint and its mounted state.
- * Its prover holds `proverLovelace`, by default the configured minimum.
+ * Its prover holds `proverLovelace`, by default the configured minimum, and
+ * operator-2's and the drill's funding wallet `operator2Lovelace` and
+ * `fundingLovelace`, by default 50 ADA each.
  * The run's replay store is warmed unless `replay` is `cold`.
  */
 /** One completed decision pass, as the watcher's `l1_source` diagnostics hold it. */
@@ -182,10 +188,14 @@ export const runningStackWatcher = async (
   status: Record<string, unknown>,
   {
     proverLovelace = PROVER_MINIMUM_LOVELACE,
+    operator2Lovelace = 50_000_000n,
+    fundingLovelace = 50_000_000n,
     tls,
     replay = "warmed",
   }: {
     proverLovelace?: bigint;
+    operator2Lovelace?: bigint;
+    fundingLovelace?: bigint;
     /** Whether the warm-up command filled the run's replay store. */
     replay?: "warmed" | "cold";
     /** A public stack's TLS: our node then serves its API over HTTPS only. */
@@ -286,10 +296,14 @@ export const runningStackWatcher = async (
     JSON.stringify(authorityFixture.signedIdentity.manifest),
   );
   // Operator-2's wallet, which the drill signs with.
-  const operator2Account = generateEmulatorAccount({ lovelace: 50_000_000n });
+  const operator2Account = generateEmulatorAccount({
+    lovelace: operator2Lovelace,
+  });
+  // The drill's funding wallet, which tops up operator-2's bond.
+  const funding = generateEmulatorAccount({ lovelace: fundingLovelace });
   // The stack watcher's prover, which the stack funds and the drill never does.
   const prover = generateEmulatorAccount({ lovelace: proverLovelace });
-  const emulator = new Emulator([operator2Account, prover]);
+  const emulator = new Emulator([operator2Account, funding, prover]);
   const operatorLucid = await Lucid(emulator, "Custom");
   operatorLucid.selectWallet.fromSeed(operator2Account.seedPhrase);
   // Operator-2's DA producer, whose transport the test never opens.
@@ -305,11 +319,20 @@ export const runningStackWatcher = async (
       proverAddress: prover.address,
     },
     provider: emulator,
+    accounts: {
+      operator: { address: operator2Account.address },
+      funding: { address: funding.address },
+    },
     kupoUrl: "http://127.0.0.1:1442",
     ogmiosUrl: "ws://127.0.0.1:1337",
     release: { deploymentIdentity },
     deployment: {
-      manifest: { manifestId: fingerprint },
+      manifest: {
+        manifestId: fingerprint,
+        economics: {
+          requiredBondLovelace: STACK_REQUIRED_BOND_LOVELACE.toString(),
+        },
+      },
       blueprintPath: join(root, "plutus.json"),
       operatorLucid,
     },
@@ -370,8 +393,12 @@ export const runningStackWatcher = async (
     operator2,
     exec: watcherContainer(processConfigPath),
     /** How the journey opens a session on this stack, with operator-2's node. */
-    options: (exec = watcherContainer(processConfigPath)) => ({
+    options: (
+      exec = watcherContainer(processConfigPath),
+      families: readonly Readonly<{ category: JourneyCategory }>[] = [],
+    ) => ({
       exec,
+      families,
       operator2: {
         composeProject: "midgard-node-op2",
         endpoint: "http://127.0.0.1:3100",

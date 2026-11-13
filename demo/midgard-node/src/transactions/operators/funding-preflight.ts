@@ -20,7 +20,7 @@ import {
 } from "../utils.wallet-view.js";
 
 /** Fee and change headroom kept beyond the value a command locks or pays. */
-const OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE = 5_000_000n;
+export const OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE = 5_000_000n;
 
 export type OperatorFundingPreflight = {
   readonly label: string;

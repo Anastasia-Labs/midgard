@@ -1,4 +1,6 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
+import { OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE } from "midgard-node/transactions/operators/funding-preflight";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   watcherDeploymentReleaseFinalityAuthority,
@@ -6,6 +8,7 @@ import {
 
 import { trustNodeTls } from "../../src/full-stack/node-tls.js";
 import type { JourneyOperator2Node } from "./deployment-source.js";
+import type { JourneyCategory } from "./fixture.js";
 import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { readJourneyOperations } from "./operations.js";
@@ -16,6 +19,7 @@ import {
   type OperatorNodeControl,
 } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
+import { stackDaExpectation } from "./stack-da-publication.js";
 import { openStackJourneyReplayedLedger } from "./stack-replayed-ledger.js";
 import {
   composeWatcherEvidenceExec,
@@ -76,6 +80,51 @@ const assertStackProverFunded = async (context: StackJourneyContext) => {
     );
 };
 
+const lovelaceAt = async (context: StackJourneyContext, address: string) =>
+  (await context.provider.getUtxos(address)).reduce(
+    (total, utxo) => total + (utxo.assets.lovelace ?? 0n),
+    0n,
+  );
+
+/**
+ * Refuses a drill whose operator-2 and funding wallets together hold less
+ * than the worst case of the families it runs. Each family the committee
+ * attests ends in operator-2's conviction, which consumes its whole bond;
+ * the next fault's onboarding posts it again, from operator-2's wallet, which
+ * the funding wallet tops up (`manifest.economics.requiredBondLovelace`).
+ * Every family, refused ones too, also locks its fault's header node
+ * (`STATE_QUEUE_NODE_MIN_LOVELACE`) and pays three L1 transactions from these
+ * wallets: operator-2's onboarding, the fault's commit and the bond's top-up,
+ * each allowed the node's operator-command fee headroom
+ * (`OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE`).
+ */
+const assertStackOperatorFunded = async (
+  context: StackJourneyContext,
+  families: readonly Readonly<{ category: JourneyCategory }>[],
+) => {
+  const bond = BigInt(
+    context.deployment.manifest.economics.requiredBondLovelace,
+  );
+  const perFamily =
+    3n * OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE +
+    SDK.STATE_QUEUE_NODE_MIN_LOVELACE;
+  const attested = BigInt(
+    families.filter(
+      ({ category }) => stackDaExpectation(category) !== "refusal",
+    ).length,
+  );
+  const count = BigInt(families.length);
+  const required = attested * bond + count * perFamily;
+  const { operator, funding } = context.accounts;
+  const balance =
+    (await lovelaceAt(context, operator.address)) +
+    (await lovelaceAt(context, funding.address));
+  if (balance < required)
+    throw new Error(
+      `The drill's operator-2 wallet ${operator.address} and funding wallet ${funding.address} hold ${balance.toString()} lovelace together, ${(required - balance).toString()} lovelace short of the worst case of its ${count.toString()} families, ${required.toString()} lovelace: ${attested.toString()} attested × operator-2's bond of ${bond.toString()} (manifest economics.requiredBondLovelace), plus ${count.toString()} × ${perFamily.toString()} for each family's header node and fees; fund them before the drill`,
+    );
+};
+
 /**
  * A journey session attached to a running e2e-stack's own watcher. It starts
  * no retained DA, no watcher configuration or process, no native recorder
@@ -86,13 +135,16 @@ const assertStackProverFunded = async (context: StackJourneyContext) => {
  * `docker compose exec`). Staging reads ledgers from the stack's own replay,
  * opened on its first read in the run's replay store. Before the drill
  * starts it refuses a run whose replay store the warm-up command has not
- * filled, and a prover below the stack's funding minimum.
+ * filled, a prover below the stack's funding minimum, and operator-2 and
+ * funding wallets short of its families' worst case.
  */
 export const openAttachedJourneySession = async (
   context: StackJourneyContext,
   options: Readonly<{
     /** Operator-2's node, the second stack instance the drill pauses. */
     operator2: JourneyOperator2Node;
+    /** The families the drill runs, whose worst case the wallets must hold. */
+    families: readonly Readonly<{ category: JourneyCategory }>[];
     exec?: WatcherEvidenceExec;
     /** Operator-2's node control, by default `docker compose` on its project. */
     operator2Control?: OperatorNodeControl;
@@ -182,6 +234,9 @@ export const openAttachedJourneySession = async (
     await stage("attached watcher evidence", () => evidence.readDecisions());
     await stage("attached watcher prover funding", () =>
       assertStackProverFunded(context),
+    );
+    await stage("attached drill operator funding", () =>
+      assertStackOperatorFunded(context, options.families),
     );
     const watcher = Object.freeze({
       requireLive,

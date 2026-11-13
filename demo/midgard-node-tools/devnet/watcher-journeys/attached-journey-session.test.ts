@@ -13,6 +13,7 @@ import {
   removeStackDirectories,
   runningStackWatcher,
   seedWorkflowStarted,
+  STACK_REQUIRED_BOND_LOVELACE,
   watcherContainer,
 } from "./attached-journey-session.test-support.js";
 import {
@@ -141,6 +142,49 @@ describe("attached journey session", () => {
     expect(refusal).toContain(stack.proverAddress);
     expect(refusal).toContain(`${shortfall.toString()} lovelace short`);
     expect(stack.operator2.calls).toEqual([]);
+  });
+
+  describe("operator-2's and the drill funding wallet's funding for the families it runs", () => {
+    // Two families the committee attests, each ending in operator-2's
+    // conviction, and one it refuses before it signs.
+    const families = [
+      { category: "doubleSpend" },
+      { category: "fabricatedWithdrawal" },
+      { category: "canonicalDecodability" },
+    ] as const;
+    // Each attested family re-posts operator-2's bond. Each family also
+    // locks its header node (5 ADA) and pays three L1 commands, each kept 5
+    // ADA of fee headroom.
+    const worstCase = 2n * STACK_REQUIRED_BOND_LOVELACE + 3n * 20_000_000n;
+    const funded = (fundingLovelace: bigint) =>
+      runningStackWatcher(liveStatus(), {
+        operator2Lovelace: STACK_REQUIRED_BOND_LOVELACE,
+        fundingLovelace,
+      });
+
+    it("refuses at drill start two wallets that together hold less than the worst case, by both addresses and the shortfall", async () => {
+      const stack = await funded(worstCase - STACK_REQUIRED_BOND_LOVELACE - 1n);
+      const refusal = await openAttachedJourneySession(
+        stack.context,
+        stack.options(undefined, families),
+      ).then(
+        () => undefined,
+        (error: unknown) => String(error),
+      );
+      expect(refusal).toContain(stack.context.accounts.operator.address);
+      expect(refusal).toContain(stack.context.accounts.funding.address);
+      expect(refusal).toContain(" 1 lovelace short");
+      expect(stack.operator2.calls).toEqual([]);
+    });
+
+    it("opens with two wallets that together hold exactly the worst case, which no refused family adds a bond to", async () => {
+      const stack = await funded(worstCase - STACK_REQUIRED_BOND_LOVELACE);
+      const session = await openAttachedJourneySession(
+        stack.context,
+        stack.options(undefined, families),
+      );
+      await session.close();
+    });
   });
 
   it("refuses evidence that does not come from this stack's watcher", async () => {
