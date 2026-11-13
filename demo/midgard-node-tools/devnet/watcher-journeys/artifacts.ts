@@ -1,6 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { open, readFile, rename, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+
+/** Where a family's journey keeps its checkpoints and evidence in a run. */
+export const journeyFamilyDirectory = (
+  runDirectory: string,
+  category: string,
+) =>
+  join(
+    runDirectory,
+    "work/journeys",
+    category === "transitionTrace" ? "transition-trace" : category,
+  );
 
 export const writeJourneyFile = async (
   path: string,

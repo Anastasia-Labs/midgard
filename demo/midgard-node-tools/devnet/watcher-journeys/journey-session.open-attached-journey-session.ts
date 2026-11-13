@@ -216,6 +216,8 @@ export const openAttachedJourneySession = async (
       captureWorkflowBaseline: (category: FraudProofCatalogueCategoryName) =>
         captureJourneyWorkflowBaseline(evidence, category),
       assertHealthy,
+      /** Whether the session has closed, as it does after a failed family. */
+      isClosed,
       close,
     };
   } catch (cause) {

@@ -308,6 +308,14 @@ export const stackLedgerOwnerDepositStatus =
       : "pending";
   };
 
+/**
+ * How long our node may take to absorb work handed to it and have its block
+ * attested: it may commit only after operator-2's whole shift, then its own
+ * shift begins, and its committee attests within the DA attestation timeout.
+ */
+export const STACK_ABSORB_WITHIN_MS =
+  2 * Number(SDK.SHIFT_DURATION_MS) + Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+
 /** Polls the stack's tail no faster than this while the deposit is pending. */
 const LEDGER_OWNER_POLL_MS = 30_000;
 
@@ -457,8 +465,7 @@ export const fundStackLedgerOwner = async (
     },
     now: () => chain.now(),
     pause: () => delay(LEDGER_OWNER_POLL_MS),
-    absorbWithinMs:
-      2 * Number(SDK.SHIFT_DURATION_MS) + Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
+    absorbWithinMs: STACK_ABSORB_WITHIN_MS,
     onStage,
   });
 };

@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, it } from "vitest";
 
+import { journeyFamilyDirectory } from "./artifacts.js";
 import { selectJourneyFixtures } from "./catalogue.js";
 import { selectJourneyDeploymentSource } from "./deployment-source.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
@@ -17,6 +18,10 @@ import {
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { readStackJourneyTimingPaths } from "./stack-context.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
+import {
+  checkStackVerifiedPredecessor,
+  verifiedPredecessorBeforeFamily,
+} from "./stack-verified-predecessor.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
 // skips without it; stack mode attaches to a running e2e-stack.
@@ -61,6 +66,42 @@ beforeAll(async () => {
   });
 }, 0);
 
+// Before every family, also outside its timer, the block it will build on
+// must be one the stack's watcher verified from its payload. A watcher that
+// restarted after that block merged can no longer verify it, so the check
+// heals it with one honest transfer through our node and waits, within the
+// funding's absorption bound and the family's decision allowance, for the
+// new block to be attested and verified. It does nothing once the session
+// has closed, and nothing for a family resuming its staging.
+const familyTitle = (category: string) =>
+  `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
+beforeEach(async ({ task }) => {
+  if (source?.mode !== "stack") return;
+  const fixture = fixtures.find(
+    ({ category }) => familyTitle(category) === task.name,
+  );
+  if (fixture === undefined) return;
+  const opened = await openSession();
+  if (opened.mode !== "attached") return;
+  const onStage = (name: string) => {
+    console.info(`Verified predecessor: ${name}`);
+  };
+  await verifiedPredecessorBeforeFamily({
+    familyDirectory: journeyFamilyDirectory(
+      opened.context.runDirectory,
+      fixture.category,
+    ),
+    isClosed: opened.isClosed,
+    close: opened.close,
+    check: () =>
+      checkStackVerifiedPredecessor(opened, {
+        category: fixture.category,
+        onStage,
+      }),
+    onStage,
+  });
+}, 0);
+
 // Every family is budgeted from the actual cadence and the depth its actions
 // wait for: the audited transitionTrace plan or the finite generic plan, plus
 // the single release-finality window of the finalized evidence stamp. On a
@@ -95,7 +136,7 @@ for (const [index, fixture] of fixtures.entries()) {
       : // A stack's limit; with no deployment selected the case is skipped.
         stackTimeoutsMs?.[index];
   it.skipIf(source === undefined)(
-    `automatically proves '${fixture.category}', corrects exact economics, and processes an honest successor`,
+    familyTitle(fixture.category),
     async () => {
       const activeSession = await openSession();
       const last = fixture === fixtures.at(-1);

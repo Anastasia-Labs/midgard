@@ -1405,6 +1405,7 @@ jobs:
             watcher-journeys/stack-user-event-floor.funding.test.ts \
             watcher-journeys/stack-user-event-floor.idle-scheduler.test.ts \
             watcher-journeys/stack-user-event-floor.test.ts \
+            watcher-journeys/stack-verified-predecessor.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.fault-commit-hook.test.ts \

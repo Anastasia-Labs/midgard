@@ -24,10 +24,52 @@ const DECIDED = new Set<WatcherVerificationDiagnostic["outcome"]>([
  * Headers the watcher saw released on L1 before verifying them. Each is a
  * decided outcome that fails the awaited header: it was never shown healthy.
  */
-const RELEASED_UNVERIFIED: ReadonlyMap<string, string> = new Map([
+export const RELEASED_UNVERIFIED: ReadonlyMap<string, string> = new Map([
   ["unverified_merged", "merged"],
   ["unverified_removed", "removed"],
 ]);
+
+/**
+ * Reads the watcher's verification diagnostics from `cursor` to its newest,
+ * page by page, handing each header's record to `onRecord` in order.
+ * Returns the cursor the next read resumes from.
+ */
+export const readJourneyVerificationRecords = async (
+  operations: (path: string) => Promise<unknown>,
+  cursor: string,
+  onRecord: (
+    record: WatcherVerificationDiagnostic & { headerHash: string },
+  ) => void,
+): Promise<string> => {
+  for (;;) {
+    const page = (await operations(
+      `/v1/diagnostics?kind=verification&limit=100&cursor=${cursor}`,
+    )) as WatcherOperationsPage;
+    for (const record of page.records)
+      if (record.kind === "verification" && record.headerHash !== undefined)
+        onRecord(
+          record as WatcherVerificationDiagnostic & { headerHash: string },
+        );
+    cursor = page.records.at(-1)?.sequence ?? cursor;
+    if (page.nextCursor === null) return cursor;
+  }
+};
+
+/**
+ * Keeps `record` as its header's decision when it is a decided outcome, or
+ * a release on L1 that does not undo an earlier decision: a restarted
+ * watcher replaying a stale observation reports a header L1 released since.
+ */
+export const keepJourneyDecision = (
+  decided: Map<string, WatcherVerificationDiagnostic>,
+  record: WatcherVerificationDiagnostic & { headerHash: string },
+) => {
+  if (
+    DECIDED.has(record.outcome) ||
+    (RELEASED_UNVERIFIED.has(record.outcome) && !decided.has(record.headerHash))
+  )
+    decided.set(record.headerHash, record);
+};
 
 /**
  * The watcher's verified record for `block`: the header was classified
@@ -110,24 +152,11 @@ export const createJourneyVerifiedHeaders = (
       processId = current;
       cursor = "0";
     }
-    for (;;) {
-      const page = (await watcher.operations(
-        `/v1/diagnostics?kind=verification&limit=100&cursor=${cursor}`,
-      )) as WatcherOperationsPage;
-      for (const record of page.records)
-        if (
-          record.kind === "verification" &&
-          record.headerHash !== undefined &&
-          (DECIDED.has(record.outcome) ||
-            // A restarted watcher replaying a stale observation reports a
-            // header L1 released since; it does not undo an earlier decision.
-            (RELEASED_UNVERIFIED.has(record.outcome) &&
-              !decided.has(record.headerHash)))
-        )
-          decided.set(record.headerHash, record);
-      cursor = page.records.at(-1)?.sequence ?? cursor;
-      if (page.nextCursor === null) break;
-    }
+    cursor = await readJourneyVerificationRecords(
+      (path) => watcher.operations(path),
+      cursor,
+      (record) => keepJourneyDecision(decided, record),
+    );
     if (blocks.some(({ headerHash }) => !decided.has(headerHash)))
       return undefined;
     return blocks.map((block) =>

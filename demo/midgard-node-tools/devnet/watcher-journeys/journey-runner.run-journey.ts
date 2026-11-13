@@ -5,7 +5,7 @@ import { setTimeout as pause } from "node:timers/promises";
 import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import { expect } from "vitest";
 
-import { writeJourneyArtifact } from "./artifacts.js";
+import { journeyFamilyDirectory, writeJourneyArtifact } from "./artifacts.js";
 import {
   finalizePendingJourneyEvidence,
   journeyProgressClock,
@@ -42,10 +42,7 @@ export const runJourney = async (
   await session.assertHealthy();
   const { deployment, provider } = context;
   const category = execution.fixture.category;
-  const directory = join(
-    context.runDirectory,
-    `work/journeys/${category === "transitionTrace" ? "transition-trace" : category}`,
-  );
+  const directory = journeyFamilyDirectory(context.runDirectory, category);
   const runtimeDirectory = join(context.runDirectory, "work/journeys/runtime");
   await Promise.all([
     mkdir(directory, { recursive: true, mode: 0o700 }),
