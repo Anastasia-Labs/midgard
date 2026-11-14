@@ -149,6 +149,35 @@ describe("a signed intent the store may have pruned", () => {
     });
   });
 
+  // An included transaction is pinned, so only a rollback takes it out of
+  // the store. One that also takes the blocks creating its inputs, after
+  // the store has pruned, leaves nothing to say whether it landed: while it
+  // is still valid it is pending again, not held as included.
+  it("returns an included one a rollback took, with its inputs, to pending while it is still valid", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    await advance(fx, K + 2);
+    const [input, collateral] = await fund(fx, 2);
+    const { tx, intent } = recorded(fx, journal, "prepare", {
+      inputs: [input!],
+      collaterals: [collateral!],
+    });
+    await fx.forward([tx]);
+    // A confirmation depth it never reaches: it reads as included.
+    const included = () => pass(fx, journal, MANIFEST, undefined, 100_000);
+    expect(await included()).toMatchObject([
+      { status: "included", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)?.state).toBe("included");
+    await fx.backward(2);
+    expect(await stored(fx, intent.txHash)).toBe("beyond_retention");
+    expect(await row(fx, input!)).toBe("beyond_retention");
+    expect(await included()).toMatchObject([
+      { status: "waiting", txHash: intent.txHash },
+    ]);
+    expect(journal.get(intent.id)?.state).toBe("pending");
+  });
+
   // A confirmed transaction an earlier watcher never pinned: it landed,
   // its inputs and outputs are spent, and the store pruned all of it.
   it("keeps a confirmed one the store pruned before it was pinned, and retires it past the recovery depth", async () => {

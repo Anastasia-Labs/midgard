@@ -250,6 +250,43 @@ it("rechecks recovery ownership at the actual submit handoff after the SDK's las
   }
 });
 
+// The pass pins the journal's transactions at its start, before this step
+// is signed: the step's own submit must pin it before it goes out.
+it("pins a newly actuated step in the follower before it is broadcast", async () => {
+  const ledger = await completionLedger();
+  funds();
+  io.closeBuild = () =>
+    Effect.succeed({
+      tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
+    } as never);
+  const pins = vi.fn(async (_txHashes: readonly string[]) => undefined);
+  const watcher = await runtime("d0".repeat(32), {
+    onDaBondPool: () => undefined,
+    onDaBondPoolReadFailure: () => undefined,
+    pinJournalTransactions: pins,
+  });
+  try {
+    await watcher.reconcile(
+      observation([answered(liveChallenge("7d").challenged)]),
+      true,
+    );
+    expect(io.run).toHaveBeenCalledTimes(1);
+    expect(io.submitTx, JSON.stringify(watcher.status())).toHaveBeenCalledTimes(
+      1,
+    );
+    const txHash = (await io.submitTx.mock.results[0]!.value) as string;
+    const [sent] = io.submitTx.mock.invocationCallOrder;
+    const pinnedFirst = pins.mock.calls.filter(
+      (_, i) => pins.mock.invocationCallOrder[i]! < sent!,
+    );
+    expect(pinnedFirst.some(([txHashes]) => txHashes.includes(txHash))).toBe(
+      true,
+    );
+  } finally {
+    await watcher.close();
+  }
+});
+
 it.each([
   [8620n, 4310n],
   [4310n, 8620n],

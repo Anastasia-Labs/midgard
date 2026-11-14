@@ -339,7 +339,13 @@ export const runtime = (
   extra: Pick<
     Parameters<typeof createWatcherAvailabilityRuntime>[0],
     "onDaBondPool" | "onDaBondPoolReadFailure"
-  > = {
+  > &
+    Partial<
+      Pick<
+        Parameters<typeof createWatcherAvailabilityRuntime>[0],
+        "pinJournalTransactions"
+      >
+    > = {
     onDaBondPool: () => undefined,
     onDaBondPoolReadFailure: () => undefined,
   },
@@ -375,7 +381,8 @@ export const runtime = (
     >[0]["l1"],
     confirmationDepth: 17,
     proverWalletAddress: "prover",
-    pinJournalTransactions: async () => undefined,
+    pinJournalTransactions:
+      extra.pinJournalTransactions ?? (async () => undefined),
   });
 
 export const observation = (
