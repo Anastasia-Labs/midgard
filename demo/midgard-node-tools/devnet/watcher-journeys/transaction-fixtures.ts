@@ -1,4 +1,5 @@
 import { createForcedTransactionJourneyFixture } from "./forced-order.js";
+import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import { createTransactionJourneyFixture } from "./staging.js";
 import {
   buildJourneyTransactionFault,
@@ -7,7 +8,6 @@ import {
 import {
   buildJourneyForcedTransaction,
   JOURNEY_FORCED_TRANSACTION_CATEGORIES,
-  prepareJourneyForcedTransaction,
 } from "./transaction-forced-cases.js";
 import {
   buildJourneyTransactionSourceFault,

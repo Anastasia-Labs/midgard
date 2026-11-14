@@ -1348,6 +1348,7 @@ jobs:
             watcher-journeys/correction.watcher-start-deadline.test.ts \
             watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \
+            watcher-journeys/forced-order-admission.test.ts \
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
             watcher-journeys/forced-submission.test.ts \

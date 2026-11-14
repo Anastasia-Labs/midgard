@@ -1,9 +1,9 @@
 import { createForcedTransactionJourneyFixture } from "./forced-order.js";
+import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import {
   buildJourneyScriptForcedFault,
   buildJourneyScriptForcedSuccessor,
   JOURNEY_SCRIPT_FORCED_CATEGORIES,
-  prepareJourneyScriptForcedTransaction,
 } from "./script-cases.js";
 import { buildJourneyValidationTraceFault } from "./script-validation-trace-case.js";
 import { createTransactionJourneyFixture } from "./staging.js";
@@ -13,7 +13,7 @@ export const JOURNEY_SCRIPT_FIXTURES = [
   ...JOURNEY_SCRIPT_FORCED_CATEGORIES.map((category) =>
     createForcedTransactionJourneyFixture(
       category,
-      (input) => prepareJourneyScriptForcedTransaction({ ...input, category }),
+      prepareJourneyForcedTransaction,
       {
         buildFault: (input) =>
           buildJourneyScriptForcedFault({ ...input, category }),

@@ -1,129 +1,63 @@
 import {
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardAddressBytes,
-  decodeMidgardTxOutput,
   decodeMidgardVersionedScript,
   encodeCbor,
   encodeMidgardFieldPreimage,
   encodeMidgardRedeemerWitnessItem,
-  encodeMidgardTxOutput,
-  encodeMidgardVersionedScript,
-  hashMidgardVersionedScript,
   midgardFieldCommitment,
-  protectMidgardAddress,
 } from "@al-ft/midgard-core";
-import {
-  buildFixtureTransaction,
-  type FixtureTransactionInput,
-} from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import {
+  buildJourneyOwnerMintTransaction,
+  type JourneyOwnerTransactionInput,
+  prepareJourneyForcedTransaction,
+} from "./forced-transaction.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
-import { journeyNetwork } from "./journey-network.js";
 
 /** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
 const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
 /** `(lam ctx (error))`: a Plutus V3 script that fails whatever it is given. */
 const failingScriptBytes = encodeCbor(Buffer.from("0101002601", "hex"));
 
-/** An executable, signed transaction for real forced-order verdict disputes. */
-export const buildJourneyScriptTransaction = (input: {
-  predecessor: JourneyLedgerPredecessor;
-  ledgerOwnerSeedPhrase: string;
-  variant?: "plutusMint" | "failingPlutusMint" | "nativeMint";
-  outputReferenceScript?: boolean;
-  /** Paid from the spent output; zero unless the caller prices it. */
-  fee?: bigint;
-}) => {
-  const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: journeyNetwork().network,
-  });
-  const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
-  const owner = Buffer.from(key.to_public().hash().to_raw_bytes());
-  const spent = input.predecessor.ledger.entries.find(({ output: bytes }) => {
-    const credential = decodeMidgardAddressBytes(
-      decodeMidgardTxOutput(bytes).address,
-    ).paymentCredential;
-    return (
-      credential.kind === "PubKey" && Buffer.from(credential.hash).equals(owner)
-    );
-  });
-  if (spent === undefined)
-    throw new Error("Script journey needs a retained ledger input");
-  const output = decodeMidgardTxOutput(spent.output);
-  const variant = input.variant ?? "plutusMint";
-  const plutus = variant !== "nativeMint";
-  const fee = input.fee ?? 0n;
-  const script = plutus
-    ? {
-        language: "PlutusV3" as const,
-        scriptBytes:
-          variant === "failingPlutusMint"
-            ? failingScriptBytes
-            : unitScriptBytes,
-      }
-    : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex"));
-  const policy = hashMidgardVersionedScript(script);
-  const assets = new Map(
-    [...output.value.assets].map(([hash, tokens]) => [hash, new Map(tokens)]),
-  );
-  const tokens = assets.get(policy) ?? new Map<string, bigint>();
-  tokens.set("", (tokens.get("") ?? 0n) + 1n);
-  assets.set(policy, tokens);
+/**
+ * The owner's signed mint under a Plutus V3 policy, for normal L2 submission
+ * only: a forced transaction cannot carry it.
+ */
+export const buildJourneyScriptTransaction = (
+  input: JourneyOwnerTransactionInput & {
+    variant?: "plutusMint" | "failingPlutusMint";
+    /** Paid from the spent output; zero unless the caller prices it. */
+    fee?: bigint;
+  },
+) => {
   const mintRedeemer = encodeMidgardRedeemerWitnessItem({
     purpose: "Mint",
     index: 0n,
     redeemerCbor: Buffer.from("00", "hex"),
     executionUnits: { memory: 5_000_000n, steps: 1_000_000_000n },
   });
-  const scriptOutput = {
-    ...output,
-    address: protectMidgardAddress(output.address),
-    value: { ...output.value, lovelace: output.value.lovelace - fee, assets },
-    script_ref:
-      input.outputReferenceScript === false
-        ? undefined
-        : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex")),
-  };
-  const outputs = [encodeMidgardTxOutput(scriptOutput)];
-  const transactionInput: FixtureTransactionInput = {
-    spendInputs: [spent.outRef],
-    outputs,
-    fee,
-    networkId: input.predecessor.header.expectedNetworkId,
-    requiredSigners: [Buffer.from(key.to_public().hash().to_raw_bytes())],
-    mintPolicyItems: [
-      encodeCbor([
-        Buffer.from(policy, "hex"),
-        new Map([[Buffer.alloc(0), 1n]]),
-      ]),
-    ],
-    scriptWitnesses: [encodeMidgardVersionedScript(script)],
-    redeemerWitnesses: plutus ? [mintRedeemer] : [],
-    scriptIntegrityHash: plutus
-      ? computeScriptIntegrityHashForLanguages(
-          midgardFieldCommitment(encodeMidgardFieldPreimage([mintRedeemer])),
-          ["PlutusV3"],
-        )
-      : undefined,
-  };
-  const unsigned = buildFixtureTransaction(transactionInput);
-  const transaction = buildFixtureTransaction({
-    ...transactionInput,
-    addressWitnesses: [
-      {
-        verification_key: Buffer.from(key.to_public().to_raw_bytes()).toString(
-          "hex",
-        ),
-        signature: key.sign(Buffer.from(unsigned.txId, "hex")).to_hex(),
-      },
-    ],
+  return buildJourneyOwnerMintTransaction({
+    predecessor: input.predecessor,
+    ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
+    policyScript: {
+      language: "PlutusV3",
+      scriptBytes:
+        input.variant === "failingPlutusMint"
+          ? failingScriptBytes
+          : unitScriptBytes,
+    },
+    fee: input.fee ?? 0n,
+    outputReferenceScript: decodeMidgardVersionedScript(
+      Buffer.from("820043820180", "hex"),
+    ),
+    redeemerWitnesses: [mintRedeemer],
+    scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
+      midgardFieldCommitment(encodeMidgardFieldPreimage([mintRedeemer])),
+      ["PlutusV3"],
+    ),
   });
-  return {
-    transaction,
-  };
 };
 
 /** These claims accuse a valid transaction at a concrete forced-order coordinate. */
@@ -169,23 +103,6 @@ export const JOURNEY_SCRIPT_FORCED_CATEGORIES = Object.keys(
   JOURNEY_SCRIPT_FORCED_REASONS,
 ) as JourneyScriptForcedCategory[];
 
-export const prepareJourneyScriptForcedTransaction = (input: {
-  category: JourneyScriptForcedCategory;
-  predecessor: JourneyLedgerPredecessor;
-  ledgerOwnerSeedPhrase: string;
-}) =>
-  buildJourneyScriptTransaction({
-    ...input,
-    variant: [
-      "nativeScriptInvalid",
-      "witnessScriptDecoding",
-      "executionSourceScriptDecoding",
-      "executionNativeScriptInvalid",
-    ].includes(input.category)
-      ? "nativeMint"
-      : "plutusMint",
-  });
-
 export type JourneyScriptFixtureInput = {
   category: JourneyScriptForcedCategory;
   predecessor: JourneyLedgerPredecessor;
@@ -200,7 +117,7 @@ export type JourneyScriptFixtureInput = {
 export const buildJourneyScriptForcedFault = async (
   input: JourneyScriptFixtureInput,
 ) => {
-  const material = prepareJourneyScriptForcedTransaction(input);
+  const material = prepareJourneyForcedTransaction(input);
   const replayInput = {
     canonicalTransactionCbor: material.transaction.canonicalCbor,
     predecessor: input.predecessor,
@@ -233,7 +150,7 @@ export const buildJourneyScriptForcedFault = async (
 export const buildJourneyScriptForcedSuccessor = async (
   input: JourneyScriptFixtureInput,
 ) => {
-  const material = prepareJourneyScriptForcedTransaction(input);
+  const material = prepareJourneyForcedTransaction(input);
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: material.transaction.canonicalCbor,
     predecessor: input.predecessor,

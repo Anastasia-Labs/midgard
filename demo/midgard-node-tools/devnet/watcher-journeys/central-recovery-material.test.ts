@@ -8,6 +8,7 @@ import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/supp
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
+import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
 import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
 import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
@@ -17,10 +18,7 @@ import {
   buildJourneyTransactionFault,
   type JourneyTransactionInput,
 } from "./transaction-cases.js";
-import {
-  buildJourneyForcedTransaction,
-  prepareJourneyForcedTransaction,
-} from "./transaction-forced-cases.js";
+import { buildJourneyForcedTransaction } from "./transaction-forced-cases.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =

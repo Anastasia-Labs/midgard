@@ -1,7 +1,7 @@
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
 
-import { buildJourneyScriptTransaction } from "./script-cases.js";
+import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import type { JourneyTransactionInput } from "./transaction-cases.js";
 
 /** Wrongful operator reasons applied to a valid, signed forced transaction. */
@@ -28,9 +28,6 @@ export type JourneyForcedTransactionCategory = keyof typeof wrongfulReasons;
 export const JOURNEY_FORCED_TRANSACTION_CATEGORIES = Object.keys(
   wrongfulReasons,
 ) as JourneyForcedTransactionCategory[];
-
-/** Exact bytes to place in the real L1 order before building its claimed verdict. */
-export const prepareJourneyForcedTransaction = buildJourneyScriptTransaction;
 
 export const buildJourneyForcedTransaction = async (
   input: JourneyTransactionInput & {

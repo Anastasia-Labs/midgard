@@ -169,6 +169,16 @@ export const publishJourneyForcedOrder = async (
   return checkpoint.metadata.txOrderId;
 };
 
+/** The submitted bytes a forced-order fixture places in its L1 order. */
+export const journeyForcedOrderSubmission = (transaction: {
+  canonicalCbor: Buffer;
+}): Buffer =>
+  encodeMidgardForcedTxCanonical(
+    submittedForcedTransactionFromNative(
+      decodeMidgardNativeTxFullFromCanonicalCbor(transaction.canonicalCbor),
+    ),
+  );
+
 export const createForcedTransactionJourneyFixture = (
   category: JourneyCategory,
   prepareMaterial: (input: JourneyFaultPreparationInput) => {
@@ -189,13 +199,7 @@ export const createForcedTransactionJourneyFixture = (
       const material = prepareMaterial(input);
       const orderKey = await publishJourneyForcedOrder(
         input,
-        encodeMidgardForcedTxCanonical(
-          submittedForcedTransactionFromNative(
-            decodeMidgardNativeTxFullFromCanonicalCbor(
-              material.transaction.canonicalCbor,
-            ),
-          ),
-        ),
+        journeyForcedOrderSubmission(material.transaction),
       );
       return {
         buildFault: (timed) => builders.buildFault({ ...timed, orderKey }),

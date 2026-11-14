@@ -18,6 +18,7 @@ import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/supp
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
+import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
 import { verifyJourneyFixture } from "./journey-classification.test-support.js";
 import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
@@ -35,7 +36,6 @@ import {
   buildJourneyForcedTransaction,
   JOURNEY_FORCED_TRANSACTION_CATEGORIES,
   type JourneyForcedTransactionCategory,
-  prepareJourneyForcedTransaction,
 } from "./transaction-forced-cases.js";
 import { prepareJourneyTransactionProof } from "./transaction-proof-material.js";
 import {
