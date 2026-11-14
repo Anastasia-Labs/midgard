@@ -6,6 +6,7 @@ import type {
   WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import { verificationRecorder } from "./fault-decision-bridge.classification-record.js";
+import { coverageGapRecorder } from "./fault-decision-bridge.coverage-gaps.js";
 import {
   authenticatedHeaderObservation,
   type BridgeDependencies,
@@ -21,7 +22,8 @@ import {
  * once per header and L1 transaction. No decision is journaled and nothing
  * is deleted. A header whose last classification in this process found it
  * healthy merged verified: its `verified` record stands and nothing is
- * recorded for the merge.
+ * recorded for the merge. The same release and decision events drive the
+ * `proof_family_coverage_gap` alert (`coverageGapRecorder`).
  */
 export const unverifiedMergedRecorder = (
   dependencies: Pick<
@@ -33,6 +35,7 @@ export const unverifiedMergedRecorder = (
   // Queued headers whose last classification since the last rollback was
   // healthy; one leaves the set once its merge is seen.
   const verified = new Set<string>();
+  const coverageGaps = coverageGapRecorder(dependencies);
   const record = async (
     observation: WatcherAuthenticatedStateQueueObservation,
     header: WatcherStateQueueHeaderObservation,
@@ -93,14 +96,13 @@ export const unverifiedMergedRecorder = (
         const proof = released.get(header.headerHash);
         if (proof !== undefined) await record(observation, header, proof);
       }
+      coverageGaps.reconcile(observation, released);
     },
     /** The header's latest classification decision in this process. */
-    decided: (
-      headerHash: string,
-      decision: HeaderDecision["decision"],
-    ): void => {
-      if (decision === "healthy") verified.add(headerHash);
+    decided: (headerHash: string, decision: HeaderDecision): void => {
+      if (decision.decision === "healthy") verified.add(headerHash);
       else verified.delete(headerHash);
+      coverageGaps.decided(headerHash, decision);
     },
     /** A rollback may return a header to the queue, and may move what its
      * healthy decision read: it is recorded afresh. */

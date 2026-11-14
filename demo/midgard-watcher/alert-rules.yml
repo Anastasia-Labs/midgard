@@ -72,3 +72,13 @@ groups:
         annotations:
           summary: "Watcher {{ $labels.instance }} fault-proof deadline is at risk ({{ $labels.reason }})"
           runbook: "docs/operations/alerts.md#midgardwatcherproofdeadline"
+
+      - alert: MidgardWatcherProofFamilyCoverageGap
+        # A committed block's finding that no installed fault-proof family
+        # proves; the watcher keeps deciding the later blocks.
+        expr: midgard_watcher_active_alerts{code="proof_family_coverage_gap"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} found a block it cannot prove faulty or healthy"
+          runbook: "docs/operations/alerts.md#midgardwatcherprooffamilycoveragegap"

@@ -34,6 +34,19 @@ export const watcherValidationTraceReplayStuckAlertSubject = (
     .update(headerHash.toLowerCase())
     .digest("hex");
 
+/**
+ * One `proof_family_coverage_gap` subject per state-queue header. Unlike the
+ * per-header codes below, an unprovable outcome does not settle it: the
+ * fault decision bridge raises it on that outcome and clears it itself.
+ */
+export const watcherProofFamilyCoverageGapAlertSubject = (
+  headerHash: string,
+): string =>
+  createHash("sha256")
+    .update("midgard-watcher-proof-family-coverage-gap-alert-v1\u0000")
+    .update(headerHash.toLowerCase())
+    .digest("hex");
+
 /** Codes kept one subject per header, cleared by the header's outcome. */
 const PER_HEADER_CODES = Object.freeze([
   ["da_fetch_failure", watcherDaFetchAlertSubject],

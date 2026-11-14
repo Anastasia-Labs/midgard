@@ -311,7 +311,7 @@ export const createBridge = (input: {
             );
           }
           verification.recordDecision(authenticatedObservationDigest, decision);
-          mergedRecorder.decided(header.headerHash, decision.decision);
+          mergedRecorder.decided(header.headerHash, decision);
           classifiedBindings.set(header.headerHash, { predecessor, deadline });
           classifications[index] = decision;
           misses.classified(header.headerHash);

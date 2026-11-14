@@ -369,3 +369,27 @@ restart would meet the same deadline.
 latency, retained-DA reachability).
 
 **Escalate** `deadline_unsafe` at once.
+
+### MidgardWatcherProofFamilyCoverageGap
+
+**Meaning.** The watcher classified a committed block as unprovable: its
+earliest finding is one no installed fault-proof family proves (for example a
+forced transaction rejected for a coordinate the transaction does not have).
+The `proof_family_coverage_gap` alert is active, one subject per header, and
+holds readiness (`active_alert`). The watcher keeps classifying and proving
+the later blocks. The alert clears by itself when the header is decided
+otherwise, merges, is removed, or leaves the observed state queue.
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/diagnostics?kind=alert"
+curl -s "$OPS/v1/diagnostics?kind=verification"
+```
+
+The verification record with outcome `unprovable_gap` names the header.
+
+**Action.** Keep the watcher running and preserve its state directory.
+
+**Escalate** every occurrence to the protocol developers with the header
+hash.
