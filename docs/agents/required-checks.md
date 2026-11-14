@@ -277,10 +277,7 @@ Docker, compose and CI version pins match demo/toolchain.json.
 Repository tooling self-tests (the checks that prove the other checks can fail).
 
 - Command: `node --test "scripts/**/*.test.mjs"`
-- Runs on:
-  - `scripts/**`
-  - `.githooks/**`
-  - `.claude/settings.json`
+- Runs on: `scripts/**`, `.githooks/**`, `.claude/settings.json`; a file outside them that a self-test declares it reads (`toolingTestInputs` in `scripts/preflight/registry.tooling-checks.mjs`) runs only the self-tests that read it
 - Mode: runs in the pre-push hook
 
 ### `demo-lint`

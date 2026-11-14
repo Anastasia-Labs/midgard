@@ -4,7 +4,9 @@ import { posix, resolve } from "node:path";
 import {
   AIKEN_PROJECT,
   DEMO,
+  deploymentProfileInputs,
   goldenChannels,
+  matchesAny,
   workflowRunsCheck,
   workspaceDependencyClosure,
 } from "./derive.mjs";
@@ -243,6 +245,168 @@ export const independentChecks = () => [
 
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
+// The agent-facing files the agent-documentation checks read.
+const AGENT_FILES = [
+  "docs/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+  "CONTEXT.md",
+  ".agents/**",
+];
+
+// A change under these can move any tooling self-test, so it runs them all.
+const TOOLING_TESTS = "scripts/**/*.test.mjs";
+const TOOLING_TRIGGERS = [
+  "scripts/**",
+  ".githooks/**",
+  ".claude/settings.json",
+];
+
+// The files outside scripts/ each tooling self-test reads, so a change to one
+// runs the self-tests that read it and no others: the journey files and the
+// workflow a wiring check holds to each other, a module a test imports. A
+// self-test needs an entry once it reads a file outside scripts/ that is
+// neither under TOOLING_TRIGGERS nor a full-run path, and the entry then names
+// every file it reads outside scripts/. registry.tooling-inputs.test.mjs runs
+// each listed test in a copy holding only scripts/ and these files, so a read
+// left off its entry fails there, and so does a glob that matches no file.
+// Nothing catches a self-test that has no entry at all: whoever writes a
+// self-test that reads outside scripts/ adds its entry here.
+//
+// Not listed: the self-tests that read the whole tree. The preflight registry
+// tests, preflight-runner-filters, check-registry-paths and contrib's
+// run-tests build the registry or the package graph from every file;
+// check-doc-links and check-enforcement-tags resolve links and enforcer tags
+// to any tracked path. Their checks of this tree are steps of their own
+// (registry-paths, workflow-triggers, agent-doc-links, agent-enforcement-tags).
+const toolingTestInputs = (root) => {
+  const NODE_CI = ".github/workflows/midgard-node-ci.yml";
+  const WORKFLOWS = ".github/workflows/**";
+  const MANIFESTS = [
+    `${DEMO}/package.json`,
+    `${DEMO}/*/package.json`,
+    `${DEMO}/pnpm-workspace.yaml`,
+  ];
+  const PACKAGE_TASKS = `${DEMO}/scripts/package-tasks.mjs`;
+  const BLUEPRINT_STAMP = `${DEMO}/scripts/lib/blueprint-stamp.mjs`;
+  const READINESS_DOC =
+    ".agents/skills/running-the-devnet/references/endpoints-and-logs.md";
+  // The preflight modules import these, so every test that loads them reads
+  // them.
+  const PREFLIGHT_IMPORTS = [
+    `${AIKEN_PROJECT}/scripts/guard-focused-selector.mjs`,
+    `${AIKEN_PROJECT}/scripts/complete-test-shards.mjs`,
+    `${DEMO}/midgard-core/src/script-budgets.{ts,json}`,
+    PACKAGE_TASKS,
+  ];
+  return {
+    "scripts/agents/check-agent-config.test.mjs": [
+      ...AGENT_FILES,
+      ".claude/settings.json",
+    ],
+    "scripts/ci/check-readiness-reasons-doc.test.mjs": [
+      `${DEMO}/midgard-node/src/**`,
+      `${DEMO}/midgard-l1-follower/src/**`,
+      READINESS_DOC,
+    ],
+    "scripts/ci/check-watcher-readiness-reasons-doc.test.mjs": [
+      `${DEMO}/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`,
+      READINESS_DOC,
+    ],
+    "scripts/ci/fork-simulator-inputs.test.mjs": [
+      NODE_CI,
+      ...MANIFESTS,
+      PACKAGE_TASKS,
+    ],
+    "scripts/ci/lint-workflows.test.mjs": [WORKFLOWS, ".github/actions/**"],
+    "scripts/ci/node-tools-journey-tests-wired.test.mjs": [
+      NODE_CI,
+      `${DEMO}/midgard-node-tools/devnet/watcher-journeys/**`,
+    ],
+    "scripts/ci/prepare-merge-gates.test.mjs": [WORKFLOWS],
+    "scripts/ci/script-modes.test.mjs": [WORKFLOWS, ".githooks/**"],
+    "scripts/ci/shard-counts.test.mjs": [
+      NODE_CI,
+      `${DEMO}/*/tests/duration-shards.test.ts`,
+    ],
+    "scripts/ci/traced-refusal-inputs.test.mjs": [
+      NODE_CI,
+      ".github/actions/demo-setup/**",
+      `${DEMO}/midgard-fault-proofs/**`,
+      ...MANIFESTS,
+      PACKAGE_TASKS,
+      ...deploymentProfileInputs(root),
+    ],
+    "scripts/ci/traced-refusal-plan.test.mjs": [
+      `${DEMO}/midgard-fault-proofs/tests/**`,
+      `${DEMO}/midgard-fault-proofs/scripts/traced-refusal-plan.mjs`,
+    ],
+    "scripts/ci/vitest-script-flags.test.mjs": ["**/package.json"],
+    "scripts/ci/workflow-triggers.test.mjs": [WORKFLOWS],
+    "scripts/contrib/campaign.test.mjs": [
+      `${DEMO}/midgard-node-tools/config/devnet-campaign.example.json`,
+      PACKAGE_TASKS,
+      BLUEPRINT_STAMP,
+    ],
+    "scripts/contrib/registry.test.mjs": [
+      ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json",
+      ...MANIFESTS,
+      "docs-site/package.json",
+      `${DEMO}/midgard-core/scripts/**`,
+      PACKAGE_TASKS,
+      BLUEPRINT_STAMP,
+    ],
+    "scripts/lib/worktree-identity.test.mjs": [
+      `${DEMO}/midgard-node/tests/worktree-identity.ts`,
+    ],
+    "scripts/preflight/deployment-profile-inputs.test.mjs": [
+      ".github/workflows/aiken-ci.yml",
+      `${DEMO}/package.json`,
+      `${DEMO}/midgard-core/package.json`,
+      ...PREFLIGHT_IMPORTS,
+      ...deploymentProfileInputs(root),
+    ],
+    "scripts/preflight/run.test.mjs": PREFLIGHT_IMPORTS,
+    "scripts/preflight/sdk-suite-evidence.test.mjs": PREFLIGHT_IMPORTS,
+    "scripts/release/docker-build-plan.test.mjs": [
+      `${DEMO}/*/Dockerfile`,
+      `${DEMO}/*/package.json`,
+      `${DEMO}/*/tsup.config.ts`,
+      PACKAGE_TASKS,
+    ],
+    "scripts/release/pack-files.test.mjs": ["LICENSE"],
+    "scripts/release/sdk-packages.test.mjs": [
+      "LICENSE",
+      `${DEMO}/package.json`,
+      `${DEMO}/scripts/lib/vendored-imports.mjs`,
+    ],
+  };
+};
+
+const toolingTestsCheck = (root) => {
+  const inputs = toolingTestInputs(root);
+  return {
+    id: "repo-tooling-tests",
+    title:
+      "Repository tooling self-tests (the checks that prove the other checks can fail)",
+    triggers: [...TOOLING_TRIGGERS, ...new Set(Object.values(inputs).flat())],
+    triggerNote: `${TOOLING_TRIGGERS.map((path) => `\`${path}\``).join(", ")}; a file outside them that a self-test declares it reads (\`toolingTestInputs\` in \`scripts/preflight/registry.tooling-checks.mjs\`) runs only the self-tests that read it`,
+    testInputs: inputs,
+    prePush: true,
+    display: `node --test "${TOOLING_TESTS}"`,
+    plan: ({ matched = [], full = false } = {}) => {
+      const readers = Object.keys(inputs).filter((test) =>
+        matched.some((path) => matchesAny(path, inputs[test])),
+      );
+      const whole =
+        full ||
+        readers.length === 0 ||
+        matched.some((path) => matchesAny(path, TOOLING_TRIGGERS));
+      return [step(["node", "--test", ...(whole ? [TOOLING_TESTS] : readers)])];
+    },
+  };
+};
+
 // demo/scripts/check-module-size-exceptions.mjs holds each listed file to its
 // recorded line count, so an edit of one of them can fail it. Entries are
 // relative to demo/; those outside it are spelled `../<path>`.
@@ -330,15 +494,7 @@ export const toolingChecks = (root) => [
     display: "node scripts/release/toolchain.mjs",
     plan: () => [step(node("scripts/release/toolchain.mjs"))],
   },
-  {
-    id: "repo-tooling-tests",
-    title:
-      "Repository tooling self-tests (the checks that prove the other checks can fail)",
-    triggers: ["scripts/**", ".githooks/**", ".claude/settings.json"],
-    prePush: true,
-    display: 'node --test "scripts/**/*.test.mjs"',
-    plan: () => [step(["node", "--test", "scripts/**/*.test.mjs"])],
-  },
+  toolingTestsCheck(root),
   {
     id: "demo-lint",
     title: "Workspace ESLint rules and their reasoned baseline",
@@ -447,15 +603,7 @@ export const toolingChecks = (root) => [
   ].map(([id, title, script, extraTriggers = []]) => ({
     id,
     title,
-    triggers: [
-      "docs/**",
-      "**/AGENTS.md",
-      "**/CLAUDE.md",
-      "CONTEXT.md",
-      ".agents/**",
-      "scripts/agents/**",
-      ...extraTriggers,
-    ],
+    triggers: [...AGENT_FILES, "scripts/agents/**", ...extraTriggers],
     requiresFiles: [script],
     prePush: true,
     display: `node ${script}`,
