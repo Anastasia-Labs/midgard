@@ -1339,6 +1339,7 @@ jobs:
             devnet/watcher-journeys/da-bond-pool- \
             watcher-journeys/artifacts.test.ts \
             watcher-journeys/attached-journey-session.test.ts \
+            watcher-journeys/attached-journey-session.watcher-progress.test.ts \
             watcher-journeys/catalogue.test.ts \
             watcher-journeys/committee-acceptance.test.ts \
             watcher-journeys/correction-recovery.test.ts \
@@ -1365,6 +1366,8 @@ jobs:
             watcher-journeys/journey-replay-warm-up.test.ts \
             watcher-journeys/journey-runner.attached.test.ts \
             watcher-journeys/journey-runner.await-healthy-watcher.test.ts \
+            watcher-journeys/journey-runner.polls.test.ts \
+            watcher-journeys/journey-session.family-run.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.stack-limit.test.ts \
             watcher-journeys/journey-timing.test.ts \
@@ -1376,6 +1379,7 @@ jobs:
             watcher-journeys/native-recorder.test.ts \
             watcher-journeys/operations.http-failure.test.ts \
             watcher-journeys/operations.test.ts \
+            watcher-journeys/operator-pause.compose-transport.test.ts \
             watcher-journeys/operator-pause.test.ts \
             watcher-journeys/operator-release-guard.test.ts \
             watcher-journeys/process.test.ts \
@@ -1415,7 +1419,8 @@ jobs:
             watcher-journeys/state-queue-root-anchor.test.ts \
             watcher-journeys/transaction-cases.test.ts \
             watcher-journeys/verified-headers.test.ts \
-            watcher-journeys/watcher-evidence-reader.test.ts
+            watcher-journeys/watcher-evidence-reader.test.ts \
+            watcher-journeys/watcher-evidence-reader.transport.test.ts
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths
