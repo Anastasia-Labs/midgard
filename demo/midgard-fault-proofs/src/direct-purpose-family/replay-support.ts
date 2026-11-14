@@ -8,6 +8,7 @@ import {
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";
 
@@ -65,9 +66,11 @@ export const purposelessRejection = (
  * its phases; the prover decides admission under the bound context. */
 export const purposePhaseRejection = (verdict: SDK.OperatorVerdict): boolean =>
   purposelessRejection(verdict) &&
-  SDK.rejectionReasonPhase(verdict.ForcedTxInvalid.reason, {
-    body_network_mismatch: true,
-  }) >= 8;
+  claimedReasonReachesPhase(
+    verdict.ForcedTxInvalid.reason,
+    { body_network_mismatch: true },
+    8,
+  );
 
 /** A leaf whose bytes the replay cannot open yields no finding; an unresolved
  * replay prerequisite still surfaces. */

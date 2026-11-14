@@ -14,12 +14,12 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,
-  index,
   outRefKey,
   prepareResolvedOutputNonCanonicalEvidence,
   type ResolvedOutputCoordinate,
@@ -123,11 +123,14 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
         ? deriveMidgardForcedTxFaultEvidenceMaterial
         : deriveMidgardNativeTxFaultEvidenceMaterial
     )(bytes);
-    const selected = decodeMidgardInputFieldPreimage(
-      material.fieldPreimages[coordinate.sourceKind]!,
-    )[coordinate.inputIndex];
-    if (selected === undefined)
-      return fail("forced reason input coordinate is absent");
+    const selected = claimedItem(
+      decodeMidgardInputFieldPreimage(
+        material.fieldPreimages[coordinate.sourceKind]!,
+      ),
+      coordinate.inputIndex,
+    );
+    // Accepted coordinates are enumerated; only a forced claim can be absent.
+    if (selected === undefined) return;
     const transactionId = Buffer.from(selected.txId).toString("hex");
     const resolved = priorLedger.outputs.get(
       outRefKey(transactionId, selected.outputIndex),
@@ -179,9 +182,10 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
     )
       return;
     const coordinate = reason.InputSpentOutputNonCanonical;
-    const sourceKind = Number(coordinate.source_kind);
-    if (sourceKind !== 0 && sourceKind !== 1)
-      return fail("forced reason source kind is invalid");
+    const sourceKind = claimedIndex(coordinate.source_kind);
+    const inputIndex = claimedIndex(coordinate.input_index);
+    if ((sourceKind !== 0 && sourceKind !== 1) || inputIndex === undefined)
+      return;
     inspect(
       transaction.fullTransactionCbor,
       forcedVerdictSubject({
@@ -189,13 +193,7 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
         sourceKey: transaction.key,
         rejectionReason: reason,
       }),
-      {
-        sourceKind,
-        inputIndex: index(
-          Number(coordinate.input_index),
-          "forced reason input index",
-        ),
-      },
+      { sourceKind, inputIndex },
     );
   });
   return Object.freeze(detections);

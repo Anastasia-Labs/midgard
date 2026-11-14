@@ -9,6 +9,7 @@ import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
@@ -59,12 +60,11 @@ export const detectFieldPreimageLengthCompleteReplay = (
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
       );
     }
-    const preimage = material.fieldPreimages[fieldIndex];
-    if (preimage === undefined) {
-      throw new Error(
-        "fieldPreimageLengthMismatch forced coordinate is absent",
-      );
-    }
+    const preimage = claimedItem(
+      material.fieldPreimages,
+      reason.FieldPreimageLengthMismatch.field_index,
+    );
+    if (preimage === undefined) continue;
     const declaredLength = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(
         forced.value.submitted_source.field_preimage_lengths_cbor,
@@ -168,12 +168,11 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
       );
     }
-    const preimage = material.fieldPreimages[fieldIndex];
-    if (preimage === undefined) {
-      throw new Error(
-        "fieldPreimageLengthMismatch forced coordinate is absent",
-      );
-    }
+    const preimage = claimedItem(
+      material.fieldPreimages,
+      reason.FieldPreimageLengthMismatch.field_index,
+    );
+    if (preimage === undefined) continue;
     const basePrepared = prepareFieldPreimageLengthWorkflow({
       headerHash: block.headerHash,
       transactionId: forced.value.tx_id,

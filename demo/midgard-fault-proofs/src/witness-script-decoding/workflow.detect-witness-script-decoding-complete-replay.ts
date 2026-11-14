@@ -13,6 +13,11 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  claimedIndex,
+  claimedItem,
+  claimedPlutusUndecodable,
+} from "../evidence/claimed-coordinate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { PLUTUS_SCRIPT_ITEM_KIND_WITNESS } from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
@@ -104,7 +109,7 @@ export const witnessScriptDecodingCompleteReplayFindings = (
               : "PlutusScriptUndecodable" in reason &&
                   reason.PlutusScriptUndecodable.item_kind ===
                     PLUTUS_SCRIPT_ITEM_KIND_WITNESS
-                ? {
+                ? claimedPlutusUndecodable(reason.PlutusScriptUndecodable) && {
                     script_index: reason.PlutusScriptUndecodable.item_index,
                   }
                 : undefined;
@@ -125,8 +130,12 @@ export const witnessScriptDecodingCompleteReplayFindings = (
         "witnessScriptDecoding forced transaction differs from its authenticated leaf",
       );
     const field = material.fieldPreimages[6]!;
-    const scriptIndex = Number(payload.script_index);
-    if (decodeMidgardFieldPreimage(field)[scriptIndex] === undefined) continue;
+    const scriptIndex = claimedIndex(payload.script_index);
+    if (
+      scriptIndex === undefined ||
+      claimedItem(decodeMidgardFieldPreimage(field), scriptIndex) === undefined
+    )
+      continue;
     const prepared = prepareWitnessScriptDecodingEvidence({
       finding: {
         subject: forcedVerdictSubject({

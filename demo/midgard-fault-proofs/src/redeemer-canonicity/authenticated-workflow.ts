@@ -15,6 +15,7 @@ import {
   type CanonicalBlockEvidence,
   fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   acceptedTransactionSubject,
@@ -89,22 +90,28 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
       );
       const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX];
       if (field === undefined) return;
+      const redeemerIndex =
+        reason === null
+          ? undefined
+          : claimedIndex(reason.RedeemerMalformed.redeemer_index);
+      if (
+        reason !== null &&
+        (redeemerIndex === undefined ||
+          claimedItem(decodeMidgardFieldPreimage(field), redeemerIndex) ===
+            undefined)
+      )
+        return;
       const subject = forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
         rejectionReason: reason,
       });
       const items =
-        reason === null
+        redeemerIndex === undefined
           ? prepareAllOrNone({ subject, field })
           : [
               prepareRedeemerCanonicityEvidence({
-                finding: {
-                  subject,
-                  redeemerIndex: Number(
-                    reason.RedeemerMalformed.redeemer_index,
-                  ),
-                },
+                finding: { subject, redeemerIndex },
                 fieldPreimage: field,
                 committedFieldHashHex:
                   midgardFieldCommitment(field).toString("hex"),

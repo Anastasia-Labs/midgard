@@ -96,6 +96,12 @@ export const outputWithNativeScript = (script: MidgardNativeScript): Buffer =>
     }),
   );
 
+/** A canonical output that carries no reference script. */
+export const outputWithoutReferenceScript = (): Buffer =>
+  Buffer.from(
+    encodeMidgardTxOutput({ address: subjectAddress, value: subjectValue }),
+  );
+
 /** A canonical output carrying `scriptBytes` as a PlutusV3 reference script. */
 export const outputWithPlutusScript = (scriptBytes: Buffer): Buffer =>
   Buffer.from(

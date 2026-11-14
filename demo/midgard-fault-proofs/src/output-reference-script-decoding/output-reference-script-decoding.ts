@@ -29,6 +29,10 @@ import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  claimedIndex,
+  claimedPlutusUndecodable,
+} from "../evidence/claimed-coordinate.js";
+import {
   PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
   PLUTUS_SCRIPT_REFUSED_RESULT_BASE,
   plutusItemScriptDecode,
@@ -237,10 +241,14 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   } catch {
     return fail("selected output descriptor is not canonical");
   }
+  // An output without a reference script binds the empty item and closes
+  // no-fault at step 04 (the twin of `bind_reference_script_v1`'s language
+  // -1 arm), so a rejection naming its reference script still closes.
+  const carriesScript = trace.terminal.referenceScriptLanguage !== -1;
   const offset = trace.terminal.referenceScriptItemOffset;
-  if (trace.terminal.referenceScriptLanguage === -1 || offset < 0)
+  if (carriesScript && offset < 0)
     return fail("selected output carries no reference script");
-  const item = output.subarray(offset);
+  const item = carriesScript ? output.subarray(offset) : Buffer.alloc(0);
   const bounded = buildMidgardBoundedItem({
     fieldIndex: 2,
     itemIndex: outputIndex,
@@ -248,8 +256,12 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   });
   for (let index = 0; index < bounded.frontier.count; index += 1)
     buildMidgardBoundedItemChunkProof(bounded, index);
-  const resultClass = resultClassOf(item);
-  const nativeTrace = buildMidgardNativeScriptDecodingTrace(item);
+  const resultClass = carriesScript
+    ? resultClassOf(item)
+    : OutputReferenceScriptResultClasses.NoFault;
+  const nativeTrace = carriesScript
+    ? buildMidgardNativeScriptDecodingTrace(item)
+    : undefined;
   const evidence = Object.freeze({
     subject,
     outputIndex,
@@ -281,7 +293,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
     carriage: selectMidgardFieldCarriageTier(field.length),
     chunkProofCount: bounded.frontier.count,
     initialControlCbor:
-      nativeTrace.bind.kind === MidgardNativeScriptDecodingBindKinds.Bound
+      nativeTrace?.bind.kind === MidgardNativeScriptDecodingBindKinds.Bound
         ? encodeMidgardNativeScriptStructureControl(
             nativeTrace.bind.control,
           ).toString("hex")
@@ -433,12 +445,26 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       )
     )
       return;
-    const subject = forcedVerdictSubject({
-      transactionId: forced.value.tx_id,
-      sourceKey: forced.key,
-      rejectionReason: reason,
-    });
-    inspect(subject, forced.fullTransactionCbor, exactOutputIndex(subject));
+    const outputIndex =
+      "PlutusScriptUndecodable" in reason
+        ? claimedPlutusUndecodable(reason.PlutusScriptUndecodable)?.itemIndex
+        : claimedIndex(
+            "OutputReferenceScriptMalformed" in reason
+              ? reason.OutputReferenceScriptMalformed.output_index
+              : "OutputReferenceScriptNodeLimit" in reason
+                ? reason.OutputReferenceScriptNodeLimit.output_index
+                : reason.OutputReferenceScriptDepthLimit.output_index,
+          );
+    if (outputIndex === undefined) return;
+    inspect(
+      forcedVerdictSubject({
+        transactionId: forced.value.tx_id,
+        sourceKey: forced.key,
+        rejectionReason: reason,
+      }),
+      forced.fullTransactionCbor,
+      outputIndex,
+    );
   });
   return Object.freeze(results);
 };

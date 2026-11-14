@@ -50,6 +50,7 @@ import {
   OUTPUT_REFERENCE_REASON_ARMS,
   type OutputReferenceContext,
   outputWithNativeScript,
+  outputWithoutReferenceScript,
   outputWithRawNativePayload,
   publishFamilyReferences,
   rawNativeOutputOfLength,
@@ -966,6 +967,56 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     record("forced-sig-step06-final-mint", s6.measurement);
     coverage.reason("OutputReferenceScriptMalformed", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
+  }, 600_000);
+
+  it("contradicts a wrongful forced Malformed rejection naming an output that carries no reference script", async () => {
+    const context = await makeOutputReferenceHarness();
+    const block = await commitForcedBlock(context, [
+      {
+        nativeTx: subjectTransaction([outputWithoutReferenceScript()]),
+        reason: forcedReason("OutputReferenceScriptMalformed"),
+      },
+    ]);
+    const leaf = block.leaves[0]!;
+    const published = await publishFamilyReferences(
+      context,
+      recorder,
+      "output-reference-forced-no-script",
+    );
+    const stages = makeOutputReferenceStages({
+      context,
+      fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+      ...published,
+    });
+    const evidence = forcedEvidence(leaf);
+    expect(evidence.resultClass).toBe(
+      OutputReferenceScriptResultClasses.NoFault,
+    );
+    expect(evidence.accusedClass).toBe(
+      OutputReferenceScriptResultClasses.Malformed,
+    );
+    const s1 = await stages.step01Forced(
+      stages.threadOf((await stages.init()).result),
+      evidence,
+      leaf,
+      block.header,
+    );
+    const s2 = await stages.step02(
+      s1.result.nextThreadOutRef,
+      evidence,
+      forcedSourceOf(leaf),
+    );
+    const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
+    const s4 = await stages.step04(
+      s3.threadOutRef,
+      evidence,
+      leaf.transaction.submitted_source.compact_cbor,
+      s2.result,
+    );
+    const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
+    expect(s5.result.closed).toBe(true);
+    const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
+    expect(s6.result.fraudProofUnit).toBeTruthy();
   }, 600_000);
 
   it("declares the lifecycle coverage it exercised", () => {

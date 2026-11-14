@@ -16,6 +16,7 @@ import {
 } from "../direct-purpose-family/replay-support.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
@@ -46,11 +47,12 @@ export const executionNativeScriptInvalidDetectionId = (
  * execution phase; the prover decides admission under the bound context. */
 const executionPhaseRejection = (verdict: SDK.OperatorVerdict): boolean =>
   verdict !== "ForcedTxValid" &&
-  [true, false].some(
-    (body_network_mismatch) =>
-      SDK.rejectionReasonPhase(verdict.ForcedTxInvalid.reason, {
-        body_network_mismatch,
-      }) >= EXECUTION_PHASE,
+  [true, false].some((body_network_mismatch) =>
+    claimedReasonReachesPhase(
+      verdict.ForcedTxInvalid.reason,
+      { body_network_mismatch },
+      EXECUTION_PHASE,
+    ),
   );
 
 /** The planned finding at one coordinate, or `null` when it does not

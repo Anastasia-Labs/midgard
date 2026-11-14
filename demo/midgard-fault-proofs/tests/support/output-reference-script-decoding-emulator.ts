@@ -50,6 +50,7 @@ export {
   OUTPUT_REFERENCE_REASON_ARMS,
   type OutputReferenceContext,
   outputWithNativeScript,
+  outputWithoutReferenceScript,
   outputWithPlutusScript,
   outputWithRawNativePayload,
   rawNativeOutputOfLength,

@@ -7,6 +7,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
@@ -45,9 +46,11 @@ export const distinctAssetAccumulationLimitDetectionId = (
  * which ranks before it either way. */
 const contradictableRejection = (verdict: SDK.OperatorVerdict) =>
   verdict !== "ForcedTxValid" &&
-  SDK.rejectionReasonPhase(verdict.ForcedTxInvalid.reason, {
-    body_network_mismatch: true,
-  }) >= VALUE_PHASE;
+  claimedReasonReachesPhase(
+    verdict.ForcedTxInvalid.reason,
+    { body_network_mismatch: true },
+    VALUE_PHASE,
+  );
 
 /** A rejected leaf whose bytes the replay cannot open yields no finding; an
  * unresolved replay prerequisite still surfaces. */

@@ -11,6 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
@@ -266,7 +267,10 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
       const reason = verdict.ForcedTxInvalid.reason;
       if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
         return;
-      const policyIndex = Number(reason.MintDeclaredAssetLimit.policy_index);
+      const policyIndex = claimedIndex(
+        reason.MintDeclaredAssetLimit.policy_index,
+      );
+      if (policyIndex === undefined) return;
       const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
@@ -284,7 +288,12 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
         );
       const field =
         material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
-      if (field === undefined) return;
+      if (
+        field === undefined ||
+        claimedItem(decodeMidgardFieldPreimage(field), policyIndex) ===
+          undefined
+      )
+        return;
       const evidence = prepareMintDeclaredAssetLimitEvidence({
         finding: {
           subject: SDK.forcedVerdictSubject({

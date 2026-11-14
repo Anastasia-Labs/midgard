@@ -20,6 +20,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedIndex } from "../evidence/claimed-coordinate.js";
 import type {
   AuthenticatedPriorLedgerOutput,
   ResolvedOutputPriorLedgerReplay,
@@ -395,6 +396,8 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
     const reason = transaction.value.verdict.ForcedTxInvalid.reason;
     if (typeof reason === "string" || !("SpendInputSignerMissing" in reason))
       return;
+    const inputIndex = claimedIndex(reason.SpendInputSignerMissing.input_index);
+    if (inputIndex === undefined) return;
     inspect(
       transaction.fullTransactionCbor,
       forcedVerdictSubject({
@@ -402,10 +405,7 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
         sourceKey: transaction.key,
         rejectionReason: reason,
       }),
-      nonNegativeIndex(
-        Number(reason.SpendInputSignerMissing.input_index),
-        "forced reason input coordinate",
-      ),
+      inputIndex,
     );
   });
   return Object.freeze(detections);
