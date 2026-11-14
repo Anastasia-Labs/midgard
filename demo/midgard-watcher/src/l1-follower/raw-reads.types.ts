@@ -71,9 +71,12 @@ export type FollowerVerifiedSpend = Readonly<{
 }>;
 
 /**
- * Which requested outrefs are unspent at a point, by label. A seed row (an
- * output the follower's origin already held) is unspent from the origin
- * until a spend the store records at or below the point.
+ * Which requested outrefs are unspent at a point, by label. For a seed row
+ * (no stored creating body: an output created before the follower's origin,
+ * or after it while its wallet was not tracked) `unspent` means only that no
+ * spend at or below the point exists: every spend after the seed is
+ * recorded, and a rewind below the seed deletes the row. Whether the output
+ * already existed at a point before its seed slot is not proven.
  */
 export type FollowerOutRefLiveness = Readonly<{
   /** The requested outrefs unspent at the point. */

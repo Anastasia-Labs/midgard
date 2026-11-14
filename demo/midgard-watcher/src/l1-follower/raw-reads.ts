@@ -136,9 +136,10 @@ export const createFollowerRawReads = (
 
   /**
    * Which of `outRefs` are unspent at `point`, with the parsed outref and
-   * whether its row is a seed row (no stored creating body). A seed row is
-   * unspent at the origin, so it is unspent at any stored point until a spend
-   * the store records at or below that point.
+   * whether its row is a seed row (no stored creating body). A seed row
+   * reads unspent while no spend at or below `point` is recorded; it may
+   * not have existed yet at a point before its seed slot (see
+   * {@link FollowerOutRefLiveness}).
    */
   const livenessAt = async (
     outRefs: readonly string[],
