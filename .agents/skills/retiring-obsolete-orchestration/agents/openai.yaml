@@ -1,0 +1,4 @@
+interface:
+  display_name: "Retiring Obsolete Orchestration"
+  short_description: "Prove shared recovery coverage before deleting redundant runners."
+  default_prompt: "Use the Midgard retiring-obsolete-orchestration workflow."

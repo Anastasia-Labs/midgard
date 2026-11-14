@@ -7,6 +7,7 @@ import {
   computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -17,31 +18,27 @@ import {
   EMPTY_SPEND_INPUTS_HASH,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
   prepareZeroInputFromTransactions,
+  transactionSourceTrieItem,
 } from "../src/index.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const makeNativeTx = ({
   spendInputCbors,
@@ -81,7 +78,7 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
 
 const spendingTx = (fee: bigint): NodeTransactionPayload =>
   payloadFromTx(
-    makeNativeTx({ spendInputCbors: [inputCbor(h32("11"), fee)], fee }),
+    makeNativeTx({ spendInputCbors: [inputCbor(h32(0x11), fee)], fee }),
   );
 
 const zeroInputTx = (fee: bigint): NodeTransactionPayload =>
@@ -96,10 +93,10 @@ const transactionRoots = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: trie.root,
       count: BigInt(decoded.length),
     }),
@@ -127,12 +124,12 @@ describe("prepare-zero-input", () => {
     const roots = await transactionRoots(transactions);
 
     const output = await prepareZeroInputFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
 
-    expect(output.headerHash).toBe(h28("aa"));
+    expect(output.headerHash).toBe(h28(0xaa));
     expect(output.txCount).toBe(2);
     expect(output.tx.nodeTxId).toBe(badTx.nodeTxId);
     expect(output.tx.spendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
@@ -145,7 +142,7 @@ describe("prepare-zero-input", () => {
     );
     const expectedCommittedRoot = await Effect.runPromise(
       commitCountedRootProgram({
-        domain: ROOT_DOMAINS.transactions,
+        domain: ROOT_DOMAINS.transactionsV1,
         phasRoot: output.transactionsPhasRoot,
         count: BigInt(output.txCount),
       }),
@@ -165,7 +162,7 @@ describe("prepare-zero-input", () => {
     const roots = await transactionRoots(transactions);
 
     const verified = await prepareZeroInputFromTransactions({
-      headerHash: h28("aa"),
+      headerHash: h28(0xaa),
       transactions,
       expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
@@ -186,7 +183,7 @@ describe("prepare-zero-input", () => {
 
     await expect(
       prepareZeroInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.transactionsPhasRoot,
       }),
@@ -196,9 +193,9 @@ describe("prepare-zero-input", () => {
   it("rejects a transactions root that is not committed by the block header", async () => {
     await expect(
       prepareZeroInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions: [spendingTx(1n), zeroInputTx(2n)],
-        expectedTransactionsRoot: h32("ff"),
+        expectedTransactionsRoot: h32(0xff),
       }),
     ).rejects.toThrow("The prepared proof would not verify against this block");
   });
@@ -208,7 +205,7 @@ describe("prepare-zero-input", () => {
     const roots = await transactionRoots(transactions);
     await expect(
       prepareZeroInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
       }),
@@ -221,7 +218,7 @@ describe("prepare-zero-input", () => {
     const roots = await transactionRoots(transactions);
     await expect(
       prepareZeroInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
         txId: validTx.nodeTxId,
@@ -235,7 +232,7 @@ describe("prepare-zero-input", () => {
     const roots = await transactionRoots(transactions);
     await withTempDir(async (dir) => {
       const output = await prepareZeroInputFromTransactions({
-        headerHash: h28("aa"),
+        headerHash: h28(0xaa),
         transactions,
         expectedTransactionsRoot: roots.committedTransactionsRoot,
         outputDir: dir,

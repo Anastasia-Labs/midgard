@@ -1,8 +1,9 @@
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
+  submitLowerBoundSlot,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
+} from "@al-ft/midgard-core/ogmios-slot";
 
 export type InlineWaitPolicy = "allow_inline_wait" | "defer_positive_wait";
 
@@ -92,22 +93,13 @@ export type SubmitTimingSlotSourceUnavailablePlan = {
   readonly invalidationKey?: string;
 };
 
-export type SubmitTimingSlotSourceStalledPlan = Omit<
-  SubmitTimingWaitPlan,
-  "status"
-> & {
-  readonly status: "slot_source_stalled";
-  readonly reason: string;
-};
-
 export type SubmitTimingPlan =
   | SubmitTimingReadyPlan
   | SubmitTimingWaitPlan
   | SubmitTimingNotDuePlan
   | SubmitTimingExpiredPlan
   | SubmitTimingWindowTooNarrowPlan
-  | SubmitTimingSlotSourceUnavailablePlan
-  | SubmitTimingSlotSourceStalledPlan;
+  | SubmitTimingSlotSourceUnavailablePlan;
 
 const safeNonNegativeInteger = (
   value: number | undefined,
@@ -205,13 +197,16 @@ export const planSubmitTiming = (
       slotSource,
     };
   }
-  if (currentSlot >= targetSlot) {
+  // From here on the plan is judged at the ledger tip, and reports it as its
+  // current slot, so due work registered from it wakes on the same slot.
+  const lowerBoundSlot = submitLowerBoundSlot(snapshot);
+  if (lowerBoundSlot >= targetSlot) {
     return {
       ...base,
       status: "ready",
       targetSlot,
-      currentSlot,
-      observedSlot,
+      currentSlot: lowerBoundSlot,
+      observedSlot: lowerBoundSlot,
       observedAtMs,
       waitMs: 0,
       slotSource,
@@ -222,14 +217,14 @@ export const planSubmitTiming = (
     1,
     Math.floor(snapshot.slotLengthMs || SUBMIT_SLOT_LENGTH_MS),
   );
-  const deltaSlots = targetSlot - currentSlot;
+  const deltaSlots = targetSlot - lowerBoundSlot;
   const waitMs = deltaSlots * slotLengthMs;
   const waitBase = {
     ...base,
     targetSlot,
     dueSlot: targetSlot,
-    currentSlot,
-    observedSlot,
+    currentSlot: lowerBoundSlot,
+    observedSlot: lowerBoundSlot,
     observedAtMs,
     deltaSlots,
     waitMs,
@@ -258,36 +253,4 @@ export const planSubmitTiming = (
         status: "not_due",
         reason: `wait_ms=${waitMs.toString()},max_inline_wait_ms=${maxInlineWaitMs.toString()}`,
       };
-};
-
-export const planSubmitTimingAfterInlineWait = (
-  original: SubmitTimingWaitPlan,
-  refreshedSnapshot: SubmitSlotSnapshot | undefined,
-  refreshedError?: unknown,
-):
-  | SubmitTimingReadyPlan
-  | SubmitTimingSlotSourceStalledPlan
-  | SubmitTimingPlan => {
-  const refreshed = planSubmitTiming({
-    callerLabel: original.callerLabel,
-    invalidBeforeSlot: original.invalidBeforeSlot,
-    invalidHereafterSlot: original.invalidHereafterSlot,
-    slotSnapshot: refreshedSnapshot,
-    slotSnapshotError: refreshedError,
-    submitSlotBuffer: original.targetSlot - original.invalidBeforeSlot,
-    maxInlineWaitMs: 0,
-    dependencyKey: original.dependencyKey,
-    invalidationKey: original.invalidationKey,
-  });
-  if (refreshed.status === "ready") {
-    return refreshed;
-  }
-  if (refreshed.status === "wait" || refreshed.status === "not_due") {
-    return {
-      ...refreshed,
-      status: "slot_source_stalled",
-      reason: `slot source did not reach target after inline wait: observed_slot=${refreshed.currentSlot.toString()},target_slot=${refreshed.targetSlot.toString()}`,
-    };
-  }
-  return refreshed;
 };

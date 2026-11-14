@@ -8,14 +8,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const markdownIgnorePatterns = readFileSync(resolve(repoRoot, ".gitignore"), "utf8")
   .split("\n")
   .map((line) => line.trim())
-  .filter((line) => !line.startsWith("#") && /\.md$/u.test(line))
+  .filter((line) => !line.startsWith("#") && /(?:\.md|\/)$/u.test(line))
   .map((line) => {
     const normalized = line.replace(/^\/+|\/+$/gu, "");
     const source = normalized
       .split("*")
       .map((part) => part.replace(/[\\^$+?.()|[\]{}]/gu, "\\$&"))
       .join("[^/]*");
-    return new RegExp(`^${source}$`, "u");
+    // An ignored directory ignores every Markdown file under it.
+    return new RegExp(line.endsWith("/") ? `^${source}/` : `^${source}$`, "u");
   });
 const excludedDirectories = new Set([
   ".agents",

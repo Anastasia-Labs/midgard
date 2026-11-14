@@ -1,12 +1,28 @@
+import "@al-ft/midgard-core/da-stream-codec";
+import "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/da/libp2p/DaPeerRegistry.js";
+import "../src/da/libp2p/DaProtocols.js";
+import "../src/da/libp2p/proof-protocols.js";
+import "../src/store.js";
+import "./helpers.js";
+import "./libp2p-proof-protocols.save-verified-payload.js";
+
+import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
 import {
   computeDaSha256Hash,
   DaRequestResponseProtocol,
-  decodeDaEventToStepByEventResponseV1Cbor,
-  decodeDaProofBundleByHeaderResponseV1Cbor,
-  decodeDaTraceStepByIndexResponseV1Cbor,
-  encodeDaEventToStepByEventRequestV1Cbor,
-  encodeDaProofBundleByHeaderRequestV1Cbor,
-  encodeDaTraceStepByIndexRequestV1Cbor,
+  decodeDaEventToStepByEventResponseCbor,
+  decodeDaProofBundleByHeaderResponseCbor,
+  decodeDaTraceStepByIndexResponseCbor,
+  encodeDaEventToStepByEventRequestCbor,
+  encodeDaProofBundleByHeaderRequestCbor,
+  encodeDaTraceStepByIndexRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -15,28 +31,17 @@ import { describe, expect, it } from "vitest";
 import type { DaLibp2pStreamHandler } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
+import { createDaLibp2pProofRequestHandlers } from "../src/da/libp2p/proof-protocols.js";
+import { makePayloadFixture } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import {
-  encodeDaStreamFrame,
-  readSingleDaStreamFrame,
-} from "../src/da/libp2p/DaStreamCodec.js";
-import {
-  createDaLibp2pProofRequestHandlers,
-  DaLibp2pProofProtocolHandlers,
-} from "../src/da/libp2p/proof-protocols.js";
-import type {
-  Header,
-  PayloadRootSet,
-  StateQueueHeaderRecord,
-} from "../src/domain.js";
-import { JsonFileWatcherStore } from "../src/store.js";
-import {
-  IDENTITY_TX_PROJECTOR,
-  makePayloadFixture,
-  tempDir,
-} from "./helpers.js";
-
-const deploymentFingerprint = "01".repeat(32);
-const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
+  deploymentFingerprint,
+  deploymentFingerprintBytes,
+  makeHandlers,
+  saveVerifiedPayload,
+  stateQueueHeaderRecord,
+  verifiedRootSummary,
+} from "./libp2p-proof-protocols.save-verified-payload.js";
 
 describe("DA libp2p proof protocol handlers", () => {
   it("serves proof bundles, trace openings, and event-to-step membership proofs from verified payloads", async () => {
@@ -46,15 +51,16 @@ describe("DA libp2p proof protocol handlers", () => {
     const payloadHash = computeDaSha256Hash(payloadCbor);
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,
       headerHash,
     });
 
-    const proofBundle = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const proofBundle = decodeDaProofBundleByHeaderResponseCbor(
       await handlers.handleProofBundleByHeader(
-        encodeDaProofBundleByHeaderRequestV1Cbor({
+        encodeDaProofBundleByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           maxInlineBytes: 4096,
@@ -72,9 +78,9 @@ describe("DA libp2p proof protocol handlers", () => {
     ).toBe(true);
     expect(proofBundle.chunkManifest).toBeNull();
 
-    const trace = decodeDaTraceStepByIndexResponseV1Cbor(
+    const trace = decodeDaTraceStepByIndexResponseCbor(
       await handlers.handleTraceStepByIndex(
-        encodeDaTraceStepByIndexRequestV1Cbor({
+        encodeDaTraceStepByIndexRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           stepIndex: 2,
@@ -99,9 +105,9 @@ describe("DA libp2p proof protocol handlers", () => {
 
     const [eventKeyHex, eventToStepValueHex] =
       payload.block_body.event_to_step[0]!;
-    const eventToStep = decodeDaEventToStepByEventResponseV1Cbor(
+    const eventToStep = decodeDaEventToStepByEventResponseCbor(
       await handlers.handleEventToStepByEvent(
-        encodeDaEventToStepByEventRequestV1Cbor({
+        encodeDaEventToStepByEventRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           eventKey: Buffer.from(eventKeyHex, "hex"),
@@ -128,9 +134,11 @@ describe("DA libp2p proof protocol handlers", () => {
 
   it("serves event-to-step non-membership proofs for absent event keys", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash: computeDaSha256Hash(payloadCbor),
       header,
@@ -144,9 +152,9 @@ describe("DA libp2p proof protocol handlers", () => {
       "hex",
     );
 
-    const response = decodeDaEventToStepByEventResponseV1Cbor(
+    const response = decodeDaEventToStepByEventResponseCbor(
       await handlers.handleEventToStepByEvent(
-        encodeDaEventToStepByEventRequestV1Cbor({
+        encodeDaEventToStepByEventRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           eventKey: absentEventKey,
@@ -170,24 +178,72 @@ describe("DA libp2p proof protocol handlers", () => {
     });
   });
 
+  it("rejects malformed event keys and enforces the exact inline proof-bundle limit", async () => {
+    const { handlers, store } = await makeHandlers();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
+    await saveVerifiedPayload({
+      store,
+      payload,
+      payloadCbor,
+      payloadHash: computeDaSha256Hash(payloadCbor),
+      header,
+      headerHash,
+    });
+
+    const malformedEvent = decodeDaEventToStepByEventResponseCbor(
+      await handlers.handleEventToStepByEvent(
+        encodeDaEventToStepByEventRequestCbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(headerHash, "hex"),
+          eventKey: Buffer.from([0xff]),
+        }),
+      ),
+    );
+    expect(malformedEvent).toMatchObject({
+      status: "rejected",
+      eventToStepEntryBytes: null,
+      membershipOrNonmembershipProofBytes: null,
+    });
+
+    const zeroInline = decodeDaProofBundleByHeaderResponseCbor(
+      await handlers.handleProofBundleByHeader(
+        encodeDaProofBundleByHeaderRequestCbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(headerHash, "hex"),
+          maxInlineBytes: 0,
+        }),
+      ),
+    );
+    expect(zeroInline).toMatchObject({
+      status: "rejected",
+      proofBundleBytes: null,
+      chunkManifest: null,
+      reasonCode: "proof_bundle_too_large_for_inline_response",
+    });
+    expect(zeroInline.proofBundleHash).toHaveLength(32);
+  });
+
   it("fails closed for unverified payloads, root mismatches, and deployment mismatches", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
     const payloadHash = computeDaSha256Hash(payloadCbor);
     await store.saveDaPayload({
       deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: payloadCbor.toString("hex"),
       payloadSha256: payloadHash.toString("hex"),
       sourcePeerId: "libp2p-fixture",
       fetchedAt: "2026-06-21T00:00:00.000Z",
-      rootSummary: rootSummaryFromHeader(header),
+      rootSummary: await verifiedRootSummary(payload),
       validationStatus: "fetched",
     });
 
-    const unverified = decodeDaTraceStepByIndexResponseV1Cbor(
+    const unverified = decodeDaTraceStepByIndexResponseCbor(
       await handlers.handleTraceStepByIndex(
-        encodeDaTraceStepByIndexRequestV1Cbor({
+        encodeDaTraceStepByIndexRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           stepIndex: 0,
@@ -198,18 +254,19 @@ describe("DA libp2p proof protocol handlers", () => {
 
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,
       headerHash,
       rootSummary: {
-        ...rootSummaryFromHeader(header),
+        ...(await verifiedRootSummary(payload)),
         transitionTraceRoot: "ff".repeat(32),
       },
     });
-    const mismatched = decodeDaTraceStepByIndexResponseV1Cbor(
+    const mismatched = decodeDaTraceStepByIndexResponseCbor(
       await handlers.handleTraceStepByIndex(
-        encodeDaTraceStepByIndexRequestV1Cbor({
+        encodeDaTraceStepByIndexRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           stepIndex: 0,
@@ -220,6 +277,7 @@ describe("DA libp2p proof protocol handlers", () => {
 
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,
@@ -234,9 +292,9 @@ describe("DA libp2p proof protocol handlers", () => {
         headerHash,
       }),
     );
-    const committedMismatch = decodeDaTraceStepByIndexResponseV1Cbor(
+    const committedMismatch = decodeDaTraceStepByIndexResponseCbor(
       await handlers.handleTraceStepByIndex(
-        encodeDaTraceStepByIndexRequestV1Cbor({
+        encodeDaTraceStepByIndexRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(headerHash, "hex"),
           stepIndex: 0,
@@ -245,9 +303,9 @@ describe("DA libp2p proof protocol handlers", () => {
     );
     expect(committedMismatch.status).toBe("rejected");
 
-    const wrongDeployment = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const wrongDeployment = decodeDaProofBundleByHeaderResponseCbor(
       await handlers.handleProofBundleByHeader(
-        encodeDaProofBundleByHeaderRequestV1Cbor({
+        encodeDaProofBundleByHeaderRequestCbor({
           deploymentFingerprint: Buffer.alloc(32, 0x02),
           headerHash: Buffer.from(headerHash, "hex"),
           maxInlineBytes: 4096,
@@ -261,7 +319,7 @@ describe("DA libp2p proof protocol handlers", () => {
   });
 
   it("gates stream request handlers by registered requester roles", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const registry = new DaPeerRegistry([
       {
         peerId: "peer-retrieval",
@@ -286,20 +344,20 @@ describe("DA libp2p proof protocol handlers", () => {
       deploymentFingerprint,
       store,
       limits: streamLimits,
-      registry,
+      accessPolicy: { kind: "manifest_roles", registry },
     });
     const protocolId = createDaProtocolAllowlist(
       deploymentFingerprint,
     ).protocolIdByName.get(DaRequestResponseProtocol.proofBundleByHeader)!;
     const handler = handlerMap.get(protocolId);
     expect(handler).toBeDefined();
-    const requestCbor = encodeDaProofBundleByHeaderRequestV1Cbor({
+    const requestCbor = encodeDaProofBundleByHeaderRequestCbor({
       deploymentFingerprint: deploymentFingerprintBytes,
       headerHash: Buffer.alloc(28, 0xaa),
       maxInlineBytes: 4096,
     });
 
-    const allowed = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const allowed = decodeDaProofBundleByHeaderResponseCbor(
       await invokeStreamHandler(
         handler!,
         protocolId,
@@ -312,7 +370,7 @@ describe("DA libp2p proof protocol handlers", () => {
       reasonCode: "stored_payload_not_found",
     });
 
-    const unauthorized = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const unauthorized = decodeDaProofBundleByHeaderResponseCbor(
       await invokeStreamHandler(
         handler!,
         protocolId,
@@ -325,7 +383,7 @@ describe("DA libp2p proof protocol handlers", () => {
       reasonCode: "unauthorized_peer_role",
     });
 
-    const producer = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const producer = decodeDaProofBundleByHeaderResponseCbor(
       await invokeStreamHandler(
         handler!,
         protocolId,
@@ -338,7 +396,7 @@ describe("DA libp2p proof protocol handlers", () => {
       reasonCode: "unauthorized_peer_role",
     });
 
-    const unknown = decodeDaProofBundleByHeaderResponseV1Cbor(
+    const unknown = decodeDaProofBundleByHeaderResponseCbor(
       await invokeStreamHandler(
         handler!,
         protocolId,
@@ -359,19 +417,6 @@ const streamLimits = {
   maxChunkBytes: 65_536,
   maxStreamsPerPeer: 8,
   requestTimeoutMs: 1_000,
-};
-
-const makeHandlers = async (): Promise<{
-  readonly handlers: DaLibp2pProofProtocolHandlers;
-  readonly store: JsonFileWatcherStore;
-}> => {
-  const store = await JsonFileWatcherStore.open(await tempDir());
-  const handlers = new DaLibp2pProofProtocolHandlers({
-    deploymentFingerprint,
-    store,
-    transactionProjector: IDENTITY_TX_PROJECTOR,
-  });
-  return { handlers, store };
 };
 
 const invokeStreamHandler = async (
@@ -404,70 +449,3 @@ const invokeStreamHandler = async (
     maxFrameBytes: streamLimits.maxPayloadBytes,
   });
 };
-
-const saveVerifiedPayload = async ({
-  store,
-  payloadCbor,
-  payloadHash,
-  header,
-  headerHash,
-  rootSummary = rootSummaryFromHeader(header),
-}: {
-  readonly store: JsonFileWatcherStore;
-  readonly payloadCbor: Buffer;
-  readonly payloadHash: Buffer;
-  readonly header: Header;
-  readonly headerHash: string;
-  readonly rootSummary?: PayloadRootSet;
-}): Promise<void> => {
-  await store.saveDaPayload({
-    deploymentFingerprint,
-    headerHash,
-    payloadCborHex: payloadCbor.toString("hex"),
-    payloadSha256: payloadHash.toString("hex"),
-    sourcePeerId: "libp2p-fixture",
-    fetchedAt: "2026-06-21T00:00:00.000Z",
-    verifiedAt: "2026-06-21T00:00:01.000Z",
-    rootSummary,
-    validationStatus: "verified",
-  });
-  await store.upsertStateQueueHeader(
-    stateQueueHeaderRecord({ header, headerHash }),
-  );
-};
-
-const stateQueueHeaderRecord = ({
-  header,
-  headerHash,
-}: {
-  readonly header: Header;
-  readonly headerHash: string;
-}): StateQueueHeaderRecord => ({
-  deploymentFingerprint,
-  headerHash,
-  stateQueueOutRef: "aa".repeat(32) + "#0",
-  blockAssetName: `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
-  header,
-  computedHeaderHash: headerHash,
-  daAttestation: SDK.NO_DA_ATTESTATION,
-  observedChainPoint: {
-    slot: 1,
-    blockHash: "bb".repeat(32),
-    depth: 10,
-    providerSource: "fixture",
-  },
-  finalized: true,
-  status: "attested",
-  validationErrors: [],
-  updatedAt: "2026-06-21T00:00:02.000Z",
-});
-
-const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
-  utxosRoot: header.utxosRoot,
-  withdrawalsRoot: header.withdrawalsRoot,
-  forcedTransactionsRoot: header.forcedTransactionsRoot,
-  transactionsRoot: header.transactionsRoot,
-  depositsRoot: header.depositsRoot,
-  transitionTraceRoot: header.transitionTraceRoot,
-  eventToStepRoot: header.eventToStepRoot,
-});

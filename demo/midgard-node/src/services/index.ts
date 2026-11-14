@@ -1,6 +1,8 @@
 /**
  * Public service surface for the Midgard node runtime.
  */
+export * from "./admission-input-claims.js";
+export * from "./admission-input-claims.rebuild.js";
 export * from "./admission-writer.js";
 export * from "./always-succeeds.js";
 export * from "./config.js";

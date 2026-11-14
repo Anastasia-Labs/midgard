@@ -9,6 +9,7 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   PhaseAValidatedTx,
   QueuedTx,
@@ -18,8 +19,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as LedgerUtils from "@/database/utils/ledger.js";
-
+import * as LedgerUtils from "../../src/database/utils/ledger.js";
 import {
   buildBenchmarkMeta,
   formatMs,
@@ -238,6 +238,7 @@ const runPhaseB = async (
 ) => {
   const { accepted: phaseBAccepted, rejected } = await Effect.runPromise(
     runPhaseBValidationWithPatch(accepted, preState, {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       nowCardanoSlotNo: 0n,
       bucketConcurrency: Math.max(1, Math.floor(PHASE_A_CONCURRENCY / 2)),
     }),

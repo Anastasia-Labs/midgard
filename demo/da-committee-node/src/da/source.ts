@@ -1,7 +1,7 @@
 export type DaPayloadCandidate = {
   readonly sourcePeerId: string;
   readonly payloadCbor: Buffer;
-  readonly payloadSchemaVersion?: number;
+  readonly payloadSchemaVersion: 1;
   readonly metadata?: unknown;
 };
 

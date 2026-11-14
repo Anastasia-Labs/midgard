@@ -1,0 +1,685 @@
+use aiken/merkle_patricia_forestry.{Proof}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_v1
+use midgard/ledger_output_v1
+use midgard/mpf_proof_v1
+use midgard/rejection_reason_v1.{
+  InputNotFound, InputSpentOutputNonCanonical, ResolvedReferenceScriptDepthLimit,
+  ResolvedReferenceScriptMalformed, ResolvedReferenceScriptNodeLimit,
+  SpendInputSignerMissing, ValidityIntervalExcludesBlockSlot,
+}
+use midgard/resolve_inputs_control_v1 as raw_control
+use midgard/validation_machine/machine_types.{
+  InputSignerAuthorized, InputSignerMissing, InputSignerProofMalformed,
+  LedgerOutputProofFinalizeWitness, LedgerOutputProofStepWitness,
+  NoAuxiliaryWitness, NoSignerSetProof, ResolveInputOutputProofV1,
+  ResolveInputsControlV1, ScheduledLedgerMembershipWitness,
+  ScheduledLedgerNonMembershipWitness, SignerSetProofV1,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+}
+use midgard/validation_machine/shared.{
+  decode_validation_context, input_signer_authorization,
+  rejected_successor_is_exact, unset_reason_coordinate,
+  validity_interval_contains_slot,
+}
+use midgard/validation_machine/witness.{
+  empty_mint_fold_control, empty_observer_purpose_scan_control,
+  empty_receive_purpose_scan_control, empty_resolution_schedule_hash,
+  encode_resolve_inputs_witness, encode_script_sources_witness,
+  resolution_schedule_node_hash, resolve_inputs_control_from_witness,
+  resolve_inputs_control_is_bound,
+}
+use midgard/validation_merkle_v1
+use midgard/validation_trace_v1
+
+fn resolve_inputs_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  next_control: ResolveInputsControlV1,
+) -> Bool {
+  and {
+    witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      pre.program_counter + 1,
+      encode_resolve_inputs_witness(
+        next_control.compact_cbor,
+        next_control.witness_set_compact_cbor,
+        next_control.field_preimage_lengths_cbor,
+        next_control.context_cbor,
+        next_control.cursor,
+        next_control.remaining_schedule_hash,
+        next_control.signer_count,
+        next_control.signer_frontier_commitment,
+        next_control.pending,
+        next_control.resolution_schedule_hash,
+      ),
+    ),
+  }
+}
+
+fn resolve_membership_begin_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  source_kind: Int,
+  item_index: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  descriptor_cbor: ByteArray,
+  proof: Proof,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  let input = decode_midgard_tx_input_cbor(key)
+  and {
+    control.pending == None,
+    signer_proof == NoSignerSetProof,
+    source_kind == 0 || source_kind == 1,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
+    input.output_index == descriptor.output_index,
+    descriptor.total_length > 0,
+    mpf_proof_v1.has(pre.prior_ledger_root, key, descriptor_cbor, proof),
+    resolve_inputs_successor_is_exact(
+      pre,
+      witness,
+      ResolveInputsControlV1 {
+        ..control,
+        pending: Some(
+          ResolveInputOutputProofV1 {
+            source_kind,
+            item_index,
+            key,
+            next_schedule_hash,
+            descriptor_cbor,
+            output_proof: ledger_output_proof_v1.initial_control_v1(
+              descriptor.output_index,
+              descriptor.total_length,
+              descriptor.item_commitment,
+            ),
+          },
+        ),
+      },
+    ),
+  }
+}
+
+fn resolve_membership_proof_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  pending: ResolveInputOutputProofV1,
+  proof_witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
+) -> Bool {
+  when ledger_output_proof_v1.step_v1(pending.output_proof, proof_witness) is {
+    None -> False
+    Some(result) ->
+      when result is {
+        ledger_output_proof_v1.LedgerOutputProofAdvanced {
+          control: next_output_proof,
+        } ->
+          resolve_inputs_successor_is_exact(
+            pre,
+            witness,
+            ResolveInputsControlV1 {
+              ..control,
+              pending: Some(
+                ResolveInputOutputProofV1 {
+                  ..pending,
+                  output_proof: next_output_proof,
+                },
+              ),
+            },
+          )
+        ledger_output_proof_v1.LedgerOutputProofInvalidOutput ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            InputSpentOutputNonCanonical {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
+          )
+        ledger_output_proof_v1.LedgerOutputProofInvalidReferenceScript ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            ResolvedReferenceScriptMalformed {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
+          )
+        ledger_output_proof_v1.LedgerOutputProofNativeScriptNodeLimit ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            ResolvedReferenceScriptNodeLimit {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
+          )
+        ledger_output_proof_v1.LedgerOutputProofNativeScriptDepthLimit ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            ResolvedReferenceScriptDepthLimit {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
+          )
+      }
+  }
+}
+
+/// One fact-attachment step on the pending terminal output proof: record the
+/// next canonical group of descriptor fact commitments in the checkpointed
+/// pending control, computed from the control's own terminal descriptor and
+/// summaries, so the successor never depends on the pending descriptor. That
+/// the pending descriptor is the derived one is proven once, by the
+/// finalize's `facts_are_exact_v1` gate.
+fn resolve_membership_proof_fact_attach(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  pending: ResolveInputOutputProofV1,
+) -> Bool {
+  when ledger_output_proof_v1.fact_attach_v1(pending.output_proof) is {
+    None -> False
+    Some(next_output_proof) ->
+      resolve_inputs_successor_is_exact(
+        pre,
+        witness,
+        ResolveInputsControlV1 {
+          ..control,
+          pending: Some(
+            ResolveInputOutputProofV1 {
+              ..pending,
+              output_proof: next_output_proof,
+            },
+          ),
+        },
+      )
+  }
+}
+
+fn resolve_membership_proof_finalize(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  pending: ResolveInputOutputProofV1,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let descriptor_cbor = pending.descriptor_cbor
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  // The role-0 fact was computed from the derived descriptor, so this one
+  // equality also proves the pending descriptor is the derived one.
+  if ledger_output_proof_v1.facts_are_exact_v1(
+    pending.output_proof,
+    descriptor_cbor,
+  ) {
+    expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+      descriptor.address,
+    )
+    when
+      input_signer_authorization(
+        pending.source_kind,
+        address,
+        control.signer_count,
+        control.signer_frontier_commitment,
+        signer_proof,
+      )
+    is {
+      InputSignerMissing ->
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          SpendInputSignerMissing { input_index: unset_reason_coordinate },
+        )
+      InputSignerProofMalformed -> False
+      InputSignerAuthorized ->
+        resolve_inputs_successor_is_exact(
+          pre,
+          witness,
+          ResolveInputsControlV1 {
+            ..control,
+            cursor: control.cursor + 1,
+            remaining_schedule_hash: pending.next_schedule_hash,
+            pending: None,
+          },
+        )
+    }
+  } else {
+    False
+  }
+}
+
+fn resolve_non_membership_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  source_kind: Int,
+  item_index: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  proof: Proof,
+) -> Bool {
+  and {
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
+    mpf_proof_v1.does_not_have(pre.prior_ledger_root, key, proof),
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      InputNotFound { source_kind, input_index: unset_reason_coordinate },
+    ),
+  }
+}
+
+fn resolve_lookup_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ResolveInputsControlV1,
+) -> Bool {
+  when control.pending is {
+    Some(pending) ->
+      when auxiliary is {
+        LedgerOutputProofStepWitness { witness: proof_witness } ->
+          resolve_membership_proof_step(
+            pre,
+            witness,
+            control,
+            pending,
+            proof_witness,
+          )
+        LedgerOutputProofFinalizeWitness { signer_proof } ->
+          if !ledger_output_proof_v1.facts_complete_v1(pending.output_proof) {
+            resolve_membership_proof_fact_attach(pre, witness, control, pending)
+          } else {
+            resolve_membership_proof_finalize(
+              pre,
+              witness,
+              control,
+              pending,
+              signer_proof,
+            )
+          }
+        _ -> False
+      }
+    None ->
+      when auxiliary is {
+        ScheduledLedgerMembershipWitness {
+          source_kind,
+          item_index,
+          key,
+          next_schedule_hash,
+          value,
+          proof,
+          signer_proof,
+        } ->
+          resolve_membership_begin_step(
+            pre,
+            witness,
+            control,
+            source_kind,
+            item_index,
+            key,
+            next_schedule_hash,
+            value,
+            proof,
+            signer_proof,
+          )
+        ScheduledLedgerNonMembershipWitness {
+          source_kind,
+          item_index,
+          key,
+          next_schedule_hash,
+          proof,
+        } ->
+          resolve_non_membership_step(
+            pre,
+            witness,
+            control,
+            source_kind,
+            item_index,
+            key,
+            next_schedule_hash,
+            proof,
+          )
+        _ -> False
+      }
+  }
+}
+
+pub fn verify_resolve_inputs(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let context = decode_validation_context(control.context_cbor)
+  and {
+    verified.version == 1,
+    resolve_inputs_control_is_bound(pre, witness, control),
+    if control.cursor == 0 {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        if validity_interval_contains_slot(
+          verified.tx_compact.body,
+          context.block_slot,
+        ) {
+          let next_control = encode_resolve_inputs_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            1,
+            control.remaining_schedule_hash,
+            control.signer_count,
+            control.signer_frontier_commitment,
+            None,
+            control.resolution_schedule_hash,
+          )
+          and {
+            witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+            witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+              validation_trace_v1.ResolveInputs,
+              pre.program_counter + 1,
+              next_control,
+            ),
+          }
+        } else {
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            ValidityIntervalExcludesBlockSlot,
+          )
+        },
+      }
+    } else if and {
+      control.pending == None,
+      control.remaining_schedule_hash == empty_resolution_schedule_hash(),
+    } {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.ScriptSources,
+          pre.program_counter + 1,
+          encode_script_sources_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            control.cursor - 1,
+            control.signer_count,
+            control.signer_frontier_commitment,
+            validation_merkle_v1.empty_frontier(),
+            0,
+            0,
+            validation_merkle_v1.empty_frontier(),
+            0,
+            validation_merkle_v1.empty_frontier(),
+            0,
+            empty_resolution_schedule_hash(),
+            0,
+            0,
+            validation_merkle_v1.empty_frontier(),
+            0,
+            0,
+            validation_merkle_v1.empty_frontier(),
+            0,
+            empty_receive_purpose_scan_control(),
+            0,
+            0,
+            empty_observer_purpose_scan_control(),
+            empty_mint_fold_control(),
+            control.resolution_schedule_hash,
+          ),
+        ),
+      }
+    } else {
+      resolve_lookup_step(pre, witness, auxiliary, control)
+    },
+  }
+}
+
+pub fn verify_resolve_inputs_initial_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let context = decode_validation_context(control.context_cbor)
+  and {
+    verified.version == 1,
+    raw_control.control_no_pending_is_bound(pre, witness, control),
+    control.cursor == 0,
+    if validity_interval_contains_slot(
+      verified.tx_compact.body,
+      context.block_slot,
+    ) {
+      let next_control = raw_control.encode_control_raw(
+        raw_control.ResolveInputsControlRawV1 { ..control, cursor: 1 },
+      )
+      and {
+        witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.ResolveInputs,
+          pre.program_counter + 1,
+          next_control,
+        ),
+      }
+    } else {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        ValidityIntervalExcludesBlockSlot,
+      )
+    },
+  }
+}
+
+pub fn verify_resolve_inputs_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
+  and {
+    raw_control.control_no_pending_is_bound(pre, witness, control),
+    control.cursor > 0,
+    control.remaining_schedule_hash == empty_resolution_schedule_hash(),
+    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptSources,
+      pre.program_counter + 1,
+      encode_script_sources_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.cursor - 1,
+        control.signer_count,
+        control.signer_frontier_commitment,
+        validation_merkle_v1.empty_frontier(),
+        0,
+        0,
+        validation_merkle_v1.empty_frontier(),
+        0,
+        validation_merkle_v1.empty_frontier(),
+        0,
+        empty_resolution_schedule_hash(),
+        0,
+        0,
+        validation_merkle_v1.empty_frontier(),
+        0,
+        0,
+        validation_merkle_v1.empty_frontier(),
+        0,
+        empty_receive_purpose_scan_control(),
+        0,
+        0,
+        empty_observer_purpose_scan_control(),
+        empty_mint_fold_control(),
+        control.resolution_schedule_hash,
+      ),
+    ),
+  }
+}
+
+pub fn verify_resolve_inputs_membership_begin_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  item_index: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  value: ByteArray,
+  proof: Proof,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
+  let descriptor = ledger_output_commitment_v1.decode(value)
+  let input = decode_midgard_tx_input_cbor(key)
+  and {
+    raw_control.control_no_pending_is_bound(pre, witness, control),
+    control.cursor > 0,
+    control.remaining_schedule_hash != empty_resolution_schedule_hash(),
+    signer_proof == NoSignerSetProof,
+    source_kind == 0 || source_kind == 1,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
+    input.output_index == descriptor.output_index,
+    descriptor.total_length > 0,
+    mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
+    witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      pre.program_counter + 1,
+      raw_control.encode_control_raw(
+        raw_control.ResolveInputsControlRawV1 {
+          ..control,
+          pending_cbor: raw_control.encode_pending_raw(
+            source_kind,
+            item_index,
+            key,
+            next_schedule_hash,
+            value,
+            ledger_output_proof_v1.encode_initial_control_v1(
+              descriptor.output_index,
+              descriptor.total_length,
+              descriptor.item_commitment,
+            ),
+          ),
+        },
+      ),
+    ),
+  }
+}
+
+pub fn verify_resolve_inputs_membership_step_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  proof_witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
+) -> Bool {
+  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  when control.pending is {
+    None -> False
+    Some(pending) -> and {
+        resolve_inputs_control_is_bound(pre, witness, control),
+        resolve_membership_proof_step(
+          pre,
+          witness,
+          control,
+          pending,
+          proof_witness,
+        ),
+      }
+  }
+}
+
+pub fn verify_resolve_inputs_membership_finalize_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  when control.pending is {
+    None -> False
+    Some(pending) -> and {
+        resolve_inputs_control_is_bound(pre, witness, control),
+        resolve_membership_proof_finalize(
+          pre,
+          witness,
+          control,
+          pending,
+          signer_proof,
+        ),
+      }
+  }
+}
+
+pub fn verify_resolve_inputs_non_membership_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  item_index: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  proof: Proof,
+) -> Bool {
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
+  and {
+    raw_control.control_no_pending_is_bound(pre, witness, control),
+    control.cursor > 0,
+    control.remaining_schedule_hash != empty_resolution_schedule_hash(),
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
+    mpf_proof_v1.does_not_have(pre.prior_ledger_root, key, proof),
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      InputNotFound { source_kind, input_index: unset_reason_coordinate },
+    ),
+  }
+}

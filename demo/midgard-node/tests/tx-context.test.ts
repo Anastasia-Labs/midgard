@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareOutRefs } from "@/tx-context.js";
+import { compareOutRefs } from "../src/tx-context.js";
 
 describe("tx context ordering", () => {
   it("orders out refs lexicographically by tx hash then output index", () => {

@@ -1,0 +1,2391 @@
+{
+  "schema": "midgard-validation-trace-transcript-v1",
+  "version": 1,
+  "rows": [
+    {
+      "name": "accept_native_mint",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 103,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 49",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 10",
+        "terminal 1"
+      ],
+      "traceRoot": "c93c1a40df15e22056567c890125e59caa696ad4306c3608856a354856c0d915",
+      "witnessDigest": "ee781d7b94e604afdcd13e21c6753db82320cc1c225989ff1c465bd200c0a82a",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258208181818181818181818181818181818181818181818181818181818181818181190000"
+        },
+        {
+          "insert": "8258204205cf02004a71ce637d0b7ddf154d927d0a3401aaa00dba4e202e1ca71d19c8190000",
+          "value": "900100184b5820c297bc67e949a9867a09d36bb92277dd40b4e5e3ca2f419c214c43401b5e7dc8581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a009896800158207e542a56103f214667abdfc7cefbb77fbef85470d4eebc206ca260b5923a70fe182920400040835820e5f79a25ed64c503b37a1627c4f191488cf5896fa3db79f9fc24292a7a8ae017185e184d835820e5f79a25ed64c503b37a1627c4f191488cf5896fa3db79f9fc24292a7a8ae017185e184d8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "b_repeated_pointer_and_missing_mint_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ScriptSourceMissing": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 92,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 60",
+        "terminal 1"
+      ],
+      "traceRoot": "69059786952e86837ecb4df4f7896ceb0f41e2cbb8393e7c47147b559762288d",
+      "witnessDigest": "e6cdabb819742d038051289e8542ed47d7408b5dacab5093837cb7c25085c669",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "b_control_repeated_pointer",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedRedeemer": {
+          "redeemer_index": "1"
+        }
+      },
+      "stepCount": 96,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 64",
+        "terminal 1"
+      ],
+      "traceRoot": "ba6eecbda3ba230ba82f00104f88d06f46954b27cefab2bf8babb4cbe7045078",
+      "witnessDigest": "bba0bd6b8a60743d84c1a247b075020e08bfc8b8d1440fa7252f1968e041013b",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "b_control_missing_mint_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ScriptSourceMissing": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 85,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 54",
+        "terminal 1"
+      ],
+      "traceRoot": "1f1742662c1ad3104487e1b534df237a7597548700e7c46f7ac881961758185c",
+      "witnessDigest": "e787539b7b4f9cf37fded59fc4ecf069b8ba12a9d863172fc80effb676a7b377",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "b_repeated_pointer_at_native_purpose",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedRedeemer": {
+          "redeemer_index": "1"
+        }
+      },
+      "stepCount": 133,
+      "phases": [
+        "canonicalDecode 12",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 5",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 95",
+        "terminal 1"
+      ],
+      "traceRoot": "fce76dab8f0eaba02160c9718b251a18d0ed0b9f8e03470105518f7d0538d4b4",
+      "witnessDigest": "eb0ab4fb953d70492581a0926e50129c0845f2f7cd3cc0bab3a508b9f4f3e10c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "b_control_redeemer_at_native_purpose",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedRedeemer": {
+          "redeemer_index": "1"
+        }
+      },
+      "stepCount": 126,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 5",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 89",
+        "terminal 1"
+      ],
+      "traceRoot": "c2b17a8b8a2eea9ee07c76c867b0335c7b6102296fb1df1ae3045f49a4ae78cf",
+      "witnessDigest": "d259219ebb3d4beec44ec0da73241eff307b0be8995263b7fbda0f1a1d6462ed",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_output_network_and_missing_mint_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_NETWORK_ID_MISMATCH",
+      "rejectionReason": "NetworkIdMismatch",
+      "stepCount": 50,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 19",
+        "terminal 1"
+      ],
+      "traceRoot": "9a5c38b86cac3824e2651b1f30b9c7dacedda7cd981a001dd072876ba356cd89",
+      "witnessDigest": "3e3d0d36dfd5afb596b7e3f3a7e581fb9b4cc1fc3cd9fbbce31d2842fa6a6e1c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_protected_signer_and_missing_spend_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ProtectedOutputSignerMissing": {
+          "output_index": "1"
+        }
+      },
+      "stepCount": 79,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 26",
+        "scriptSources 33",
+        "terminal 1"
+      ],
+      "traceRoot": "a7ceb5c00364404495b47b5cbfe8438b651e66a174d7d879b0e856d380862b35",
+      "witnessDigest": "b37d03a7f3e014be11edc87e136080f429e1cb82dcb2fb1478fbadeb5fe0b63c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_control_output_network",
+      "verdict": "rejected",
+      "rejectionCode": "E_NETWORK_ID_MISMATCH",
+      "rejectionReason": "NetworkIdMismatch",
+      "stepCount": 50,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 19",
+        "terminal 1"
+      ],
+      "traceRoot": "3ccd8453e0f94ec62c8c4ab045634616a280ca95fdac3f608e113991e2defc02",
+      "witnessDigest": "7d94c85fb4af1a602dac8908c45cd82bc8cf630607ec62decd071639c8f3fc15",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_control_protected_signer",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ProtectedOutputSignerMissing": {
+          "output_index": "1"
+        }
+      },
+      "stepCount": 64,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 32",
+        "terminal 1"
+      ],
+      "traceRoot": "2e89e3dcd85a4f302cf76718ba48c85fd70470d512e2212367a34a8da82ee26b",
+      "witnessDigest": "cbb5e88cf0316acb8bdcf506438db472ce6f619b89754063e7382ebab1c9fe87",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_control_missing_mint_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ScriptSourceMissing": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 57,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 26",
+        "terminal 1"
+      ],
+      "traceRoot": "7f9b25e17b5f841c8c0cbe3330ca84b4470865ebfa47ec2c77993727caea910a",
+      "witnessDigest": "dc02f467aa3accfa4a59684957f2717178253df1617affcaa0a5ddff0d42e36f",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "c_control_missing_spend_source",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "ScriptSourceMissing": {
+          "purpose_kind": "0",
+          "purpose_index": "1"
+        }
+      },
+      "stepCount": 70,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 26",
+        "scriptSources 25",
+        "terminal 1"
+      ],
+      "traceRoot": "3130ac3243270599901b5a9f70ffe67859608646b6a78776a68e73d123f1cc00",
+      "witnessDigest": "00882f2f94fda2c9106791a3711c4af451b2227f13f2df23273fb9132c207548",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "d_unused_witness_and_unused_redeemer",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedScriptWitness": {
+          "script_index": "1"
+        }
+      },
+      "stepCount": 114,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 8",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 74",
+        "terminal 1"
+      ],
+      "traceRoot": "a30847664b9087d018181f1ff99ffb1712d428ad191dcf80cee29238a57a79e1",
+      "witnessDigest": "632d323a8649918e1ce24451b6d7dd69ca66e73b086d1009a45494332612cdd7",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "d_control_unused_witness",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedScriptWitness": {
+          "script_index": "1"
+        }
+      },
+      "stepCount": 107,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 8",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 68",
+        "terminal 1"
+      ],
+      "traceRoot": "a2154487bfd92f27b26fc1cc402751016bc3fab898b4eba3793d52046dffddf5",
+      "witnessDigest": "699e35cb31d46a89b70322927fa24a2359befe1c625e7dba8ce8a4cbc1ce12fe",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "d_control_unused_redeemer",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "UnusedRedeemer": {
+          "redeemer_index": "1"
+        }
+      },
+      "stepCount": 96,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 64",
+        "terminal 1"
+      ],
+      "traceRoot": "fa0f371dc5a4889cf32e7800b8cf282838219bb44f081b91a9f03906d61dfbe6",
+      "witnessDigest": "6231978857718b3fe99cae59e50050f0ea88c0b62e1a07f3ed0c971fac4c0324",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_accept",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 119,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 26",
+        "scriptSources 50",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 11",
+        "terminal 1"
+      ],
+      "traceRoot": "31149f9c19d8d44ebcfd36e1522f0cf52e5f582ab56ee2e048fd49fd7387247c",
+      "witnessDigest": "899752eeffca161f22c4a3f46473eb827d2a4ac4cd6adb05d2395935526f7892",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258207070707070707070707070707070707070707070707070707070707070707070190000"
+        },
+        {
+          "insert": "8258208f629643dcdd1d28a913d7880f26102d76f7cf52e6ff5aa6ccd06ca134eb57be190000",
+          "value": "900100184b5820c297bc67e949a9867a09d36bb92277dd40b4e5e3ca2f419c214c43401b5e7dc8581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a009896800158207e542a56103f214667abdfc7cefbb77fbef85470d4eebc206ca260b5923a70fe182920400040835820e5f79a25ed64c503b37a1627c4f191488cf5896fa3db79f9fc24292a7a8ae017185e184d835820e5f79a25ed64c503b37a1627c4f191488cf5896fa3db79f9fc24292a7a8ae017185e184d8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "a_full_unsigned_spend_before_missing_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 35,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "6e5e610ccdb372ccdcf83ad0e3625b3fa14467c9738b32827590a144f9fec11a",
+      "witnessDigest": "51fb967a5018421c7a9635479df0902a98cd8ecb5e354efbd08d3e0eda71dc35",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_missing_spend_before_missing_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 24,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "38ba2eae06cbccb45b55b7bdf2a4987a3145a84f11a39ffed93aaa58c7b529ab",
+      "witnessDigest": "c793d1395283426a11962d78bac3be3a570e5ea4bc6e5091959025750f8e3e25",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_control_unsigned_low_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 35,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "80f7e1acbe807a4cb2bad76d9c43e2b7285b764ea0130684e069ddcfd2b0737a",
+      "witnessDigest": "b16733891cd36893408011fa09252d0d3dd09a604d2f236c0a0c099a92f2be8e",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_control_missing_low_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 24,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "f3c4017655dc5e29a217ef9633a780c7d7237dfc54c7bcbf894aaa3600456853",
+      "witnessDigest": "0fc315f800b0e7cf0c65a6258c3fb7b716cc22835e852ebc31b222e1f2a64c47",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_control_missing_high_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 36,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "d37930888186707edbfcf5b05e540f5a0de4fa62840d78445d3ecabcbb0c0d7a",
+      "witnessDigest": "37e41e565a18b7f9c8b1c2259c2d0845c5c24909d1c62d968d4f04f2c3d026f0",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_missing_reference_before_unsigned_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 24,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "8e010bc9283a300d1c1565c04b75dcbb474c989d8cb730792ac844529ae9fbca",
+      "witnessDigest": "fdfd9d9b46b51a3353c2fad8e7c59f1b99c9bb60cb81b9a979f5eb12ee59b50f",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_control_unsigned_high_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 47,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 25",
+        "terminal 1"
+      ],
+      "traceRoot": "e26f54a0804c8b9ca13c222ccd4231adbda3c49250dc7a18156a427d892f8c30",
+      "witnessDigest": "e993f189cd69b96ca14cf9528c5b26877be2f7f050774ba55b49f707223f1493",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_full_control_missing_low_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 24,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "09d8f0f32146087d538de6c84e5e7565dc91c87dedfd89b962593910b0a20f52",
+      "witnessDigest": "305331f3c4481f630b4bb9317ec25ccfa639c062b50207c3e0bf6ca412a64830",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_accept",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 86,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 26",
+        "scriptSources 26",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 9",
+        "terminal 1"
+      ],
+      "traceRoot": "8ff032d3ab2bc2280a10066f2e450e5d95e426062f8d223ae6f2f7346d2e9e6f",
+      "witnessDigest": "555f513bd7459c3fde403a56958c2576b2ff9f18cab6cfb2b1425bcf2ba54302",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258207070707070707070707070707070707070707070707070707070707070707070190000"
+        },
+        {
+          "insert": "82582080154cc538037054acf04acc61f0cfe08768ade1dfb5a5510497f6d322b14450190000",
+          "value": "90010018295820a156ea47281aca0feeddfc8fd2dee3f3b0aea82e44afc5a7121af866ccb7af49581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "a_plain_unsigned_spend_before_missing_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 32,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "3c46bf33ffa111319dc5b6fb9c49818dfdc52d7023403eb609de069cb9a06acf",
+      "witnessDigest": "289d957642084b9ff41d1405f9a01a282d1e10d92dae3fc21cef98e6ef4ab875",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_missing_spend_before_missing_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 21,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "ca9a31d19c3456fa3be18e0d7eeb7b876d71a568e8338e65bc7c488217379867",
+      "witnessDigest": "3a17854fbf51e94da5690d563e38839d0ab121dbecd2251e7e1dfd5d72cd964a",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_control_unsigned_low_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 32,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "1dc9b98800c96e4b40ff709746f0f6b75b7db327920925e19ae785529c54f832",
+      "witnessDigest": "7c9fe1775bd20cfc8ce366b0edae9c4eb21069cc75ffa10b12fd312939fba6e8",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_control_missing_low_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 21,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "42736d081573d71af933c98c32479acea49cf99fc00d1c0243eee33a779efc03",
+      "witnessDigest": "beea7a5968806075a6d87a547a0958bd9a5a003eae6551fe29c320bb5f77ce47",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_control_missing_high_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 33,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "38b08d523a9b8f787ce164d8db4f6be5440731796334e437ed4b2b959539ee9c",
+      "witnessDigest": "6229cd08b94583d521529a53e20aacf03718ed02ff21160589a348c6e4d8da0a",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_missing_reference_before_unsigned_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 21,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "8fd8b6d5720d5512fa10eba5b7f21b9d8a76bf2f1e3a5728454cb0afd8a9306c",
+      "witnessDigest": "2c4093268fee155d7b43b46639d3a2199dbbae799c715a3fd7ec98fd2d153cb3",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_control_unsigned_high_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 44,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 25",
+        "terminal 1"
+      ],
+      "traceRoot": "041d35a3f78fef6ad205aa5548949ea582390de9596050f5b54bec67e6398a85",
+      "witnessDigest": "1b27d8730b21782e3d53a9a35f54104c306d25e9aa37405ddd11c3c816cf461f",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_plain_control_missing_low_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 21,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "dc133c321215b90a02be8c21aed67a2df7692e5ec00c8d421377ce9c7f931cf2",
+      "witnessDigest": "03923b1fbd9e1ca296c5a9c504df237b600401afd88f02591c4ae0847c81454b",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_accept",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 102,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 4",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 38",
+        "scriptSources 27",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 10",
+        "terminal 1"
+      ],
+      "traceRoot": "9747033882a433f29cc9cbe37c88743d56e7743424a9e6fedfdb069a06f6e69b",
+      "witnessDigest": "8a85974f1d7d15078bd3594878d9dabc573f7eee955689469df114e1814b665c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258200505050505050505050505050505050505050505050505050505050505050505190000"
+        },
+        {
+          "insert": "82582013dbbb16d1e210ffcf6227e1f494f3c4fa103e41f7063eeac0b6827cab2aa15a190000",
+          "value": "90010018295820a156ea47281aca0feeddfc8fd2dee3f3b0aea82e44afc5a7121af866ccb7af49581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "a_keys_missing_spends",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 35,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "ec83c728961a0cd6bd2a526760451a143d2a7a4c8f94bffe3bf736e497308800",
+      "witnessDigest": "eaac8ac4980b455fa774e440d8db75095585feb202308650531561c00b80e35c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_control_missing_low_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 33,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "327de121d400b80f2a3d2c966fc8c853d593c7e48d474029d0e36ea590639a41",
+      "witnessDigest": "a514c44c03c75146cbd91e25c3cb670d957969a9743669ed1ad68042bf7e90df",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_control_missing_high_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 33,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "cb65c3f1bb99dbb59a632af4c1e8973e397035541257b738ff148065226d5751",
+      "witnessDigest": "17c95f51273988989e465529070745dbea0327dfd20cb5445e735971f2de5c16",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_missing_spend_before_unsigned_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 35,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "19a857c34162b59f265cebbaf6c33d0f19ea7001c7ac931ea461ece5156c2853",
+      "witnessDigest": "b5b1ff8264a39fb27b113c25762a23ea4d310c024f3b6271d5e76830238869b9",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_unsigned_spend_before_missing_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 46,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 25",
+        "terminal 1"
+      ],
+      "traceRoot": "2820abb2f8cb88c67c9bd6913c5873b41654d42dc0dd40617219049d6e72464c",
+      "witnessDigest": "05e0cf6ad02430c4d74d4da189efb996dd84e63f0688dc862989fe317f361820",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_control_unsigned_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 44,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 25",
+        "terminal 1"
+      ],
+      "traceRoot": "522341ee0c371ed7ef1b993f9ed23e79ca37861185756765d6ba44f465c76ecd",
+      "witnessDigest": "ed74afffd62ca40a336d08fafd930ddcc781ea9dcb4c14c9fe5f1814be98e2b2",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_missing_references",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 35,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 4",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "78f32dd3947787665f6a060f805e206cb6c55091f06249d0978ee274226d7dd2",
+      "witnessDigest": "47713b6815e740fefc5ac376ce893c85afef78d3151f2d8a3de27a1f7843d684",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_control_missing_low_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 33,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "8d000674e05858563d6b06367aaab0c9bcc915459aadcea01ecb8e01befc150b",
+      "witnessDigest": "b6c5fab4880169d8ac6188c5cbb24ce13b3a0c7aabcc3282632f6f2d6b99673b",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_control_missing_high_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 33,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "f331f7616a6591fcce7b168c816fa453c6cc6d26120f9cb41bbf9bc26e864ed7",
+      "witnessDigest": "8845cf5095f055e1d5d7cbb5b53619f4607be847c7af399a9dfe5391acccf922",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_interleaved_missing_spend_before_missing_reference",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 37,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 5",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "244c83a8c9da6cd65ff3c653d768700c5b103c973d26011f88979571a571a7a9",
+      "witnessDigest": "78ca53546a1e6f3af9176d7817ef0101763308d41ac7fe66966cb4e5d309c9a6",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "a_keys_interleaved_missing_reference_before_missing_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "1",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 37,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 5",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "terminal 1"
+      ],
+      "traceRoot": "f5ca0284cad81dfc3a59415e08a24b8b8b75b09ba13d5f48ef53e97819926128",
+      "witnessDigest": "697a09a9addf0e6d6ebc5fa2d5448637f951119bc0dd11894af0859cb1683ae4",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_accept_reference_native_mint",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 128,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 51",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 6",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 11",
+        "terminal 1"
+      ],
+      "traceRoot": "a52e2896874a44ad289adfe50bd13de71671a8e4d291217a8b5aa09fb0b26d4b",
+      "witnessDigest": "7cc76336b6072afb037ee8b01b3dea66b743b720ad2fa55e7f793694eb24c65e",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258208181818181818181818181818181818181818181818181818181818181818181190000"
+        },
+        {
+          "insert": "8258204f5cb7ef38b720eb687fe6307ce861175caacd72d0b99ec36d5ba28036467c2b190000",
+          "value": "900100184b5820e71565d988d231052981b129ead554601821efc28a05d1d0239c743848cedbfa581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a0098968001582037b9c693f988879fe4c6ee5d791833eed887b5d199f82cc8c7f0b53c6427cbea1829204000408358209d4de336a1fbbaa1b0bf9aba5d39aeafb665cbc9b354f3a71082a7b604158964185e184d8358209d4de336a1fbbaa1b0bf9aba5d39aeafb665cbc9b354f3a71082a7b604158964185e184d8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "e_false_spend_and_false_mint",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "0",
+          "purpose_index": "1"
+        }
+      },
+      "stepCount": 162,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 4",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 84",
+        "scriptSources 52",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "d3e01d84d9b1befdf38a38d720b3dd0e217f15436f44069cf914a2b659c0c7af",
+      "witnessDigest": "da05532889c3d0c8d5ea68f61ebb5bd5d7e888fd51f7f2c23b50d406c1fdeddc",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_spend_control_false_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "0",
+          "purpose_index": "1"
+        }
+      },
+      "stepCount": 115,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 42",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "119f4e8cd4613bf942bdf48f5e794e41480a9629852326e317bf0a5669bba6ab",
+      "witnessDigest": "842a1a6c460a9f263d5f7f48344201f49445ebe106f29d0e990d35ce2937d2c8",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_spend_control_false_mint",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 106,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "194eafca25ee4841d2d44d0d2a24675c5c0ebda45a82fff24d9ed0e1ef268404",
+      "witnessDigest": "b314550ff42603cbafdcb7965cd19d526b9d48483a007677306b1410090808fb",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_integrity_mismatch",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 106,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "2ec512c541d839d1b613b9a47bc2a2aff1e8d64b12e5aecdc5d2413454f2d853",
+      "witnessDigest": "415d97b7f118cb88d9d91bcc034cd9fde0f35a0eada706fc1916733d368295e5",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_integrity_control_integrity",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": "ScriptIntegrityHashMismatch",
+      "stepCount": 116,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 51",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 6",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "terminal 1"
+      ],
+      "traceRoot": "f9149de072be14abbb4cfcc926ed5baf099517d3cd1dca2e355c8e3aff5650d2",
+      "witnessDigest": "fa7f465e35e61df2724e603726a153b16b0c578cfae448fe2c1f85d098a01225",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_integrity_control_false_mint",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 106,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "194eafca25ee4841d2d44d0d2a24675c5c0ebda45a82fff24d9ed0e1ef268404",
+      "witnessDigest": "b314550ff42603cbafdcb7965cd19d526b9d48483a007677306b1410090808fb",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_receive_plutus_v3",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 170,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 4",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 61",
+        "scriptSources 83",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "6e80c768e2c6394d54eed6945d69de122c0620edd34da2f4e4e8bb979d21605f",
+      "witnessDigest": "c7ff9da12ef15c6b55b73a8750cffc87712178b981615b6e38338582f2278379",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_receive_control_receive",
+      "verdict": "rejected",
+      "rejectionCode": "E_PLUTUS_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ReceivePurposePlutusV3Forbidden": {
+          "purpose_kind": "3",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 183,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 4",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 63",
+        "scriptSources 83",
+        "nativeScripts 1",
+        "phaseANativeScripts 6",
+        "nativeScripts 2",
+        "scriptIntegrity 4",
+        "cek 2",
+        "terminal 1"
+      ],
+      "traceRoot": "2ecda1b6e20accc99c373527de75e84be0a8da1447ff0294eed1cabc024089e7",
+      "witnessDigest": "3756636c07a17d32ee40cded443882569d715da36d355bebc421f8e9e25438b9",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_false_mint_and_receive_control_false_mint",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "1",
+          "purpose_index": "0"
+        }
+      },
+      "stepCount": 106,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 3",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 34",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "194eafca25ee4841d2d44d0d2a24675c5c0ebda45a82fff24d9ed0e1ef268404",
+      "witnessDigest": "b314550ff42603cbafdcb7965cd19d526b9d48483a007677306b1410090808fb",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_inline_false_and_false_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "WitnessNativeScriptFalse": {
+          "script_index": "0"
+        }
+      },
+      "stepCount": 22,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "terminal 1"
+      ],
+      "traceRoot": "6e6e6076812d2af14f8081be41ebeff073e792bec4932f962a9dd6f222e14396",
+      "witnessDigest": "5860ce114187d55e43aeea51aa8bf374f729c59b3c765fbe473442dabc8fbf91",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_inline_false_control_inline_false",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "WitnessNativeScriptFalse": {
+          "script_index": "0"
+        }
+      },
+      "stepCount": 19,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "terminal 1"
+      ],
+      "traceRoot": "37f7cd4020b73d88a3ccdeba5371b8e8ebf901a51fe878d66105b8a6e74a657d",
+      "witnessDigest": "236996557017abf233b05347728a2492f8f334e8ba66f8c2f66672ed5bf74539",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_inline_false_control_false_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_NATIVE_SCRIPT_INVALID",
+      "rejectionReason": {
+        "ExecutionNativeScriptFalse": {
+          "purpose_kind": "0",
+          "purpose_index": "1"
+        }
+      },
+      "stepCount": 115,
+      "phases": [
+        "canonicalDecode 11",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 2",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 49",
+        "scriptSources 42",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "terminal 1"
+      ],
+      "traceRoot": "119f4e8cd4613bf942bdf48f5e794e41480a9629852326e317bf0a5669bba6ab",
+      "witnessDigest": "842a1a6c460a9f263d5f7f48344201f49445ebe106f29d0e990d35ce2937d2c8",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "e_refusal_malformed_native_witness",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "WitnessNativeScriptMalformed": {
+          "script_index": "0"
+        }
+      },
+      "stepCount": 17,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 2",
+        "terminal 1"
+      ],
+      "traceRoot": "bc815c46337727267186d4221fa2453a828fff6cc9a71fad8911a809b226045d",
+      "witnessDigest": "264de955834241e0359a26cc603a533b5e406900c11c096c393c82834c8d884c",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_accept",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 70,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 25",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 8",
+        "terminal 1"
+      ],
+      "traceRoot": "4427453c46577f611b1f681986c65be10c47ea4ffcbb0821131f4aee0b8cc92e",
+      "witnessDigest": "49a5e2c69f21ee015e11c736857f1e0e283572a3520f36de08b115588b4ca323",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258208181818181818181818181818181818181818181818181818181818181818181190000"
+        },
+        {
+          "insert": "825820b4a90c495b79bba4d6f559dfced3b99a7265429bb9c7b5512bc0ea2382272bcd190000",
+          "value": "90010018295820a156ea47281aca0feeddfc8fd2dee3f3b0aea82e44afc5a7121af866ccb7af49581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358200f17d829a2613de4d9deee2cb07df3deb4ca976b3961cec6771de8d3f09bc9d1183c18378358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "f_missing_spend_before_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 20,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "08f1afc4cfba2d0888d145a442c125cddc0d0e26d2edf6a647336e701ca7e279",
+      "witnessDigest": "5453674c42980e16bbfa157462ae70c13f186b84df1ed72393550a407edb7500",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_unsigned_spend_before_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 31,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "00f7f355ac847cee017dad6ce701209bd1a6fb56c132cf9bb2d5980ff78b103f",
+      "witnessDigest": "f0c2aa7d452bf70c5c39535a41a455e88b1d41a93d4ac45f8d546669e01265af",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_invalid_signature_before_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_SIGNATURE",
+      "rejectionReason": {
+        "AddressWitnessSignatureInvalid": {
+          "witness_index": "0"
+        }
+      },
+      "stepCount": 15,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 2",
+        "terminal 1"
+      ],
+      "traceRoot": "42a18b0b564701117930e70b68e247142a3ac815979395d45eb922090edd9a72",
+      "witnessDigest": "fd0e4db55aa85d417a426ed467928ee10675cd6319fbe23e6b4c41d9d958a891",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_invalid_signature_before_bad_header",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_SIGNATURE",
+      "rejectionReason": {
+        "AddressWitnessSignatureInvalid": {
+          "witness_index": "0"
+        }
+      },
+      "stepCount": 14,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 2",
+        "terminal 1"
+      ],
+      "traceRoot": "c3883d45d73fe7ba89a7f772796c1e217505f9457e837f5e6cf0d0b7790b09f1",
+      "witnessDigest": "2a3e34c7e464260ea5e41e66d481466e8f3b4615b98ea716fccbead1262f5f46",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_bad_header_before_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "WitnessScriptHeaderMalformed": {
+          "script_index": "0"
+        }
+      },
+      "stepCount": 17,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "terminal 1"
+      ],
+      "traceRoot": "111c023da7fff8a5951d7fc29f1e543459b6dc189c702eebc0fef10003c49fa7",
+      "witnessDigest": "2f11a33e5dcba5d1a606b71bd3ed5261540ee86aa775417de6cc4c3f8d703b6a",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_control_missing_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_INPUT_NOT_FOUND",
+      "rejectionReason": {
+        "InputNotFound": {
+          "source_kind": "0",
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 19,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 2",
+        "terminal 1"
+      ],
+      "traceRoot": "d280821476b416a66a39992d747354a8c6dfb53f3faa6a08599000526cd42527",
+      "witnessDigest": "7d0c99d60da6f2d60b2f993488eb81230d86fcfc7d3db822482ff4f10d413ff4",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_control_unsigned_spend",
+      "verdict": "rejected",
+      "rejectionCode": "E_MISSING_REQUIRED_WITNESS",
+      "rejectionReason": {
+        "SpendInputSignerMissing": {
+          "input_index": "-1"
+        }
+      },
+      "stepCount": 30,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 13",
+        "terminal 1"
+      ],
+      "traceRoot": "b9ad2013686cfcda0750316755f3739ffdbebbc582794e355fc94a6dd14715d7",
+      "witnessDigest": "ba174b704f11ae15124cbc881d8ab3d6b388a033d894ab2f18c4262500f6d65d",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_control_invalid_signature",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_SIGNATURE",
+      "rejectionReason": {
+        "AddressWitnessSignatureInvalid": {
+          "witness_index": "0"
+        }
+      },
+      "stepCount": 14,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 2",
+        "terminal 1"
+      ],
+      "traceRoot": "668545a552f3cf4e7ddb55ea53ea9067cc8aa608a3ecbfba06cc77441fb63a17",
+      "witnessDigest": "7b537ed890e7e95a0fa229b4a9620268e4507e4cbc969fc5a6cc6efaceef8639",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_control_bad_header",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "WitnessScriptHeaderMalformed": {
+          "script_index": "0"
+        }
+      },
+      "stepCount": 16,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "terminal 1"
+      ],
+      "traceRoot": "273ad48649d7c056da627ac330556481aee7a35a594e8d7d2f58531ffb9dddb3",
+      "witnessDigest": "2b9e926b738767dd31d7c47a057a2d7242ef1899b95a94c6bd8f6d2f319026ea",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_control_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "1"
+        }
+      },
+      "stepCount": 54,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 22",
+        "terminal 1"
+      ],
+      "traceRoot": "b924e3cfda3773cd94fe87192d3e8ba27ffb67d54519c8d74e7abd3e0318f51c",
+      "witnessDigest": "bbd0e22191e813236f382e7ead4ce2811dcea55c2ceef5447c01c600323577fd",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_accept_native_ref",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 93,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 48",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 8",
+        "terminal 1"
+      ],
+      "traceRoot": "56dde2bb200194b3b4ed10b26349a086b4f618289f561d1dc16ddfca4db4ad47",
+      "witnessDigest": "3c48d6cd07784a66fef2b94d29a490a19109cc5926e977ed3b4fc29f9410476e",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258208181818181818181818181818181818181818181818181818181818181818181190000"
+        },
+        {
+          "insert": "8258204c37f5be5e90c63860842e76001d55cf2c8673eefded9d04fbce57960d0e4254190000",
+          "value": "900100184e58200a38e699aba1034f4047351483e5aedbd4e1698b7ecc338c10f194de63eac81c581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0500581c9d76049a36743c0a3abfc469a85306da3e614d95a1b1de1f9410086b18245820af7364328b9f1fa1071c43023734e43f032bfa07f1a5ed9ffdaf54683d685a6c835820f31eb2d7f7314db3165db902116260ef4421624a0888646cb78cc460a5c16f88185b183f835820f31eb2d7f7314db3165db902116260ef4421624a0888646cb78cc460a5c16f88185b183f8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "fo_control_malformed_ref",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "OutputReferenceScriptMalformed": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 67,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 36",
+        "terminal 1"
+      ],
+      "traceRoot": "60b5de22897a6899de2f3baa5cb3b85e80e55973961eedb845e475e38682ad37",
+      "witnessDigest": "25bfeb4b90d8d7e3388910ba1bb313df7bea253f2df078180803074e612e9a6d",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_control_empty_native_ref",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "OutputReferenceScriptMalformed": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 64,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 33",
+        "terminal 1"
+      ],
+      "traceRoot": "7c809365ab94cd3a8414e9800e486d9c5972118a9322710576f454a76dfdba67",
+      "witnessDigest": "b40adcdea95f849935ba185da0ec5fad5f268ffeef2ff12f4a4289cb1498b121",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_control_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 40,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 9",
+        "terminal 1"
+      ],
+      "traceRoot": "e6660f2c7c20cb39ad6454d1cb3990802b6b9deb7b0131b4956f0b9ba8a05391",
+      "witnessDigest": "f5b322d6ead4e273b13659df199a6a7980782b57bf81b018aa1c5e8e3fbb9ca8",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_control_trailing_byte",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 43,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 12",
+        "terminal 1"
+      ],
+      "traceRoot": "2565f17b6a3338d4f0460bf3e021c4c7c9132de1dd960cbc039273f53c67d76f",
+      "witnessDigest": "0e9ff9435e735dc9066c2a8631f3424220efd7f038cbb8dcfe5a113bd0bc7fe1",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_control_non_canonical_datum",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 50,
+      "phases": [
+        "canonicalDecode 9",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 19",
+        "terminal 1"
+      ],
+      "traceRoot": "d2249d78cc324cf6cf7cd953d3a749346878bbc43008eb520c1261b776d878b5",
+      "witnessDigest": "29690fc9a265014acbe59b135a61760c0a938601f1f985e339f491912333f68d",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_non_canonical_datum_before_malformed_ref",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 52,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 20",
+        "terminal 1"
+      ],
+      "traceRoot": "0247b99f46c8296b139b74d9c4d7544138efed05e8282f8bebab8513d765c2e2",
+      "witnessDigest": "ddf997f18fb4765f5644baf1c1d52c0279cd73b31567e6eecceb62dad5891753",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_malformed_ref_before_bad_output",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "OutputReferenceScriptMalformed": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 69,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 37",
+        "terminal 1"
+      ],
+      "traceRoot": "8c5b356b870e25c589cee9211cbddfbb2cd1889d54ccca532745d403d98a0b8d",
+      "witnessDigest": "0b5bc6b1c7d4fb66ad07dc56ab024c98cb06d5de5aa9572e71f30c223dd663f0",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_bad_output_before_malformed_ref",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_OUTPUT",
+      "rejectionReason": {
+        "OutputNonCanonical": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 42,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 10",
+        "terminal 1"
+      ],
+      "traceRoot": "abdde7cef1587ddfdfa330046ad722cfff0aa98d5d94f209971cd8c5596c248e",
+      "witnessDigest": "5cb20cc3f9576d093db8adcecb22a47e5e0d52416d666118c7771886516ff494",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "fo_malformed_ref_before_plutus_ref",
+      "verdict": "rejected",
+      "rejectionCode": "E_INVALID_FIELD_TYPE",
+      "rejectionReason": {
+        "OutputReferenceScriptMalformed": {
+          "output_index": "0"
+        }
+      },
+      "stepCount": 69,
+      "phases": [
+        "canonicalDecode 10",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 1",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 14",
+        "scriptSources 37",
+        "terminal 1"
+      ],
+      "traceRoot": "1897e8844d6656c1d7a2d8b0f7209bd944adb3a0ead5e100f6ea02155c0de382",
+      "witnessDigest": "071645b3933ca09e92bd140111ebcbf494ced4a84647d19dc3abcec5977db1ee",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_asset_entries_at_bound",
+      "verdict": "accepted",
+      "rejectionCode": null,
+      "rejectionReason": null,
+      "stepCount": 51527,
+      "phases": [
+        "canonicalDecode 23",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 17",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 32978",
+        "scriptSources 2089",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 16407",
+        "terminal 1"
+      ],
+      "traceRoot": "0765125832447eb083ffb7dd9e0eba34ff3289f873f21feb360c5f99bc30220d",
+      "witnessDigest": "25ca4ff4d101b80b688409ef646543a432269ba1ff06c0656dfea3dd57292ffc",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": [
+        {
+          "delete": "8258202020202020202020202020202020202020202020202020202020202020202020190000"
+        },
+        {
+          "delete": "8258202121212121212121212121212121212121212121212121212121212121212121190000"
+        },
+        {
+          "delete": "8258202222222222222222222222222222222222222222222222222222222222222222190000"
+        },
+        {
+          "delete": "8258202323232323232323232323232323232323232323232323232323232323232323190000"
+        },
+        {
+          "delete": "8258202424242424242424242424242424242424242424242424242424242424242424190000"
+        },
+        {
+          "delete": "8258202525252525252525252525252525252525252525252525252525252525252525190000"
+        },
+        {
+          "delete": "8258202626262626262626262626262626262626262626262626262626262626262626190000"
+        },
+        {
+          "delete": "8258202727272727272727272727272727272727272727272727272727272727272727190000"
+        },
+        {
+          "delete": "8258202828282828282828282828282828282828282828282828282828282828282828190000"
+        },
+        {
+          "delete": "8258202929292929292929292929292929292929292929292929292929292929292929190000"
+        },
+        {
+          "delete": "8258202a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a190000"
+        },
+        {
+          "delete": "8258202b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b190000"
+        },
+        {
+          "delete": "8258202c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c190000"
+        },
+        {
+          "delete": "8258202d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d190000"
+        },
+        {
+          "delete": "8258202e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e190000"
+        },
+        {
+          "insert": "825820fb3cfd513315df2f0b5c97bfd04c9392b40468ef620d636c2eafc6bfd76af218190000",
+          "value": "90010019104a58207ea392e33d9e4aff9be03c540e4419eb98a1cfac0a64aeb176c135270da51e78581d60e5302a4400df44f4a2bce06ab4661c82f61eef937376ad5a021506031a08f0d18019040058201daf0ae8deed4348127519b27338cc34a9b6aba8dd2468c6724cd0499c22d6af19102820400040835820f4d8d92089b1a583939c14cfa3256781cb554a2666ba80afa3e1dd461a4abcb219105d192843835820f4d8d92089b1a583939c14cfa3256781cb554a2666ba80afa3e1dd461a4abcb219105d1928438358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+        }
+      ]
+    },
+    {
+      "name": "f_asset_entries_input_crossing",
+      "verdict": "rejected",
+      "rejectionCode": "E_ASSET_COUNT",
+      "rejectionReason": {
+        "InputAssetAccumulationLimit": {
+          "input_index": "-1",
+          "asset_index": "0"
+        }
+      },
+      "stepCount": 53588,
+      "phases": [
+        "canonicalDecode 25",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 17",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 35039",
+        "scriptSources 2090",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 16404",
+        "terminal 1"
+      ],
+      "traceRoot": "1471fc5b431614c386023e9ba4a6f6c7ef2655a383cd5ad27ade788308d9f5b0",
+      "witnessDigest": "01b399e729281c4d97f2f14b686cccb7fab2d7a172efd3ab58c7deea3dedca0d",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_asset_entries_output_crossing",
+      "verdict": "rejected",
+      "rejectionCode": "E_ASSET_COUNT",
+      "rejectionReason": {
+        "OutputAssetAccumulationLimit": {
+          "output_index": "1",
+          "asset_index": "0"
+        }
+      },
+      "stepCount": 49478,
+      "phases": [
+        "canonicalDecode 24",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 15",
+        "signatures 3",
+        "phaseANativeScripts 1",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 30917",
+        "scriptSources 2104",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 16405",
+        "terminal 1"
+      ],
+      "traceRoot": "01155c9d9fab32614abb1614b1364ac997d450e5b62a45b56630b5c7f35e8792",
+      "witnessDigest": "7b6984358b9743642aa763f7514b2d5ac0c26636b64af16b55949fac8990bfdb",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    },
+    {
+      "name": "f_asset_entries_mint_crossing",
+      "verdict": "rejected",
+      "rejectionCode": "E_ASSET_COUNT",
+      "rejectionReason": {
+        "MintAssetAccumulationLimit": {
+          "mint_index": "1"
+        }
+      },
+      "stepCount": 49488,
+      "phases": [
+        "canonicalDecode 23",
+        "compactBinding 1",
+        "staticLedgerRules 1",
+        "inputSets 15",
+        "signatures 3",
+        "phaseANativeScripts 4",
+        "phaseAScriptPreconditions 1",
+        "resolveInputs 30917",
+        "scriptSources 2108",
+        "nativeScripts 1",
+        "phaseANativeScripts 3",
+        "nativeScripts 1",
+        "scriptIntegrity 4",
+        "cek 1",
+        "valueAndMint 16405",
+        "terminal 1"
+      ],
+      "traceRoot": "dcdce5eb9cf0354f19e733cc60f7faf757f93f941ddc51ab67163ce7ef6577e4",
+      "witnessDigest": "f0c0118f78c787ab9f16b6859f61c365c79d70d567e83c8d0703576abec32b24",
+      "validationContextDigest": "38f8a4c3adc7366995c025ee961d2b05a5dfca96d4e1f5679398bfcc633f4a36",
+      "ledgerOps": []
+    }
+  ]
+}

@@ -94,6 +94,7 @@ data MintRedeemer
       , anchorElementOutputIndex :: Integer
       , duplicateNodeRefInputIndex :: Integer
       , duplicateOperatorStatus :: DuplicateOperatorStatus
+      , bountyClaimant :: PubKeyHash
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)

@@ -1,0 +1,366 @@
+import {
+  encodeMidgardTxOutputCanonical,
+  FraudProofTokenDatum,
+  isReferenceInputNoIdxViolation,
+  MIDGARD_FIELD_INDEX,
+} from "@al-ft/midgard-sdk";
+import {
+  Data,
+  type LucidEvolution,
+  type Network,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+} from "./field-grammar-certificate.js";
+import {
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "./field-opening.js";
+import {
+  fetchUtxoByOutRef,
+  outRefLabel,
+  parseOutRef,
+  type ResolvedProverSigner,
+  resolveReferenceInputNoIdxDeploymentContracts,
+} from "./runtime.js";
+import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { requireComputationThreadToken } from "./step-support.js";
+import {
+  makeComputationThreadSuccessRedeemer,
+  makeFraudProofMintRedeemer,
+  makeReferenceInputNoIdxStep04SpendRedeemer,
+  type ReferenceInputNoIdxStep04ResolvedLayout,
+  type ReferenceInputNoIdxStep04SpendLayout,
+  requireStep04Datum,
+  type SubmitReferenceInputNoIdxOutputsPreimage,
+  type SubmitReferenceInputNoIdxStep04Result,
+} from "./submit-reference-input-no-idx-step-04.make-reference-input-no-idx-step04-spend-redeemer.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "./workflow/transaction-boundary.js";
+
+export const submitReferenceInputNoIdxStep04 = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  outputsPreimage,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor = "",
+  publishedCarriageUtxos,
+  certificateUtxo,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  publicationPreSubmitBoundary,
+  fieldGrammar,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly outputsPreimage: SubmitReferenceInputNoIdxOutputsPreimage;
+  /** The **producing** transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
+  /**
+   * The producing transaction's compact witness set, hashing to its compact
+   * `witness_set_hash`. The field grammar certificate authenticates the field
+   * against the whole compact transaction, so a certified count needs it.
+   */
+  readonly witnessSetCompactCbor?: string;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  /** The mandatory published step-04 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /**
+   * The field grammar certificate. The step counts field 2 through it past the
+   * walked count limit or under tier 3, since the certified count also serves a
+   * chunked field.
+   */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
+}): Promise<SubmitReferenceInputNoIdxStep04Result> => {
+  const { referenceInputNoIdxCategory, contracts } =
+    await resolveReferenceInputNoIdxDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireFraudProofSpend: true,
+    });
+  const chain = contracts.referenceInputNoIdx;
+
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "reference-input-no-idx step-04 computation-thread UTxO",
+  });
+  if (threadUtxo.address !== chain.steps[3].spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at reference-input-no-idx step 04.`,
+    );
+  }
+  const threadToken = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: referenceInputNoIdxCategory.categoryId,
+    categoryLabel: "reference-input-no-idx",
+  });
+  const inputDatum = requireStep04Datum({ threadUtxo, signer });
+  const producingTxId = inputDatum.data.producing_tx_id;
+  const badReferenceInputOutputIndex =
+    inputDatum.data.bad_reference_input_output_index;
+
+  const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
+    anchorTxId: producingTxId,
+    nativeTxCompactCbor,
+    itemCbors: outputsPreimage.outputsPreimage.map(
+      encodeMidgardTxOutputCanonical,
+    ),
+    owner: signer.paymentKeyHash,
+    label: "Reference-input-no-idx step 04 outputs",
+  });
+  const producingTxOutputsHash = planned.commitment;
+
+  // Publish tier-2 field carriage before selecting the final fee input and
+  // resolving indices into the complete reference-input set.
+  const published =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      ownOutputs,
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Reference-input-no-idx step 04 outputs field",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
+  const grammar = await routeFaultProofFieldGrammar({
+    lucid,
+    signer,
+    plan: planned.plan,
+    read: "count",
+    itemCount: planned.itemCount,
+    source: {
+      sourceKind: 0n,
+      compactCbor: nativeTxCompactCbor,
+      witnessSetCompactCbor,
+    },
+    carriageUtxos: [
+      ...published,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    fieldPreimageCertificatePolicyId:
+      contracts.fieldPreimageCertificate.policyId,
+    fieldGrammar,
+    label: "Reference-input-no-idx step 04 outputs",
+  });
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: chain.steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "reference-input-no-idx step 04 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "reference-input-no-idx step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "reference-input-no-idx step 04 fraud-proof mint",
+  });
+  // The reference inputs the transaction reads. Opening indices resolve
+  // against the builder's final order inside the redeemer callback.
+  const referenceInputs = [
+    ...published,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...grammar.referenceInputs,
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  // §5.2: the count the verdict rests on is the door's authenticated one, which
+  // for tiers 1–2 is derived by walking the same preimage the door hashes.
+  const producingTxOutputCount = planned.itemCount;
+  if (
+    !isReferenceInputNoIdxViolation({
+      badReferenceInputOutputIndex,
+      producingTxOutputCount,
+    })
+  ) {
+    throw new Error(
+      `Reference-input-no-idx step 04 cannot finalize: output index ${badReferenceInputOutputIndex.toString()} exists in a producing transaction with ${producingTxOutputCount.toString()} outputs; an existing transaction reference input cannot be proven non-existent.`,
+    );
+  }
+
+  const funding = await fundStep(lucid, { signer });
+  const fraudProofUnit = toUnit(
+    contracts.fraudProof.policyId,
+    threadToken.assetName,
+  );
+  const fraudProofDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash },
+    FraudProofTokenDatum,
+  );
+  const fraudProofAssets = {
+    lovelace: threadUtxo.assets.lovelace ?? 0n,
+    [fraudProofUnit]: 1n,
+  };
+  let spendLayout: ReferenceInputNoIdxStep04SpendLayout | undefined;
+  let computationThreadMintRedeemerIndex: bigint | undefined;
+
+  const collected = funding.tx.collectFrom(
+    [threadUtxo],
+    makeReferenceInputNoIdxStep04SpendRedeemer({
+      threadUtxo,
+      fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+      fraudProofPolicyId: contracts.fraudProof.policyId,
+      fraudProofUnit,
+      fraudProofDatum,
+      outputsOpeningFor: (ctx) =>
+        faultProofFieldOpening({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+          label: "Reference-input-no-idx step 04 outputs",
+        }),
+      grammarRefInputIndex: grammar.grammarRefInputIndex,
+      onLayout: (layout) => {
+        spendLayout = layout;
+      },
+    }),
+  );
+  // Without published witnesses this step reads nothing, and `readFrom([])`
+  // is an error rather than a no-op, so the branch is on whether the
+  // carriages produced reference inputs at all.
+  const tx = (
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom([...referenceInputs])
+  )
+    .mintAssets(
+      { [threadToken.unit]: -1n },
+      makeComputationThreadSuccessRedeemer({
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        computationThreadAssetName: threadToken.assetName,
+      }),
+    )
+    .mintAssets(
+      { [fraudProofUnit]: 1n },
+      makeFraudProofMintRedeemer({
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        computationThreadAssetName: threadToken.assetName,
+        onComputationThreadMintRedeemerIndex: (index) => {
+          computationThreadMintRedeemerIndex = index;
+        },
+      }),
+    )
+    .pay.ToContract(
+      contracts.fraudProof.spendingScriptAddress,
+      { kind: "inline", value: fraudProofDatum },
+      fraudProofAssets,
+    );
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
+  );
+
+  const signed = await completeStep(completedTx, funding);
+  if (
+    spendLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve reference-input-no-idx step 04 layout.",
+    );
+  }
+  const resolvedLayout: ReferenceInputNoIdxStep04ResolvedLayout = {
+    ...spendLayout,
+    computationThreadMintRedeemerIndex,
+  };
+  const txHash = await submitStep(lucid, signed, {
+    label: "reference-input-no-idx step-04",
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof reference-input-no-idx step-04",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.referenceInputNoIdx.steps[3].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+    awaitConfirmation,
+  });
+
+  return {
+    txHash,
+    walletSource: signer.source,
+    proverAddress: signer.address,
+    fraudProver: signer.paymentKeyHash,
+    threadOutRef,
+    fraudProofOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadAssetName: threadToken.assetName,
+    computationThreadUnit: threadToken.unit,
+    fraudProofPolicyId: contracts.fraudProof.policyId,
+    fraudProofAssetName: threadToken.assetName,
+    fraudProofUnit,
+    fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+    fourthStepAddress: chain.steps[3].spendingScriptAddress,
+    producingTxOutputsHash,
+    producingTxId,
+    producingTxOutputCount,
+    badReferenceInputOutputIndex: Number(badReferenceInputOutputIndex),
+    inputIndex: Number(resolvedLayout.inputIndex),
+    outputIndex: Number(resolvedLayout.outputIndex),
+    computationThreadMintRedeemerIndex: Number(
+      resolvedLayout.computationThreadMintRedeemerIndex,
+    ),
+    fraudProofMintRedeemerIndex: Number(
+      resolvedLayout.fraudProofMintRedeemerIndex,
+    ),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};

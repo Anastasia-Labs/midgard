@@ -7,14 +7,19 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
+import { HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
+import {
+  extractStateQueueErrorCode,
+  handleStateQueueGetFailure,
+} from "../src/commands/listen-response.js";
 import {
   diagnoseMissingBlockTxs,
+  observeNativeOwnerAfterConfirmedMerge,
   preflightDecodeBlockTxs,
-} from "@/transactions/state-queue/merge-to-confirmed-state.js";
+} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -25,6 +30,29 @@ const txFixture = JSON.parse(
 )[0] as TxFixture;
 
 describe("merge error code extraction", () => {
+  it("refuses undeclared upstream merge-code text in the actual HTTP error body", async () => {
+    const injected = "E_MERGE_" + "AB".repeat(32);
+    for (const error of [
+      new SDK.StateQueueError({
+        message: "merge failed",
+        cause: { error_code: injected },
+      }),
+      new SDK.StateQueueError({
+        message: `${injected}: private upstream bytes`,
+        cause: "provider rejected",
+      }),
+    ]) {
+      expect(extractStateQueueErrorCode(error)).toBeUndefined();
+      const response = await Effect.runPromise(
+        handleStateQueueGetFailure("block", error),
+      );
+      expect(response.status).toBe(500);
+      const body = await HttpServerResponse.toWeb(response).json();
+      expect(body.error_code).toBe("E_STATE_QUEUE_UNAVAILABLE");
+      expect(JSON.stringify(body)).not.toContain(injected);
+    }
+  });
+
   it("prefers error_code from StateQueueError cause payload", () => {
     const error = new SDK.StateQueueError({
       message: "merge failed",
@@ -133,5 +161,74 @@ describe("preflightDecodeBlockTxs", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].txId.equals(valid.txId)).toBe(true);
+  });
+});
+
+describe("confirmed merge native owner observation", () => {
+  const ownerDiagnostics = (durableRoot: string) => ({
+    ownerEpoch: Buffer.alloc(16),
+    durableRoot,
+    residentNodes: 1,
+    residentEdges: 0,
+    residentBytes: 64,
+    activeGenerations: 0,
+    generatedNodes: 0,
+    generatedBytes: 0,
+    rssBytes: 1024,
+    peakRssBytes: 1024,
+    childRestarts: 0,
+  });
+
+  it("observes the live Architecture G owner after the merge", async () => {
+    const durableRoot = "11".repeat(32);
+    const confirmedLedgerRoot = "22".repeat(32);
+    let ownerCalls = 0;
+
+    const result = await Effect.runPromise(
+      observeNativeOwnerAfterConfirmedMerge({
+        nativeMpfOwner: {
+          diagnostics: async () => {
+            ownerCalls += 1;
+            return ownerDiagnostics(durableRoot);
+          },
+        },
+        confirmedLedgerEntryCount: 7,
+        confirmedLedgerRoot,
+      }),
+    );
+
+    expect(ownerCalls).toBe(1);
+    expect(result).toEqual({
+      confirmedLedgerEntryCount: 7,
+      confirmedLedgerRoot,
+      durableLedgerRoot: durableRoot,
+      activeGenerations: 0,
+    });
+  });
+
+  it("fails closed when the Architecture G owner is missing", async () => {
+    await expect(
+      Effect.runPromise(
+        observeNativeOwnerAfterConfirmedMerge({
+          nativeMpfOwner: undefined,
+          confirmedLedgerEntryCount: 1,
+          confirmedLedgerRoot: "11".repeat(32),
+        }),
+      ),
+    ).rejects.toThrow("Architecture G native owner is not initialized");
+  });
+
+  it("fails closed on a malformed Architecture G durable root", async () => {
+    await expect(
+      Effect.runPromise(
+        observeNativeOwnerAfterConfirmedMerge({
+          nativeMpfOwner: {
+            diagnostics: async () => ownerDiagnostics("not-a-root"),
+          },
+          confirmedLedgerEntryCount: 1,
+          confirmedLedgerRoot: "11".repeat(32),
+        }),
+      ),
+    ).rejects.toThrow("Architecture G durable root");
   });
 });

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resuming a Work Program"
+  short_description: "Resume scope, ownership and evidence from durable records."
+  default_prompt: "Use the Midgard resuming-a-work-program workflow."

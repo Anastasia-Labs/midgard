@@ -1,0 +1,49 @@
+{
+  "schema": "midgard-fault-proofs-pre-option-b-sweep-baseline-v1",
+  "provenance": {
+    "sourceFile": "demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json",
+    "sourceCommit": "2476d358",
+    "measurementMethod": "emulator-harness-v1",
+    "sweepPayloadBytes": 7976,
+    "sweepCompleteItemBytes": 8277,
+    "why": "The pre-Option-B (pre-#620) billing baseline for the resolver proof-fit sweep's own item shape. The committed sweep fixture has since been regenerated against the post-change blueprint, so it can no longer serve as the 'before' side of the post<pre ordering claim; these rows are the reviewed historical baseline, extracted verbatim from the commit named above."
+  },
+  "rows": {
+    "prepare": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_v1.main.spend",
+      "completeSignedBytes": 10409,
+      "memoryUnits": "613326",
+      "cpuUnits": "544789001"
+    },
+    "authenticate": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1.main.spend",
+      "completeSignedBytes": 11197,
+      "memoryUnits": "179092",
+      "cpuUnits": "341706855"
+    },
+    "source": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_item_source_v1.main.spend",
+      "completeSignedBytes": 7895,
+      "memoryUnits": "861983",
+      "cpuUnits": "305737122"
+    },
+    "observe": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_item_observe_v1.main.spend",
+      "completeSignedBytes": 10463,
+      "memoryUnits": "890227",
+      "cpuUnits": "574227003"
+    },
+    "proof": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_item_proof_v1.main.spend",
+      "completeSignedBytes": 5701,
+      "memoryUnits": "668047",
+      "cpuUnits": "211499642"
+    },
+    "settle": {
+      "title": "fraud_proofs/validation_trace/canonical_decode_item_settlement_v1.main.spend",
+      "completeSignedBytes": 5064,
+      "memoryUnits": "449767",
+      "cpuUnits": "172281854"
+    }
+  }
+}

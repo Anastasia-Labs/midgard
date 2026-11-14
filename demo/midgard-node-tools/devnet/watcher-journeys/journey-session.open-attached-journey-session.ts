@@ -1,0 +1,308 @@
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
+import { OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE } from "midgard-node/transactions/operators/funding-preflight";
+import {
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  watcherDeploymentReleaseFinalityAuthority,
+} from "midgard-watcher";
+
+import { trustNodeTls } from "../../src/full-stack/node-tls.js";
+import type { JourneyOperator2Node } from "./deployment-source.js";
+import type { JourneyCategory } from "./fixture.js";
+import { JOURNEY_USER_EVENT_LOVELACE } from "./history-event-staging.js";
+import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
+import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
+import { readJourneyOperations } from "./operations.js";
+import {
+  composeOperatorNodeControl,
+  createOperatorPause,
+  guardOperatorSignatures,
+  type OperatorNodeControl,
+} from "./operator-pause.js";
+import type { StackJourneyContext } from "./stack-context.js";
+import { stackDaExpectation } from "./stack-da-publication.js";
+import { openStackJourneyReplayedLedger } from "./stack-replayed-ledger.js";
+import {
+  composeWatcherEvidenceExec,
+  createWatcherEvidenceReader,
+  type WatcherEvidenceExec,
+} from "./watcher-evidence-reader.js";
+import { createWatcherProgress } from "./watcher-progress.js";
+
+type AttachedWatcherStatus = Readonly<{
+  deploymentFingerprint: string;
+  liveness: string;
+  readiness?: string;
+  readinessReasons?: readonly string[];
+  l1Readiness?: unknown;
+}>;
+
+/**
+ * An attached watcher's `/v1/status` when it serves this deployment and is
+ * live; refuses a watcher still starting, another deployment's watcher and a
+ * stopping or blocked one.
+ */
+export const assertAttachedWatcherStatus = (
+  status: unknown,
+  deploymentFingerprint: string,
+): AttachedWatcherStatus => {
+  const value = status as Partial<AttachedWatcherStatus> | null | undefined;
+  // A starting watcher serves `/v1/status` before it has bound a deployment.
+  if (value?.deploymentFingerprint === undefined)
+    throw new Error(
+      `The stack watcher is still starting and not attached to a deployment (${JSON.stringify(value?.readinessReasons ?? [])})`,
+    );
+  if (value.deploymentFingerprint !== deploymentFingerprint)
+    throw new Error(
+      "The stack watcher's operations endpoint serves another deployment",
+    );
+  if (value.liveness !== "live")
+    throw new Error(
+      `The stack watcher is not live: ${String(value.liveness)} (${JSON.stringify(value.readinessReasons ?? [])})`,
+    );
+  return value as AttachedWatcherStatus;
+};
+
+/**
+ * Refuses a drill whose stack prover holds less than the stack
+ * configuration's `wallets.prover.minimumLovelace`: the stack watcher's
+ * proofs spend from it, and the drill never funds it.
+ */
+const assertStackProverFunded = async (context: StackJourneyContext) => {
+  const address = context.layout.proverAddress;
+  const minimum = BigInt(context.stackConfig.wallets.prover!.minimumLovelace);
+  const balance = (await context.provider.getUtxos(address)).reduce(
+    (total, utxo) => total + (utxo.assets.lovelace ?? 0n),
+    0n,
+  );
+  if (balance < minimum)
+    throw new Error(
+      `The stack watcher's prover ${address} holds ${balance.toString()} lovelace, ${(minimum - balance).toString()} lovelace short of the stack configuration's wallets.prover.minimumLovelace (${minimum.toString()}); fund it before the drill`,
+    );
+};
+
+const lovelaceAt = async (context: StackJourneyContext, address: string) =>
+  (await context.provider.getUtxos(address)).reduce(
+    (total, utxo) => total + (utxo.assets.lovelace ?? 0n),
+    0n,
+  );
+
+/** What a family's staging spends from operator-2's wallet. */
+type FundedFamily = Readonly<{
+  category: JourneyCategory;
+  historyBlocks?: number;
+  userEvents?: number;
+}>;
+
+/**
+ * Refuses a drill whose operator-2 and funding wallets together hold less
+ * than the worst case of the families it runs, in their order. Every L1
+ * transaction below is allowed the node's operator-command fee headroom
+ * (`OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE`).
+ * - Operator-2's bond (`manifest.economics.requiredBondLovelace`): posted
+ *   at the first family's onboarding, as when operator-2 starts unbonded,
+ *   and again by the family after each one the committee attests, which
+ *   ends in operator-2's conviction and consumes its whole bond. The
+ *   funding wallet tops operator-2's wallet up for it.
+ * - Each family's onboarding and bond top-up, and its fault's header node
+ *   (`STATE_QUEUE_NODE_MIN_LOVELACE`) and commit.
+ * - Each history block a family commits: its header node and commit.
+ * - Each user event a family publishes from operator-2's wallet, at the
+ *   deposit's own amount (`JOURNEY_USER_EVENT_LOVELACE`); a withdrawal or
+ *   tx order's amount is the SDK's quote, assumed to be no more.
+ * - The ledger owner's deposit from the funding wallet
+ *   (`journey.depositLovelace`), made once when the owner is not funded.
+ */
+const assertStackOperatorFunded = async (
+  context: StackJourneyContext,
+  families: readonly FundedFamily[],
+) => {
+  const fee = OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE;
+  const bond = BigInt(
+    context.deployment.manifest.economics.requiredBondLovelace,
+  );
+  const convicted = families
+    .slice(0, -1)
+    .filter(({ category }) => stackDaExpectation(category) !== "refusal");
+  const bonds = families.length === 0 ? 0n : BigInt(1 + convicted.length);
+  const nodes = families.reduce(
+    (total, family) => total + 1 + (family.historyBlocks ?? 0),
+    0,
+  );
+  const events = families.reduce(
+    (total, family) => total + (family.userEvents ?? 0),
+    0,
+  );
+  const deposit = BigInt(context.stackConfig.journey.depositLovelace);
+  const required =
+    bonds * bond +
+    BigInt(families.length) * 2n * fee +
+    BigInt(nodes) * (SDK.STATE_QUEUE_NODE_MIN_LOVELACE + fee) +
+    BigInt(events) * (JOURNEY_USER_EVENT_LOVELACE + fee) +
+    deposit +
+    fee;
+  const { operator, funding } = context.accounts;
+  const balance =
+    (await lovelaceAt(context, operator.address)) +
+    (await lovelaceAt(context, funding.address));
+  if (balance < required)
+    throw new Error(
+      `The drill's operator-2 wallet ${operator.address} and funding wallet ${funding.address} hold ${balance.toString()} lovelace together, ${(required - balance).toString()} lovelace short of the worst case of its ${families.length.toString()} families, ${required.toString()} lovelace: ${bonds.toString()} × operator-2's bond of ${bond.toString()} (manifest economics.requiredBondLovelace), ${nodes.toString()} header nodes, ${events.toString()} user events, the ledger owner's deposit of ${deposit.toString()} (journey.depositLovelace) and their fees; fund them before the drill`,
+    );
+};
+
+/**
+ * A journey session attached to a running e2e-stack's own watcher. It starts
+ * no retained DA, no watcher configuration or process, no native recorder
+ * and no prover funding. It holds operator-2's node while the drill signs as
+ * operator-2, and starts it again when it closes. Health and readiness come
+ * from the stack watcher's `/v1/status`; decision and workflow evidence from
+ * its journals, read inside its container (`exec`, by default
+ * `docker compose exec`). Staging reads ledgers from the stack's own replay,
+ * opened on its first read in the run's replay store. Before the drill
+ * starts it refuses a run whose replay store the warm-up command has not
+ * filled, a prover below the stack's funding minimum, and operator-2 and
+ * funding wallets short of its families' worst case.
+ */
+export const openAttachedJourneySession = async (
+  context: StackJourneyContext,
+  options: Readonly<{
+    /** Operator-2's node, the second stack instance the drill pauses. */
+    operator2: JourneyOperator2Node;
+    /** The families the drill runs, whose worst case the wallets must hold. */
+    families: readonly FundedFamily[];
+    exec?: WatcherEvidenceExec;
+    /** Operator-2's node control, by default `docker compose` on its project. */
+    operator2Control?: OperatorNodeControl;
+  }>,
+) => {
+  const {
+    directory,
+    onClose,
+    isClosed,
+    close,
+    runFamily,
+    familyUnwound,
+    signal,
+    stage,
+  } = await openJourneySessionCore(context.runDirectory);
+  try {
+    // On a public stack every node API this process reads, our node's and
+    // operator-2's, is HTTPS under the stack's certificate authority.
+    if (context.nodeTls !== undefined)
+      trustNodeTls(context.nodeTls.caFile, context.nodeTls.servername);
+    // Pausing our own stack's node instead of operator-2's would stop the
+    // honest successor; refuse a project or endpoint that is ours.
+    if (options.operator2.composeProject === context.watcher.composeProject)
+      throw new Error(
+        "Operator-2's Compose project is this stack's own project; refusing to pause our node",
+      );
+    if (
+      new URL(options.operator2.endpoint).origin ===
+      new URL(context.stackConfig.endpoint).origin
+    )
+      throw new Error(
+        "Operator-2's endpoint is this stack's own node endpoint; refusing to pause our node",
+      );
+    const operator2 = createOperatorPause(
+      options.operator2Control ??
+        composeOperatorNodeControl({
+          ...options.operator2,
+          // Operator-2 shares the stack's public section, so its own
+          // ingress fronts its node too (attached-config.ts).
+          publicIngress: context.stackConfig.public !== undefined,
+        }),
+    );
+    // The drill's wallet and DA producer key are operator-2's: each
+    // signature and each DA publication proves its node stopped first.
+    guardOperatorSignatures(context.deployment.operatorLucid, operator2);
+    context.daProducer.guard(operator2);
+    // A run that ends with operator-2 still held starts it again; only a
+    // completed run proves its liveness (`operator2.resume`).
+    onClose(operator2.release);
+    // Closes run in reverse order and each runs even if a later one throws,
+    // so operator-2 is started again whatever the ledger close does.
+    const replayedLedger = await openStackJourneyReplayedLedger(context);
+    onClose(replayedLedger.close);
+    const deploymentFingerprint = context.deployment.manifest.manifestId;
+    const deploymentIdentity = context.release.deploymentIdentity;
+    if (deploymentIdentity.manifestId !== deploymentFingerprint)
+      throw new Error(
+        "The stack's watcher release belongs to another deployment",
+      );
+    const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
+      deploymentIdentity,
+    ).verifyForWorkflow({ deploymentFingerprint });
+    const { operationsEndpoint, composeProject, processConfigPath } =
+      context.watcher;
+    const requireLive = () => {
+      if (isClosed()) throw new Error("Watcher journey session is closed");
+    };
+    const operations = async (path: string) => {
+      requireLive();
+      return await readJourneyOperations(operationsEndpoint, path);
+    };
+    const evidence = createWatcherEvidenceReader({
+      exec: options.exec ?? composeWatcherEvidenceExec(composeProject),
+      hostProcessConfigPath: processConfigPath,
+      deploymentFingerprint,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
+    // A family it refuses fails, and the family's run closes the session.
+    const assertHealthy = async () => {
+      assertAttachedWatcherStatus(
+        await operations("/v1/status"),
+        deploymentFingerprint,
+      );
+    };
+    await stage("attached watcher status", assertHealthy);
+    // The first read proves the evidence comes from this stack's watcher.
+    await stage("attached watcher evidence", () => evidence.readDecisions());
+    await stage("attached watcher prover funding", () =>
+      assertStackProverFunded(context),
+    );
+    await stage("attached drill operator funding", () =>
+      assertStackOperatorFunded(context, options.families),
+    );
+    const watcher = Object.freeze({
+      requireLive,
+      operations,
+      diagnostics: async () => ({
+        status: await operations("/v1/status").catch(String),
+        metrics: await operations("/v1/metrics").catch(String),
+      }),
+      // The stack watcher's own progress count (`createWatcherProgress`).
+      watcherProgress: createWatcherProgress(operations),
+    });
+    return {
+      mode: "attached" as const,
+      context,
+      directory,
+      authority: Object.freeze({
+        deploymentAuthority: context.release,
+        manifestPath: context.layout.manifestPath,
+        blueprintPath: context.deployment.blueprintPath,
+      }),
+      releaseFinality,
+      ledgerAt: replayedLedger.ledgerAt,
+      watcher,
+      evidence,
+      /** The drill's hold on operator-2's node; see `operator-pause.ts`. */
+      operator2,
+      captureWorkflowBaseline: (category: FraudProofCatalogueCategoryName) =>
+        captureJourneyWorkflowBaseline(evidence, category),
+      assertHealthy,
+      /** Whether the session has closed, as it does after a failed family. */
+      isClosed,
+      close,
+      /** Runs one family; see `openJourneySessionCore`. */
+      runFamily,
+      familyUnwound,
+      /** Aborted once the session starts to close. */
+      signal,
+    };
+  } catch (cause) {
+    await close();
+    throw cause;
+  }
+};

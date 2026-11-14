@@ -1,0 +1,10 @@
+import "vitest";
+import "../src/workflow/action-changed.js";
+import "../src/workflow/field-carriage-prerequisite.js";
+import "../src/workflow/orchestrator.js";
+import "../src/workflow/raw-datum-preimage.js";
+import "../src/workflow/raw-datum-preimage-prerequisite.js";
+import "../src/workflow/raw-l1-publication-observation.js";
+import "./field-carriage-prerequisite.prerequisite.js";
+import "./field-carriage-prerequisite.production-field-carriage-prerequisite-v1.js";
+import "./field-carriage-prerequisite.fresh-prerequisite-selection-changes.js";

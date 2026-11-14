@@ -1,11 +1,8 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./common.js";
 
 export type ProjectedEventRow = Record<string, unknown>;
 
@@ -24,10 +21,6 @@ export type ProjectedEventTable = {
   readonly entityPlural: string;
   readonly idLabel: string;
   readonly touchUpdatedAt?: boolean;
-  readonly validateHeaderAssignment?: (
-    row: ProjectedEventRow,
-    idHex: string,
-  ) => Effect.Effect<void, DatabaseError>;
 };
 
 const idHex = (config: ProjectedEventTable, row: ProjectedEventRow): string =>
@@ -95,6 +88,63 @@ export const retrievePendingHeaderEntriesUpTo = <Entry extends object>(
       ORDER BY ${sql(config.inclusionTimeColumn)} ASC, ${sql(
         config.idColumn,
       )} ASC`;
+  });
+
+/** Complete groups, never row pages: even the last returned instant includes every event. */
+export const retrievePendingHeaderInstantCounts = (
+  config: ProjectedEventTable,
+  endTime: Date,
+  limit: number,
+  statuses: readonly string[] = [],
+): Effect.Effect<
+  readonly { readonly inclusionTimeMs: number; readonly count: number }[],
+  ProjectedEventError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit <= 0 ||
+      !Number.isSafeInteger(endTime.getTime())
+    )
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: config.tableName,
+          message: "Invalid pending event instant query bound",
+          cause: { limit, endTime },
+        }),
+      );
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      statuses.length > 0
+        ? yield* sql<{
+            inclusion_time: Date;
+            count: string;
+          }>`SELECT ${sql(config.inclusionTimeColumn)} AS inclusion_time, COUNT(*)::text AS count FROM ${sql(config.tableName)}
+          WHERE ${sql(config.statusColumn)} IN ${sql.in(statuses)} AND ${sql(config.projectedHeaderHashColumn)} IS NULL AND ${sql(config.inclusionTimeColumn)} <= ${endTime}
+          GROUP BY ${sql(config.inclusionTimeColumn)} ORDER BY ${sql(config.inclusionTimeColumn)} ASC LIMIT ${limit}`
+        : yield* sql<{
+            inclusion_time: Date;
+            count: string;
+          }>`SELECT ${sql(config.inclusionTimeColumn)} AS inclusion_time, COUNT(*)::text AS count FROM ${sql(config.tableName)}
+          WHERE ${sql(config.projectedHeaderHashColumn)} IS NULL AND ${sql(config.inclusionTimeColumn)} <= ${endTime}
+          GROUP BY ${sql(config.inclusionTimeColumn)} ORDER BY ${sql(config.inclusionTimeColumn)} ASC LIMIT ${limit}`;
+    return yield* Effect.forEach(rows, (row) => {
+      const inclusionTimeMs = row.inclusion_time.getTime();
+      const count = Number(row.count);
+      return Number.isSafeInteger(inclusionTimeMs) &&
+        Number.isSafeInteger(count) &&
+        count > 0
+        ? Effect.succeed({ inclusionTimeMs, count })
+        : Effect.fail(
+            new DatabaseError({
+              table: config.tableName,
+              message:
+                "Pending event instant count is not a safe positive integer",
+              cause: row,
+            }),
+          );
+    });
   });
 
 export const retrieveProjectedPendingHeaderEntries = <Entry extends object>(
@@ -176,142 +226,11 @@ export const markAwaitingAsProjected = (
     }
   });
 
-export const markProjectedByEventIds = (
-  config: ProjectedEventTable,
-  ids: readonly Buffer[],
-  headerHash: Buffer,
-): Effect.Effect<void, ProjectedEventError, Database> =>
-  Effect.gen(function* () {
-    if (ids.length <= 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const existing = yield* retrieveRowsByIds(config, ids);
-    const existingById = new Map(
-      existing.map((row) => [idHex(config, row), row] as const),
-    );
-
-    for (const id of ids) {
-      const key = id.toString("hex");
-      const row = existingById.get(key);
-      if (row === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: config.tableName,
-            message: `Failed to mark ${config.entitySingular} header assignment because it does not exist`,
-            cause: `${config.idLabel}=${key}`,
-          }),
-        );
-      }
-      const rowStatus = status(config, row);
-      if (!isProjectedLifecycleStatus(config, rowStatus)) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: config.tableName,
-            message: `Failed to assign projected header because the ${config.entitySingular} is not in a projected lifecycle state`,
-            cause: `${config.idLabel}=${key},status=${rowStatus}`,
-          }),
-        );
-      }
-      if (config.validateHeaderAssignment !== undefined) {
-        yield* config.validateHeaderAssignment(row, key);
-      }
-      const currentProjectedHeaderHash = projectedHeaderHash(config, row);
-      if (
-        currentProjectedHeaderHash !== null &&
-        !currentProjectedHeaderHash.equals(headerHash)
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: config.tableName,
-            message: `Failed to assign projected header because the ${config.entitySingular} is already assigned to a different header`,
-            cause: `${config.idLabel}=${key},existing_header_hash=${currentProjectedHeaderHash.toString(
-              "hex",
-            )},requested_header_hash=${headerHash.toString("hex")}`,
-          }),
-        );
-      }
-    }
-
-    if (config.touchUpdatedAt) {
-      yield* sql`UPDATE ${sql(config.tableName)}
-        SET ${sql(config.projectedHeaderHashColumn)} = ${headerHash},
-            updated_at = NOW()
-        WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
-          AND ${sql(config.projectedHeaderHashColumn)} IS NULL`;
-      return;
-    }
-    yield* sql`UPDATE ${sql(config.tableName)}
-      SET ${sql(config.projectedHeaderHashColumn)} = ${headerHash}
-      WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
-        AND ${sql(config.projectedHeaderHashColumn)} IS NULL`;
-  });
-
-export const clearProjectedHeaderAssignmentByEventIds = (
-  config: ProjectedEventTable,
-  ids: readonly Buffer[],
-  headerHash: Buffer,
-): Effect.Effect<void, ProjectedEventError, Database> =>
-  Effect.gen(function* () {
-    if (ids.length <= 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const existing = yield* retrieveRowsByIds(config, ids);
-    const existingById = new Map(
-      existing.map((row) => [idHex(config, row), row] as const),
-    );
-
-    for (const id of ids) {
-      const key = id.toString("hex");
-      const row = existingById.get(key);
-      if (row === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: config.tableName,
-            message: `Failed to clear projected header assignment because the ${config.entitySingular} does not exist`,
-            cause: `${config.idLabel}=${key}`,
-          }),
-        );
-      }
-      const currentProjectedHeaderHash = projectedHeaderHash(config, row);
-      if (
-        currentProjectedHeaderHash !== null &&
-        !currentProjectedHeaderHash.equals(headerHash)
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: config.tableName,
-            message: `Failed to clear projected header assignment because the ${config.entitySingular} is assigned to a different header`,
-            cause: `${config.idLabel}=${key},existing_header_hash=${currentProjectedHeaderHash.toString(
-              "hex",
-            )},requested_header_hash=${headerHash.toString("hex")}`,
-          }),
-        );
-      }
-    }
-
-    if (config.touchUpdatedAt) {
-      yield* sql`UPDATE ${sql(config.tableName)}
-        SET ${sql(config.projectedHeaderHashColumn)} = NULL,
-            updated_at = NOW()
-        WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
-          AND ${sql(config.projectedHeaderHashColumn)} = ${headerHash}`;
-      return;
-    }
-    yield* sql`UPDATE ${sql(config.tableName)}
-      SET ${sql(config.projectedHeaderHashColumn)} = NULL
-      WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
-        AND ${sql(config.projectedHeaderHashColumn)} = ${headerHash}`;
-  });
-
 export type ProjectedEventAdapterMessages = {
   readonly retrieveByProjectedHeaderHash: string;
   readonly retrievePendingHeaderEntriesUpTo: string;
   readonly retrieveProjectedPendingHeaderEntries: string;
   readonly markAwaitingAsProjected: string;
-  readonly markProjectedByEventIds: string;
-  readonly clearProjectedHeaderAssignmentByEventIds: string;
 };
 
 export type ProjectedEventAdapterInput = {
@@ -353,6 +272,18 @@ export const makeProjectedEventAdapter = <Entry extends object>({
         messages.retrievePendingHeaderEntriesUpTo,
       ),
     ),
+  retrievePendingHeaderInstantCounts: (endTime: Date, limit: number) =>
+    retrievePendingHeaderInstantCounts(
+      config,
+      endTime,
+      limit,
+      pendingHeaderStatuses,
+    ).pipe(
+      sqlErrorToDatabaseError(
+        config.tableName,
+        "Failed to retrieve complete pending event instant counts",
+      ),
+    ),
   retrieveProjectedPendingHeaderEntries: (): Effect.Effect<
     readonly Entry[],
     DatabaseError,
@@ -378,34 +309,6 @@ export const makeProjectedEventAdapter = <Entry extends object>({
       sqlErrorToDatabaseError(
         config.tableName,
         messages.markAwaitingAsProjected,
-      ),
-    ),
-  markProjectedByEventIds: (
-    ids: readonly Buffer[],
-    projectedHeaderHash: Buffer,
-  ): Effect.Effect<void, DatabaseError, Database> =>
-    markProjectedByEventIds(config, ids, projectedHeaderHash).pipe(
-      Effect.withLogSpan(`markProjectedByEventIds ${config.tableName}`),
-      sqlErrorToDatabaseError(
-        config.tableName,
-        messages.markProjectedByEventIds,
-      ),
-    ),
-  clearProjectedHeaderAssignmentByEventIds: (
-    ids: readonly Buffer[],
-    projectedHeaderHash: Buffer,
-  ): Effect.Effect<void, DatabaseError, Database> =>
-    clearProjectedHeaderAssignmentByEventIds(
-      config,
-      ids,
-      projectedHeaderHash,
-    ).pipe(
-      Effect.withLogSpan(
-        `clearProjectedHeaderAssignmentByEventIds ${config.tableName}`,
-      ),
-      sqlErrorToDatabaseError(
-        config.tableName,
-        messages.clearProjectedHeaderAssignmentByEventIds,
       ),
     ),
 });

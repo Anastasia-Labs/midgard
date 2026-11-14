@@ -1,6 +1,6 @@
 -- Midgard fresh-install schema.
 --
--- Pre-launch compatibility policy: this baseline intentionally replaces the
+-- Pre-launch schema reset policy: this baseline intentionally replaces the
 -- historical migration chain. Any existing local database must be discarded;
 -- a network carrying prior Midgard state must also be fully redeployed.
 CREATE TYPE public.tx_admission_status AS ENUM (
@@ -151,6 +151,9 @@ CREATE TABLE public.da_payloads (
     deposit_count bigint NOT NULL,
     total_event_count bigint NOT NULL,
     transition_step_count bigint NOT NULL,
+    consensus_profile_id text NOT NULL,
+    validation_traces_root text DEFAULT '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text NOT NULL,
+    validation_trace_count bigint DEFAULT 0 NOT NULL,
     block_start_time timestamp with time zone NOT NULL,
     block_end_time timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -166,15 +169,71 @@ CREATE TABLE public.da_payloads (
     CONSTRAINT da_payloads_l2_transaction_count_check CHECK ((l2_transaction_count >= 0)),
     CONSTRAINT da_payloads_payload_cbor_check CHECK ((octet_length(payload_cbor) > 0)),
     CONSTRAINT da_payloads_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT da_payloads_consensus_profile_id_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
+    CONSTRAINT da_payloads_profile_version_check CHECK (((version = 1) AND (validation_trace_count = (forced_transaction_count + l2_transaction_count)) AND (((validation_trace_count = 0) AND (validation_traces_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text)) OR ((validation_trace_count > 0) AND (validation_traces_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text))))),
     CONSTRAINT da_payloads_total_event_count_check CHECK ((total_event_count >= 0)),
     CONSTRAINT da_payloads_trace_count_check CHECK ((transition_step_count = total_event_count)),
     CONSTRAINT da_payloads_transactions_root_check CHECK ((transactions_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_transition_step_count_check CHECK ((transition_step_count >= 0)),
     CONSTRAINT da_payloads_transition_trace_root_check CHECK ((transition_trace_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_utxos_root_check CHECK ((utxos_root ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT da_payloads_version_v2_check CHECK ((version = 2)),
+    CONSTRAINT da_payloads_validation_trace_count_check CHECK ((validation_trace_count >= 0)),
+    CONSTRAINT da_payloads_validation_traces_root_check CHECK ((validation_traces_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_withdrawal_count_check CHECK ((withdrawal_count >= 0)),
     CONSTRAINT da_payloads_withdrawals_root_check CHECK ((withdrawals_root ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: da_payload_terminal_outcomes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.da_payload_terminal_outcomes (
+    header_hash bytea NOT NULL,
+    terminal_outcome text NOT NULL,
+    transition_kind text NOT NULL,
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    block_hash bytea NOT NULL,
+    slot numeric(20,0) NOT NULL,
+    block_no numeric(20,0) NOT NULL,
+    transaction_index integer NOT NULL,
+    chain_point_id bytea NOT NULL,
+    finality_depth numeric(20,0) NOT NULL,
+    transition_digest bytea NOT NULL,
+    transition_record jsonb NOT NULL,
+    availability_terminal_evidence jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT da_payload_terminal_outcomes_header_hash_check CHECK ((octet_length(header_hash) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_outcome_check CHECK ((terminal_outcome = ANY (ARRAY['merged'::text, 'removed'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_kind_check CHECK ((transition_kind = ANY (ARRAY['merge'::text, 'fraud_removal'::text, 'timeout_correction'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_slot_check CHECK ((slot >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_block_no_check CHECK ((block_no >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_chain_point_check CHECK ((octet_length(chain_point_id) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_finality_check CHECK ((finality_depth > 0)),
+    CONSTRAINT da_payload_terminal_outcomes_digest_check CHECK ((octet_length(transition_digest) = 32))
+);
+
+
+--
+-- Name: state_queue_terminal_observer_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.state_queue_terminal_observer_states (
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    state_digest bytea NOT NULL,
+    state_record jsonb NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT state_queue_terminal_observer_states_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT state_queue_terminal_observer_states_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT state_queue_terminal_observer_states_digest_check CHECK ((octet_length(state_digest) = 32))
 );
 
 
@@ -234,7 +293,11 @@ CREATE TABLE public.forced_transaction_utxos (
     tx_id bytea NOT NULL,
     tx_compact bytea NOT NULL,
     forced_inclusion_value bytea NOT NULL,
-    operator_validity text NOT NULL,
+    consensus_profile_id text NOT NULL,
+    native_tx_cbor bytea NOT NULL,
+    transaction_commitment bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
     inclusion_time timestamp with time zone NOT NULL,
     projected_header_hash bytea,
     status text NOT NULL,
@@ -242,7 +305,7 @@ CREATE TABLE public.forced_transaction_utxos (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT forced_transaction_utxos_asset_name_check CHECK (((octet_length(asset_name) >= 1) AND (octet_length(asset_name) <= 32))),
     CONSTRAINT forced_transaction_utxos_check CHECK (((status <> 'awaiting'::text) OR (projected_header_hash IS NULL))),
-    CONSTRAINT forced_transaction_utxos_operator_validity_check CHECK ((operator_validity = ANY (ARRAY['TxIsValid'::text, 'NonExistentInputUtxo'::text, 'InvalidSignature'::text, 'FailedScript'::text, 'FeeTooLow'::text, 'UnbalancedTx'::text]))),
+    CONSTRAINT forced_transaction_utxos_exact_proof_material CHECK (((consensus_profile_id = 'midgard-consensus-v1'::text) AND (octet_length(native_tx_cbor) <= 295041) AND (octet_length(transaction_commitment) = 32) AND (octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32))),
     CONSTRAINT forced_transaction_utxos_status_check CHECK ((status = ANY (ARRAY['awaiting'::text, 'projected'::text, 'finalized'::text]))),
     CONSTRAINT forced_transaction_utxos_tx_id_check CHECK ((octet_length(tx_id) = 32)),
     CONSTRAINT forced_transaction_utxos_tx_order_l1_output_index_check CHECK ((tx_order_l1_output_index >= 0)),
@@ -256,6 +319,9 @@ CREATE TABLE public.forced_transaction_utxos (
 
 CREATE TABLE public.foreign_tip_reconciliations (
     foreign_header_hash bytea NOT NULL,
+    format_version smallint NOT NULL,
+    deployment_marker_schema_version text NOT NULL,
+    deployment_manifest_id text NOT NULL,
     replaced_base_header_hash bytea NOT NULL,
     foreign_header_cbor bytea NOT NULL,
     block_start_time timestamp with time zone NOT NULL,
@@ -266,20 +332,31 @@ CREATE TABLE public.foreign_tip_reconciliations (
     deposit_count bigint NOT NULL,
     forced_transaction_count bigint NOT NULL,
     withdrawal_count bigint NOT NULL,
+    consensus_profile_id text NOT NULL,
     verified_da_payload_cbor bytea,
     verified_da_schema_version integer,
-    status text DEFAULT 'awaiting'::text NOT NULL,
+    verified_da_payload_sha256 bytea,
+    evidence_kind text NOT NULL,
+    status text NOT NULL,
     blocking_reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     resolved_at timestamp with time zone,
     CONSTRAINT foreign_tip_reconciliations_check CHECK ((block_end_time > block_start_time)),
-    CONSTRAINT foreign_tip_reconciliations_check1 CHECK ((((verified_da_payload_cbor IS NULL) AND (verified_da_schema_version IS NULL)) OR ((verified_da_payload_cbor IS NOT NULL) AND (verified_da_schema_version IS NOT NULL)))),
+    CONSTRAINT foreign_tip_reconciliations_check1 CHECK ((((evidence_kind = ANY (ARRAY['pending_v1'::text, 'verified_empty_v1'::text])) AND (verified_da_payload_cbor IS NULL) AND (verified_da_schema_version IS NULL) AND (verified_da_payload_sha256 IS NULL)) OR ((evidence_kind = 'verified_da_v1'::text) AND (octet_length(verified_da_payload_cbor) > 0) AND (verified_da_schema_version = 1) AND (octet_length(verified_da_payload_sha256) = 32)))),
     CONSTRAINT foreign_tip_reconciliations_check2 CHECK ((((status = 'resolved'::text) AND (resolved_at IS NOT NULL) AND (blocking_reason IS NULL)) OR ((status = 'awaiting'::text) AND (resolved_at IS NULL) AND (blocking_reason IS NOT NULL)))),
+    CONSTRAINT foreign_tip_reconciliations_resolved_evidence_check CHECK (((status <> 'resolved'::text) OR (evidence_kind <> 'pending_v1'::text))),
+    CONSTRAINT foreign_tip_reconciliations_format_version_check CHECK ((format_version = 1)),
+    CONSTRAINT foreign_tip_reconciliations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
+    CONSTRAINT foreign_tip_reconciliations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT foreign_tip_reconciliations_evidence_kind_check CHECK ((evidence_kind = ANY (ARRAY['pending_v1'::text, 'verified_empty_v1'::text, 'verified_da_v1'::text]))),
+    CONSTRAINT foreign_tip_reconciliations_verified_empty_check CHECK (((evidence_kind <> 'verified_empty_v1'::text) OR ((deposits_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (forced_transactions_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (withdrawals_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (deposit_count = 0) AND (forced_transaction_count = 0) AND (withdrawal_count = 0)))),
+    CONSTRAINT foreign_tip_reconciliations_verified_da_nonempty_check CHECK (((evidence_kind <> 'verified_da_v1'::text) OR (deposits_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (forced_transactions_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (withdrawals_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (deposit_count <> 0) OR (forced_transaction_count <> 0) OR (withdrawal_count <> 0))),
     CONSTRAINT foreign_tip_reconciliations_deposit_count_check CHECK ((deposit_count >= 0)),
     CONSTRAINT foreign_tip_reconciliations_deposits_root_check CHECK ((deposits_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT foreign_tip_reconciliations_forced_transaction_count_check CHECK ((forced_transaction_count >= 0)),
     CONSTRAINT foreign_tip_reconciliations_forced_transactions_root_check CHECK ((forced_transactions_root ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT foreign_tip_reconciliations_consensus_profile_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
     CONSTRAINT foreign_tip_reconciliations_foreign_header_cbor_check CHECK ((octet_length(foreign_header_cbor) > 0)),
     CONSTRAINT foreign_tip_reconciliations_foreign_header_hash_check CHECK ((octet_length(foreign_header_hash) = 28)),
     CONSTRAINT foreign_tip_reconciliations_replaced_base_header_hash_check CHECK ((octet_length(replaced_base_header_hash) = 28)),
@@ -464,26 +541,16 @@ CREATE TABLE public.pending_block_finalization_txs (
     ordinal integer NOT NULL,
     payload_cbor bytea NOT NULL,
     payload_sha256 bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
     source_table text NOT NULL,
     source_id bytea NOT NULL,
     source_time_stamp_tz timestamp with time zone NOT NULL,
-    CONSTRAINT pending_block_finalization_txs_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32))
+    CONSTRAINT pending_block_finalization_txs_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_txs_cek_program_material_check CHECK (((octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32)))
 );
 
 
---
--- Name: pending_block_finalization_utxos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.pending_block_finalization_utxos (
-    header_hash bytea NOT NULL,
-    outref bytea NOT NULL,
-    ordinal integer NOT NULL,
-    output bytea NOT NULL
-);
-
-
---
 -- Name: pending_block_finalization_withdrawals; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -491,6 +558,10 @@ CREATE TABLE public.pending_block_finalization_withdrawals (
     header_hash bytea NOT NULL,
     member_id bytea NOT NULL,
     ordinal integer NOT NULL,
+    validity text NOT NULL,
+    validity_detail jsonb NOT NULL,
+    classification_revision integer NOT NULL CHECK (classification_revision >= 0),
+    classification_sha256 bytea NOT NULL CHECK (octet_length(classification_sha256) = 32),
     payload_cbor bytea NOT NULL,
     payload_sha256 bytea NOT NULL,
     source_table text NOT NULL,
@@ -505,8 +576,20 @@ CREATE TABLE public.pending_block_finalization_withdrawals (
 --
 
 CREATE TABLE public.pending_block_finalizations (
+    correction_transition_digest text CHECK (correction_transition_digest ~ '^[0-9a-f]{64}$'),
     header_hash bytea NOT NULL,
     submitted_tx_hash bytea,
+    prepared_tx_hash bytea CHECK (prepared_tx_hash IS NULL OR octet_length(prepared_tx_hash) = 32),
+    intended_tx_hash bytea,
+    signed_tx_cbor bytea,
+    CONSTRAINT pending_signed_intent_pair CHECK (
+      (intended_tx_hash IS NULL AND signed_tx_cbor IS NULL) OR
+      (intended_tx_hash IS NOT NULL AND octet_length(intended_tx_hash) = 32 AND
+       signed_tx_cbor IS NOT NULL AND octet_length(signed_tx_cbor) > 0)),
+    CONSTRAINT pending_signed_intent_matches_prepared CHECK (
+      intended_tx_hash IS NULL OR (prepared_tx_hash IS NOT NULL AND intended_tx_hash = prepared_tx_hash)),
+    CONSTRAINT pending_signed_ack_matches_intent CHECK (
+      intended_tx_hash IS NULL OR submitted_tx_hash IS NULL OR intended_tx_hash = submitted_tx_hash),
     block_end_time timestamp with time zone NOT NULL,
     status text NOT NULL,
     observed_confirmed_at_ms bigint,
@@ -529,6 +612,10 @@ CREATE TABLE public.pending_block_finalizations (
     base_forced_transactions_root text NOT NULL,
     expected_forced_transactions_root text NOT NULL,
     header_cbor bytea NOT NULL,
+    format_version smallint NOT NULL,
+    replay_kind text NOT NULL,
+    deployment_marker_schema_version text NOT NULL,
+    deployment_manifest_id text NOT NULL,
     expected_transition_trace_root text NOT NULL,
     expected_event_to_step_root text NOT NULL,
     expected_withdrawal_count bigint NOT NULL,
@@ -537,8 +624,11 @@ CREATE TABLE public.pending_block_finalizations (
     expected_deposit_count bigint NOT NULL,
     expected_total_event_count bigint NOT NULL,
     expected_transition_step_count bigint NOT NULL,
-    ledger_delta_spent jsonb,
-    ledger_delta_produced jsonb,
+    consensus_profile_id text NOT NULL,
+    expected_validation_traces_root text NOT NULL,
+    expected_validation_trace_count bigint NOT NULL,
+    ledger_delta_spent jsonb NOT NULL,
+    ledger_delta_produced jsonb NOT NULL,
     utxo_payload_entry_count bigint,
     utxo_payload_encoded_tuple_bytes bigint,
     mpf_owner_schema smallint,
@@ -561,10 +651,56 @@ CREATE TABLE public.pending_block_finalizations (
     CONSTRAINT pending_block_finalizations_expected_transition_trace_roo_check CHECK ((expected_transition_trace_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT pending_block_finalizations_expected_withdrawal_count_check CHECK ((expected_withdrawal_count >= 0)),
     CONSTRAINT pending_block_finalizations_header_cbor_check CHECK ((octet_length(header_cbor) > 0)),
-    CONSTRAINT pending_block_finalizations_ledger_delta_pair_check CHECK ((((ledger_delta_spent IS NULL) AND (ledger_delta_produced IS NULL)) OR ((ledger_delta_spent IS NOT NULL) AND (ledger_delta_produced IS NOT NULL)))),
-    CONSTRAINT pending_block_finalizations_mpf_replay_all_or_none_check CHECK ((((mpf_owner_schema IS NULL) AND (mpf_owner_binary_sha256 IS NULL) AND (mpf_replay_base_root IS NULL) AND (mpf_replay_candidate_root IS NULL) AND (mpf_replay_event_log IS NULL) AND (mpf_replay_event_log_digest IS NULL) AND (mpf_replay_event_roots IS NULL) AND (mpf_replay_event_count IS NULL)) OR ((mpf_owner_schema = 1) AND (octet_length(mpf_owner_binary_sha256) = 32) AND (octet_length(mpf_replay_base_root) = 32) AND (octet_length(mpf_replay_candidate_root) = 32) AND (octet_length(mpf_replay_event_log) >= 92) AND (octet_length(mpf_replay_event_log_digest) = 32) AND (mpf_replay_event_count >= 0) AND (octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32))))),
+    CONSTRAINT pending_block_finalizations_format_version_check CHECK ((format_version = 1)),
+    CONSTRAINT pending_block_finalizations_replay_kind_check CHECK ((replay_kind = ANY (ARRAY['ledger_delta_v1'::text, 'ledger_delta_native_mpf_v1'::text]))),
+    CONSTRAINT pending_block_finalizations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
+    CONSTRAINT pending_block_finalizations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT pending_block_finalizations_consensus_profile_id_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
+    CONSTRAINT pending_block_finalizations_mpf_replay_all_or_none_check CHECK ((((replay_kind = 'ledger_delta_v1'::text) AND (mpf_owner_schema IS NULL) AND (mpf_owner_binary_sha256 IS NULL) AND (mpf_replay_base_root IS NULL) AND (mpf_replay_candidate_root IS NULL) AND (mpf_replay_event_log IS NULL) AND (mpf_replay_event_log_digest IS NULL) AND (mpf_replay_event_roots IS NULL) AND (mpf_replay_event_count IS NULL)) OR ((replay_kind = 'ledger_delta_native_mpf_v1'::text) AND (mpf_owner_schema = 1) AND (octet_length(mpf_owner_binary_sha256) = 32) AND (octet_length(mpf_replay_base_root) = 32) AND (encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root) AND (octet_length(mpf_replay_candidate_root) = 32) AND (encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root) AND (octet_length(mpf_replay_event_log) >= 92) AND (octet_length(mpf_replay_event_log_digest) = 32) AND (mpf_replay_event_count >= 0) AND (octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32))))),
+    CONSTRAINT pending_block_finalizations_profile_validation_check CHECK (((expected_validation_trace_count = (expected_forced_transaction_count + expected_l2_transaction_count)) AND (((expected_validation_trace_count = 0) AND (expected_validation_traces_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text)) OR ((expected_validation_trace_count > 0) AND (expected_validation_traces_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text))))),
     CONSTRAINT pending_block_finalizations_status_check CHECK ((status = ANY (ARRAY['pending_submission'::text, 'submitted_local_finalization_pending'::text, 'submitted_unconfirmed'::text, 'observed_waiting_stability'::text, 'finalized'::text, 'abandoned'::text]))),
+    CONSTRAINT pending_block_finalizations_validation_count_check CHECK ((expected_validation_trace_count >= 0)),
+    CONSTRAINT pending_block_finalizations_validation_root_check CHECK ((expected_validation_traces_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT pending_block_finalizations_utxo_payload_size_pair_check CHECK ((((utxo_payload_entry_count IS NULL) AND (utxo_payload_encoded_tuple_bytes IS NULL)) OR ((utxo_payload_entry_count >= 0) AND (utxo_payload_encoded_tuple_bytes >= 0) AND ((utxo_payload_entry_count <> 0) OR (utxo_payload_encoded_tuple_bytes = 0)))))
+);
+
+
+--
+-- Name: pending_block_finalization_validation_traces; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_block_finalization_validation_traces (
+    header_hash bytea NOT NULL,
+    member_id bytea NOT NULL,
+    ordinal integer NOT NULL,
+    payload_cbor bytea NOT NULL,
+    payload_sha256 bytea NOT NULL,
+    source_table text NOT NULL,
+    source_id bytea NOT NULL,
+    source_time_stamp_tz timestamp with time zone NOT NULL,
+    CONSTRAINT pending_block_finalization_validation_traces_ordinal_check CHECK ((ordinal >= 0)),
+    CONSTRAINT pending_block_finalization_validation_traces_payload_check CHECK ((octet_length(payload_cbor) > 0)),
+    CONSTRAINT pending_block_finalization_validation_traces_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_validation_traces_pkey PRIMARY KEY (header_hash, member_id),
+    CONSTRAINT pending_block_finalization_validation_traces_ordinal_key UNIQUE (header_hash, ordinal)
+);
+
+-- Minimal event/execution-keyed validation witness openings retained for
+-- public deterministic fault-proof reconstruction.
+CREATE TABLE public.pending_block_finalization_validation_trace_witnesses (
+    header_hash bytea NOT NULL,
+    member_id bytea NOT NULL,
+    ordinal integer NOT NULL,
+    payload_cbor bytea NOT NULL,
+    payload_sha256 bytea NOT NULL,
+    source_table text NOT NULL,
+    source_id bytea NOT NULL,
+    source_time_stamp_tz timestamp with time zone NOT NULL,
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_check CHECK ((ordinal >= 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_payload_check CHECK ((octet_length(payload_cbor) > 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_pkey PRIMARY KEY (header_hash, member_id),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_key UNIQUE (header_hash, ordinal)
 );
 
 
@@ -599,15 +735,64 @@ CREATE TABLE public.state_queue_mutation_leases (
 
 
 --
+-- Name: cek_program_material_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_entries (
+    material_root bytea PRIMARY KEY,
+    da_value_cbor bytea NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT cek_program_material_entries_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_entries_value_check CHECK ((octet_length(da_value_cbor) > 0))
+);
+
+
+--
+-- Name: cek_program_material_memberships; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_memberships (
+    program_envelope_hash bytea NOT NULL,
+    material_root bytea NOT NULL,
+    durable_pin boolean DEFAULT true NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (program_envelope_hash, material_root),
+    CONSTRAINT cek_program_material_memberships_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
+    CONSTRAINT cek_program_material_memberships_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_memberships_root_fkey FOREIGN KEY (material_root) REFERENCES public.cek_program_material_entries(material_root) ON DELETE RESTRICT
+);
+
+
+--
+-- Name: cek_program_material_admission_owners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_admission_owners (
+    tx_id bytea NOT NULL,
+    program_envelope_hash bytea NOT NULL,
+    material_root bytea NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (tx_id, program_envelope_hash, material_root),
+    CONSTRAINT cek_program_material_admission_owners_tx_id_check CHECK ((octet_length(tx_id) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_membership_fkey FOREIGN KEY (program_envelope_hash, material_root) REFERENCES public.cek_program_material_memberships(program_envelope_hash, material_root) ON DELETE CASCADE
+);
+
+
+--
 -- Name: tx_admission_payloads; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.tx_admission_payloads (
     tx_id bytea NOT NULL,
     tx_canonical_cbor bytea NOT NULL,
-    tx_canonical_cbor_sha256 bytea NOT NULL,
+    tx_full_hash_v1 bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
+    CONSTRAINT tx_admission_payloads_cek_program_material_sidecar_check CHECK (((octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32))),
     CONSTRAINT tx_admission_payloads_tx_canonical_cbor_check CHECK ((octet_length(tx_canonical_cbor) > 0)),
-    CONSTRAINT tx_admission_payloads_tx_canonical_cbor_sha256_check CHECK ((octet_length(tx_canonical_cbor_sha256) = 32))
+    CONSTRAINT tx_admission_payloads_tx_full_hash_v1_check CHECK ((octet_length(tx_full_hash_v1) = 32))
 );
 
 
@@ -680,6 +865,8 @@ CREATE TABLE public.tx_rejections (
 --
 
 CREATE TABLE public.withdrawal_utxos (
+    classification_revision integer DEFAULT 0 NOT NULL CHECK (classification_revision >= 0),
+    reopened_from_header_hash bytea CHECK (octet_length(reopened_from_header_hash) = 28),
     event_id bytea NOT NULL,
     raw_event_info bytea NOT NULL,
     settlement_event_info bytea,
@@ -788,6 +975,22 @@ ALTER TABLE ONLY public.da_payload_publications
 
 ALTER TABLE ONLY public.da_payloads
     ADD CONSTRAINT da_payloads_pkey PRIMARY KEY (header_hash);
+
+
+--
+-- Name: da_payload_terminal_outcomes da_payload_terminal_outcomes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_pkey PRIMARY KEY (deployment_identity_digest, header_hash);
+
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_transition_digest_key UNIQUE (deployment_identity_digest, transition_digest);
+
+
+ALTER TABLE ONLY public.state_queue_terminal_observer_states
+    ADD CONSTRAINT state_queue_terminal_observer_states_pkey PRIMARY KEY (deployment_identity_digest);
 
 
 --
@@ -958,23 +1161,6 @@ ALTER TABLE ONLY public.pending_block_finalization_txs
     ADD CONSTRAINT pending_block_finalization_txs_pkey PRIMARY KEY (header_hash, member_id);
 
 
---
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_header_hash_ordinal_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_header_hash_ordinal_key UNIQUE (header_hash, ordinal);
-
-
---
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_pkey PRIMARY KEY (header_hash, outref);
-
-
---
 -- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_header_hash_ordinal_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1101,6 +1287,13 @@ CREATE INDEX idx_da_payload_publications_retry ON public.da_payload_publications
 --
 
 CREATE INDEX idx_da_payloads_created_at ON public.da_payloads USING btree (created_at);
+
+
+--
+-- Name: idx_da_payload_terminal_outcomes_authority; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_da_payload_terminal_outcomes_authority ON public.da_payload_terminal_outcomes USING btree (deployment_identity_digest, state_queue_policy_id, finality_depth, header_hash);
 
 
 --
@@ -1346,14 +1539,6 @@ ALTER TABLE ONLY public.pending_block_finalization_deposits
 
 
 --
--- Name: pending_block_finalization_deposits pending_block_finalization_deposits_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_deposits
-    ADD CONSTRAINT pending_block_finalization_deposits_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.deposits_utxos(event_id) ON DELETE RESTRICT;
-
-
---
 -- Name: pending_block_finalization_event_to_step pending_block_finalization_event_to_step_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1386,27 +1571,21 @@ ALTER TABLE ONLY public.pending_block_finalization_txs
 
 
 --
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: pending_block_finalization_validation_traces pending_block_finalization_validation_traces_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
+ALTER TABLE ONLY public.pending_block_finalization_validation_traces
+    ADD CONSTRAINT pending_block_finalization_validation_traces_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.pending_block_finalization_validation_trace_witnesses
+    ADD CONSTRAINT pending_block_finalization_validation_trace_witnesses_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
 
 
---
 -- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pending_block_finalization_withdrawals
     ADD CONSTRAINT pending_block_finalization_withdrawals_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
-
-
---
--- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_withdrawals
-    ADD CONSTRAINT pending_block_finalization_withdrawals_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.withdrawal_utxos(event_id) ON DELETE RESTRICT;
 
 
 --
@@ -1426,3 +1605,271 @@ INSERT INTO public.commit_build_calibration (
     ms_per_tx_ewma,
     sample_count
 ) VALUES (1, 1.0, 0);
+
+
+-- Durable user intent and exact completed bodies, committed before signing.
+-- Nonces remain reserved after confirmation: a rollback must resume the same
+-- intent, not assign its event ID to an unrelated request.
+CREATE TABLE public.event_history_submissions (
+    submission_id text PRIMARY KEY CHECK (length(submission_id) BETWEEN 1 AND 128),
+    kind text NOT NULL CHECK (kind IN ('Deposit', 'Withdrawal')),
+    policy_id text NOT NULL CHECK (policy_id ~ '^[0-9a-f]{56}$'),
+    wallet_address text NOT NULL,
+    intent_hash text NOT NULL CHECK (intent_hash ~ '^[0-9a-f]{64}$'),
+    nonce_out_ref text NOT NULL UNIQUE,
+    request jsonb NOT NULL CHECK (jsonb_typeof(request) = 'object'),
+    checkpoint jsonb NOT NULL CHECK (jsonb_typeof(checkpoint) = 'object'),
+    revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+CREATE TABLE public.event_history_submission_inputs (
+    out_ref text PRIMARY KEY,
+    submission_id text NOT NULL REFERENCES public.event_history_submissions(submission_id) ON DELETE RESTRICT
+);
+
+-- Node-private canonical history ownership. A stored ready row is a checkpoint,
+-- never permission for a new process to resume without revalidation.
+CREATE TABLE public.event_history_authority (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    deployment_identity bytea NOT NULL CHECK (octet_length(deployment_identity) = 32),
+    owner_token uuid NOT NULL,
+    generation bigint NOT NULL CHECK (generation >= 0),
+    state text NOT NULL CHECK (state IN ('recovering', 'ready', 'suspended')),
+    reason text NOT NULL CHECK (length(reason) > 0),
+    lease_until timestamptz NOT NULL,
+    point_slot bigint CHECK (point_slot >= 0),
+    point_hash bytea CHECK (octet_length(point_hash) = 32),
+    snapshot_digest bytea CHECK (octet_length(snapshot_digest) = 32),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CHECK ((point_slot IS NULL) = (point_hash IS NULL)),
+    CHECK ((point_slot IS NULL) = (snapshot_digest IS NULL)),
+    CHECK (state <> 'ready' OR point_slot IS NOT NULL)
+);
+
+-- Immutable source replay chunks can precede the first projection cursor.
+-- Parent links retain every intermediate receipt without rescanning the entire
+-- range inside the final seed transaction. Only the owned recovery writer adds
+-- rows and nothing updates them. They are read only while the cursor anchor is
+-- the seed point; once journal retention moves the anchor past it, the owned
+-- recovery writer deletes them in bounded batches, successors first.
+CREATE TABLE public.event_history_replay_receipts (
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    block_slot bigint NOT NULL CHECK (block_slot >= 0),
+    block_height bigint NOT NULL CHECK (block_height >= 0),
+    parent_hash bytea NOT NULL CHECK (octet_length(parent_hash) = 32),
+    predecessor_hash bytea CHECK (octet_length(predecessor_hash) = 32),
+    activation_hash bytea NOT NULL CHECK (octet_length(activation_hash) = 32),
+    blocks_replayed bigint NOT NULL CHECK (blocks_replayed > 0),
+    receipt text NOT NULL CHECK (length(receipt) > 0),
+    receipt_digest bytea NOT NULL CHECK (octet_length(receipt_digest) = 32),
+    range_digest bytea NOT NULL CHECK (octet_length(range_digest) = 32),
+    PRIMARY KEY (binding_digest, block_hash),
+    FOREIGN KEY (binding_digest, predecessor_hash)
+      REFERENCES public.event_history_replay_receipts(binding_digest, block_hash) ON DELETE RESTRICT,
+    FOREIGN KEY (binding_digest, activation_hash)
+      REFERENCES public.event_history_replay_receipts(binding_digest, block_hash) ON DELETE RESTRICT,
+    CONSTRAINT event_history_replay_receipts_frontier_check
+    CHECK ((blocks_replayed = 1 AND predecessor_hash IS NULL AND activation_hash = block_hash)
+       OR (blocks_replayed > 1 AND predecessor_hash IS NOT NULL AND predecessor_hash = parent_hash AND predecessor_hash <> block_hash))
+);
+
+-- Node-private source replay projection. A saved cursor is not readiness or
+-- source authority; startup must acquire a new owner and re-admit its ancestry.
+CREATE TABLE public.event_history_cursor (
+    binding_digest bytea PRIMARY KEY CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    origin_receipt text NOT NULL CHECK (length(origin_receipt) > 0),
+    origin_receipt_digest bytea NOT NULL CHECK (octet_length(origin_receipt_digest) = 32),
+    anchor_hash bytea NOT NULL CHECK (octet_length(anchor_hash) = 32),
+    anchor_slot bigint NOT NULL CHECK (anchor_slot >= 0),
+    anchor_height bigint NOT NULL CHECK (anchor_height >= 0),
+    anchor_snapshot_digest bytea NOT NULL CHECK (octet_length(anchor_snapshot_digest) = 32),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    head_slot bigint NOT NULL CHECK (head_slot >= anchor_slot),
+    head_height bigint NOT NULL CHECK (head_height >= anchor_height),
+    head_application_revision bigint CHECK (head_application_revision > 0),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    revision bigint NOT NULL CHECK (revision >= 0),
+    addresses jsonb NOT NULL CHECK (jsonb_typeof(addresses) = 'array'),
+    CHECK (head_application_revision IS NOT NULL OR
+           (head_hash = anchor_hash AND head_slot = anchor_slot AND head_height = anchor_height AND snapshot_digest = anchor_snapshot_digest)),
+    CHECK (head_application_revision IS NULL OR head_application_revision <= revision)
+);
+
+-- A block can have several applications after rollback. Immutable ledger
+-- receipts are checked equal across them; undo belongs to the application.
+-- Bounded retention: when the cursor anchor advances past the rollback horizon
+-- the applications at or behind it (and any orphan branch rooted there) are
+-- deleted in the same transaction, and the first retained canonical application
+-- has a null parent_application_revision (its parent is the anchor itself).
+CREATE TABLE public.event_history_block_applications (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    application_revision bigint NOT NULL CHECK (application_revision > 0),
+    parent_hash bytea NOT NULL CHECK (octet_length(parent_hash) = 32),
+    parent_application_revision bigint CHECK (parent_application_revision > 0),
+    block_slot bigint NOT NULL CHECK (block_slot >= 0),
+    block_height bigint NOT NULL CHECK (block_height >= 0),
+    before_snapshot_digest bytea NOT NULL CHECK (octet_length(before_snapshot_digest) = 32),
+    after_snapshot_digest bytea NOT NULL CHECK (octet_length(after_snapshot_digest) = 32),
+    ledger_receipt text NOT NULL,
+    ledger_receipt_digest bytea NOT NULL CHECK (octet_length(ledger_receipt_digest) = 32),
+    undo_record text NOT NULL,
+    undo_digest bytea NOT NULL CHECK (octet_length(undo_digest) = 32),
+    canonical boolean NOT NULL,
+    PRIMARY KEY (binding_digest, block_hash, application_revision),
+    UNIQUE (binding_digest, application_revision),
+    FOREIGN KEY (binding_digest, parent_hash, parent_application_revision)
+      REFERENCES public.event_history_block_applications(binding_digest, block_hash, application_revision) ON DELETE RESTRICT,
+    CHECK (parent_application_revision IS NULL OR parent_application_revision < application_revision)
+);
+CREATE UNIQUE INDEX uniq_event_history_canonical_block
+    ON public.event_history_block_applications(binding_digest, block_hash) WHERE canonical;
+CREATE UNIQUE INDEX uniq_event_history_canonical_height
+    ON public.event_history_block_applications(binding_digest, block_height) WHERE canonical;
+
+CREATE TABLE public.event_history_live_outputs (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    tx_hash bytea NOT NULL CHECK (octet_length(tx_hash) = 32),
+    output_index integer NOT NULL CHECK (output_index >= 0),
+    output_record text NOT NULL,
+    output_digest bytea NOT NULL CHECK (octet_length(output_digest) = 32),
+    PRIMARY KEY (binding_digest, tx_hash, output_index)
+);
+
+CREATE TABLE public.event_history_incarnations (
+    binding_digest bytea NOT NULL REFERENCES public.event_history_cursor(binding_digest) ON DELETE RESTRICT,
+    incarnation_id bytea NOT NULL CHECK (octet_length(incarnation_id) = 32),
+    kind text NOT NULL CHECK (kind IN ('deposit', 'withdrawal')),
+    event_id bytea NOT NULL CHECK (octet_length(event_id) > 0),
+    event_key bytea NOT NULL CHECK (octet_length(event_key) = 32),
+    origin_canonical boolean NOT NULL,
+    incarnation_record text NOT NULL,
+    incarnation_digest bytea NOT NULL CHECK (octet_length(incarnation_digest) = 32),
+    PRIMARY KEY (binding_digest, incarnation_id)
+);
+-- Archived signed membership survives removal of a live projection. Bind its
+-- public ID to the retained incarnation so later ID reuse cannot rebind it.
+CREATE UNIQUE INDEX uniq_event_history_incarnation_event
+    ON public.event_history_incarnations(binding_digest, incarnation_id, event_id);
+-- A legitimate retirement preserves its canonical origin and reservation.
+CREATE UNIQUE INDEX uniq_event_history_canonical_event
+    ON public.event_history_incarnations(binding_digest, kind, event_id) WHERE origin_canonical;
+CREATE UNIQUE INDEX uniq_event_history_canonical_key
+    ON public.event_history_incarnations(binding_digest, kind, event_key) WHERE origin_canonical;
+-- Orphans are few; ledger repair and disposition look for them on every
+-- reconciliation without scanning the canonical incarnations.
+CREATE INDEX idx_event_history_incarnations_orphans
+    ON public.event_history_incarnations(binding_digest) WHERE NOT origin_canonical;
+
+-- Private association to the exact authenticated admission incarnation. Null is
+-- an unassociated local row, never production history eligibility; the source
+-- owner's reconciler refuses to adopt existing rows by public ID alone.
+ALTER TABLE public.deposits_utxos
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT deposits_utxos_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT deposits_utxos_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT;
+ALTER TABLE public.withdrawal_utxos
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT withdrawal_utxos_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT withdrawal_utxos_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT;
+-- Event rows by associated incarnation: orphan repair, disposition and a
+-- forward block's eligibility check find them by association, not public ID.
+CREATE INDEX idx_deposits_utxos_history_association
+    ON public.deposits_utxos(history_binding_digest, history_incarnation_id);
+CREATE INDEX idx_withdrawal_utxos_history_association
+    ON public.withdrawal_utxos(history_binding_digest, history_incarnation_id);
+ALTER TABLE public.pending_block_finalization_deposits
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT pending_block_finalization_deposits_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT pending_block_finalization_deposits_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT,
+    ADD CONSTRAINT pending_block_finalization_deposits_member_id_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id, member_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id, event_id)
+      MATCH SIMPLE ON DELETE RESTRICT;
+ALTER TABLE public.pending_block_finalization_withdrawals
+    ADD COLUMN history_binding_digest bytea,
+    ADD COLUMN history_incarnation_id bytea,
+    ADD CONSTRAINT pending_block_finalization_withdrawals_history_association_check CHECK (
+      (history_binding_digest IS NULL AND history_incarnation_id IS NULL) OR
+      (history_binding_digest IS NOT NULL AND octet_length(history_binding_digest) = 32 AND
+       history_incarnation_id IS NOT NULL AND octet_length(history_incarnation_id) = 32)),
+    ADD CONSTRAINT pending_block_finalization_withdrawals_history_association_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id)
+      MATCH FULL ON DELETE RESTRICT,
+    ADD CONSTRAINT pending_block_finalization_withdrawals_member_id_fkey
+      FOREIGN KEY (history_binding_digest, history_incarnation_id, member_id)
+      REFERENCES public.event_history_incarnations(binding_digest, incarnation_id, event_id)
+      MATCH SIMPLE ON DELETE RESTRICT;
+
+-- Logged inverse evidence for locally accepted ledger batches. Ordering is
+-- established under the Ready authority lock, not admission arrival or clocks.
+-- A receipt alone never authorizes undo of a published L2 header.
+CREATE TABLE public.event_history_l2_ledger_receipts (
+    sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    owner_generation bigint NOT NULL CHECK (owner_generation >= 0),
+    checkpoint_revision bigint NOT NULL CHECK (checkpoint_revision >= 0),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    tx_ids bytea[] NOT NULL CHECK (cardinality(tx_ids) > 0),
+    reference_outrefs bytea[] NOT NULL,
+    ledger_before jsonb NOT NULL CHECK (jsonb_typeof(ledger_before) = 'array'),
+    reference_before jsonb NOT NULL CHECK (jsonb_typeof(reference_before) = 'array'),
+    deposits_before jsonb NOT NULL CHECK (jsonb_typeof(deposits_before) = 'array'),
+    payloads_before jsonb NOT NULL CHECK (jsonb_typeof(payloads_before) = 'array'),
+    ledger_after jsonb CHECK (jsonb_typeof(ledger_after) = 'array'),
+    reversed_at_revision bigint CHECK (reversed_at_revision >= 0),
+    FOREIGN KEY (binding_digest) REFERENCES public.event_history_cursor(binding_digest)
+      ON DELETE RESTRICT
+);
+CREATE INDEX event_history_l2_ledger_receipts_unreversed
+    ON public.event_history_l2_ledger_receipts(binding_digest, sequence)
+    WHERE reversed_at_revision IS NULL;
+
+-- Durable bridge between source-authorized native CAS and atomic dependent SQL.
+-- Retain applied receipts: they bind retired journal memberships to incarnations.
+CREATE TABLE public.event_history_recovery_plans (
+    recovery_id bytea PRIMARY KEY CHECK (octet_length(recovery_id) = 32),
+    binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
+    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    header_hash bytea NOT NULL CHECK (octet_length(header_hash) = 28),
+    intent text NOT NULL,
+    evidence_digest bytea NOT NULL CHECK (octet_length(evidence_digest) = 32),
+    checkpoint_revision bigint NOT NULL CHECK (checkpoint_revision >= 0),
+    head_hash bytea NOT NULL CHECK (octet_length(head_hash) = 32),
+    snapshot_digest bytea NOT NULL CHECK (octet_length(snapshot_digest) = 32),
+    owner_generation bigint NOT NULL CHECK (owner_generation >= 0),
+    state text NOT NULL CHECK (state IN ('prepared', 'applied')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX event_history_recovery_plans_prepared
+    ON public.event_history_recovery_plans (binding_digest) WHERE state = 'prepared';

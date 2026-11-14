@@ -3,7 +3,7 @@ title: "Server HTTP API"
 description: "The HTTP routes exposed by the Midgard node: unauthenticated routes for submission and queries, and admin-gated routes for initialization and operational control."
 ---
 
-The `listen` command starts the node's HTTP server together with all background
+The `listen` command starts the node's HTTP server together with its configured background
 fibers. Every route below is registered in `src/commands/listen-router.ts`.
 
 ## Starting the listener
@@ -17,112 +17,351 @@ node dist/index.js listen --with-monitoring
 ```
 
 The server binds the port from `PORT` in your environment (the examples use
-`http://127.0.0.1:3000`). With `--with-monitoring`, Prometheus metrics are also
+`http://127.0.0.1:3000`), or, with `HTTP_SOCKET_PATH` set, listens on that
+Unix socket instead and opens no TCP port. With `--with-monitoring`, Prometheus metrics are also
 served on `PROM_METRICS_PORT` at `/metrics`.
 
 ## Access control
 
 Routes fall into two classes. Public routes need no credentials. Admin routes are
 gated by `ADMIN_API_KEY` and require the key in the `x-midgard-admin-key` request
-header; a missing or wrong key is denied before the handler runs.
+header; a missing or wrong key is denied before the handler runs. Admin
+mutations also need a signed session; see [Admin routes](#admin-routes).
 
-"Public" here means unauthenticated, not safe to expose to the open internet. TLS,
-rate limiting, and ingress hardening are
-[readiness blockers](/docs/getting-started/status), not solved problems.
+"Public" here means unauthenticated. On the `preprod-public`,
+`preprod-rehearsal` and `mainnet` profiles the node has no TCP listener: it
+serves plain HTTP only on its Unix socket (`HTTP_SOCKET_PATH`, in a directory
+no other user can enter) and refuses to start without one. A TLS ingress in
+front of it serves TLS 1.3 with the certificate for
+`MIDGARD_PUBLIC_API_ORIGIN`; see the [public deployment
+guide](/docs/operators/node/preprod-public-deploy#tls-ingress). Development
+and testing profiles serve plain HTTP over TCP for local use. Remaining
+public-deployment work is listed under
+[readiness blockers](/docs/getting-started/status). Every route is rate limited;
+see [Request rate limits](#request-rate-limits).
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
-`ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
-queue inspection, mutation-lease coordination, and log routes). Keep it set in
-any shared or remotely reachable environment.
+  `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
+  queue inspection, operator status, and log routes). Keep it set in any shared
+  or remotely reachable environment.
 </Callout>
 
 ## Public routes
 
 ### Health and readiness
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/healthz` | Liveness only: confirms the server is running. |
-| `GET` | `/readyz` | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
-| `GET` | `/protocol-info` | Stable public facts external transaction builders need (includes the current slot). |
+| Method | Route              | Purpose                                                                                                                                                                                                   |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/healthz`         | Liveness only: confirms the server is running.                                                                                                                                                            |
+| `GET`  | `/readyz`          | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
+| `GET`  | `/pipeline-status` | Admission, mempool and validation pipeline counts and age diagnostics.                                                                                                                                    |
+| `GET`  | `/protocol-info`   | Stable public facts external transaction builders need (includes the current slot).                                                                                                                       |
 
 ### Transaction submission and status
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/submit` | Validate, normalize, and enqueue a submitted L2 transaction. Body must be raw Midgard canonical transaction CBOR with `Content-Type: application/cbor`. |
-| `GET` | `/tx-status` | Resolve the node's canonical status for a transaction (`?tx_hash=...`). |
-| `GET` | `/tx` | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`). |
-| `GET` | `/txs` | Return the address-history tx payloads for an address (`?address=...`). |
+| Method | Route          | Purpose                                                                                                                                                                                                                                   |
+| ------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/submit`      | Validate, normalize, and enqueue a submitted L2 transaction. Body must be a canonical V1 proof submission envelope (version and canonical transaction bytes) with `Content-Type: application/vnd.midgard.v1+cbor`.                        |
+| `POST` | `/tx/evaluate` | Return the ex-units each Plutus redeemer of a draft transaction spends under Phase B cost accounting, against the node's current ledger state. Same body as `/submit`; the draft's declared ex-units, fee and signatures are not checked. |
+| `GET`  | `/tx-status`   | Resolve the node's canonical status for a transaction (`?tx_hash=...`).                                                                                                                                                                   |
+| `POST` | `/tx-status`   | Batch status lookup with JSON `{ "txHashes": ["..."] }`, containing 1–100 transaction hashes.                                                                                                                                             |
+| `GET`  | `/tx`          | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                                   |
+| `GET`  | `/txs`         | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                                   |
+
+`/tx-status` answers `committed` once a block includes the transaction, with
+that block's `headerHash`, and `committedMeaning` says how the node knows:
+`immutable_db_inclusion_not_confirmed_ledger_merge` when the block is one of
+this node's own, `landed_block_inclusion_not_confirmed_ledger_merge` when it
+is a block another operator committed and this node saw land on L1. Neither
+means the merge is final: `confirmedLedgerFinalized` turns `true` once the
+block is merged into the confirmed ledger and that merge is confirmation-depth
+deep. A rollback that takes the landed block off L1 clears that inclusion,
+and the transaction answers from the row this node still holds for it:
+`pending_commit` from `processed_mempool`, `accepted` from `mempool`. Once no
+rollback can reach the block's merge, the node keeps a landed-block inclusion
+for as long as it keeps its own committed transactions, so the answer stays
+`committed`. `/pipeline-status` lists both meanings, as an
+array, under `finalityVocabulary.txStatusCommittedMeaning`.
 
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
-`200` for a duplicate, `415` when the content type is not `application/cbor`,
-`400` for an invalid or non-normalizable payload, `409` on a tx-id byte
-conflict, and `503` when the durable admission backlog is full.
+`200` for a duplicate, `415` for the wrong media type, `411` for a request
+without `Content-Length`, `413` for a body that exceeds or fails its bounded
+read, `400` for malformed content, and `409` for a transaction-identity
+conflict or a spent input. A `/submit` or `/tx/evaluate` body holds one envelope around at most
+one largest transaction, 295,048 bytes; a larger declared length is refused
+before the body is read. Capacity or admission-writer unavailability
+returns `503`; other operational failures can return `500`. HTTP admission
+is distinct from successful ledger validation or settlement. With
+`--with-monitoring`, each refusal is counted in
+`submit_refusal_count{reason}`; the node logs only the first refusal of each
+reason per second, with the number left unlogged since the previous line.
+
+Before admission the node runs the stateless part of validation (Phase A with
+its fee rule and network, then expiry) and refuses with `400` and
+validation's own code: `E_INVALID_SIGNATURE` (an address witness that does
+not verify), `E_MIN_FEE` (a fee under `MIN_FEE_A` × size + `MIN_FEE_B`),
+`E_NETWORK_ID_MISMATCH` (a body network id other than the node's) and
+`E_VALIDITY_INTERVAL_MISMATCH` (a validity interval that ended 60 seconds or
+more before the node's wall clock). These checks need no database. Phase A's
+other verdicts are left to the validation pool. A node whose signature
+verifier is not initialised answers `503`.
+
+The node answers `/submit` from memory: a `202` means accepted, not stored.
+Each accepted transaction waits in a bounded pending set until the admission
+writer's next group commit to Postgres, so a node crash can lose transactions
+it already acknowledged; a client that needs certainty resubmits until
+`/tx-status` reports the transaction. A graceful stop gives the writer ten
+seconds to write what it holds and logs the id of every transaction left
+unwritten. A pending transaction reads as `queued` on `/tx-status`.
+
+A duplicate of a pending or recently written transaction answers `200`
+without a database read; its `status` is the one the node last wrote, so read
+`/tx-status` for the current one. The same id with different witnesses
+answers `409` while the first version is pending or recently written; a
+variant only the database still holds answers `202`, and the stored version
+stays. When the oldest pending transaction has waited more than 30 seconds
+for Postgres, `/submit` answers `503` and `/readyz` reports
+`admission_writer_stalled:<oldestPendingAgeMs>:<stallMs>` until the writes go
+through again. A row Postgres refuses outright is dropped with a counter
+(`admission_write_poison_total`) and an error log, so it cannot block the rows
+behind it; its transaction then reads as not found.
+
+First seen wins on inputs. Each pending transaction claims the inputs it
+spends from the moment it is acknowledged until its verdict. A `/submit`
+transaction spending an input another pending transaction claimed answers
+`409` with `error: "E_INPUT_SPENT"`, `reason: "claimed"` and the claiming
+transaction in `spentBy`; one whose input is neither in the node's ledger nor
+produced by a pending transaction answers the same `409` with
+`reason: "not_in_ledger"`. The body also carries `txId`, `outRef` and a
+`message`. The duplicate check comes first, so resubmitting a pending
+transaction still answers `200`. Read `/tx-status` before treating
+`E_INPUT_SPENT` as a failure: the transaction may itself be the one that spent
+the input. The node never evicts or replaces an acknowledged transaction. A
+claim stays across a validation retry, goes at the verdict, and is rebuilt
+from the backlog on restart. Transactions from `/peer/txs` are never refused
+for their inputs.
+
+A `503` from `/submit` carries `Retry-After: 5`. A `429`, `503` or `409`
+keeps the connection open for the retry; other refusals of a `POST` close it.
+
+The envelope decode and the submission check run on a pool of worker threads
+apart from the validation workers (`SUBMIT_INGRESS_WORKER_POOL_SIZE`, default
+4); the main thread only reads the body and hands it over. A `/submit` request
+holds a slot of that pool's queue from the body read to the verdict:
+`SUBMIT_INGRESS_WORKER_QUEUE` slots (default 256) and
+`SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES` bytes. A full queue answers `503` with
+`Submit ingress capacity is full; retry later`. A check worker that crashes or
+stalls is replaced; the requests it held, and any that arrive while no worker
+is running, get `503` with `Submit check is unavailable; retry later`.
+
+The same workers check every `/peer/txs` transaction, and each node checks
+every transaction of the cluster once, so size the pool for the cluster's TPS.
+One worker checks about 4,400 txs a second of 1 input and 2 outputs (0.19 ms
+each), 2,100 of 4/4 (0.44 ms) or 650 of 16/16 (1.52 ms). The default of 4
+covers about 8,400 4/4 txs a second; give the pool one more worker than
+cluster TPS divided by the per-worker rate.
+The durable admission backlog
+is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default 300,000, which is
+60 s at 5,000 TPS) and by payload bytes (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`,
+default 300,000 KiB). Both defaults are provisional until the node's
+throughput gate has measured them. `/submit` sheds first: it answers `503`
+once the backlog reaches 80 % of either bound, and its body's `maxBacklog` or
+`maxBacklogBytes` names that 80 % share. `POST /peer/txs` admits up to the
+full bound. Both checks run in memory before the write, so a shed or full
+backlog answers `503` without touching the database. `/readyz` turns not-ready
+at 95 % of the row bound, after `/submit` has started shedding. A duplicate
+costs no backlog, so it still answers `200` while the backlog is full.
+
+A resubmission is a duplicate while the node keeps its admission row. An
+accepted or rejected row is kept for `ADMISSION_TERMINAL_RETENTION_MS` after
+its verdict (default one hour; `0` keeps them), and for as long as the
+transaction is still pending or its rejection is retained. After that the
+same transaction is admitted again (`202`) and validated again; `/tx-status`
+never reads the deleted row, so its answer does not change.
+
+`POST /tx/evaluate` answers `200` with
+`{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal
+strings except `tag`), or `422` with `E_TX_EVALUATION_FAILED` and a detail
+when a script fails, an input is missing, or a script exceeds the
+per-transaction cap. Scripts run on the validation worker pool; at most half
+the pool's workers serve evaluations at once, and a request beyond that, or
+one the pool fails, gets `503` with `Retry-After: 5`.
 
 ### UTxO and ledger queries
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/utxos` | Spendable mempool-ledger UTxOs for an address (`?address=...`). |
-| `GET` | `/utxo` | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`). |
+| Method | Route               | Purpose                                                                                             |
+| ------ | ------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET`  | `/utxos`            | Spendable mempool-ledger UTxOs for an address (`?address=...`).                                     |
+| `GET`  | `/utxo`             | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`).                       |
 | `POST` | `/utxos?by-outrefs` | Spendable UTxOs for a requested list of `txHash#outputIndex` references, supplied in the JSON body. |
-| `GET` | `/block` | Tx hashes referenced by a committed block header (`?header_hash=...`). |
-| `GET` | `/deposit-status` | One serialized deposit row by event id or L1 tx hash. |
+| `GET`  | `/block`            | Tx hashes referenced by a committed block header (`?header_hash=...`).                              |
+| `GET`  | `/deposit-status`   | One serialized deposit row by event id or L1 tx hash.                                               |
 
-### Building an unsigned deposit
+## Request rate limits
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/deposit/build` | Build an unsigned L1 deposit transaction from a caller-supplied wallet view and return CBOR for external signing. |
+Every route passes a token-bucket limiter before the node reads the body, queries
+the database or evaluates scripts. Each client has one bucket per route class,
+and each public class also has one global bucket shared by all clients. A
+request over either bucket gets `429` with `Retry-After` set to the whole seconds
+until every refusing bucket has a token again, and this body:
 
-The caller supplies the funding address plus the exact wallet UTxOs that may be
-spent; the node holds no signing key and returns `unsignedTxCbor` for the caller
-to sign externally.
-
-```sh
-curl -X POST http://127.0.0.1:3000/deposit/build \
-  -H 'content-type: application/json' \
-  -d '{
-    "l2Address": "addr_test1...",
-    "lovelace": "12000000",
-    "fundingAddress": "addr_test1...",
-    "fundingUtxos": [
-      {
-        "txHash": "11...11",
-        "outputIndex": 0,
-        "address": "addr_test1...",
-        "assets": { "lovelace": "30000000" }
-      }
-    ]
-  }'
+```json
+{ "error": "Request rate exceeded", "error_code": "E_HTTP_RATE_LIMITED" }
 ```
 
-Optional body fields include `l2Datum` (even-length hex inline datum; Midgard L2
-outputs support only absent or inline datums, never datum-hash outputs),
-`additionalAssets` (an array of `{ unit, amount }`), and per-UTxO
-`datumHash` / `datum` / `scriptRef` hex fields preserved in the external wallet
-view.
+| Class      | Routes                                   | Per client (burst, refill) | Per /24 or /48 (burst, refill) | Global (burst, refill) |
+| ---------- | ---------------------------------------- | -------------------------- | ------------------------------ | ---------------------- |
+| `health`   | `GET /healthz`, `GET /readyz`            | 20, 5/s                    | none                           | none                   |
+| `admin`    | every admin route                        | 30, 10/s                   | none                           | none                   |
+| `read`     | the other `GET` routes and `POST /utxos` | 30, 10/s                   | none                           | 200, 100/s             |
+| `batch`    | `POST /tx-status`                        | 4, 1/s                     | none                           | 16, 4/s                |
+| `write`    | `POST /submit`                           | 100, 20/s                  | 1,000, 200/s                   | none                   |
+| `evaluate` | `POST /tx/evaluate`                      | 2, 0.2/s                   | none                           | 8, 1/s                 |
+| `peer`     | `POST /peer/txs`, `POST /peer/inventory` | 40, 20/s                   | none                           | none                   |
+
+A submission is charged one token per transaction; `/submit` carries one.
+Submissions have no global bucket: load shedding on queue state bounds the
+total, not a fixed rate. The `peer` rate lets one sending operator forward
+5,000 TPS of 4-in/4-out transactions: a full `/peer/txs` body holds 347 of
+them, so 14.4 bodies a second, and inventory offers add under one request a
+second.
+
+A client is an IPv4 address or an IPv6 /56, and its prefix the IPv4 /24 or the
+IPv6 /48 around it. The prefix bucket keeps the holder of a whole /48 from
+multiplying its quota by spreading over its /56s. On its Unix socket the node
+takes each client from `X-Midgard-Client-IP`, which the ingress sets to the
+connecting address; whoever can reach the socket names its own client, which
+is why its directory admits no other user. Over TCP it reads that header only
+when the peer lies in `HTTP_TRUSTED_PROXY_PEERS`, the addresses or ranges of a
+reverse proxy that overwrites it. It never reads `X-Forwarded-For`.
+
+The `read`, `batch`, `write` and `evaluate` buckets live in fixed arrays of 2 ×
+2^18 cells per tier. A client maps to one cell per row through a hash keyed
+with a secret drawn at start, and a request passes only when both of its cells
+hold enough tokens. Memory is the same for ten clients or ten million: no
+client is ever evicted, and no new client is ever refused for lack of room. Two
+clients sharing a cell only tighten each other's limit, and an honest client is
+wrongly refused only when saturated clients share both of its cells.
+
+Health, admin and peer routes have no global bucket and keep their clients in a
+small table of their own, which drops its least recently used idle client when
+it reaches 8,192. A peer request is charged before its signature is checked,
+so a shared bucket would let unsigned traffic refuse the operators. They also
+have their own concurrency budget, and `/readyz` and the admin database reads
+use a database connection of their own. Neither a flood of public requests nor
+slow public requests holding every public slot can refuse them.
+
+`/submit` requests are capped at `SUBMIT_INGRESS_WORKER_QUEUE` in flight
+(default 256, the check pool's queue) and the other public requests at 64,
+so neither can take the other's slots; both share a bound on in-flight body
+bytes. Health and admin requests are capped at 8 in flight; each client at 4
+in flight.
+Overflow answers `503` with `Retry-After: 5` and `E_HTTP_INGRESS_CAPACITY`.
+
+| Variable                                                                    | Default         | Meaning                                                                                                                                                           |
+| --------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_RATE_LIMIT_ENABLED`                                                   | `true`          | `false` turns rate refusals off for testing; nodes on the public profiles above refuse to start                                                                   |
+| `HTTP_RATE_LIMIT_HEALTH`, `HTTP_RATE_LIMIT_ADMIN`, `HTTP_RATE_LIMIT_PEER`   | the table above | `clientBurst,clientPerSecond`                                                                                                                                     |
+| `HTTP_RATE_LIMIT_WRITE`                                                     | the table above | `clientBurst,clientPerSecond,prefixBurst,prefixPerSecond`                                                                                                         |
+| `HTTP_RATE_LIMIT_READ`, `HTTP_RATE_LIMIT_BATCH`, `HTTP_RATE_LIMIT_EVALUATE` | the table above | `clientBurst,clientPerSecond,globalBurst,globalPerSecond`                                                                                                         |
+| `HTTP_SOCKET_PATH`                                                          | unset           | absolute Unix socket path to serve on instead of `PORT`; required on the public profiles above                                                                    |
+| `HTTP_TRUSTED_PROXY_PEERS`                                                  | empty           | over TCP only: up to 64 IPv4 (at least /8) or IPv6 (at least /24) proxy addresses or ranges allowed to set `X-Midgard-Client-IP`; refused with `HTTP_SOCKET_PATH` |
+
+Bursts are positive integers and refills positive numbers per second. The public
+TLS ingress applies no request rate to submit and read routes: these limits
+decide them. It caps each address at 4 requests in flight, and its health,
+readiness and admin routes keep a per-address rate zone of their own. On
+`/submit`, `/tx/evaluate` and `/peer/*` it reads the whole body before it
+passes the request on, so a slow upload holds no node slot and the node always
+gets the body's `Content-Length`. A CDN or
+load balancer in front of the ingress makes every client behind it look like
+the CDN's addresses, so they share those buckets; rate limit at the CDN as
+well, or keep the ingress as the first hop.
+
+## Peer routes
+
+Operators share the L2 transactions they accept so that whichever operator
+holds the next turn can commit them. A node with `L2_TX_PEERS` set (the other
+operators' base URLs, comma separated, at most 16; empty turns sharing off)
+sends each transaction it accepts from its users to every peer, and on each
+L1 advance, while it still has pending transactions, offers their ids and
+sends only those a peer has never seen.
+
+- `POST /peer/txs` takes a batch of transactions and admits each with source
+  `peer` after the same checks as `POST /submit`, run on the same check
+  worker pool (the main thread only waits for them), including the stateless
+  validation checks (a refused one counts in `refused`), the whole body in one
+  admission-writer submission. It answers
+  `{ "admitted", "duplicates", "refused" }` counts, or `503` with `Retry-After`
+  when the admission backlog is full, its writes are stalled or no check
+  worker answered (`Peer tx check is unavailable; retry later`); the rest of
+  the body may already be admitted then, and the sender's next inventory offer
+  finds what is still missing. Like
+  `/submit`, it counts a transaction as admitted before it is stored. Only a
+  peer transaction still pending counts as a duplicate: the node keeps no
+  recent peer ids, so one offered again after its row was written counts as
+  admitted, and its write then leaves the stored row as it is.
+- `POST /peer/inventory` takes transaction ids and answers the ids the node
+  neither holds pending nor has an admission row for, as the same CBOR list.
+- A `/peer/txs` body holds at most one largest transaction (about 288 KiB) and
+  a `/peer/inventory` body at most 20,000 ids. Peer bodies are read under an
+  ingress pool of their own (`SUBMIT_INGRESS_MAX_CONCURRENCY` requests deep),
+  so peers and users never hold each other's slots; a full pool answers `503`.
+  A body's checks run under its peer slot, not the `/submit` check queue. Peer
+  and user admissions do share the durable admission backlog, so a peer burst
+  that fills 80 % of it makes `/submit` answer `503` until it drains, while
+  user traffic alone never fills the last 20 % that peers keep. A peer body of
+  unknown length holds only the larger of those two bounds against the node's
+  shared ingress byte budget.
+
+Both take `Content-Type: application/cbor`, a canonical CBOR array of byte
+strings, and two headers: `X-Midgard-Operator-Key`, the sender's 32-byte
+Ed25519 operator verification key as lowercase hex, and
+`X-Midgard-Operator-Signature`, its signature over SHA-256 of
+`"midgard/l2-peer/v1\0" || path || "\0" || hub-oracle policy id || body`. A
+missing or invalid signature answers `401`; a key outside the node's on-chain
+active operator set answers `403`.
+
+The receiver validates every transaction against its own ledger. A peer
+transaction refused only because its input is not there yet
+(`E_INPUT_NOT_FOUND`, `E_DEPENDS_ON_REJECTED_TX`) is forgotten rather than
+rejected, so a later offer can deliver it again; every other refusal is
+final. A down, slow or hung peer never holds commits, readiness or the other
+peers: each peer has its own lane, which backs off, logs a warning and counts
+`l2_peer_forward_failures_total`. A peer that refuses the sender's key (`403`)
+is retried at the longest backoff and warned about once.
 
 ## Admin routes
 
 All routes below require the `x-midgard-admin-key` header matching
-`ADMIN_API_KEY`.
+`ADMIN_API_KEY`. The `POST` routes are mutations: they take an empty body and no
+query, are refused over `GET`, and also carry a signed session:
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/init` | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology. |
-| `GET` | `/commit` | Trigger a manual block commitment. |
-| `GET` | `/merge` | Trigger a manual merge of the oldest queued block into confirmed state. |
-| `GET` | `/stateQueue` | Log and return the current ordered state-queue headers plus merge-readiness. |
-| `GET` | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`). |
-| `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal. |
-| `GET` | `/logBlocksDB` | Log a compact summary of block-link rows. |
-| `GET` | `/logGlobals` | Log the current process-global coordination state. |
+- `X-Midgard-Admin-Session`: the value returned by `GET /admin/session`;
+- `X-Midgard-Admin-Timestamp`: current Unix milliseconds, thirteen digits;
+- `X-Midgard-Admin-Nonce`: thirty-two random bytes as lowercase hex;
+- `X-Midgard-Admin-Signature`: lowercase hex HMAC-SHA256 under the admin key over
+  `JSON.stringify(["POST", exactTarget, session, timestamp, nonce])`.
+
+A signature is accepted within thirty seconds of its timestamp, and each nonce
+once; a replay returns `409` and a bad signature `401`. A restart changes the
+session.
+
+| Method | Route              | Purpose                                                                                                                                                                               |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/init`            | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
+| `POST` | `/commit`          | Trigger a manual block commitment.                                                                                                                                                    |
+| `POST` | `/merge`           | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
+| `GET`  | `/stateQueue`      | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
+| `POST` | `/logBlocksDB`     | Log a compact summary of block-link rows.                                                                                                                                             |
+| `POST` | `/logGlobals`      | Log the current process-global coordination state.                                                                                                                                    |
+| `GET`  | `/operator/status` | Return the node operator's directory status (`?operatorKeyHash=` for another key); same JSON as `operator-status`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). |
+| `GET`  | `/admin/session`   | Return the current admin session id and its signature validity window, for signing mutations. Not cacheable.                                                                          |
 
 <Callout type="info" title="The mutation lease is a safety interlock">
-The state-queue mutation lease is a mutual-exclusion token. External mutators (for
-example a manual fault-proof removal) must `acquire` the lease, do their work, then
-`release` it. A busy lease returns `409`. The node's readiness check treats a stale
-active lease as a reason to stay not-ready.
+  The state-queue mutation lease is an internal mutual-exclusion token: the
+  node's commitment and merge workers take it before mutating the state queue,
+  so they never race each other. It has no HTTP route; `/readyz` and
+  `/pipeline-status` report it under `stateQueueMutationLease`, and readiness
+  treats a stale active lease as a reason to stay not-ready.
 </Callout>

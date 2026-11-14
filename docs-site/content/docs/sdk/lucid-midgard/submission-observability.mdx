@@ -20,37 +20,43 @@ declare const tx: CompleteTx;
 const signed = await tx.sign.withWallet().complete();
 const submitted = await signed.submit();
 
-await submitted.awaitStatus({ until: "accepted" });
+const outcome = await submitted.awaitStatus();
+if (outcome.kind === "rejected") {
+  throw new Error(outcome.code);
+}
 ```
 
 Three stages, in order. `sign.withWallet()` returns a partial-sign builder;
 `.complete()` assembles the submit-capable `CompleteTx`. Only then does `submit()`
-post the canonical CBOR.
+post the canonical proof-submission envelope, containing the version and
+`transactionCbor`, with content type `application/vnd.midgard.v1+cbor`.
 
 <Callout type="warn" title="Admission is not acceptance">
-A `202` response means the transaction is **queued**, not accepted. `200` means it was
-a duplicate of one already admitted. Neither says the transaction is valid. Call
-`status()` or `awaitStatus()` before telling a user their transfer succeeded.
+  A `202` response means the transaction is **queued**, not accepted. `200`
+  means it was a duplicate of one already admitted. Neither says the transaction
+  is valid. Call `status()` or `awaitStatus()` before telling a user their
+  transfer succeeded.
 </Callout>
 
 ## The status lifecycle
 
-`TxStatus` has eight kinds, reported by `GET /tx-status` and normalized in
+`TxStatus` has seven kinds, reported by `GET /tx-status` and normalized in
 `src/builder/status.ts`:
 
-| Status | Meaning |
-| --- | --- |
-| `queued` | Durably admitted. Not yet validated. |
-| `validating` | Being validated by the node's Phase A / Phase B pipeline. |
-| `accepted` | Validated and admitted into the mempool ledger. |
-| `committed` | Included in a block header committed to L1. |
-| `pending_commit` | Selected for a block whose commitment is still in flight. |
-| `awaiting_local_recovery` | The node is reconciling local state and cannot answer authoritatively yet. |
-| `not_found` | The node has no record of this transaction id. |
-| `rejected` | Validation failed. Carries the node's `code` and a nullable `detail`. |
+| Status           | Meaning                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| `queued`         | Durably admitted. Not yet validated.                                                      |
+| `validating`     | Being validated by the node's Phase A / Phase B pipeline.                                 |
+| `accepted`       | Validated and admitted into the mempool ledger.                                           |
+| `committed`      | Present in the immutable local transaction table; L1 confirmation and merge are separate. |
+| `pending_commit` | Present in the processed mempool and absent from immutable state.                         |
+| `not_found`      | The node has no record of this transaction id.                                            |
+| `rejected`       | Validation failed. Carries the node's `code` and a nullable `detail`.                     |
 
 Only the `rejected` variant carries `code` and `detail`. The other kinds carry the
-transaction id alone.
+transaction id alone. The raw HTTP response can include header/merge and
+`confirmedLedgerFinalized` evidence which this client union does not retain.
+Do not use the client `committed` kind as proof of L1 finality.
 
 ## Awaiting a status
 
@@ -63,8 +69,11 @@ outcome that settles the question. Polling defaults to a 1 second interval and a
 import type { SubmittedTx } from "@al-ft/lucid-midgard";
 declare const submitted: SubmittedTx;
 // ---cut---
-// Resolve once the node has validated and accepted the transaction.
-await submitted.awaitStatus({ until: "accepted" });
+// Resolve on acceptance, local commitment, or rejection and inspect the result.
+const outcome = await submitted.awaitStatus();
+if (outcome.kind === "rejected") {
+  throw new Error(outcome.code);
+}
 
 // Or inspect the current status once, without polling.
 const current = await submitted.status();
@@ -74,16 +83,40 @@ if (current.kind === "rejected") {
 ```
 
 <Callout type="warn" title="A rejection is a value, not a thrown error">
-`awaitStatus` resolves with a `rejected` status; it does not throw. Branch on
-`status.kind` rather than relying on `try` / `catch`. Errors are thrown only when the
-provider itself misbehaves, for example a malformed response
-(`ProviderPayloadError`).
+  `awaitStatus` resolves with `rejected` only when that kind is in the target
+  set (as it is by default). Explicit `until: "accepted"` waits for exactly that
+  kind and can time out after rejection or after the transaction has already
+  committed. Branch on the returned kind. Polling can throw for timeout,
+  cancellation, invalid options, transport failures, or malformed provider
+  responses.
 </Callout>
 
 Each of `submit`, `status`, and `awaitStatus` has `Safe` and `Program` variants. The
 `Safe` form returns `MidgardResult<T, LucidMidgardError>` instead of throwing; the
 `Program` form returns a lazy `Effect` that performs no work until run. See
 [Public API](/docs/sdk/lucid-midgard/public-api).
+
+## Lost and refused submissions
+
+The node answers `/submit` from memory: a `202` means it accepted the
+transaction, not that it stored it, and a node crash can lose it.
+`MidgardNodeProvider` keeps the bytes of each transaction the node
+acknowledged until its status settles (`accepted`, `pending_commit`,
+`committed` or `rejected`), for at most 1,024
+transactions, oldest dropped first. When `/tx-status` reports `not_found` for
+one of them, `getTxStatus`, and so `status()` and `awaitStatus()`, resubmits it
+once and reads the status again. A resubmission refused with a retryable error
+(a `503` or a transport failure) is tried again on the next read; any other
+refusal is thrown. The provider only resubmits what it submitted itself, in
+the same process.
+
+A `409` with `E_INPUT_SPENT` means an input of the transaction is spent, or
+claimed by another pending transaction. The transaction may itself be the one
+that spent it, so `submitTx` reads `/tx-status` first. If the node holds the
+transaction, the submit resolves as a duplicate (`httpStatus: 200`,
+`duplicate: true`) with its admission status: `queued`, `validating`, or
+`accepted` for anything from acceptance on. Otherwise it throws the `409` as a
+non-retryable `ProviderHttpError`. A `503` stays retryable.
 
 ## Rejections
 

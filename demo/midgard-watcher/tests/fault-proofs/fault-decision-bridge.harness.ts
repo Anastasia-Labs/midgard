@@ -1,0 +1,244 @@
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import {
+  authenticatedStateQueueObservationDigest,
+  type HeaderDecision,
+} from "@al-ft/midgard-fault-proofs";
+import { vi } from "vitest";
+
+import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
+import type { BridgeDependencies } from "../../src/fault-proofs/fault-decision-bridge.selected-target.js";
+import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.js";
+import {
+  type WatcherAuthenticatedStateQueueObservation,
+  type WatcherStateQueueHeaderObservation,
+} from "../../src/indexers/authenticated-state-queue-observation.js";
+import { type WatcherOperationsSink } from "../../src/runtime/operations-observability.js";
+import {
+  decision,
+  OBSERVATION_DIGEST,
+} from "./fault-decision-bridge.observation.js";
+
+export const harness = (input: {
+  readonly current: WatcherAuthenticatedStateQueueObservation;
+  readonly categoryByHeader: Readonly<Record<string, string>>;
+  readonly records?: readonly WatcherPersistedFaultDecisionRecord[];
+  readonly classifyOverride?: (
+    value: ReturnType<typeof decision>,
+  ) => HeaderDecision | Promise<HeaderDecision>;
+  readonly enqueueError?: Error;
+  readonly operationsSink?: WatcherOperationsSink;
+  readonly nowMs?: () => bigint;
+  readonly monotonicNowMs?: () => number;
+  readonly pendingAvailabilityHeaders?: (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    merged?: ReadonlySet<string>,
+  ) => ReadonlySet<string>;
+  readonly mergedHeaders?: BridgeDependencies["mergedHeaders"];
+  readonly warn?: BridgeDependencies["warn"];
+  readonly resolvePredecessorOverride?: (
+    header: WatcherStateQueueHeaderObservation,
+  ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
+  readonly permitAuthority?:
+    | "submission"
+    | "reconciliation"
+    | (() => "submission" | "reconciliation");
+  readonly observationDigestOverride?: typeof authenticatedStateQueueObservationDigest;
+  readonly deadlineOffset?: () => number;
+  /** The supervisor's supersede; omitted, a disagreement fails the pass. */
+  readonly supersede?: BridgeDependencies["supersede"];
+  readonly driveProvenRemoval?: BridgeDependencies["driveProvenRemoval"];
+}) => {
+  const admitted = new WeakSet<object>([input.current]);
+  // Production admits only the objects the classifier returned in this
+  // process: the journal append and the permit controller refuse a copy,
+  // such as a decision read back from the journal.
+  const classified = new WeakSet<object>();
+  const requireClassified = (value: object): void => {
+    if (!classified.has(value))
+      throw new Error("production header decision was not module-admitted");
+  };
+  const appended: ReturnType<typeof decision>[] = [];
+  const enqueued: ReturnType<typeof decision>[] = [];
+  const enqueuedGenerations: string[] = [];
+  const controllerGenerations: string[] = [];
+  const revocations: string[] = [];
+  const restrictions: string[] = [];
+  const progressRequests: WatcherFaultProofProgressRequest[] = [];
+  const authorityRevocations: string[] = [];
+  const permitIdentities = new WeakMap<
+    object,
+    {
+      decision: Extract<HeaderDecision, { decision: "fault_detected" }>;
+      generation: string;
+    }
+  >();
+  const retainedDecisionAuthorities: (string | null)[] = [];
+  const supersessions: { prior: string; fresh: string }[] = [];
+  const application = {
+    deploymentFingerprint: input.current.deploymentIdentityDigest,
+    installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    classifyHeader: vi.fn(async ({ observation: header }) => {
+      const category = input.categoryByHeader[header.headerHash];
+      if (
+        category === undefined ||
+        !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(category as never)
+      ) {
+        throw new Error("test omitted category");
+      }
+      const fresh = decision(header.headerHash, category as never);
+      const returned =
+        input.classifyOverride === undefined
+          ? fresh
+          : await input.classifyOverride(fresh);
+      classified.add(returned);
+      return returned;
+    }),
+  };
+  const bridge = unsafeCreateWatcherFaultDecisionBridgeForTest({
+    application,
+    maximumClassificationConcurrency: 2,
+    dependencies: Object.freeze({
+      ...(input.operationsSink === undefined
+        ? {}
+        : { operationsSink: input.operationsSink }),
+      ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
+      ...(input.monotonicNowMs === undefined
+        ? {}
+        : { monotonicNowMs: input.monotonicNowMs }),
+      ...(input.pendingAvailabilityHeaders === undefined
+        ? {}
+        : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
+      ...(input.mergedHeaders === undefined
+        ? {}
+        : { mergedHeaders: input.mergedHeaders }),
+      ...(input.warn === undefined ? {} : { warn: input.warn }),
+      ...(input.driveProvenRemoval === undefined
+        ? {}
+        : { driveProvenRemoval: input.driveProvenRemoval }),
+      retainDecisionAuthorities: (digest) =>
+        retainedDecisionAuthorities.push(digest),
+      assertObservation: (candidate) => {
+        if (!admitted.has(candidate)) throw new Error("not admitted");
+      },
+      observationDigest: async (observation) =>
+        input.observationDigestOverride === undefined
+          ? OBSERVATION_DIGEST
+          : await input.observationDigestOverride({
+              observation,
+              minimumConfirmationDepth: 30,
+            }),
+      ...(input.resolvePredecessorOverride === undefined
+        ? {}
+        : { resolvePredecessorHeader: input.resolvePredecessorOverride }),
+      readRecords: async () => input.records ?? Object.freeze([]),
+      append: async (fresh) => {
+        requireClassified(fresh);
+        appended.push(fresh as ReturnType<typeof decision>);
+        return Object.freeze({
+          schemaVersion: "midgard-watcher-production-fault-decision-record-v1",
+          revision: (appended.length - 1).toString(),
+          priorRecordSha256: null,
+          decision: fresh,
+        });
+      },
+      assertActuationPermitIdentity: ({
+        permit,
+        category,
+        rollbackGeneration,
+      }) => {
+        const stored = permitIdentities.get(permit);
+        if (
+          stored === undefined ||
+          stored.decision.category !== category ||
+          stored.generation !== rollbackGeneration ||
+          revocations.length !== 0
+        )
+          throw new Error("test permit revoked or substituted");
+        return {
+          decisionDigest: stored.decision.decisionDigest,
+          executionDecisionDigest: stored.decision.decisionDigest,
+          launchScope: stored.decision.launchScope,
+          deploymentFingerprint: input.current.deploymentIdentityDigest,
+          headerHash: stored.decision.headerHash,
+          authority:
+            typeof input.permitAuthority === "function"
+              ? input.permitAuthority()
+              : (input.permitAuthority ?? "submission"),
+        };
+      },
+      createActuationController: (_fresh, rollbackGeneration) => {
+        requireClassified(_fresh);
+        controllerGenerations.push(rollbackGeneration);
+        const permit = Object.freeze({
+          permitVersion:
+            "midgard-production-workflow-actuation-permit-v1" as const,
+        });
+        permitIdentities.set(permit, {
+          decision: _fresh,
+          generation: rollbackGeneration,
+        });
+        return Object.freeze({
+          permit,
+          restrictToReconciliation: (reason: string) => {
+            restrictions.push(reason);
+          },
+          revoke: (reason: string) => {
+            revocations.push(reason);
+          },
+        });
+      },
+      deadlineForHeader: (header) =>
+        Object.freeze({
+          headerHash: header.headerHash,
+          headerBlockTimeMs: "0",
+          maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+          latestSafeStartAtMs: (
+            MIDGARD_RETENTION_WINDOW.maturityMs -
+            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs +
+            (input.deadlineOffset?.() ?? 0)
+          ).toString(),
+        }),
+      requestProgress: async (request) => {
+        if (input.enqueueError !== undefined) throw input.enqueueError;
+        progressRequests.push(request);
+        if (request.fault !== undefined) {
+          enqueued.push(request.fault.decision as ReturnType<typeof decision>);
+          enqueuedGenerations.push(request.rollbackGeneration);
+        }
+      },
+      unfinishedObjectiveCount: () => enqueued.length,
+      supersede: async (request) => {
+        // Production appends a fresh fault through the live journal.
+        if (request.fresh.decision === "fault_detected")
+          requireClassified(request.fresh);
+        supersessions.push({
+          prior: request.prior.decisionDigest,
+          fresh: request.fresh.decisionDigest,
+        });
+        if (input.supersede === undefined)
+          throw new Error("test omitted supersede");
+        return await input.supersede(request);
+      },
+      revokeAuthority: (reason) => {
+        authorityRevocations.push(reason);
+      },
+    }),
+  });
+  return {
+    admitted,
+    appended,
+    application,
+    bridge,
+    controllerGenerations,
+    enqueued,
+    enqueuedGenerations,
+    revocations,
+    restrictions,
+    progressRequests,
+    authorityRevocations,
+    retainedDecisionAuthorities,
+    supersessions,
+  };
+};

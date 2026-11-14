@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  requireTransitionTraceEventAuthority,
+  requireTransitionTraceL1Events,
+  unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
+} from "../src/transition-trace/l1-events.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
+} from "../src/workflow/release-finality-policy.js";
+import {
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  outRefCbor,
+} from "./helpers/canonical-block-evidence-fixture.js";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.js";
+
+describe("transition event authority raw test transport", () => {
+  it("admits raw observations on every capture and rejects malformed hub output bytes", async () => {
+    const transaction = buildFixtureTransaction({
+      spendInputs: [outRefCbor(0x1d, 0n)],
+      fee: 0n,
+    });
+    const fixture = {
+      block: await buildCanonicalBlockFixture({ transactions: [transaction] }),
+      transaction,
+      orderKey: { transactionId: "52".repeat(32), outputIndex: 0n },
+    };
+    const seed = requireTransitionTraceL1Events(
+      await captureRetainedPlutusIdentityOrigins(fixture, { omitEvent: true }),
+    ).snapshot;
+    // Must equal the retained fixture's policy, which follows the selected profile.
+    const policy = { ...RELEASE_L1_FINALITY_POLICY };
+    const binding = {
+      deploymentFingerprint: "d1".repeat(32),
+      network: "Preprod",
+      releaseFinality: {
+        schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+        deploymentIdentityDigest: "d1".repeat(32),
+        blueprintHash: "e1".repeat(32),
+        policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
+        policy,
+      },
+      resolvedContracts: {
+        hubOraclePolicyId: "61".repeat(28),
+        contracts: {
+          transitionTrace: { history: TRANSITION_HISTORY_FIXTURE_PARAMETERS },
+        },
+      },
+      definition: { headerHash: fixture.block.headerHash },
+    } as Parameters<
+      typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest
+    >[0]["binding"];
+    let malformed = false;
+    let captures = 0;
+    const authority = unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
+      binding,
+      authority: {
+        authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+        capture: async (request) => {
+          captures++;
+          return {
+            ...seed,
+            headerHash: request.headerHash,
+            historyUnits: request.historyUnits,
+            history: request.historyUnits.map((unit) => {
+              const row = seed.history.find((history) => history.unit === unit);
+              if (row === undefined)
+                throw new Error("Requested history is unavailable");
+              return row;
+            }),
+            scopes: request.scopes.map((scope) => ({
+              ...scope,
+              utxos: (
+                seed.scopes.find(
+                  (existing) => existing.address === scope.address,
+                )?.utxos ?? []
+              ).map((utxo) =>
+                malformed ? { ...utxo, outputCbor: "00" } : utxo,
+              ),
+            })),
+          };
+        },
+      },
+    });
+    const capture = requireTransitionTraceEventAuthority(authority);
+    const admitted = await capture(fixture.block.headerHash);
+    expect(requireTransitionTraceL1Events(admitted).snapshot.headerHash).toBe(
+      fixture.block.headerHash,
+    );
+    const successfulCaptures = captures;
+    malformed = true;
+    await expect(capture(fixture.block.headerHash)).rejects.toThrow();
+    expect(captures).toBeGreaterThan(successfulCaptures);
+    expect(() =>
+      requireTransitionTraceEventAuthority({
+        deploymentFingerprint: binding.deploymentFingerprint,
+      }),
+    ).toThrow("not admitted");
+  });
+});

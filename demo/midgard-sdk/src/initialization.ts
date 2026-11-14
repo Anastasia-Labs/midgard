@@ -1,4 +1,10 @@
 import {
+  isMidgardConsensusProfile,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import {
+  type BuildTxWithRedeemer,
+  calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
   LucidEvolution,
@@ -13,54 +19,65 @@ import { Effect } from "effect";
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
-} from "@/active-operators.js";
+} from "./active-operators.js";
+import { DA_AVAILABILITY_PROFILE_BOND_AMOUNTS } from "./availability-challenge.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
-} from "@/common.js";
+} from "./common.js";
+import {
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
+} from "./correction-lock.js";
 import {
   DaParamsDatum,
   type DaParamsDatum as DaParamsDatumType,
   daParamsUnit,
-} from "@/da-attestation.js";
+} from "./da-attestation.js";
+import { appendDaBondPoolInitialization } from "./da-bond-pool-transactions.js";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
-} from "@/fraud-proof/catalogue.js";
+} from "./fraud-proof/catalogue.js";
+import { appendValidationCaseConfigInitialization } from "./fraud-proof/validation-case.config-initialization.js";
 import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   makeHubOracleDatum,
-} from "@/hub-oracle.js";
+} from "./hub-oracle.js";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
-  GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-} from "@/ledger-constants.js";
-import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
-import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
+  castConfirmedStateToData,
+  makeGenesisConfirmedState,
+} from "./ledger-state.js";
+import { encodeLinkedListNodeView, LinkedListNodeView } from "./linked-list.js";
 import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
-} from "@/registered-operators.js";
+} from "./registered-operators.js";
 import {
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
-} from "@/retired-operators.js";
+} from "./retired-operators.js";
 import {
   INITIAL_SCHEDULER_DATUM,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
-} from "@/scheduler.js";
+} from "./scheduler.js";
 import {
+  STATE_QUEUE_NODE_MIN_LOVELACE,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
-} from "@/state-queue.js";
+} from "./state-queue.js";
+import { requireUniqueOutputIndex } from "./tx-context-redeemer.js";
+import { appendEventHistoryInitialization } from "./user-events/history-initialization.js";
 
 export type AtomicProtocolInitReferenceScripts = {
+  readonly depositHistory: UTxO;
+  readonly withdrawalHistory: UTxO;
   readonly hubOracleMinting: UTxO;
   readonly daParamsGovernorMinting: UTxO;
   readonly schedulerMinting: UTxO;
@@ -69,10 +86,13 @@ export type AtomicProtocolInitReferenceScripts = {
   readonly activeOperatorsMinting: UTxO;
   readonly retiredOperatorsMinting: UTxO;
   readonly fraudProofCatalogueMinting: UTxO;
+  readonly daBondPoolMinting: UTxO;
+  readonly validationCaseConfigMinting: UTxO;
 };
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
+  consensusProfile: MidgardConsensusProfile;
   fraudProofCatalogueMerkleRoot: string;
   daParams: DaParamsDatumType;
   oneShotNonceUTxO: UTxO;
@@ -80,7 +100,19 @@ export type InitializationParams = {
     readonly validFrom: bigint;
     readonly validTo: bigint;
   };
-  referenceScripts?: AtomicProtocolInitReferenceScripts;
+  /**
+   * The published minting scripts init reads. Fault-proof and protocol scripts
+   * deploy as reference scripts and are never attached inline.
+   */
+  referenceScripts: AtomicProtocolInitReferenceScripts;
+  /**
+   * The DA bond pool's initial lovelace, at least the pool floor. Defaults to
+   * the floor plus one bond (`da_bond_pool_floor_lovelace +
+   * da_bond_lovelace` of the selected deployment profile, which the pool's
+   * compiled `ParametersV1` must equal), so the pool backs the first
+   * attestation straight after init.
+   */
+  daBondPoolLovelace?: bigint;
 };
 
 const encodeLinkedListRootDatum = (
@@ -94,6 +126,8 @@ const encodeLinkedListRootDatum = (
 
 // Atomic initialization appends protocol root outputs in a fixed order before
 // wallet change, and each Init validator independently verifies its output.
+// The DA bond pool output comes last, after the event-history roots, so no
+// fixed index above moves; its InitPool redeemer reads its own final position.
 const encodeInitOutputRedeemer = <T>(outputIndex: bigint, schema: T): string =>
   Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
 
@@ -123,21 +157,34 @@ export const incompleteInitializationTxProgram = (
     }
 
     const { midgardValidators } = params;
+    if (!isMidgardConsensusProfile(params.consensusProfile)) {
+      throw new Error(
+        "Protocol initialization requires an exact compiled consensus profile",
+      );
+    }
+    const history = midgardValidators.eventHistory;
+    if (
+      history === null ||
+      history.deposit.list.policyId !== midgardValidators.deposit.policyId ||
+      history.withdrawal.list.policyId !== midgardValidators.withdrawal.policyId
+    )
+      throw new Error(
+        "Protocol initialization requires both declared history deployments",
+      );
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
-    const genesisConfirmedState: ConfirmedState = {
-      headerHash: GENESIS_HEADER_HASH,
-      prevHeaderHash: GENESIS_HEADER_HASH,
-      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
-      startTime: stateQueueGenesisTime,
-      endTime: stateQueueGenesisTime,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
-    };
+    const genesisConfirmedState = makeGenesisConfirmedState(
+      stateQueueGenesisTime,
+    );
 
     const hubOracleUnit = toUnit(
       midgardValidators.hubOracle.policyId,
       HUB_ORACLE_ASSET_NAME,
+    );
+    const correctionLockUnit = toUnit(
+      midgardValidators.hubOracle.policyId,
+      CORRECTION_LOCK_ASSET_NAME,
     );
     const schedulerUnit = toUnit(
       midgardValidators.scheduler.policyId,
@@ -168,6 +215,42 @@ export const incompleteInitializationTxProgram = (
     );
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
+    const coinsPerUtxoByte =
+      lucid.config().protocolParameters?.coinsPerUtxoByte;
+    if (coinsPerUtxoByte === undefined || coinsPerUtxoByte <= 0n) {
+      throw new Error(
+        "Protocol initialization requires live UTxO cost parameters",
+      );
+    }
+    // Fund the lock for the largest Locked datum now. Lucid's automatic minimum
+    // would fund only Idle, and the first correction would then have to top the
+    // lock up (a correction may add ADA to the lock, never remove it). FraudProof and AvailabilityChallenge carry equal-width 32-byte identities;
+    // AttestationTimeout is smaller. All target header hashes are 28 bytes.
+    const correctionLockAssets = { [correctionLockUnit]: 1n };
+    const correctionLockLovelace = calculateMinLovelaceFromUTxO(
+      coinsPerUtxoByte,
+      {
+        address: midgardValidators.correctionLock.spendingScriptAddress,
+        assets: { [correctionLockUnit]: 1n },
+        txHash: "00".repeat(32),
+        outputIndex: 0,
+        datum: Data.to(
+          {
+            Locked: {
+              target_header_hash: "00".repeat(28),
+              correction_identity: {
+                FraudProof: { fraud_proof_asset_name: "00".repeat(32) },
+              },
+            },
+          },
+          CorrectionLockDatum,
+        ),
+      },
+    );
+    const hubPolicyMintAssets = {
+      ...hubOracleAssets,
+      ...correctionLockAssets,
+    };
     const schedulerAssets = { [schedulerUnit]: 1n };
     const stateQueueAssets = { [stateQueueUnit]: 1n };
     const registeredOperatorsAssets = { [registeredOperatorsUnit]: 1n };
@@ -190,7 +273,7 @@ export const incompleteInitializationTxProgram = (
         },
         daParamsGovernorAssets,
       )
-      .mintAssets(hubOracleAssets, Data.void())
+      .mintAssets(hubPolicyMintAssets, Data.void())
       .pay.ToAddressWithData(
         credentialToAddress(
           network,
@@ -208,10 +291,22 @@ export const incompleteInitializationTxProgram = (
         },
         schedulerAssets,
       )
-      .mintAssets(
-        stateQueueAssets,
-        encodeInitOutputRedeemer(3n, StateQueueRedeemer),
-      )
+      .mintAssets(stateQueueAssets, ((ctx) =>
+        Data.to(
+          {
+            InitV1: {
+              output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address ===
+                    midgardValidators.stateQueue.spendingScriptAddress &&
+                  (output.assets[stateQueueUnit] ?? 0n) === 1n,
+                "state-queue root",
+              ),
+            },
+          },
+          StateQueueRedeemer,
+        )) satisfies BuildTxWithRedeemer)
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
         {
@@ -222,7 +317,12 @@ export const incompleteInitializationTxProgram = (
             ) as LinkedListNodeView["data"],
           ),
         },
-        stateQueueAssets,
+        // Fund the root at the floor, which covers the ledger minimum of its
+        // linked shape, larger than this unlinked genesis datum. Lucid's
+        // automatic minimum would fund only the unlinked datum, and the first
+        // commit would then have to top the root up (the commit arm lets a
+        // root anchor gain lovelace, never lose it).
+        { ...stateQueueAssets, lovelace: STATE_QUEUE_NODE_MIN_LOVELACE },
       )
       .mintAssets(
         registeredOperatorsAssets,
@@ -265,30 +365,111 @@ export const incompleteInitializationTxProgram = (
           ),
         },
         fraudProofCatalogueAssets,
+      )
+      .pay.ToContract(
+        midgardValidators.correctionLock.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to("Idle", CorrectionLockDatum),
+        },
+        { ...correctionLockAssets, lovelace: correctionLockLovelace },
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.commit.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unattestedTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unavailableTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.fraudRemoval.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.merge.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.validationTraceDispute.yields
+            .valueAndMintAssetFold.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.minAda.yields.tx
+            .withdrawalScript,
+        ),
       );
 
-    if (params.referenceScripts !== undefined) {
-      return tx.readFrom([
-        params.referenceScripts.daParamsGovernorMinting,
-        params.referenceScripts.hubOracleMinting,
-        params.referenceScripts.schedulerMinting,
-        params.referenceScripts.stateQueueMinting,
-        params.referenceScripts.registeredOperatorsMinting,
-        params.referenceScripts.activeOperatorsMinting,
-        params.referenceScripts.retiredOperatorsMinting,
-        params.referenceScripts.fraudProofCatalogueMinting,
-      ]);
+    for (const validator of Object.values(
+      midgardValidators.availabilityChallenge.yields,
+    )) {
+      tx.register.Stake(
+        scriptRewardAddress(network, validator.withdrawalScript),
+      );
     }
 
-    return tx.attach
-      .Script(midgardValidators.daParamsGovernor.mintingScript)
-      .attach.Script(midgardValidators.hubOracle.mintingScript)
-      .attach.Script(midgardValidators.scheduler.mintingScript)
-      .attach.Script(midgardValidators.stateQueue.mintingScript)
-      .attach.Script(midgardValidators.registeredOperators.mintingScript)
-      .attach.Script(midgardValidators.activeOperators.mintingScript)
-      .attach.Script(midgardValidators.retiredOperators.mintingScript)
-      .attach.Script(midgardValidators.fraudProofCatalogue.mintingScript);
+    appendEventHistoryInitialization(lucid, tx, {
+      contracts: history,
+      nonce: params.oneShotNonceUTxO,
+      validFrom: Number(params.validityRange.validFrom),
+      validTo: Number(params.validityRange.validTo),
+      referenceScripts: {
+        deposit: params.referenceScripts.depositHistory,
+        withdrawal: params.referenceScripts.withdrawalHistory,
+      },
+    });
+
+    // The pool's init_ref is the hub one-shot this transaction already spends.
+    // Its first funding is one bond above the floor, so the pool backs the
+    // first attestation without a separate top-up.
+    const { daBondPoolFloorLovelace, daBondLovelace } =
+      DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
+    appendDaBondPoolInitialization(tx, {
+      poolValidator: midgardValidators.daBondPool,
+      floorLovelace: daBondPoolFloorLovelace,
+      lovelace:
+        params.daBondPoolLovelace ?? daBondPoolFloorLovelace + daBondLovelace,
+      referenceScript: params.referenceScripts.daBondPoolMinting,
+    });
+
+    // The case configuration's one-shot nonce is the same hub one-shot.
+    appendValidationCaseConfigInitialization(tx, {
+      network,
+      contracts: midgardValidators.fraudProofContracts.validationTraceDispute,
+      referenceScript: params.referenceScripts.validationCaseConfigMinting,
+    });
+
+    return tx.readFrom([
+      params.referenceScripts.daParamsGovernorMinting,
+      params.referenceScripts.hubOracleMinting,
+      params.referenceScripts.schedulerMinting,
+      params.referenceScripts.stateQueueMinting,
+      params.referenceScripts.registeredOperatorsMinting,
+      params.referenceScripts.activeOperatorsMinting,
+      params.referenceScripts.retiredOperatorsMinting,
+      params.referenceScripts.fraudProofCatalogueMinting,
+    ]);
   });
 
 export const unsignedInitializationTx = (

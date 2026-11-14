@@ -1,75 +1,69 @@
-export type DaPayloadEnvelopeMode = "off" | "identity" | "zstd";
+import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
+import { Config } from "effect";
 
-export type DaHardeningConfig = {
-  readonly envelopeMode: DaPayloadEnvelopeMode;
-  readonly zstdLevel: number;
-  readonly publishConcurrency: number;
-  readonly reconcileIntervalMs: number;
-  readonly retryBackoffMs: number;
-  readonly retryBackoffMaxMs: number;
-};
+import { positiveSafeInteger } from "../artifact-schema.js";
 
-const positiveInteger = (
-  value: string | undefined,
-  fallback: number,
-  name: string,
-): number => {
-  if (value === undefined || value.trim().length === 0) {
-    return fallback;
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive safe integer`);
-  }
-  return parsed;
-};
+/** The publication fan-out when `MIDGARD_DA_PUBLISH_CONCURRENCY` is unset. */
+export const DEFAULT_DA_PUBLISH_CONCURRENCY = 8;
 
-export const readDaHardeningConfig = (
-  env: NodeJS.ProcessEnv = process.env,
-): DaHardeningConfig => {
-  const rawMode = env.MIDGARD_DA_PAYLOAD_ENVELOPE?.trim() || "off";
-  if (rawMode !== "off" && rawMode !== "identity" && rawMode !== "zstd") {
-    throw new Error(
-      "MIDGARD_DA_PAYLOAD_ENVELOPE must be off, identity, or zstd",
-    );
-  }
-  const zstdLevel = positiveInteger(
-    env.MIDGARD_DA_ZSTD_LEVEL,
-    3,
-    "MIDGARD_DA_ZSTD_LEVEL",
+/** A blank or unset `name` takes `fallback`. */
+const positiveInteger = (name: string, fallback: number) =>
+  Config.string(name).pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) =>
+      value.trim().length === 0
+        ? fallback
+        : positiveSafeInteger(Number(value), name),
+    ),
   );
-  if (zstdLevel > 19) {
-    throw new Error("MIDGARD_DA_ZSTD_LEVEL must be an integer in [1, 19]");
-  }
-  const retryBackoffMs = positiveInteger(
-    env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS,
+
+/**
+ * The DA payload envelope and publication settings. `makeConfig` parses them
+ * once with the rest of the node configuration. The other DA settings (the
+ * committee, owners, threshold and cosigner) are in `deploymentConfig`,
+ * src/services/config.deployment.ts.
+ */
+export const daHardeningConfig = Config.all({
+  MIDGARD_DA_PAYLOAD_ENVELOPE: Config.string(
+    "MIDGARD_DA_PAYLOAD_ENVELOPE",
+  ).pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value): DaPayloadEmissionMode => {
+      const mode = value.trim() || "identity";
+      if (mode !== "identity" && mode !== "zstd") {
+        throw new Error("MIDGARD_DA_PAYLOAD_ENVELOPE must be identity or zstd");
+      }
+      return mode;
+    }),
+  ),
+  MIDGARD_DA_ZSTD_LEVEL: positiveInteger("MIDGARD_DA_ZSTD_LEVEL", 3).pipe(
+    Config.validate({
+      message: "MIDGARD_DA_ZSTD_LEVEL must be an integer in [1, 19]",
+      validation: (level) => level <= 19,
+    }),
+  ),
+  MIDGARD_DA_PUBLISH_CONCURRENCY: positiveInteger(
+    "MIDGARD_DA_PUBLISH_CONCURRENCY",
+    DEFAULT_DA_PUBLISH_CONCURRENCY,
+  ),
+  MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: positiveInteger(
+    "MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS",
     30_000,
+  ),
+  MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: positiveInteger(
     "MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS",
-  );
-  const retryBackoffMaxMs = positiveInteger(
-    env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS,
-    300_000,
+    30_000,
+  ),
+  MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS: positiveInteger(
     "MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS",
-  );
-  if (retryBackoffMaxMs < retryBackoffMs) {
-    throw new Error(
+    300_000,
+  ),
+}).pipe(
+  Config.validate({
+    message:
       "MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS must be >= MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS",
-    );
-  }
-  return {
-    envelopeMode: rawMode,
-    zstdLevel,
-    publishConcurrency: positiveInteger(
-      env.MIDGARD_DA_PUBLISH_CONCURRENCY,
-      8,
-      "MIDGARD_DA_PUBLISH_CONCURRENCY",
-    ),
-    reconcileIntervalMs: positiveInteger(
-      env.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS,
-      30_000,
-      "MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS",
-    ),
-    retryBackoffMs,
-    retryBackoffMaxMs,
-  };
-};
+    validation: (settings) =>
+      settings.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS >=
+      settings.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS,
+  }),
+);

@@ -1,0 +1,156 @@
+import {
+  type CompleteCanonicalReplayContext,
+  restrictWorkflowFundingSigner,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunnerInput,
+  type WorkflowRuntimeLoader,
+} from "@al-ft/midgard-fault-proofs";
+
+import type { WatcherConfig } from "../runtime/config.js";
+import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { type WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
+import {
+  bindWatcherDeploymentAuthority,
+  readSecret,
+} from "./fault-proof-application.bind-watcher-deployment-authority.js";
+import {
+  type WatcherFaultProofApplication,
+  type WatcherFaultProofApplicationConstructionOptions,
+  type WatcherFaultProofApplicationDependencies,
+  type WatcherFaultProofInfrastructureAuthority,
+  type WatcherFaultProofL1,
+} from "./fault-proof-application.production-dependencies.js";
+
+/**
+ * The source id a family's L1 snapshots and signed recovery are recorded
+ * under. Snapshot digests and persisted journals bind it, so it keeps the
+ * shape the earlier local source wrote.
+ */
+export const watcherFaultProofSourceId = ({
+  category,
+  manifestId,
+  localL1Source,
+}: {
+  readonly category: string;
+  readonly manifestId: string;
+  readonly localL1Source: Readonly<{
+    authorityNodeId: string;
+    chainSync: Readonly<{ genesisIdentitySha256: string }>;
+  }>;
+}): string =>
+  [
+    "watcher-fault-proof",
+    category,
+    manifestId,
+    localL1Source.authorityNodeId,
+    localL1Source.chainSync.genesisIdentitySha256,
+  ].join("/");
+
+/**
+ * The watcher's one loader body for an acting invocation. On top of the
+ * deployment binding it reads the prover wallet, selects the (possibly
+ * funding-restricted) signer and hands over the optional
+ * parts a family may require; the family's record then binds its own
+ * manifest-bound config from these inside the shared runtime, so nothing here
+ * is per family. Which optional parts a family needs is the record's
+ * `requires`, refused by the shared application loop.
+ */
+export const buildCommonInfrastructure = async ({
+  watcherConfig,
+  invocation,
+  infrastructure,
+  deploymentIdentity,
+  replayContexts,
+  l1,
+  dependencies,
+  environment,
+}: {
+  readonly watcherConfig: WatcherConfig;
+  readonly invocation: WorkflowAdapterReadinessInput;
+  readonly l1: WatcherFaultProofL1;
+  readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
+  readonly environment: NodeJS.ProcessEnv;
+}): Promise<WatcherWorkflowInfrastructure> => {
+  const { category } = invocation;
+  const [binding, proverSecret] = await Promise.all([
+    bindWatcherDeploymentAuthority({
+      watcherConfig,
+      infrastructure,
+      l1,
+      dependencies,
+    }),
+    readSecret({
+      source: watcherConfig.proverWallet.keySource,
+      dependencies,
+      environment,
+      label: "watcher prover wallet",
+    }),
+  ]);
+  const resolvedSigner = dependencies.resolveSigner({
+    network: watcherConfig.targetNetwork,
+    secret: proverSecret,
+  });
+  const executionInvocation = invocation as Partial<WorkflowAdapterRunnerInput>;
+  const decisionDigest = executionInvocation.decisionDigest;
+  const replayContext =
+    decisionDigest === undefined
+      ? undefined
+      : replayContexts.get(decisionDigest);
+  const signer =
+    executionInvocation.fundingReservationPermit === undefined
+      ? resolvedSigner
+      : restrictWorkflowFundingSigner({
+          signer: resolvedSigner,
+          permit: executionInvocation.fundingReservationPermit,
+        });
+  signer.selectWallet(binding.lucid);
+  return Object.freeze({
+    infrastructure: Object.freeze({
+      manifest: binding.manifest,
+      blueprintJson: binding.blueprintJson,
+      deploymentInfo: binding.deploymentInfo,
+      headerHash: invocation.headerHash,
+      ...(decisionDigest === undefined ? {} : { decisionDigest }),
+      lucid: binding.lucid,
+      signer,
+      l1Source: l1.source(
+        watcherFaultProofSourceId({
+          category,
+          manifestId: deploymentIdentity.manifestId,
+          localL1Source: binding.localL1Source,
+        }),
+      ),
+      stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
+      ...(replayContext === undefined ? {} : { replayContext }),
+    }),
+    resolveReferenceScript: binding.resolveReferenceScript,
+  });
+};
+
+export const admittedApplications = new WeakSet<object>();
+
+/** Retains the exact runner/classifier authority captured by this module. */
+export const assertWatcherFaultProofApplication = (
+  application: WatcherFaultProofApplication,
+): void => {
+  if (!admittedApplications.has(application)) {
+    throw new Error(
+      "watcher fault-proof production application is not module-admitted",
+    );
+  }
+};
+
+export type ApplicationConstruction = {
+  readonly options: WatcherFaultProofApplicationConstructionOptions;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly allowExecution: boolean;
+};
+
+/** A non-executing test application that also exposes its runtime loader. */
+export type WatcherFaultProofApplicationWithLoaderForTest =
+  WatcherFaultProofApplication &
+    Readonly<{ unsafeLoadRuntimeForTest: WorkflowRuntimeLoader }>;

@@ -1,5 +1,3 @@
-import "../utils.js";
-
 import { createHash, randomInt } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -15,9 +13,9 @@ import {
   MigrationRunner,
   TxAdmissionsDB,
   TxRejectionsDB,
-} from "@/database/index.js";
-import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
+} from "../../src/database/index.js";
+import { NodeConfig } from "../../src/services/config.js";
+import { Database } from "../../src/services/database.js";
 
 const operatorEnabled = process.env.BENCH_PHASE1_OPERATOR === "1";
 const pageSize = Number(

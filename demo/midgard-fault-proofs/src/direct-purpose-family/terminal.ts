@@ -1,0 +1,216 @@
+/** Direct purpose terminal: the final state convicts, the computation thread
+ * burns and the permanent fraud-proof token mints. */
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  toUnit,
+  type TxSigned,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+} from "../witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "../workflow/transaction-boundary.js";
+import {
+  type DirectPurposeContracts,
+  type DirectPurposeFamily,
+  directPurposeRoleIndex,
+} from "./family.js";
+
+/** The shared claim terminal's spend redeemer. */
+const directClaimFinalize = (indices: SDK.DirectClaimFinalizeArgs): string =>
+  Data.to({ Continue: [indices] }, SDK.DirectClaimFinalizeRedeemer);
+
+export const submitDirectPurposeTerminal = async <State>({
+  family,
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+  onSigned,
+  requireConviction = true,
+}: {
+  readonly family: DirectPurposeFamily<State>;
+  readonly lucid: LucidEvolution;
+  readonly contracts: DirectPurposeContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+  readonly onSigned?: (label: string, signed: TxSigned) => void;
+  /** False only to reach the validator with a non-convicting state. */
+  readonly requireConviction?: boolean;
+}) => {
+  const terminalIndex = directPurposeRoleIndex(family, "terminal");
+  const label = `${family.label} terminal`;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: family.label,
+    stepIndex: terminalIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepState({
+    threadUtxo,
+    signer,
+    schema: family.verdict.schema,
+    family: family.label,
+    stepIndex: terminalIndex,
+  });
+  if (requireConviction && !family.verdict.convicts(state))
+    throw new Error(`${label}: the final state does not convict`);
+  const step = contracts.steps[terminalIndex]!;
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: step.spendingScriptHash,
+    family: family.label,
+    stepIndex: terminalIndex,
+  });
+  const funding = await fundStep(lucid, { signer });
+  const fraudProofUnit = toUnit(
+    contracts.fraudProof.policyId,
+    threadToken.assetName,
+  );
+  const fraudProofDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash },
+    SDK.FraudProofTokenDatum,
+  );
+  const finalize = family.verdict.finalize ?? directClaimFinalize;
+  let outputIndex: bigint | undefined;
+  const spend = ((ctx) => {
+    SDK.requireOwnSpendPurpose(ctx, threadUtxo, label);
+    outputIndex = SDK.requireUniqueOutputIndex(
+      ctx.outputs,
+      outputWithDatumAndUnitPredicate({
+        address: contracts.fraudProof.spendingScriptAddress,
+        datum: fraudProofDatum,
+        unit: fraudProofUnit,
+      }),
+      `${label} fraud-proof`,
+    );
+    return finalize({
+      input_index: SDK.requireInputIndex(ctx, threadUtxo, label),
+      output_index: outputIndex,
+      fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
+        ctx,
+        contracts.fraudProof.policyId,
+        `${label} fraud-proof`,
+      ),
+    });
+  }) satisfies BuildTxWithRedeemer;
+  const burn = ((ctx) => {
+    SDK.requireOwnMintPurpose(
+      ctx,
+      contracts.computationThread.policyId,
+      `${label} computation-thread burn`,
+    );
+    return Data.to(
+      { Success: { burning_token_asset_name: threadToken.assetName } },
+      SDK.FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const mint = ((ctx) => {
+    SDK.requireOwnMintPurpose(
+      ctx,
+      contracts.fraudProof.policyId,
+      `${label} fraud-proof mint`,
+    );
+    return Data.to(
+      {
+        computation_thread_token_asset_name: threadToken.assetName,
+        computation_thread_mint_redeemer_index: SDK.requireMintRedeemerIndex(
+          ctx,
+          contracts.computationThread.policyId,
+          `${label} computation-thread burn`,
+        ),
+      },
+      SDK.FraudProofTokenMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const burnCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${label} computation-thread burn`,
+  });
+  const mintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${label} fraud-proof mint`,
+  });
+  const signed = await completeStep(
+    funding.tx
+      .collectFrom([threadUtxo], spend)
+      .mintAssets({ [threadToken.unit]: -1n }, burn)
+      .mintAssets({ [fraudProofUnit]: 1n }, mint)
+      .pay.ToContract(
+        contracts.fraudProof.spendingScriptAddress,
+        { kind: "inline", value: fraudProofDatum },
+        { lovelace: threadUtxo.assets.lovelace ?? 0n, [fraudProofUnit]: 1n },
+      )
+      .readFrom([
+        stepReference,
+        ...burnCarriage.referenceInputs,
+        ...mintCarriage.referenceInputs,
+      ]),
+    funding,
+  );
+  if (outputIndex === undefined)
+    throw new Error(`${label}: completed layout unresolved`);
+  onSigned?.("terminal", signed);
+  const txHash = await submitStep(lucid, signed, {
+    label: label,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: label,
+          utxo: stepReference,
+          expectedScript: step.spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+    awaitConfirmation,
+  });
+  return {
+    txHash,
+    finalState: state,
+    fraudProofOutRef: `${txHash}#${outputIndex.toString()}`,
+    fraudProofUnit,
+    fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
+  };
+};

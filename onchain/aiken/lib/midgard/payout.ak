@@ -31,7 +31,7 @@ pub type MintRedeemer {
   MintPayout {
     withdrawal_utxo_out_ref: OutputReference,
     withdrawal_input_index: Int,
-    withdrawal_spend_redeemer_index: Int,
+    retirement_withdraw_redeemer_index: Int,
     hub_ref_input_index: Int,
   }
   BurnPayout {

@@ -1,0 +1,148 @@
+import { Context, Data, Effect, Layer, pipe, type Scope } from "effect";
+
+import {
+  DepositsDB,
+  ForcedTransactionsDB,
+  WithdrawalsDB,
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  ConfigError,
+  ContractDeploymentIdentity,
+  Database,
+  DatabaseInitializationError,
+  Lucid,
+  MidgardContracts,
+  MidgardContractServices,
+  NodeConfig,
+} from "../services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalLive,
+} from "../services/intent-journal.js";
+import { FollowerLucidLive } from "../services/l1-adapter.follower.js";
+import type { L1ChainParameters } from "../services/l1-adapter.js";
+
+export const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
+
+export const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+
+export const EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY = "5 seconds";
+
+export const EXPLICIT_COMMIT_BLOCK_VISIBILITY_RETRIES = 18;
+
+export class CommitWorkerInvariantError extends Data.TaggedError(
+  "CommitWorkerInvariantError",
+)<{
+  readonly message: string;
+}> {}
+
+type CommitBlockWorkerServices =
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | NodeConfig
+  | IntentJournal;
+
+/**
+ * The commit program's services. `chainParameters` is what a derived
+ * contract bundle reads its slot mapping through: the local node's ledger
+ * in the worker thread `listen` starts, a tool access in a probe or command.
+ */
+export const provideCommitBlockWorkerServices = <A, E>(
+  effect: Effect.Effect<A, E, CommitBlockWorkerServices>,
+  chainParameters: Layer.Layer<L1ChainParameters>,
+): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
+  pipe(
+    effect,
+    // The worker journals in the node database; the node's S6 reconciles.
+    Effect.provide(IntentJournalLive),
+    Effect.provide(
+      MidgardContractServices.pipe(Layer.provide(chainParameters)),
+    ),
+    Effect.provide(Database.workerLayer),
+    Effect.provide(NodeConfig.layer),
+  );
+
+/**
+ * The Lucid a commit program builds and submits with. There is no default:
+ * every caller chooses, so a role's follower Lucid is never built in a
+ * command by omission (option E). The commit worker thread `listen` starts
+ * passes `followerCommitLucidFactory`.
+ */
+export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;
+
+/**
+ * A factory that builds `layer`'s Lucid in the caller's scope, over the
+ * caller's services `layer` requires. The Lucid's L1 access (its store pool
+ * and node transport) stays open until that scope closes; a Lucid provided
+ * and returned out of its own scope would read through a closed access, so
+ * its L1 slot would never be known.
+ */
+export const scopedCommitLucidFactory = <R>(
+  layer: Layer.Layer<Lucid, ConfigError, R>,
+): Effect.Effect<CommitLucidFactory, never, Scope.Scope | R> =>
+  Effect.map(
+    Effect.all([Effect.scope, Effect.context<R>()]),
+    ([scope, context]): CommitLucidFactory =>
+      () =>
+        Effect.map(
+          Effect.provide(Layer.buildWithScope(layer, scope), context),
+          (built) => Context.get(built, Lucid),
+        ),
+  );
+
+/** The role factory: the commit worker thread's follower Lucid over its
+ * contracts, open for the worker run's scope. */
+export const followerCommitLucidFactory: Effect.Effect<
+  CommitLucidFactory,
+  never,
+  Scope.Scope | MidgardContracts | ContractDeploymentIdentity
+> = scopedCommitLucidFactory(FollowerLucidLive);
+
+type PendingUserEventCounts = {
+  readonly deposits: number;
+  readonly forcedTransactions: number;
+  readonly withdrawals: number;
+};
+
+export const pendingUserEventCountsUpTo = (
+  effectiveEndTime: Date,
+): Effect.Effect<PendingUserEventCounts, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const [depositEntries, forcedTransactionEntries, withdrawalEntries] =
+      yield* Effect.all(
+        [
+          DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+          ForcedTransactionsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          ),
+          WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+        ],
+        { concurrency: "unbounded" },
+      );
+    return {
+      deposits: depositEntries.length,
+      forcedTransactions: forcedTransactionEntries.length,
+      withdrawals: withdrawalEntries.length,
+    };
+  });
+
+export const shouldHydrateCommitBaseEntries = ({
+  payloadRootCheck,
+  recordCorpus,
+  candidateTxCount,
+  pendingForcedTransactionCount,
+  pendingWithdrawalCount,
+}: {
+  readonly payloadRootCheck: string;
+  readonly recordCorpus: string;
+  readonly candidateTxCount: number;
+  readonly pendingForcedTransactionCount: number;
+  readonly pendingWithdrawalCount: number;
+}): boolean =>
+  payloadRootCheck === "every_block" ||
+  recordCorpus.trim().length > 0 ||
+  candidateTxCount > 0 ||
+  pendingForcedTransactionCount > 0 ||
+  pendingWithdrawalCount > 0;

@@ -1,0 +1,272 @@
+import { SqlClient } from "@effect/sql";
+import type { PgClient } from "@effect/sql-pg/PgClient";
+import { Effect, Metric } from "effect";
+
+import { Database } from "../services/database.js";
+import { touchDuplicateCount } from "./txAdmissions.admit.js";
+import {
+  type BatchResolvedRawEntry,
+  groupReservedAdmissionVariants,
+} from "./txAdmissions.group-reserved-admission-variants.js";
+import {
+  admissionDuplicatePathCounter,
+  type AdmitResult,
+  Columns,
+  normalizeRow,
+  payloadTableName,
+  postgresByteaArray,
+  type ReservedAdmissionOutcome,
+  type ReservedAdmissionRequest,
+  tableName,
+  TxAdmissionConflictError,
+} from "./txAdmissions.verify-claimed-payload-rows.js";
+import {
+  DatabaseError,
+  logDatabaseError,
+  sqlErrorToDatabaseError,
+} from "./utils/common.js";
+
+const ENTRY_COLUMNS: readonly Columns[] = [
+  Columns.TX_ID,
+  Columns.TX_FULL_HASH_V1,
+  Columns.PAYLOAD_BYTES,
+  Columns.ARRIVAL_SEQ,
+  Columns.STATUS,
+  Columns.FIRST_SEEN_AT,
+  Columns.LAST_SEEN_AT,
+  Columns.UPDATED_AT,
+  Columns.VALIDATION_STARTED_AT,
+  Columns.TERMINAL_AT,
+  Columns.LEASE_OWNER,
+  Columns.LEASE_EXPIRES_AT,
+  Columns.ATTEMPT_COUNT,
+  Columns.NEXT_ATTEMPT_AT,
+  Columns.REJECT_CODE,
+  Columns.REJECT_DETAIL,
+  Columns.SUBMIT_SOURCE,
+  Columns.REQUEST_COUNT,
+];
+
+// Both branches of the result UNION name the admission columns in one order.
+const entryColumnList = (alias: string): string =>
+  ENTRY_COLUMNS.map((column) => `${alias}.${column}`).join(", ");
+
+/**
+ * Resolves reserved admission requests in one atomic PostgreSQL statement on
+ * the uncontended path. A concurrent ON CONFLICT loser may need one bounded
+ * follow-up touch because PostgreSQL's statement snapshot cannot see the row
+ * whose conflicting insert it just waited for.
+ * The first byte variant for an absent tx id wins; existing rows instead match
+ * their persisted full hash. Rows are inserted in tx-id order, so overlapping
+ * batches never take unique-index locks in opposite orders, but `arrival_seq`
+ * is drawn in request order: a group commit of many requests keeps the order
+ * they reached the writer.
+ */
+export const persistReservedAdmissionBatch = (
+  requests: readonly ReservedAdmissionRequest[],
+): Effect.Effect<
+  readonly ReservedAdmissionOutcome[],
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (requests.length === 0) return [];
+    const variants = groupReservedAdmissionVariants(requests);
+    const sql = yield* SqlClient.SqlClient;
+    const pg = sql as PgClient;
+    const resolved = yield* sql<BatchResolvedRawEntry>`WITH input AS (
+        SELECT *
+        FROM unnest(
+          ${pg.array(postgresByteaArray(variants.map((value) => value.txId)))}::bytea[],
+          ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCbor)))}::bytea[],
+          ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
+          ${pg.array(variants.map((value) => value.txCanonicalCbor.length))}::integer[],
+          ${pg.array(variants.map((value) => value.submitSource))}::text[],
+          ${pg.array(variants.map((value) => value.requestCount))}::integer[],
+          ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
+          ${pg.array(variants.map((value) => value.firstVariantForTxId))}::boolean[],
+          ${pg.array(variants.map((value) => value.requestIndices[0]!))}::integer[]
+        ) AS batch_input(
+          tx_id,
+          tx_canonical_cbor,
+          tx_full_hash_v1,
+          payload_bytes,
+          submit_source,
+          request_count,
+          variant_ordinal,
+          first_variant_for_tx_id,
+          arrival_ordinal
+        )
+      ), arrival AS (
+        -- The subquery's ORDER BY fixes the order nextval runs in. A row
+        -- that loses ON CONFLICT leaves a gap, which arrival_seq allows.
+        SELECT
+          ordered.variant_ordinal,
+          nextval('public.tx_admissions_arrival_seq_seq'::regclass) AS arrival_seq
+        FROM (
+          SELECT input.variant_ordinal
+          FROM input
+          WHERE input.first_variant_for_tx_id
+          ORDER BY input.arrival_ordinal
+        ) ordered
+      ), inserted_admission AS (
+        INSERT INTO ${sql(tableName)} (
+          ${sql(Columns.TX_ID)},
+          ${sql(Columns.ARRIVAL_SEQ)},
+          ${sql(Columns.STATUS)},
+          ${sql(Columns.SUBMIT_SOURCE)},
+          ${sql(Columns.REQUEST_COUNT)},
+          ${sql(Columns.PAYLOAD_BYTES)},
+          ${sql(Columns.TX_FULL_HASH_V1)}
+        )
+        SELECT
+          input.tx_id,
+          arrival.arrival_seq,
+          'queued',
+          input.submit_source,
+          input.request_count,
+          input.payload_bytes,
+          input.tx_full_hash_v1
+        FROM input
+        INNER JOIN arrival
+          ON arrival.variant_ordinal = input.variant_ordinal
+        WHERE input.first_variant_for_tx_id
+        ORDER BY input.variant_ordinal
+        ON CONFLICT (${sql(Columns.TX_ID)}) DO NOTHING
+        RETURNING *
+      ), inserted_payload AS (
+        INSERT INTO ${sql(payloadTableName)} (
+          ${sql(Columns.TX_ID)},
+          ${sql(Columns.TX_CANONICAL_CBOR)}
+        )
+        SELECT
+          inserted.${sql(Columns.TX_ID)},
+          input.tx_canonical_cbor
+        FROM inserted_admission inserted
+        INNER JOIN input
+          ON input.tx_id = inserted.${sql(Columns.TX_ID)}
+          AND input.first_variant_for_tx_id
+        RETURNING ${sql(Columns.TX_ID)}
+      ), updated_existing AS (
+        UPDATE ${sql(tableName)} admissions
+        SET
+          ${sql(Columns.LAST_SEEN_AT)} = GREATEST(
+            NOW(),
+            admissions.${sql(Columns.FIRST_SEEN_AT)},
+            admissions.${sql(Columns.LAST_SEEN_AT)}
+          ),
+          ${sql(Columns.UPDATED_AT)} = GREATEST(
+            NOW(),
+            admissions.${sql(Columns.FIRST_SEEN_AT)},
+            admissions.${sql(Columns.LAST_SEEN_AT)},
+            admissions.${sql(Columns.UPDATED_AT)}
+          ),
+          ${sql(Columns.REQUEST_COUNT)} =
+            admissions.${sql(Columns.REQUEST_COUNT)} + input.request_count
+        FROM input
+        WHERE admissions.${sql(Columns.TX_ID)} = input.tx_id
+          AND admissions.${sql(Columns.TX_FULL_HASH_V1)} =
+            input.tx_full_hash_v1
+          AND NOT EXISTS (
+            SELECT 1
+            FROM inserted_admission inserted
+            WHERE inserted.${sql(Columns.TX_ID)} = input.tx_id
+          )
+        RETURNING input.variant_ordinal, admissions.*
+      )
+      SELECT
+        input.variant_ordinal,
+        'new'::text AS result_kind,
+        ${sql.literal(entryColumnList("inserted"))}
+      FROM input
+      INNER JOIN inserted_admission inserted
+        ON inserted.${sql(Columns.TX_ID)} = input.tx_id
+        AND input.first_variant_for_tx_id
+      INNER JOIN inserted_payload payload
+        ON payload.${sql(Columns.TX_ID)} = inserted.${sql(Columns.TX_ID)}
+      UNION ALL
+      SELECT
+        updated.variant_ordinal,
+        'duplicate'::text AS result_kind,
+        ${sql.literal(entryColumnList("updated"))}
+      FROM updated_existing updated
+      ORDER BY variant_ordinal`;
+
+    const resolvedByVariant = new Map(
+      resolved.map((row) => [
+        Number(row.variant_ordinal),
+        {
+          entry: normalizeRow(row),
+          kind: row.result_kind,
+        } satisfies AdmitResult,
+      ]),
+    );
+    for (const variant of variants) {
+      if (resolvedByVariant.has(variant.variantOrdinal)) continue;
+      const duplicate = yield* touchDuplicateCount({
+        txId: variant.txId,
+        txFullHashV1: variant.txFullHashV1,
+        requestCount: variant.requestCount,
+      });
+      if (duplicate !== null) {
+        resolvedByVariant.set(variant.variantOrdinal, {
+          entry: duplicate,
+          kind: "duplicate",
+        });
+      }
+    }
+    const outcomes: ReservedAdmissionOutcome[] = Array.from(
+      { length: requests.length },
+      () => ({
+        _tag: "Conflict",
+        error: new TxAdmissionConflictError({
+          txIdHex: "",
+          message: "Unresolved reserved admission variant",
+        }),
+      }),
+    );
+    let duplicateCount = 0;
+    for (const variant of variants) {
+      const result = resolvedByVariant.get(variant.variantOrdinal);
+      for (
+        let offset = 0;
+        offset < variant.requestIndices.length;
+        offset += 1
+      ) {
+        const requestIndex = variant.requestIndices[offset]!;
+        if (result === undefined) {
+          const txIdHex = variant.txId.toString("hex");
+          outcomes[requestIndex] = {
+            _tag: "Conflict",
+            error: new TxAdmissionConflictError({
+              txIdHex,
+              message: `Refusing to admit transaction ${txIdHex}: tx_id already exists with different normalized bytes`,
+            }),
+          };
+          continue;
+        }
+        const kind =
+          result.kind === "new" && offset === 0 ? "new" : "duplicate";
+        if (kind === "duplicate") duplicateCount += 1;
+        outcomes[requestIndex] = {
+          _tag: "Success",
+          result: { entry: result.entry, kind },
+        };
+      }
+    }
+    if (duplicateCount > 0) {
+      yield* Metric.incrementBy(
+        admissionDuplicatePathCounter,
+        BigInt(duplicateCount),
+      );
+    }
+    return outcomes;
+  }).pipe(
+    Effect.tapErrorTag("SqlError", (error) =>
+      logDatabaseError(tableName, "admitReservedBatch", error),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to durably admit reserved transaction batch",
+    ),
+  );

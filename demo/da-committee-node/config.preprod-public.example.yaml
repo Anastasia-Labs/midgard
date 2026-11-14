@@ -1,0 +1,81 @@
+# One DA committee member on the preprod-public profile. Each member is its
+# own process with its own copy of this file. Copy it to a private path
+# (chmod 600) and start the member with MIDGARD_CONFIG_FILE set to that
+# absolute path. Values are strings: quote numbers and booleans too. A value
+# set in the process environment wins over this file.
+#
+# Secret settings are commented out. Put them only in the private copy, never
+# in this example. The paths below are the container paths the e2e-stack
+# services mount; change them to match your own mounts.
+#
+# The member reads and submits L1 only through its own follower on the local
+# Cardano node. L1_ACCESS, L1_PROVIDER, L1_KUPO_URL, L1_OGMIOS_URL,
+# L1_BLOCKFROST_URL and L1_BLOCKFROST_PROJECT_ID are refused at start.
+
+# --- Deployment identity (required) -----------------------------------------
+# This member's libp2p runtime manifest (target `committee`), generated from
+# the finalized deployment; it names the peers and the committee threshold.
+MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/config/committee.json"
+# The finalized contract deployment manifest written by `init`.
+MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: "/config/manifest.json"
+# Must equal the manifest's L1 confirmation depth: 30 on preprod-public
+# (profile l1_finality.confirmation_depth).
+CARDANO_FINALITY_DEPTH: "30"
+# Optional cross-check: refused unless it equals the manifest's network.
+MIDGARD_NETWORK: "Preprod"
+
+# --- Local Cardano node (required; all three or none) -----------------------
+# The node's socket, its node config and the native L1 transport binary. Each
+# must be an absolute canonical path.
+CARDANO_LOCAL_NODE_SOCKET_PATH: "/ipc/node.socket"
+CARDANO_LOCAL_NODE_CONFIG_PATH: "/cardano-config/config.json"
+CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: "/app/native-ledger/midgard-l1-node-transport"
+# Optional name for this node in L1 evidence (default local-cardano-node).
+CARDANO_LOCAL_NODE_AUTHORITY_ID: "local-cardano-node"
+
+# --- Store and API (required store; API defaults shown) ---------------------
+# PostgreSQL store for this member (also holds its L1 follower tables). The
+# URL carries the writer password, so it is a secret:
+# DA_COMMITTEE_DATABASE_URL: "postgresql://<writer>:<password>@127.0.0.1:<port>/midgard_da_<signer index>"
+# Readiness and peer API. Keep it on loopback unless a proxy fronts it.
+DA_COMMITTEE_API_HOST: "127.0.0.1"
+DA_COMMITTEE_API_PORT: "8787"
+
+# --- Committee identity (required) ------------------------------------------
+# This member's position in the deployed committee (0-based, as in the
+# runtime manifest). Set together with DA_SIGNER_KEY_SOURCE. Use one source per
+# process: the indexed DA_SIGNER_KEY_SOURCE_<n> form is for a shared file and
+# must not be mixed with this one.
+DA_SIGNER_INDEX: "0"
+# Signing key whose verification key is this member's deployed key
+# (`cardano-seed:<mnemonic>` or `cardano-seed-file:<path>`):
+# DA_SIGNER_KEY_SOURCE: "cardano-seed-file:/run/secrets/da-signer"
+# Persistent libp2p transport identity matching the runtime manifest's peer id
+# (`seed:<32-byte hex>`, `hex:<protobuf key>` or `file:<path>`):
+# DA_LIBP2P_PRIVATE_KEY_SOURCE: "file:/run/secrets/da-transport"
+# Optional cross-check: refused unless it equals the runtime manifest's
+# committee threshold.
+# DA_THRESHOLD: "2"
+
+# --- L1 submission (the submitting member only) -----------------------------
+# Whether this member submits attestations to L1. Defaults to true when
+# L1_SUBMITTER_KEY_SOURCE is set.
+DA_L1_SUBMISSION_ENABLED: "false"
+# Fee and collateral wallet for attestation submission (`seed:<mnemonic>`,
+# `private-key:<bech32>`, or `file:<path>` to a file holding one of those);
+# required when DA_L1_SUBMISSION_ENABLED is true:
+# L1_SUBMITTER_KEY_SOURCE: "file:/run/secrets/da-submitter"
+# A submitting member also answers availability challenges. Both settings
+# below are required then: an absolute durable journal path and a dedicated
+# wallet, distinct from the submitter wallet.
+# DA_AVAILABILITY_JOURNAL_PATH: "/var/lib/midgard-da/availability-journal.jsonl"
+# DA_AVAILABILITY_SUBMITTER_KEY_SOURCE: "file:/run/secrets/da-availability"
+
+# --- Optional -----------------------------------------------------------------
+# Log-only retention alert, in ms before a payload stops being challengeable.
+# Must be below block maturity / 2: 302400000 on preprod-public
+# (profile timing.block_maturity_ms 604800000). Unset: no alert.
+# DA_RETENTION_ALERT_THRESHOLD_MS: "3600000"
+# How long L1 reads may fail before the member exits. Defaults to the
+# profile's DA attestation timeout (timing.da_attestation_timeout_ms 3600000).
+# L1_VIEW_FATAL_MS: "3600000"

@@ -1,10 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as EffectData, Effect, Option } from "effect";
 
-import { parseEventId, parseHexBytes } from "@/commands/command-utils.js";
-import * as DepositsDB from "@/database/deposits.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import * as DepositsDB from "../database/deposits.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Database } from "../services/database.js";
+import { parseEventId, parseHexBytes } from "./command-utils.js";
 
 /**
  * Query selectors accepted by `GET /deposit-status`.
@@ -21,6 +21,7 @@ export type SerializedDepositStatus = {
   readonly eventId: string;
   readonly eventInfo: string;
   readonly inclusionTime: string;
+  /** The deposit's admission transaction, which never changes as its Order moves. */
   readonly cardanoTxHash: string;
   readonly ledgerTxId: string;
   readonly ledgerOutput: string;

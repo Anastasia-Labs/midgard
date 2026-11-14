@@ -7,9 +7,13 @@ use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
 use env
+use midgard/common/allow_list
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
+use midgard/operator_directory.{
+  bounty_address_v1, bounty_routing_is_exact_v1, deinit, init,
+  operator_is_not_a_member, other_directory_is_untouched_v1,
+}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
@@ -61,29 +65,34 @@ validator mint(
         active_operators_element_ref_input_index,
         retired_operators_element_ref_input_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          validity_range,
-          extra_signatories,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              validity_range,
+              extra_signatories,
+              ..
+            }
+          = self
 
-        // 1. Transaction must be signed by the registering operator.
+        // 1. Transaction must be signed by the registering operator, and the
+        //    deployment's operator allow-list must admit it.
         expect registering_operator |> utils.has_signed(extra_signatories)
+        expect allow_list.admits(env.operator_allow_list, registering_operator)
 
         // 2. Transaction must refer to hub oracle's authentic UTxO.
-        let hub.Datum {
-          active_operators: active_operators_mint_script_hash,
-          ..
-        } =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+        let
+            hub.Datum {
+              active_operators: active_operators_mint_script_hash,
+              ..
+            }
+          = hub.get_datum(
+          reference_inputs,
+          hub_oracle_script_hash,
+          hub_oracle_ref_input_index,
+        )
 
         // 3. Registering operator must not be present in the active operators
         //    set.
@@ -99,8 +108,8 @@ validator mint(
 
         // 4. Linked list prepend outputs must exist at specified indices.
         expect Some(root_output) = outputs |> list.at(root_output_index)
-        expect Some(registered_node_output) =
-          outputs |> list.at(registered_node_output_index)
+        expect Some(registered_node_output) = outputs
+          |> list.at(registered_node_output_index)
 
         // 5. Prepending to the head of the linked list must be proper.
         //
@@ -114,36 +123,34 @@ validator mint(
         //          unnecessarily longer.
         {
           let
-            _anchor_input,
-            anchor_lovelace_change,
-            _m_anchor_key,
-            _anchor_data,
-            registered_node_lovelace,
-            registered_node_key,
-            registered_node_data,
-            _registered_node_link,
-          <-
-            linked_list.insert_descending(
-              continued_anchor_element_output: root_output,
-              new_node_output: registered_node_output,
-              inputs: inputs,
-              tx_mint: mint,
-            )
+              _anchor_input,
+              anchor_lovelace_change,
+              _m_anchor_key,
+              _anchor_data,
+              registered_node_lovelace,
+              registered_node_key,
+              registered_node_data,
+              _registered_node_link
+            <- linked_list.insert_descending(
+            continued_anchor_element_output: root_output,
+            new_node_output: registered_node_output,
+            inputs: inputs,
+            tx_mint: mint,
+          )
 
           // 6. Anchor's Lovelace must be preserved.
           expect anchor_lovelace_change >= 0
 
           // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace >= env.required_bond
+          expect registered_node_lovelace == env.required_bond
 
           // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
           //    upper bound of the transaction's validity interval.
-          let activation_time =
-            env.registration_duration + utils.get_inclusive_upper_bound_of_interval(
-              validity_range,
-            )
+          let activation_time = env.registration_duration + utils.get_inclusive_upper_bound_of_interval(
+            validity_range,
+          )
 
           // 9. The key of registered node must match the big-endian encoding of
           //    `activation_time`
@@ -163,8 +170,9 @@ validator mint(
                 )
 
           // 11. Registered node's data must carry the registering operator.
-          let expected_node_data: Data =
-            NodeData { operator: registering_operator }
+          let expected_node_data: Data = NodeData {
+            operator: registering_operator,
+          }
           expect registered_node_data == expected_node_data
 
           // Done.
@@ -180,39 +188,43 @@ validator mint(
         retired_operators_element_ref_input_index,
         active_operators_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          redeemers,
-          validity_range,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              redeemers,
+              validity_range,
+              ..
+            }
+          = self
 
         // 1. Transaction must refer to hub oracle's authentic UTxO.
-        let hub.Datum {
-          active_operators: active_operators_mint_script_hash,
-          ..
-        } =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+        let
+            hub.Datum {
+              active_operators: active_operators_mint_script_hash,
+              ..
+            }
+          = hub.get_datum(
+          reference_inputs,
+          hub_oracle_script_hash,
+          hub_oracle_ref_input_index,
+        )
 
         // 2. `ActivateOperator` minting redeemer of the active operators script
         //    must be invoked with a matching operator pub key hash.
-        expect active_operators.ActivateOperator {
-          new_active_operator_key,
-          active_operators_set_was_empty,
-          ..
-        } =
-          redeemers
-            |> utils.get_redeemer_at(
-                expected_purpose: Mint(active_operators_mint_script_hash),
-                redeemer_index: active_operators_redeemer_index,
-              )
+        expect
+            active_operators.ActivateOperator {
+              new_active_operator_key,
+              active_operators_set_was_empty,
+              ..
+            }
+          = redeemers
+          |> utils.get_redeemer_at(
+              expected_purpose: Mint(active_operators_mint_script_hash),
+              redeemer_index: active_operators_redeemer_index,
+            )
         expect new_active_operator_key == activating_operator
 
         // 3. Activating operator must not have been retired.
@@ -228,19 +240,15 @@ validator mint(
 
         // 4. Removal of the activating node from the registered operator set
         //    must be valid.
-        let
-          removed_node_key,
-          removed_node_link,
-        <-
-          remove_operator_and_get_node_info(
-            own_policy_id,
-            activating_operator,
-            anchor_element_input_outref,
-            anchor_element_output_index,
-            inputs,
-            outputs,
-            mint,
-          )
+        let removed_node_key, removed_node_link <- remove_operator_and_get_node_info(
+          own_policy_id,
+          activating_operator,
+          anchor_element_input_outref,
+          anchor_element_output_index,
+          inputs,
+          outputs,
+          mint,
+        )
 
         // 5. The `activation_time` of the removed node (retrieved from its
         //    key) must be in the past. If the active operators set is empty,
@@ -272,19 +280,15 @@ validator mint(
 
         // 2. Removal of the deregistering operator's node from the registered
         //    operator set must be valid.
-        let
-          _removed_node_key,
-          _removed_node_link,
-        <-
-          remove_operator_and_get_node_info(
-            own_policy_id,
-            deregistering_operator,
-            anchor_element_input_outref,
-            anchor_element_output_index,
-            inputs,
-            outputs,
-            mint,
-          )
+        let _removed_node_key, _removed_node_link <- remove_operator_and_get_node_info(
+          own_policy_id,
+          deregistering_operator,
+          anchor_element_input_outref,
+          anchor_element_output_index,
+          inputs,
+          outputs,
+          mint,
+        )
 
         // Done.
         True
@@ -295,34 +299,67 @@ validator mint(
         anchor_element_output_index,
         duplicate_node_ref_input_index,
         duplicate_operator_status,
+        bounty_claimant,
       } -> {
-        let Transaction { inputs, outputs, reference_inputs, mint, fee, .. } =
-          self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              fee,
+              extra_signatories,
+              ..
+            }
+          = self
 
-        // 1. `slashing_penalty` must be paid via the transaction fee. The rest
-        //    of the bond is assumed to be going to the signer's desired
-        //    destination.
-        expect fee >= env.slashing_penalty
+        // The proof node is read from `reference_inputs` and is not compared
+        // with the node being removed: the ledger requires a transaction's
+        // reference inputs to be disjoint from its inputs (for PlutusV3
+        // contexts from protocol version 11), so a node can never serve as
+        // its own proof and a lone honest registration cannot be slashed.
+        // 1. `slashing_penalty` must be paid via the transaction fee, which is
+        //    the pinned destination of the penalty (F04 §2.3).
+        expect fee == env.slashing_penalty
+
+        // 1a. The bounty claimant named in the redeemer must sign: nothing
+        //     earlier in a duplicate-registration slash authenticates it.
+        expect bounty_claimant |> utils.has_signed(extra_signatories)
+
+        // 1b. The rest of the removed bond, exactly `env.fraud_prover_reward`,
+        //     must reach the claimant (F04 §2.3).
+        expect
+          bounty_routing_is_exact_v1(
+            outputs,
+            bounty_address_v1(bounty_claimant),
+            env.fraud_prover_reward,
+          )
+
+        // 1c. Allow one operator slash per transaction: the retired-operators
+        //     policy may not mint or burn alongside this slash, and an
+        //     active-operators slash refuses this one. With 1 and 1b, the fee
+        //     and the bounty then account for this registered bond alone.
+        expect
+          other_directory_is_untouched_v1(
+            mint,
+            retired_operators_mint_script_hash,
+          )
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.
-        let
-          _removed_node_key,
-          _removed_node_link,
-        <-
-          remove_operator_and_get_node_info(
-            own_policy_id,
-            duplicate_operator,
-            anchor_element_input_outref,
-            anchor_element_output_index,
-            inputs,
-            outputs,
-            mint,
-          )
+        let _removed_node_key, _removed_node_link <- remove_operator_and_get_node_info(
+          own_policy_id,
+          duplicate_operator,
+          anchor_element_input_outref,
+          anchor_element_output_index,
+          inputs,
+          outputs,
+          mint,
+        )
 
         // 3. A reference input must exist at the specified index.
-        expect Some(Input { output: duplicate_node_ref_utxo, .. }) =
-          reference_inputs |> list.at(duplicate_node_ref_input_index)
+        expect Some(Input { output: duplicate_node_ref_utxo, .. }) = reference_inputs
+          |> list.at(duplicate_node_ref_input_index)
 
         // Depending on where the existing duplicate operator resides, it must
         // be shown that the referenced input is a member of an associated
@@ -332,13 +369,8 @@ validator mint(
             // 4a. Referenced element must be a node in the registered operators
             //     set with an operator key that matches the removed operator.
             {
-              let
-                _node_address,
-                _node_lovelace,
-                _m_key,
-                node_data,
-                _node_link,
-              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+              let _node_address, _node_lovelace, _m_key, node_data, _node_link
+                <- linked_list.get_element_info(duplicate_node_ref_utxo)
               expect NodeData { operator: node_operator } = node_data
               expect node_operator == duplicate_operator
 
@@ -350,23 +382,17 @@ validator mint(
             // 4b. Since the active operators policy ID is not a parameter here,
             //     the transaction must refer to hub oracle's authentic UTxO for
             //     retrieval of the policy ID.
-            let hub_datum =
-              hub.get_datum(
-                reference_inputs,
-                hub_oracle_script_hash,
-                hub_oracle_ref_input_index,
-              )
+            let hub_datum = hub.get_datum(
+              reference_inputs,
+              hub_oracle_script_hash,
+              hub_oracle_ref_input_index,
+            )
 
             // 5b. Referenced element must be a node in the active operators
             //     set, with a key that matches the removed node.
             {
-              let
-                _node_address,
-                _node_lovelace,
-                m_key,
-                _node_data,
-                _node_link,
-              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+              let _node_address, _node_lovelace, m_key, _node_data, _node_link
+                <- linked_list.get_element_info(duplicate_node_ref_utxo)
               expect Some(active_operator) = m_key
               expect active_operator == duplicate_operator
 
@@ -381,13 +407,8 @@ validator mint(
             // 4c. Referenced element must be a node in the retired operators
             //     set, with a key that matches the removed node.
             {
-              let
-                _node_address,
-                _node_lovelace,
-                m_key,
-                _node_data,
-                _node_link,
-              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+              let _node_address, _node_lovelace, m_key, _node_data, _node_link
+                <- linked_list.get_element_info(duplicate_node_ref_utxo)
               expect Some(retired_operator) = m_key
               expect retired_operator == duplicate_operator
 
@@ -418,29 +439,28 @@ fn remove_operator_and_get_node_info(
   custom_validator: fn(linked_list.NodeKey, linked_list.Link) -> Bool,
 ) -> Bool {
   // 1. Linked list output for removal must exist at specified index.
-  expect Some(anchor_element_output) =
-    outputs |> list.at(anchor_element_output_index)
+  expect Some(anchor_element_output) = outputs
+    |> list.at(anchor_element_output_index)
 
   // 2. Removal of the operator node from the registered operator set must be
   //    valid.
   {
     let
-      _anchor_input,
-      anchor_lovelace_change,
-      _m_anchor_key,
-      _anchor_data,
-      _removed_node_input,
-      _removed_node_lovelace,
-      removed_node_key,
-      removed_node_data,
-      removed_node_link,
-    <-
-      linked_list.remove(
-        anchor_input_outref: anchor_element_input_outref,
-        continued_anchor_element_output: anchor_element_output,
-        inputs: inputs,
-        tx_mint: mint,
-      )
+        _anchor_input,
+        anchor_lovelace_change,
+        _m_anchor_key,
+        _anchor_data,
+        _removed_node_input,
+        _removed_node_lovelace,
+        removed_node_key,
+        removed_node_data,
+        removed_node_link
+      <- linked_list.remove(
+      anchor_input_outref: anchor_element_input_outref,
+      continued_anchor_element_output: anchor_element_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
 
     // 3. ADA bond of the anchor node (or min required ADA if anchor is root)
     //    must be preserved.

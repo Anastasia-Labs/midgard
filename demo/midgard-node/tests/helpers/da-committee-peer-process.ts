@@ -1,17 +1,17 @@
 import { appendFile, readFile } from "node:fs/promises";
 
-import type { Libp2pDaTransportConfig } from "../../../da-committee-node/src/config.js";
+import type { Libp2pDaTransportConfig } from "da-committee-node/config";
 import {
   createDaLibp2pPayloadRequestHandlers,
   DaLibp2pNode,
   processWideDaPayloadSubmitAdmission,
-} from "../../../da-committee-node/src/da/libp2p/index.js";
-import { JsonFileWatcherStore } from "../../../da-committee-node/src/store.js";
+} from "da-committee-node/da/libp2p";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 
 type PeerProcessConfig = {
   readonly peerIndex: number;
   readonly privateKeySource: string;
-  readonly storeDir: string;
+  readonly databaseUrl: string;
   readonly metricsPath: string;
   readonly transport: Libp2pDaTransportConfig;
 };
@@ -21,7 +21,7 @@ if (configPath === undefined) throw new Error("missing peer config path");
 const input = JSON.parse(
   await readFile(configPath, "utf8"),
 ) as PeerProcessConfig;
-const store = await JsonFileWatcherStore.open(input.storeDir);
+const store = await PostgresCommitteeStore.open(input.databaseUrl);
 const handlers = new Map(
   createDaLibp2pPayloadRequestHandlers({
     deploymentFingerprint: input.transport.deploymentFingerprint,
@@ -73,8 +73,12 @@ let stopping = false;
 const stop = async () => {
   if (stopping) return;
   stopping = true;
-  await node.stop().catch(() => undefined);
-  process.exit(0);
+  try {
+    await node.stop().catch(() => undefined);
+  } finally {
+    await store.close().catch(() => undefined);
+    process.exit(0);
+  }
 };
 process.once("SIGTERM", () => void stop());
 process.once("SIGINT", () => void stop());

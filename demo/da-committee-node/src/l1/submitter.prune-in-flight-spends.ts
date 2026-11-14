@@ -1,0 +1,402 @@
+import { readFile } from "node:fs/promises";
+
+import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
+import {
+  CML,
+  type LucidEvolution,
+  type TxSignBuilder,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { findSubmitOutcomeUnknown } from "./submit-outcome-unknown.js";
+import {
+  classifyL1SubmitterUtxos,
+  DEFAULT_READINESS_REQUIREMENTS,
+  type InFlightSpend,
+  inFlightSpendsByLucid,
+  type L1SubmitOptions,
+  type L1SubmitterCredential,
+  type L1SubmitterReadinessRequirements,
+  type L1SubmitterReadinessSummary,
+  outRefKey,
+  transactionAbsent,
+  type UtxoOverrideLucid,
+} from "./submitter.classify-l1-submitter-utxos.js";
+
+/**
+ * Selects the wallet `keySource` names, with no UTxO pin: the wallet's reads
+ * and its signing see the provider's live UTxOs.
+ */
+export const selectL1KeySourceWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet">,
+  keySource: string,
+): Promise<L1SubmitterCredential> => {
+  const credential = await readL1SubmitterKeySource(keySource);
+  if (credential.kind === "seed") {
+    lucid.selectWallet.fromSeed(credential.value);
+  } else {
+    lucid.selectWallet.fromPrivateKey(credential.value as never);
+  }
+  return credential;
+};
+
+/**
+ * Selects the L1 submitter's wallet and pins it to its spendable plain-ADA
+ * UTxOs, leaving out the coins its own unconfirmed transactions spend. The
+ * submitter takes the pin again before each signing (`signSubmitAndConfirm`).
+ */
+export const selectL1SubmitterWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet"> & Partial<UtxoOverrideLucid>,
+  keySource: string,
+): Promise<L1SubmitterCredential> => {
+  const credential = await selectL1KeySourceWallet(lucid, keySource);
+  await refreshL1SubmitterPlainAdaUtxos(lucid);
+  return credential;
+};
+
+export const refreshL1SubmitterPlainAdaUtxos = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  requirements: L1SubmitterReadinessRequirements = DEFAULT_READINESS_REQUIREMENTS,
+): Promise<L1SubmitterReadinessSummary | undefined> => {
+  if (typeof lucid.overrideUTxOs !== "function") {
+    return undefined;
+  }
+  if (typeof lucid.wallet !== "function") {
+    return undefined;
+  }
+  const wallet = lucid.wallet();
+  const address = await wallet.address();
+  const utxos =
+    typeof lucid.utxosAt === "function"
+      ? await lucid.utxosAt(address)
+      : await wallet.getUtxos();
+  const spentOutRefs = await pruneInFlightSpends(lucid, utxos);
+  const staleOutRefs = await staleCandidateOutRefs(lucid, utxos, spentOutRefs);
+  const summary = classifyL1SubmitterUtxos({
+    address,
+    utxos,
+    requirements,
+    spentOutRefs,
+    staleOutRefs,
+  });
+  lucid.overrideUTxOs([...summary.spendableUtxos]);
+  return summary;
+};
+
+export const isPlainAdaUtxo = (utxo: UTxO): boolean =>
+  utxo.datum == null &&
+  utxo.datumHash == null &&
+  utxo.scriptRef == null &&
+  Object.keys(utxo.assets).length === 1 &&
+  typeof utxo.assets.lovelace === "bigint";
+
+/**
+ * Signs, submits and (unless told not to) awaits confirmation. A submission
+ * whose outcome is unknown (the provider's
+ * {@link L1SubmitOutcomeUnknownError}, also inside Lucid's FiberFailure) is
+ * remembered as an unconfirmed in-flight spend under the transaction's id,
+ * computed before the submit, and rethrown carrying that id: the node may
+ * have taken it, so its inputs stay out of selection until
+ * {@link inFlightSubmissionStatus} or a refresh releases them.
+ */
+export const signSubmitAndConfirm = async (
+  lucid: Pick<LucidEvolution, "awaitTxConfirmation"> &
+    Partial<UtxoOverrideLucid>,
+  tx: TxSignBuilder,
+  options: L1SubmitOptions = {},
+): Promise<string> => {
+  await refreshL1SubmitterPlainAdaUtxos(lucid);
+  const signed = await tx.sign.withWallet().complete();
+  const signedCbor = signed.toCBOR();
+  const signedTxHash = transactionIdOf(signedCbor);
+  let txHash: string;
+  try {
+    txHash = await signed.submit();
+  } catch (error) {
+    const outcomeUnknown = findSubmitOutcomeUnknown(error);
+    if (outcomeUnknown === undefined) throw error;
+    const spend = rememberInFlightSpend(lucid, signedTxHash, signedCbor);
+    if (spend !== undefined) spend.unconfirmed = true;
+    throw outcomeUnknown.txHash === signedTxHash
+      ? outcomeUnknown
+      : new L1SubmitOutcomeUnknownError(signedTxHash, outcomeUnknown.reason, {
+          cause: error,
+        });
+  }
+  const inFlightSpend = rememberInFlightSpend(lucid, txHash, signedCbor);
+  if (options.awaitConfirmation !== false) {
+    try {
+      await lucid.awaitTxConfirmation(txHash, {
+        ...(options.confirmationPollIntervalMs === undefined
+          ? {}
+          : { checkInterval: options.confirmationPollIntervalMs }),
+      });
+    } catch (error) {
+      if (inFlightSpend !== undefined) {
+        inFlightSpend.unconfirmed = true;
+      }
+      throw error;
+    }
+    await refreshL1SubmitterPlainAdaUtxos(lucid);
+  }
+  return txHash;
+};
+
+/** What the follower's view of a submitted transaction id decides. */
+export type InFlightSubmissionStatus = "landed" | "pending" | "released";
+
+/**
+ * Resolves a submission whose outcome is unknown by the provider's status of
+ * its transaction id: `landed` once confirmed; `pending` while the node's
+ * mempool holds it; `released` when the chain has not seen it (the release
+ * rule a refresh applies to an unconfirmed spend) or it landed phase-2
+ * invalid, so its effect did not happen. A released spend's inputs are
+ * selectable again. A failed status read throws: the caller keeps waiting.
+ */
+export const inFlightSubmissionStatus = async (
+  lucid: Pick<LucidEvolution, "transactionStatus">,
+  txHash: string,
+): Promise<InFlightSubmissionStatus> => {
+  const { status } = await lucid.transactionStatus(txHash);
+  if (status === "confirmed") return "landed";
+  if (status === "pending") return "pending";
+  inFlightSpendsByLucid.get(lucid)?.delete(txHash);
+  return "released";
+};
+
+/**
+ * Forgets the in-flight spends that no longer protect anything (see
+ * `InFlightSpend`) and returns the inputs of the rest.
+ */
+const pruneInFlightSpends = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  utxos: readonly UTxO[],
+): Promise<ReadonlySet<string> | undefined> => {
+  const inFlight = inFlightSpendsByLucid.get(lucid);
+  if (inFlight === undefined) {
+    return undefined;
+  }
+  const listedOutRefs = new Set(utxos.map(outRefKey));
+  const currentSlot =
+    typeof lucid.currentSlot === "function" ? lucid.currentSlot() : undefined;
+  const spentOutRefs = new Set<string>();
+  for (const [txHash, spend] of inFlight) {
+    if (
+      !spend.outRefs.some((outRef) => listedOutRefs.has(outRef)) ||
+      (spend.ttlSlot !== undefined &&
+        currentSlot !== undefined &&
+        currentSlot >= spend.ttlSlot) ||
+      (spend.unconfirmed && (await transactionAbsent(lucid, txHash)))
+    ) {
+      inFlight.delete(txHash);
+      continue;
+    }
+    for (const outRef of spend.outRefs) {
+      spentOutRefs.add(outRef);
+    }
+  }
+  return spentOutRefs;
+};
+
+const staleCandidateOutRefs = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  utxos: readonly UTxO[],
+  spentOutRefs: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> => {
+  if (typeof lucid.utxosByOutRef !== "function") {
+    return undefined;
+  }
+  const candidateOutRefs = utxos
+    .filter(
+      (utxo) => isPlainAdaUtxo(utxo) && !spentOutRefs?.has(outRefKey(utxo)),
+    )
+    .map((utxo) => ({ txHash: utxo.txHash, outputIndex: utxo.outputIndex }));
+  if (candidateOutRefs.length === 0) {
+    return undefined;
+  }
+  const liveUtxos = await lucid.utxosByOutRef(candidateOutRefs);
+  const liveOutRefs = new Set(liveUtxos.map(outRefKey));
+  return new Set(
+    candidateOutRefs
+      .map((outRef) => `${outRef.txHash}#${outRef.outputIndex.toString()}`)
+      .filter((outRef) => !liveOutRefs.has(outRef)),
+  );
+};
+
+/**
+ * Reads the submitter wallet's readiness, then retries up to `retryCount`
+ * times, `retryDelayMs` apart, while it is not ready. A read that throws
+ * (a provider that is briefly unreachable) is retried within the same
+ * budget; only the last read's error escapes. A wallet that cannot be
+ * selected at all is a configuration fault and is never retried.
+ */
+export const pollReadiness = async (
+  lucid: Partial<UtxoOverrideLucid>,
+  requirements: L1SubmitterReadinessRequirements & {
+    readonly retryCount: number;
+    readonly retryDelayMs: number;
+  },
+): Promise<L1SubmitterReadinessSummary> => {
+  for (let attempt = 0; ; attempt += 1) {
+    let summary: L1SubmitterReadinessSummary | undefined;
+    try {
+      summary = await refreshL1SubmitterPlainAdaUtxos(lucid, requirements);
+    } catch (error) {
+      if (attempt >= requirements.retryCount) throw error;
+      await sleep(requirements.retryDelayMs);
+      continue;
+    }
+    if (summary === undefined) {
+      throw new Error(
+        "L1 submitter wallet preflight requires a selectable wallet",
+      );
+    }
+    if (summary.ready || attempt >= requirements.retryCount) return summary;
+    await sleep(requirements.retryDelayMs);
+  }
+};
+
+/**
+ * An auto-fund payment failed after it was built, while it was signed,
+ * submitted or awaited. It may have reached the chain, so it must not be
+ * sent again: a retry would fund the submitter twice.
+ */
+export class AutoFundPaymentUnsettledError extends Error {
+  override readonly name = "AutoFundPaymentUnsettledError";
+
+  constructor(cause: unknown) {
+    super(
+      `L1 submitter auto-fund payment may have been submitted but did not settle: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+}
+
+export const submitAutoFundPayment = async ({
+  lucid,
+  submitterAddress,
+  lovelace,
+  confirmationPollIntervalMs,
+}: {
+  readonly lucid: Pick<LucidEvolution, "awaitTxConfirmation" | "newTx"> &
+    Partial<UtxoOverrideLucid>;
+  readonly submitterAddress: string;
+  readonly lovelace: bigint;
+  readonly confirmationPollIntervalMs: number;
+}): Promise<string> => {
+  const tx = await lucid
+    .newTx()
+    .pay.ToAddress(submitterAddress, { lovelace })
+    .complete();
+  try {
+    return await signSubmitAndConfirm(lucid, tx, {
+      confirmationPollIntervalMs,
+    });
+  } catch (error) {
+    throw new AutoFundPaymentUnsettledError(error);
+  }
+};
+
+export const readinessErrors = (
+  summary: L1SubmitterReadinessSummary,
+): readonly string[] => {
+  if (summary.ready) {
+    return [];
+  }
+  const errors: string[] = [];
+  if (summary.missingPlainLovelace > 0n) {
+    errors.push("missing_plain_lovelace");
+  }
+  if (summary.missingCollateralLovelace > 0n) {
+    errors.push("missing_collateral_lovelace");
+  }
+  if (summary.missingSpendableUtxoCount > 0) {
+    errors.push("missing_spendable_utxo_count");
+  }
+  return errors;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export const readL1SubmitterKeySource = async (
+  source: string,
+): Promise<L1SubmitterCredential> => {
+  const trimmed = source.trim();
+  if (trimmed.startsWith("file:")) {
+    const fromFile = (
+      await readFile(trimmed.slice("file:".length), "utf8")
+    ).trim();
+    return parseInlineCredential(fromFile);
+  }
+  return parseInlineCredential(trimmed);
+};
+
+const parseInlineCredential = (value: string): L1SubmitterCredential => {
+  if (value.startsWith("seed:")) {
+    return requiredCredential("seed", value.slice("seed:".length));
+  }
+  if (value.startsWith("mnemonic:")) {
+    return requiredCredential("seed", value.slice("mnemonic:".length));
+  }
+  if (value.startsWith("private-key:")) {
+    return requiredCredential(
+      "private_key",
+      value.slice("private-key:".length),
+    );
+  }
+  if (value.startsWith("privateKey:")) {
+    return requiredCredential("private_key", value.slice("privateKey:".length));
+  }
+  if (value.trim().split(/\s+/).length >= 12) {
+    return requiredCredential("seed", value);
+  }
+  return requiredCredential("private_key", value);
+};
+
+const transactionIdOf = (txCbor: string): string =>
+  CML.hash_transaction(CML.Transaction.from_cbor_hex(txCbor).body()).to_hex();
+
+const rememberInFlightSpend = (
+  lucid: object,
+  txHash: string,
+  txCbor: string,
+): InFlightSpend | undefined => {
+  const body = CML.Transaction.from_cbor_hex(txCbor).body();
+  const inputs = body.inputs();
+  const outRefs: string[] = [];
+  for (let index = 0; index < inputs.len(); index += 1) {
+    const input = inputs.get(index);
+    outRefs.push(
+      `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+    );
+  }
+  if (outRefs.length === 0) {
+    return undefined;
+  }
+  const ttl = body.ttl();
+  const spend: InFlightSpend = {
+    outRefs,
+    ...(ttl === undefined ? {} : { ttlSlot: Number(ttl) }),
+    unconfirmed: false,
+  };
+  const inFlight =
+    inFlightSpendsByLucid.get(lucid) ?? new Map<string, InFlightSpend>();
+  inFlight.set(txHash, spend);
+  inFlightSpendsByLucid.set(lucid, inFlight);
+  return spend;
+};
+
+const requiredCredential = <Kind extends L1SubmitterCredential["kind"]>(
+  kind: Kind,
+  value: string,
+): Extract<L1SubmitterCredential, { readonly kind: Kind }> => {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    throw new Error("L1 submitter key source is empty");
+  }
+  return { kind, value: trimmed } as Extract<
+    L1SubmitterCredential,
+    { readonly kind: Kind }
+  >;
+};

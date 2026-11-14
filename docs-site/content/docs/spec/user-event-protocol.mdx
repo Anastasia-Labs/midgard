@@ -6,7 +6,8 @@ description: "How deposits, transaction orders, withdrawal orders, transaction r
 Chapter 2 specifies the **user events**, the ways users and L1 interact with the
 rollup, and the on-chain scripts that gate each one. Most events are specified as a
 **minting policy** plus a **spending validator** pair, with staking scripts where a
-withdrawal-style witness is needed.
+certificate witness is needed. The source chapter includes older sketches;
+current handler and schema details belong to the linked implementation pages.
 
 ## Events and their scripts
 
@@ -27,4 +28,4 @@ These events are built and submitted through the SDK and node: the
 node's [deposits and withdrawals](/docs/operators/node/deposits-withdrawals) flows.
 On L1 they are enforced by the
 [user-event validators](/docs/onchain/user-events) (`deposit`, `withdrawal`,
-`tx-order`, `witness`).
+`tx-order-v1`, `witness`).

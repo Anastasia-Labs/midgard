@@ -1,0 +1,385 @@
+import { encodeOutRef } from "../codec.js";
+import { depth } from "../heads.js";
+import {
+  asBuffer,
+  asNumber,
+  type Dialect,
+  type SqlTx,
+  type SqlValue,
+} from "../sql/backend.js";
+import type {
+  Cursor,
+  OutRef,
+  Point,
+  StoredBlock,
+  StoredOutput,
+  StoredTx,
+} from "../types.js";
+import {
+  BLOCK_COLUMNS,
+  readCursor,
+  STORED_OUTPUT_FROM,
+  STORED_OUTPUT_SELECT,
+  storedBlockFromRow,
+  storedOutputFromRow,
+  storedTxFromRow,
+  TX_COLUMNS,
+} from "./rows.js";
+
+/** Why a read at a point cannot be answered. */
+export type PointRefusal = Readonly<{
+  kind: "point_not_canonical" | "point_beyond_retention" | "not_initialized";
+  detail: string;
+}>;
+
+export type PointStatus =
+  | Readonly<{ kind: "canonical"; height: number; depth: number }>
+  | PointRefusal;
+
+export type UtxoRead =
+  | Readonly<{ kind: "ok"; utxos: readonly StoredOutput[] }>
+  | PointRefusal;
+
+const beyondRetention = (point: Point, prunedThroughSlot: number) =>
+  ({
+    kind: "point_beyond_retention",
+    detail: `slot ${point.slot} is below the retained window (slot ${prunedThroughSlot})`,
+  }) as const;
+
+/**
+ * Where a point stands against the stored chain. `depth` is the heads
+ * module's `depth()`: 1 at the cursor.
+ * A block row the prune kept below `prunedThroughSlot` (one a retention pin
+ * holds, a checkpoint, the origin) is still canonical, with its height and
+ * depth: the block table holds the canonical chain only. So a point below
+ * the window whose slot holds a kept row with another hash is
+ * `point_not_canonical`: the chain's block at that slot is another one. A
+ * point below the window with no row at its slot is
+ * `point_beyond_retention`, as pruned and never canonical cannot be told
+ * apart there. Facts at such a point are another
+ * matter: `liveUtxosIn` refuses them, since the window's facts are no longer
+ * complete.
+ */
+export const pointStatusIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  point: Point,
+): Promise<PointStatus> => {
+  const cursor = await readCursor(tx, dialect);
+  if (cursor === null)
+    return { kind: "not_initialized", detail: "no cursor row" };
+  const rows = await tx.query(
+    "SELECT height FROM l1_blocks WHERE slot = ? AND hash = ?",
+    [point.slot, point.hash],
+  );
+  const row = rows[0];
+  if (row !== undefined) {
+    const height = asNumber(row.height);
+    return { kind: "canonical", height, depth: depth(cursor.height, height) };
+  }
+  const notCanonical = {
+    kind: "point_not_canonical",
+    detail: `${point.hash.toString("hex")} at slot ${point.slot} is not on the stored chain`,
+  } as const;
+  if (point.slot >= cursor.prunedThroughSlot) return notCanonical;
+  const kept = await tx.query("SELECT 1 FROM l1_blocks WHERE slot = ?", [
+    point.slot,
+  ]);
+  return kept.length > 0
+    ? notCanonical
+    : beyondRetention(point, cursor.prunedThroughSlot);
+};
+
+const liveClause = (at: number | null): string =>
+  at === null
+    ? "o.spent_slot IS NULL"
+    : "(o.created_slot IS NULL OR o.created_slot <= ?) AND (o.spent_slot IS NULL OR o.spent_slot > ?)";
+
+const liveParams = (at: number | null): SqlValue[] =>
+  at === null ? [] : [at, at];
+
+const ORDER = " ORDER BY o.tx_hash, o.output_index";
+
+/** A UTxO filter for `liveUtxosIn`. */
+export type UtxoFilter =
+  | Readonly<{ by: "address"; address: Buffer }>
+  | Readonly<{ by: "payment_credential"; hash: Buffer }>
+  | Readonly<{ by: "unit"; policyId: Buffer; assetName?: Buffer }>
+  | Readonly<{ by: "outref"; outRefs: readonly OutRef[] }>;
+
+const filterSql = (
+  filter: UtxoFilter,
+): { join: string; where: string; params: SqlValue[] } => {
+  switch (filter.by) {
+    case "address":
+      return { join: "", where: "o.address = ?", params: [filter.address] };
+    case "payment_credential":
+      return { join: "", where: "o.payment_cred = ?", params: [filter.hash] };
+    case "unit":
+      return {
+        join: "",
+        where: `EXISTS (SELECT 1 FROM l1_output_assets a WHERE a.tx_hash = o.tx_hash
+          AND a.output_index = o.output_index AND a.policy_id = ?${filter.assetName === undefined ? "" : " AND a.asset_name = ?"})`,
+        params:
+          filter.assetName === undefined
+            ? [filter.policyId]
+            : [filter.policyId, filter.assetName],
+      };
+    case "outref":
+      return {
+        join: "",
+        where:
+          filter.outRefs.length === 0
+            ? "1 = 0"
+            : `(${filter.outRefs.map(() => "(o.tx_hash = ? AND o.output_index = ?)").join(" OR ")})`,
+        params: filter.outRefs.flatMap((outRef) => [
+          outRef.txHash,
+          outRef.index,
+        ]),
+      };
+  }
+};
+
+/**
+ * Tracked UTxOs live at the tip, or live at `at` (the §5.2 "live at slot s"
+ * predicate), matching `filter`, in ledger order.
+ */
+export const liveUtxosIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  filter: UtxoFilter,
+  at?: Point,
+): Promise<UtxoRead> => {
+  if (at !== undefined) {
+    const status = await pointStatusIn(tx, dialect, at);
+    if (status.kind !== "canonical") return status;
+    // A kept block row below the window is canonical, but the outputs
+    // around it are pruned: the facts there are no longer complete.
+    const cursor = await readCursor(tx, dialect);
+    if (cursor !== null && at.slot < cursor.prunedThroughSlot)
+      return beyondRetention(at, cursor.prunedThroughSlot);
+  }
+  const slot = at?.slot ?? null;
+  const { where, params } = filterSql(filter);
+  const rows = await tx.query(
+    `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where} AND ${liveClause(slot)}${ORDER}`,
+    [...params, ...liveParams(slot)],
+  );
+  return {
+    kind: "ok",
+    utxos: rows.map((row) => storedOutputFromRow(dialect, row)),
+  };
+};
+
+/**
+ * The tracked outputs matching `filter` that a block after slot `since`
+ * created, seeded or spent, live or spent, in ledger order: what changed
+ * since a reader's view at `since`. Spent rows below `prunedThroughSlot` are
+ * gone, so a `since` below it is `point_beyond_retention`: the reader reads
+ * the live set again. `since` null reads every retained row, live or
+ * spent (a narrow filter's history within retention). Rewinds are the
+ * caller's to detect (a generation change): a rewound spend leaves no row to
+ * report.
+ */
+export const changedUtxosIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  filter: UtxoFilter,
+  since: number | null,
+): Promise<UtxoRead> => {
+  const cursor = await readCursor(tx, dialect);
+  if (cursor === null)
+    return { kind: "not_initialized", detail: "no cursor row" };
+  if (since !== null && since < cursor.prunedThroughSlot)
+    return {
+      kind: "point_beyond_retention",
+      detail: `slot ${since} is below the retained window (slot ${cursor.prunedThroughSlot})`,
+    };
+  const { where, params } = filterSql(filter);
+  const rows = await tx.query(
+    since === null
+      ? `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where}${ORDER}`
+      : `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where}
+      AND (o.created_slot > ? OR o.seed_slot > ? OR o.spent_slot > ?)${ORDER}`,
+    since === null ? params : [...params, since, since, since],
+  );
+  return {
+    kind: "ok",
+    utxos: rows.map((row) => storedOutputFromRow(dialect, row)),
+  };
+};
+
+/**
+ * The live output holding the greatest asset of `policyId` whose name is at
+ * least `from` and below `below`, at the tip (null when none does): the
+ * predecessor of a key in a sorted linked list whose node names share a
+ * fixed-length prefix, read by the asset index without the list.
+ */
+export const liveUnitBeforeIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  query: Readonly<{ policyId: Buffer; from: Buffer; below: Buffer }>,
+): Promise<StoredOutput | null> => {
+  const rows = await tx.query(
+    `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM}
+      JOIN l1_output_assets a ON a.tx_hash = o.tx_hash AND a.output_index = o.output_index
+      WHERE a.policy_id = ? AND a.asset_name >= ? AND a.asset_name < ? AND o.spent_slot IS NULL
+      ORDER BY a.asset_name DESC LIMIT 1`,
+    [query.policyId, query.from, query.below],
+  );
+  const row = rows[0];
+  return row === undefined ? null : storedOutputFromRow(dialect, row);
+};
+
+/** The stored row of an outref, live or spent (null if never tracked or pruned). */
+export const outputIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  outRef: OutRef,
+): Promise<StoredOutput | null> => {
+  const rows = await tx.query(
+    `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE o.tx_hash = ? AND o.output_index = ?`,
+    [outRef.txHash, outRef.index],
+  );
+  const row = rows[0];
+  return row === undefined ? null : storedOutputFromRow(dialect, row);
+};
+
+export type Spender =
+  | Readonly<{ kind: "unspent" }>
+  | Readonly<{ kind: "spent"; txHash: Buffer; slot: number }>
+  | Readonly<{ kind: "unknown" }>;
+
+/** Who spent an outref: `unknown` when it is not a tracked row (or was pruned). */
+export const spenderOfIn = async (
+  tx: SqlTx,
+  outRef: OutRef,
+): Promise<Spender> => {
+  const rows = await tx.query(
+    "SELECT spent_tx, spent_slot FROM l1_outputs WHERE tx_hash = ? AND output_index = ?",
+    [outRef.txHash, outRef.index],
+  );
+  const row = rows[0];
+  if (row === undefined) return { kind: "unknown" };
+  if (row.spent_tx === null) return { kind: "unspent" };
+  return {
+    kind: "spent",
+    txHash: asBuffer(row.spent_tx),
+    slot: asNumber(row.spent_slot),
+  };
+};
+
+/** The stored valid tx that consumed `outRef` as an input, tracked or not. */
+export type TxSpending = Readonly<{ txHash: Buffer; slot: number }>;
+
+/**
+ * Finds the stored valid tx whose inputs hold `outRef`. Unlike `spenderOfIn`
+ * it needs no `l1_outputs` row, so it sees spends of untracked outrefs (the
+ * hub-oracle nonce, §5.3 step 3). It scans `l1_txs`; callers run it rarely.
+ */
+export const txSpendingIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  outRef: OutRef,
+): Promise<TxSpending | null> => {
+  const encoded = encodeOutRef(outRef);
+  const rows =
+    dialect.name === "postgres"
+      ? await tx.query(
+          "SELECT tx_hash, block_slot FROM l1_txs WHERE is_valid AND ? = ANY (inputs) ORDER BY block_slot LIMIT 1",
+          [encoded],
+        )
+      : await tx.query(
+          `SELECT tx_hash, block_slot FROM l1_txs t WHERE t.is_valid = 1
+             AND EXISTS (SELECT 1 FROM json_each(t.inputs) j WHERE j.value = ?)
+           ORDER BY block_slot LIMIT 1`,
+          [encoded.toString("hex")],
+        );
+  const row = rows[0];
+  return row === undefined
+    ? null
+    : { txHash: asBuffer(row.tx_hash), slot: asNumber(row.block_slot) };
+};
+
+/**
+ * The protocol-init fact for `oneShot` (§5.3 step 3): the valid tx that
+ * spent it and its slot, recorded when the block applied. Unlike
+ * `txSpendingIn` it survives the pruning of that tx.
+ */
+export const protocolInitIn = async (
+  tx: SqlTx,
+  oneShot: OutRef,
+): Promise<TxSpending | null> => {
+  const row = (
+    await tx.query(
+      "SELECT tx_hash, slot FROM l1_protocol_init WHERE one_shot = ?",
+      [encodeOutRef(oneShot)],
+    )
+  )[0];
+  return row === undefined
+    ? null
+    : { txHash: asBuffer(row.tx_hash), slot: asNumber(row.slot) };
+};
+
+export const txByHashIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  hash: Buffer,
+): Promise<StoredTx | null> => {
+  const rows = await tx.query(
+    `SELECT ${TX_COLUMNS} FROM l1_txs WHERE tx_hash = ?`,
+    [hash],
+  );
+  const row = rows[0];
+  return row === undefined ? null : storedTxFromRow(dialect, row);
+};
+
+/** Whether a block hash is on the stored chain (blocks below the window are not stored). */
+export const isCanonicalIn = async (
+  tx: SqlTx,
+  hash: Buffer,
+): Promise<boolean> =>
+  (await tx.query("SELECT 1 AS one FROM l1_blocks WHERE hash = ?", [hash]))
+    .length === 1;
+
+export const blockByHashIn = async (
+  tx: SqlTx,
+  hash: Buffer,
+): Promise<StoredBlock | null> => {
+  const row = (
+    await tx.query(`SELECT ${BLOCK_COLUMNS} FROM l1_blocks WHERE hash = ?`, [
+      hash,
+    ])
+  )[0];
+  return row === undefined ? null : storedBlockFromRow(row);
+};
+
+export const blockAtHeightIn = async (
+  tx: SqlTx,
+  height: number,
+): Promise<StoredBlock | null> => {
+  const row = (
+    await tx.query(`SELECT ${BLOCK_COLUMNS} FROM l1_blocks WHERE height = ?`, [
+      height,
+    ])
+  )[0];
+  return row === undefined ? null : storedBlockFromRow(row);
+};
+
+/** The highest stored block at or below `slot` (for slot-to-height mapping). */
+export const blockAtOrBeforeSlotIn = async (
+  tx: SqlTx,
+  slot: number,
+): Promise<StoredBlock | null> => {
+  const row = (
+    await tx.query(
+      `SELECT ${BLOCK_COLUMNS} FROM l1_blocks WHERE slot <= ? ORDER BY slot DESC LIMIT 1`,
+      [slot],
+    )
+  )[0];
+  return row === undefined ? null : storedBlockFromRow(row);
+};
+
+/** The cursor row: the tip, its generation and the retained window. */
+export const tipIn = (tx: SqlTx, dialect: Dialect): Promise<Cursor | null> =>
+  readCursor(tx, dialect);

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Minimize Reader Load"
+  short_description: "Apply when reviewing or shaping code that's hard to trace. Count"
+  default_prompt: "Use $principle-minimize-reader-load for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

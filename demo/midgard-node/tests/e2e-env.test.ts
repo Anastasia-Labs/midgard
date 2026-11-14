@@ -1,15 +1,14 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 import { describe, expect, it } from "vitest";
 
 import {
   buildE2EProcessEnv,
   loadDotenvFile,
   parseEnvOverride,
-} from "@/e2e/env.js";
-
-import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
+} from "../src/e2e/env.js";
 
 const makeTempDir = createTrackedTempDirFactory("midgard-e2e-env-");
 

@@ -5,16 +5,17 @@ description: "Building state-queue (block commit/merge) and scheduler transactio
 
 These modules build the transactions that produce blocks and rotate operator duty,
 driving the [consensus protocol](/docs/spec/consensus-protocol). Each module exports
-its on-chain **datum/redeemer Schema types** (Effect `Schema`) alongside the
-transaction builders.
+its on-chain **datum/redeemer schemas** built with Lucid `Data`, with typed
+views for encoding and decoding. Transaction programs may return `Effect`.
 
-## `state-queue` / `state-queue-production`
+## `state-queue` / `state-queue-transactions`
 
 Transactions against the on-chain state queue: committing block headers and advancing
 them through the commit/confirm/merge lifecycle. Key exported types include
 `StateQueueRedeemer` and `StateQueueSpendRedeemer`, plus the policy choices
 `SlashingApproach` and `BlockRemovalApproach` and the `STATE_QUEUE_ROOT_ASSET_NAME`
-constant. `state-queue-production` carries the production-tuned flow.
+constant. `state-queue-transactions` composes commit and merge builders. Confirmation is
+a node/runtime concern, not a separate SDK on-chain transaction.
 
 ## `scheduler` / `scheduler-refresh`
 

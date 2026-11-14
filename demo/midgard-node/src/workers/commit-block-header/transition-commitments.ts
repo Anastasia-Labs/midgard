@@ -19,7 +19,18 @@ type EventCommitmentCounts = Pick<
   | "transitionStepCount"
 >;
 
+/**
+ * A block commits each transaction's leaf verdict and no validation-trace
+ * descriptor, so the header's validation-trace pair is the empty tree with
+ * count zero.
+ */
 export const makeEventCommitments = (
   roots: EventCommitmentRoots,
   counts: EventCommitmentCounts,
-) => SDK.makeHeaderTransitionCommitmentsProgram({ ...roots, ...counts });
+) =>
+  SDK.makeHeaderTransitionCommitmentsProgram({
+    ...roots,
+    ...counts,
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
+  });

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
+import {
+  resolveTxStatus,
+  resolveTxStatusBatch,
+} from "../src/commands/tx-status.js";
 
 describe("resolveTxStatus", () => {
   it("returns rejected when rejection entry exists", () => {
@@ -15,7 +18,6 @@ describe("resolveTxStatus", () => {
       inImmutable: false,
       inMempool: false,
       inProcessedMempool: false,
-      localFinalizationPending: false,
     });
 
     expect(status.status).toBe("rejected");
@@ -29,7 +31,6 @@ describe("resolveTxStatus", () => {
       inImmutable: true,
       inMempool: false,
       inProcessedMempool: false,
-      localFinalizationPending: false,
     });
 
     expect(status.status).toBe("committed");
@@ -47,7 +48,6 @@ describe("resolveTxStatus", () => {
       inImmutable: false,
       inMempool: false,
       inProcessedMempool: true,
-      localFinalizationPending: false,
     });
 
     expect(status.status).toBe("pending_commit");
@@ -61,24 +61,9 @@ describe("resolveTxStatus", () => {
       inImmutable: false,
       inMempool: true,
       inProcessedMempool: false,
-      localFinalizationPending: false,
     });
 
     expect(status.status).toBe("accepted");
-  });
-
-  it("returns awaiting_local_recovery when pending finalization is active", () => {
-    const status = resolveTxStatus({
-      admissionStatus: null,
-      txIdHex: "ab",
-      rejection: null,
-      inImmutable: false,
-      inMempool: false,
-      inProcessedMempool: true,
-      localFinalizationPending: true,
-    });
-
-    expect(status.status).toBe("awaiting_local_recovery");
   });
 
   it("returns not_found when tx is unknown", () => {
@@ -89,7 +74,6 @@ describe("resolveTxStatus", () => {
       inImmutable: false,
       inMempool: false,
       inProcessedMempool: false,
-      localFinalizationPending: false,
     });
 
     expect(status.status).toBe("not_found");
@@ -115,7 +99,6 @@ describe("resolveTxStatus", () => {
       immutableTxIds: new Set(["aa"]),
       mempoolTxIds: new Set(["bb"]),
       processedMempoolTxIds: new Set<string>(),
-      localFinalizationPending: false,
       headerEvidenceByTxId: new Map([
         [
           "aa",

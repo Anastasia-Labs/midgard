@@ -2,17 +2,18 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric } from "effect";
 
-import * as ImmutableDB from "@/database/immutable.js";
-import * as MempoolDB from "@/database/mempool.js";
+import { Database } from "../services/database.js";
+import * as ImmutableDB from "./immutable.js";
+import * as MempoolDB from "./mempool.js";
+import * as ProcessedMempoolDB from "./processedMempool.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
+import * as Tx from "./utils/tx.js";
 
 const tableName = "address_history";
 
@@ -29,30 +30,6 @@ export const addressHistoryInsertSqlDurationTimer = Metric.timer(
   "address_history_insert_sql_duration",
   "Duration of the address-history insert SQL statement",
 );
-
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-          ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          UNIQUE (tx_id, address)
-        );`;
-        yield* sql`ALTER TABLE ${sql(tableName)}
-          ADD COLUMN IF NOT EXISTS ${sql(Columns.CREATED_AT)}
-          TIMESTAMPTZ NOT NULL DEFAULT NOW();`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.CREATED_AT}`,
-        )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
 
 export const insertEntries = (
   entries: Entry[],
@@ -138,6 +115,12 @@ export const retrieve = (
     ),
   );
 
+/**
+ * Deletes address-history entries created before `cutoff`, except those of a
+ * transaction still in the mempool or the processed mempool: that transaction
+ * is not yet in a block, and its entries are how it is found by address.
+ * Returns the number removed.
+ */
 export const pruneOlderThan = (
   cutoff: Date,
 ): Effect.Effect<number, DatabaseError, Database> =>
@@ -145,6 +128,14 @@ export const pruneOlderThan = (
     const sql = yield* SqlClient.SqlClient;
     const deleted = yield* sql`DELETE FROM ${sql(tableName)}
       WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sql(MempoolDB.tableName)} AS pending
+          WHERE pending.${sql(Tx.Columns.TX_ID)} =
+            ${sql(tableName)}.${sql(Ledger.Columns.TX_ID)})
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sql(ProcessedMempoolDB.tableName)} AS processed
+          WHERE processed.${sql(Tx.Columns.TX_ID)} =
+            ${sql(tableName)}.${sql(Ledger.Columns.TX_ID)})
       RETURNING ${sql(Ledger.Columns.TX_ID)}`;
     return deleted.length;
   }).pipe(

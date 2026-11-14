@@ -1,0 +1,131 @@
+/**
+ * This node's landed blocks, applied locally by the rebase that takes them
+ * in (plan §8.3), the same rebase that applies a foreign block: their
+ * events are projected and their delta reaches the working ledger and the
+ * native MPF there. What only an own block has is written here, from its
+ * journal, in the rebase's transaction: its transactions in `immutable` and
+ * `blocks` (what the merge of the block reads) and its DA payload. The DA
+ * publication reconciler seeds that payload's publication outboxes from the
+ * stored payload and delivers it, under the DA manifest it reads itself
+ * (`fibers/da-publication-reconciler.ts`): a missing or corrupt manifest
+ * holds delivery, never this rebase. Its transactions are in a landed
+ * block, so a rejection recorded for one while its journal was dead is
+ * deleted, with every rejection whose recorded causes are all deleted ones
+ * (`TxRejectionsDB.deleteWithTracedRejections`). The journal derives
+ * landed, then applied, from the landed row; all that is written to it is
+ * when its landing was first taken in (`observed_confirmed_at_ms`), the
+ * landed time the throughput metrics read after the landed row is folded
+ * away. The rebase that reverts the landing clears it (`rebase.ts`), so a
+ * block that lands again after a rollback is stamped again: the time is
+ * that of the landing that stuck.
+ *
+ * Each other write is idempotent by header: a rebase that runs again over
+ * the same block writes nothing new.
+ */
+import { SqlClient } from "@effect/sql";
+import { Effect, Option } from "effect";
+
+import {
+  BlocksDB,
+  DaPayloadsDB,
+  ImmutableDB,
+  MempoolDB,
+  PendingBlockFinalizationsDB,
+  ProcessedMempoolDB,
+  TxRejectionsDB,
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Columns as TxColumns } from "../database/utils/tx.js";
+import { buildDaPayloadInsert } from "../workers/commit-block-header/da-payload.js";
+import type { LandedBlockRow } from "./store.js";
+
+const Journals = PendingBlockFinalizationsDB;
+const Member = Journals.MemberColumns;
+
+const failure = (message: string, cause?: unknown) =>
+  new DatabaseError({ table: Journals.tableName, message, cause });
+
+/** The journal's transactions in block order: mempool, then processed. */
+const blockEntries = (record: PendingBlockFinalizationsDB.Record) =>
+  [MempoolDB.tableName, ProcessedMempoolDB.tableName].flatMap((table) =>
+    record.txMembers
+      .filter((member) => member[Member.SOURCE_TABLE] === table)
+      .map(Journals.txMemberToEntry),
+  );
+
+/**
+ * Writes the local effects of each own row of `rows` (see above). Returns
+ * the hashes of the signed commits that landed them (hex).
+ */
+export const applyOwnBlocks = (rows: readonly LandedBlockRow[]) =>
+  Effect.forEach(
+    rows.filter((row) => row.kind === "own"),
+    (row) =>
+      Effect.gen(function* () {
+        const found = yield* Journals.retrieveByHeaderHash(
+          Buffer.from(row.headerHash, "hex"),
+          true,
+        );
+        if (Option.isNone(found))
+          return yield* Effect.fail(
+            failure("A landed own block has no journal", row.headerHash),
+          );
+        const record = found.value;
+        const header = record[Journals.Columns.HEADER_HASH];
+        const entries = blockEntries(record);
+        if (entries.length !== record.txMembers.length)
+          return yield* Effect.fail(
+            failure(
+              "A landed own block's journal names a transaction source other than the mempool tables",
+              row.headerHash,
+            ),
+          );
+        yield* ImmutableDB.insertTxsValidatedNative(entries);
+        yield* BlocksDB.insert(
+          header,
+          entries.map((entry) => entry[TxColumns.TX_ID]),
+        );
+        yield* DaPayloadsDB.upsertAvailable(
+          yield* buildDaPayloadInsert({ record }),
+        );
+        const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
+          entries.map((entry) => entry[TxColumns.TX_ID]),
+        );
+        if (cleared.length > 0)
+          yield* Effect.logWarning(
+            `Own block ${row.headerHash} landed: deleted ${cleared.length.toString()} rejections of its transactions and of transactions rejected after them.`,
+          );
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ${sql(Journals.tableName)}
+          SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = COALESCE(
+            ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)},
+            ${BigInt(Date.now())})
+          WHERE ${sql(Journals.Columns.HEADER_HASH)} = ${header}`.pipe(
+          Effect.mapError((cause) =>
+            failure("Failed to record a landed own block's landed time", cause),
+          ),
+        );
+        const intended = record[Journals.Columns.INTENDED_TX_HASH];
+        return intended == null ? [] : [intended.toString("hex")];
+      }),
+  ).pipe(Effect.map((hashes) => hashes.flat()));
+
+/**
+ * Clears the landed time of each own row of `removed`, whose landing the
+ * rebase reverts (see above).
+ */
+export const clearOwnLandedTimes = (removed: readonly LandedBlockRow[]) =>
+  Effect.gen(function* () {
+    const own = removed.filter((row) => row.kind === "own");
+    if (own.length === 0) return;
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE ${sql(Journals.tableName)}
+      SET ${sql(Journals.Columns.OBSERVED_CONFIRMED_AT_MS)} = NULL
+      WHERE ${sql(Journals.Columns.HEADER_HASH)} IN ${sql.in(
+        own.map((row) => Buffer.from(row.headerHash, "hex")),
+      )}`.pipe(
+      Effect.mapError((cause) =>
+        failure("Failed to clear a reverted own block's landed time", cause),
+      ),
+    );
+  });

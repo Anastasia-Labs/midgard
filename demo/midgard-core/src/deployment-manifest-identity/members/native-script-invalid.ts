@@ -1,0 +1,57 @@
+import { defineDeploymentFamily } from "../members.types.js";
+
+export const nativeScriptInvalidMembers = defineDeploymentFamily(
+  "nativeScriptInvalid",
+  {
+    fraudProofNativeScriptInvalid: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof native-script-invalid step-01",
+      manifestPosition: 250,
+      publicationPosition: 156,
+      referenceRolePosition: 177,
+      commands: [],
+      validatorTitle: "fraud_proofs/native_script_invalid/step_01.main.spend",
+      familyPaths: [["firstStep"], ["steps", "0"]],
+    },
+    fraudProofNativeScriptInvalidStep02: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof native-script-invalid step-02",
+      manifestPosition: 251,
+      publicationPosition: 157,
+      referenceRolePosition: 178,
+      commands: [],
+      validatorTitle: "fraud_proofs/native_script_invalid/step_02.main.spend",
+      familyPaths: [["steps", "1"]],
+    },
+    fraudProofNativeScriptInvalidStep03: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof native-script-invalid step-03",
+      manifestPosition: 252,
+      publicationPosition: 158,
+      referenceRolePosition: 179,
+      commands: [],
+      validatorTitle: "fraud_proofs/native_script_invalid/step_03.main.spend",
+      familyPaths: [["steps", "2"]],
+    },
+    fraudProofNativeScriptInvalidStep04: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof native-script-invalid step-04",
+      manifestPosition: 253,
+      publicationPosition: 159,
+      referenceRolePosition: 180,
+      commands: [],
+      validatorTitle: "fraud_proofs/native_script_invalid/step_04.main.spend",
+      familyPaths: [["steps", "3"]],
+    },
+    fraudProofNativeScriptInvalidStep05: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof native-script-invalid step-05",
+      manifestPosition: 254,
+      publicationPosition: 160,
+      referenceRolePosition: 181,
+      commands: [],
+      validatorTitle: "fraud_proofs/native_script_invalid/step_05.main.spend",
+      familyPaths: [["steps", "4"]],
+    },
+  },
+);

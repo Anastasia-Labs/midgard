@@ -1,0 +1,793 @@
+import {
+  createFileTimeoutCorrectionJournalStore,
+  submitUnattestedTimeoutCorrection,
+  type TimeoutCorrectionJournal,
+} from "@al-ft/midgard-fault-proofs";
+import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  CML,
+  credentialToAddress,
+  Data,
+  paymentCredentialOf,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
+import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
+import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
+
+import {
+  buildPastProtectedPredecessor,
+  ledgerClock,
+} from "./history-predecessor-hold.js";
+import {
+  createPublishedWatcherBlockActor,
+  PublishedTransactionExpiredError,
+  type PublishedWatcherBlock,
+} from "./published-block-actor.js";
+import {
+  capturePublishedDepositHistory,
+  type PublishedDepositHistory,
+  readPublishedDepositHistory,
+} from "./published-deposit-history.js";
+import {
+  buildPublishedDepositBlock,
+  preparePredecessorDeposits,
+} from "./published-deposit-trace.predecessor-deposits.js";
+import {
+  DEPOSIT_BLOCK_INTERVAL_MS,
+  EMPTY_PREDECESSOR_INTERVAL_MS,
+  type PublishedDepositTraceCheckpoint,
+  type PublishedDepositTraceDeployment,
+  type PublishedSuccessorCheckpoint,
+  SUCCESSOR_HEADER_INTERVAL_MS,
+} from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
+import { publishedDepositTraceQueue } from "./published-deposit-trace.queue-tail.js";
+import {
+  assertPublishedDepositTraceDaPath,
+  assertPublishedDepositTraceResume,
+  attachedTraceShiftWork,
+  type PublishedDepositTraceOptions,
+} from "./published-deposit-trace.trace-options.js";
+
+/** Publish an ordinary deposit and retain the existing deposit-trace fixture. */
+export const stagePublishedDepositTrace = async (
+  deployment: PublishedDepositTraceDeployment,
+  {
+    daSignerConfig,
+    attachedStack,
+    honest = false,
+    onStage = () => {},
+    resume,
+    onCheckpoint = async () => {},
+    timeoutCorrectionJournalPath,
+    finalityDepth,
+    liveTail,
+  }: PublishedDepositTraceOptions,
+) => {
+  assertPublishedDepositTraceDaPath({
+    daSignerConfig,
+    attachedStack,
+    liveTail,
+  });
+  const ownDeploymentInfo = () => {
+    if (deployment.deploymentInfo === undefined)
+      throw new Error("Only a journey's own deployment removes its headers");
+    return deployment.deploymentInfo;
+  };
+  const ownCommittee = () => {
+    if (daSignerConfig === undefined)
+      throw new Error(
+        "An attached stack's own node builds its honest successor",
+      );
+    return daSignerConfig;
+  };
+  assertPublishedDepositTraceResume(
+    resume,
+    deployment.contracts.deposit.policyId,
+  );
+  const { contracts, chain, references } = deployment;
+  let lucid = deployment.operatorLucid;
+  let address = await lucid.wallet().address();
+  const awaitConfirmed = async (txHash: string) => {
+    await lucid.awaitTx(txHash, 500);
+  };
+  let operatorVkey = paymentCredentialOf(address).hash;
+  const one = async (scriptAddress: string, unit: string): Promise<UTxO> => {
+    const values = await lucid.utxosAtWithUnit(scriptAddress, unit);
+    if (values.length !== 1)
+      throw new Error(`Expected one actual published state: ${unit}`);
+    return values[0]!;
+  };
+  const reference = (name: string) => {
+    const value = references.get(name);
+    if (value === undefined)
+      throw new Error(`Missing actual publication ${name}`);
+    return value;
+  };
+  const rootUnit = toUnit(
+    contracts.stateQueue.policyId,
+    SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+  );
+  const { nodeUnit, readQueueEnds, ledgerPairs, readBase, commitAfterParent } =
+    publishedDepositTraceQueue({ contracts, lucid: () => lucid, liveTail });
+  const publisher = deployment.publisherLucid;
+  let actor = await createPublishedWatcherBlockActor({
+    deployment,
+    lucid,
+    ...(attachedStack === undefined
+      ? { daSignerConfig }
+      : { sharedScheduler: attachedTraceShiftWork(attachedStack) }),
+    onStage,
+  });
+  const onboardOperator = () => actor.onboardOperator();
+  // This fixture appends to the confirmed state, so the queue must be empty.
+  // A stopped run can leave headers whose DA attestation never followed. The
+  // protocol lets anyone remove such a head once its attestation timeout
+  // passes; apply that correction, waiting for the timeout, before publishing.
+  // The watcher bootstraps from the finalized queue and cannot classify a
+  // removed header it still sees there, so the removal must be finalized
+  // before the watcher starts.
+  const finalizeRemoval = async () => {
+    if (finalityDepth === undefined) return;
+    if (chain.blockHeight === undefined)
+      throw new Error("Removal finality requires the chain block height");
+    const removed = await chain.blockHeight();
+    for (;;) {
+      const height = await chain.blockHeight();
+      if (height >= removed + finalityDepth) return;
+      onStage(`abandoned header removal depth ${height - removed}`);
+      await chain.delaySlots(20);
+    }
+  };
+  const removeAbandonedHeaders = async () => {
+    let memory: TimeoutCorrectionJournal | undefined;
+    const journalStore =
+      timeoutCorrectionJournalPath === undefined
+        ? {
+            load: async () => memory,
+            save: async (journal: TimeoutCorrectionJournal) => {
+              memory = journal;
+            },
+          }
+        : createFileTimeoutCorrectionJournalStore(timeoutCorrectionJournalPath);
+    for (;;) {
+      const liveRoot = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(
+          await one(contracts.stateQueue.spendingScriptAddress, rootUnit),
+        ),
+      );
+      if (liveRoot.next === "Empty") return;
+      const result = await submitUnattestedTimeoutCorrection({
+        lucid,
+        deploymentInfo: ownDeploymentInfo(),
+        network: ownCommittee().NETWORK,
+        signer: {
+          source: "journey-operator-wallet",
+          address,
+          paymentKeyHash: operatorVkey,
+          selectWallet: () => undefined,
+        },
+        journalStore,
+        awaitConfirmation: true,
+        nowMs: () => chain.now(),
+      });
+      if (result.status === "not-ready") {
+        onStage(`abandoned header timeout ${result.targetHeaderHash}`);
+        // Chain time is slot-quantised: land one slot past the deadline.
+        await chain.awaitLedgerTime(Number(result.deadlineMs) + 1000);
+      } else if (result.status === "complete") {
+        onStage(`abandoned header removal ${result.targetHeaderHash}`);
+        await finalizeRemoval();
+      } else {
+        throw new Error(
+          `State queue holds headers this fixture cannot remove: ${liveRoot.next.Key.key}`,
+        );
+      }
+    }
+  };
+  const readDeposits = () =>
+    Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(
+        lucid,
+        SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(contracts).deposit,
+        ),
+      ),
+    );
+  const readMatchingDeposit = async (
+    history: PublishedDepositHistory,
+    metadata: PublishedDepositTraceCheckpoint["depositMetadata"],
+  ) => {
+    const retained = readPublishedDepositHistory(history, metadata);
+    if (retained.commitment.policy !== contracts.deposit.policyId)
+      throw new Error("Captured deposit belongs to another deployment");
+    const order = (await readDeposits()).find(
+      (candidate) => candidate.assetName === metadata.depositAssetName,
+    );
+    if (order === undefined)
+      throw new Error("Published deposit is no longer an authenticated Order");
+    const current = capturePublishedDepositHistory(
+      order,
+      contracts.deposit.policyId,
+    );
+    if (
+      current.commitmentCbor !== history.commitmentCbor ||
+      current.openingCbor !== history.openingCbor
+    )
+      throw new Error(
+        "Published deposit immutable commitment or opening changed",
+      );
+    return order;
+  };
+  let preparedPriorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"];
+  const buildDepositedBlock = async ({
+    empty,
+    history,
+    metadata,
+    endTime,
+  }: {
+    empty: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
+    history: PublishedDepositHistory;
+    metadata: PublishedDepositTraceCheckpoint["depositMetadata"];
+    endTime: bigint;
+  }) => {
+    const order = await readMatchingDeposit(history, metadata);
+    return buildPublishedDepositBlock({
+      predecessor: empty,
+      predecessorPriorLedger: await ledgerPairs(empty.header.prevHeaderHash),
+      priorDeposits: preparedPriorDeposits,
+      operatorVkey,
+      endTime,
+      blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
+      event: order,
+      honest,
+    });
+  };
+  const prepare = async () => {
+    // A live tail is extended as it stands; nothing on it is removed.
+    if (liveTail === undefined) await removeAbandonedHeaders();
+    // On an attached stack the tail is read within the operator's own shift,
+    // where the stack's node appends nothing after it.
+    if (attachedStack !== undefined) await onboardOperator();
+    const base = await readBase();
+    // Validate the ledger before publishing another transaction.
+    await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: base.endTime,
+      endTime: base.endTime + 1n,
+      blockSlot: BigInt(lucid.currentSlot()),
+      prevHeaderHash: base.headerHash,
+      prevUtxosRoot: base.utxoRoot,
+      priorLedger: base.ledger,
+      events: [],
+    });
+    const { priorOrders, priorDeposits } = await preparePredecessorDeposits({
+      deployment,
+      lucid,
+      operatorVkey,
+      onStage,
+      // The live tail already absorbed every deposit due by its end.
+      ...(liveTail === undefined ? {} : { dueAfter: base.endTime }),
+    });
+    if (attachedStack === undefined) await onboardOperator();
+    // The successor registers only after correction. A registration that
+    // matures while proof construction runs prevents the last-operator rewind.
+    // The base itself closes a real protocol interval. Faster onboarding must
+    // not let the first header end before that cutoff.
+    await chain.awaitLedgerTime(Number(base.endTime) + 1);
+    // Retained deposits of a stopped run become eligible at their own
+    // inclusion times; the honest predecessor must close after every one.
+    const latestPriorInclusion = Math.max(
+      0,
+      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
+    );
+    if (priorDeposits.length > 0)
+      await chain.awaitLedgerTime(
+        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
+      );
+    const l2Address = credentialToAddress("Preprod", {
+      type: "Key",
+      hash: operatorVkey,
+    });
+    // On a stack only the fault delivers it: held to operator-2's floor.
+    await attachedStack?.beforeTraceDeposit(operatorVkey, latestPriorInclusion);
+    // A fresh deployment's deposit-history root is still protected.
+    const deposit = await buildPastProtectedPredecessor(
+      () =>
+        Effect.runPromise(
+          SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+            l2Address,
+            l2Datum: null,
+            lovelace: 10_000_000n,
+            additionalAssets: {},
+            referenceScripts: { depositMinting: reference("depositMint") },
+          }),
+        ),
+      ledgerClock(chain),
+    );
+    onStage("deposit publication");
+    const signedDeposit = await deposit.tx.sign.withWallet().complete();
+    const depositTxHash = await signedDeposit.submit();
+    await awaitConfirmed(depositTxHash);
+    const admitted = (await readDeposits()).find(
+      (order) => order.assetName === deposit.metadata.depositAssetName,
+    );
+    if (admitted === undefined)
+      throw new Error("Confirmed deposit is absent from authenticated history");
+    const event = admitted.utxo;
+    const depositHistory = capturePublishedDepositHistory(
+      admitted,
+      contracts.deposit.policyId,
+    );
+    const emptyEnd = BigInt(
+      Math.min(
+        chain.now() + EMPTY_PREDECESSOR_INTERVAL_MS,
+        deposit.metadata.inclusionTime - 1_000,
+      ),
+    );
+    if (emptyEnd >= BigInt(deposit.metadata.inclusionTime))
+      throw new Error(
+        "Ordinary deposit must become eligible after the honest predecessor",
+      );
+    for (const prior of priorDeposits) {
+      if (
+        !(
+          base.endTime < BigInt(prior.metadata.inclusionTime) &&
+          BigInt(prior.metadata.inclusionTime) <= emptyEnd
+        )
+      )
+        throw new Error(
+          "A retained deposit is outside the recovered predecessor interval",
+        );
+    }
+    const empty = await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: base.endTime,
+      endTime: emptyEnd,
+      blockSlot: BigInt(lucid.unixTimeToSlot(Number(emptyEnd))),
+      prevHeaderHash: base.headerHash,
+      prevUtxosRoot: base.utxoRoot,
+      priorLedger: base.ledger,
+      events: priorOrders.map((order) => ({
+        event: order.event,
+        originalAssets: order.originalAssets,
+        honest: true,
+      })),
+    });
+    preparedPriorDeposits = priorDeposits;
+    const deposited = await buildDepositedBlock({
+      empty,
+      history: depositHistory,
+      metadata: deposit.metadata,
+      endTime: BigInt(
+        Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 +
+          DEPOSIT_BLOCK_INTERVAL_MS,
+      ),
+    });
+    return {
+      predecessor: empty,
+      current: deposited,
+      depositEvent: event,
+      depositHistory,
+      depositMetadata: deposit.metadata,
+      commits: [],
+      attestationsComplete: false,
+      priorDeposits,
+    };
+  };
+  const prepared =
+    resume === undefined
+      ? await prepare()
+      : resume.commits.length === 0 &&
+          (resume.predecessor.header.endTime <= BigInt(chain.now()) ||
+            resume.predecessor.header.startTime >=
+              resume.predecessor.header.endTime)
+        ? await prepare()
+        : resume;
+  preparedPriorDeposits = prepared.priorDeposits;
+  let {
+    predecessor: empty,
+    current: deposited,
+    depositEvent: event,
+    depositHistory,
+    depositMetadata,
+  } = prepared;
+  // A stopped run may have registered the successor before its correction
+  // completed. Once that registration matures it blocks the last-operator
+  // rewind, so activate it now (permissionless; the faulty operator's wallet
+  // pays the fee) and let removal appoint the activated successor instead.
+  // The prover wallet is never touched: its outputs are leased by the
+  // watcher's funding reservation for the whole correction.
+  const activateDanglingSuccessorRegistration = async () => {
+    const successorVkey = paymentCredentialOf(
+      await publisher.wallet().address(),
+    ).hash;
+    const activeUnit = toUnit(
+      contracts.activeOperators.policyId,
+      SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + successorVkey,
+    );
+    if (
+      (
+        await lucid.utxosAtWithUnit(
+          contracts.activeOperators.spendingScriptAddress,
+          activeUnit,
+        )
+      ).length !== 0
+    )
+      return;
+    const registrations = await Promise.all(
+      (
+        await lucid.utxosAt(contracts.registeredOperators.spendingScriptAddress)
+      ).map((utxo) =>
+        Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+      ),
+    );
+    const matching = registrations.flatMap((node) =>
+      node.key !== "Empty" &&
+      Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
+        successorVkey
+        ? [node]
+        : [],
+    );
+    if (matching.length === 0) return;
+    if (matching.length !== 1)
+      throw new Error("The journey successor has ambiguous registrations");
+    onStage("dangling successor activation");
+    const registration = matching[0]!;
+    if (registration.key === "Empty")
+      throw new Error("Expected successor registration node");
+    const activeRoot = await one(
+      contracts.activeOperators.spendingScriptAddress,
+      toUnit(
+        contracts.activeOperators.policyId,
+        SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+      ),
+    );
+    const immediateActivation = canActivateRegisteredOperatorImmediately(
+      {
+        utxo: activeRoot,
+        datum: await Effect.runPromise(
+          SDK.getLinkedListNodeViewFromUTxO(activeRoot),
+        ),
+      },
+      registration,
+      contracts.activeOperators,
+    );
+    const activationTime = Number(BigInt(`0x${registration.key.Key.key}`));
+    if (!immediateActivation) {
+      await chain.awaitLedgerTime(activationTime + 1);
+    }
+    await Effect.runPromise(
+      activateRegisteredOperatorProgram(
+        lucid,
+        contracts,
+        SDK.getProtocolParameters("Preprod").required_bond,
+        successorVkey,
+        publisher,
+        deployment.manifest.referenceScriptDeployAddress,
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
+    );
+    if (
+      (
+        await lucid.utxosAtWithUnit(
+          contracts.activeOperators.spendingScriptAddress,
+          activeUnit,
+        )
+      ).length !== 1
+    )
+      throw new Error("Successor activation did not produce its active node");
+  };
+  await activateDanglingSuccessorRegistration();
+  const commits: string[] = [...prepared.commits];
+  const checkpoint: PublishedDepositTraceCheckpoint = {
+    predecessor: empty,
+    current: deposited,
+    depositEvent: event,
+    depositHistory,
+    depositMetadata,
+    commits,
+    attestationsComplete: prepared.attestationsComplete,
+    priorDeposits: prepared.priorDeposits,
+  };
+  await onCheckpoint(checkpoint);
+  const commit = async (block: Pick<typeof empty, "header" | "headerHash">) => {
+    // A block whose end has passed (a resumed one) can no longer be committed.
+    const expiryMs = Number(block.header.endTime) + 1;
+    if (chain.now() >= expiryMs)
+      throw new PublishedTransactionExpiredError(
+        `header commit ${block.headerHash}`,
+        "unbuilt",
+        expiryMs,
+      );
+    // Read at each attempt: abandoned-header removal continues the root in
+    // a new output, and the parent can merge into the root meanwhile.
+    commits.push(
+      await commitAfterParent(
+        block,
+        (anchor, head) => actor.commit(block, anchor, head),
+        onStage,
+      ),
+    );
+  };
+  /** Continue after the honest predecessor's current queue output. */
+  const anchorAtPredecessor = async () => ({
+    anchor: await one(
+      contracts.stateQueue.spendingScriptAddress,
+      nodeUnit(empty.headerHash),
+    ),
+    head: (await readQueueEnds()).first?.utxo,
+  });
+  const attest = async (block: PublishedWatcherBlock) => {
+    const outcome = await (attachedStack ?? actor).attest(block);
+    if (outcome.kind !== "attested")
+      throw new Error(
+        `Deposit trace block ${block.headerHash} was corrected before its DA attestation applied`,
+      );
+  };
+  if (!checkpoint.attestationsComplete) {
+    if (commits.length === 0) {
+      for (;;) {
+        try {
+          await commit(empty);
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          // The deposit is due right after the empty interval, so a fresh
+          // interval needs a fresh deposit; the unspent one becomes retained
+          // prior history of the new honest predecessor.
+          onStage(`${error.label} expired unminted; republishing the deposit`);
+          const again = await prepare();
+          ({
+            predecessor: empty,
+            current: deposited,
+            depositEvent: event,
+            depositHistory,
+            depositMetadata,
+          } = again);
+          checkpoint.predecessor = empty;
+          checkpoint.current = deposited;
+          checkpoint.depositEvent = event;
+          checkpoint.depositHistory = depositHistory;
+          checkpoint.depositMetadata = depositMetadata;
+          checkpoint.priorDeposits = again.priorDeposits;
+          preparedPriorDeposits = again.priorDeposits;
+        }
+      }
+      await onCheckpoint(checkpoint);
+    }
+    if (commits.length === 1) {
+      // The event wait can outlast an unattested head's append deadline, so
+      // attest the predecessor first and continue from its queue output.
+      await attest(empty);
+      await chain.awaitLedgerTime(depositMetadata.inclusionTime);
+      for (;;) {
+        try {
+          await attachedStack?.beforeFaultCommit(operatorVkey);
+          await commit(deposited);
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          onStage(
+            `${error.label} expired unminted; rebuilding the deposit block`,
+          );
+          deposited = await buildDepositedBlock({
+            empty,
+            history: depositHistory,
+            metadata: depositMetadata,
+            endTime: BigInt(
+              Math.ceil(chain.now() / 1000) * 1000 + DEPOSIT_BLOCK_INTERVAL_MS,
+            ),
+          });
+          checkpoint.current = deposited;
+          await onCheckpoint(checkpoint);
+        }
+      }
+      await onCheckpoint(checkpoint);
+    }
+    if (commits.length !== 2)
+      throw new Error("Journey requires exactly two staged commitments");
+    await attest(empty);
+    await attest(deposited);
+    checkpoint.attestationsComplete = true;
+    await onCheckpoint(checkpoint);
+  }
+  let honestSuccessor:
+    | Promise<PublishedWatcherBlock & { commitTxHash: string }>
+    | undefined;
+  /** Publish new work only after the watcher's actual correction has completed. */
+  const commitHonestSuccessor = ({
+    beforeCommit = () => {},
+    resume: successorResume,
+    onCheckpoint: onSuccessorCheckpoint = async () => {},
+  }: Readonly<{
+    beforeCommit?: (block: PublishedWatcherBlock) => void | Promise<void>;
+    resume?: PublishedSuccessorCheckpoint;
+    onCheckpoint?: (checkpoint: PublishedSuccessorCheckpoint) => Promise<void>;
+  }> = {}) =>
+    (honestSuccessor ??= (async () => {
+      const successorDaSignerConfig = ownCommittee();
+      const fraudulentUnit = toUnit(
+        contracts.stateQueue.policyId,
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + deposited.headerHash,
+      );
+      if (
+        (
+          await lucid.utxosAtWithUnit(
+            contracts.stateQueue.spendingScriptAddress,
+            fraudulentUnit,
+          )
+        ).length !== 0
+      )
+        throw new Error(
+          "Honest successor requires the fraudulent commitment to be removed first",
+        );
+      const headerOutput = async (hash: string) => {
+        const outputs = await lucid.utxosAtWithUnit(
+          contracts.stateQueue.spendingScriptAddress,
+          toUnit(
+            contracts.stateQueue.policyId,
+            SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
+          ),
+        );
+        if (outputs.length > 1)
+          throw new Error(`Ambiguous successor header ${hash}`);
+        return outputs[0];
+      };
+      const resumedBlock =
+        successorResume === undefined
+          ? undefined
+          : {
+              ...successorResume.block,
+              payloadEnvelopeCbor: Buffer.from(
+                successorResume.block.payloadEnvelopeCbor,
+              ),
+            };
+      let landed =
+        resumedBlock === undefined
+          ? undefined
+          : await headerOutput(resumedBlock.headerHash);
+      const predecessorDatum = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO((await anchorAtPredecessor()).anchor),
+      );
+      const predecessor = await Effect.runPromise(
+        SDK.getHeaderFromStateQueueDatum(predecessorDatum),
+      );
+      if (
+        SDK.encodeHeaderCbor(predecessor).toString("hex") !==
+        SDK.encodeHeaderCbor(empty.header).toString("hex")
+      )
+        throw new Error(
+          "Corrected state queue does not contain the retained honest predecessor",
+        );
+      if (landed === undefined && predecessorDatum.next !== "Empty")
+        throw new Error(
+          "Corrected state queue does not end at the retained honest predecessor",
+        );
+      const previousOperator = operatorVkey;
+      lucid = publisher;
+      address = await lucid.wallet().address();
+      operatorVkey = paymentCredentialOf(address).hash;
+      if (operatorVkey === previousOperator)
+        throw new Error("Continued production requires a second operator");
+      actor = await createPublishedWatcherBlockActor({
+        deployment,
+        lucid,
+        daSignerConfig: successorDaSignerConfig,
+        onStage,
+      });
+      // Register and activate only after correction. A pending eligible
+      // successor prevents the last active operator's scheduler rewind.
+      await onboardOperator();
+      // A signed header that has not landed is resubmitted while its window
+      // is open; an expired one is replaced by a fresh block since nothing
+      // it referenced was spent.
+      if (
+        landed === undefined &&
+        resumedBlock !== undefined &&
+        successorResume?.signedCommit !== undefined &&
+        successorResume.commitTxHash === undefined
+      ) {
+        const { signedCbor, txHash } = successorResume.signedCommit;
+        if (
+          CML.hash_transaction(
+            CML.Transaction.from_cbor_hex(signedCbor).body(),
+          ).to_hex() !== txHash
+        )
+          throw new Error("Recorded successor header bytes changed their hash");
+        const expiry = Number(resumedBlock.header.endTime) + 1;
+        if (chain.now() + 15_000 < expiry) {
+          onStage(`header commit resubmission ${resumedBlock.headerHash}`);
+          await lucid
+            .config()
+            .provider!.submitTx(signedCbor)
+            .catch(() => undefined);
+          while (chain.now() < expiry + 30_000) {
+            landed = await headerOutput(resumedBlock.headerHash);
+            if (landed !== undefined) break;
+            await chain.delaySlots(1);
+          }
+        }
+      }
+      if (landed !== undefined && resumedBlock !== undefined) {
+        const commitTxHash = successorResume?.commitTxHash ?? landed.txHash;
+        commits.push(commitTxHash);
+        await onSuccessorCheckpoint({ block: resumedBlock, commitTxHash });
+        await attest(resumedBlock);
+        return { ...resumedBlock, commitTxHash };
+      }
+      const actualDeposit = await readMatchingDeposit(
+        depositHistory,
+        depositMetadata,
+      );
+      const buildSuccessor = async (): Promise<PublishedWatcherBlock> => {
+        const endTime = BigInt(chain.now() + SUCCESSOR_HEADER_INTERVAL_MS);
+        if (
+          !(
+            predecessor.endTime < actualDeposit.facts.inclusion_time &&
+            actualDeposit.facts.inclusion_time <= endTime
+          )
+        )
+          throw new Error(
+            "The unspent ordinary deposit is not due in the corrected successor interval",
+          );
+        const built = await buildPublishedDepositBlock({
+          predecessor: empty,
+          predecessorPriorLedger: await ledgerPairs(
+            empty.header.prevHeaderHash,
+          ),
+          priorDeposits: checkpoint.priorDeposits,
+          operatorVkey,
+          endTime,
+          blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
+          event: actualDeposit,
+          honest: true,
+        });
+        return {
+          header: built.header,
+          headerHash: built.headerHash,
+          payloadEnvelopeCbor: Buffer.from(built.payloadEnvelopeCbor),
+        };
+      };
+      let block = await buildSuccessor();
+      let successorCheckpoint: PublishedSuccessorCheckpoint = { block };
+      await onSuccessorCheckpoint(successorCheckpoint);
+      let txHash: string;
+      for (;;) {
+        // Removal spent the predecessor to update its link and replaced the
+        // lock. Refetch both through the ordinary commit path before
+        // constructing inputs.
+        const { anchor, head } = await anchorAtPredecessor();
+        await beforeCommit(block);
+        const checkpoint = successorCheckpoint;
+        try {
+          txHash = await actor.commit(block, anchor, head, async (signed) => {
+            checkpoint.signedCommit = signed;
+            await onSuccessorCheckpoint(checkpoint);
+          });
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          onStage(`${error.label} expired unminted; rebuilding the successor`);
+          block = await buildSuccessor();
+          successorCheckpoint = { block };
+          await onSuccessorCheckpoint(successorCheckpoint);
+        }
+      }
+      commits.push(txHash);
+      successorCheckpoint.commitTxHash = txHash;
+      await onSuccessorCheckpoint(successorCheckpoint);
+      await attest(block);
+      return { ...block, commitTxHash: txHash };
+    })());
+  return {
+    predecessor: empty,
+    current: deposited,
+    commits,
+    depositEvent: event,
+    checkpoint,
+    commitHonestSuccessor,
+  };
+};

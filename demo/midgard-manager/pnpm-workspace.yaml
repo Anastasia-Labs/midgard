@@ -1,5 +1,0 @@
-packages:
-  - 'packages/*'
-  - '../lucid-midgard'
-  - '../midgard-core'
-  - '../midgard-validation'

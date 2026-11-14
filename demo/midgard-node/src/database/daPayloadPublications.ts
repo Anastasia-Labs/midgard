@@ -1,12 +1,14 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import type { DaProducerCommitteePeer } from "@/da/libp2p-producer.js";
+import type { DaProducerCommitteePeer } from "../da/libp2p-producer.js";
+import { owedPayload } from "../l1-queue-terminals/reads.js";
+import { Database } from "../services/database.js";
 import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+  deadHeadersOf,
+  deadJournals,
+} from "./pendingBlockFinalizations.derived-status.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_publications";
 
@@ -35,51 +37,26 @@ export type Row = {
   readonly updated_at: Date;
 };
 
-export const seedForPayload = (
-  headerHash: Buffer,
-  peers: readonly DaProducerCommitteePeer[],
-): Effect.Effect<void, DatabaseError, Database> =>
+/** The database's clock, the one `da_payloads.created_at` is stamped by. */
+export const databaseNow: Effect.Effect<Date, DatabaseError, Database> =
   Effect.gen(function* () {
-    if (peers.length === 0) {
-      return;
-    }
     const sql = yield* SqlClient.SqlClient;
-    yield* Effect.forEach(
-      peers,
-      (peer) =>
-        sql`
-          INSERT INTO ${sql(tableName)} (
-            header_hash,
-            peer_id,
-            signer_index,
-            status,
-            attempts,
-            next_retry_at
-          ) VALUES (
-            ${headerHash},
-            ${peer.peerId},
-            ${peer.signerIndex},
-            'pending',
-            0,
-            NOW()
-          )
-          ON CONFLICT (header_hash, peer_id) DO NOTHING
-        `,
-      { concurrency: 1, discard: true },
-    );
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to seed durable DA publication peer rows",
-    ),
-  );
+    const [{ now }] = yield* sql<{ now: Date }>`SELECT NOW() AS now`;
+    return now;
+  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to read database time"));
 
+/**
+ * Seeds a pending row per peer for every payload within the retention window;
+ * with `since`, only for payloads created at or after it.
+ */
 export const seedRecentPayloads = ({
   peers,
   retentionDays,
+  since,
 }: {
   readonly peers: readonly DaProducerCommitteePeer[];
   readonly retentionDays: number;
+  readonly since?: Date;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -103,6 +80,7 @@ export const seedRecentPayloads = ({
           NOW()
         FROM da_payloads payload
         WHERE payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          ${since === undefined ? sql`` : sql`AND payload.created_at >= ${since}`}
         ON CONFLICT (header_hash, peer_id) DO NOTHING
       `,
       { concurrency: 1, discard: true },
@@ -231,21 +209,40 @@ export const recordAttempt = ({
     ),
   );
 
+/**
+ * A header a landed tx removed from the state queue, or whose own journal
+ * is dead (see `owedPayload`), is no longer part of the chain the committee
+ * must serve, so its payload is neither republished nor counted as owed.
+ * The filter is evaluated per claim: a rollback of the removal, or a dead
+ * block that lands after all, makes the payload due again without any row
+ * rewrite.
+ *
+ * A row never attempted is due whatever its `next_retry_at`, the `NOW()` of
+ * the seed that wrote it: a claim later in the same pass reads a `NOW()`
+ * behind it when the database host's clock is stepped back in between, as a
+ * time sync does, which would hold the payload a whole pass. Backoff starts
+ * with the first attempt.
+ */
 export const claimDue = ({
   retentionDays,
   limit,
   leaseOwner,
   leaseToken,
   leaseMs,
+  deploymentIdentityDigest,
 }: {
   readonly retentionDays: number;
   readonly limit: number;
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload`). */
+  readonly deploymentIdentityDigest?: Buffer;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     return yield* sql<Row>`
       WITH due AS (
         SELECT publication.header_hash, publication.peer_id
@@ -253,9 +250,10 @@ export const claimDue = ({
         INNER JOIN da_payloads payload
           ON payload.header_hash = publication.header_hash
         WHERE publication.status IN ('pending', 'rejected', 'transport_error')
-          AND publication.next_retry_at <= NOW()
+          AND (publication.attempts = 0 OR publication.next_retry_at <= NOW())
           AND (publication.lease_expires_at IS NULL OR publication.lease_expires_at <= NOW())
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
         ORDER BY publication.next_retry_at ASC,
           publication.header_hash ASC,
           publication.peer_id ASC
@@ -281,9 +279,12 @@ export const claimDue = ({
 
 export const backlogCount = (
   retentionDays: number,
+  /** See `owedPayload`. */
+  deploymentIdentityDigest?: Buffer,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} publication
@@ -291,6 +292,7 @@ export const backlogCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status IN ('pending', 'rejected', 'transport_error')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(
@@ -333,9 +335,12 @@ export const releaseClaim = ({
 
 export const conflictCount = (
   retentionDays: number,
+  /** See `owedPayload`. */
+  deploymentIdentityDigest?: Buffer,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} publication
@@ -343,6 +348,7 @@ export const conflictCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status = 'conflict'
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

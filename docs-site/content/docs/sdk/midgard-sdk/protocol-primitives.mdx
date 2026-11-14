@@ -12,7 +12,8 @@ families rely on.
 - **`phas-membership`**: PHAS staking-reward-account membership registration
   (on-chain: [`phas`](/docs/onchain/phas-membership)).
 - **`protocol-parameters`**: the protocol parameters used across transaction
-  builders.
+  builders. `getProtocolParameters(network)` supplies development/emulator
+  defaults; production economics must come from the validated deployment manifest.
 - **`ledger-state`** / **`ledger-constants`**, L2 ledger-state representation and
   shared constants.
 - **`linked-list`**: the on-chain linked-list helper used by the
@@ -20,5 +21,5 @@ families rely on.
 
 ## Related
 
-- Node commands: `reference-scripts-complete`, `register-phas-membership-reward-account`, [CLI reference](/docs/operators/node/cli-reference)
+- Node commands: `reconcile reference-scripts-complete`, `register-phas-membership-reward-account`, [CLI reference](/docs/operators/node/cli-reference)
 - Spec: [Data Structures](/docs/spec/data-structures)

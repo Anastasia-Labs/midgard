@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Test Behavior Not Implementation"
+  short_description: "Apply when you write, change, or keep a test. Call the code the "
+  default_prompt: "Use $principle-test-behavior-not-implementation for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

@@ -1,33 +1,31 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import {
+  assertDeploymentMarkerMatches,
+  makeDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
-  assertDaEnvelopeCapabilityQuorum,
-  loadDaProducerPublicationManifestFromEnv,
-} from "@/da/libp2p-producer.js";
-import {
-  DatabaseInitializationError,
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
+  DatabaseInitializationError,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { fetchDaParamsUtxo } from "@/transactions/da-attestation.js";
-
-export const assertDaEnvelopeManifestConfigured = (
-  envelopeMode: "off" | "identity" | "zstd",
-  manifest: Awaited<
-    ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
-  >,
-): void => {
-  if (envelopeMode !== "off" && manifest === null) {
-    throw new DatabaseInitializationError({
-      message: `DA ${envelopeMode} envelope mode requires a configured publication manifest`,
-      cause: "no libp2p DA manifest configured",
-    });
-  }
-};
+} from "../services/index.js";
+import {
+  DA_CAPABILITY_QUORUM_PENDING,
+  DA_PROVIDER_ASSERTIONS_UNAVAILABLE,
+} from "../services/startup-waiting.js";
+import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
+import {
+  createDaLibp2pProducerProbeTransport,
+  type DaEnvelopeCapabilityMode,
+  type DaEnvelopeCapabilityPeerResult,
+  type DaProducerPublicationManifest,
+  loadDaProducerPublicationManifestFromEnv,
+  probeDaEnvelopeCapabilities,
+} from "./libp2p-producer.js";
 
 export const assertDaThresholdCompatible = (
   transportThreshold: number,
@@ -48,7 +46,8 @@ export const assertDaDeploymentIdentityCompatible = (
 ): void => {
   if (
     contractIdentity.kind !== "manifest" ||
-    contractIdentity.manifestId === undefined
+    contractIdentity.manifestId === undefined ||
+    contractIdentity.deploymentMarker === undefined
   ) {
     throw new DatabaseInitializationError({
       message:
@@ -56,7 +55,13 @@ export const assertDaDeploymentIdentityCompatible = (
       cause: "selected contract source has no deployment manifest identity",
     });
   }
-  if (daManifestId !== contractIdentity.manifestId) {
+  try {
+    assertDeploymentMarkerMatches(
+      contractIdentity.deploymentMarker,
+      makeDeploymentMarker(daManifestId),
+      "DA runtime manifest",
+    );
+  } catch {
     throw new DatabaseInitializationError({
       message: "DA and contract deployment manifest identities do not match",
       cause: `da_manifest_id=${daManifestId},contract_manifest_id=${contractIdentity.manifestId}`,
@@ -64,8 +69,22 @@ export const assertDaDeploymentIdentityCompatible = (
   }
 };
 
+/** The advertised history window is exactly the verified deployment promise. */
+const assertDaRetentionCompatible = (
+  runtimeRetentionDays: number,
+  identity: ContractDeploymentIdentityValue,
+): void => {
+  const declared = identity.manifest?.da.transportProfile.retentionDays;
+  if (declared === undefined || runtimeRetentionDays !== declared)
+    throw new DatabaseInitializationError({
+      message:
+        "DA runtime retention does not match the verified deployment manifest",
+      cause: `runtime_retention_days=${String(runtimeRetentionDays)},manifest_retention_days=${String(declared)}`,
+    });
+};
+
 export type DaHardeningStartupPreflight = {
-  readonly envelopeMode: "off" | "identity" | "zstd";
+  readonly envelopeMode: "identity" | "zstd";
   readonly manifest: Awaited<
     ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
   >;
@@ -94,13 +113,6 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
         cause,
       }),
   });
-  yield* Effect.try({
-    try: () => assertDaEnvelopeManifestConfigured(envelopeMode, manifest),
-    catch: (cause) => cause as DatabaseInitializationError,
-  });
-  if (manifest === null) {
-    return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;
-  }
   const contractIdentity = yield* ContractDeploymentIdentity;
   yield* Effect.try({
     try: () =>
@@ -110,18 +122,24 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
       ),
     catch: (cause) => cause as DatabaseInitializationError,
   });
+  yield* Effect.try({
+    try: () =>
+      assertDaRetentionCompatible(manifest.retentionDays, contractIdentity),
+    catch: (cause) => cause as DatabaseInitializationError,
+  });
   return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;
 });
 
-/** Runs provider-backed DA checks using the manifest retained by preflight. */
+/**
+ * Runs provider-backed DA checks using the manifest retained by preflight.
+ * Its DA params read goes through the follower: run it once the follower
+ * has a cursor (`runDaIdentityGatedStartupSequence`).
+ */
 export const assertDaHardeningProviderStartup = ({
   envelopeMode,
   manifest,
 }: DaHardeningStartupPreflight) =>
   Effect.gen(function* () {
-    if (manifest === null) {
-      return;
-    }
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const daParams = yield* fetchDaParamsUtxo(lucid.api, contracts).pipe(
@@ -141,27 +159,164 @@ export const assertDaHardeningProviderStartup = ({
         ),
       catch: (cause) => cause as DatabaseInitializationError,
     });
-    if (envelopeMode !== "off") {
-      yield* Effect.tryPromise({
-        try: () =>
-          assertDaEnvelopeCapabilityQuorum({
-            manifest,
-            mode: envelopeMode,
-          }),
-        catch: (cause) =>
-          new DatabaseInitializationError({
-            message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
-            cause,
-          }),
-      });
-    }
+    yield* assertDaEnvelopeCapabilityQuorumOnStartup(manifest, envelopeMode);
   });
 
 /**
- * Enforces local deployment identity before database, protocol, or provider
- * startup effects can execute.
+ * Too few committee peers answered capably yet, but enough have not answered
+ * at all that the quorum can still form: peers starting, restarting or not
+ * yet dialable. The startup provider retry waits and probes again.
+ */
+export class DaCapabilityQuorumPendingError extends Error {
+  readonly retryable = true;
+  override readonly name = "DaCapabilityQuorumPendingError";
+}
+
+/**
+ * The reason the startup DA provider assertions wait under after `error`:
+ * `da_capability_quorum_pending` while the quorum is still forming,
+ * `da_provider_assertions_unavailable` for any other retryable failure.
+ */
+export const daProviderAssertionsWaitReason = (error: unknown): string => {
+  let link: unknown = error;
+  // A bounded walk down the cause chain.
+  for (
+    let depth = 0;
+    depth < 16 && typeof link === "object" && link !== null;
+    depth += 1
+  ) {
+    if (link instanceof DaCapabilityQuorumPendingError)
+      return DA_CAPABILITY_QUORUM_PENDING;
+    link = (link as { cause?: unknown }).cause;
+  }
+  return DA_PROVIDER_ASSERTIONS_UNAVAILABLE;
+};
+
+/**
+ * Enough committee signers answered and rejected this node's DA envelope
+ * capabilities that no quorum can form: a configuration disagreement no
+ * waiting clears.
+ */
+export class DaCapabilityMismatchError extends Error {
+  readonly retryable = false;
+  override readonly name = "DaCapabilityMismatchError";
+}
+
+/**
+ * Judges one capability probe round. A signer counts against the quorum only
+ * when every one of its peers answered and rejected; an unreachable or
+ * undecodable peer may still answer capably later.
+ */
+export const classifyDaEnvelopeCapabilityQuorum = (
+  manifest: Pick<DaProducerPublicationManifest, "threshold">,
+  mode: DaEnvelopeCapabilityMode,
+  results: readonly DaEnvelopeCapabilityPeerResult[],
+): DaCapabilityQuorumPendingError | DaCapabilityMismatchError | undefined => {
+  const signers = new Set(results.map((result) => result.signerIndex));
+  const capable = new Set(
+    results.filter((result) => result.capable).map((r) => r.signerIndex),
+  );
+  if (capable.size >= manifest.threshold) {
+    return undefined;
+  }
+  const rejected = results.filter(
+    (result) => !result.capable && result.capabilities !== undefined,
+  );
+  const unanswered = results.filter(
+    (result) => !result.capable && result.capabilities === undefined,
+  );
+  const rejectingSigners = [...signers].filter((signer) =>
+    results
+      .filter((result) => result.signerIndex === signer)
+      .every((result) => !result.capable && result.capabilities !== undefined),
+  );
+  const describe = (peers: readonly DaEnvelopeCapabilityPeerResult[]) =>
+    peers
+      .map(
+        (result) =>
+          `${result.peerId}[${result.signerIndex.toString()}]=${result.error ?? "incapable"}`,
+      )
+      .join(",");
+  const counts = `capable_signers=${capable.size.toString()},threshold=${manifest.threshold.toString()},rejecting_signers=${rejectingSigners.length.toString()},unanswered_peers=${unanswered.length.toString()}`;
+  if (signers.size - rejectingSigners.length < manifest.threshold) {
+    // Only the rejections are named: an unreachable peer's transport error
+    // text must not make this refusal look transient.
+    return new DaCapabilityMismatchError(
+      `DA ${mode} envelope capabilities rejected by the committee: ${counts},rejections=${describe(rejected)}`,
+    );
+  }
+  return new DaCapabilityQuorumPendingError(
+    `DA ${mode} envelope capability quorum not yet reached: ${counts},peers=${describe([...rejected, ...unanswered])}`,
+  );
+};
+
+const probeOverDialOnlyTransport = async (
+  manifest: DaProducerPublicationManifest,
+  mode: DaEnvelopeCapabilityMode,
+): Promise<readonly DaEnvelopeCapabilityPeerResult[]> => {
+  const transport = await createDaLibp2pProducerProbeTransport(manifest, {
+    mode: "dial-only",
+  });
+  try {
+    return await probeDaEnvelopeCapabilities({ manifest, mode, transport });
+  } finally {
+    await transport.close?.();
+  }
+};
+
+/**
+ * One startup capability-quorum round: a quorum still forming fails with a
+ * retryable cause the startup provider retry waits out; a committee that
+ * answered and rejected fails terminally.
+ */
+export const assertDaEnvelopeCapabilityQuorumOnStartup = (
+  manifest: DaProducerPublicationManifest,
+  mode: DaEnvelopeCapabilityMode,
+  probe: (
+    manifest: DaProducerPublicationManifest,
+    mode: DaEnvelopeCapabilityMode,
+  ) => Promise<
+    readonly DaEnvelopeCapabilityPeerResult[]
+  > = probeOverDialOnlyTransport,
+): Effect.Effect<void, DatabaseInitializationError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const verdict = classifyDaEnvelopeCapabilityQuorum(
+        manifest,
+        mode,
+        await probe(manifest, mode),
+      );
+      if (verdict !== undefined) {
+        throw verdict;
+      }
+    },
+    catch: (cause) =>
+      new DatabaseInitializationError({
+        message: `DA ${mode} envelope capability quorum failed at startup`,
+        cause,
+      }),
+  });
+
+/**
+ * The node's startup order around its DA checks: the local DA identity
+ * preflight first, so nothing below runs under another deployment's
+ * identity; then the database and protocol initialization; then following
+ * L1 (`followL1`: the follower started and caught up with the node's tip);
+ * then the provider assertions, with what the preflight returned. It
+ * returns what `followL1` returned.
+ *
+ * The provider assertions read the on-chain DA threshold through the node's
+ * L1 reader, which answers a protocol address only from the follower's facts
+ * (`follower:not_initialized` before its first cursor). Nothing before
+ * `followL1` reads L1 through the follower, so a node on a fresh database
+ * starts. While `followL1` runs, the follower's intent stage (S6) may resend
+ * transactions an earlier run journaled before the assertions pass: a resend
+ * publishes nothing to DA. DA publication, block production and every other
+ * duty start only after this sequence.
  */
 export const runDaIdentityGatedStartupSequence = <
+  P,
+  F,
   E1,
   R1,
   E2,
@@ -170,22 +325,26 @@ export const runDaIdentityGatedStartupSequence = <
   R3,
   E4,
   R4,
+  E5,
+  R5,
 >({
   localPreflight,
   initializeDatabase,
   initializeProtocol,
+  followL1,
   providerAssertions,
 }: {
-  readonly localPreflight: Effect.Effect<DaHardeningStartupPreflight, E1, R1>;
+  readonly localPreflight: Effect.Effect<P, E1, R1>;
   readonly initializeDatabase: Effect.Effect<void, E2, R2>;
   readonly initializeProtocol: Effect.Effect<void, E3, R3>;
-  readonly providerAssertions: (
-    preflight: DaHardeningStartupPreflight,
-  ) => Effect.Effect<void, E4, R4>;
-}): Effect.Effect<void, E1 | E2 | E3 | E4, R1 | R2 | R3 | R4> =>
+  readonly followL1: Effect.Effect<F, E4, R4>;
+  readonly providerAssertions: (preflight: P) => Effect.Effect<void, E5, R5>;
+}): Effect.Effect<F, E1 | E2 | E3 | E4 | E5, R1 | R2 | R3 | R4 | R5> =>
   Effect.gen(function* () {
     const preflight = yield* localPreflight;
     yield* initializeDatabase;
     yield* initializeProtocol;
+    const following = yield* followL1;
     yield* providerAssertions(preflight);
+    return following;
   });

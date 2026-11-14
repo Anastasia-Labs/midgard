@@ -1,0 +1,12 @@
+import { fileURLToPath } from "node:url";
+
+import { describeDurationShards } from "@al-ft/midgard-test-support/duration-shards-contract";
+
+// Node CI runs this package as `--shard=i/6` (midgard-node-ci.yml).
+describeDurationShards({
+  packageRoot: fileURLToPath(new URL("..", import.meta.url)),
+  tablePath: fileURLToPath(
+    new URL("./support/ci-file-durations.json", import.meta.url),
+  ),
+  ciShardCount: 6,
+});

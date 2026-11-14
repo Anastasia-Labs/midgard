@@ -1,0 +1,6 @@
+interface:
+  display_name: "Recall"
+  short_description: "Rebuild recent working context on a named topic from scoped chat"
+  default_prompt: "Use $recall for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

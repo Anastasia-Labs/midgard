@@ -5,6 +5,8 @@
 \section{Escape hatch}
 \label{h:escape-hatch}
 
+\paragraph{Implementation status.} This section specifies a proposed emergency mechanism. The current validator inventory contains no escape-hatch validator, and registration enforces the ordinary required bond. Reduced-bond registration, emergency timing, and the grace-period lifecycle below must not be treated as deployed or implemented behavior.
+
 The Midgard escape hatch is an L1 mechanism that can be triggered if the last block in the state queue is too old relative to the current time, as controlled by the Midgard \code{escape\_hatch\_block\_age} parameter.
 In other words, it is triggered in the extreme case when the Midgard active operators have completely stopped committing blocks to the state queue.
 

@@ -3,10 +3,12 @@
 .eslintrc.json
 node_modules
 dist
+.probe-dist/
 *.tgz
 .direnv
 *mpt-db/*
 test-mpt-db*/
+/db/
 tests/benchmarks/output/
 logs/
 .stress-wallets/

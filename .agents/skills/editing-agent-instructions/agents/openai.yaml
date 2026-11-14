@@ -1,0 +1,4 @@
+interface:
+  display_name: "Editing Agent Instructions"
+  short_description: "Decide where a rule lives, and write it so it holds."
+  default_prompt: "Use $editing-agent-instructions to place this rule or lesson on the lowest rung that can carry it, tag what enforces it, and check the edited file for the six smells."

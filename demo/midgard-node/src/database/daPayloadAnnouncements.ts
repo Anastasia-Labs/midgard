@@ -1,11 +1,13 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import { owedPayload } from "../l1-queue-terminals/reads.js";
+import { Database } from "../services/database.js";
 import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+  deadHeadersOf,
+  deadJournals,
+} from "./pendingBlockFinalizations.derived-status.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_announcements";
 
@@ -26,23 +28,13 @@ export type Row = {
   readonly updated_at: Date;
 };
 
-export const seedForPayload = (
-  headerHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`
-      INSERT INTO ${sql(tableName)} (
-        header_hash, status, attempts, next_retry_at
-      ) VALUES (${headerHash}, 'pending', 0, NOW())
-      ON CONFLICT (header_hash) DO NOTHING
-    `;
-  }).pipe(
-    sqlErrorToDatabaseError(tableName, "Failed to seed DA announcement outbox"),
-  );
-
+/**
+ * Seeds an announcement row for every payload within the retention window;
+ * with `since`, only for payloads created at or after it.
+ */
 export const seedRecentPayloads = (
   retentionDays: number,
+  since?: Date,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -53,6 +45,7 @@ export const seedRecentPayloads = (
       SELECT payload.header_hash, 'pending', 0, NOW()
       FROM da_payloads payload
       WHERE payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        ${since === undefined ? sql`` : sql`AND payload.created_at >= ${since}`}
       ON CONFLICT (header_hash) DO NOTHING
     `;
   }).pipe(
@@ -62,21 +55,54 @@ export const seedRecentPayloads = (
     ),
   );
 
+/**
+ * Counts the payloads created at or after `since` that have no announcement
+ * row, so no outbox row: those a seed covering `since` has still to seed.
+ */
+export const awaitingSeedCount = (
+  since: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ readonly count: string | number | bigint }>`
+      SELECT COUNT(*) AS count
+      FROM da_payloads payload
+      WHERE payload.created_at >= ${since}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sql(tableName)} announcement
+          WHERE announcement.header_hash = payload.header_hash
+        )
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to count DA payloads awaiting outbox seeding",
+    ),
+  );
+
+/** Removed headers and dead own journals are not re-announced, and a row
+ * never attempted is due at once; see the publication claim. */
 export const claimDue = ({
   retentionDays,
   limit,
   leaseOwner,
   leaseToken,
   leaseMs,
+  deploymentIdentityDigest,
 }: {
   readonly retentionDays: number;
   readonly limit: number;
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload`). */
+  readonly deploymentIdentityDigest?: Buffer;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     return yield* sql<Row>`
       WITH due AS (
         SELECT announcement.header_hash
@@ -84,12 +110,13 @@ export const claimDue = ({
         INNER JOIN da_payloads payload
           ON payload.header_hash = announcement.header_hash
         WHERE announcement.status IN ('pending', 'failed')
-          AND announcement.next_retry_at <= NOW()
+          AND (announcement.attempts = 0 OR announcement.next_retry_at <= NOW())
           AND (
             announcement.lease_expires_at IS NULL
             OR announcement.lease_expires_at <= NOW()
           )
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
         ORDER BY announcement.next_retry_at ASC, announcement.header_hash ASC
         FOR UPDATE OF announcement SKIP LOCKED
         LIMIT ${limit}
@@ -230,15 +257,19 @@ export const releaseClaim = ({
 
 export const backlogCount = (
   retentionDays: number,
+  /** See `owedPayload`. */
+  deploymentIdentityDigest?: Buffer,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const dead = deadHeadersOf(yield* deadJournals);
     const rows = yield* sql<{ readonly count: string | number | bigint }>`
       SELECT COUNT(*) AS count
       FROM ${sql(tableName)} announcement
       INNER JOIN da_payloads payload ON payload.header_hash = announcement.header_hash
       WHERE announcement.status IN ('pending', 'failed')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
+        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

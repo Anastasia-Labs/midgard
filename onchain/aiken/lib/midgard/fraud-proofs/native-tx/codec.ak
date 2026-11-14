@@ -1,10 +1,8 @@
+use aiken/builtin
 use aiken/cbor
-use aiken/collection/list
-use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/types.{
-  FailedScript, FeeTooLow, InvalidSignature, MidgardTxValidity,
-  NonExistentInputUtxo, TxIsValid, UnbalancedTx,
+  MidgardTxValidity, TxIsInvalid, TxIsValid,
 }
 
 pub fn expect_h32(bytes: ByteArray) -> ByteArray {
@@ -22,9 +20,17 @@ pub fn expect_non_negative(value: Int) -> Int {
   value
 }
 
+/// A body validity bound (`docs/spec/midgard-tx.md` §2.1): `-1` for an absent
+/// bound or a non-negative slot. Anything below `-1` is not a decodable body,
+/// so every body decoder and encoder runs its two bounds through this.
+pub fn expect_validity_bound(value: Int) -> Int {
+  expect value >= -1
+  value
+}
+
 pub fn expect_validity_code(value: Int) -> Int {
   expect _non_negative = expect_non_negative(value)
-  expect value <= 5
+  expect value <= 1
   value
 }
 
@@ -32,28 +38,27 @@ pub fn validity_from_code(value: Int) -> MidgardTxValidity {
   expect _validity_code = expect_validity_code(value)
   if value == 0 {
     TxIsValid
-  } else if value == 1 {
-    NonExistentInputUtxo
-  } else if value == 2 {
-    InvalidSignature
-  } else if value == 3 {
-    FailedScript
-  } else if value == 4 {
-    FeeTooLow
   } else {
-    UnbalancedTx
+    TxIsInvalid
   }
 }
 
 pub fn validity_to_code(validity: MidgardTxValidity) -> Int {
   when validity is {
     TxIsValid -> 0
-    NonExistentInputUtxo -> 1
-    InvalidSignature -> 2
-    FailedScript -> 3
-    FeeTooLow -> 4
-    UnbalancedTx -> 5
+    TxIsInvalid -> 1
   }
+}
+
+/// Explicit bridge between the scalar native-transaction validity language
+/// and the corresponding nullary PlutusData constructor language.
+pub fn validity_to_plutus_data(validity: MidgardTxValidity) -> Data {
+  builtin.constr_data(validity_to_code(validity), [])
+}
+
+pub fn validity_from_plutus_data(data: Data) -> MidgardTxValidity {
+  expect builtin.unconstr_fields(data) == []
+  validity_from_code(builtin.unconstr_index(data))
 }
 
 pub fn expect_network_id(value: Int) -> Int {
@@ -139,87 +144,32 @@ pub fn decode_canonical_uint_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int>
     expect value > 0xff
     Pair(offset + 3, value)
   } else if tag == 26 {
-    let value =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let value = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     expect value > 0xffff
     Pair(offset + 5, value)
   } else {
     expect tag == 27
-    let value =
+    let value = (
       (
         (
           (
             (
-              (
-                (
-                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
-                ) * 256 + byte_at(bytes, offset + 3)
-              ) * 256 + byte_at(bytes, offset + 4)
-            ) * 256 + byte_at(bytes, offset + 5)
-          ) * 256 + byte_at(bytes, offset + 6)
-        ) * 256 + byte_at(bytes, offset + 7)
-      ) * 256 + byte_at(bytes, offset + 8)
+              ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+                bytes,
+                offset + 3,
+              )
+            ) * 256 + byte_at(bytes, offset + 4)
+          ) * 256 + byte_at(bytes, offset + 5)
+        ) * 256 + byte_at(bytes, offset + 6)
+      ) * 256 + byte_at(bytes, offset + 7)
+    ) * 256 + byte_at(bytes, offset + 8)
     expect value > 0xffffffff
     Pair(offset + 9, value)
-  }
-}
-
-pub fn decode_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
-  let tag = byte_at(bytes, offset)
-  if tag <= 27 {
-    decode_uint_at(bytes, offset)
-  } else if and {
-    tag >= 32,
-    tag <= 55,
-  } {
-    Pair(offset + 1, -1 - ( tag - 32 ))
-  } else if tag == 56 {
-    Pair(offset + 2, -1 - byte_at(bytes, offset + 1))
-  } else if tag == 57 {
-    Pair(
-      offset + 3,
-      -1 - ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ),
-    )
-  } else if tag == 58 {
-    Pair(
-      offset + 5,
-      -1 - (
-        (
-          ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-            bytes,
-            offset + 3,
-          )
-        ) * 256 + byte_at(bytes, offset + 4)
-      ),
-    )
-  } else {
-    expect tag == 59
-    Pair(
-      offset + 9,
-      -1 - (
-        (
-          (
-            (
-              (
-                (
-                  (
-                    byte_at(bytes, offset + 1) * 256 + byte_at(
-                      bytes,
-                      offset + 2,
-                    )
-                  ) * 256 + byte_at(bytes, offset + 3)
-                ) * 256 + byte_at(bytes, offset + 4)
-              ) * 256 + byte_at(bytes, offset + 5)
-            ) * 256 + byte_at(bytes, offset + 6)
-          ) * 256 + byte_at(bytes, offset + 7)
-        ) * 256 + byte_at(bytes, offset + 8)
-      ),
-    )
   }
 }
 
@@ -241,31 +191,30 @@ pub fn decode_canonical_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> 
     expect value > 0xff
     Pair(offset + 3, -1 - value)
   } else if tag == 58 {
-    let value =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let value = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     expect value > 0xffff
     Pair(offset + 5, -1 - value)
   } else {
     expect tag == 59
-    let value =
+    let value = (
       (
         (
           (
             (
-              (
-                (
-                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
-                ) * 256 + byte_at(bytes, offset + 3)
-              ) * 256 + byte_at(bytes, offset + 4)
-            ) * 256 + byte_at(bytes, offset + 5)
-          ) * 256 + byte_at(bytes, offset + 6)
-        ) * 256 + byte_at(bytes, offset + 7)
-      ) * 256 + byte_at(bytes, offset + 8)
+              ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+                bytes,
+                offset + 3,
+              )
+            ) * 256 + byte_at(bytes, offset + 4)
+          ) * 256 + byte_at(bytes, offset + 5)
+        ) * 256 + byte_at(bytes, offset + 6)
+      ) * 256 + byte_at(bytes, offset + 7)
+    ) * 256 + byte_at(bytes, offset + 8)
     expect value > 0xffffffff
     Pair(offset + 9, -1 - value)
   }
@@ -290,17 +239,25 @@ pub fn decode_definite_bytes_at(
     Pair(offset + 3 + length, slice_len(bytes, offset + 3, length))
   } else {
     expect tag == 90
-    let length =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let length = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     Pair(offset + 5 + length, slice_len(bytes, offset + 5, length))
   }
 }
 
+/// General CBOR definite-array head reader, for structures outside the §5.1
+/// field-preimage grammar — the compact-transaction array and the validation
+/// machine's work-witness array, both of which pin their own arity and header
+/// width at the call site.
+///
+/// **Not the §5.1 decoder.** This accepts non-minimal widths and the four-byte
+/// `9a` form, neither of which §5.1 admits. Field preimages decode through
+/// `native_tx_field_access_v1.decode_field_array_header_at`, which is the one
+/// place that grammar is interpreted.
 pub fn decode_definite_array_header_at(
   bytes: ByteArray,
   offset: Int,
@@ -408,29 +365,7 @@ pub fn encode_definite_bytes(bytes: ByteArray) -> ByteArray {
   }
 }
 
-pub fn encode_native_byte_list(items: List<ByteArray>) -> ByteArray {
-  bytearray.concat(
-    encode_definite_array_header(list.length(items)),
-    list.foldr(
-      items,
-      #"",
-      fn(item, encoded_tail) {
-        bytearray.concat(encode_definite_bytes(item), encoded_tail)
-      },
-    ),
-  )
-}
-
 pub fn expect_deserialise(bytes: ByteArray) -> Data {
   expect Some(data) = cbor.deserialise(bytes)
   data
-}
-
-pub fn expect_preimage_hash(
-  preimage_cbor: ByteArray,
-  expected_hash: ByteArray,
-) -> ByteArray {
-  expect _expected_hash = expect_h32(expected_hash)
-  expect blake2b_256(preimage_cbor) == expected_hash
-  preimage_cbor
 }

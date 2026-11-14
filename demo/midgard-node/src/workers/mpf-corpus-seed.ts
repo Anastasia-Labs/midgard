@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { makeSeededAdversarialMpfCorpusBlock } from "@/commands/mpf-replay.js";
+import { makeSeededAdversarialMpfCorpusBlock } from "../commands/mpf-replay.js";
 
 const seed = Number.parseInt(process.env.MPF_CORPUS_SEED ?? "1337", 10);
 

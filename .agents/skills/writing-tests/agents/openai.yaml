@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing Tests"
+  short_description: "Gate new tests, pick the cheapest level, prove they can fail."
+  default_prompt: "Use $writing-tests to decide whether this test should exist, choose the cheapest level that catches the regression, and show that it can go red."

@@ -21,7 +21,8 @@ Chapters 4 and 7 of the specification:
   succeeded. A `fraud_proof` token is the permanent record of a concluded proof, not
   authorization to begin one.
 
-<Mermaid chart={`sequenceDiagram
+<Mermaid
+  chart={`sequenceDiagram
   participant W as Watcher
   participant L1 as L1 validators
   W->>L1: submit-init (mint computation-thread token)
@@ -29,7 +30,8 @@ Chapters 4 and 7 of the specification:
     W->>L1: submit-step-0N (advance computation thread)
   end
   L1-->>W: final step mints fraud_proof token, burns thread
-  W->>L1: remove-fraudulent-block`} />
+  W->>L1: remove-fraudulent-block`}
+/>
 
 ## Related
 

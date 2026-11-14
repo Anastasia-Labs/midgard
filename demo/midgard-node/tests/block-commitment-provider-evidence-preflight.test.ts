@@ -1,34 +1,38 @@
-import "./utils.js";
-
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "@/services/index.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
-import type { StateQueueSnapshot } from "@/services/state-queue-topology.js";
+import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
+import { Globals, NodeConfig } from "../src/services/index.js";
+import type { StateQueueSnapshot } from "../src/services/landed-state-queue.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
 
-const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
+const mempoolState = vi.hoisted(() => ({ txCount: 1n }));
+const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
 const resolveEarliestCommitSchedulerDueWorkPlanMock = vi.hoisted(() => vi.fn());
 const fetchRealStateQueueWitnessContextMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/state-queue-topology.js", () => ({
-  fetchStateQueueSnapshotProgram: fetchStateQueueSnapshotProgramMock,
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/services/landed-state-queue.js")
+  >()),
+  landedStateQueueSnapshot: landedStateQueueSnapshotMock,
   refreshStateQueueGlobalsFromSnapshot: () => Effect.void,
 }));
 
-vi.mock("@/workers/utils/scheduler-refresh.js", () => ({
+vi.mock("../src/workers/utils/scheduler-refresh.js", () => ({
   fetchRealStateQueueWitnessContext: fetchRealStateQueueWitnessContextMock,
   resolveEarliestCommitSchedulerDueWorkPlan:
     resolveEarliestCommitSchedulerDueWorkPlanMock,
 }));
 
-vi.mock("@/workers/utils/commit-end-time.js", () => ({
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS: 1_000,
+vi.mock("../src/workers/utils/commit-end-time.js", () => ({
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS: 1_000,
 }));
 
-vi.mock("@/database/index.js", async () => {
+vi.mock("../src/database/index.js", async () => {
   const { Effect: EffectModule } = await import("effect");
   return {
     DaPayloadsDB: {
@@ -41,25 +45,20 @@ vi.mock("@/database/index.js", async () => {
     ForcedTransactionsDB: {
       retrievePendingHeaderEntriesUpTo: () => EffectModule.succeed([]),
     },
-    ForeignTipReconciliationsDB: {
-      countAwaiting: EffectModule.succeed(0n),
-    },
     MempoolDB: {
-      retrieveTxCount: EffectModule.succeed(1n),
+      retrieveTxCount: EffectModule.suspend(() =>
+        EffectModule.succeed(mempoolState.txCount),
+      ),
+    },
+    // Read at module load by working-ledger-recompute.pending-txs.ts.
+    MempoolLedgerDB: {
+      tableName: "mempool_ledger",
     },
     PendingBlockFinalizationsDB: {
       Columns: {
         HEADER_HASH: "header_hash",
-        STATUS: "status",
-        SUBMITTED_TX_HASH: "submitted_tx_hash",
       },
-      Status: {
-        ObservedWaitingStability: "observed_waiting_stability",
-        SubmittedLocalFinalizationPending:
-          "submitted_local_finalization_pending",
-        SubmittedUnconfirmed: "submitted_unconfirmed",
-      },
-      retrieveActive: () => EffectModule.die("unexpected journal lookup"),
+      retrieveLive: () => EffectModule.die("unexpected journal lookup"),
     },
     StateQueueMutationLeasesDB: {
       describeActiveLease: () => "holder=test,status=active",
@@ -71,8 +70,49 @@ vi.mock("@/database/index.js", async () => {
   };
 });
 
-import { blockCommitmentAction } from "@/fibers/block-commitment.js";
-import { slotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
+// No signed commit intent awaits reconciliation.
+vi.mock(
+  "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js")
+      >()),
+      retrieveUnreconciledSignedSubmission: EffectModule.succeed(undefined),
+    };
+  },
+);
+
+// No commit anchor hold and no orphaned own-block event: the tick plans.
+vi.mock(
+  "../src/fibers/block-commitment.commit-anchor-readiness.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/fibers/block-commitment.commit-anchor-readiness.js")
+      >()),
+      publishCommitAnchorReadiness: EffectModule.void,
+    };
+  },
+);
+vi.mock(
+  "../src/fibers/block-commitment.own-block-event-orphaned.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/fibers/block-commitment.own-block-event-orphaned.js")
+      >()),
+      refuseCommitForOrphanedOwnBlockEvent: EffectModule.succeed(false),
+    };
+  },
+);
+
+import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
+import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
+import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const snapshot = {
   snapshotId: "commit-preflight:root#0:tail#0",
@@ -92,26 +132,17 @@ const alignmentRequiredPlan = {
   invalidationKey: "scheduler=scheduler#0,current_operator=operator",
 };
 
-const fakeConfig = {
-  SPECULATIVE_COMMIT_BUILD: false,
+const fakeConfig = makeTestNodeConfig({
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
-};
+  COMMIT_EVENT_DEPTH: 0,
+});
 
 const switchToOperatorsMainWalletMock = vi.fn();
-const fakeLucid = LucidService.make({
-  api: {} as never,
-  referenceScriptsApi: {} as never,
-  operatorMainAddress: "",
-  operatorMergeAddress: "",
-  referenceScriptsWalletAddress: "",
-  referenceScriptsAddress: "addr_test1referencescripts",
-  submitSlotSnapshot: () => Effect.die("unexpected submit-slot lookup"),
+const fakeLucid = lucidServiceStub({
   switchToOperatorsMainWallet: Effect.sync(() => {
     switchToOperatorsMainWalletMock();
   }),
-  switchToOperatorsMergingWallet: Effect.void,
-  switchToReferenceScriptWallet: Effect.void,
 });
 
 const fakeContracts = {
@@ -121,17 +152,20 @@ const fakeContracts = {
   },
 };
 
-const runAction = () =>
+const runAction = (
+  prepareGlobals: (globals: Globals) => Effect.Effect<void> = () => Effect.void,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const globals = yield* Globals;
+      yield* prepareGlobals(globals);
       yield* blockCommitmentAction;
       return {
         commitWorkerActive: yield* globals.COMMIT_WORKER_ACTIVE,
         pipelinePhase: yield* globals.COMMIT_PIPELINE_PHASE,
       };
     }).pipe(
-      Effect.provideService(NodeConfig, fakeConfig as never),
+      Effect.provideService(NodeConfig, fakeConfig),
       Effect.provideService(LucidService, fakeLucid),
       Effect.provideService(MidgardContracts, fakeContracts as never),
       Effect.provide(Globals.Default),
@@ -148,15 +182,14 @@ const runAction = () =>
 describe("block commitment provider-evidence preflight", () => {
   beforeEach(() => {
     slotAwareDueWorkRegistry.clearAll();
-    fetchStateQueueSnapshotProgramMock.mockReset();
+    landedStateQueueSnapshotMock.mockReset();
     resolveEarliestCommitSchedulerDueWorkPlanMock.mockReset();
     fetchRealStateQueueWitnessContextMock.mockReset();
     tryWithLeaseMock.mockReset();
+    mempoolState.txCount = 1n;
     switchToOperatorsMainWalletMock.mockReset();
 
-    fetchStateQueueSnapshotProgramMock.mockReturnValue(
-      Effect.succeed(snapshot),
-    );
+    landedStateQueueSnapshotMock.mockReturnValue(Effect.succeed(snapshot));
     resolveEarliestCommitSchedulerDueWorkPlanMock.mockReturnValue(
       Effect.succeed(alignmentRequiredPlan),
     );
@@ -167,13 +200,13 @@ describe("block commitment provider-evidence preflight", () => {
   });
 
   it("skips before the mutation lease when the earliest scheduler preflight provider evidence fails", async () => {
-    fetchStateQueueSnapshotProgramMock.mockReturnValue(
+    landedStateQueueSnapshotMock.mockReturnValue(
       Effect.fail(new Error("state-queue preflight provider unavailable")),
     );
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(1);
+    expect(landedStateQueueSnapshotMock).toHaveBeenCalled();
     expect(
       resolveEarliestCommitSchedulerDueWorkPlanMock,
     ).not.toHaveBeenCalled();
@@ -194,10 +227,7 @@ describe("block commitment provider-evidence preflight", () => {
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
+    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalled();
     expect(fetchRealStateQueueWitnessContextMock).not.toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(result).toStrictEqual({
@@ -213,11 +243,7 @@ describe("block commitment provider-evidence preflight", () => {
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
-    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(result).toStrictEqual({
       commitWorkerActive: false,
@@ -225,14 +251,69 @@ describe("block commitment provider-evidence preflight", () => {
     });
   });
 
+  it("never reaches the mutation lease when no commit work exists at all", async () => {
+    const result = await runAction((globals) =>
+      Effect.gen(function* () {
+        mempoolState.txCount = 0n;
+        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
+      }),
+    );
+
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
+    expect(result).toStrictEqual({
+      commitWorkerActive: false,
+      pipelinePhase: "idle",
+    });
+  });
+
+  // The worker caps a source-owned commit to the current shift, so the
+  // pre-lease alignment and the recheck of its due work must ask only for the
+  // landing margin. Asking for the long-window buffer idled the worker for the
+  // last 419 s of every shift and started an appointed first shift after the
+  // ends the worker builds.
+  it("aims pre-lease scheduler alignment and its due-work recheck at the history landing margin", async () => {
+    const nowMs = 1_800_000_000_000;
+    slotAwareDueWorkRegistry.register({
+      kind: "commit_scheduler_refresh",
+      key: "block_commitment",
+      callerLabel: "test",
+      reason: "test",
+      observedSlot: 0,
+      dueSlot: 1,
+      dueAtMs: nowMs,
+      waitMs: 0,
+      slotSource: "test",
+      dependencyKey: "scheduler=scheduler#0",
+      invalidationKey: "scheduler=scheduler#0",
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    try {
+      await runAction();
+    } finally {
+      now.mockRestore();
+    }
+
+    // [target commit end, scheduler refresh allowed]: the due-work recheck
+    // first, then the alignment that may refresh.
+    expect(
+      fetchRealStateQueueWitnessContextMock.mock.calls.map((call) => [
+        call[2],
+        call[5],
+      ]),
+    ).toStrictEqual([
+      [nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS, false],
+      [nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS, true],
+    ]);
+    expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
   it("reaches the mutation lease after successful provider evidence and detailed alignment", async () => {
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
-    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalled();
+    // Exactly once: the lease is the single mutation entry point, and taking
+    // it twice in one tick would run two commit workers against one tail.
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(result).toStrictEqual({
       commitWorkerActive: false,

@@ -20,5 +20,6 @@ esac
 
 exec ogmios \
   --host 0.0.0.0 \
+  --include-transaction-cbor \
   --node-config "/config/${cardano_network}/cardano-node/config.json" \
   --node-socket /ipc/node.socket

@@ -1,0 +1,632 @@
+use aiken/builtin
+use aiken/primitive/bytearray
+use midgard/ledger_output_scan_v1
+use midgard/ledger_output_value_size_fixture_v1 as fixture
+
+const address = #"6011111111111111111111111111111111111111111111111111111111"
+
+const output_without_optional_fields =
+  #"a200581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a0"
+
+const non_minimal_output_map =
+  #"b80200581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a0"
+
+const empty_inline_datum =
+  #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a00240"
+
+const multi_asset_output =
+  #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a2420000182a41ff07"
+
+const large_datum_prefix =
+  #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a002591388"
+
+const cross_language_terminal_control_cbor =
+  #"970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820de4ab123673d8a9958247e2b709508944a6f64a4db4c7208d0a871d3358804c01854191427000319147c191481191770"
+
+test scans_required_fields_without_revealing_the_complete_output() {
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    bytearray.length(output_without_optional_fields),
+    output_without_optional_fields,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    bytearray.length(output_without_optional_fields),
+    output_without_optional_fields,
+    value_control.cursor,
+  )
+  expect Some(terminal) = ledger_output_scan_v1.finish_v1(
+    optional_control,
+    bytearray.length(output_without_optional_fields),
+  )
+  and {
+    value_control.address == address,
+    optional_control.lovelace == 5000000,
+    optional_control.cardano_value_size == 5,
+    optional_control.asset_count == 0,
+    ledger_output_scan_v1.terminal_is_exact_v1(
+      terminal,
+      bytearray.length(output_without_optional_fields),
+    ),
+  }
+}
+
+test derives_the_exact_cardano_value_size_for_multi_asset_output() {
+  let total_length = bytearray.length(multi_asset_output)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    multi_asset_output,
+    0,
+  )
+  expect Some(policy_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    multi_asset_output,
+    value_control.cursor,
+  )
+  expect Some(first_asset_control) = ledger_output_scan_v1.step_v1(
+    policy_control,
+    total_length,
+    multi_asset_output,
+    policy_control.cursor,
+  )
+  expect Some(second_asset_control) = ledger_output_scan_v1.step_v1(
+    first_asset_control,
+    total_length,
+    multi_asset_output,
+    first_asset_control.cursor,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    second_asset_control,
+    total_length,
+    multi_asset_output,
+    second_asset_control.cursor,
+  )
+  expect Some(terminal) = ledger_output_scan_v1.finish_v1(
+    optional_control,
+    total_length,
+  )
+  and {
+    optional_control.cardano_value_size == 46,
+    optional_control.asset_count == 2,
+    ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+  }
+}
+
+/// The multi-asset output with its two names in length-first order, `ff`
+/// before `0000`: the second asset step refuses it.
+test refuses_length_first_asset_names() {
+  let output = #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a241ff07420000182a"
+  let total_length = bytearray.length(output)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    output,
+    0,
+  )
+  expect Some(policy_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    output,
+    value_control.cursor,
+  )
+  expect Some(asset_control) = ledger_output_scan_v1.step_v1(
+    policy_control,
+    total_length,
+    output,
+    policy_control.cursor,
+  )
+  expect Some(first_asset_control) = ledger_output_scan_v1.step_v1(
+    asset_control,
+    total_length,
+    output,
+    asset_control.cursor,
+  )
+  ledger_output_scan_v1.step_v1(
+    first_asset_control,
+    total_length,
+    output,
+    first_asset_control.cursor,
+  ) == None
+}
+
+test advances_a_large_datum_only_to_authenticated_chunk_boundaries() {
+  let output_cbor = bytearray.concat(
+    large_datum_prefix,
+    builtin.replicate_byte(5000, 90),
+  )
+  let total_length = bytearray.length(output_cbor)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    large_datum_prefix,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    large_datum_prefix,
+    value_control.cursor,
+  )
+  expect Some(datum_control) = ledger_output_scan_v1.step_v1(
+    optional_control,
+    total_length,
+    large_datum_prefix,
+    optional_control.cursor,
+  )
+  expect Some(second_chunk) = ledger_output_scan_v1.step_v1(
+    datum_control,
+    total_length,
+    #"00",
+    0,
+  )
+  expect Some(datum_complete) = ledger_output_scan_v1.step_v1(
+    second_chunk,
+    total_length,
+    #"00",
+    0,
+  )
+  expect Some(terminal) = ledger_output_scan_v1.finish_v1(
+    datum_complete,
+    total_length,
+  )
+  and {
+    datum_control.datum_offset == 45,
+    datum_control.datum_length == 5000,
+    second_chunk.cursor == 4095,
+    second_chunk.payload_remaining == 950,
+    datum_complete.cursor == total_length,
+    ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+  }
+}
+
+test rejects_trailing_bytes_at_the_terminal_edge() {
+  let total_length = bytearray.length(output_without_optional_fields) + 1
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    output_without_optional_fields,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    output_without_optional_fields,
+    value_control.cursor,
+  )
+  ledger_output_scan_v1.finish_v1(optional_control, total_length) == None
+}
+
+test decodes_and_reencodes_the_typescript_terminal_control() {
+  let control = ledger_output_scan_v1.decode_control_v1(
+    cross_language_terminal_control_cbor,
+  )
+  and {
+    control.stage == ledger_output_scan_v1.stage_terminal,
+    control.cursor == 11249,
+    control.map_entry_count == 4,
+    control.optional_field_count == 2,
+    control.lovelace == 8000000,
+    control.cardano_value_size == 46,
+    control.asset_count == 2,
+    control.datum_offset == 84,
+    control.datum_length == 5159,
+    control.reference_script_language == 3,
+    control.reference_script_item_offset == 5244,
+    control.reference_script_offset == 5249,
+    control.reference_script_length == 6000,
+    ledger_output_scan_v1.encode_control_v1(control) == cross_language_terminal_control_cbor,
+  }
+}
+
+test rejects_non_minimal_cbor_and_malformed_control_state() {
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  let malformed = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..initial,
+    asset_count: 1,
+  }
+  and {
+    ledger_output_scan_v1.step_v1(
+      initial,
+      bytearray.length(non_minimal_output_map),
+      non_minimal_output_map,
+      0,
+    ) == None,
+    ledger_output_scan_v1.step_v1(
+      malformed,
+      bytearray.length(output_without_optional_fields),
+      output_without_optional_fields,
+      0,
+    ) == None,
+  }
+}
+
+test rejects_inline_datum_without_plutus_data_bytes() {
+  let total_length = bytearray.length(empty_inline_datum)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    empty_inline_datum,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    empty_inline_datum,
+    value_control.cursor,
+  )
+  ledger_output_scan_v1.step_v1(
+    optional_control,
+    total_length,
+    empty_inline_datum,
+    optional_control.cursor,
+  ) == None
+}
+
+test initial_control_encoding_is_pinned() {
+  ledger_output_scan_v1.encode_control_v1(
+    ledger_output_scan_v1.initial_control_v1(),
+  ) == ledger_output_scan_v1.initial_control_cbor_v1
+}
+
+/// The TypeScript terminal control: an output of 11,249 bytes with an inline
+/// datum and a PlutusV3 reference script.
+fn terminal_control() -> ledger_output_scan_v1.LedgerOutputScanControlV1 {
+  ledger_output_scan_v1.decode_control_v1(cross_language_terminal_control_cbor)
+}
+
+/// Well formedness does not require the reference-script span to reach the
+/// output boundary; the terminal predicate must still enforce that equality.
+test terminal_refuses_a_reference_script_span_short_of_the_output() {
+  let terminal = terminal_control()
+  expect ledger_output_scan_v1.terminal_is_exact_v1(terminal, 11249)
+  let shortened = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..terminal,
+    reference_script_length: terminal.reference_script_length - 1,
+  }
+  expect ledger_output_scan_v1.control_is_well_formed(shortened)
+  !ledger_output_scan_v1.terminal_is_exact_v1(shortened, 11249)
+}
+
+/// `terminal_is_exact_v1` leaves to `control_is_well_formed` every condition
+/// that predicate decides, so each malformed terminal control below must be
+/// refused through it.
+test terminal_refuses_a_control_that_is_not_well_formed() {
+  let control = terminal_control()
+  let refused = fn(candidate) {
+    !ledger_output_scan_v1.terminal_is_exact_v1(candidate, 11249)
+  }
+  and {
+    ledger_output_scan_v1.terminal_is_exact_v1(control, 11249),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        lovelace: -1,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        asset_peaks: [],
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        datum_offset: -2,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_language: 2,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_item_offset: -1,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_item_offset: 5249,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_language: -1,
+      },
+    ),
+  }
+}
+
+/// A terminal control of an output with neither datum nor reference script
+/// must still record an empty datum span.
+test terminal_refuses_a_datum_length_without_a_datum() {
+  let total_length = bytearray.length(output_without_optional_fields)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    output_without_optional_fields,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    output_without_optional_fields,
+    value_control.cursor,
+  )
+  expect Some(terminal) = ledger_output_scan_v1.finish_v1(
+    optional_control,
+    total_length,
+  )
+  and {
+    ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+    !ledger_output_scan_v1.terminal_is_exact_v1(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..terminal,
+        datum_length: 1,
+      },
+      total_length,
+    ),
+  }
+}
+
+/// A control is only ever written well formed, which is what lets a thread
+/// read its own control back without re-checking it.
+test encoding_refuses_a_malformed_control() fail {
+  let malformed = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..ledger_output_scan_v1.initial_control_v1(),
+    asset_count: 1,
+  }
+  ledger_output_scan_v1.encode_control_v1(malformed) != #""
+}
+
+/// A control written by `encode_control_v1` reads back unchanged without the
+/// checks `decode_control_v1` repeats.
+test written_control_reads_back_unchanged() {
+  let control = terminal_control()
+  ledger_output_scan_v1.decode_written_control_v1(
+    ledger_output_scan_v1.encode_control_v1(control),
+  ) == control
+}
+
+/// A 57-byte base address, the widest `decode_canonical_address_bytes` admits.
+const widest_address =
+  #"002222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333"
+
+/// Every byte-string field of a control at the widest width a well-formed
+/// control allows: the 57-byte address, two 28-byte policies and a 32-byte
+/// asset name. No field of a well-formed control is wider, so this is the
+/// widest control a thread writes; it reads back through both readers.
+test written_control_at_its_widest_fields_reads_back_unchanged() {
+  let control = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..terminal_control(),
+    address: widest_address,
+    previous_policy: builtin.replicate_byte(28, 4),
+    current_policy: builtin.replicate_byte(28, 5),
+    previous_asset_name: builtin.replicate_byte(32, 6),
+  }
+  let cbor = ledger_output_scan_v1.encode_control_v1(control)
+  and {
+    bytearray.length(widest_address) == 57,
+    ledger_output_scan_v1.decode_written_control_v1(cbor) == control,
+    ledger_output_scan_v1.decode_control_v1(cbor) == control,
+  }
+}
+
+test written_control_refuses_truncated_bytes() fail {
+  let cbor = ledger_output_scan_v1.encode_control_v1(terminal_control())
+  ledger_output_scan_v1.decode_written_control_v1(
+    bytearray.take(cbor, bytearray.length(cbor) - 1),
+  ) == terminal_control()
+}
+
+test written_control_refuses_trailing_bytes() fail {
+  let cbor = ledger_output_scan_v1.encode_control_v1(terminal_control())
+  ledger_output_scan_v1.decode_written_control_v1(bytearray.concat(cbor, #"00")) == terminal_control()
+}
+
+/// A step that would leave a control malformed is refused even when the
+/// control it starts from is well formed: a run of steps checks each control
+/// only as a step's result. This control is well formed but records no output
+/// map yet already counts two optional fields, so reading one more inline
+/// datum would count a third.
+test step_refuses_a_result_that_is_not_well_formed() {
+  let control = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..ledger_output_scan_v1.initial_control_v1(),
+    stage: ledger_output_scan_v1.stage_optional_field,
+    optional_field_count: 2,
+  }
+  let window = #"024100"
+  and {
+    ledger_output_scan_v1.control_is_well_formed(control),
+    ledger_output_scan_v1.step_well_formed_v1(control, 3, window, 0) == None,
+    ledger_output_scan_v1.step_v1(control, 3, window, 0) == None,
+  }
+}
+
+/// Runs every step from `control` over the whole output: `None` when the scan
+/// reaches the exact terminal, otherwise the cursor of the refused step.
+fn refused_at(
+  control: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  output: ByteArray,
+) -> Option<Int> {
+  let total_length = bytearray.length(output)
+  if and {
+    control.stage == ledger_output_scan_v1.stage_optional_field,
+    control.cursor == total_length,
+  } {
+    when ledger_output_scan_v1.finish_v1(control, total_length) is {
+      Some(terminal) ->
+        if ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length) {
+          None
+        } else {
+          Some(control.cursor)
+        }
+      None -> Some(control.cursor)
+    }
+  } else {
+    when
+      ledger_output_scan_v1.step_v1(
+        control,
+        total_length,
+        output,
+        control.cursor,
+      )
+    is {
+      Some(next) -> refused_at(next, output)
+      None -> Some(control.cursor)
+    }
+  }
+}
+
+// The Cardano value cap. `ledger_output_value_size_fixture_v1` spells values
+// of 5,000 and 5,001 bytes with long asset names inside a two-entry output,
+// so the value runs across the 4,095-byte chunk boundary.
+
+/// Scans `output` from the initial control; each step reads the chunk that
+/// holds the cursor and, at a token stage, the chunk after it. Returns the
+/// last control the scan reached and whether it is the exact terminal.
+fn scan_output(
+  output: ByteArray,
+) -> (ledger_output_scan_v1.LedgerOutputScanControlV1, Bool) {
+  scan_output_from(
+    ledger_output_scan_v1.initial_control_v1(),
+    output,
+    bytearray.length(output) + 32,
+  )
+}
+
+fn scan_output_from(
+  control: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  output: ByteArray,
+  fuel: Int,
+) -> (ledger_output_scan_v1.LedgerOutputScanControlV1, Bool) {
+  expect fuel > 0
+  let total_length = bytearray.length(output)
+  when ledger_output_scan_v1.finish_v1(control, total_length) is {
+    Some(terminal) ->
+      (
+        terminal,
+        ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+      )
+    None -> {
+      let chunk_start = control.cursor - control.cursor % 4095
+      let span = if control.stage <= ledger_output_scan_v1.stage_optional_field {
+        8190
+      } else {
+        4095
+      }
+      let window = bytearray.slice(output, chunk_start, chunk_start + span - 1)
+      when
+        ledger_output_scan_v1.step_v1(
+          control,
+          total_length,
+          window,
+          control.cursor - chunk_start,
+        )
+      is {
+        None -> (control, False)
+        Some(next) -> scan_output_from(next, output, fuel - 1)
+      }
+    }
+  }
+}
+
+/// Two policies, `..0001` then `..0002`, the first holding names `01` and
+/// `02`: distinct and ascending throughout.
+const distinct_ascending_output =
+  #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a2410101410202581c11111111111111111111111111111111111111111111111111110002a1410201"
+
+test distinct_ascending_policies_and_names_reach_the_terminal() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    distinct_ascending_output,
+  ) == None
+}
+
+/// The second policy id repeats the first: refused at the second policy
+/// header, byte 75.
+test refuses_a_repeated_policy_id() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110001a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The policy ids descend: refused at the second policy header, byte 75.
+test refuses_descending_policy_ids() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a2581c11111111111111111111111111111111111111111111111111110002a1410101581c11111111111111111111111111111111111111111111111111110001a1410201",
+  ) == Some(75)
+}
+
+/// The second name under one policy repeats the first: refused at the second
+/// asset, byte 75.
+test refuses_a_repeated_asset_name() {
+  refused_at(
+    ledger_output_scan_v1.initial_control_v1(),
+    #"a200581d604747474747474747474747474747474747474747474747474747474701821a001e8480a1581c11111111111111111111111111111111111111111111111111110001a2410101410102",
+  ) == Some(75)
+}
+
+test scan_accepts_a_value_of_5000_bytes_across_the_chunk_boundary() {
+  let value = fixture.long_name_value(fixture.quantity_at_cap)
+  let output = fixture.long_name_output(fixture.quantity_at_cap)
+  let (terminal, exact) = scan_output(output)
+  and {
+    bytearray.length(value) == 5000,
+    bytearray.length(output) - bytearray.length(value) < 4095,
+    bytearray.length(output) > 4095,
+    exact,
+    terminal.cardano_value_size == 5000,
+    terminal.asset_count == 142,
+  }
+}
+
+test scan_refuses_a_value_of_5001_bytes_past_the_chunk_boundary() {
+  let value = fixture.long_name_value(fixture.quantity_over_cap)
+  let output = fixture.long_name_output(fixture.quantity_over_cap)
+  let (last, exact) = scan_output(output)
+  and {
+    bytearray.length(value) == 5001,
+    !exact,
+    // The refusal is the last asset, in the second chunk: every earlier
+    // token, including the ones read across the chunk boundary, advanced.
+    last.stage == ledger_output_scan_v1.stage_asset,
+    last.asset_remaining == 1,
+    last.asset_count == 141,
+    last.cursor > 4095,
+    last.cardano_value_size == 4974,
+  }
+}
+
+test control_cardano_value_size_is_well_formed_up_to_the_cap() {
+  let control = terminal_control()
+  let sized = fn(size) {
+    ledger_output_scan_v1.LedgerOutputScanControlV1 {
+      ..control,
+      cardano_value_size: size,
+    }
+  }
+  and {
+    ledger_output_scan_v1.control_is_well_formed(sized(5000)),
+    ledger_output_scan_v1.terminal_is_exact_v1(sized(5000), 11249),
+    !ledger_output_scan_v1.control_is_well_formed(sized(5001)),
+    !ledger_output_scan_v1.terminal_is_exact_v1(sized(5001), 11249),
+  }
+}
