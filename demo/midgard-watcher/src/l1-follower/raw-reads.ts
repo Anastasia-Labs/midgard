@@ -1,4 +1,7 @@
-import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs";
+import type {
+  FraudProofRawL1Point,
+  FraudProofRawL1Utxo,
+} from "@al-ft/midgard-fault-proofs";
 import {
   depth,
   type FactStore,
@@ -21,6 +24,7 @@ import {
   samePoint,
 } from "./raw-reads.facts.js";
 import {
+  type FollowerOutRefLiveness,
   type FollowerRawReads,
   type FollowerUnresolvedInput,
   type FollowerVerifiedSpend,
@@ -47,7 +51,8 @@ import { resolveStoredInputIn } from "./tx-inputs.js";
  * Retention: a fact pruning may have removed is `beyond_retention`, never
  * "missing" or "unspent". An output created before the follower's origin
  * has no stored creating body; a read that needs its exact bytes is
- * `l1_input_before_origin`, never a stand-in value.
+ * `l1_input_before_origin`, never a stand-in value. Whether it is unspent
+ * needs no bytes, so `outRefLivenessAtPoint` answers it.
  *
  * Input resolution order: the stored creating body, then the input bytes
  * resolved at ingest for a tx a unit history records (tx-inputs.ts), then
@@ -129,14 +134,26 @@ export const createFollowerRawReads = (
     }
   };
 
-  const utxosByOutRefAtPoint: FollowerRawReads["utxosByOutRefAtPoint"] = async (
-    outRefs,
-    point,
-  ) => {
+  /**
+   * Which of `outRefs` are unspent at `point`, with the parsed outref and
+   * whether its row is a seed row (no stored creating body). A seed row is
+   * unspent at the origin, so it is unspent at any stored point until a spend
+   * the store records at or below that point.
+   */
+  const livenessAt = async (
+    outRefs: readonly string[],
+    point: FraudProofRawL1Point,
+  ): Promise<
+    RawRead<
+      Omit<FollowerOutRefLiveness, "unspent"> & {
+        unspent: { label: string; outRef: OutRef; seed: boolean }[];
+      }
+    >
+  > => {
     const block = await canonicalBlock(store, point);
     if (block.kind !== "ok") return block;
     const at = block.value.slot;
-    const outputs: FraudProofRawL1Utxo[] = [];
+    const unspent: { label: string; outRef: OutRef; seed: boolean }[] = [];
     const spends: FollowerVerifiedSpend[] = [];
     const unknown: string[] = [];
     const beyondRetention: string[] = [];
@@ -167,13 +184,37 @@ export const createFollowerRawReads = (
         });
         continue;
       }
+      unspent.push({ label, outRef, seed: stored.created === null });
+    }
+    return ok({ unspent, spends, unknown, beyondRetention });
+  };
+
+  const outRefLivenessAtPoint: FollowerRawReads["outRefLivenessAtPoint"] =
+    async (outRefs, point) => {
+      const read = await livenessAt(outRefs, point);
+      if (read.kind !== "ok") return read;
+      return ok({
+        ...read.value,
+        unspent: read.value.unspent.map(({ label }) => label),
+      });
+    };
+
+  const utxosByOutRefAtPoint: FollowerRawReads["utxosByOutRefAtPoint"] = async (
+    outRefs,
+    point,
+  ) => {
+    const read = await livenessAt(outRefs, point);
+    if (read.kind !== "ok") return read;
+    const { unspent, ...rest } = read.value;
+    const outputs: FraudProofRawL1Utxo[] = [];
+    for (const { outRef, seed } of unspent) {
       const exact = await store.transaction("read", (tx) =>
-        exactRow(tx, outRef, stored.created === null),
+        exactRow(tx, outRef, seed),
       );
       if (exact.kind !== "ok") return exact;
       outputs.push(exact.value);
     }
-    return ok({ outputs, spends, unknown, beyondRetention });
+    return ok({ ...rest, outputs });
   };
 
   const unitHistoryAtPoint: FollowerRawReads["unitHistoryAtPoint"] = async (
@@ -444,6 +485,7 @@ export const createFollowerRawReads = (
   return {
     addressUtxosAtPoint,
     utxosByOutRefAtPoint,
+    outRefLivenessAtPoint,
     unitHistoryAtPoint,
     transactionInclusion,
     rawTransaction,

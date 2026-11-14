@@ -70,9 +70,14 @@ export type FollowerVerifiedSpend = Readonly<{
   spendPoint: FraudProofRawL1Point;
 }>;
 
-export type FollowerOutRefsAtPoint = Readonly<{
+/**
+ * Which requested outrefs are unspent at a point, by label. A seed row (an
+ * output the follower's origin already held) is unspent from the origin
+ * until a spend the store records at or below the point.
+ */
+export type FollowerOutRefLiveness = Readonly<{
   /** The requested outrefs unspent at the point. */
-  outputs: readonly FraudProofRawL1Utxo[];
+  unspent: readonly string[];
   /** The requested outrefs spent at or below the point. */
   spends: readonly FollowerVerifiedSpend[];
   /**
@@ -83,6 +88,13 @@ export type FollowerOutRefsAtPoint = Readonly<{
   /** Requested outrefs whose tracked row pruning may have removed. */
   beyondRetention: readonly string[];
 }>;
+
+/** {@link FollowerOutRefLiveness}, with the exact bytes of each unspent outref. */
+export type FollowerOutRefsAtPoint = Omit<FollowerOutRefLiveness, "unspent"> &
+  Readonly<{
+    /** The requested outrefs unspent at the point. */
+    outputs: readonly FraudProofRawL1Utxo[];
+  }>;
 
 export type FollowerUnitHistory = Readonly<{
   checkpoint: FraudProofRawL1Point;
@@ -123,10 +135,21 @@ export type FollowerRawReads = Readonly<{
     address: string,
     point: FraudProofRawL1Point,
   ) => Promise<RawRead<readonly FraudProofRawL1Utxo[]>>;
+  /**
+   * The outrefs' bytes and spends at the point. An unspent seed row has no
+   * stored bytes, so the read is refused (`l1_input_before_origin`): a
+   * caller that needs only whether an outref is unspent reads
+   * `outRefLivenessAtPoint`.
+   */
   utxosByOutRefAtPoint: (
     outRefs: readonly string[],
     point: FraudProofRawL1Point,
   ) => Promise<RawRead<FollowerOutRefsAtPoint>>;
+  /** Which outrefs are unspent at the point, without their bytes. */
+  outRefLivenessAtPoint: (
+    outRefs: readonly string[],
+    point: FraudProofRawL1Point,
+  ) => Promise<RawRead<FollowerOutRefLiveness>>;
   unitHistoryAtPoint: (
     unit: string,
     point: FraudProofRawL1Point,

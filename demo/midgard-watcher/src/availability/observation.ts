@@ -279,7 +279,7 @@ export const createWatcherAvailabilityObservation = (input: {
           fetchSpend: async (ref) => {
             const outRef = `${ref.txHash}#${ref.outputIndex.toString()}`;
             const observed = required(
-              await reads.utxosByOutRefAtPoint([outRef], point),
+              await reads.outRefLivenessAtPoint([outRef], point),
             );
             const stored = observed.spends.find(
               (entry) => entry.outRef === outRef,
@@ -428,8 +428,11 @@ export const createWatcherAvailabilityObservation = (input: {
         }
         const consumed = [...intent.spentOutRefs, ...intent.collateralOutRefs];
         const { slot, blockNo } = observation.nativePoint;
+        // Only whether each input is unspent matters, never its bytes: a
+        // wallet coin the follower's origin already held has none stored,
+        // and is unspent until a recorded spend.
         const observed = required(
-          await reads.utxosByOutRefAtPoint(consumed, pointOf(observation)),
+          await reads.outRefLivenessAtPoint(consumed, pointOf(observation)),
         );
         // A row the store pruned, or one whose creating transaction it never
         // held (a parent a rollback dropped), is not unspent here: the store
@@ -437,7 +440,7 @@ export const createWatcherAvailabilityObservation = (input: {
         // inputs below, proved this intent did not land, so such an input
         // reads as missing, as an unknown row does; only a foreign spend
         // proves anything more.
-        const unspent = new Set(observed.outputs.map(({ outRef }) => outRef));
+        const unspent = new Set(observed.unspent);
         // The store holds no copy of the transaction, so it did not land above
         // its pruned slot, but it may have landed at or below it. The store
         // keeps every unspent tracked row and marks every spend of one, and a

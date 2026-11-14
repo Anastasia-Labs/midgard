@@ -210,7 +210,7 @@ const inputState = async (
       spender: spender.txHash.toString("hex"),
     };
   const missing = required(
-    await rawReads.utxosByOutRefAtPoint([label], canonicalPoint),
+    await rawReads.outRefLivenessAtPoint([label], canonicalPoint),
   );
   if (missing.beyondRetention.includes(label)) {
     const cursor = await store.cursor();

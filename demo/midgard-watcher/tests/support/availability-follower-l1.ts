@@ -47,6 +47,20 @@ export const availabilityFollowerL1 = (
         beyondRetention: [],
         ...(await io.outrefs({ outRefs, point })),
       }),
+    // The same answer, by label: an unspent output is named by its outref.
+    outRefLivenessAtPoint: async (outRefs, point) => {
+      const { outputs = [], ...rest } = (await io.outrefs({
+        outRefs,
+        point,
+      })) as { outputs?: readonly { outRef: string }[] };
+      return ok({
+        unknown: [],
+        beyondRetention: [],
+        spends: [],
+        ...rest,
+        unspent: outputs.map(({ outRef }) => outRef),
+      });
+    },
     unitHistoryAtPoint: async (unit, point) =>
       ok({ checkpoint: point, ...(await io.history({ unit, point })) }),
     transactionInclusion: async (txHash) =>
