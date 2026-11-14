@@ -147,18 +147,20 @@ describe("attached journey session", () => {
   });
 
   describe("operator-2's and the drill funding wallet's funding for the families it runs", () => {
-    // Two families the committee attests, each ending in operator-2's
-    // conviction, then one it refuses before it signs. doubleWithdraw
-    // publishes two withdrawal orders; withdrawnInput commits one history
-    // block and publishes one withdrawal order.
+    // A family the committee attests (ending in operator-2's conviction),
+    // one it refuses before it signs, and a last attested family whose
+    // conviction no family follows. doubleWithdraw publishes two withdrawal
+    // orders; withdrawnInput commits one history block and publishes one
+    // withdrawal order.
     const families = selectJourneyFixtures(
-      "doubleWithdraw,withdrawnInput,canonicalDecodability",
+      "doubleWithdraw,canonicalDecodability,withdrawnInput",
     );
     // Each L1 transaction is kept 5 ADA of fee headroom.
     const worstCase =
-      // operator-2's first onboarding, and one after each conviction that a
-      // family follows, the refused one too.
-      3n * STACK_REQUIRED_BOND_LOVELACE +
+      // operator-2's first onboarding, and one after doubleWithdraw's
+      // conviction, which the refused family follows; none after the last
+      // family's conviction.
+      2n * STACK_REQUIRED_BOND_LOVELACE +
       // Four header nodes (three faults and one history block), 5 ADA each,
       // and their commits.
       4n * (5_000_000n + 5_000_000n) +
