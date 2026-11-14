@@ -3,7 +3,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readJsonIfPresent } from "../src/full-stack/journal.js";
+import {
+  readJsonIfPresent,
+  writeDurableJson,
+} from "../src/full-stack/journal.js";
 import {
   assertDepositCredit,
   assertDepositFunding,
@@ -17,6 +20,7 @@ import {
 } from "./full-stack-fixtures.js";
 import {
   committedTransfer,
+  completedWithdrawal,
   DEPOSIT_EVENT,
   HEADER_HASH,
   journey,
@@ -176,6 +180,45 @@ describe("wallet journey order on a long maturity", () => {
 });
 
 describe("wallet journey resume", () => {
+  it("resumes a completed withdrawal from its recorded payout after a later cycle spent the payout output", async () => {
+    const value = await journey();
+    value.config.timeoutMs = 1;
+    const payout = await completedWithdrawal(value);
+    const record = { status: "complete", attempts: 1, data: payout };
+    await writeDurableJson(
+      join(value.config.runDirectory, "stack-journal.json"),
+      {
+        schemaVersion: "midgard-full-stack-v1",
+        runId: "resumed-run",
+        intentDigest: value.context.intentDigest,
+        steps: { "cycle-0-withdrawal": record },
+      },
+    );
+    const resumed = await runStackWorkflow(value.context, [
+      value.byId("cycle-0-withdrawal"),
+    ]);
+    expect(resumed.steps["cycle-0-withdrawal"]).toEqual(record);
+  });
+  it("proves the payout again for a complete record of another event, address or assets", async () => {
+    const value = await journey();
+    value.config.timeoutMs = 1;
+    const payout = await completedWithdrawal(value);
+    const withdrawal = value.byId("cycle-0-withdrawal");
+    // Each waits out the L1 node's readiness bound, so they run together.
+    await Promise.all(
+      [
+        { ...payout, eventId: `d8799f5820${"ef".repeat(32)}00ff` },
+        { ...payout, address: value.user },
+        { ...payout, assets: { lovelace: "1" } },
+      ].map((data) =>
+        expect(
+          withdrawal.reconcile({ status: "complete", attempts: 1, data }),
+        ).rejects.toThrow(
+          "exact canonical withdrawal payout did not complete within 1ms",
+        ),
+      ),
+    );
+  });
   it("resends the saved signed transfer after a lost response without rebuilding", async () => {
     const value = await journey();
     value.txStatus({ status: "not_found" });

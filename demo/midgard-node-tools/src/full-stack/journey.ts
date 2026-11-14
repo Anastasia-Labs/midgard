@@ -26,6 +26,7 @@ import {
   assertWithdrawalDebit,
 } from "./journey-balances.js";
 import { awaitExactPayout, settlementEvidence } from "./payout.js";
+import { equalAssets } from "./payout-body.js";
 import { getJson, poll, type StackProcesses } from "./process.js";
 import { verifyPublicDa } from "./public-da.js";
 import { confirmRuntimeReadiness } from "./runtime.js";
@@ -91,6 +92,25 @@ async function withWalletSeed<T>(
   } finally {
     await rm(file, { force: true });
   }
+}
+type RecordedPayout = Awaited<ReturnType<typeof awaitExactPayout>>;
+/** Whether a completed withdrawal step recorded this withdrawal's payout. */
+function isPayoutOf(
+  data: unknown,
+  eventId: string,
+  intent: WithdrawalIntent,
+): data is RecordedPayout {
+  const payout = data as Partial<RecordedPayout> | null;
+  return (
+    payout?.eventId === eventId &&
+    payout.address === intent.address &&
+    typeof payout.assets === "object" &&
+    payout.assets !== null &&
+    equalAssets(payout.assets, intent.assets) &&
+    typeof payout.txHash === "string" &&
+    /^[0-9a-f]{64}$/.test(payout.txHash) &&
+    Number.isInteger(payout.outputIndex)
+  );
 }
 const lovelaceOf = (utxos: NodeUtxos) =>
   utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
@@ -296,7 +316,7 @@ export function journeySteps(
     });
     steps.push({
       id: `${prefix}-withdrawal`,
-      reconcile: async () => {
+      reconcile: async (record) => {
         const receipt = (await readJsonIfPresent(file("withdrawal"))) as
           | { eventId: string }
           | undefined;
@@ -304,12 +324,18 @@ export function journeySteps(
         const intent = (await readJsonIfPresent(
           file("withdrawal-intent"),
         )) as WithdrawalIntent;
-        const payout = await awaitExactPayout(
-          processes,
-          receipt.eventId,
-          intent.address,
-          intent.assets,
-        );
+        // Inclusion proven at depth is permanent, but a later cycle's deposit
+        // may spend the payout output, so a recorded payout is not proven again.
+        const payout =
+          record?.status === "complete" &&
+          isPayoutOf(record.data, receipt.eventId, intent)
+            ? record.data
+            : await awaitExactPayout(
+                processes,
+                receipt.eventId,
+                intent.address,
+                intent.assets,
+              );
         const available = await utxos(recipient.address);
         if (
           available.some(

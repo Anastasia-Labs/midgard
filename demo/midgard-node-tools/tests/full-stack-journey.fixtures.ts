@@ -10,10 +10,15 @@ import { vi } from "vitest";
 
 import { type JourneyLedger, journeySteps } from "../src/full-stack/journey.js";
 import {
+  runtimeConfigurationPath,
+  servicesDirectory,
+} from "../src/full-stack/runtime.js";
+import {
   RecordingProcesses,
   stackEnvironment,
   stackFixture,
 } from "./full-stack-fixtures.js";
+import { payoutBody, payoutToken } from "./full-stack-payout.fixtures.js";
 
 /**
  * The e2e-stack wallet journey (`journey.ts`) over a recording stack: the
@@ -178,3 +183,119 @@ export const committedTransfer = (confirmedLedgerFinalized: boolean) => ({
   headerHash: HEADER_HASH,
   confirmedLedgerFinalized,
 });
+
+/** An event id is an output reference as CBOR, as the follower keys it. */
+export const WITHDRAWAL_EVENT = `d8799f5820${"ee".repeat(32)}00ff`;
+
+/**
+ * Cycle 0's withdrawal as a resumed run finds it after a later cycle: its
+ * saved receipt, intent and balance, its payout concluded on L1 (the
+ * follower's payout token rows), and every service ready (the node's
+ * /readyz, the watcher's /v1/status, each committee's /readyz). The L2
+ * output it paid is gone from the recipient's holdings. The stack's L1
+ * node has no socket, so a tip query never answers: the payout output can
+ * no longer be found unspent there, as after a later deposit spent it.
+ * Returns the payout the completed step recorded.
+ */
+export const completedWithdrawal = async (
+  value: Awaited<ReturnType<typeof journey>>,
+) => {
+  const { config, processes } = value;
+  const amount = config.journey.transferLovelace;
+  const assets = { lovelace: amount };
+  await value.writeManifest();
+  await mkdir(servicesDirectory(processes), { recursive: true });
+  await writeFile(
+    value.file("withdrawal-intent"),
+    JSON.stringify({
+      l2OutRef: `${TRANSFER_TX}#0`,
+      address: value.recipient,
+      assets,
+      recipientBalanceBefore: amount,
+    }),
+  );
+  await writeFile(
+    value.file("withdrawal"),
+    JSON.stringify({ kind: "Withdrawal", eventId: WITHDRAWAL_EVENT }),
+  );
+  await writeFile(
+    value.file("withdrawal-balance"),
+    JSON.stringify({ before: amount, after: "0", debited: amount }),
+  );
+  value.hold(value.recipient, []);
+  const conclusion = payoutBody([
+    { address: value.recipient, lovelace: BigInt(amount) },
+  ]);
+  processes.responses["settlement-withdrawal-observation"] = {
+    jobs: [{ phase: "complete" }],
+    attempts: null,
+    payoutToken: payoutToken(conclusion),
+  };
+  const manifestId = "ab".repeat(32);
+  const operationsEndpoint = "http://127.0.0.1:9464";
+  await writeFile(
+    runtimeConfigurationPath(processes),
+    JSON.stringify({
+      compose: join(servicesDirectory(processes), "compose.json"),
+      operationsEndpoint,
+      committeeServices: config.da.members.map(
+        (_, index) => `da-committee-${index}`,
+      ),
+    }),
+  );
+  await writeFile(
+    join(servicesDirectory(processes), "committee-0.json"),
+    JSON.stringify({
+      deployment: { fingerprint: manifestId },
+      da_committee: {
+        members: config.da.members.map((_, index) => ({
+          signer_index: index,
+          peer_id: `peer-${index}`,
+        })),
+      },
+    }),
+  );
+  const ready = new Map<string, unknown>([
+    [
+      `${config.endpoint}/readyz`,
+      { ready: true, reasons: [], settlement: { state: "waiting" } },
+    ],
+    [
+      `${operationsEndpoint}/v1/status`,
+      {
+        liveness: "live",
+        readiness: "ready",
+        readinessReasons: [],
+        deploymentFingerprint: manifestId,
+        launchScope: { complete: true },
+      },
+    ],
+    ...config.da.members.map(
+      (_, index) =>
+        [
+          `http://127.0.0.1:${config.da.ports.committeeApiBase + index}/readyz`,
+          {
+            ready: true,
+            deployment: {
+              configuredFingerprint: manifestId,
+              storeMatchesConfigured: true,
+            },
+            peer: { signerIndex: index, localPeerId: `peer-${index}` },
+          },
+        ] as const,
+    ),
+  ]);
+  vi.stubGlobal("fetch", async (url: string | URL) => {
+    const body = ready.get(String(url));
+    return body === undefined
+      ? new Response("{}", { status: 404 })
+      : new Response(JSON.stringify(body));
+  });
+  return {
+    eventId: WITHDRAWAL_EVENT,
+    txHash: conclusion.txHash,
+    outputIndex: 0,
+    address: value.recipient,
+    assets,
+  };
+};

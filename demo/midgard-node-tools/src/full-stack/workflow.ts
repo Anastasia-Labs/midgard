@@ -16,7 +16,12 @@ export type Recovery =
   | { status: "retry" | "pending" };
 export type StackStep = {
   id: string;
-  /** Reads authoritative state. A retry must be safe for the same durable intent. */
+  /**
+   * Reads authoritative state. A retry must be safe for the same durable intent.
+   * A complete record's chain facts may since have been consumed by later
+   * steps, so a reconcile given a complete record re-checks only facts that
+   * stay true.
+   */
   reconcile: (record: StepRecord | undefined) => Promise<Recovery>;
   execute: (record: StepRecord | undefined) => Promise<unknown>;
 };
