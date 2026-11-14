@@ -56,6 +56,64 @@ const carryingBlock = (recording: L1Recording) =>
     { surface: "ogmios-websocket" }
   >;
 
+/**
+ * The stack's Ogmios, replaying the recording on every connection and
+ * counting how many connections are open at once: a connection is open from
+ * the moment it is made until the reader or Ogmios closes it. The
+ * `dropConnection`-th connection (counting from 1) is closed by Ogmios as
+ * soon as the reader sends it a request.
+ */
+const countedOgmios = (
+  recording: L1Recording,
+  options: Readonly<{ dropConnection?: number }> = {},
+) => {
+  const replay = recordedOgmiosWebSocket(recording);
+  let opened = 0;
+  let open = 0;
+  let mostOpenAtOnce = 0;
+  const connect = (url: string) => {
+    opened += 1;
+    open += 1;
+    mostOpenAtOnce = Math.max(mostOpenAtOnce, open);
+    const socket = new replay.WebSocket(url);
+    const drops = opened === options.dropConnection;
+    const closeListeners: ((event: never) => void)[] = [];
+    let closed = false;
+    const settle = () => {
+      if (closed) return false;
+      closed = true;
+      open -= 1;
+      return true;
+    };
+    return {
+      addEventListener(
+        type: string,
+        listener: (event: never) => void,
+        listenerOptions?: { once?: boolean },
+      ) {
+        if (type === "close") closeListeners.push(listener);
+        else socket.addEventListener(type, listener, listenerOptions);
+      },
+      send(raw: string) {
+        if (!drops) return socket.send(raw);
+        queueMicrotask(() => {
+          if (!settle()) return;
+          for (const listener of closeListeners) listener({} as never);
+        });
+      },
+      close() {
+        if (settle())
+          for (const listener of closeListeners) listener({} as never);
+      },
+    };
+  };
+  return {
+    connect,
+    opened: () => opened,
+    mostOpenAtOnce: () => mostOpenAtOnce,
+  };
+};
+
 describe("stack transaction reads", () => {
   it("reads a confirmed transaction's exact bytes, block and the tip they were read against", async () => {
     const recording = loadL1Recording(REMOVAL);
@@ -204,6 +262,62 @@ describe("stack transaction reads", () => {
       /failed with 400: .*Invalid pattern/u,
     );
     expect(isTransientTransportError(failure)).toBe(false);
+  });
+
+  it("holds at most one Ogmios connection open however many reads are asked for at once", async () => {
+    const recording = loadL1Recording(REMOVAL);
+    const directory = await mkdtemp(join(tmpdir(), "stack-transactions-"));
+    directories.push(directory);
+    const stackOgmios = countedOgmios(recording);
+    const reader = stackJourneyTransactions({
+      kupoUrl: "http://kupo.recorded",
+      ogmiosUrl: "ws://ogmios.recorded",
+      directory,
+      fetchImpl: recordedFetch(recording) as typeof fetch,
+      webSocketFactory: stackOgmios.connect,
+    });
+    const { id } = recording.transaction!;
+    const reads = await Promise.all(
+      Array.from({ length: 8 }, () => reader.transaction(id)),
+    );
+    expect(reads.map(({ cbor }) => cbor)).toEqual(
+      Array.from({ length: 8 }, () => recordedTransaction(recording).cbor),
+    );
+    expect(stackOgmios.opened()).toBe(8);
+    expect(stackOgmios.mostOpenAtOnce()).toBe(1);
+  });
+
+  it("fails only the read whose Ogmios connection drops, and the next read waiting still succeeds", async () => {
+    const recording = loadL1Recording(REMOVAL);
+    const directory = await mkdtemp(join(tmpdir(), "stack-transactions-"));
+    directories.push(directory);
+    // The second connection the stack's Ogmios accepts drops as soon as the
+    // reader asks it anything.
+    const stackOgmios = countedOgmios(recording, { dropConnection: 2 });
+    const reader = stackJourneyTransactions({
+      kupoUrl: "http://kupo.recorded",
+      ogmiosUrl: "ws://ogmios.recorded",
+      directory,
+      fetchImpl: recordedFetch(recording) as typeof fetch,
+      webSocketFactory: stackOgmios.connect,
+    });
+    const { id } = recording.transaction!;
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 3 }, () => reader.transaction(id)),
+    );
+    expect(outcomes.map(({ status }) => status)).toEqual([
+      "fulfilled",
+      "rejected",
+      "fulfilled",
+    ]);
+    expect((outcomes[1] as PromiseRejectedResult).reason).toMatchObject({
+      message: "Ogmios chain-sync socket closed",
+    });
+    expect(
+      (outcomes[2] as PromiseFulfilledResult<{ cbor: string }>).value,
+    ).toMatchObject({ cbor: recordedTransaction(recording).cbor });
+    expect(stackOgmios.opened()).toBe(3);
+    expect(stackOgmios.mostOpenAtOnce()).toBe(1);
   });
 
   it("settles a signed commit the stack's Kupo indexed as included, and reports how far Kupo had indexed", async () => {

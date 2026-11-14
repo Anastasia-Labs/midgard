@@ -93,7 +93,10 @@ const kupoCreationPoint = async (
  * were created in, and Ogmios chain-sync serves that block's exact bytes
  * (the stack runs it with `--include-transaction-cbor`) and the tip it was
  * read against. Every read is checked to hash to the transaction it names,
- * and appended to `chain-reads.ndjson` in `directory`.
+ * and appended to `chain-reads.ndjson` in `directory`. Reads run one at a
+ * time, in the order they were asked for, because each Ogmios read is a new
+ * node-to-client connection and a burst of them overflows the node's socket
+ * backlog.
  */
 export const stackJourneyTransactions = (
   input: Readonly<{
@@ -107,65 +110,72 @@ export const stackJourneyTransactions = (
   const fetchImpl = input.fetchImpl ?? fetch;
   const nativeEvidencePath = join(input.directory, "chain-reads.ndjson");
   let observedBlockNo: bigint | undefined;
+  const read = async (txHash: string): Promise<JourneyConfirmedTransaction> => {
+    if (!TX_HASH.test(txHash))
+      throw new Error(`Malformed transaction hash ${txHash}`);
+    const blockPoint = await kupoCreationPoint(
+      input.kupoUrl,
+      txHash,
+      fetchImpl,
+    );
+    const observed = await readOgmiosBlockTransaction({
+      ogmiosUrl: input.ogmiosUrl,
+      intersection: await fetchKupoAncestorPoint({
+        kupoUrl: input.kupoUrl,
+        slot: blockPoint.slot,
+        fetchImpl,
+      }),
+      blockPoint,
+      txHash,
+      ...(input.webSocketFactory === undefined
+        ? {}
+        : { webSocketFactory: input.webSocketFactory }),
+    });
+    if (observed.transactionCbor === undefined)
+      throw new Error(
+        "The stack's Ogmios serves no transaction bytes; it must run with --include-transaction-cbor",
+      );
+    const cbor = observed.transactionCbor;
+    if (
+      CML.hash_transaction(
+        CML.Transaction.from_cbor_hex(cbor).body(),
+      ).to_hex() !== txHash
+    )
+      throw new Error(
+        `The bytes Ogmios served for ${txHash} hash to another transaction`,
+      );
+    const tip = observed.selectedChainTip;
+    if (tip !== undefined) {
+      const height = BigInt(tip.height);
+      if (observedBlockNo === undefined || height > observedBlockNo)
+        observedBlockNo = height;
+    }
+    const point = {
+      blockHash: observed.blockPoint.headerHash,
+      blockNo: observed.blockPoint.blockNo.toString(),
+      slot: observed.blockPoint.slot.toString(),
+    };
+    await appendFile(
+      nativeEvidencePath,
+      `${JSON.stringify({
+        observedAt: new Date().toISOString(),
+        txHash,
+        point,
+        tipBlockNo: tip?.height ?? null,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    return { cbor, point };
+  };
+  // The whole read, its Kupo lookups included, is the serialized section.
+  let previous: Promise<unknown> = Promise.resolve();
   return Object.freeze({
     nativeEvidencePath,
     observedBlockNo: () => observedBlockNo,
-    transaction: async (txHash: string) => {
-      if (!TX_HASH.test(txHash))
-        throw new Error(`Malformed transaction hash ${txHash}`);
-      const blockPoint = await kupoCreationPoint(
-        input.kupoUrl,
-        txHash,
-        fetchImpl,
-      );
-      const observed = await readOgmiosBlockTransaction({
-        ogmiosUrl: input.ogmiosUrl,
-        intersection: await fetchKupoAncestorPoint({
-          kupoUrl: input.kupoUrl,
-          slot: blockPoint.slot,
-          fetchImpl,
-        }),
-        blockPoint,
-        txHash,
-        ...(input.webSocketFactory === undefined
-          ? {}
-          : { webSocketFactory: input.webSocketFactory }),
-      });
-      if (observed.transactionCbor === undefined)
-        throw new Error(
-          "The stack's Ogmios serves no transaction bytes; it must run with --include-transaction-cbor",
-        );
-      const cbor = observed.transactionCbor;
-      if (
-        CML.hash_transaction(
-          CML.Transaction.from_cbor_hex(cbor).body(),
-        ).to_hex() !== txHash
-      )
-        throw new Error(
-          `The bytes Ogmios served for ${txHash} hash to another transaction`,
-        );
-      const tip = observed.selectedChainTip;
-      if (tip !== undefined) {
-        const height = BigInt(tip.height);
-        if (observedBlockNo === undefined || height > observedBlockNo)
-          observedBlockNo = height;
-      }
-      const point = {
-        blockHash: observed.blockPoint.headerHash,
-        blockNo: observed.blockPoint.blockNo.toString(),
-        slot: observed.blockPoint.slot.toString(),
-      };
-      await appendFile(
-        nativeEvidencePath,
-        `${JSON.stringify({
-          observedAt: new Date().toISOString(),
-          txHash,
-          point,
-          tipBlockNo: tip?.height ?? null,
-        })}\n`,
-        { mode: 0o600 },
-      );
-      return { cbor, point };
+    transaction: (txHash: string) => {
+      const turn = previous.then(() => read(txHash));
+      previous = turn.catch(() => undefined);
+      return turn;
     },
   });
 };
