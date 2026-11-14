@@ -22,7 +22,14 @@ import {
 
 const directories: string[] = [];
 const holders: number[] = [];
-afterEach(() => {
+/** Holds a test armed; released before its holder ends, even on failure. */
+const pauses: { release: () => Promise<unknown> }[] = [];
+afterEach(async () => {
+  // Disarm every release guard while the fake `docker` is still first on
+  // PATH, so a test that fails before its own release never lets the guard
+  // reach the real daemon.
+  for (const pause of pauses.splice(0))
+    await pause.release().catch(() => undefined);
   vi.unstubAllEnvs();
   for (const pid of holders.splice(0))
     try {
@@ -122,6 +129,7 @@ if (existsSync(${JSON.stringify(running)})) console.log("midgard-node");
       }),
       { resumeTimeoutMs: 1000, pollIntervalMs: 20, holderPid: holder.pid! },
     );
+    pauses.push(pause);
     await expect(pause.hold()).resolves.toMatchObject({
       runningServices: ["kupo"],
       readyz: "connection_refused",
