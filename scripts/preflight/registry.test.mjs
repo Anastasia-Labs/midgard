@@ -290,6 +290,24 @@ test("workflow, agent-doc and tooling edits select their owners' checks", () => 
   assert.ok(!helper.includes("repo-tooling-tests"));
 });
 
+test("a file a workflow or agent check reads outside its own tree selects that check", () => {
+  // lint-workflows lints composite actions as well as workflows.
+  assert.ok(
+    selectedIds([".github/actions/demo-setup/action.yml"]).includes(
+      "workflow-lint",
+    ),
+  );
+  // check-enforcement-tags resolves [eslint] tags against the ESLint configs,
+  // [ci] tags against the workflows' step names and [hook] tags against the
+  // hooks.
+  for (const path of [
+    "demo/eslint.config.mjs",
+    ".github/workflows/aiken-ci.yml",
+    ".githooks/pre-push",
+  ])
+    assert.ok(selectedIds([path]).includes("agent-enforcement-tags"), path);
+});
+
 test("a full-run path selects every check; the tracked blueprint selects nothing", () => {
   for (const path of [
     ...deploymentProfileInputs(root),
@@ -298,6 +316,9 @@ test("a full-run path selects every check; the tracked blueprint selects nothing
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",
+    // registry.mjs imports it, with the shard runner it imports in turn.
+    "onchain/aiken/scripts/guard-focused-selector.mjs",
+    "onchain/aiken/scripts/complete-test-shards.mjs",
   ]) {
     assert.ok(matchesAny(path, registry.fullRun), path);
     const selection = selectChecks(registry, [path]);

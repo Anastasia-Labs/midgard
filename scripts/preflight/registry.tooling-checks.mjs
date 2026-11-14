@@ -544,7 +544,7 @@ export const toolingChecks = (root) => [
   {
     id: "workflow-lint",
     title: "Workflow lint",
-    triggers: [".github/workflows/**", "scripts/ci/**"],
+    triggers: [".github/workflows/**", ".github/actions/**", "scripts/ci/**"],
     requiresFiles: ["scripts/ci/lint-workflows.mjs"],
     prePush: true,
     display: "node scripts/ci/lint-workflows.mjs",
@@ -593,6 +593,12 @@ export const toolingChecks = (root) => [
       "agent-enforcement-tags",
       "Every stated rule names its enforcement",
       "scripts/agents/check-enforcement-tags.mjs",
+      // The files its [eslint], [ci] and [hook] tags resolve against.
+      [
+        "**/eslint.config.{js,mjs,cjs,ts,mts,cts}",
+        ".github/workflows/**",
+        ".githooks/**",
+      ],
     ],
     [
       "agent-config",

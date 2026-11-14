@@ -49,6 +49,10 @@ const SHARED_INPUTS = [
   // Preflight itself: a selection bug cannot be allowed to select itself out.
   "scripts/preflight.mjs",
   "scripts/preflight/**",
+  // registry.mjs imports the focused Aiken selector, which imports the shard
+  // runner.
+  `${AIKEN_PROJECT}/scripts/guard-focused-selector.mjs`,
+  `${AIKEN_PROJECT}/scripts/complete-test-shards.mjs`,
   // Contributor execution and package-manager dispatch are shared by builds,
   // registered generators and all preflight children.
   "scripts/contrib.mjs",

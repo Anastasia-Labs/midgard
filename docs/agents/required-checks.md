@@ -127,6 +127,8 @@ a new profile module joins it by being imported.
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
+- `onchain/aiken/scripts/guard-focused-selector.mjs`
+- `onchain/aiken/scripts/complete-test-shards.mjs`
 - `scripts/contrib.mjs`
 - `scripts/contrib/**`
 - `scripts/pnpm.mjs`
@@ -313,6 +315,7 @@ Workflow lint.
 - Command: `node scripts/ci/lint-workflows.mjs`
 - Runs on:
   - `.github/workflows/**`
+  - `.github/actions/**`
   - `scripts/ci/**`
 - Mode: runs in the pre-push hook
 
@@ -360,6 +363,9 @@ Every stated rule names its enforcement.
   - `CONTEXT.md`
   - `.agents/**`
   - `scripts/agents/**`
+  - `**/eslint.config.{js,mjs,cjs,ts,mts,cts}`
+  - `.github/workflows/**`
+  - `.githooks/**`
 - Mode: runs in the pre-push hook
 
 ### `agent-config`
