@@ -133,14 +133,17 @@ export const continueNode = (fx: Chain, header: string): Promise<string> => {
   });
 };
 
-/** Someone else's terminal step: it burns the header's node. */
+/** Someone else's terminal step, not yet landed: it burns the header's node. */
+export const burnTx = (fx: Chain, header: string): SimTx => ({
+  inputs: [nodeOf(fx, header).outRef],
+  outputs: [{ address: X, lovelace: 1_000_000n }],
+  mint: one(D.stateQueueMint, nodeName(header), -1n),
+  nonce: fx.chain.nonce(),
+});
+
+/** Someone else's terminal step, landed: it burns the header's node. */
 export const burnNode = (fx: Chain, header: string): Promise<string> =>
-  land(fx, {
-    inputs: [nodeOf(fx, header).outRef],
-    outputs: [{ address: X, lovelace: 1_000_000n }],
-    mint: one(D.stateQueueMint, nodeName(header), -1n),
-    nonce: fx.chain.nonce(),
-  });
+  land(fx, burnTx(fx, header));
 
 /**
  * One runtime pass: the journal's reconciliation (which pins the journal's

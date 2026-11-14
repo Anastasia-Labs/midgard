@@ -6,10 +6,12 @@ import {
   openJournal,
   RECOVERY,
   stored,
+  tipObservation,
   unpinned,
 } from "../support/availability-pruned-journal.js";
 import {
   burnNode,
+  burnTx,
   continueNode,
   landOpen,
   outputRow,
@@ -107,6 +109,84 @@ describe("a challenge workflow released against a pruned store", () => {
     });
     await advance(fx, RECOVERY + K);
     await releasePass(fx, journal);
+    expect(workflowRows(journal)).toEqual({ live: [], unsettled: [] });
+  });
+
+  // The row's terminal is read from its recorded block only once the walk
+  // from the Open can no longer be read. Here the burn's block was replaced
+  // by a rollback, and the same burn landed again in another block at the
+  // same slot, before the watcher looked again; by then the store has
+  // pruned the walk. The recorded block is no longer canonical, so the
+  // release must be undone rather than settled.
+  it("revives a release whose recorded block a rollback replaced, once the store pruned the walk", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const header = await queueHeader(fx);
+    const q0 = await landOpen(fx, journal, header);
+    const burn = burnTx(fx, header);
+    const { hashes, point: recordedBlock } = await fx.forward([burn]);
+    const terminal = hashes[0]!;
+    expect(await releasePass(fx, journal)).toMatchObject({
+      released: [
+        {
+          headerHash: header,
+          txHash: terminal,
+          spendPoint: `${recordedBlock.slot}:${recordedBlock.blockHash}`,
+        },
+      ],
+    });
+    await fx.backward(2);
+    await fx.forward([]);
+    const { point: replacement } = await fx.forward([burn]);
+    expect(replacement.slot).toBe(recordedBlock.slot);
+    expect(replacement.blockHash).not.toBe(recordedBlock.blockHash);
+    await advance(fx, K + 4);
+    expect(await outputRow(fx, q0)).toBe("beyond_retention");
+    expect(await stored(fx, terminal)).toBe("ok");
+    expect(await releasePass(fx, journal)).toMatchObject({
+      released: [],
+      deferred: [
+        {
+          headerHash: header,
+          detail: expect.stringContaining("no longer canonical"),
+        },
+        // Live again, the row is walked again, and nothing retained proves
+        // its release: it stays live.
+        { headerHash: header, reason: "release-evidence-beyond-retention" },
+      ],
+    });
+    expect(workflowRows(journal)).toEqual({ live: [header], unsettled: [] });
+  });
+
+  // Read from its recorded block, a terminal is as deep as the SDK walk
+  // counts it: blocks after its own, to the finalized point plus the
+  // observation's finality depth less one. It settles only once that depth
+  // passes automatic rollback recovery.
+  it("settles a release read from its recorded block exactly past rollback recovery", async () => {
+    const fx = await harness();
+    const journal = openJournal();
+    const header = await queueHeader(fx);
+    const q0 = await landOpen(fx, journal, header);
+    await burnNode(fx, header);
+    const burnHeight = Number(fx.tipPoint().blockNo);
+    await releasePass(fx, journal);
+    await advance(fx, K + 4);
+    expect(await outputRow(fx, q0)).toBe("beyond_retention");
+    const finality = Number(tipObservation(fx).nativePoint.finalityDepth);
+    const depth = () =>
+      Number(fx.tipPoint().blockNo) + finality - 1 - burnHeight;
+    await advance(fx, RECOVERY - depth());
+    expect(depth()).toBe(RECOVERY);
+    expect(await releasePass(fx, journal)).toEqual({
+      released: [],
+      deferred: [],
+    });
+    expect(workflowRows(journal).unsettled).toHaveLength(1);
+    await advance(fx, 1);
+    expect(await releasePass(fx, journal)).toEqual({
+      released: [],
+      deferred: [],
+    });
     expect(workflowRows(journal)).toEqual({ live: [], unsettled: [] });
   });
 
