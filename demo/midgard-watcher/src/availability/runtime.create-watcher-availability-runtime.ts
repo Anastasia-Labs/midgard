@@ -30,7 +30,10 @@ import {
 } from "./action.js";
 import { createWatcherAvailabilityDeployment } from "./deployment.js";
 import type { WatcherAvailabilityL1 } from "./follower-reads.js";
-import { reconcileWatcherAvailabilityJournal } from "./journal-pins.js";
+import {
+  pinWatcherAvailabilityJournal,
+  reconcileWatcherAvailabilityJournal,
+} from "./journal-pins.js";
 import { createWatcherAvailabilityObservation } from "./observation.js";
 import {
   deriveWatcherDaBondPoolObservation,
@@ -406,17 +409,19 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const workflowRelease = await releaseWatcherAvailabilityWorkflows(
           journal,
           actor,
-          (openIntent, headerHash) => {
+          (openIntent, headerHash, recorded) => {
             const reader = attempt(readScope());
             return reader.read(() =>
               reader.intake.workflowRelease(
                 observation,
                 openIntent,
                 headerHash,
+                recorded,
               ),
             );
           },
           () => assertCurrent(epoch),
+          pinWatcherAvailabilityJournal(context, input.pinJournalTransactions),
         );
         const unresolved = recovered.find(
           ({ status }) =>

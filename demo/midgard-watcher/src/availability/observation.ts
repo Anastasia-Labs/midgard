@@ -15,10 +15,7 @@ import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import {
-  refusalError,
-  required,
-} from "../l1-follower/fault-proof-l1-source.chain.js";
+import { required } from "../l1-follower/fault-proof-l1-source.chain.js";
 import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolScriptAuthority,
@@ -36,6 +33,12 @@ import {
   type WatcherAvailabilityL1,
 } from "./follower-reads.js";
 import { authenticWatcherDaBondPool } from "./pool-observation.js";
+import {
+  beyondRetention,
+  queueHistorySpend,
+  recordedWorkflowRelease,
+  type WatcherRecordedWorkflowRelease,
+} from "./release-retention.js";
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
@@ -246,46 +249,54 @@ export const createWatcherAvailabilityObservation = (input: {
      * terminal step someone else landed (P20), walked from its confirmed Open
      * at the finalized point with the same follower reads as the foreign
      * spends of {@link operation}. Every spend is verified from its raw bytes
-     * and counted `finalityDepth` deeper than the point it lies below.
+     * and counted `finalityDepth` deeper than the point it lies below. A
+     * pruned node output's spend is read from the header's queue history,
+     * and once the walk can no longer be read at all, a `recorded` release is
+     * re-read from its own block ({@link recordedWorkflowRelease}).
      */
     async workflowRelease(
       observation: WatcherAuthenticatedStateQueueObservation,
       openIntent: AvailabilityOperationRecord,
       headerHash: string,
+      /** The terminal step a released, not yet final row recorded. */
+      recorded?: WatcherRecordedWorkflowRelease,
     ): Promise<SDK.DaAvailabilityWorkflowRelease | undefined> {
       return await capture(observation, async () => {
         const point = pointOf(observation);
+        const boundaryBlockNo =
+          Number(point.blockNo) +
+          Number(observation.nativePoint.finalityDepth) -
+          1;
+        const queueUnit = `${observation.stateQueuePolicyId}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
         const spendPoints = new Map<string, FraudProofRawL1Point>();
         const readers: SDK.DaAvailabilityForeignSpendReaders = {
           // Native finality includes the point itself; SDK depth counts
           // only blocks after inclusion, so expose the actual tip height.
           readBoundary: async () => ({
             pointId: point.pointId,
-            blockNo:
-              Number(point.blockNo) +
-              Number(observation.nativePoint.finalityDepth) -
-              1,
+            blockNo: boundaryBlockNo,
           }),
           fetchSpend: async (ref) => {
             const outRef = `${ref.txHash}#${ref.outputIndex.toString()}`;
             const observed = required(
               await reads.utxosByOutRefAtPoint([outRef], point),
             );
-            if (observed.beyondRetention.includes(outRef))
-              throw refusalError(
-                "beyond_retention",
-                `the spend of ${outRef} may have been pruned`,
-              );
-            const spend = observed.spends.find(
+            const stored = observed.spends.find(
               (entry) => entry.outRef === outRef,
             );
+            const spend = observed.beyondRetention.includes(outRef)
+              ? await queueHistorySpend(reads, queueUnit, outRef, point)
+              : stored && {
+                  txHash: stored.spendingTxHash,
+                  point: stored.spendPoint,
+                };
             if (spend === undefined) return undefined;
-            spendPoints.set(spend.spendPoint.pointId, spend.spendPoint);
+            spendPoints.set(spend.point.pointId, spend.point);
             return {
-              transactionId: spend.spendingTxHash,
+              transactionId: spend.txHash,
               point: {
-                slot: Number(spend.spendPoint.slot),
-                blockHash: spend.spendPoint.blockHash,
+                slot: Number(spend.point.slot),
+                blockHash: spend.point.blockHash,
               },
             };
           },
@@ -297,12 +308,18 @@ export const createWatcherAvailabilityObservation = (input: {
               throw new Error(
                 "Availability workflow release has no spend at the requested slot",
               );
-            const predecessorPoint = required(
-              await reads.predecessorPoint(spendPoint),
-            );
+            // `readTransaction` reads a spend by hash at its exact block and
+            // never intersects here. A spend read from the queue history may
+            // sit in a block whose predecessor the follower has pruned.
+            const predecessor = await reads.predecessorPoint(spendPoint);
+            const ancestor =
+              predecessor.kind === "refused" &&
+              predecessor.reason === "beyond_retention"
+                ? spendPoint
+                : required(predecessor);
             return {
-              slot: Number(predecessorPoint.slot),
-              blockHash: predecessorPoint.blockHash,
+              slot: Number(ancestor.slot),
+              blockHash: ancestor.blockHash,
             };
           },
           readTransaction: async ({ point: spendPoint, txHash }) => {
@@ -336,12 +353,23 @@ export const createWatcherAvailabilityObservation = (input: {
             };
           },
         };
-        return await SDK.resolveDaAvailabilityWorkflowRelease(
-          readers,
-          openIntent,
-          headerHash,
-          confirmationDepth,
-        );
+        try {
+          return await SDK.resolveDaAvailabilityWorkflowRelease(
+            readers,
+            openIntent,
+            headerHash,
+            confirmationDepth,
+          );
+        } catch (cause) {
+          if (recorded === undefined || !beyondRetention(cause)) throw cause;
+          return await recordedWorkflowRelease(
+            input.l1,
+            recorded,
+            point,
+            boundaryBlockNo,
+            confirmationDepth,
+          );
+        }
       });
     },
     async operation(

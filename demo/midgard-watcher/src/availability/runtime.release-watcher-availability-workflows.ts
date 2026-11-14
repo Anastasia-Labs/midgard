@@ -14,6 +14,10 @@ import {
   type WatcherReleasedHeaderProof,
 } from "../indexers/authenticated-state-queue-observation.js";
 import { type WatcherDaBondPoolObservation } from "./pool-observation.js";
+import {
+  beyondRetention,
+  type WatcherRecordedWorkflowRelease,
+} from "./release-retention.js";
 
 /** Queued headers merged or removed on L1 at release finality, by hash. */
 export type WatcherReleasedHeadersReader = (
@@ -133,11 +137,14 @@ export type WatcherAvailabilityWorkflowRelease = Readonly<{
  * A workflow row whose release check failed this reconciliation: a reader
  * error, a node chain past the hop cap, or the journal refusing the release.
  * The row is kept and checked again on the next reconciliation; the tick
- * goes on (P9(6)).
+ * goes on (P9(6)). `release-evidence-beyond-retention` names a check the
+ * follower can no longer answer because it pruned the facts the check
+ * reads: the row is kept as it is, never released or settled unproven.
  */
 export type WatcherAvailabilityWorkflowReleaseDeferral = Readonly<{
   deployment: string;
   headerHash: string;
+  reason?: "release-evidence-beyond-retention";
   detail: string;
 }>;
 
@@ -307,6 +314,17 @@ export const watcherAvailabilityWorkflowRefusal = (
   }
 };
 
+const deferral = (
+  where: Readonly<{ deployment: string; headerHash: string }>,
+  cause: unknown,
+): WatcherAvailabilityWorkflowReleaseDeferral => ({
+  ...where,
+  ...(beyondRetention(cause)
+    ? { reason: "release-evidence-beyond-retention" as const }
+    : {}),
+  detail: cause instanceof Error ? cause.message : String(cause),
+});
+
 /**
  * Releases every workflow row of `actor`, in any deployment, whose challenge
  * ended in a terminal step someone else landed (P20). Each row's evidence is
@@ -317,7 +335,9 @@ export const watcherAvailabilityWorkflowRefusal = (
  * Confirmation depth is not finality, so a released row whose terminal is
  * not yet `automaticRecoveryMaxDepth` deep is re-walked first on every pass:
  * found again, its evidence is refreshed; found no longer, the row is live
- * again and reported as deferred.
+ * again and reported as deferred. Each walk is passed the row's recorded
+ * terminal, and a terminal is pinned in the follower before it is recorded,
+ * so that a row still settles once the follower has pruned the walk.
  */
 export const releaseWatcherAvailabilityWorkflows = async (
   journal: Pick<
@@ -333,8 +353,11 @@ export const releaseWatcherAvailabilityWorkflows = async (
   findRelease: (
     openIntent: AvailabilityOperationRecord,
     headerHash: string,
+    recorded?: WatcherRecordedWorkflowRelease,
   ) => Promise<SDK.DaAvailabilityWorkflowRelease | undefined>,
   assertCurrent: () => void,
+  /** Pins the journal's transactions in the follower, plus these. */
+  pin: (txHashes: readonly string[]) => Promise<void>,
 ): Promise<
   Readonly<{
     released: readonly WatcherAvailabilityWorkflowRelease[];
@@ -362,14 +385,10 @@ export const releaseWatcherAvailabilityWorkflows = async (
       deployment: row.deploymentIdentity,
       headerHash: row.headerHash,
     };
-    const defer = (cause: unknown) =>
-      deferred.push({
-        ...where,
-        detail: cause instanceof Error ? cause.message : String(cause),
-      });
+    const defer = (cause: unknown) => deferred.push(deferral(where, cause));
     let release: SDK.DaAvailabilityWorkflowRelease | undefined;
     try {
-      release = await findRelease(row.open, row.headerHash);
+      release = await findRelease(row.open, row.headerHash, row.release);
     } catch (cause) {
       defer(cause);
       continue;
@@ -406,11 +425,7 @@ export const releaseWatcherAvailabilityWorkflows = async (
       deployment: row.deploymentIdentity,
       headerHash: row.headerHash,
     };
-    const defer = (cause: unknown) =>
-      deferred.push({
-        ...where,
-        detail: cause instanceof Error ? cause.message : String(cause),
-      });
+    const defer = (cause: unknown) => deferred.push(deferral(where, cause));
     let found:
       | Readonly<{
           openIntentId: string;
@@ -433,6 +448,10 @@ export const releaseWatcherAvailabilityWorkflows = async (
     const { openIntentId, release } = found;
     assertCurrent();
     try {
+      // Pinned before it is recorded: the row settles only past the
+      // follower's retained depth, and is re-read from this transaction.
+      await pin([release.txHash]);
+      assertCurrent();
       leased((lease, nowMs) =>
         journal.releaseWorkflow(
           lease,

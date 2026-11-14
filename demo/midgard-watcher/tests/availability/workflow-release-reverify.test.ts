@@ -50,7 +50,13 @@ afterEach(() => {
 });
 
 const pass = (findRelease: Mock<(...args: any[]) => any>) =>
-  releaseWatcherAvailabilityWorkflows(journal, "actor", findRelease, () => {});
+  releaseWatcherAvailabilityWorkflows(
+    journal,
+    "actor",
+    findRelease,
+    () => {},
+    async () => {},
+  );
 const liveHeaders = () =>
   journal.workflows("actor").map((row) => row.headerHash);
 
@@ -154,6 +160,7 @@ describe("a workflow released on a foreign terminal before it is final", () => {
         () => {
           throw new Error("revoked");
         },
+        async () => {},
       ),
     ).rejects.toThrow("revoked");
     expect(liveHeaders()).toEqual([]);

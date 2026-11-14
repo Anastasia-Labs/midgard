@@ -228,6 +228,7 @@ it.each([2160, 2161])(
         "actor",
         (open, header) => intake.workflowRelease(observation, open, header),
         () => {},
+        async () => {},
       );
       expect(journal.unsettledReleases("actor")).toHaveLength(
         after === 2160 ? 1 : 0,

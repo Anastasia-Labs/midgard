@@ -45,13 +45,16 @@ export type Chain = Awaited<ReturnType<typeof harness>>;
 type Input = SimTx["inputs"][number];
 
 /** The tip of the fixture chain, admitted as a finalized observation. */
-export const tipObservation = (fx: Chain) => {
+export const tipObservation = (
+  fx: Chain,
+  stateQueuePolicyId = "46".repeat(28),
+) => {
   const tip = fx.tipPoint();
   const value = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
     deploymentIdentityDigest: MANIFEST,
     protocolScriptAuthorityDigest: "45".repeat(32),
-    stateQueuePolicyId: "46".repeat(28),
+    stateQueuePolicyId,
     hubOraclePolicyId: "47".repeat(28),
     nativePoint: {
       blockHash: tip.blockHash,
@@ -105,21 +108,28 @@ export const closeJournals = (): void => {
   }
 };
 
-/** A transaction the actor signs, paying the tracked address. */
+/**
+ * A transaction the actor signs for `HEADER` (or `headerHash`), paying the
+ * tracked address unless it names its own outputs.
+ */
 export const signed = (
   fx: Chain,
   action: "prepare" | "open",
   options: Readonly<{
     deploymentIdentity?: string;
+    headerHash?: string;
     inputs?: SimTx["inputs"];
     collaterals?: SimTx["inputs"];
+    outputs?: SimTx["outputs"];
+    mint?: SimTx["mint"];
     invalidAfter?: number;
   }> = {},
 ): Readonly<{ tx: SimTx; intent: AvailabilityOperationIntent }> => {
   const tx: SimTx = {
     inputs: options.inputs ?? [fx.chain.outsideInput()],
     collaterals: options.collaterals ?? [fx.chain.outsideInput()],
-    outputs: [{ address: T, lovelace: 2_000_000n }],
+    outputs: options.outputs ?? [{ address: T, lovelace: 2_000_000n }],
+    ...(options.mint === undefined ? {} : { mint: options.mint }),
     invalidBefore: 0,
     invalidAfter: options.invalidAfter ?? 1_000_000,
     nonce: fx.chain.nonce(),
@@ -132,7 +142,7 @@ export const signed = (
   const intent = SDK.inspectDaAvailabilitySignedIntent({
     deploymentIdentity: options.deploymentIdentity ?? MANIFEST,
     actor: ACTOR,
-    headerHash: HEADER,
+    headerHash: options.headerHash ?? HEADER,
     action,
     signedCbor: CML.Transaction.new(
       body,

@@ -201,8 +201,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
       await watcher.close();
     }
     expect(actions()).toEqual([]);
-    // The release check ran on the other deployment's Open and found no
-    // terminal step, so the row stays.
+    // The other deployment's live Open has no terminal step, so it stays.
     expect(io.workflowRelease).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -210,6 +209,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
         intent: expect.objectContaining({ id: `open-${"49".repeat(28)}` }),
       }),
       "49".repeat(28),
+      undefined,
     );
     expect(workflowRows()).toEqual([["other-deployment", "49".repeat(28)]]);
   });
