@@ -25,7 +25,7 @@ import {
   type OrderDatumRewrite,
   orderRefundAddress,
   withOrderDatumRewrite,
-} from "./support/forced-order-refund.js";
+} from "./support/forced-order-close-out.js";
 import {
   makeForcedOrderSettlementScenario,
   publishForcedOrderCarriage,
@@ -345,8 +345,8 @@ const ledgerPayable = (shape: RefundShape) =>
     shape.datum === "inline" ||
     shape.datum.hashLength === 32);
 
-/** The order rewrite and refund for one shape; `index` keeps hashes apart. */
-const refundOf = (shape: RefundShape, index: number) => {
+/** The order rewrite and close-out for one shape; `index` keeps hashes apart. */
+const closeOutOf = (shape: RefundShape, index: number) => {
   const credential = (
     part: { readonly script: boolean; readonly length: number },
     byte: number,
@@ -395,21 +395,21 @@ const SETTLED_SHAPES: readonly RefundShape[] = [
 const PROPERTY_SEED = 0x5eed_000a;
 const PROPERTY_SHAPES = draw(PROPERTY_SEED, 14);
 
-describe("refunds the tx-order mint admits settle", () => {
+describe("close-outs the tx-order mint admits settle", () => {
   let s: Awaited<ReturnType<typeof makeForcedOrderSettlementScenario>>;
   const shapes = [...SETTLED_SHAPES, null, ...PROPERTY_SHAPES];
 
   beforeAll(async () => {
     s = await makeForcedOrderSettlementScenario({
       submitted,
-      refunds: shapes.map((shape, index) =>
-        shape === null ? { rewrite: definiteLength } : refundOf(shape, index),
+      closeOuts: shapes.map((shape, index) =>
+        shape === null ? { rewrite: definiteLength } : closeOutOf(shape, index),
       ),
     });
   }, 900_000);
 
-  /** Settle order `index` and read back the refund output it paid. */
-  const settleAndReadRefund = async (index: number) => {
+  /** Settle order `index` and read back the close-out output it paid. */
+  const settleAndReadCloseOut = async (index: number) => {
     const order = s.minted[index]!;
     await s.settleOrder(index);
     const network = SELECTED_DEPLOYMENT_PROFILE.network;
@@ -435,7 +435,7 @@ describe("refunds the tx-order mint admits settle", () => {
     "%s mints and settles",
     async (_name, index) => {
       expect(s.refusals[index]).toBeUndefined();
-      await settleAndReadRefund(index);
+      await settleAndReadCloseOut(index);
     },
     300_000,
   );
@@ -452,7 +452,7 @@ describe("refunds the tx-order mint admits settle", () => {
         { shape: PROPERTY_SHAPES[draw], minted: s.minted[index] !== undefined },
         `seed ${PROPERTY_SEED.toString(16)} draw ${draw.toString()}`,
       ).toEqual({ shape: PROPERTY_SHAPES[draw], minted: payable });
-      if (payable) await settleAndReadRefund(index);
+      if (payable) await settleAndReadCloseOut(index);
       else expect(s.refusals[index]).toMatch(/failed script execution/u);
     }
   }, 900_000);

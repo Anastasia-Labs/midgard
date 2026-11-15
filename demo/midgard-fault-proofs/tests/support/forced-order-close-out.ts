@@ -79,7 +79,9 @@ export const orderRefundAddress = (network: Network, order: UTxO): string => {
   if (address.stakeCredential === null)
     return credentialToAddress(network, credential(address.paymentCredential));
   if (!("Inline" in address.stakeCredential))
-    throw new Error("an order refund address has a pointer stake part");
+    throw new Error(
+      "an order's refund_address has a pointer stake part, which no close-out can pay",
+    );
   return credentialToAddress(
     network,
     credential(address.paymentCredential),
@@ -88,11 +90,12 @@ export const orderRefundAddress = (network: Network, order: UTxO): string => {
 };
 
 /**
- * Pay the refund an order's datum names: its refund address, carrying its
- * refund datum. A `DatumHash` refund carries the hash the order holds, and an
- * inline refund datum is paid in the bytes the order holds.
+ * Pay the close-out an order's datum names once the order is settled: its
+ * `refund_address`, carrying its `refund_datum`. A `DatumHash` close-out
+ * carries the hash the order holds, and an inline `refund_datum` is paid in
+ * the bytes the order holds.
  */
-export const payOrderRefund = (
+export const payOrderCloseOut = (
   tx: TxBuilder,
   network: Network,
   order: UTxO,

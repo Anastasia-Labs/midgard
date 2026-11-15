@@ -1773,7 +1773,7 @@ pub fn validate_forced_l1_event_fault(
           // inclusion time, and in no other. Its validity interval plays no
           // part: the validation machine checks it against `block_slot` and
           // records an exact rejection verdict when the slot falls outside, so
-          // every order is included exactly once and its settlement refund
+          // every order is included exactly once and its settlement close-out
           // stays reachable. The out-of-window arm below tests the complement.
           and {
             header.start_time < inclusion_time,

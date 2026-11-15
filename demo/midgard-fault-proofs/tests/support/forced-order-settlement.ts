@@ -28,9 +28,9 @@ import {
 import { settleOldestCrossBlockHeader } from "./cross-block-settlement-emulator.js";
 import {
   type OrderDatumRewrite,
-  payOrderRefund,
+  payOrderCloseOut,
   withOrderDatumRewrite,
-} from "./forced-order-refund.js";
+} from "./forced-order-close-out.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   type CompleteSignedTransactionMeasurement,
@@ -117,17 +117,17 @@ export const publishForcedOrderCarriage = async (
   return { material, plan, referenceInputs: published };
 };
 
-/** One order's refund: `rewrite` changes the order datum the SDK writes. */
-export type ForcedOrderRefund = {
+/** One order's close-out: `rewrite` changes the order datum the SDK writes. */
+export type ForcedOrderCloseOut = {
   readonly rewrite?: OrderDatumRewrite;
 };
 
 /** Real order mint/spend, settlement mint, state-queue and PHAS validators.
  * DA attachment uses the common emulator transport boundary, as in the
  * installed settlement lifecycle. No synthetic order or settlement is seeded.
- * With `refunds`, one order is minted per entry, a mint the validator refuses
+ * With `closeOuts`, one order is minted per entry, a mint the validator refuses
  * is recorded in `refusals` rather than thrown, and `minted` holds each
- * entry's order or undefined; each settle pays the refund its datum names.
+ * entry's order or undefined; each settle pays the close-out its datum names.
  */
 export const makeForcedOrderSettlementScenario = async (
   options: {
@@ -135,7 +135,7 @@ export const makeForcedOrderSettlementScenario = async (
     changeLeaf?: (leaf: SDK.ForcedInclusionTxV1) => SDK.ForcedInclusionTxV1;
     foreignOrderKey?: boolean;
     twoOrders?: boolean;
-    refunds?: readonly ForcedOrderRefund[];
+    closeOuts?: readonly ForcedOrderCloseOut[];
     submitted?: ReturnType<typeof materializeMidgardForcedTxFromCanonical>;
     onMeasurement?: (
       stage: string,
@@ -154,7 +154,7 @@ export const makeForcedOrderSettlementScenario = async (
   const lucid = await Lucid(h.emulator, network);
   h.proverSigner.selectWallet(lucid);
   const wallets = [lucid];
-  const orderCount = options.refunds?.length ?? (options.twoOrders ? 2 : 1);
+  const orderCount = options.closeOuts?.length ?? (options.twoOrders ? 2 : 1);
   while (wallets.length < orderCount) {
     const next = await Lucid(h.emulator, network);
     next.selectWallet.fromSeed(generateSeedPhrase());
@@ -263,7 +263,7 @@ export const makeForcedOrderSettlementScenario = async (
     const clock = vi
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
-    const rewrite = options.refunds?.[index]?.rewrite;
+    const rewrite = options.closeOuts?.[index]?.rewrite;
     const builder =
       rewrite === undefined
         ? wallet
@@ -286,7 +286,7 @@ export const makeForcedOrderSettlementScenario = async (
     const built = await mint.catch((error: unknown) => {
       const text = error instanceof Error ? error.message : String(error);
       if (
-        options.refunds === undefined ||
+        options.closeOuts === undefined ||
         !/failed script execution/u.test(text)
       )
         throw error;
@@ -423,7 +423,7 @@ export const makeForcedOrderSettlementScenario = async (
       value.toString("hex"),
       Data.castTo(proof, SDK.Proof),
     ]);
-    const tx = await payOrderRefund(
+    const tx = await payOrderCloseOut(
       lucid
         .newTx()
         .collectFrom([order], spend)
