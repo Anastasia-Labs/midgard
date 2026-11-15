@@ -161,7 +161,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
         preSubmitBoundary,
       });
       return {
-        stage: "step03" as const,
+        stage: result.nextStage,
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };

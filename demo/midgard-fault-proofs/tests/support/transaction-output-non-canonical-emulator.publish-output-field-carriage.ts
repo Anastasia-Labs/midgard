@@ -42,6 +42,7 @@ export const submitOutputStep02Raw = async ({
   nextStepIndex = 2,
   carriageUtxos,
   extraReferenceInputs,
+  coordinateAbsent = false,
   ...common
 }: Common & {
   readonly opening: FieldOpening;
@@ -49,6 +50,8 @@ export const submitOutputStep02Raw = async ({
   readonly nextStepIndex?: 2 | 3 | 4;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
+  /** Claims the bound output is one field 2 does not have. */
+  readonly coordinateAbsent?: boolean;
 }) =>
   await continueRaw({
     common,
@@ -61,7 +64,7 @@ export const submitOutputStep02Raw = async ({
       output_index,
       opening,
       grammar_ref_input_index: null,
-      coordinate_absent: false,
+      coordinate_absent: coordinateAbsent,
     }),
     carriageUtxos,
     extraReferenceInputs,
@@ -205,6 +208,7 @@ export const publishOutputFieldCarriage = async ({
   witnessSetCompactCbor,
   items,
   certificateReferenceScriptUtxo,
+  anchorSourceKind = 0n,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -215,10 +219,12 @@ export const publishOutputFieldCarriage = async ({
   readonly witnessSetCompactCbor: string;
   readonly items: readonly Buffer[];
   readonly certificateReferenceScriptUtxo: UTxO;
+  /** 1 anchors the carriage to a forced transaction, 0 to a normal one. */
+  readonly anchorSourceKind?: 0n | 1n;
 }): Promise<PublishedOutputFieldCarriage> => {
   const ownOutputs = createOwnOutputJournal();
   const planned = planFaultProofFieldOpening({
-    anchorSourceKind: 0n,
+    anchorSourceKind,
     fieldIndex: 2,
     anchorTxId,
     nativeTxCompactCbor,

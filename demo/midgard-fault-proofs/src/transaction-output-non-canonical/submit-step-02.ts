@@ -42,6 +42,7 @@ import {
   TransactionOutputStep03DatumSchema,
 } from "./schemas.js";
 import {
+  TRANSACTION_OUTPUT_OUTCOME_ABSENT,
   type TransactionOutputEvidence,
   transactionOutputScanControlData,
 } from "./transaction-output-non-canonical.js";
@@ -162,7 +163,8 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     lucid,
     signer,
     plan: planned.plan,
-    read: "item",
+    // An absent coordinate is closed by the field's count, not an item.
+    read: evidence.absent ? "count" : "item",
     itemCount: items.length,
     source: {
       sourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
@@ -184,6 +186,9 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     family: "transaction-output-non-canonical",
     stepIndex,
   });
+  // An absent output reads no item: the thread skips the scan and its
+  // terminal state carries the absent outcome.
+  const nextStepIndex = evidence.absent ? 4 : 2;
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -194,13 +199,13 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
         item_hash: evidence.itemHash,
         chunk_hashes: evidence.chunkHashes,
         control: transactionOutputScanControlData(evidence.scanControls[0]!),
-        outcome: 0n,
+        outcome: evidence.absent ? TRANSACTION_OUTPUT_OUTCOME_ABSENT : 0n,
       },
     } as never,
     TransactionOutputStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -237,7 +242,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),
-            coordinate_absent: false,
+            coordinate_absent: evidence.absent,
           },
         ],
       } as never,
@@ -252,7 +257,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     stepReference,
     stepScript: contracts.steps[1].spendingScript,
     stepRole: "transaction-output-non-canonical step-02",
-    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,
@@ -271,5 +276,6 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
+    nextStage: evidence.absent ? ("step04" as const) : ("step03" as const),
   };
 };

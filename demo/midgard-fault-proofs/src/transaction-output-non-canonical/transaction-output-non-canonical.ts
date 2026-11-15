@@ -31,6 +31,8 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY =
 export const TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID = "00000029" as const;
 export const TRANSACTION_OUTPUT_NON_CANONICAL_OUTPUTS_FIELD = 2 as const;
 export const TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES = 16_384;
+/** The terminal outcome of an output field 2 does not have (`rule.outcome_absent`). */
+export const TRANSACTION_OUTPUT_OUTCOME_ABSENT = 3n;
 
 const fail = (message: string): never => {
   throw new Error(`${TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY}: ${message}`);
@@ -99,6 +101,11 @@ export type TransactionOutputEvidence = TransactionOutputFinding & {
   /** The datum steps after a canonical envelope with an inline datum. */
   readonly datumPlan: TransactionOutputDatumPlan | null;
   readonly decisiveFaultHolds: boolean;
+  /**
+   * The rejection names an output field 2 does not have. Step 02 then reads
+   * the field's count instead of an item and hands over to step 04.
+   */
+  readonly absent: boolean;
 };
 
 export const deriveTransactionOutputScan = (
@@ -162,7 +169,28 @@ export const prepareTransactionOutputEvidence = ({
   if (actualCommitment !== committedFieldHashHex)
     fail("field commitment differs");
   const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.itemIndex];
-  if (item === undefined) fail("output coordinate is outside field 2");
+  if (item === undefined) {
+    // Canonical validation reads no output at a position field 2 lacks, so
+    // only a rejection naming one is wrong.
+    if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+      fail("output coordinate is outside field 2");
+    return Object.freeze({
+      ...finding,
+      fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
+      fieldCommitmentHex: actualCommitment,
+      itemHex: "",
+      itemLength: 0,
+      itemHash: "",
+      chunkHashes: Object.freeze([]),
+      carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
+      canonical: true,
+      envelopeCanonical: true,
+      scanControls: Object.freeze([initialMidgardLedgerOutputScanControl()]),
+      datumPlan: null,
+      decisiveFaultHolds: false,
+      absent: true,
+    });
+  }
   if (item.length > TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES)
     fail("output item belongs to fieldItemWidthIllegal");
   const scan = deriveTransactionOutputScan(item);
@@ -196,6 +224,7 @@ export const prepareTransactionOutputEvidence = ({
     scanControls: scan.controls,
     datumPlan,
     decisiveFaultHolds: !canonical,
+    absent: false,
   });
 };
 

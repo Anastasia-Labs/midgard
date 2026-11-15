@@ -14,6 +14,7 @@ import {
   TransactionOutputStep04RedeemerSchema,
 } from "./schemas.js";
 import {
+  TRANSACTION_OUTPUT_OUTCOME_ABSENT,
   type TransactionOutputEvidence,
   transactionOutputEvidenceCloses,
 } from "./transaction-output-non-canonical.js";
@@ -69,7 +70,11 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
     family: "transaction-output-non-canonical",
     stepIndex,
   });
-  const expectedOutcome = evidence.canonical ? 1n : 2n;
+  const expectedOutcome = evidence.absent
+    ? TRANSACTION_OUTPUT_OUTCOME_ABSENT
+    : evidence.canonical
+      ? 1n
+      : 2n;
   if (
     state.output_index !== BigInt(evidence.itemIndex) ||
     state.item_length !== BigInt(evidence.itemLength) ||
