@@ -5,7 +5,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
   {
     validationTraceDisputeRedeemerItemTraversalNormalizer: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item traversal normalizer",
+      reference: {
+        role: "V1 validation-trace redeemer item traversal normalizer",
+        token: "V1VtRiTraversalNorm",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1.main.spend",
@@ -16,7 +19,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemOuterNormalizer: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item outer normalizer",
+      reference: {
+        role: "V1 validation-trace redeemer item outer normalizer",
+        token: "V1VtRiOuterNorm",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1.main.spend",
@@ -27,7 +33,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemSourceAuthenticator: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item source authenticator",
+      reference: {
+        role: "V1 validation-trace redeemer item source authenticator",
+        token: "V1VtRiSource",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_source_authenticator.main.spend",
@@ -38,7 +47,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemFoldMapExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item fold map executor",
+      reference: {
+        role: "V1 validation-trace redeemer item fold map executor",
+        token: "V1VtRiFoldMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_map_executor_v1.main.spend",
@@ -50,8 +62,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemFinalizeFrameExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item finalize frame executor",
+      reference: {
+        role: "V1 validation-trace redeemer item finalize frame executor",
+        token: "V1VtRiFinalizeFrame",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finalize_frame_executor_v1.main.spend",
@@ -63,7 +77,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemOpenHeaderExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item open header executor",
+      reference: {
+        role: "V1 validation-trace redeemer item open header executor",
+        token: "V1VtRiOpenHeader",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_header_executor.main.spend",
@@ -74,7 +91,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemOpenTailExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item open tail executor",
+      reference: {
+        role: "V1 validation-trace redeemer item open tail executor",
+        token: "V1VtRiOpenTail",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_tail_executor.main.spend",
@@ -85,7 +105,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemHeadScalarExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item head scalar executor",
+      reference: {
+        role: "V1 validation-trace redeemer item head scalar executor",
+        token: "V1VtRiHeadScalar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_scalar_executor.main.spend",
@@ -96,7 +119,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemHeadSequenceExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item head sequence executor",
+      reference: {
+        role: "V1 validation-trace redeemer item head sequence executor",
+        token: "V1VtRiHeadSequence",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_sequence_executor.main.spend",
@@ -107,7 +133,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemHeadMapExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item head map executor",
+      reference: {
+        role: "V1 validation-trace redeemer item head map executor",
+        token: "V1VtRiHeadMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_map_executor.main.spend",
@@ -118,8 +147,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item head large constructor executor",
+      reference: {
+        role: "V1 validation-trace redeemer item head large constructor executor",
+        token: "V1VtRiHeadLargeCtor",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_large_constructor_executor.main.spend",
@@ -130,8 +161,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAttachIntegerExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item attach integer executor",
+      reference: {
+        role: "V1 validation-trace redeemer item attach integer executor",
+        token: "V1VtRiAttachInteger",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_integer_executor.main.spend",
@@ -142,7 +175,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAttachBytesExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item attach bytes executor",
+      reference: {
+        role: "V1 validation-trace redeemer item attach bytes executor",
+        token: "V1VtRiAttachBytes",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_bytes_executor.main.spend",
@@ -153,7 +189,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemFoldListExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item fold list executor",
+      reference: {
+        role: "V1 validation-trace redeemer item fold list executor",
+        token: "V1VtRiFoldList",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_list_executor.main.spend",
@@ -164,8 +203,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAdvanceIntegerExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item advance integer executor",
+      reference: {
+        role: "V1 validation-trace redeemer item advance integer executor",
+        token: "V1VtRiAdvanceInteger",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_integer_executor.main.spend",
@@ -176,7 +217,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAdvanceBytesExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item advance bytes executor",
+      reference: {
+        role: "V1 validation-trace redeemer item advance bytes executor",
+        token: "V1VtRiAdvanceBytes",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_bytes_executor.main.spend",
@@ -187,8 +231,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item advance large constructor executor",
+      reference: {
+        role: "V1 validation-trace redeemer item advance large constructor executor",
+        token: "V1VtRiAdvanceLargeCtor",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_constructor_executor.main.spend",
@@ -199,8 +245,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item advance large fields executor",
+      reference: {
+        role: "V1 validation-trace redeemer item advance large fields executor",
+        token: "V1VtRiAdvanceLargeFields",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_fields_executor.main.spend",
@@ -211,7 +259,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemCloseExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item close executor",
+      reference: {
+        role: "V1 validation-trace redeemer item close executor",
+        token: "V1VtRiClose",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_close_executor.main.spend",
@@ -222,7 +273,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemFinishDataExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item finish data executor",
+      reference: {
+        role: "V1 validation-trace redeemer item finish data executor",
+        token: "V1VtRiFinishData",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finish_data_executor.main.spend",
@@ -233,8 +287,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemInvalidHeaderExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item invalid header executor",
+      reference: {
+        role: "V1 validation-trace redeemer item invalid header executor",
+        token: "V1VtRiInvalidHeader",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_header_executor.main.spend",
@@ -245,7 +301,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemInvalidTailExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item invalid tail executor",
+      reference: {
+        role: "V1 validation-trace redeemer item invalid tail executor",
+        token: "V1VtRiInvalidTail",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_tail_executor.main.spend",
@@ -256,7 +315,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemInvalidDataExecutor: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item invalid data executor",
+      reference: {
+        role: "V1 validation-trace redeemer item invalid data executor",
+        token: "V1VtRiInvalidData",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor.main.spend",
@@ -267,8 +329,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemInvalidScalarDataExecutor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace redeemer item invalid scalar data executor",
+      reference: {
+        role: "V1 validation-trace redeemer item invalid scalar data executor",
+        token: "V1VtRiInvalidScalarData",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_scalar_data_executor.main.spend",
@@ -279,7 +343,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeRedeemerItemSettlement: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace redeemer item settlement",
+      reference: {
+        role: "V1 validation-trace redeemer item settlement",
+        token: "V1VtRiSettlement",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1.main.spend",
@@ -290,8 +357,10 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
     },
     validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace script-sources RedeemerNormalization semantic",
+      reference: {
+        role: "V1 validation-trace script-sources RedeemerNormalization semantic",
+        token: "V1VtSsRedeemerNorm",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main.spend",

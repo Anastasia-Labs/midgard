@@ -5,7 +5,10 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
   {
     fraudProofFieldPreimageLengthMismatch: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-01",
+      reference: {
+        role: "V1 fraud-proof field-preimage-length-mismatch step-01",
+        token: "V1FpFieldLenS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
@@ -13,8 +16,10 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
     },
     fraudProofFieldPreimageLengthMismatchStep02Accepted: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof field-preimage-length-mismatch step-02 accepted",
+      reference: {
+        role: "V1 fraud-proof field-preimage-length-mismatch step-02 accepted",
+        token: "V1FpFieldLenS02Accepted",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
@@ -22,8 +27,10 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
     },
     fraudProofFieldPreimageLengthMismatchStep02Forced: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof field-preimage-length-mismatch step-02 forced",
+      reference: {
+        role: "V1 fraud-proof field-preimage-length-mismatch step-02 forced",
+        token: "V1FpFieldLenS02Forced",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
@@ -31,7 +38,10 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
     },
     fraudProofFieldPreimageLengthMismatchStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-03",
+      reference: {
+        role: "V1 fraud-proof field-preimage-length-mismatch step-03",
+        token: "V1FpFieldLenS03",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",

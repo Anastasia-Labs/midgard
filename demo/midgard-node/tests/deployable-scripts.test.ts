@@ -54,7 +54,7 @@ describe("deployable-script catalogue", () => {
       );
       expect(manifest.map(({ role }) => role ?? null)).toEqual(
         DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map(
-          (contract) => DEPLOYMENT_MEMBERS[contract].referenceRole,
+          (contract) => DEPLOYMENT_MEMBERS[contract].reference?.role ?? null,
         ),
       );
     }

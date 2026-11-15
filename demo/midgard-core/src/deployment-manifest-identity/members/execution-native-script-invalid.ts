@@ -5,7 +5,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
   {
     fraudProofExecutionNativeScriptInvalid: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid step-01",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid step-01",
+        token: "V1FpExecNativeInvalidS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/step_01.main.spend",
@@ -13,8 +16,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidBindEvent: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid bind-event",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid bind-event",
+        token: "V1FpExecNativeInvBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -22,8 +27,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidBindPreState: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid bind-pre-state",
+        token: "V1FpExecNativeInvBindPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -31,8 +38,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceStart: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-start",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-start",
+        token: "V1FpExecNativeInvSrcStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -40,8 +49,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceResolved: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-resolved",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-resolved",
+        token: "V1FpExecNativeInvSrcResolved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -49,8 +60,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceAuthenticate: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-authenticate",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-authenticate",
+        token: "V1FpExecNativeInvSrcAuth",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -58,8 +71,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceMap: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-map",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-map",
+        token: "V1FpExecNativeInvSrcMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -67,8 +82,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceInputFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-input-finish",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-input-finish",
+        token: "V1FpExecNativeInvSrcInputFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -76,8 +93,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-grammar",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-grammar",
+        token: "V1FpExecNativeInvSrcGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -85,8 +104,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceWitnesses: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-witnesses",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-witnesses",
+        token: "V1FpExecNativeInvSrcWitnesses",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -94,8 +115,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-finish",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-finish",
+        token: "V1FpExecNativeInvSrcFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -103,8 +126,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidFamilyEntry: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid family-entry",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid family-entry",
+        token: "V1FpExecNativeInvEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/family_entry.main.spend",
@@ -112,8 +137,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidPurposeSelect: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid purpose-select",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid purpose-select",
+        token: "V1FpExecNativeInvPurposeSelect",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/purpose_select.main.spend",
@@ -121,8 +148,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSpendSelect: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid spend-select",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid spend-select",
+        token: "V1FpExecNativeInvSpendSelect",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_select.main.spend",
@@ -130,8 +159,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSpendScan: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid spend-scan",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid spend-scan",
+        token: "V1FpExecNativeInvSpendScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_scan.main.spend",
@@ -139,8 +170,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidMintGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid mint-grammar",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid mint-grammar",
+        token: "V1FpExecNativeInvMintGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
@@ -148,7 +181,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidMintScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid mint-scan",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid mint-scan",
+        token: "V1FpExecNativeInvMintScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
@@ -156,8 +192,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidReceiveStart: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid receive-start",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid receive-start",
+        token: "V1FpExecNativeInvRecvStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_start.main.spend",
@@ -165,8 +203,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidReceiveGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid receive-grammar",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid receive-grammar",
+        token: "V1FpExecNativeInvRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
@@ -174,8 +214,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidReceiveOutputs: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid receive-outputs",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid receive-outputs",
+        token: "V1FpExecNativeInvRecvOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
@@ -183,8 +225,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidReceiveFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid receive-finish",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid receive-finish",
+        token: "V1FpExecNativeInvRecvFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
@@ -192,8 +236,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidReceiveDeclaration: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid receive-declaration",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid receive-declaration",
+        token: "V1FpExecNativeInvRecvDecl",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
@@ -201,8 +247,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSourceLookup: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid source-lookup",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid source-lookup",
+        token: "V1FpExecNativeInvLookup",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/lookup.main.spend",
@@ -210,7 +258,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSigners: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid signers",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid signers",
+        token: "V1FpExecNativeInvSigners",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/signers.main.spend",
@@ -218,7 +269,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidEvaluate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid evaluate",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid evaluate",
+        token: "V1FpExecNativeInvEvaluate",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/evaluate.main.spend",
@@ -226,7 +280,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSpendKey: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid spend-key",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid spend-key",
+        token: "V1FpExecNativeInvSpendKey",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/spend_key.main.spend",
@@ -234,8 +291,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidSpendRank: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof execution-native-script-invalid spend-rank",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid spend-rank",
+        token: "V1FpExecNativeInvSpendRank",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/spend_rank.main.spend",
@@ -243,7 +302,10 @@ export const executionNativeScriptInvalidMembers = defineDeploymentFamily(
     },
     fraudProofExecutionNativeScriptInvalidTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof execution-native-script-invalid terminal",
+      reference: {
+        role: "V1 fraud-proof execution-native-script-invalid terminal",
+        token: "V1FpExecNativeInvTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/execution_native_script_invalid/terminal.main.spend",

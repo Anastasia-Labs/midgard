@@ -21,8 +21,10 @@ import {
   requireHex,
   requireRecord,
 } from "./primitives.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "./reference-script-contracts.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.additions.js";
+import {
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+} from "./reference-script-contracts.js";
 
 // Script-hash derivation is a pure function of (type, cborHex), but each
 // derivation pays a full CBOR decode of the compiled script. A manifest

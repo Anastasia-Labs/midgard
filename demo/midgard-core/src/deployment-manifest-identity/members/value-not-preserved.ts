@@ -5,35 +5,50 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
   {
     fraudProofValueNotPreserved: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof value-not-preserved step-01",
+      reference: {
+        role: "V1 fraud-proof value-not-preserved step-01",
+        token: "V1FpValueNotPreservedS01",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
     },
     fraudProofValueNotPreservedStep02: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof value-not-preserved step-02",
+      reference: {
+        role: "V1 fraud-proof value-not-preserved step-02",
+        token: "V1FpValueNotPreservedS02",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/step_02.main.spend",
       familyPaths: [["steps", "1"]],
     },
     fraudProofValueNotPreservedStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof value-not-preserved step-03",
+      reference: {
+        role: "V1 fraud-proof value-not-preserved step-03",
+        token: "V1FpValueNotPreservedS03",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/step_03.main.spend",
       familyPaths: [["steps", "2"]],
     },
     fraudProofValueNotPreservedStep04: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof value-not-preserved step-04",
+      reference: {
+        role: "V1 fraud-proof value-not-preserved step-04",
+        token: "V1FpValueNotPreservedS04",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/step_04.main.spend",
       familyPaths: [["steps", "3"]],
     },
     fraudProofValueNotPreservedUnionAcceptedSource: {
       purpose: "spend",
-      referenceRole: "value conservation accepted-source",
+      reference: {
+        role: "value conservation accepted-source",
+        token: "ValueConservationAcceptedSource",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_accepted_source.main.spend",
@@ -41,7 +56,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionForcedSource: {
       purpose: "spend",
-      referenceRole: "value conservation forced-source",
+      reference: {
+        role: "value conservation forced-source",
+        token: "ValueConservationForcedSource",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_forced_source.main.spend",
@@ -49,14 +67,20 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionEvent: {
       purpose: "spend",
-      referenceRole: "value conservation event",
+      reference: {
+        role: "value conservation event",
+        token: "ValueConservationEvent",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/union_event.main.spend",
       familyPaths: [["unionEvent"]],
     },
     fraudProofValueNotPreservedUnionPreState: {
       purpose: "spend",
-      referenceRole: "value conservation pre-state",
+      reference: {
+        role: "value conservation pre-state",
+        token: "ValueConservationPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_pre_state.main.spend",
@@ -64,7 +88,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionInputs: {
       purpose: "spend",
-      referenceRole: "value conservation inputs",
+      reference: {
+        role: "value conservation inputs",
+        token: "ValueConservationInputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_inputs.main.spend",
@@ -72,7 +99,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionInputValue: {
       purpose: "spend",
-      referenceRole: "value conservation input-value",
+      reference: {
+        role: "value conservation input-value",
+        token: "ValueConservationInputValue",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_input_value.main.spend",
@@ -80,7 +110,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionAssets: {
       purpose: "spend",
-      referenceRole: "value conservation assets",
+      reference: {
+        role: "value conservation assets",
+        token: "ValueConservationAssets",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_assets.main.spend",
@@ -88,7 +121,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionFieldGrammar: {
       purpose: "spend",
-      referenceRole: "value conservation field-grammar",
+      reference: {
+        role: "value conservation field-grammar",
+        token: "ValueConservationFieldGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_field_grammar.main.spend",
@@ -96,7 +132,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionOutputs: {
       purpose: "spend",
-      referenceRole: "value conservation outputs",
+      reference: {
+        role: "value conservation outputs",
+        token: "ValueConservationOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_outputs.main.spend",
@@ -104,7 +143,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionOutputScan: {
       purpose: "spend",
-      referenceRole: "value conservation output-scan",
+      reference: {
+        role: "value conservation output-scan",
+        token: "ValueConservationOutputScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_output_scan.main.spend",
@@ -112,14 +154,20 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionMint: {
       purpose: "spend",
-      referenceRole: "value conservation mint",
+      reference: {
+        role: "value conservation mint",
+        token: "ValueConservationMint",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/value_not_preserved/union_mint.main.spend",
       familyPaths: [["unionMint"]],
     },
     fraudProofValueNotPreservedUnionUpdate: {
       purpose: "spend",
-      referenceRole: "value conservation update",
+      reference: {
+        role: "value conservation update",
+        token: "ValueConservationUpdate",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_update.main.spend",
@@ -127,7 +175,10 @@ export const valueNotPreservedMembers = defineDeploymentFamily(
     },
     fraudProofValueNotPreservedUnionTerminal: {
       purpose: "spend",
-      referenceRole: "value conservation terminal",
+      reference: {
+        role: "value conservation terminal",
+        token: "ValueConservationTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/value_not_preserved/union_terminal.main.spend",

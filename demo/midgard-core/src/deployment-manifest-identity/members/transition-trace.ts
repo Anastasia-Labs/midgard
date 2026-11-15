@@ -5,14 +5,20 @@ export const transitionTraceMembers = defineDeploymentFamily(
   {
     fraudProofTransitionTrace: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace route",
+      reference: {
+        role: "V1 fraud-proof transition-trace route",
+        token: "V1FpTransitionTraceRoute",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/route_v1.main.spend",
       familyPaths: [["firstStep"], ["route"], ["steps", "0"]],
     },
     fraudProofTransitionTraceControl: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-0",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-0",
+        token: "V1FpTransitionTraceFinal0",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/control_v1.main.spend",
       familyPaths: [
@@ -22,7 +28,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceSource: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-1",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-1",
+        token: "V1FpTransitionTraceFinal1",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/source_v1.main.spend",
       familyPaths: [
@@ -32,7 +41,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceWithdrawal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-2",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-2",
+        token: "V1FpTransitionTraceFinal2",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/withdrawal_v1.main.spend",
       familyPaths: [
@@ -42,7 +54,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceForced: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-3",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-3",
+        token: "V1FpTransitionTraceFinal3",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/forced_v1.main.spend",
       familyPaths: [
@@ -52,7 +67,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransaction: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-4",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4",
+        token: "V1FpTransitionTraceFinal4",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_v1.main.spend",
@@ -63,7 +81,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDeposit: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-5",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5",
+        token: "V1FpTransitionTraceFinal5",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/deposit_v1.main.spend",
       familyPaths: [
@@ -73,7 +94,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceL1Event: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-6",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-6",
+        token: "V1FpTransitionTraceFinal6",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/l1_event_v1.main.spend",
       familyPaths: [
@@ -83,7 +107,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDuplicate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof transition-trace final-7",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-7",
+        token: "V1FpTransitionTraceFinal7",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/transition_trace/duplicate_v1.main.spend",
       familyPaths: [
@@ -93,7 +120,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 open yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 open yield",
+        token: "V1FpTtF4L2OpenYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_open.withdraw",
@@ -101,7 +131,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 delete yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 delete yield",
+        token: "V1FpTtF4L2DeleteYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete.withdraw",
@@ -109,7 +142,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
+        token: "V1FpTtF4L2OutputsYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_outputs.withdraw",
@@ -117,8 +153,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-4 L2 output step yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 output step yield",
+        token: "V1FpTtF4L2OutputStepYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_output_step.withdraw",
@@ -126,8 +164,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-4 L2 output descriptor yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 output descriptor yield",
+        token: "V1FpTtF4OutputDescriptorYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_step.descriptor.withdraw",
@@ -135,8 +175,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-4 L2 output summary yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 output summary yield",
+        token: "V1FpTtF4OutputSummaryYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_step.summary.withdraw",
@@ -144,8 +186,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-4 L2 summaries yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 summaries yield",
+        token: "V1FpTtF4L2SummariesYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_summaries.summaries.withdraw",
@@ -153,7 +197,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 replay yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 replay yield",
+        token: "V1FpTtF4L2ReplayYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
@@ -161,7 +208,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositProjectionWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 projection yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 projection yield",
+        token: "V1FpTtF5ProjectionYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/deposit_yields.projection.withdraw",
@@ -169,7 +219,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceL1EventWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-6 L1 event yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-6 L1 event yield",
+        token: "V1FpTtF6L1EventYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/l1_event_yield.timing.withdraw",
@@ -177,8 +230,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceForcedTimingWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-6 forced timing yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-6 forced timing yield",
+        token: "V1FpTtF6ForcedTimeYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/l1_event_yield.forced_timing.withdraw",
@@ -186,7 +241,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositSummariesWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 summaries yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 summaries yield",
+        token: "V1FpTtF5SummariesYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/deposit_summaries.summaries.withdraw",
@@ -194,8 +252,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 fraud-proof transition-trace final-4 L2 assembly yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 assembly yield",
+        token: "V1FpTtF4L2AssemblyYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
@@ -203,7 +263,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 scan yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 scan yield",
+        token: "V1FpTtF4ScanYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
@@ -211,7 +274,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-4 L2 value yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-4 L2 value yield",
+        token: "V1FpTtF4ValueYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_value.value_output.withdraw",
@@ -219,7 +285,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositAssemblyWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 assembly yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 assembly yield",
+        token: "V1FpTtF5AssemblyYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
@@ -227,7 +296,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositScanWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 scan yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 scan yield",
+        token: "V1FpTtF5ScanYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
@@ -235,7 +307,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositValueWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 value yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 value yield",
+        token: "V1FpTtF5ValueYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/deposit_value.value_output.withdraw",
@@ -243,7 +318,10 @@ export const transitionTraceMembers = defineDeploymentFamily(
     },
     fraudProofTransitionTraceDepositReplayWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 fraud-proof transition-trace final-5 replay yield",
+      reference: {
+        role: "V1 fraud-proof transition-trace final-5 replay yield",
+        token: "V1FpTtF5ReplayYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",

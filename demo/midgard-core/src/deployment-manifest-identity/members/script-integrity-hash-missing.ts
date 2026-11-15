@@ -5,7 +5,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
   {
     fraudProofScriptIntegrityHashMissing: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-missing step-01",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing step-01",
+        token: "V1FpIntegrityMissingS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",
@@ -13,7 +16,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingStep02: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-missing step-02",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing step-02",
+        token: "V1FpIntegrityMissingS02",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/step_02.main.spend",
@@ -21,7 +27,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-missing step-03",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing step-03",
+        token: "V1FpIntegrityMissingS03",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/step_03.main.spend",
@@ -29,8 +38,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingScriptGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-missing script-grammar",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing script-grammar",
+        token: "V1FpIntegrityMissingGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/script_grammar.main.spend",
@@ -38,7 +49,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingScriptScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-missing script-scan",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing script-scan",
+        token: "V1FpIntegrityMissingScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/script_scan.main.spend",
@@ -46,8 +60,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingRedeemerGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-missing redeemer-grammar",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing redeemer-grammar",
+        token: "V1FpIntegrityMissingRedeemer",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/redeemer_grammar.main.spend",
@@ -55,7 +71,10 @@ export const scriptIntegrityHashMissingMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMissingStep04: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-missing step-04",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-missing step-04",
+        token: "V1FpIntegrityMissingS04",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_missing/step_04.main.spend",

@@ -37,11 +37,14 @@ export type DeploymentScriptCommandName = Exclude<
   "node-runtime"
 >;
 
+/** A published member's reference-script role and its auth-token name. */
+export type DeploymentReference = Readonly<{ role: string; token: string }>;
+
 export type DeploymentMember = Readonly<{
   family: DeploymentFamily;
   purpose: DeploymentScriptPurpose;
   /** Null for the few members the deployment applies but never publishes. */
-  referenceRole: string | null;
+  reference: DeploymentReference | null;
   commands: readonly DeploymentScriptCommandName[];
   /** Null only for the native reference-script authorization policy. */
   validatorTitle: string | null;
@@ -72,6 +75,8 @@ export const defineDeploymentFamily = <
         Object.freeze({
           ...member,
           family,
+          reference:
+            member.reference === null ? null : Object.freeze(member.reference),
           commands: Object.freeze(member.commands),
           familyPaths: Object.freeze(
             member.familyPaths.map((path) => Object.freeze(path)),

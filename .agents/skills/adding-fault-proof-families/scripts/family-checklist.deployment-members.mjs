@@ -141,6 +141,28 @@ export const readDeploymentMembers = (root) => {
         }
         return JSON.parse(value);
       };
+      const reference = () => {
+        const value = fields.get("reference") ?? "";
+        if (value === "null") return null;
+        try {
+          if (!value.startsWith("{") || !value.endsWith("}")) throw new Error();
+          const literal = `const reference = ${value}`;
+          if (extractLiteral(literal, "reference", path) !== value)
+            throw new Error();
+          const parts = new Map();
+          for (const part of topLevelElements(value)) {
+            const pair = /^(role|token)\s*:\s*("(?:[^"\\]|\\.)*")$/u.exec(part);
+            if (pair === null || parts.has(pair[1])) throw new Error();
+            parts.set(pair[1], JSON.parse(pair[2]));
+          }
+          if (parts.size !== 2) throw new Error();
+          return { role: parts.get("role"), token: parts.get("token") };
+        } catch {
+          throw new CannotLook(
+            `${path}: ${contract}.reference must be null or literal { role, token } strings`,
+          );
+        }
+      };
       let familyPaths;
       try {
         const paths = fields.get("familyPaths") ?? "";
@@ -175,7 +197,7 @@ export const readDeploymentMembers = (root) => {
         );
       members.set(contract, {
         family,
-        referenceRole: textOrNull("referenceRole"),
+        reference: reference(),
         validatorTitle: textOrNull("validatorTitle"),
         firstStep: familyPaths.some(
           (parts) => parts.length === 1 && parts[0] === "firstStep",

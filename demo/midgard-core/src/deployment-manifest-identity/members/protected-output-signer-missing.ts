@@ -5,7 +5,10 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
   {
     fraudProofProtectedOutputSignerMissing: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof protected-output-signer-missing step-01",
+      reference: {
+        role: "V1 fraud-proof protected-output-signer-missing step-01",
+        token: "V1FpProtectedSignerS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
@@ -13,7 +16,10 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
     },
     fraudProofProtectedOutputSignerMissingStep02: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof protected-output-signer-missing step-02",
+      reference: {
+        role: "V1 fraud-proof protected-output-signer-missing step-02",
+        token: "V1FpProtectedSignerS02",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
@@ -21,7 +27,10 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
     },
     fraudProofProtectedOutputSignerMissingStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof protected-output-signer-missing step-03",
+      reference: {
+        role: "V1 fraud-proof protected-output-signer-missing step-03",
+        token: "V1FpProtectedSignerS03",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
@@ -29,7 +38,10 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
     },
     fraudProofProtectedOutputSignerMissingStep04: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof protected-output-signer-missing step-04",
+      reference: {
+        role: "V1 fraud-proof protected-output-signer-missing step-04",
+        token: "V1FpProtectedSignerS04",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
@@ -37,7 +49,10 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
     },
     fraudProofProtectedOutputSignerMissingStep05: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof protected-output-signer-missing step-05",
+      reference: {
+        role: "V1 fraud-proof protected-output-signer-missing step-05",
+        token: "V1FpProtectedSignerS05",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/protected_output_signer_missing/step_05.main.spend",

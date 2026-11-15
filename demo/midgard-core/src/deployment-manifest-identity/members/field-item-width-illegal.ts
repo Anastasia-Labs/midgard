@@ -5,7 +5,10 @@ export const fieldItemWidthIllegalMembers = defineDeploymentFamily(
   {
     fraudProofFieldItemWidthIllegal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof field-item-width-illegal step-01",
+      reference: {
+        role: "V1 fraud-proof field-item-width-illegal step-01",
+        token: "V1FpItemWidthS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_item_width_illegal/step_01.main.spend",
@@ -13,7 +16,10 @@ export const fieldItemWidthIllegalMembers = defineDeploymentFamily(
     },
     fraudProofFieldItemWidthIllegalStep02: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof field-item-width-illegal step-02",
+      reference: {
+        role: "V1 fraud-proof field-item-width-illegal step-02",
+        token: "V1FpItemWidthS02",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_item_width_illegal/step_02.main.spend",
@@ -21,7 +27,10 @@ export const fieldItemWidthIllegalMembers = defineDeploymentFamily(
     },
     fraudProofFieldItemWidthIllegalStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof field-item-width-illegal step-03",
+      reference: {
+        role: "V1 fraud-proof field-item-width-illegal step-03",
+        token: "V1FpItemWidthS03",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/field_item_width_illegal/step_03.main.spend",

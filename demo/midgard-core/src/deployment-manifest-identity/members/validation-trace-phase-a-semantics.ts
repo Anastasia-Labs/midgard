@@ -5,7 +5,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
   {
     validationTraceDisputePhaseANativeScriptsAdvanceSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace phase-A native Advance semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native Advance semantic",
+        token: "V1VtPaNsAdvance",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_advance_semantic_v1.main.spend",
@@ -16,7 +19,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     },
     validationTraceDisputePhaseANativeScriptsItemSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace phase-A native Item semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native Item semantic",
+        token: "V1VtPaNsItem",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1.main.spend",
@@ -27,7 +33,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     },
     validationTraceDisputePhaseANativeScriptsTokenHeadSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace phase-A native TokenHead semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native TokenHead semantic",
+        token: "V1VtPaNsHead",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_token_head_semantic_v1.main.spend",
@@ -39,8 +48,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic",
+          token: "V1VtPaNsAllAnyFrame",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_container_frame_payload_semantic_v1.main.spend",
@@ -52,8 +63,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic",
+          token: "V1VtPaNsAllAnyEmpty",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_empty_container_payload_semantic_v1.main.spend",
@@ -65,8 +78,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic",
+          token: "V1VtPaNsAtLeastFrame",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_container_frame_payload_semantic_v1.main.spend",
@@ -78,8 +93,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic",
+          token: "V1VtPaNsAtLeastEmpty",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_empty_container_payload_semantic_v1.main.spend",
@@ -90,8 +107,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       },
     validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace phase-A native TimelockPayload semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native TimelockPayload semantic",
+        token: "V1VtPaNsTime",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_payload_semantic_v1.main.spend",
@@ -103,8 +122,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native SignatureMembershipPayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native SignatureMembershipPayload semantic",
+          token: "V1VtPaNsSigMember",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_membership_payload_semantic_v1.main.spend",
@@ -115,8 +136,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       },
     validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace phase-A native SignatureEmptyPayload semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native SignatureEmptyPayload semantic",
+        token: "V1VtPaNsSigEmpty",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_empty_payload_semantic_v1.main.spend",
@@ -128,8 +151,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic",
+          token: "V1VtPaNsSigBelow",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_below_first_payload_semantic_v1.main.spend",
@@ -141,8 +166,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic:
       {
         purpose: "spend",
-        referenceRole:
-          "V1 validation-trace phase-A native SignatureAboveLastPayload semantic",
+        reference: {
+          role: "V1 validation-trace phase-A native SignatureAboveLastPayload semantic",
+          token: "V1VtPaNsSigAbove",
+        },
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_above_last_payload_semantic_v1.main.spend",
@@ -153,8 +180,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       },
     validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace phase-A native SignatureBetweenPayload semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native SignatureBetweenPayload semantic",
+        token: "V1VtPaNsSigBetween",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_between_payload_semantic_v1.main.spend",
@@ -165,7 +194,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     },
     validationTraceDisputePhaseANativeScriptsFrameSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace phase-A native Frame semantic",
+      reference: {
+        role: "V1 validation-trace phase-A native Frame semantic",
+        token: "V1VtPaNsFrame",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
@@ -176,8 +208,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     },
     validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace phase-A preconditions Finalize semantic",
+      reference: {
+        role: "V1 validation-trace phase-A preconditions Finalize semantic",
+        token: "V1VtPaSpFinalize",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
@@ -188,7 +222,10 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
     },
     validationTraceDisputePhaseAScriptPreconditionsItemSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace phase-A preconditions Item semantic",
+      reference: {
+        role: "V1 validation-trace phase-A preconditions Item semantic",
+        token: "V1VtPaSpItem",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_item_semantic_v1.main.spend",

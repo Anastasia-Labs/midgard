@@ -4,6 +4,7 @@ import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_MEMBERS,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MEMBERS,
   DEPLOYMENT_PUBLICATION_MEMBERS,
   deploymentFamilyStepNames,
@@ -25,36 +26,62 @@ describe("deployment member admission", () => {
     );
   });
 
+  const withYieldReference = (reference: DeploymentMember["reference"]) => ({
+    ...DEPLOYMENT_MEMBERS,
+    fraudProofMinAdaStep02TxWithdraw: {
+      ...DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw,
+      reference,
+    },
+  });
+  const minAdaReference = DEPLOYMENT_MEMBERS.fraudProofMinAda.reference;
+  const yieldReference =
+    DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw.reference;
+
   it("refuses a duplicated reference role", () => {
     expect(() =>
-      verifyDeploymentMembers({
-        ...DEPLOYMENT_MEMBERS,
-        fraudProofMinAdaStep02TxWithdraw: {
-          ...DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw,
-          referenceRole: DEPLOYMENT_MEMBERS.fraudProofMinAda.referenceRole,
-        },
-      }),
+      verifyDeploymentMembers(
+        withYieldReference({ ...yieldReference, role: minAdaReference.role }),
+      ),
     ).toThrow("duplicated deployment role");
   });
 
-  it("derives every roster order from the contract-name list", () => {
+  it("refuses a reference without an auth-token name", () => {
+    expect(() =>
+      verifyDeploymentMembers(
+        withYieldReference({ ...yieldReference, token: "" }),
+      ),
+    ).toThrow("Invalid or duplicated reference-script token name");
+  });
+
+  it("refuses two roles sharing an auth-token name", () => {
+    // Both would mint the same asset name under the auth policy.
+    expect(() =>
+      verifyDeploymentMembers(
+        withYieldReference({ ...yieldReference, token: minAdaReference.token }),
+      ),
+    ).toThrow("Invalid or duplicated reference-script token name");
+  });
+
+  it("derives every roster order and token name from the member rows", () => {
     expect(DEPLOYMENT_MANIFEST_MEMBERS).toEqual(
       DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
     );
     // Publication keeps the members that carry a role, in list order.
     expect(DEPLOYMENT_PUBLICATION_MEMBERS).toEqual(
       DEPLOYMENT_MANIFEST_CONTRACT_NAMES.filter(
-        (contract) => DEPLOYMENT_MEMBERS[contract].referenceRole !== null,
+        (contract) => DEPLOYMENT_MEMBERS[contract].reference !== null,
       ),
+    );
+    const references = DEPLOYMENT_PUBLICATION_MEMBERS.map(
+      (contract) =>
+        [contract, DEPLOYMENT_MEMBERS[contract].reference!] as const,
     );
     expect(
       Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toEqual(
-      DEPLOYMENT_PUBLICATION_MEMBERS.map((contract) => [
-        DEPLOYMENT_MEMBERS[contract].referenceRole,
-        contract,
-      ]),
-    );
+    ).toEqual(references.map(([contract, { role }]) => [role, contract]));
+    expect(
+      Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
+    ).toEqual(references.map(([, { role, token }]) => [role, token]));
   });
 
   it("rejects a member outside the protocol ABI", () => {

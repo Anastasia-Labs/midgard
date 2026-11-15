@@ -46,12 +46,12 @@ export const DEPLOYMENT_MEMBERS = Object.freeze({
   "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts": `
 export const fooBarMembers = defineDeploymentFamily("fooBar", {
   fraudProofFooBar: {
-    referenceRole: "V1 fraud-proof foo-bar step-01",
+    reference: { role: "V1 fraud-proof foo-bar step-01", token: "V1FpFooBarS01" },
     validatorTitle: "fraud_proofs/foo_bar/step_01.main.spend",
     familyPaths: [["firstStep"], ["steps", "0"]],
   },
   fraudProofFooBarStep02: {
-    referenceRole: "V1 fraud-proof foo-bar step-02",
+    reference: { role: "V1 fraud-proof foo-bar step-02", token: "V1FpFooBarS02" },
     validatorTitle: "fraud_proofs/foo_bar/step_02.main.spend",
     familyPaths: [["steps", "1"]],
   },
@@ -60,18 +60,11 @@ export const fooBarMembers = defineDeploymentFamily("fooBar", {
   "demo/midgard-core/src/deployment-manifest-identity/members/baz-foo-bar.ts": `
 export const bazFooBarMembers = defineDeploymentFamily("bazFooBar", {
   fraudProofBazFooBar: {
-    referenceRole: "V1 fraud-proof baz-foo-bar step-01",
+    reference: { role: "V1 fraud-proof baz-foo-bar step-01", token: "V1FpBazFooBarS01" },
     validatorTitle: "fraud_proofs/baz_foo_bar/step_01.main.spend",
     familyPaths: [["firstStep"], ["steps", "0"]],
   },
 });
-`,
-  [SOURCES.coreReferenceTokens]: `
-export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
-  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",
-  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
-  "V1 fraud-proof baz-foo-bar step-01": "V1FpBazFooBarS01",
-} as const);
 `,
   [SOURCES.sdkBuild]: `
 import { buildFooBarChain } from "./families/foo-bar.js";
@@ -199,18 +192,12 @@ describe("family-checklist", () => {
     assert.match(result.out, /foo-bar-lifecycle\.test\.ts/u);
   });
 
-  it("reads name and token tables kept as a base plus an additions list", () => {
-    const names = edit(
+  it("reads a contract-name list kept as a base plus an additions list", () => {
+    const tree = edit(
       completeTree(),
       SOURCES.coreCatalogue,
       'export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n  "fraudProofFooBarStep02",\n',
       'export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([\n  "fraudProofFooBar",\n',
-    );
-    const tree = edit(
-      names,
-      SOURCES.coreReferenceTokens,
-      'export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
-      'export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({\n  "V1 fraud-proof foo-bar step-01": "V1FpFooBarS01",\n',
     );
     tree[SOURCES.coreCatalogue.replace(/\.ts$/u, ".names.additions.ts")] = `
 const DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS = [
@@ -220,15 +207,6 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   ...DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES,
   ...DEPLOYMENT_MANIFEST_CONTRACT_NAME_ADDITIONS,
 ] as const);
-`;
-    tree[SOURCES.coreReferenceTokens.replace(/\.ts$/u, ".additions.ts")] = `
-const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS = {
-  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",
-} as const;
-export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
-  ...DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES,
-  ...DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAME_ADDITIONS,
-} as const);
 `;
     const result = run(writeTree(tree), "fooBar");
     assert.equal(result.code, EXIT_COMPLETE, result.out + result.err);
@@ -280,9 +258,9 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   it("fails when a step contract has no reference-script token name", () => {
     const tree = edit(
       completeTree(),
-      SOURCES.coreReferenceTokens,
-      '  "V1 fraud-proof foo-bar step-02": "V1FpFooBarS02",\n',
-      "",
+      "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts",
+      'token: "V1FpFooBarS02"',
+      'token: ""',
     );
     const result = run(writeTree(tree), "fooBar");
     assert.equal(result.code, EXIT_GAPS);
@@ -339,8 +317,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     const tree = edit(
       completeTree(),
       "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts",
-      'referenceRole: "V1 fraud-proof foo-bar step-02"',
-      "referenceRole: null",
+      'reference: { role: "V1 fraud-proof foo-bar step-02", token: "V1FpFooBarS02" }',
+      "reference: null",
     );
     const result = run(writeTree(tree), "fooBar");
     assert.equal(result.code, EXIT_GAPS, result.err);
@@ -362,6 +340,22 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     assert.match(
       result.err,
       /validatorTitle must be a string literal or null/u,
+    );
+    assert.equal(result.out, "");
+  });
+
+  it("refuses a reference whose token is not a string literal", () => {
+    const tree = edit(
+      completeTree(),
+      "demo/midgard-core/src/deployment-manifest-identity/members/foo-bar.ts",
+      'token: "V1FpFooBarS02"',
+      'token: tokenFor("step-02")',
+    );
+    const result = run(writeTree(tree), "fooBar");
+    assert.equal(result.code, EXIT_CANNOT_READ);
+    assert.match(
+      result.err,
+      /fraudProofFooBarStep02\.reference must be null or literal \{ role, token \} strings/u,
     );
     assert.equal(result.out, "");
   });

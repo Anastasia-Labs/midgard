@@ -5,7 +5,10 @@ export const withdrawnReferenceInputMembers = defineDeploymentFamily(
   {
     fraudProofWithdrawnReferenceInput: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof withdrawn-reference-input step-01",
+      reference: {
+        role: "V1 fraud-proof withdrawn-reference-input step-01",
+        token: "V1FpWithdrawnReferenceInputS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/withdrawn_reference_input/step_01.main.spend",
@@ -13,7 +16,10 @@ export const withdrawnReferenceInputMembers = defineDeploymentFamily(
     },
     fraudProofWithdrawnReferenceInputStep02: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof withdrawn-reference-input step-02",
+      reference: {
+        role: "V1 fraud-proof withdrawn-reference-input step-02",
+        token: "V1FpWithdrawnReferenceInputS02",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/withdrawn_reference_input/step_02.main.spend",
@@ -21,7 +27,10 @@ export const withdrawnReferenceInputMembers = defineDeploymentFamily(
     },
     fraudProofWithdrawnReferenceInputStep03: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof withdrawn-reference-input step-03",
+      reference: {
+        role: "V1 fraud-proof withdrawn-reference-input step-03",
+        token: "V1FpWithdrawnReferenceInputS03",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/withdrawn_reference_input/step_03.main.spend",

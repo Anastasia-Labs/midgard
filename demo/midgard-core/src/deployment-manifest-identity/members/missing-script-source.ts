@@ -5,7 +5,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
   {
     fraudProofMissingScriptSource: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source step-01",
+      reference: {
+        role: "V1 fraud-proof missing-script-source step-01",
+        token: "V1FpMissingSrcS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/step_01.main.spend",
@@ -13,7 +16,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceBindEvent: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source bind-event",
+      reference: {
+        role: "V1 fraud-proof missing-script-source bind-event",
+        token: "V1FpMissingSrcBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -21,7 +27,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceBindPreState: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof missing-script-source bind-pre-state",
+        token: "V1FpMissingSrcBindPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -29,7 +38,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-start",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-start",
+        token: "V1FpMissingSrcSrcStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -37,7 +49,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceResolved: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-resolved",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-resolved",
+        token: "V1FpMissingSrcSrcResolved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -45,7 +60,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceAuthenticate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-authenticate",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-authenticate",
+        token: "V1FpMissingSrcSrcAuth",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -53,7 +71,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceMap: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-map",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-map",
+        token: "V1FpMissingSrcSrcMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -61,7 +82,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceInputFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-input-finish",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-input-finish",
+        token: "V1FpMissingSrcSrcInputFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -69,7 +93,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-grammar",
+        token: "V1FpMissingSrcSrcGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -77,7 +104,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceWitnesses: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-witnesses",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-witnesses",
+        token: "V1FpMissingSrcSrcWitnesses",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -85,7 +115,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-finish",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-finish",
+        token: "V1FpMissingSrcSrcFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -93,7 +126,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceFamilyEntry: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source family-entry",
+      reference: {
+        role: "V1 fraud-proof missing-script-source family-entry",
+        token: "V1FpMissingSrcEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/missing_script_source/family_entry.main.spend",
@@ -101,7 +137,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourcePurposeSelect: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source purpose-select",
+      reference: {
+        role: "V1 fraud-proof missing-script-source purpose-select",
+        token: "V1FpMissingSrcPurposeSelect",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/purpose_select.main.spend",
@@ -109,7 +148,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSpendSelect: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source spend-select",
+      reference: {
+        role: "V1 fraud-proof missing-script-source spend-select",
+        token: "V1FpMissingSrcSpendSelect",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_select.main.spend",
@@ -117,7 +159,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSpendScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source spend-scan",
+      reference: {
+        role: "V1 fraud-proof missing-script-source spend-scan",
+        token: "V1FpMissingSrcSpendScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/spend_scan.main.spend",
@@ -125,7 +170,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceMintGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source mint-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source mint-grammar",
+        token: "V1FpMissingSrcMintGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
@@ -133,7 +181,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceMintScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source mint-scan",
+      reference: {
+        role: "V1 fraud-proof missing-script-source mint-scan",
+        token: "V1FpMissingSrcMintScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
@@ -141,7 +192,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceReceiveStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source receive-start",
+      reference: {
+        role: "V1 fraud-proof missing-script-source receive-start",
+        token: "V1FpMissingSrcRecvStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_start.main.spend",
@@ -149,7 +203,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceReceiveGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source receive-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source receive-grammar",
+        token: "V1FpMissingSrcRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
@@ -157,7 +214,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceReceiveOutputs: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source receive-outputs",
+      reference: {
+        role: "V1 fraud-proof missing-script-source receive-outputs",
+        token: "V1FpMissingSrcRecvOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
@@ -165,7 +225,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceReceiveFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source receive-finish",
+      reference: {
+        role: "V1 fraud-proof missing-script-source receive-finish",
+        token: "V1FpMissingSrcRecvFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
@@ -173,7 +236,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceReceiveDeclaration: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source receive-declaration",
+      reference: {
+        role: "V1 fraud-proof missing-script-source receive-declaration",
+        token: "V1FpMissingSrcRecvDecl",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
@@ -181,7 +247,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceSourceLookup: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source source-lookup",
+      reference: {
+        role: "V1 fraud-proof missing-script-source source-lookup",
+        token: "V1FpMissingSrcSrcLookup",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_lookup.main.spend",
@@ -189,7 +258,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceObservedDecision: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source observed-decision",
+      reference: {
+        role: "V1 fraud-proof missing-script-source observed-decision",
+        token: "V1FpMissingSrcObserved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/missing_script_source/observed_decision.main.spend",
@@ -197,7 +269,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-start",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-start",
+        token: "V1FpMissingSrcClaimStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_start.main.spend",
@@ -205,7 +280,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimSpendStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-spend-start",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-spend-start",
+        token: "V1FpMissingSrcClaimSpendStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_spend_start.main.spend",
@@ -213,7 +291,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimSpendScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-spend-scan",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-spend-scan",
+        token: "V1FpMissingSrcClaimSpend",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_spend_scan.main.spend",
@@ -221,7 +302,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimMintGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-mint-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-mint-grammar",
+        token: "V1FpMissingSrcClaimMintGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_mint_grammar.main.spend",
@@ -229,7 +313,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimMintScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-mint-scan",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-mint-scan",
+        token: "V1FpMissingSrcClaimMintScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_mint_scan.main.spend",
@@ -237,8 +324,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimReceiveGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claim-receive-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-receive-grammar",
+        token: "V1FpMissingSrcClaimRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_grammar.main.spend",
@@ -246,8 +335,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimReceiveOutputs: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claim-receive-outputs",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-receive-outputs",
+        token: "V1FpMissingSrcClaimRecvOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_outputs.main.spend",
@@ -255,8 +346,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimReceiveFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claim-receive-finish",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-receive-finish",
+        token: "V1FpMissingSrcClaimRecvFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_finish.main.spend",
@@ -264,8 +357,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimReceiveDeclaration: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claim-receive-declaration",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-receive-declaration",
+        token: "V1FpMissingSrcClaimRecvDecl",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_receive_declaration.main.spend",
@@ -273,7 +368,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimAdjudicate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source claim-adjudicate",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claim-adjudicate",
+        token: "V1FpMissingSrcAdjudicate",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_adjudicate.main.spend",
@@ -281,8 +379,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimedRedeemerGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claimed-redeemer-grammar",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claimed-redeemer-grammar",
+        token: "V1FpMissingSrcClaimedGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main.spend",
@@ -290,8 +390,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceClaimedRedeemerScan: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-script-source claimed-redeemer-scan",
+      reference: {
+        role: "V1 fraud-proof missing-script-source claimed-redeemer-scan",
+        token: "V1FpMissingSrcClaimedScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main.spend",
@@ -299,7 +401,10 @@ export const missingScriptSourceMembers = defineDeploymentFamily(
     },
     fraudProofMissingScriptSourceTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-script-source terminal",
+      reference: {
+        role: "V1 fraud-proof missing-script-source terminal",
+        token: "V1FpMissingSrcTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claim_terminal.main.spend",

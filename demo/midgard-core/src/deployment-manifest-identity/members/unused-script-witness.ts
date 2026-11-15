@@ -5,7 +5,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
   {
     fraudProofUnusedScriptWitness: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness step-01",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness step-01",
+        token: "V1FpUnusedScriptWitnessS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/step_01.main.spend",
@@ -13,7 +16,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessBindEvent: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness bind-event",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness bind-event",
+        token: "V1FpUnusedWitBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -21,7 +27,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessBindPreState: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness bind-pre-state",
+        token: "V1FpUnusedWitBindPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -29,7 +38,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-start",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-start",
+        token: "V1FpUnusedWitSrcStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -37,7 +49,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceResolved: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-resolved",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-resolved",
+        token: "V1FpUnusedWitSrcResolved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -45,7 +60,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceAuthenticate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-authenticate",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-authenticate",
+        token: "V1FpUnusedWitSrcAuth",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -53,7 +71,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceMap: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-map",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-map",
+        token: "V1FpUnusedWitSrcMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -61,7 +82,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceInputFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-input-finish",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-input-finish",
+        token: "V1FpUnusedWitSrcInputFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -69,7 +93,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-grammar",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-grammar",
+        token: "V1FpUnusedWitSrcGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -77,7 +104,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceWitnesses: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-witnesses",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-witnesses",
+        token: "V1FpUnusedWitSrcWitnesses",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -85,7 +115,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessSourceFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness source-finish",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness source-finish",
+        token: "V1FpUnusedWitSrcFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -93,7 +126,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessFamilyEntry: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness family-entry",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness family-entry",
+        token: "V1FpUnusedWitEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/family_entry.main.spend",
@@ -101,7 +137,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesSpend: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness all-purposes-spend",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-spend",
+        token: "V1FpUnusedWitApSpend",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend.main.spend",
@@ -109,8 +148,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesSpendResolve: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-spend-resolve",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-spend-resolve",
+        token: "V1FpUnusedWitApSpendResolve",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend_resolve.main.spend",
@@ -118,8 +159,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesMintGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-mint-grammar",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-mint-grammar",
+        token: "V1FpUnusedWitApMintGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint_grammar.main.spend",
@@ -127,7 +170,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesMint: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness all-purposes-mint",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-mint",
+        token: "V1FpUnusedWitApMint",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint.main.spend",
@@ -135,8 +181,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesObserveOpen: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-observe-open",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-observe-open",
+        token: "V1FpUnusedWitApObserveOpen",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe_open.main.spend",
@@ -144,8 +192,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesObserve: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-observe",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-observe",
+        token: "V1FpUnusedWitApObserve",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe.main.spend",
@@ -153,8 +203,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesReceiveGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-receive-grammar",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-receive-grammar",
+        token: "V1FpUnusedWitApRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive_grammar.main.spend",
@@ -162,8 +214,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessAllPurposesReceive: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof unused-script-witness all-purposes-receive",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness all-purposes-receive",
+        token: "V1FpUnusedWitApRecv",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive.main.spend",
@@ -171,7 +225,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessWitnessEntry: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness witness-entry",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness witness-entry",
+        token: "V1FpUnusedWitWitnessEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_entry.main.spend",
@@ -179,7 +236,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessWitnessGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness witness-grammar",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness witness-grammar",
+        token: "V1FpUnusedWitWitnessGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_grammar.main.spend",
@@ -187,7 +247,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessWitnessScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness witness-scan",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness witness-scan",
+        token: "V1FpUnusedWitWitnessScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/unused_script_witness/witness_scan.main.spend",
@@ -195,7 +258,10 @@ export const unusedScriptWitnessMembers = defineDeploymentFamily(
     },
     fraudProofUnusedScriptWitnessTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof unused-script-witness terminal",
+      reference: {
+        role: "V1 fraud-proof unused-script-witness terminal",
+        token: "V1FpUnusedWitTerminal",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/unused_script_witness/terminal.main.spend",
       familyPaths: [["steps", "23"]],

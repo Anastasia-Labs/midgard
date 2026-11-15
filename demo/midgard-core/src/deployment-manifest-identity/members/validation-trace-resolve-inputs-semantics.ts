@@ -4,7 +4,10 @@ export const validationTraceResolveInputsSemanticsMembers =
   defineDeploymentFamily("validationTraceDispute", {
     validationTraceDisputeResolveInputsInitialSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace resolve-inputs Initial semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs Initial semantic",
+        token: "V1VtRiInitial",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_initial_semantic_v1.main.spend",
@@ -15,7 +18,10 @@ export const validationTraceResolveInputsSemanticsMembers =
     },
     validationTraceDisputeResolveInputsFinishSemantic: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace resolve-inputs Finish semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs Finish semantic",
+        token: "V1VtRiFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_finish_semantic_v1.main.spend",
@@ -26,8 +32,10 @@ export const validationTraceResolveInputsSemanticsMembers =
     },
     validationTraceDisputeResolveInputsMembershipBeginSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace resolve-inputs MembershipBegin semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs MembershipBegin semantic",
+        token: "V1VtRiMembershipBegin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_begin_semantic_v1.main.spend",
@@ -38,8 +46,10 @@ export const validationTraceResolveInputsSemanticsMembers =
     },
     validationTraceDisputeResolveInputsMembershipStepSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace resolve-inputs MembershipStep semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs MembershipStep semantic",
+        token: "V1VtRiMembershipStep",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_step_semantic_v1.main.spend",
@@ -50,8 +60,10 @@ export const validationTraceResolveInputsSemanticsMembers =
     },
     validationTraceDisputeResolveInputsMembershipFinalizeSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace resolve-inputs MembershipFinalize semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs MembershipFinalize semantic",
+        token: "V1VtRiMembershipFinalize",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_finalize_semantic_v1.main.spend",
@@ -62,8 +74,10 @@ export const validationTraceResolveInputsSemanticsMembers =
     },
     validationTraceDisputeResolveInputsNonMembershipSemantic: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace resolve-inputs NonMembership semantic",
+      reference: {
+        role: "V1 validation-trace resolve-inputs NonMembership semantic",
+        token: "V1VtRiNonMembership",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_non_membership_semantic_v1.main.spend",

@@ -3,14 +3,20 @@ import { defineDeploymentFamily } from "../members.types.js";
 export const invalidRangeMembers = defineDeploymentFamily("invalidRange", {
   fraudProofInvalidRange: {
     purpose: "spend",
-    referenceRole: "V1 fraud-proof invalid-range step-01",
+    reference: {
+      role: "V1 fraud-proof invalid-range step-01",
+      token: "V1FpInvalidRangeS01",
+    },
     commands: [],
     validatorTitle: "fraud_proofs/invalid_range/step_01.main.spend",
     familyPaths: [["firstStep"], ["steps", "0"]],
   },
   fraudProofInvalidRangeStep02: {
     purpose: "spend",
-    referenceRole: "V1 fraud-proof invalid-range step-02",
+    reference: {
+      role: "V1 fraud-proof invalid-range step-02",
+      token: "V1FpInvalidRangeS02",
+    },
     commands: [],
     validatorTitle: "fraud_proofs/invalid_range/step_02.main.spend",
     familyPaths: [["steps", "1"]],

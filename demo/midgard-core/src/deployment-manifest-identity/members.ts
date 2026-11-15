@@ -7,13 +7,13 @@ import {
   type DeploymentMember,
   REFERENCE_SCRIPT_COMMAND_NAMES,
 } from "./members.types.js";
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./reference-script-tokens.additions.js";
 
 export { DEPLOYMENT_MEMBERS } from "./members.data.js";
 export {
   type DeploymentContract,
   type DeploymentFamily,
   type DeploymentMember,
+  type DeploymentReference,
   type DeploymentScriptCommandName,
   type DeploymentScriptPurpose,
   REFERENCE_SCRIPT_COMMAND_NAMES,
@@ -36,6 +36,7 @@ export const verifyDeploymentMembers = (
     ...DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   ]);
   const roles = new Set<string>();
+  const tokens = new Set<string>();
   const paths = new Set<string>();
   for (const [contract, member] of Object.entries(members)) {
     if (!families.has(member.family))
@@ -44,19 +45,19 @@ export const verifyDeploymentMembers = (
       );
     if (!["spend", "mint", "withdraw"].includes(member.purpose))
       throw new Error(`Invalid deployment purpose for ${contract}`);
-    if (member.referenceRole !== null) {
-      if (
-        member.referenceRole.length === 0 ||
-        !Object.prototype.hasOwnProperty.call(
-          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-          member.referenceRole,
-        ) ||
-        roles.has(member.referenceRole)
-      )
+    if (member.reference !== null) {
+      const { role, token } = member.reference;
+      if (role.length === 0 || roles.has(role))
         throw new Error(
           `Invalid or duplicated deployment role for ${contract}`,
         );
-      roles.add(member.referenceRole);
+      // Two roles sharing a name would mint the same auth-token asset.
+      if (token.length === 0 || tokens.has(token))
+        throw new Error(
+          `Invalid or duplicated reference-script token name for ${contract}`,
+        );
+      roles.add(role);
+      tokens.add(token);
     }
     if (
       (member.validatorTitle === null) !==
@@ -105,14 +106,15 @@ verifyDeploymentMembers(DEPLOYMENT_MEMBERS);
 
 /**
  * The deployment order is the contract-name list's order. Publication, and so
- * the reference-role map, keeps the published members in that same order.
+ * the reference-role and token-name maps, keep the published members in that
+ * same order.
  */
 export const DEPLOYMENT_MANIFEST_MEMBERS: readonly DeploymentContract[] =
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES;
 
 export const DEPLOYMENT_PUBLICATION_MEMBERS = Object.freeze(
   DEPLOYMENT_MANIFEST_MEMBERS.filter(
-    (contract) => DEPLOYMENT_MEMBERS[contract].referenceRole !== null,
+    (contract) => DEPLOYMENT_MEMBERS[contract].reference !== null,
   ),
 );
 

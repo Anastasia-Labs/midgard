@@ -346,8 +346,8 @@ const yieldRole = (name: ValidationTracePhaseYield) => {
     ({ family, familyPaths }) =>
       family === "validationTraceDispute" &&
       familyPaths.some(([kind, path]) => kind === "yields" && path === name),
-  )?.referenceRole;
-  if (role === undefined || role === null)
+  )?.reference?.role;
+  if (role === undefined)
     throw new Error(`the ${name} yield has no manifest role`);
   return role as Parameters<typeof publishAuthenticated>[1];
 };

@@ -3,35 +3,41 @@ import { defineDeploymentFamily } from "../members.types.js";
 export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fraudProofCatalogueSpend: {
     purpose: "spend",
-    referenceRole: null,
+    reference: null,
     commands: [],
     validatorTitle: "fraud_proof_catalogue.spend.else",
     familyPaths: [],
   },
   fraudProofCatalogueMint: {
     purpose: "mint",
-    referenceRole: "fraud-proof-catalogue minting",
+    reference: {
+      role: "fraud-proof-catalogue minting",
+      token: "FraudProofCatalogueMint",
+    },
     commands: ["protocol-init"],
     validatorTitle: "fraud_proof_catalogue.mint.mint",
     familyPaths: [],
   },
   fraudProofSpend: {
     purpose: "spend",
-    referenceRole: null,
+    reference: null,
     commands: [],
     validatorTitle: "fraud_proof.spend.else",
     familyPaths: [],
   },
   fraudProofMint: {
     purpose: "mint",
-    referenceRole: "V1 fraud-proof token minting",
+    reference: { role: "V1 fraud-proof token minting", token: "V1FpTokenMint" },
     commands: [],
     validatorTitle: "fraud_proof.mint.mint",
     familyPaths: [],
   },
   fieldPreimageCertificateSpend: {
     purpose: "spend",
-    referenceRole: "V1 field-preimage certificate",
+    reference: {
+      role: "V1 field-preimage certificate",
+      token: "V1FieldPreimageCertSpend",
+    },
     commands: [],
     validatorTitle:
       "field_preimage_certificate.field_preimage_certificate.spend",
@@ -39,7 +45,10 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   },
   fieldPreimageCertificateMint: {
     purpose: "mint",
-    referenceRole: "V1 field-preimage certificate minting",
+    reference: {
+      role: "V1 field-preimage certificate minting",
+      token: "V1FieldPreimageCertMint",
+    },
     commands: [],
     validatorTitle:
       "field_preimage_certificate.field_preimage_certificate.mint",
@@ -47,98 +56,137 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   },
   fieldGrammarCertificateSpend: {
     purpose: "spend",
-    referenceRole: "V1 field grammar certificate",
+    reference: {
+      role: "V1 field grammar certificate",
+      token: "V1FieldGrammarCertSpend",
+    },
     commands: [],
     validatorTitle: "field_grammar_certificate.field_grammar_certificate.spend",
     familyPaths: [],
   },
   fieldGrammarCertificateMint: {
     purpose: "mint",
-    referenceRole: "V1 field grammar certificate minting",
+    reference: {
+      role: "V1 field grammar certificate minting",
+      token: "V1FieldGrammarCertMint",
+    },
     commands: [],
     validatorTitle: "field_grammar_certificate.field_grammar_certificate.mint",
     familyPaths: [],
   },
   scriptDecodeSpend: {
     purpose: "spend",
-    referenceRole: "V1 script decode",
+    reference: { role: "V1 script decode", token: "V1ScriptDecodeSpend" },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_v1.spend",
     familyPaths: [],
   },
   scriptDecodeMint: {
     purpose: "mint",
-    referenceRole: "V1 script decode minting",
+    reference: {
+      role: "V1 script decode minting",
+      token: "V1ScriptDecodeMint",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_v1.mint",
     familyPaths: [],
   },
   scriptDecodeTermWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode term staker",
+    reference: {
+      role: "V1 script decode term staker",
+      token: "V1ScriptDecodeTermStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_term_v1.withdraw",
     familyPaths: [],
   },
   scriptDecodeValueWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode value staker",
+    reference: {
+      role: "V1 script decode value staker",
+      token: "V1ScriptDecodeValueStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_value_v1.withdraw",
     familyPaths: [],
   },
   scriptDecodeListWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode list staker",
+    reference: {
+      role: "V1 script decode list staker",
+      token: "V1ScriptDecodeListStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_list_v1.withdraw",
     familyPaths: [],
   },
   scriptDecodeFoldWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode fold staker",
+    reference: {
+      role: "V1 script decode fold staker",
+      token: "V1ScriptDecodeFoldStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_fold_v1.withdraw",
     familyPaths: [],
   },
   scriptDecodeBytesWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode bytes staker",
+    reference: {
+      role: "V1 script decode bytes staker",
+      token: "V1ScriptDecodeBytesStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_bytes_v1.withdraw",
     familyPaths: [],
   },
   scriptDecodeDataWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 script decode data staker",
+    reference: {
+      role: "V1 script decode data staker",
+      token: "V1ScriptDecodeDataStake",
+    },
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_data_v1.withdraw",
     familyPaths: [],
   },
   phasMembershipWithdraw: {
     purpose: "withdraw",
-    referenceRole: "membership proof withdrawal",
+    reference: {
+      role: "membership proof withdrawal",
+      token: "MembershipProofWithdraw",
+    },
     commands: ["phas-membership"],
     validatorTitle: "phas.membership.withdraw",
     familyPaths: [],
   },
   computationThreadMint: {
     purpose: "mint",
-    referenceRole: "V1 fraud-proof computation-thread minting",
+    reference: {
+      role: "V1 fraud-proof computation-thread minting",
+      token: "V1FpComputationThreadMint",
+    },
     commands: [],
     validatorTitle: "computation_thread.mint.mint",
     familyPaths: [],
   },
   chunkedVerifyWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 MPF chunked-verify withdrawal",
+    reference: {
+      role: "V1 MPF chunked-verify withdrawal",
+      token: "V1MpfChunkedVerifyWithdraw",
+    },
     commands: [],
     validatorTitle: "mpf_chunked_verify.verify.withdraw",
     familyPaths: [],
   },
   pexcludesWithdraw: {
     purpose: "withdraw",
-    referenceRole: "V1 MPF pexcludes withdrawal",
+    reference: {
+      role: "V1 MPF pexcludes withdrawal",
+      token: "V1MpfPexcludesWithdraw",
+    },
     commands: [],
     validatorTitle: "pexcludes.exclusion.withdraw",
     familyPaths: [],

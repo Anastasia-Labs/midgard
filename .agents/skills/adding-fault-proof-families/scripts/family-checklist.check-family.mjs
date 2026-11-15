@@ -48,13 +48,6 @@ export const checkFamily = (root, category) => {
       SOURCES.coreCatalogue,
     ),
   );
-  const tokenByRole = objectStringPairs(
-    extractSpreadLiteral(
-      readSource(root, "coreReferenceTokens"),
-      "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES",
-      SOURCES.coreReferenceTokens,
-    ),
-  );
   if (
     contractNames.length === 0 ||
     coreOrder.length === 0 ||
@@ -151,14 +144,14 @@ export const checkFamily = (root, category) => {
     }
     let roleCount = 0;
     for (const contract of familyContracts) {
-      const role = members.get(contract).referenceRole;
-      if (role === null || role.length === 0) {
+      const reference = members.get(contract).reference;
+      if (reference === null || reference.role.length === 0) {
         roleProblems.push(`${contract} has no reference-script role`);
       } else {
         roleCount += 1;
-        if (!tokenByRole.has(role)) {
+        if (reference.token.length === 0) {
           roleProblems.push(
-            `role "${role}" has no reference-script token name`,
+            `role "${reference.role}" has no reference-script token name`,
           );
         }
       }
@@ -168,7 +161,7 @@ export const checkFamily = (root, category) => {
       roleProblems.length === 0 ? "ok" : "gap",
       roleProblems.length === 0
         ? `${familyContracts.length} member(s) in family ${category}, ${roleCount} role(s), all with token names`
-        : `${roleProblems.join("; ")} (${SOURCES.coreCatalogue}, ${SOURCES.coreMembers}, ${SOURCES.coreReferenceTokens})`,
+        : `${roleProblems.join("; ")} (${SOURCES.coreCatalogue}, ${SOURCES.coreMembers})`,
     );
   } else {
     record("reference-scripts", "gap", "skipped: no first-step contract");

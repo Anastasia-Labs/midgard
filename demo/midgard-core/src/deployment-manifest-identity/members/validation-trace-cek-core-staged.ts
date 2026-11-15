@@ -8,7 +8,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
   {
     validationTraceDisputeCekCoreStagedBytes: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged bytes",
+      reference: {
+        role: "V1 validation-trace CEK core staged bytes",
+        token: "V1VtCekCoreStaByt",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_bytes.main.spend",
@@ -16,7 +19,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekCoreStagedInteger: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged integer",
+      reference: {
+        role: "V1 validation-trace CEK core staged integer",
+        token: "V1VtCekCoreStaInt",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_integer.main.spend",
@@ -25,7 +31,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
     /** multiplyInteger and the division builtins over staged operands (index 9). */
     validationTraceDisputeCekCoreStagedProduct: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged product",
+      reference: {
+        role: "V1 validation-trace CEK core staged product",
+        token: "V1VtCekCoreStaPro",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_product.main.spend",
@@ -35,7 +44,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
      * (semantic budget index 10). */
     validationTraceDisputeCekCoreSemanticSerialiseLoop: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core semantic serialise loop",
+      reference: {
+        role: "V1 validation-trace CEK core semantic serialise loop",
+        token: "V1VtCekCoreSemSerLoo",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_semantic_serialise_loop.main.spend",
@@ -45,7 +57,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
      * group 7's roots route those builtins to. */
     validationTraceDisputeCekCoreStagedFailure: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged failure",
+      reference: {
+        role: "V1 validation-trace CEK core staged failure",
+        token: "V1VtCekCoreStaFai",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_failure.main.spend",
@@ -55,7 +70,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
      * rotateByteString over a staged input (index 11). */
     validationTraceDisputeCekCoreStagedConversion: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged conversion",
+      reference: {
+        role: "V1 validation-trace CEK core staged conversion",
+        token: "V1VtCekCoreStaCon",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_conversion.main.spend",
@@ -65,7 +83,10 @@ export const validationTraceCekCoreStagedMembers = defineDeploymentFamily(
      * (semantic budget index 12) and its failure on an index outside the input. */
     validationTraceDisputeCekCoreStagedWriteBitsLoop: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK core staged write bits loop",
+      reference: {
+        role: "V1 validation-trace CEK core staged write bits loop",
+        token: "V1VtCekCoreStaWriBitLoo",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_core_staged_write_bits_loop.main.spend",

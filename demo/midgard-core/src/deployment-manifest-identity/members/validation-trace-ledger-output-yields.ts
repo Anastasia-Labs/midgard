@@ -5,7 +5,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
   {
     validationTraceDisputeLedgerOutputProofStructureWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 validation-trace ledger-output-proof structure yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof structure yield",
+        token: "V1VtLopStructureYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_yield.main.withdraw",
@@ -13,7 +16,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofValueWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 validation-trace ledger-output-proof value yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof value yield",
+        token: "V1VtLopValueYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_value_yield.main.withdraw",
@@ -21,8 +27,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumFoldMapWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum fold-map yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum fold-map yield",
+        token: "V1VtLopDatumFoldMapYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_map_yield.main.withdraw",
@@ -30,8 +38,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumFinalizeFrameWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum finalize-frame yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum finalize-frame yield",
+        token: "V1VtLopDatumFinalizeFrameYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_finalize_frame_yield.main.withdraw",
@@ -39,8 +49,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumHeadScalarWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum head-scalar yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum head-scalar yield",
+        token: "V1VtLopDatumHeadScalarYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_scalar_yield.main.withdraw",
@@ -48,8 +60,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumAttachIntegerWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum attach-integer yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum attach-integer yield",
+        token: "V1VtLopDatumAttachIntegerYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_integer_yield.main.withdraw",
@@ -57,8 +71,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumFoldListWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum fold-list yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum fold-list yield",
+        token: "V1VtLopDatumFoldListYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_list_yield.main.withdraw",
@@ -66,8 +82,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumAdvanceIntegerWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum advance-integer yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum advance-integer yield",
+        token: "V1VtLopDatumAdvanceIntegerYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_integer_yield.main.withdraw",
@@ -75,8 +93,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofReferenceScriptWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof reference-script yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof reference-script yield",
+        token: "V1VtLopRefScriptYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_reference_script_yield.main.withdraw",
@@ -84,8 +104,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofScriptHashWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof script-hash yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof script-hash yield",
+        token: "V1VtLopScriptHashYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_script_hash_yield.main.withdraw",
@@ -93,8 +115,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofNativeScriptWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof native-script yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof native-script yield",
+        token: "V1VtLopNativeScriptYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_native_script_yield.main.withdraw",
@@ -102,8 +126,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofStructureAssetsWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof structure assets yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof structure assets yield",
+        token: "V1VtLopStructureAssetsYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_assets_yield.main.withdraw",
@@ -111,8 +137,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofStructureOptionalWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof structure optional yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof structure optional yield",
+        token: "V1VtLopStructureOptionalYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_optional_yield.main.withdraw",
@@ -120,8 +148,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofStructureFinishWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof structure finish yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof structure finish yield",
+        token: "V1VtLopStructureFinishYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_finish_yield.main.withdraw",
@@ -129,8 +159,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumHeadSequenceWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum head-sequence yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum head-sequence yield",
+        token: "V1VtLopDatumHeadSequenceYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_sequence_yield.main.withdraw",
@@ -138,8 +170,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumHeadMapWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum head-map yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum head-map yield",
+        token: "V1VtLopDatumHeadMapYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_map_yield.main.withdraw",
@@ -147,8 +181,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumHeadLargeConstructorWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum head-large-constructor yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum head-large-constructor yield",
+        token: "V1VtLopDatumHeadLargeCtorYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_large_constructor_yield.main.withdraw",
@@ -156,8 +192,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumAttachBytesWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum attach-bytes yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum attach-bytes yield",
+        token: "V1VtLopDatumAttachBytesYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_bytes_yield.main.withdraw",
@@ -165,8 +203,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumAdvanceBytesWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum advance-bytes yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum advance-bytes yield",
+        token: "V1VtLopDatumAdvanceBytesYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_bytes_yield.main.withdraw",
@@ -174,8 +214,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumFinishWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum finish yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum finish yield",
+        token: "V1VtLopDatumFinishYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_finish_yield.main.withdraw",
@@ -183,8 +225,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum large-constructor yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum large-constructor yield",
+        token: "V1VtLopDatumLargeCtorYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_large_constructor_yield.main.withdraw",
@@ -192,8 +236,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumLargeFieldsWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum large-fields yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum large-fields yield",
+        token: "V1VtLopDatumLargeFieldsYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_large_fields_yield.main.withdraw",
@@ -201,8 +247,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofDatumCloseWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof datum close yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof datum close yield",
+        token: "V1VtLopDatumCloseYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_close_yield.main.withdraw",
@@ -210,7 +258,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofSpanWithdraw: {
       purpose: "withdraw",
-      referenceRole: "V1 validation-trace ledger-output-proof span yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof span yield",
+        token: "V1VtLopSpanYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_span_yield.main.withdraw",
@@ -218,8 +269,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof scalar-integer yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof scalar-integer yield",
+        token: "V1VtLopScalarIntegerYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_scalar_integer_yield.main.withdraw",
@@ -227,8 +280,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputProofScalarBytesWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-proof scalar-bytes yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-proof scalar-bytes yield",
+        token: "V1VtLopScalarBytesYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_scalar_bytes_yield.main.withdraw",
@@ -236,8 +291,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputDescriptorScanFactsWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-descriptor scan-facts yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-descriptor scan-facts yield",
+        token: "V1VtLopDescScanFactsYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_scan_facts_yield.main.withdraw",
@@ -245,8 +302,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputDescriptorReferenceScriptWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-descriptor reference-script yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-descriptor reference-script yield",
+        token: "V1VtLopDescRefScriptYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_reference_script_yield.main.withdraw",
@@ -254,8 +313,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputDescriptorDatumSummaryWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-descriptor datum-summary yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-descriptor datum-summary yield",
+        token: "V1VtLopDescDatumSummaryYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_datum_summary_yield.main.withdraw",
@@ -263,8 +324,10 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeLedgerOutputDescriptorValueSummaryWithdraw: {
       purpose: "withdraw",
-      referenceRole:
-        "V1 validation-trace ledger-output-descriptor value-summary yield",
+      reference: {
+        role: "V1 validation-trace ledger-output-descriptor value-summary yield",
+        token: "V1VtLopDescValueSummaryYield",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_value_summary_yield.main.withdraw",

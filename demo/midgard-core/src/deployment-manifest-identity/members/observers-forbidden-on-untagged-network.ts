@@ -4,8 +4,10 @@ export const observersForbiddenOnUntaggedNetworkMembers =
   defineDeploymentFamily("observersForbiddenOnUntaggedNetwork", {
     fraudProofObserversForbiddenOnUntaggedNetwork: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof observers-forbidden-on-untagged-network step-01",
+      reference: {
+        role: "V1 fraud-proof observers-forbidden-on-untagged-network step-01",
+        token: "V1FpObserversForbiddenS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/observers_forbidden_on_untagged_network/step_01.main.spend",
@@ -13,8 +15,10 @@ export const observersForbiddenOnUntaggedNetworkMembers =
     },
     fraudProofObserversForbiddenOnUntaggedNetworkStep02: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof observers-forbidden-on-untagged-network step-02",
+      reference: {
+        role: "V1 fraud-proof observers-forbidden-on-untagged-network step-02",
+        token: "V1FpObserversForbiddenS02",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/observers_forbidden_on_untagged_network/step_02.main.spend",

@@ -43,8 +43,10 @@ export {
 } from "./deployment-manifest-identity/marker.js";
 export * from "./deployment-manifest-identity/members.js";
 export { parseDeploymentManifestCardanoProtocolParameters } from "./deployment-manifest-identity/protocol-parameters.js";
-export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "./deployment-manifest-identity/reference-script-contracts.js";
-export { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES } from "./deployment-manifest-identity/reference-script-tokens.additions.js";
+export {
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+} from "./deployment-manifest-identity/reference-script-contracts.js";
 export {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS,

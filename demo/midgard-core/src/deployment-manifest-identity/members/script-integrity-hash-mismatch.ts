@@ -5,7 +5,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
   {
     fraudProofScriptIntegrityHashMismatch: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-01",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch step-01",
+        token: "V1FpIntegrityMismatchS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
@@ -13,7 +16,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchBindEvent: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-mismatch bind-event",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch bind-event",
+        token: "V1FpIntegrityBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -21,8 +27,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchBindPreState: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch bind-pre-state",
+        token: "V1FpIntegrityBindPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -30,8 +38,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceStart: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-start",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-start",
+        token: "V1FpIntegritySrcStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -39,8 +49,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceResolved: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-resolved",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-resolved",
+        token: "V1FpIntegritySrcResolved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -48,8 +60,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceAuthenticate: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-authenticate",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-authenticate",
+        token: "V1FpIntegritySrcAuth",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -57,7 +71,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceMap: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-mismatch source-map",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-map",
+        token: "V1FpIntegritySrcMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -65,8 +82,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceInputFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-input-finish",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-input-finish",
+        token: "V1FpIntegritySrcInputFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -74,8 +93,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-grammar",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-grammar",
+        token: "V1FpIntegritySrcGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -83,8 +104,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceWitnesses: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-witnesses",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-witnesses",
+        token: "V1FpIntegritySrcWitnesses",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -92,8 +115,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchSourceFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch source-finish",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch source-finish",
+        token: "V1FpIntegritySrcFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -101,8 +126,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchFamilyEntry: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch family-entry",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch family-entry",
+        token: "V1FpIntegrityEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/family_entry.main.spend",
@@ -110,8 +137,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesSpend: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend",
+        token: "V1FpIntegrityApSpend",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend.main.spend",
@@ -119,8 +148,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesSpendResolve: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend-resolve",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-spend-resolve",
+        token: "V1FpIntegrityApSpendResolve",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_spend_resolve.main.spend",
@@ -128,8 +159,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesMintGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint-grammar",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint-grammar",
+        token: "V1FpIntegrityApMintGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint_grammar.main.spend",
@@ -137,8 +170,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesMint: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-mint",
+        token: "V1FpIntegrityApMint",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_mint.main.spend",
@@ -146,8 +181,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesObserveOpen: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe-open",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe-open",
+        token: "V1FpIntegrityApObserveOpen",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe_open.main.spend",
@@ -155,8 +192,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesObserve: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-observe",
+        token: "V1FpIntegrityApObserve",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_observe.main.spend",
@@ -164,8 +203,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesReceiveGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive-grammar",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive-grammar",
+        token: "V1FpIntegrityApRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive_grammar.main.spend",
@@ -173,8 +214,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchAllPurposesReceive: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch all-purposes-receive",
+        token: "V1FpIntegrityApRecv",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/all_purposes_receive.main.spend",
@@ -182,7 +225,10 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     },
     fraudProofScriptIntegrityHashMismatchTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof script-integrity-hash-mismatch terminal",
+      reference: {
+        role: "V1 fraud-proof script-integrity-hash-mismatch terminal",
+        token: "V1FpIntegrityTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/terminal.main.spend",

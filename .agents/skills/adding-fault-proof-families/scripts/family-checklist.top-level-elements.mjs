@@ -17,8 +17,6 @@ export const SOURCES = Object.freeze({
     "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.ts",
   coreMembers:
     "demo/midgard-core/src/deployment-manifest-identity/members.data.ts",
-  coreReferenceTokens:
-    "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
   registry:
     "demo/midgard-fault-proofs/src/workflow/family-application-registry.ts",
   linearSpec: "demo/midgard-fault-proofs/src/workflow/linear-family-spec.ts",

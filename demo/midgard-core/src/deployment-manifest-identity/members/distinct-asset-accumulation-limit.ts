@@ -7,7 +7,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
   {
     fraudProofDistinctAssetAccumulationLimit: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit step-01",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit step-01",
+        token: "V1FpDistinctAssetLimitS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/step_01.main.spend",
@@ -15,8 +18,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitBindEvent: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit bind-event",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit bind-event",
+        token: "V1FpDistinctAssetLimitBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -24,8 +29,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitBindPreState: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit bind-pre-state",
+        token: "V1FpDistinctAssetLimitBindPre",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -33,8 +40,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitFamilyEntry: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit family-entry",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit family-entry",
+        token: "V1FpDistinctAssetLimitEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/family_entry.main.spend",
@@ -42,7 +51,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitInputs: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit inputs",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit inputs",
+        token: "V1FpDistinctAssetLimitInputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/inputs.main.spend",
@@ -50,8 +62,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitInputsResolve: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit inputs-resolve",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit inputs-resolve",
+        token: "V1FpDistinctAssetLimitInResolve",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/inputs_resolve.main.spend",
@@ -59,8 +73,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitInputRank: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit input-rank",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit input-rank",
+        token: "V1FpDistinctAssetLimitInRank",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/input_rank.main.spend",
@@ -68,8 +84,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitOutputsGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit outputs-grammar",
+        token: "V1FpDistinctAssetLimitOutGram",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/outputs_grammar.main.spend",
@@ -77,7 +95,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitOutputs: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit outputs",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit outputs",
+        token: "V1FpDistinctAssetLimitOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/outputs.main.spend",
@@ -85,8 +106,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitMintGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit mint-grammar",
+        token: "V1FpDistinctAssetLimitMintGram",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/mint_grammar.main.spend",
@@ -94,7 +117,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitMint: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof distinct-asset-accumulation-limit mint",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit mint",
+        token: "V1FpDistinctAssetLimitMint",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/mint.main.spend",
@@ -102,8 +128,10 @@ export const distinctAssetAccumulationLimitMembers = defineDeploymentFamily(
     },
     fraudProofDistinctAssetAccumulationLimitTerminal: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof distinct-asset-accumulation-limit terminal",
+      reference: {
+        role: "V1 fraud-proof distinct-asset-accumulation-limit terminal",
+        token: "V1FpDistinctAssetLimitTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/distinct_asset_accumulation_limit/terminal.main.spend",

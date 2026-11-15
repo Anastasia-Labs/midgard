@@ -5,7 +5,10 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
   {
     validationTraceDisputeCekContextItemEntry: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item entry",
+      reference: {
+        role: "V1 validation-trace CEK context item entry",
+        token: "V1VtCekCtxIteEnt",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_envelope.main.spend",
@@ -16,7 +19,10 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemSettlement: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item settlement",
+      reference: {
+        role: "V1 validation-trace CEK context item settlement",
+        token: "V1VtCekCtxIteSet",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_settlement.main.spend",

@@ -42,8 +42,8 @@ export type DeploymentScript = DeploymentScriptValue &
     contract: DeploymentContract;
     role:
       | NonNullable<
-          (typeof DEPLOYMENT_MEMBERS)[DeploymentContract]["referenceRole"]
-        >
+          (typeof DEPLOYMENT_MEMBERS)[DeploymentContract]["reference"]
+        >["role"]
       | undefined;
     purpose: DeploymentMember["purpose"];
     commands: DeploymentMember["commands"];
@@ -57,7 +57,7 @@ const resolveDeploymentMember = (
   const member = DEPLOYMENT_MEMBERS[contract];
   return {
     contract,
-    role: member.referenceRole ?? undefined,
+    role: member.reference?.role,
     purpose: member.purpose,
     commands: member.commands,
     ...DEPLOYMENT_RECIPES[contract].resolve(contracts, context),

@@ -5,7 +5,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
   {
     fraudProofReceivePurposeLanguage: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language step-01",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language step-01",
+        token: "V1FpRecvPurposeS01",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/step_01.main.spend",
@@ -13,7 +16,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageBindEvent: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language bind-event",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language bind-event",
+        token: "V1FpRecvPurposeBindEvent",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_event.main.spend",
@@ -21,7 +27,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageBindPreState: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language bind-pre-state",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language bind-pre-state",
+        token: "V1FpRecvPurposeBindPreState",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/bind_pre_state.main.spend",
@@ -29,7 +38,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-start",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-start",
+        token: "V1FpRecvPurposeSrcStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_start.main.spend",
@@ -37,7 +49,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceResolved: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-resolved",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-resolved",
+        token: "V1FpRecvPurposeSrcResolved",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_resolved.main.spend",
@@ -45,8 +60,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceAuthenticate: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof receive-purpose-language source-authenticate",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-authenticate",
+        token: "V1FpRecvPurposeSrcAuth",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_authenticate.main.spend",
@@ -54,7 +71,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceMap: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-map",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-map",
+        token: "V1FpRecvPurposeSrcMap",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_map.main.spend",
@@ -62,8 +82,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceInputFinish: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof receive-purpose-language source-input-finish",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-input-finish",
+        token: "V1FpRecvPurposeSrcInputFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_input_finish.main.spend",
@@ -71,7 +93,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-grammar",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-grammar",
+        token: "V1FpRecvPurposeSrcGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_grammar.main.spend",
@@ -79,7 +104,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceWitnesses: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-witnesses",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-witnesses",
+        token: "V1FpRecvPurposeSrcWitnesses",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_witnesses.main.spend",
@@ -87,7 +115,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-finish",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-finish",
+        token: "V1FpRecvPurposeSrcFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/source_finish.main.spend",
@@ -95,7 +126,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageFamilyEntry: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language family-entry",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language family-entry",
+        token: "V1FpRecvPurposeEntry",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/receive_purpose_language/family_entry.main.spend",
@@ -103,7 +137,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageReceiveStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language receive-start",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language receive-start",
+        token: "V1FpRecvPurposeRecvStart",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_start.main.spend",
@@ -111,7 +148,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageReceiveGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language receive-grammar",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language receive-grammar",
+        token: "V1FpRecvPurposeRecvGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_grammar.main.spend",
@@ -119,7 +159,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageReceiveOutputs: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language receive-outputs",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language receive-outputs",
+        token: "V1FpRecvPurposeRecvOutputs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_outputs.main.spend",
@@ -127,7 +170,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageReceiveFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language receive-finish",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language receive-finish",
+        token: "V1FpRecvPurposeRecvFinish",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_finish.main.spend",
@@ -135,8 +181,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageReceiveDeclaration: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof receive-purpose-language receive-declaration",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language receive-declaration",
+        token: "V1FpRecvPurposeRecvDecl",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/receive_declaration.main.spend",
@@ -144,15 +192,20 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageSourceLookup: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language source-lookup",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language source-lookup",
+        token: "V1FpRecvPurposeSrcLookup",
+      },
       commands: [],
       validatorTitle: "fraud_proofs/receive_purpose_language/lookup.main.spend",
       familyPaths: [["steps", "17"]],
     },
     fraudProofReceivePurposeLanguageClaimedRedeemerGrammar: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof receive-purpose-language claimed-redeemer-grammar",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language claimed-redeemer-grammar",
+        token: "V1FpRecvPurposeClaimedGrammar",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_grammar.main.spend",
@@ -160,8 +213,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageClaimedRedeemerScan: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof receive-purpose-language claimed-redeemer-scan",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language claimed-redeemer-scan",
+        token: "V1FpRecvPurposeClaimedScan",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/direct_script_derivation/claimed_redeemer_scan.main.spend",
@@ -169,7 +224,10 @@ export const receivePurposeLanguageMembers = defineDeploymentFamily(
     },
     fraudProofReceivePurposeLanguageTerminal: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof receive-purpose-language terminal",
+      reference: {
+        role: "V1 fraud-proof receive-purpose-language terminal",
+        token: "V1FpRecvPurposeTerminal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/receive_purpose_language/terminal.main.spend",

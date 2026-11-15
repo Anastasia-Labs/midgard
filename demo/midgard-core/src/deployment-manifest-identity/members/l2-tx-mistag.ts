@@ -3,14 +3,20 @@ import { defineDeploymentFamily } from "../members.types.js";
 export const l2TxMistagMembers = defineDeploymentFamily("l2TxMistag", {
   fraudProofL2TxMistag: {
     purpose: "spend",
-    referenceRole: "V1 fraud-proof l2-tx-mistag step-01",
+    reference: {
+      role: "V1 fraud-proof l2-tx-mistag step-01",
+      token: "V1FpL2TxMistagS01",
+    },
     commands: [],
     validatorTitle: "fraud_proofs/l2_tx_mistag/step_01.main.spend",
     familyPaths: [["firstStep"], ["steps", "0"]],
   },
   fraudProofL2TxMistagStep02: {
     purpose: "spend",
-    referenceRole: "V1 fraud-proof l2-tx-mistag step-02",
+    reference: {
+      role: "V1 fraud-proof l2-tx-mistag step-02",
+      token: "V1FpL2TxMistagS02",
+    },
     commands: [],
     validatorTitle: "fraud_proofs/l2_tx_mistag/step_02.main.spend",
     familyPaths: [["steps", "1"]],

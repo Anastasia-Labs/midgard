@@ -5,7 +5,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
   {
     validationTraceDisputeCekContextSettle: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context settle",
+      reference: {
+        role: "V1 validation-trace CEK context settle",
+        token: "V1VtCekCtxSet",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_settle.main.spend",
@@ -16,7 +19,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextControl: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context control",
+      reference: {
+        role: "V1 validation-trace CEK context control",
+        token: "V1VtCekCtxCon",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_control.main.spend",
@@ -27,7 +33,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextReference: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context reference",
+      reference: {
+        role: "V1 validation-trace CEK context reference",
+        token: "V1VtCekCtxRef",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_reference.main.spend",
@@ -38,7 +47,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextSpend: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context spend",
+      reference: {
+        role: "V1 validation-trace CEK context spend",
+        token: "V1VtCekCtxSpe",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_spend.main.spend",
@@ -49,7 +61,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextOutput: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context output",
+      reference: {
+        role: "V1 validation-trace CEK context output",
+        token: "V1VtCekCtxOut",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_output.main.spend",
@@ -60,7 +75,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextSigner: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context signer",
+      reference: {
+        role: "V1 validation-trace CEK context signer",
+        token: "V1VtCekCtxSig",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_signer.main.spend",
@@ -71,7 +89,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextObserverAuthenticate: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context observer authenticate",
+      reference: {
+        role: "V1 validation-trace CEK context observer authenticate",
+        token: "V1VtCekCtxObsAut",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_observer_authenticate.main.spend",
@@ -82,7 +103,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextObserverFold: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context observer fold",
+      reference: {
+        role: "V1 validation-trace CEK context observer fold",
+        token: "V1VtCekCtxObsFol",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_observer_fold.main.spend",
@@ -93,7 +117,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextMintInit: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context mint init",
+      reference: {
+        role: "V1 validation-trace CEK context mint init",
+        token: "V1VtCekCtxMinIni",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_mint_init.main.spend",
@@ -104,7 +131,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextMintItem: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context mint item",
+      reference: {
+        role: "V1 validation-trace CEK context mint item",
+        token: "V1VtCekCtxMinIte",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_mint_item.main.spend",
@@ -115,7 +145,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextAssemble: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context assemble",
+      reference: {
+        role: "V1 validation-trace CEK context assemble",
+        token: "V1VtCekCtxAss",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_assemble.main.spend",
@@ -126,7 +159,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextTxInfo: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context tx info",
+      reference: {
+        role: "V1 validation-trace CEK context tx info",
+        token: "V1VtCekCtxTxInf",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_tx_info.main.spend",
@@ -137,7 +173,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextSeed: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context seed",
+      reference: {
+        role: "V1 validation-trace CEK context seed",
+        token: "V1VtCekCtxSee",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_seed.main.spend",
@@ -148,7 +187,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeAuthenticate: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize authenticate",
+      reference: {
+        role: "V1 validation-trace CEK context finalize authenticate",
+        token: "V1VtCekCtxFinAut",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_authenticate.main.spend",
@@ -159,7 +201,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeSpend: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize spend",
+      reference: {
+        role: "V1 validation-trace CEK context finalize spend",
+        token: "V1VtCekCtxFinSpe",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_spend.main.spend",
@@ -170,7 +215,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeMint: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize mint",
+      reference: {
+        role: "V1 validation-trace CEK context finalize mint",
+        token: "V1VtCekCtxFinMin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_mint.main.spend",
@@ -181,7 +229,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeWithdraw: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize withdraw",
+      reference: {
+        role: "V1 validation-trace CEK context finalize withdraw",
+        token: "V1VtCekCtxFinWit",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_withdraw.main.spend",
@@ -192,7 +243,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeObserve: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize observe",
+      reference: {
+        role: "V1 validation-trace CEK context finalize observe",
+        token: "V1VtCekCtxFinObs",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_observe.main.spend",
@@ -203,7 +257,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextFinalizeMidgard: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context finalize midgard",
+      reference: {
+        role: "V1 validation-trace CEK context finalize midgard",
+        token: "V1VtCekCtxFinMid",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_midgard.main.spend",
@@ -214,7 +271,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextRedeemerBegin: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context redeemer begin",
+      reference: {
+        role: "V1 validation-trace CEK context redeemer begin",
+        token: "V1VtCekCtxRedBeg",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_begin.main.spend",
@@ -225,8 +285,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextRedeemerSelectAuthenticate: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace CEK context redeemer select authenticate",
+      reference: {
+        role: "V1 validation-trace CEK context redeemer select authenticate",
+        token: "V1VtCekCtxRedSelAut",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate.main.spend",
@@ -237,8 +299,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextRedeemerSelectInitialize: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace CEK context redeemer select initialize",
+      reference: {
+        role: "V1 validation-trace CEK context redeemer select initialize",
+        token: "V1VtCekCtxRedSelIni",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_initialize.main.spend",
@@ -249,7 +313,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextRedeemerSelectHash: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context redeemer select hash",
+      reference: {
+        role: "V1 validation-trace CEK context redeemer select hash",
+        token: "V1VtCekCtxRedSelHas",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_hash.main.spend",
@@ -260,7 +327,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextRedeemerSelectFinish: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context redeemer select finish",
+      reference: {
+        role: "V1 validation-trace CEK context redeemer select finish",
+        token: "V1VtCekCtxRedSelFin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_finish.main.spend",
@@ -271,7 +341,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemBind: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item bind",
+      reference: {
+        role: "V1 validation-trace CEK context item bind",
+        token: "V1VtCekCtxIteBin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_bind.main.spend",
@@ -282,7 +355,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemReturn: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item return",
+      reference: {
+        role: "V1 validation-trace CEK context item return",
+        token: "V1VtCekCtxIteRet",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_return.main.spend",
@@ -293,7 +369,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemSelectionHash: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item selection hash",
+      reference: {
+        role: "V1 validation-trace CEK context item selection hash",
+        token: "V1VtCekCtxIteSelHas",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
@@ -304,7 +383,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemDataHash: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item data hash",
+      reference: {
+        role: "V1 validation-trace CEK context item data hash",
+        token: "V1VtCekCtxIteDatHas",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
@@ -315,7 +397,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemFinalize: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item finalize",
+      reference: {
+        role: "V1 validation-trace CEK context item finalize",
+        token: "V1VtCekCtxIteFin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_finalize.main.spend",
@@ -326,7 +411,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemSelectionContinue: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item selection continue",
+      reference: {
+        role: "V1 validation-trace CEK context item selection continue",
+        token: "V1VtCekCtxIteSelCon",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_selection_continue.main.spend",
@@ -337,7 +425,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemSelectionFinish: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item selection finish",
+      reference: {
+        role: "V1 validation-trace CEK context item selection finish",
+        token: "V1VtCekCtxIteSelFin",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_selection_finish.main.spend",
@@ -348,7 +439,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemDataContinue: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item data continue",
+      reference: {
+        role: "V1 validation-trace CEK context item data continue",
+        token: "V1VtCekCtxIteDatCon",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_continue.main.spend",
@@ -359,8 +453,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemDataFinishDescriptor: {
       purpose: "spend",
-      referenceRole:
-        "V1 validation-trace CEK context item data finish descriptor",
+      reference: {
+        role: "V1 validation-trace CEK context item data finish descriptor",
+        token: "V1VtCekCtxIteDatFinDes",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_finish_descriptor.main.spend",
@@ -371,7 +467,10 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
     },
     validationTraceDisputeCekContextItemDataFinishValue: {
       purpose: "spend",
-      referenceRole: "V1 validation-trace CEK context item data finish value",
+      reference: {
+        role: "V1 validation-trace CEK context item data finish value",
+        token: "V1VtCekCtxIteDatFinVal",
+      },
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_finish_value.main.spend",
