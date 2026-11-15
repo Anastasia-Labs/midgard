@@ -27,10 +27,15 @@ const natural = (value: number, label: string): number => {
     return fail(`${label} must be a non-negative safe integer`);
   return value;
 };
+const safeInteger = (value: number, label: string): number => {
+  if (!Number.isSafeInteger(value))
+    return fail(`${label} must be a safe integer`);
+  return value;
+};
 const reasonIndex = (reason: RejectionReason): number => {
   if (typeof reason === "string" || !("ObserverOrderInvalid" in reason))
     return fail("typed rejection reason is not ObserverOrderInvalid");
-  return natural(
+  return safeInteger(
     Number(reason.ObserverOrderInvalid.observer_index),
     "reason observer index",
   );
@@ -45,11 +50,11 @@ export const classifyObserverOrderInvalidFinding = (
 ): ObserverOrderInvalidFinding => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
-  const observerIndex = natural(finding.observerIndex, "observer index");
+  const observerIndex = safeInteger(finding.observerIndex, "observer index");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
-    // Every ordinal a forced leaf can name is admissible: ordinal 0, or one
-    // past the field's end, names no offending later item and is contradicted
-    // by a walk that exhausts the field strictly ordered.
+    // Every ordinal a forced leaf can name is admissible: ordinal 0, a
+    // negative ordinal, or one past the field's end names no offending later
+    // item and is contradicted by a walk that exhausts (`exhaust_scan_v1`).
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");
     if (reasonIndex(finding.subject.rejection_reason) !== observerIndex)
@@ -59,7 +64,7 @@ export const classifyObserverOrderInvalidFinding = (
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
-  } else if (observerIndex === 0) {
+  } else if (natural(observerIndex, "observer index") === 0) {
     return fail("observer index must name the later item of an adjacent pair");
   }
   return Object.freeze({ subject: finding.subject, observerIndex });
@@ -77,12 +82,13 @@ export type ObserverOrderInvalidScanResult = Readonly<{
  * cited ordinal must be strictly ascending, the pair at the ordinal decides,
  * and a walk that exhausts the field before reaching the ordinal decides
  * `false` because no offending later item exists there (`exhaust_scan_v1`).
+ * A negative ordinal names no item, so its walk exhausts before any item.
  */
 export const scanObserverOrderInvalid = (
   items: readonly Uint8Array[],
   observerIndex: number,
 ): ObserverOrderInvalidScanResult => {
-  natural(observerIndex, "observer index");
+  safeInteger(observerIndex, "observer index");
   let previous = Buffer.alloc(0);
   const scanned = Math.min(observerIndex, items.length - 1);
   for (let index = 0; index <= scanned; index += 1) {

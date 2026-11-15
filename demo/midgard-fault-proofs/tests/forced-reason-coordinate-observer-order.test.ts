@@ -12,9 +12,15 @@ import { describe, expect, it } from "vitest";
 
 import { observerOrderInvalidEvidenceCloses } from "../src/observer-order-invalid/family.js";
 import {
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+} from "../src/proof-fit/van-rossem.js";
+import { MAXIMUM_FIELD_BYTES } from "./observer-order-invalid-lifecycle.authentication-seams.js";
+import {
   evidenceOf,
   forcedBlock,
   forcedSuccess,
+  maximumLastViolationShape,
   reasonAt,
   stagedOf,
 } from "./observer-order-invalid-lifecycle.forced-success.js";
@@ -118,4 +124,104 @@ describe("forced ObserverOrderInvalid coordinate the node writes", () => {
       check: /^Validator returned false$/u,
     });
   }, 900_000);
+});
+
+describe("forced ObserverOrderInvalid negative ordinal", () => {
+  it("convicts a negative ordinal, which names no observer", async () => {
+    // The walk exhausts before any item: one scan decides the field ordered
+    // at the cited ordinal.
+    expect(stagedOf(shape, -1).walk).toHaveLength(1);
+    await forcedSuccess("coordinate-negative", shape, -1);
+  }, 900_000);
+
+  it("refuses on chain a scan that closes the written ordinal as ordered", async () => {
+    const index = await writtenObserverIndex();
+    const h = await makeHarness();
+    const { setup, finding, source } = await forcedBlock(h, shape, index);
+    const evidence = evidenceOf(shape, finding);
+    const staged = stagedOf(shape, index);
+    expect(evidence.violation).toBe(true);
+    const bound = await h.step01Forced(
+      h.threadOf(
+        (await h.init(setup.fraudulentBlockOutRef, setup.headerHash)).result,
+      ),
+      finding,
+      source,
+    );
+    await h.publishField(shape);
+    let cursor = (
+      await h.step02(bound.result.nextThreadOutRef, evidence, shape, staged)
+    ).result.nextThreadOutRef;
+    const last = staged.walk.length - 1;
+    for (let ordinal = 0; ordinal < last; ordinal += 1)
+      cursor = (await h.step03(cursor, evidence, shape, staged, ordinal)).result
+        .nextThreadOutRef;
+    // The last scan reaches the descending pair at the written ordinal; a
+    // terminal state recording the field as ordered there is refused.
+    await expectOnchainRefusal(
+      () =>
+        h.step03(
+          cursor,
+          { ...evidence, violation: false },
+          shape,
+          staged,
+          last,
+        ),
+      {
+        refusedBy: "fraud_proofs/observer_order_invalid/step_03",
+        check: /^Validator returned false$/u,
+      },
+    );
+  }, 900_000);
+
+  it("convicts a negative ordinal over field 3 at its byte cap", async () => {
+    const maximum = maximumLastViolationShape();
+    expect(maximum.fieldPreimage).toHaveLength(MAXIMUM_FIELD_BYTES);
+    const h = await makeHarness();
+    const { setup, finding, source } = await forcedBlock(h, maximum, -1);
+    const evidence = evidenceOf(maximum, finding);
+    const staged = stagedOf(maximum, -1);
+    expect(evidence.violation).toBe(false);
+    expect(staged.walk).toHaveLength(1);
+    const initialized = await h.init(
+      setup.fraudulentBlockOutRef,
+      setup.headerHash,
+    );
+    const bound = await h.step01Forced(
+      h.threadOf(initialized.result),
+      finding,
+      source,
+    );
+    const published = await h.publishField(maximum);
+    expect(published.tier).toBe("Certified");
+    const opened = await h.step02(
+      bound.result.nextThreadOutRef,
+      evidence,
+      maximum,
+      staged,
+    );
+    const scanned = await h.step03(
+      opened.result.nextThreadOutRef,
+      evidence,
+      maximum,
+      staged,
+      0,
+    );
+    const minted = await h.step04(scanned.result.nextThreadOutRef, evidence);
+    expect(minted.result.fraudProofUnit).toBeTruthy();
+    await h.removal(setup.headerHash);
+    for (const measurement of [bound, opened, scanned, minted].flatMap(
+      ({ measurements }) => measurements,
+    )) {
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        VAN_ROSSEM_MAX_MEMORY_UNITS,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        VAN_ROSSEM_MAX_CPU_UNITS,
+      );
+    }
+    console.info(
+      `max-shape negative observer ordinal (${maximum.observerCount.toString()} observers, ${MAXIMUM_FIELD_BYTES.toString()} bytes): step-01 mem=${bound.measurement.executionMemory.toString()} cpu=${bound.measurement.executionSteps.toString()}; step-02 mem=${opened.measurement.executionMemory.toString()} cpu=${opened.measurement.executionSteps.toString()}; step-03 mem=${scanned.measurement.executionMemory.toString()} cpu=${scanned.measurement.executionSteps.toString()}; step-04 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
+    );
+  }, 1_800_000);
 });

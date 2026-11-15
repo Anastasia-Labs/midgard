@@ -99,7 +99,8 @@ export const planObserverOrderInvalidStagedWalk = ({
   );
   // The walk stops at the cited ordinal, or at the engine's own end when the
   // field is shorter: the validator then exhausts the scan as ordered. An
-  // empty field still needs one scan transaction to reach that decision.
+  // empty field, or a negative ordinal, still needs one scan transaction to
+  // reach that decision.
   const target = Math.min(observerIndex + 1, items.length);
   const walk: ObserverOrderWalkCheckpoint[] = [];
   let walkCursor = initialWalk;
@@ -133,10 +134,11 @@ export const observerOrderPrefix = ({
   readonly nextItemIndex: number;
   readonly observerIndex: number;
 }): Readonly<{ seen: number; previousObserver: string }> => {
+  // A negative ordinal names no item: its walk never leaves the start.
   if (
     !Number.isSafeInteger(nextItemIndex) ||
     nextItemIndex < 0 ||
-    nextItemIndex > observerIndex
+    nextItemIndex > Math.max(observerIndex, 0)
   )
     throw new Error("observerOrderInvalid prefix cursor is invalid");
   let previousObserver = "";
