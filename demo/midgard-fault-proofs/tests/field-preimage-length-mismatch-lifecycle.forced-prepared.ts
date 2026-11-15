@@ -41,14 +41,21 @@ export const inlineBodyClaim = (
   },
 });
 
-/** `setup` over a retained-root forced leaf, exposing that leaf directly. */
+/**
+ * `setup` over a retained-root forced leaf, exposing that leaf directly. A
+ * rejection names `rejectedFieldIndex`; `proofDepth` deepens its membership.
+ */
 export const forcedSetup = async (
   verdict: "rejected" | "valid",
   mismatch: boolean,
+  leaf: {
+    readonly rejectedFieldIndex?: bigint;
+    readonly proofDepth?: number;
+  } = {},
 ) => {
   const fixture = await setup({
     honestAccepted: true,
-    forcedLeaf: { verdict, mismatch },
+    forcedLeaf: { verdict, mismatch, ...leaf },
   });
   if (fixture.familyForced === undefined)
     throw new Error("missing family forced leaf");

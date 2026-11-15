@@ -210,6 +210,14 @@ export const FieldPreimageLengthStep02ArgsSchema = Data.Enum([
       claim: CommittedFieldClaimSchema,
     }),
   }),
+  Data.Object({
+    AuthenticateForcedOutOfDomain: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: FieldPreimageLengthForcedMembershipSchema,
+    }),
+  }),
 ]);
 export const FieldPreimageLengthStep02RedeemerSchema =
   faultProofStepRedeemerSchema(FieldPreimageLengthStep02ArgsSchema);

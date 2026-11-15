@@ -24,6 +24,7 @@ import {
   hashBlockHeader,
   type Header,
   OutputReference,
+  Proof,
   ROOT_DOMAINS,
   type RootMembershipProof,
   TransitionStepSchema,
@@ -34,6 +35,7 @@ import { Effect } from "effect";
 
 import {
   buildCountedRoot,
+  commitCountedRoot,
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
@@ -48,6 +50,7 @@ import {
   outputReferenceCbor,
   transitionTraceRawEntry,
 } from "./submit-init-emulator-fixtures.js";
+import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 export const FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX = 0;
 
@@ -65,18 +68,24 @@ export type FieldPreimageLengthForcedFixture = Readonly<{
  * One forced transaction whose leaf carries `verdict` and whose committed
  * length vector is `lengthsMutation` applied to the honest vector. Every other
  * root and count is the same one-event block the shared forced fixture
- * commits, so the header is admitted by the same setup transaction.
+ * commits, so the header is admitted by the same setup transaction. A
+ * rejection names `rejectedFieldIndex`; `proofDepth` commits the leaf under a
+ * synthetic membership proof of that many branch levels.
  */
 export const buildFieldPreimageLengthForcedFixture = async ({
   operatorVkey,
   now,
   verdict,
   lengthsMutation = (lengths) => lengths,
+  rejectedFieldIndex = BigInt(FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX),
+  proofDepth,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
   readonly verdict: "rejected" | "valid";
   readonly lengthsMutation?: (lengths: number[]) => number[];
+  readonly rejectedFieldIndex?: bigint;
+  readonly proofDepth?: number;
 }): Promise<FieldPreimageLengthForcedFixture> => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -121,7 +130,7 @@ export const buildFieldPreimageLengthForcedFixture = async ({
             ForcedTxInvalid: {
               reason: {
                 FieldPreimageLengthMismatch: {
-                  field_index: BigInt(FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX),
+                  field_index: rejectedFieldIndex,
                 },
               },
             },
@@ -169,11 +178,32 @@ export const buildFieldPreimageLengthForcedFixture = async ({
         value: Buffer.from(value, "hex"),
       })),
     );
-  const [forcedRoot, transitionRoot, eventRoot] = await Promise.all([
+  const [countedForcedRoot, transitionRoot, eventRoot] = await Promise.all([
     counted(ROOT_DOMAINS.forcedTransactionsV1, forcedEntries),
     counted(ROOT_DOMAINS.transitionTrace, transitionEntries),
     counted(ROOT_DOMAINS.eventToStep, eventEntries),
   ]);
+  const [keyHex, valueHex] = forcedEntries[0]!;
+  const deep =
+    proofDepth === undefined
+      ? undefined
+      : syntheticDeepMembershipProof({
+          key: Buffer.from(keyHex, "hex"),
+          value: Buffer.from(valueHex, "hex"),
+          branchLevels: proofDepth,
+        });
+  const forcedRoot =
+    deep === undefined
+      ? countedForcedRoot
+      : {
+          ...countedForcedRoot,
+          phasRoot: deep.transactionsPhasRoot,
+          root: await commitCountedRoot({
+            domain: countedForcedRoot.domain,
+            phasRoot: deep.transactionsPhasRoot,
+            count: countedForcedRoot.count,
+          }),
+        };
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
@@ -195,7 +225,6 @@ export const buildFieldPreimageLengthForcedFixture = async ({
     validationTraceCount: 0n,
   };
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
-  const [keyHex, valueHex] = forcedEntries[0]!;
   const membership: RootMembershipProof<OutputReference, ForcedInclusionTxV1> =
     {
       domain: forcedRoot.domain,
@@ -204,15 +233,18 @@ export const buildFieldPreimageLengthForcedFixture = async ({
       count: forcedRoot.count,
       key: txOrderId,
       value: forcedTransaction,
-      proof: await keyValuePhasProof(
-        {
-          root: forcedRoot.phasRoot,
-          count: forcedRoot.count,
-          entries: forcedRoot.entries,
-        },
-        Buffer.from(keyHex, "hex"),
-        Buffer.from(valueHex, "hex"),
-      ),
+      proof:
+        deep === undefined
+          ? await keyValuePhasProof(
+              {
+                root: forcedRoot.phasRoot,
+                count: forcedRoot.count,
+                entries: forcedRoot.entries,
+              },
+              Buffer.from(keyHex, "hex"),
+              Buffer.from(valueHex, "hex"),
+            )
+          : Data.from(deep.proofCbor, Proof),
     };
   return Object.freeze({
     header,

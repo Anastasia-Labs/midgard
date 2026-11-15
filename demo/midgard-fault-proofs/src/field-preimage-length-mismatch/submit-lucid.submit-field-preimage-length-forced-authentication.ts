@@ -1,3 +1,4 @@
+import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import {
   type CommittedFieldClaim,
   FieldPreimageLengthStep02RedeemerSchema,
@@ -11,6 +12,7 @@ import {
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -32,61 +34,73 @@ import {
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import type { PreparedFieldPreimageLengthWorkflow } from "./workflow.js";
 
-export const submitFieldPreimageLengthForcedAuthentication = async ({
+type ForcedMembership = RootMembershipProof<
+  OutputReference,
+  ForcedInclusionTxV1
+>;
+
+type ForcedLayout = {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+};
+
+const forcedSubject = (membership: ForcedMembership) => {
+  const verdict = membership.value.verdict;
+  const rejectionReason =
+    verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason;
+  return {
+    rejectionReason,
+    subject: forcedVerdictSubject({
+      transactionId: membership.value.tx_id,
+      sourceKey: membership.key,
+      rejectionReason,
+    }),
+  };
+};
+
+/**
+ * Forced step 02 to the terminal: spends the pending thread with the redeemer
+ * `args` builds from the transaction's layout and writes `step_03.State`.
+ */
+const submitForcedStep02 = async ({
   config,
   threadOutRef,
-  header,
-  membership,
-  claim,
-  claimResolver,
-  prepared,
-  carriageReferenceInputs = [],
+  state,
+  args,
+  carriageReferenceInputs,
   preSubmitBoundary,
-  awaitConfirmation = true,
+  awaitConfirmation,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly header: Header;
-  readonly membership: RootMembershipProof<
-    OutputReference,
-    ForcedInclusionTxV1
-  >;
-  readonly claim?: CommittedFieldClaim;
-  readonly claimResolver?: FieldPreimageLengthClaimResolver;
-  readonly prepared: PreparedFieldPreimageLengthWorkflow;
-  readonly carriageReferenceInputs?: readonly UTxO[];
+  readonly state: {
+    readonly subject: VerdictSubject;
+    readonly fieldIndex: bigint;
+    readonly declaredLength: bigint;
+    readonly actualLength: bigint;
+  };
+  readonly args: (
+    layout: ForcedLayout,
+    referenceInputs: Parameters<BuildTxWithRedeemer>[0]["referenceInputs"],
+  ) => unknown;
+  readonly carriageReferenceInputs: readonly UTxO[];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
+  readonly awaitConfirmation: boolean;
 }): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
     stepIndex: 2,
   });
-  const verdict = membership.value.verdict;
-  const rejectionReason =
-    verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason;
-  if (
-    prepared.transactionId !== membership.value.tx_id ||
-    (prepared.direction === "wrongfulAcceptance" ? 0n : 1n) !==
-      (rejectionReason === null ? 0n : 1n)
-  ) {
-    throw new Error(`${LABEL}: forced leaf differs from admitted evidence`);
-  }
-  const subject = forcedVerdictSubject({
-    transactionId: membership.value.tx_id,
-    sourceKey: membership.key,
-    rejectionReason,
-  });
   const terminal = config.contracts.fieldPreimageLengthMismatch.steps[3];
   const datum = Data.to(
     {
       fraud_prover: config.signer.paymentKeyHash,
       data: {
-        subject,
-        field_index: BigInt(prepared.fieldIndex),
-        declared_length: BigInt(prepared.declaredLength),
-        actual_length: BigInt(prepared.actualLength),
+        subject: state.subject,
+        field_index: state.fieldIndex,
+        declared_length: state.declaredLength,
+        actual_length: state.actualLength,
       },
     } as never,
     FieldPreimageLengthStep03DatumSchema as never,
@@ -96,13 +110,8 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
     datum,
     unit: threadToken.unit,
   });
-  let layout:
-    | { readonly inputIndex: bigint; readonly outputIndex: bigint }
-    | undefined;
+  let layout: ForcedLayout | undefined;
   const redeemer = ((ctx) => {
-    // §8.7 carriage indices count into the built reference-input set.
-    const resolvedClaim =
-      claimResolver === undefined ? claim! : claimResolver(ctx.referenceInputs);
     requireOwnSpendPurpose(ctx, threadUtxo, `${LABEL} forced auth`);
     layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, LABEL),
@@ -113,19 +122,7 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
       ),
     };
     return Data.to(
-      {
-        Continue: [
-          {
-            AuthenticateForced: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-              header,
-              membership: forcedLeafMembershipV1(membership),
-              claim: resolvedClaim,
-            },
-          },
-        ],
-      } as never,
+      { Continue: [args(layout, ctx.referenceInputs)] } as never,
       FieldPreimageLengthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -134,9 +131,6 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
     expectedHash: step.spendingScriptHash,
     role: "forced step-02",
   });
-  const completeReferences = [reference, ...carriageReferenceInputs];
-  if (claimResolver === undefined && claim === undefined)
-    throw new Error(`${LABEL}: forced authentication omitted field claim`);
   const funding = await fundStep(config.lucid, { signer: config.signer });
   const signed = await completeStep(
     funding.tx
@@ -146,11 +140,11 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
         { kind: "inline", value: datum },
         { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadToken.unit]: 1n },
       )
-      .readFrom(completeReferences),
+      .readFrom([reference, ...carriageReferenceInputs]),
     funding,
   );
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
-  const resolved = layout;
+  const resolved: ForcedLayout = layout;
   const txHash = await submitStep(config.lucid, signed, {
     label: `${LABEL} step-03`,
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
@@ -173,4 +167,116 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),
   };
+};
+
+export const submitFieldPreimageLengthForcedAuthentication = async ({
+  config,
+  threadOutRef,
+  header,
+  membership,
+  claim,
+  claimResolver,
+  prepared,
+  carriageReferenceInputs = [],
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
+  readonly threadOutRef: string;
+  readonly header: Header;
+  readonly membership: ForcedMembership;
+  readonly claim?: CommittedFieldClaim;
+  readonly claimResolver?: FieldPreimageLengthClaimResolver;
+  readonly prepared: PreparedFieldPreimageLengthWorkflow;
+  readonly carriageReferenceInputs?: readonly UTxO[];
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+  const { subject, rejectionReason } = forcedSubject(membership);
+  if (
+    prepared.transactionId !== membership.value.tx_id ||
+    (prepared.direction === "wrongfulAcceptance" ? 0n : 1n) !==
+      (rejectionReason === null ? 0n : 1n)
+  ) {
+    throw new Error(`${LABEL}: forced leaf differs from admitted evidence`);
+  }
+  if (claimResolver === undefined && claim === undefined)
+    throw new Error(`${LABEL}: forced authentication omitted field claim`);
+  return await submitForcedStep02({
+    config,
+    threadOutRef,
+    state: {
+      subject,
+      fieldIndex: BigInt(prepared.fieldIndex),
+      declaredLength: BigInt(prepared.declaredLength),
+      actualLength: BigInt(prepared.actualLength),
+    },
+    // §8.7 carriage indices count into the built reference-input set.
+    args: (layout, referenceInputs) => ({
+      AuthenticateForced: {
+        input_index: layout.inputIndex,
+        output_index: layout.outputIndex,
+        header,
+        membership: forcedLeafMembershipV1(membership),
+        claim:
+          claimResolver === undefined ? claim! : claimResolver(referenceInputs),
+      },
+    }),
+    carriageReferenceInputs,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+};
+
+/**
+ * Forced step 02 for a rejection whose `FieldPreimageLengthMismatch` names a
+ * field outside the native transaction's layout: no field is opened, the
+ * terminal state records that field with zero lengths, and the terminal holds
+ * no fault there, so the rejection is contradicted.
+ */
+export const submitFieldPreimageLengthForcedOutOfDomain = async ({
+  config,
+  threadOutRef,
+  header,
+  membership,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
+  readonly threadOutRef: string;
+  readonly header: Header;
+  readonly membership: ForcedMembership;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+  const { subject, rejectionReason } = forcedSubject(membership);
+  if (
+    rejectionReason === null ||
+    typeof rejectionReason !== "object" ||
+    !("FieldPreimageLengthMismatch" in rejectionReason)
+  )
+    throw new Error(
+      `${LABEL}: forced leaf does not reject with a field-length mismatch`,
+    );
+  const fieldIndex = rejectionReason.FieldPreimageLengthMismatch.field_index;
+  if (fieldIndex >= 0n && fieldIndex < BigInt(MIDGARD_FIELD_COUNT))
+    throw new Error(
+      `${LABEL}: field ${fieldIndex.toString()} is inside the native layout`,
+    );
+  return await submitForcedStep02({
+    config,
+    threadOutRef,
+    state: { subject, fieldIndex, declaredLength: 0n, actualLength: 0n },
+    args: (layout) => ({
+      AuthenticateForcedOutOfDomain: {
+        input_index: layout.inputIndex,
+        output_index: layout.outputIndex,
+        header,
+        membership: forcedLeafMembershipV1(membership),
+      },
+    }),
+    carriageReferenceInputs: [],
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
 };

@@ -89,6 +89,8 @@ export const setup = async ({
       : await buildFieldPreimageLengthForcedFixture({
           ...(await operator()),
           verdict: forcedLeaf.verdict,
+          rejectedFieldIndex: forcedLeaf.rejectedFieldIndex,
+          proofDepth: forcedLeaf.proofDepth,
           ...(forcedLeaf.mismatch
             ? {
                 lengthsMutation: (lengths: number[]) => [

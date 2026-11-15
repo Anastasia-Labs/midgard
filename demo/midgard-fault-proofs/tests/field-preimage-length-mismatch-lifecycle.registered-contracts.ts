@@ -181,9 +181,13 @@ export type SetupOptions = Readonly<{
    * `verdict` is the operator's, and `mismatch` overstates field 0 by one
    * byte in the committed length vector. Reconstruction refuses such a
    * payload, so these leaves never come out of `reconstructDaPayload`.
+   * A rejection names `rejectedFieldIndex` (field 0 by default), and
+   * `proofDepth` commits the leaf under a membership proof that deep.
    */
   forcedLeaf?: {
     readonly verdict: "rejected" | "valid";
     readonly mismatch: boolean;
+    readonly rejectedFieldIndex?: bigint;
+    readonly proofDepth?: number;
   };
 }>;

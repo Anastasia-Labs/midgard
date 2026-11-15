@@ -23,7 +23,10 @@ export {
   type SubmitFieldPreimageLengthForcedDispatchResult,
   submitFieldPreimageLengthInit,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
-export { submitFieldPreimageLengthForcedAuthentication } from "./submit-lucid.submit-field-preimage-length-forced-authentication.js";
+export {
+  submitFieldPreimageLengthForcedAuthentication,
+  submitFieldPreimageLengthForcedOutOfDomain,
+} from "./submit-lucid.submit-field-preimage-length-forced-authentication.js";
 export {
   FIELD_PREIMAGE_LENGTH_INIT_DATUM_SCHEMA,
   submitFieldPreimageLengthTerminal,
