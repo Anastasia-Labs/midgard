@@ -12,7 +12,10 @@ import { submitNativeScriptInvalidStep03StartSignerScan } from "../src/native-sc
 import { submitNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
 import { submitNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../src/workflow/own-outputs.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
@@ -21,6 +24,98 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+
+/**
+ * Publishes field `fieldIndex` of the setup's forced transaction and, when
+ * its tier is certified, mints the field's certificate.
+ */
+export const publishNativeScriptFieldCarriage = async (
+  f: Awaited<ReturnType<typeof setup>>,
+  ownOutputs: OwnOutputJournal,
+  fieldIndex: number,
+  items: readonly Uint8Array[],
+) => {
+  const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 1n,
+    fieldIndex,
+    anchorTxId: f.state.bad_tx_id,
+    nativeTxCompactCbor: f.common.nativeTxCompactCbor,
+    itemCbors: items,
+    owner: f.h.proverSigner.paymentKeyHash,
+    publish: true,
+    witnessSet: f.common.witnessSet,
+    anchorWitnessSetHash: f.state.bad_tx_witness_set_hash,
+    label: "native-script maximum field",
+  });
+  const chunks = await publishFaultProofFieldCarriage({
+    ownOutputs,
+    lucid: f.h.proverLucid,
+    signer: f.h.proverSigner,
+    planned,
+    publisherAddress: f.h.proverSigner.address,
+    label: "native-script field",
+  });
+  if (planned.plan.tier !== "Certified")
+    return { publishedCarriageUtxos: chunks };
+  const ref = await publishPlainReferenceScriptUtxo({
+    lucid: f.h.funderLucid,
+    script: f.h.contracts.fieldPreimageCertificate.mintingScript,
+    label: "native-script field certificate",
+  });
+  const certified = await certifyFaultProofFieldCarriage({
+    ownOutputs,
+    lucid: f.h.proverLucid,
+    network,
+    signer: f.h.proverSigner,
+    planned,
+    certificatePolicyId: f.h.contracts.fieldPreimageCertificate.policyId,
+    certificateMintingScript:
+      f.h.contracts.fieldPreimageCertificate.mintingScript,
+    certificateReferenceScriptUtxo: ref.utxo,
+    chunkUtxos: chunks,
+    compactCbor: f.common.nativeTxCompactCbor,
+    witnessSetCompactCbor: f.proofSource.witnessSetCompactCbor.toString("hex"),
+  });
+  return {
+    publishedCarriageUtxos: chunks,
+    certificateUtxo: certified.certificateUtxo,
+  };
+};
+
+/**
+ * Removes the seeded fraudulent block with the minted proof and checks the
+ * proof token stays at the fraud-proof address.
+ */
+export const removeBlockKeepingProof = async (
+  f: Awaited<ReturnType<typeof setup>>,
+  fraudProofUnit: string,
+): Promise<void> => {
+  const removal = await publishRemovalReferenceScripts({
+    lucid: f.h.proverLucid,
+    contracts: f.h.contracts,
+  });
+  const now = BigInt(f.h.emulator.now());
+  await submitRemoveFraudulentBlock({
+    lucid: f.h.proverLucid,
+    blueprint: f.h.realBlueprint,
+    deploymentInfo: buildRemovalDeploymentInfo(f.h.contracts, f.h.catalogue, {
+      removalReferenceScripts: removal.published,
+    }),
+    network,
+    signer: f.h.proverSigner,
+    fraudCategory: "nativeScriptInvalid",
+    fraudulentHeaderHash: f.seeded.headerHash,
+    requireReferenceScripts: true,
+    validFrom: now > 120000n ? now - 120000n : 0n,
+    validTo: now + 300000n,
+  });
+  expect(
+    await f.h.proverLucid.utxosAtWithUnit(
+      f.h.family.fraudProof.spendingScriptAddress,
+      fraudProofUnit,
+    ),
+  ).toHaveLength(1);
+};
 
 export const run = async (
   f: Awaited<ReturnType<typeof setup>>,
@@ -54,59 +149,15 @@ export const run = async (
     ).toHaveLength(0);
   };
   let threadOutRef = bound.nextThreadOutRef;
-  const prepareField = async (
-    fieldIndex: number,
-    items: readonly Uint8Array[],
-  ) => {
-    const planned = planFaultProofFieldOpening({
-      anchorSourceKind: 1n,
-      fieldIndex,
-      anchorTxId: f.state.bad_tx_id,
-      nativeTxCompactCbor: f.common.nativeTxCompactCbor,
-      itemCbors: items,
-      owner: f.h.proverSigner.paymentKeyHash,
-      publish: true,
-      witnessSet: f.common.witnessSet,
-      anchorWitnessSetHash: f.state.bad_tx_witness_set_hash,
-      label: "native-script maximum field",
-    });
-    const chunks = await publishFaultProofFieldCarriage({
-      ownOutputs,
-      lucid: f.h.proverLucid,
-      signer: f.h.proverSigner,
-      planned,
-      publisherAddress: f.h.proverSigner.address,
-      label: "native-script field",
-    });
-    if (planned.plan.tier !== "Certified")
-      return { publishedCarriageUtxos: chunks };
-    const ref = await publishPlainReferenceScriptUtxo({
-      lucid: f.h.funderLucid,
-      script: f.h.contracts.fieldPreimageCertificate.mintingScript,
-      label: "native-script field certificate",
-    });
-    const certified = await certifyFaultProofFieldCarriage({
-      ownOutputs,
-      lucid: f.h.proverLucid,
-      network,
-      signer: f.h.proverSigner,
-      planned,
-      certificatePolicyId: f.h.contracts.fieldPreimageCertificate.policyId,
-      certificateMintingScript:
-        f.h.contracts.fieldPreimageCertificate.mintingScript,
-      certificateReferenceScriptUtxo: ref.utxo,
-      chunkUtxos: chunks,
-      compactCbor: f.common.nativeTxCompactCbor,
-      witnessSetCompactCbor:
-        f.proofSource.witnessSetCompactCbor.toString("hex"),
-    });
-    return {
-      publishedCarriageUtxos: chunks,
-      certificateUtxo: certified.certificateUtxo,
-    };
-  };
-  const scriptCarriage = await prepareField(6, f.scripts);
-  const signerCarriage = await prepareField(
+  const scriptCarriage = await publishNativeScriptFieldCarriage(
+    f,
+    ownOutputs,
+    6,
+    f.scripts,
+  );
+  const signerCarriage = await publishNativeScriptFieldCarriage(
+    f,
+    ownOutputs,
     7,
     f.witnesses.map((w) => w.item),
   );
@@ -191,29 +242,5 @@ export const run = async (
     if (proof === undefined)
       throw new Error("script lifecycle did not finalize");
   }
-  const removal = await publishRemovalReferenceScripts({
-    lucid: f.h.proverLucid,
-    contracts: f.h.contracts,
-  });
-  const now = BigInt(f.h.emulator.now());
-  await submitRemoveFraudulentBlock({
-    lucid: f.h.proverLucid,
-    blueprint: f.h.realBlueprint,
-    deploymentInfo: buildRemovalDeploymentInfo(f.h.contracts, f.h.catalogue, {
-      removalReferenceScripts: removal.published,
-    }),
-    network,
-    signer: f.h.proverSigner,
-    fraudCategory: "nativeScriptInvalid",
-    fraudulentHeaderHash: f.seeded.headerHash,
-    requireReferenceScripts: true,
-    validFrom: now > 120000n ? now - 120000n : 0n,
-    validTo: now + 300000n,
-  });
-  expect(
-    await f.h.proverLucid.utxosAtWithUnit(
-      f.h.family.fraudProof.spendingScriptAddress,
-      proof.fraudProofUnit,
-    ),
-  ).toHaveLength(1);
+  await removeBlockKeepingProof(f, proof.fraudProofUnit);
 };

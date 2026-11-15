@@ -99,7 +99,8 @@ export const NativeScriptInvalidStep03StateSchema = Data.Object({
   subject: NativeScriptInvalidVerdictSubjectSchema,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
-  script_item_hash: H32Schema,
+  /** The selected script's commitment, or empty for a script field 6 lacks. */
+  script_item_hash: Data.Bytes({ maxLength: 32 }),
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
 });

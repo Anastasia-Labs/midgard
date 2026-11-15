@@ -35,6 +35,7 @@ import {
 } from "./contracts.js";
 import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
 import { assertNativeScriptInvalidDirectRoute } from "./evidence-machine.js";
+import { NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH } from "./submit-step-02.js";
 
 type State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep03DatumSchema>["data"]
@@ -191,6 +192,76 @@ export const submitNativeScriptInvalidStep03 = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
+    witnessReferenceScripts,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+};
+
+/**
+ * Closes the absent-script state step 02 wrote for a rejection naming a
+ * script position field 6 does not have. No script is evaluated: canonical
+ * validation evaluates none there, so the rejection is contradicted.
+ */
+export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: NativeScriptInvalidContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const stepIndex = 2;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: FAMILY,
+    stepIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepState<State>({
+    threadUtxo,
+    signer,
+    schema: Datum,
+    family: FAMILY,
+    stepIndex,
+  });
+  if (state.script_item_hash !== NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH)
+    throw new Error(`${FAMILY}: thread carries a selected script`);
+  signer.selectWallet(lucid);
+  return await submitLinearFaultFinalize({
+    lucid,
+    family: FAMILY,
+    stepIndex,
+    step: contracts.steps[stepIndex],
+    computationThread: contracts.computationThread,
+    fraudProof: contracts.fraudProof,
+    signer,
+    threadUtxo,
+    threadToken,
+    spendRedeemerSchema: Redeemer,
+    buildFamilyArgs: (layout) => ({
+      AbsentFinalize: {
+        input_index: layout.inputIndex,
+        output_index: layout.outputIndex,
+        fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+      },
+    }),
+    referenceScriptUtxo,
     witnessReferenceScripts,
     preSubmitBoundary,
     awaitConfirmation,

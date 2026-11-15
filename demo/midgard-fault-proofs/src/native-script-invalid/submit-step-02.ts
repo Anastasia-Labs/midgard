@@ -8,6 +8,7 @@ import {
   NativeScriptInvalidStep03DatumSchema,
   nativeScriptItemCommitment,
   type NativeTxWitnessSetCompact,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -56,6 +57,12 @@ import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
 } from "./contracts.js";
+
+/**
+ * The step 03 `script_item_hash` of a script position field 6 does not have
+ * (`rule.absent_script_item_hash`): a selected script's hash is 32 bytes.
+ */
+export const NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH = "";
 
 type Step02State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep02DatumSchema>["data"]
@@ -132,11 +139,21 @@ export const submitNativeScriptInvalidStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const item = scriptWitnessItems[Number(scriptIndex)];
-  if (scriptIndex < 0n || item === undefined) {
+  // A rejection naming a script position field 6 does not have has no script
+  // to evaluate: a negative position closes at once, and one past the field's
+  // last witness is closed by the field's count.
+  const negative = scriptIndex < 0n;
+  const item = negative ? undefined : scriptWitnessItems[Number(scriptIndex)];
+  const absent =
+    item === undefined &&
+    state.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
+  if (item === undefined && !absent) {
     throw new Error(`${label}: script index is outside field 6`);
   }
-  if (decodeMidgardVersionedScript(item).language !== "NativeCardano") {
+  if (
+    item !== undefined &&
+    decodeMidgardVersionedScript(item).language !== "NativeCardano"
+  ) {
     throw new Error(`${label}: selected witness is not a native script`);
   }
   const planned = planFaultProofFieldOpening({
@@ -169,14 +186,21 @@ export const submitNativeScriptInvalidStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const requiresScan =
-    planned.plan.tier === "Certified" || scriptWitnessItems.length > 32;
+  // The absent close past the field reads the count of a directly opened
+  // field, or of the certified walk once a certified field's grammar is
+  // complete; a negative position reads no count.
+  const requiresScan = absent
+    ? !negative && planned.plan.tier === "Certified" && !state.grammar_complete
+    : planned.plan.tier === "Certified" || scriptWitnessItems.length > 32;
   let nextStep = 2;
   let nextState: Step02State | NonNullable<Step03Datum["data"]> = {
     subject: state.subject,
     bad_tx_id: state.bad_tx_id,
     bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
-    script_item_hash: nativeScriptItemCommitment(item),
+    script_item_hash:
+      item === undefined
+        ? NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH
+        : nativeScriptItemCommitment(item),
     validity_interval_start: state.validity_interval_start,
     validity_interval_end: state.validity_interval_end,
   };
@@ -192,6 +216,23 @@ export const submitNativeScriptInvalidStep02 = async ({
       label: `${label} field 6`,
     });
     const indices = { input_index, output_index };
+    if (absent && !requiresScan)
+      return {
+        SelectAbsentScript: {
+          ...indices,
+          script_index: scriptIndex,
+          script_tx_wits_opening: opening,
+          grammar_checkpoint_bytes: state.grammar_complete
+            ? encodeFieldGrammarCheckpoint(
+                resolveFieldGrammarCheckpoint({
+                  txId: state.bad_tx_id,
+                  items: scriptWitnessItems,
+                  committedHash: state.grammar_checkpoint_hash,
+                }),
+              ).toString("hex")
+            : "",
+        },
+      };
     if (!requiresScan)
       return {
         Args: {
@@ -365,7 +406,7 @@ export const submitNativeScriptInvalidStep02 = async ({
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
-    scriptItemCbor: Buffer.from(item).toString("hex"),
+    scriptItemCbor: item === undefined ? "" : Buffer.from(item).toString("hex"),
     carriageTier: planned.plan.tier,
     nextStepIndex: nextStep,
   };
