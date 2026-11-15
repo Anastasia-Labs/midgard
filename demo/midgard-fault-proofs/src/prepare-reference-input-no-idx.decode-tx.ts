@@ -185,7 +185,9 @@ export const parseBadReferenceInputIndex = (
  * Complete same-block scan used by the sealed production replay bundle. A
  * reference input whose producer is absent belongs to `noReferenceInput`; only
  * an out-of-range index into a producer committed by this same block is
- * emitted here.
+ * emitted here. Steps 01 and 03 bind only accepted (TxIsValid) transactions,
+ * so both the reader and the producer must be accepted for the finding to be
+ * provable.
  */
 export const detectReferenceInputNoIdxViolationsFromTransactions = (
   transactions: readonly NodeTransactionPayload[],
@@ -194,12 +196,17 @@ export const detectReferenceInputNoIdxViolationsFromTransactions = (
   const byId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
   const detections: ReferenceInputNoIdxDetectedViolation[] = [];
   for (const [badTxIndex, badTx] of decoded.entries()) {
+    if (badTx.nativeTxCompact.validity_code !== 0n) continue;
     for (const [
       badReferenceInputIndex,
       input,
     ] of badTx.referenceInputs.entries()) {
       const producingTx = byId.get(input.tx_id);
-      if (producingTx === undefined) continue;
+      if (
+        producingTx === undefined ||
+        producingTx.nativeTxCompact.validity_code !== 0n
+      )
+        continue;
       if (input.output_index < producingTx.outputsPreimageCbor.length) continue;
       detections.push(
         Object.freeze({

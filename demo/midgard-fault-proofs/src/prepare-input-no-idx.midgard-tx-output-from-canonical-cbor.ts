@@ -211,6 +211,8 @@ export type InputNoIdxDetectedViolation = Readonly<{
  * Complete same-block scan used by the sealed production replay bundle. An
  * input whose producer is absent belongs to `nonExistentInput`; only an
  * out-of-range index into a producer committed by this same block is emitted.
+ * Steps 01 and 03 bind only accepted (TxIsValid) transactions, so both the
+ * spender and the producer must be accepted for the finding to be provable.
  */
 export const detectInputNoIdxViolationsFromTransactions = async (
   transactions: readonly NodeTransactionPayload[],
@@ -221,9 +223,14 @@ export const detectInputNoIdxViolationsFromTransactions = async (
   const byTxId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
   const detections: InputNoIdxDetectedViolation[] = [];
   for (const [badTxIndex, badTx] of decoded.entries()) {
+    if (badTx.nativeTxCompact.validity_code !== 0n) continue;
     for (const [badInputsIndex, badInput] of spendInputsOf(badTx).entries()) {
       const producingTx = byTxId.get(badInput.tx_id);
-      if (producingTx === undefined) continue;
+      if (
+        producingTx === undefined ||
+        producingTx.nativeTxCompact.validity_code !== 0n
+      )
+        continue;
       const producingTxOutputCount = nativeOutputItems(producingTx).length;
       if (
         SDK.isInputNoIdxViolation({

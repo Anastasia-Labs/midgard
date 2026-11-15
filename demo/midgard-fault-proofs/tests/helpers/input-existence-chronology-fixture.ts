@@ -70,6 +70,8 @@ export type InputChronology = (typeof inputChronologies)[number];
  * transactions, the second spending the input the first spent, and then the
  * forced target, after them in step order. */
 export type RefusedInputChronology = "forced_after_failed_normal";
+/** `normal_creator`, but the target names the creator's absent output 1. */
+export type MissingIndexChronology = "normal_creator_missing_index";
 /** A committed withdrawal: its event key, withdrawals-root entry and ledger
  * effect, each as block production derives it. */
 export type CommittedChronologyWithdrawal = Readonly<{
@@ -88,7 +90,7 @@ const PROVENANCE = {
 } as const;
 
 export const inputExistenceChronologyFixture = async (
-  scenario: InputChronology | RefusedInputChronology,
+  scenario: InputChronology | RefusedInputChronology | MissingIndexChronology,
   field: 0 | 1,
   executionHeader?: Readonly<{
     operatorVkey: string;
@@ -121,9 +123,9 @@ export const inputExistenceChronologyFixture = async (
   });
   const created = encodeMidgardSpendInputItem({
     txId: Buffer.from(creator.txId, "hex"),
-    outputIndex: 0,
+    outputIndex: scenario === "normal_creator_missing_index" ? 1 : 0,
   });
-  const usesCreated = scenario.endsWith("creator");
+  const usesCreated = scenario.includes("creator");
   const deposit = chronologyDeposit(SAME_BLOCK_DEPOSIT_BYTE);
   const selected = usesCreated
     ? created
@@ -296,7 +298,8 @@ export const inputExistenceChronologyFixture = async (
   if (scenario === "forced_creator" || scenario === "rejected_creator")
     await forcedTx(creator, [seed], [output], scenario === "rejected_creator");
   if (scenario === "forced_spend") await forcedTx(consumer, [seed], []);
-  if (scenario === "normal_creator") await normal(creator, [seed], [output]);
+  if (scenario.startsWith("normal_creator"))
+    await normal(creator, [seed], [output]);
   if (scenario === "normal_spend") await normal(consumer, [seed], []);
   if (scenario === "forced_after_failed_normal") {
     await normal(creator, [seed], [output]);

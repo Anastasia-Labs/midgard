@@ -194,6 +194,28 @@ paths share the same predicate.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/native-script-invalid).
 
+## Out-of-range output index faults
+
+`nonExistentInputNoIndex` (spend input) and `referenceInputNoIdx` (reference
+input) prove that an accepted transaction names an output index at or past the
+end of a producing transaction's outputs, where the producer is committed by
+the same block. Both the naming transaction and the producer must be accepted
+(`TxIsValid`). An in-range index, or a TxIsInvalid transaction on either side,
+cannot convict.
+
+Such an output never existed, so it is also absent from the event's pre-state
+ledger: `nonExistentInput` or `noReferenceInput` finds it at the same event.
+The watcher reports the NoIdx family there (owner ruling 2026-11-15,
+[decision 0010](decisions/0010-no-idx-owns-same-block-missing-index.md);
+`FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE` in
+[the classifier](../../demo/midgard-fault-proofs/src/workflow/classification.classify-canonical-block-violations.ts)).
+Both families slash the same block. This one needs no ledger proof. An input
+absent from the ledger with no same-block producer stays with the
+ledger-absence family.
+
+[Validator sources](../../onchain/aiken/validators/fraud-proofs/input-no-idx),
+[reference input](../../onchain/aiken/validators/fraud-proofs/reference-input-no-idx).
+
 ## Value-not-preserved fault
 
 An operator-accepted committed transaction fails value preservation for at

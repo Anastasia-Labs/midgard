@@ -253,6 +253,8 @@ describe("history transaction fixtures on a predecessor with a Preprod stack's f
         expect(full.decision.decision).toBe(
           honest ? "healthy" : "fault_detected",
         );
+        if (full.decision.decision === "fault_detected")
+          expect(full.decision.category).toBe(category);
       }
     },
     120_000,

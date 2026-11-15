@@ -15,13 +15,22 @@ import {
   buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-const evidenceFor = async ({ violating }: { readonly violating: boolean }) => {
+const evidenceFor = async ({
+  violating,
+  rejected,
+}: {
+  readonly violating: boolean;
+  /** Which transaction the block commits as TxIsInvalid, if either. */
+  readonly rejected?: "producer" | "consumer";
+}) => {
   const producer = buildFixtureTransaction({
+    validity: rejected === "producer" ? "TxIsInvalid" : "TxIsValid",
     spendInputs: [],
     outputs: violating ? [] : [Buffer.from("80", "hex")],
     fee: 1n,
   });
   const consumer = buildFixtureTransaction({
+    validity: rejected === "consumer" ? "TxIsInvalid" : "TxIsValid",
     spendInputs: [
       encodeMidgardSpendInputItem({
         txId: Buffer.from(producer.txId, "hex"),
@@ -129,4 +138,17 @@ describe("production input-no-idx complete replay V1", () => {
         .detections,
     ).toEqual([]);
   });
+
+  // Steps 01 and 03 bind only an accepted transaction, so a finding that
+  // names a TxIsInvalid one could never be proved.
+  it.each(["producer", "consumer"] as const)(
+    "does not claim an out-of-range input when the %s is TxIsInvalid",
+    async (rejected) => {
+      const evidence = await evidenceFor({ violating: true, rejected });
+      expect(
+        (await INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(evidence))
+          .detections,
+      ).toEqual([]);
+    },
+  );
 });

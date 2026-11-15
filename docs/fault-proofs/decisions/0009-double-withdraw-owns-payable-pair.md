@@ -21,9 +21,10 @@ the leaf (five steps). The shorter proof wins.
 
 - The precedence applies only between findings at the same event. A fault at an
   earlier event, including a mistag on the pair's earlier leaf, still wins.
-- Only these two adjacent families swap. Every other family keeps its catalogue
-  order. The catalogue order itself is unchanged, because deployment identity is
-  derived from it.
+- This decision swaps only these two adjacent families.
+  [0010](0010-no-idx-owns-same-block-missing-index.md) swaps two more pairs.
+  Every other family keeps its catalogue order. The catalogue order itself is
+  unchanged, because deployment identity is derived from it.
 - A mistagged leaf that is not the later half of a payable same-output pair has
   no `doubleWithdraw` finding, so it stays `withdrawalMistag`.
 - This is a watcher-only change. No validator or deployment parameter changes.

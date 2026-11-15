@@ -38,19 +38,40 @@ const classificationByViolationId = new Map<
  * slash the same block. A mistagged leaf that is not the later half of such a
  * pair has no `doubleWithdraw` finding at its event, so it stays
  * `withdrawalMistag`.
+ *
+ * Decision 0010 (owner ruling 2026-11-15): `nonExistentInputNoIndex`
+ * ranks ahead of `nonExistentInput`, and `referenceInputNoIdx` ahead of
+ * `noReferenceInput`.
+ * An input or reference input whose output index is out of range for a
+ * producer committed by the same block is also absent from the event's
+ * pre-state ledger, so the ledger-absence family finds it at the same event.
+ * The watcher proves the out-of-range index, which needs no ledger proof. Both
+ * slash the same block. An absent input with no same-block producer has no
+ * NoIdx finding, so it stays with the ledger-absence family.
  */
+const OWNER_RULED_PROMOTIONS: readonly Readonly<{
+  promoted: FraudProofCatalogueCategoryName;
+  before: FraudProofCatalogueCategoryName;
+}>[] = [
+  { promoted: "doubleWithdraw", before: "withdrawalMistag" },
+  { promoted: "nonExistentInputNoIndex", before: "nonExistentInput" },
+  { promoted: "referenceInputNoIdx", before: "noReferenceInput" },
+];
+
 const FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE: readonly FraudProofCatalogueCategoryName[] =
   (() => {
     const order = [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER];
-    const promoted = order.indexOf("doubleWithdraw");
-    const before = order.indexOf("withdrawalMistag");
-    if (promoted < 0 || before < 0 || promoted < before) {
-      throw new Error(
-        "doubleWithdraw precedence does not match the catalogue order",
-      );
+    for (const { promoted, before } of OWNER_RULED_PROMOTIONS) {
+      const from = order.indexOf(promoted);
+      const to = order.indexOf(before);
+      if (from < 0 || to < 0 || from < to) {
+        throw new Error(
+          `${promoted} precedence does not match the catalogue order`,
+        );
+      }
+      order.splice(from, 1);
+      order.splice(to, 0, promoted);
     }
-    order.splice(promoted, 1);
-    order.splice(before, 0, "doubleWithdraw");
     return Object.freeze(order);
   })();
 
