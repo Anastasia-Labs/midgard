@@ -147,38 +147,23 @@ export type MintDeclaredAssetLimitFieldPlan = Pick<
   "items" | "initialGrammar" | "initialWalk" | "grammar" | "target"
 >;
 
-/**
- * The grammar certification and initial walk position of field 5 plus the
- * bound target header, without folding: the part of a plan that exists for
- * any authenticated field, foldable to completion or not.
- */
-export const planMintDeclaredAssetLimitField = ({
+export type MintDeclaredAssetLimitGrammarPlan = Pick<
+  MintDeclaredAssetLimitStagedPlan,
+  "items" | "initialGrammar" | "initialWalk" | "grammar"
+>;
+
+/** The grammar certification and initial walk position of field 5. */
+const planMintDeclaredGrammar = ({
   transactionId,
-  fieldPreimageCbor,
-  policyIndex,
-  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
+  items,
+  itemBudget,
 }: {
   readonly transactionId: string;
-  readonly fieldPreimageCbor: string;
-  readonly policyIndex: number;
-  readonly itemBudget?: number;
-}): MintDeclaredAssetLimitFieldPlan => {
+  readonly items: readonly Buffer[];
+  readonly itemBudget: number;
+}): MintDeclaredAssetLimitGrammarPlan => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget <= 0 || itemBudget > 24)
     throw new Error("mintDeclaredAssetLimit item budget must be in 1..24");
-  const items = decodeMidgardFieldPreimage(
-    Buffer.from(fieldPreimageCbor, "hex"),
-  ).map(Buffer.from);
-  const targetItem = items[policyIndex];
-  if (targetItem === undefined)
-    throw new Error(
-      "mintDeclaredAssetLimit policy coordinate is outside field 5",
-    );
-  const header = decodeMintDeclaredPolicyHeader(targetItem);
-  const target: MintDeclaredFoldTarget = Object.freeze({
-    policyIndex,
-    targetPolicyId: header.policyId.toString("hex"),
-    targetDeclaredCount: header.declaredCount,
-  });
   const initialGrammar = grammar5(
     initialFieldGrammarCheckpoint({
       txId: transactionId,
@@ -208,8 +193,67 @@ export const planMintDeclaredAssetLimitField = ({
     initialGrammar,
     initialWalk,
     grammar: Object.freeze(grammar),
+  });
+};
+
+/**
+ * The grammar certification and initial walk position of field 5 plus the
+ * bound target header, without folding: the part of a plan that exists for
+ * any authenticated field, foldable to completion or not.
+ */
+export const planMintDeclaredAssetLimitField = ({
+  transactionId,
+  fieldPreimageCbor,
+  policyIndex,
+  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
+}: {
+  readonly transactionId: string;
+  readonly fieldPreimageCbor: string;
+  readonly policyIndex: number;
+  readonly itemBudget?: number;
+}): MintDeclaredAssetLimitFieldPlan => {
+  const items = decodeMidgardFieldPreimage(
+    Buffer.from(fieldPreimageCbor, "hex"),
+  ).map(Buffer.from);
+  const targetItem = items[policyIndex];
+  if (targetItem === undefined)
+    throw new Error(
+      "mintDeclaredAssetLimit policy coordinate is outside field 5",
+    );
+  const header = decodeMintDeclaredPolicyHeader(targetItem);
+  const target: MintDeclaredFoldTarget = Object.freeze({
+    policyIndex,
+    targetPolicyId: header.policyId.toString("hex"),
+    targetDeclaredCount: header.declaredCount,
+  });
+  return Object.freeze({
+    ...planMintDeclaredGrammar({ transactionId, items, itemBudget }),
     target,
   });
+};
+
+/**
+ * The grammar certification of field 5 for a rejection naming a policy the
+ * field lacks: the count step 02 compares a coordinate past its last item
+ * against. A negative coordinate closes without it.
+ */
+export const planMintDeclaredAbsentPolicy = ({
+  transactionId,
+  fieldPreimageCbor,
+  policyIndex,
+  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
+}: {
+  readonly transactionId: string;
+  readonly fieldPreimageCbor: string;
+  readonly policyIndex: number;
+  readonly itemBudget?: number;
+}): MintDeclaredAssetLimitGrammarPlan => {
+  const items = decodeMidgardFieldPreimage(
+    Buffer.from(fieldPreimageCbor, "hex"),
+  ).map(Buffer.from);
+  if (policyIndex >= 0 && policyIndex < items.length)
+    throw new Error("mintDeclaredAssetLimit policy coordinate is in field 5");
+  return planMintDeclaredGrammar({ transactionId, items, itemBudget });
 };
 
 export const planMintDeclaredAssetLimitStagedWalk = ({

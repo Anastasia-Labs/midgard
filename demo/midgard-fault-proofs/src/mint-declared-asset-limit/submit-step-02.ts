@@ -42,6 +42,7 @@ import {
   MintDeclaredAssetLimitStep02DatumSchema,
   MintDeclaredAssetLimitStep02RedeemerSchema,
   MintDeclaredAssetLimitStep03DatumSchema,
+  MintDeclaredAssetLimitStep04DatumSchema,
 } from "./schemas.js";
 import {
   encodeMintDeclaredGrammarCheckpoint,
@@ -58,7 +59,13 @@ export type MintDeclaredAssetLimitStep02Action =
   | { readonly kind: "direct" }
   | { readonly kind: "grammar_start" }
   | { readonly kind: "grammar_resume"; readonly nextOrdinal: number }
-  | { readonly kind: "grammar_finish" };
+  | { readonly kind: "grammar_finish" }
+  /**
+   * Closes a rejection naming a policy field 5 lacks: a negative coordinate
+   * at once, and one past the field's last item from the directly opened
+   * field or, `fromGrammar`, from the certified walk.
+   */
+  | { readonly kind: "absent"; readonly fromGrammar: boolean };
 
 /** The redeemer-level shape of one step-02 action, checkpoint bytes included. */
 export type MintDeclaredAssetLimitStep02WireAction =
@@ -69,11 +76,13 @@ export type MintDeclaredAssetLimitStep02WireAction =
       readonly checkpointBytesHex: string;
       readonly itemBudget: bigint;
     }
-  | { readonly kind: "grammar_finish"; readonly checkpointBytesHex: string };
+  | { readonly kind: "grammar_finish"; readonly checkpointBytesHex: string }
+  | { readonly kind: "absent"; readonly checkpointBytesHex: string };
 
 export type MintDeclaredAssetLimitStep02Successor =
   | Readonly<{ kind: "grammar"; checkpointHash: string }>
-  | Readonly<{ kind: "fold"; checkpointHash: string }>;
+  | Readonly<{ kind: "fold"; checkpointHash: string }>
+  | Readonly<{ kind: "absent" }>;
 
 /** Resolves the published carriage (and certificate) for a planned opening. */
 export const resolveMintDeclaredFieldCarriage = async ({
@@ -160,7 +169,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   certificateUtxo,
   action,
   next,
-  nextStepIndex = next.kind === "fold" ? 2 : 1,
+  nextStepIndex = next.kind === "fold" ? 2 : next.kind === "absent" ? 3 : 1,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -219,31 +228,39 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     stepIndex,
   });
   const nextData =
-    next.kind === "fold"
-      ? mintDeclaredFoldStateData({
+    next.kind === "absent"
+      ? {
           subject: evidence.subject,
-          target: {
-            policyIndex: evidence.policyIndex,
-            targetPolicyId: evidence.targetPolicyId,
-            targetDeclaredCount: evidence.targetDeclaredCount,
-          },
-          cursor: initialMintDeclaredFoldCursor(),
-          checkpointHash: next.checkpointHash,
-        })
-      : {
-          Grammar: {
-            bound: {
-              subject: evidence.subject,
-              policy_index: BigInt(evidence.policyIndex),
+          policy_index: BigInt(evidence.policyIndex),
+          crossing: false,
+        }
+      : next.kind === "fold"
+        ? mintDeclaredFoldStateData({
+            subject: evidence.subject,
+            target: {
+              policyIndex: evidence.policyIndex,
+              targetPolicyId: evidence.targetPolicyId,
+              targetDeclaredCount: evidence.targetDeclaredCount,
             },
-            checkpoint_hash: next.checkpointHash,
-          },
-        };
+            cursor: initialMintDeclaredFoldCursor(),
+            checkpointHash: next.checkpointHash,
+          })
+        : {
+            Grammar: {
+              bound: {
+                subject: evidence.subject,
+                policy_index: BigInt(evidence.policyIndex),
+              },
+              checkpoint_hash: next.checkpointHash,
+            },
+          };
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
-    (next.kind === "fold"
-      ? MintDeclaredAssetLimitStep03DatumSchema
-      : MintDeclaredAssetLimitStep02DatumSchema) as never,
+    (next.kind === "absent"
+      ? MintDeclaredAssetLimitStep04DatumSchema
+      : next.kind === "fold"
+        ? MintDeclaredAssetLimitStep03DatumSchema
+        : MintDeclaredAssetLimitStep02DatumSchema) as never,
   );
   const nextStep = contracts.steps[nextStepIndex];
   const outputMatches = computationThreadOutputPredicate({
@@ -282,12 +299,19 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
                   item_budget: action.itemBudget,
                 },
               }
-            : {
-                FinishGrammar: {
-                  ...common,
-                  checkpoint_bytes: action.checkpointBytesHex,
-                },
-              };
+            : action.kind === "grammar_finish"
+              ? {
+                  FinishGrammar: {
+                    ...common,
+                    checkpoint_bytes: action.checkpointBytesHex,
+                  },
+                }
+              : {
+                  AuthenticateAbsent: {
+                    ...common,
+                    checkpoint_bytes: action.checkpointBytesHex,
+                  },
+                };
     return Data.to(
       { Continue: [familyAction] } as never,
       MintDeclaredAssetLimitStep02RedeemerSchema as never,
@@ -320,7 +344,10 @@ export const mintDeclaredStep02WirePlan = ({
   staged,
   action,
 }: {
-  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly staged: Pick<
+    MintDeclaredAssetLimitStagedPlan,
+    "grammar" | "initialWalk"
+  >;
   readonly action: MintDeclaredAssetLimitStep02Action;
 }): {
   readonly action: MintDeclaredAssetLimitStep02WireAction;
@@ -333,6 +360,18 @@ export const mintDeclaredStep02WirePlan = ({
   } as const;
   if (action.kind === "direct")
     return { action: { kind: "direct" }, next: fold };
+  if (action.kind === "absent")
+    return {
+      action: {
+        kind: "absent",
+        checkpointBytesHex: action.fromGrammar
+          ? encodeMintDeclaredGrammarCheckpoint(
+              staged.grammar.at(-1)!,
+            ).toString("hex")
+          : "",
+      },
+      next: { kind: "absent" },
+    };
   if (action.kind === "grammar_finish")
     return {
       action: {
@@ -389,7 +428,11 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   readonly threadOutRef: string;
   readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly nativeTxCompactCbor: string;
-  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  /** The staged plan; a grammar plan suffices for an absent policy. */
+  readonly staged: Pick<
+    MintDeclaredAssetLimitStagedPlan,
+    "grammar" | "initialWalk"
+  >;
   readonly action: MintDeclaredAssetLimitStep02Action;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -403,8 +446,26 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     label: "mintDeclaredAssetLimit field 5",
   });
-  if (action.kind === "direct" && planned.plan.tier === "Certified")
+  // A negative coordinate closes absent without reading the field's count,
+  // so it needs no grammar whatever the field's tier.
+  if (
+    (action.kind === "direct" ||
+      (action.kind === "absent" &&
+        !action.fromGrammar &&
+        evidence.policyIndex >= 0)) &&
+    planned.plan.tier === "Certified"
+  )
     throw new Error("mintDeclaredAssetLimit: certified field requires grammar");
+  // An absent policy certifies the grammar and then closes; a present one
+  // never closes absent.
+  if (
+    evidence.absent
+      ? action.kind === "direct" || action.kind === "grammar_finish"
+      : action.kind === "absent"
+  )
+    throw new Error(
+      "mintDeclaredAssetLimit: step-02 action does not fit the evidence",
+    );
   const carriage = await resolveMintDeclaredFieldCarriage({
     ownOutputs,
     lucid,

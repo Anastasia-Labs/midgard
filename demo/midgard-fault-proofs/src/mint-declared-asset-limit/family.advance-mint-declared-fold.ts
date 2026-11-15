@@ -4,6 +4,7 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   terminalVerdictContradiction,
   type VerdictSubject,
   VerdictSubjectSchema,
@@ -216,6 +217,13 @@ export type MintDeclaredAssetLimitEvidence = MintDeclaredAssetLimitFinding &
     fieldCommitmentHex: string;
     targetItemHex: string;
     carriage: "Inline" | "RawUtxo" | "Certified";
+    /**
+     * The rejection names a policy field 5 lacks: a negative coordinate, or
+     * one past the field's last item. Step 02 closes it with no crossing (a
+     * coordinate past the field from the field's count), and the target
+     * fields are empty. Unset, the field holds the policy.
+     */
+    absent?: boolean;
   }>;
 
 export const prepareMintDeclaredAssetLimitEvidence = ({
@@ -235,14 +243,30 @@ export const prepareMintDeclaredAssetLimitEvidence = ({
     return fail("retained field-5 bytes do not match the compact commitment");
   const items = decodeMidgardFieldPreimage(fieldPreimage);
   const target = items[finding.policyIndex];
-  if (target === undefined) return fail("policy coordinate is outside field 5");
-  return Object.freeze({
+  const common = {
     ...finding,
-    ...foldMintDeclaredAssetLimit(items, finding.policyIndex),
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
     fieldCommitmentHex: actual,
-    targetItemHex: target.toString("hex"),
     carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
+  };
+  if (target === undefined) {
+    if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+      return fail("policy coordinate is outside field 5");
+    return Object.freeze({
+      ...common,
+      crossing: false,
+      accumulatedCount: 0,
+      targetPolicyId: "",
+      targetDeclaredCount: 0,
+      targetItemHex: "",
+      absent: true,
+    });
+  }
+  return Object.freeze({
+    ...common,
+    ...foldMintDeclaredAssetLimit(items, finding.policyIndex),
+    targetItemHex: target.toString("hex"),
+    absent: false,
   });
 };
 

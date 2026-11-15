@@ -158,10 +158,10 @@ export const decodeMintDeclaredPolicyHeader = (item: Uint8Array): Header => {
 const reasonPolicyIndex = (reason: RejectionReason): number => {
   if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
     return fail("typed rejection reason is not MintDeclaredAssetLimit");
-  return exactIndex(
-    Number(reason.MintDeclaredAssetLimit.policy_index),
-    "reason policy index",
-  );
+  const policyIndex = Number(reason.MintDeclaredAssetLimit.policy_index);
+  if (!Number.isSafeInteger(policyIndex))
+    return fail("reason policy index must be a safe integer");
+  return policyIndex;
 };
 
 export type MintDeclaredAssetLimitFinding = Readonly<{
@@ -174,7 +174,13 @@ export const classifyMintDeclaredAssetLimitFinding = (
 ): MintDeclaredAssetLimitFinding => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
-  const policyIndex = exactIndex(finding.policyIndex, "policy index");
+  // A wrongful rejection may name a negative policy coordinate, which field 5
+  // lacks; a wrongful acceptance names a policy the field holds.
+  const policyIndex =
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION &&
+    Number.isSafeInteger(finding.policyIndex)
+      ? finding.policyIndex
+      : exactIndex(finding.policyIndex, "policy index");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");
