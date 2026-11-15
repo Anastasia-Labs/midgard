@@ -42,6 +42,8 @@ export const buildJourneyOwnerMintTransaction = (
     outputReferenceScript?: MidgardVersionedScript;
     redeemerWitnesses?: readonly Buffer[];
     scriptIntegrityHash?: Buffer;
+    /** Retained outputs the transaction reads without spending. */
+    referenceInputs?: readonly Buffer[];
   },
 ) => {
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
@@ -69,6 +71,7 @@ export const buildJourneyOwnerMintTransaction = (
   assets.set(policy, tokens);
   const transactionInput: FixtureTransactionInput = {
     spendInputs: [spent.outRef],
+    referenceInputs: input.referenceInputs ?? [],
     outputs: [
       encodeMidgardTxOutput({
         ...output,
@@ -120,7 +123,10 @@ export const buildJourneyOwnerMintTransaction = (
  * schedule its block's replay applies.
  */
 export const prepareJourneyForcedTransaction = (
-  input: JourneyOwnerTransactionInput,
+  input: JourneyOwnerTransactionInput & {
+    /** Retained outputs the transaction reads without spending; none by default. */
+    referenceInputs?: readonly Buffer[];
+  },
 ) => ({
   transaction: buildAtJourneyMinFee(
     input.predecessor.header,
@@ -130,6 +136,7 @@ export const prepareJourneyForcedTransaction = (
         ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
         policyScript: alwaysNativeScript,
         fee,
+        referenceInputs: input.referenceInputs,
       }).transaction,
   ),
 });

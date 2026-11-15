@@ -20,6 +20,7 @@ export const FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID =
 
 const FIELD_COUNT = 9;
 const SPEND_INPUTS = 0;
+const REFERENCE_INPUTS = 1;
 const OUTPUTS = 2;
 const OBSERVERS = 3;
 const REQUIRED_SIGNERS = 4;
@@ -40,6 +41,26 @@ const itemAbsent = (
   if (position === undefined) return true;
   const items = claimedFieldItems(fields[field]!);
   return items !== undefined && items[position] === undefined;
+};
+
+/**
+ * `true` only when the claimed position is certainly not in the input
+ * resolution schedule, which lists every spend input and every reference
+ * input.
+ */
+const scheduleItemAbsent = (
+  fields: FieldPreimages,
+  claimed: bigint,
+): boolean => {
+  const position = claimedIndex(claimed);
+  if (position === undefined) return true;
+  const spends = claimedFieldItems(fields[SPEND_INPUTS]!);
+  const references = claimedFieldItems(fields[REFERENCE_INPUTS]!);
+  return (
+    spends !== undefined &&
+    references !== undefined &&
+    position >= spends.length + references.length
+  );
 };
 
 /** A claimed field index outside the nine fields. */
@@ -106,10 +127,10 @@ const claimsAbsentCoordinate = (
       SPEND_INPUTS,
       reason.SpendInputSignerMissing.input_index,
     );
+  // Its input index is a position in the input resolution schedule.
   if ("InputAssetAccumulationLimit" in reason)
-    return itemAbsent(
+    return scheduleItemAbsent(
       fields,
-      SPEND_INPUTS,
       reason.InputAssetAccumulationLimit.input_index,
     );
   if ("AddressWitnessSignatureInvalid" in reason)

@@ -1349,6 +1349,7 @@ jobs:
             watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \
             watcher-journeys/forced-claim-coordinates.test.ts \
+            watcher-journeys/forced-claim-schedule-position.test.ts \
             watcher-journeys/forced-order-admission.test.ts \
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
