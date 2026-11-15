@@ -190,6 +190,7 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
   nextState,
   mutateOpening = (opening) => opening,
   nextStepIndex = 2,
+  coordinateAbsent = false,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WitnessScriptDecodingContracts;
@@ -213,6 +214,8 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     referenceInputs: readonly UTxO[],
   ) => FieldOpening;
   readonly nextStepIndex?: 0 | 1 | 2 | 3;
+  /** Claims the bound script position is outside field 6. */
+  readonly coordinateAbsent?: boolean;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -308,7 +311,7 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} raw step 02 record`,
                   )),
-            coordinate_absent: false,
+            coordinate_absent: coordinateAbsent,
             grammar_ref_input_index: null,
           },
         ],

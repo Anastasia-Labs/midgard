@@ -130,7 +130,13 @@ export const classifyWitnessScriptDecodingFinding = (
   if (!verdictSubjectIsCanonical(finding.subject)) {
     return fail("verdict subject is not canonical");
   }
-  exactIndex(finding.scriptIndex);
+  // A rejection may cite any position, so a negative one is a coordinate
+  // field 6 lacks; an acceptance binds an existing script.
+  if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
+    exactIndex(finding.scriptIndex);
+  } else if (!Number.isSafeInteger(finding.scriptIndex)) {
+    return fail("script index must be a safe integer");
+  }
   exactHex(finding.witnessSetHash, 32, "witness set hash");
   const accusedClass =
     finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
@@ -183,6 +189,11 @@ export type WitnessScriptDecodingEvidence = Readonly<{
   initialControlCbor: string;
   carriage: "Inline" | "RawUtxo" | "Certified";
   chunkProofCount: number;
+  /**
+   * The rejection names a script field 6 does not have. Step 02 then reads
+   * the field's count instead of an item and closes the scan with no fault.
+   */
+  absent: boolean;
 }>;
 
 export const prepareWitnessScriptDecodingEvidence = ({
@@ -202,7 +213,31 @@ export const prepareWitnessScriptDecodingEvidence = ({
     return fail("retained field preimage differs from committed field hash");
   }
   const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.scriptIndex];
-  if (item === undefined) return fail("script coordinate is outside field 6");
+  if (item === undefined) {
+    // Canonical validation decodes no script at a position field 6 lacks, so
+    // only a rejection citing one is wrong.
+    if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+      return fail("script coordinate is outside field 6");
+    return Object.freeze({
+      finding,
+      fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
+      fieldCommitmentHex: commitment,
+      itemHex: "",
+      // Twin of `absent_item_commitment`: an empty item's, at item 0.
+      itemCommitmentHex: buildMidgardBoundedItem({
+        fieldIndex: WITNESS_SCRIPT_DECODING_FIELD_INDEX,
+        itemIndex: 0,
+        bytes: Buffer.alloc(0),
+      }).commitment.toString("hex"),
+      itemLength: 0,
+      initialResultClass: WitnessScriptDecodingResultClasses.NoFault,
+      resultClass: WitnessScriptDecodingResultClasses.NoFault,
+      initialControlCbor: "",
+      carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
+      chunkProofCount: 0,
+      absent: true,
+    });
+  }
   const bounded = buildMidgardBoundedItem({
     fieldIndex: WITNESS_SCRIPT_DECODING_FIELD_INDEX,
     itemIndex: finding.scriptIndex,
@@ -247,6 +282,7 @@ export const prepareWitnessScriptDecodingEvidence = ({
     initialControlCbor: decoded.initialControlCbor,
     carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
     chunkProofCount,
+    absent: false,
   });
 };
 
@@ -269,11 +305,20 @@ const cborHead = (major: number, value: number): Buffer => {
     result.writeUInt16BE(value, 1);
     return result;
   }
-  const result = Buffer.alloc(5);
-  result[0] = (major << 5) | 26;
-  result.writeUInt32BE(value, 1);
+  if (value <= 0xffffffff) {
+    const result = Buffer.alloc(5);
+    result[0] = (major << 5) | 26;
+    result.writeUInt32BE(value, 1);
+    return result;
+  }
+  const result = Buffer.alloc(9);
+  result[0] = (major << 5) | 27;
+  result.writeBigUInt64BE(BigInt(value), 1);
   return result;
 };
+/** Twin of `cbor.serialise` on a safe integer of either sign. */
+const cborInteger = (value: number): Buffer =>
+  value < 0 ? cborHead(1, -1 - value) : cborHead(0, value);
 const cborBytes = (value: Buffer): Buffer =>
   Buffer.concat([cborHead(2, value.length), value]);
 
@@ -294,7 +339,7 @@ export const witnessScriptDecodingCheckpoint = ({
       "ascii",
     ),
     encodeVerdictSubject(evidence.finding.subject),
-    cborHead(0, evidence.finding.scriptIndex),
+    cborInteger(evidence.finding.scriptIndex),
     cborHead(0, evidence.itemLength),
     cborBytes(Buffer.from(evidence.itemCommitmentHex, "hex")),
     cborBytes(Buffer.from(controlCbor, "hex")),

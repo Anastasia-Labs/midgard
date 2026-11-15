@@ -123,10 +123,15 @@ export const submitWitnessScriptDecodingStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const item = scriptWitnessItems[Number(bound.script_index)];
+  const negative = bound.script_index < 0n;
+  const item = negative
+    ? undefined
+    : scriptWitnessItems[Number(bound.script_index)];
   if (
-    item === undefined ||
-    Buffer.from(item).toString("hex") !== evidence.itemHex ||
+    (evidence.absent
+      ? item !== undefined
+      : item === undefined ||
+        Buffer.from(item).toString("hex") !== evidence.itemHex) ||
     bound.subject.transaction_id !== evidence.finding.subject.transaction_id ||
     bound.witness_set_hash !== evidence.finding.witnessSetHash
   ) {
@@ -182,7 +187,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
     lucid,
     signer,
     plan: planned.plan,
-    read: "item",
+    read: evidence.absent ? "count" : "item",
     itemCount: planned.itemCount,
     source: {
       sourceKind: planned.sourceKind,
@@ -197,7 +202,8 @@ export const submitWitnessScriptDecodingStep02 = async ({
     ],
     fieldPreimageCertificatePolicyId:
       contracts.fieldPreimageCertificatePolicyId,
-    fieldGrammar,
+    // A negative coordinate is absent without reading the count.
+    fieldGrammar: negative ? undefined : fieldGrammar,
     label: `${FAMILY} step 02 field 6`,
   });
   const stepReference = requireLinearFaultReferenceScript({
@@ -263,7 +269,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} step 02 decode record`,
                   ),
-            coordinate_absent: false,
+            coordinate_absent: evidence.absent,
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),

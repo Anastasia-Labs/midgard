@@ -7,6 +7,7 @@ import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-certificate.js";
 import {
   certifyFaultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
@@ -387,6 +388,7 @@ export const makeHarness = async ({
     name: string | null = null,
     publishedCarriageUtxos?: readonly UTxO[],
     certificateUtxo?: UTxO,
+    fieldGrammar?: FaultProofFieldGrammarDeployment,
   ) => {
     const item = shape.items[evidence.finding.scriptIndex];
     const recordUtxo =
@@ -420,6 +422,7 @@ export const makeHarness = async ({
             : undefined,
           scriptDecodeRecordUtxo: recordUtxo,
           referenceScriptUtxo: ref(1),
+          fieldGrammar,
         }),
       )
     ).result;
