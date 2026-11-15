@@ -1,11 +1,12 @@
 /**
- * A forced `OutputBelowMinAda` rejection naming an output past field 2's last
- * item is wrongful: canonical validation applies no minimum-Ada rule there.
- * Step 02 compares the coordinate against the certified walk's count once the
- * field's grammar is complete and writes `MinAdaTxAbsent`; step 03 moves it to
- * the terminal and step 04 mints the proof. A claim that a held output is
- * absent is refused at step 02, and the route convicts at the field's byte
- * cap.
+ * A forced `OutputBelowMinAda` rejection naming an output field 2 does not
+ * have (a negative index, or one past its last item) is wrongful: canonical
+ * validation applies no minimum-Ada rule there. Step 02 closes a negative
+ * index at once and compares any other against the certified walk's count
+ * once the field's grammar is complete, writing `MinAdaTxAbsent`; step 03
+ * moves it to the terminal and step 04 mints the proof. A claim that a held
+ * output is absent is refused at step 02, and both forms convict at the
+ * field's byte cap.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -182,6 +183,13 @@ describe("minAda forced rejection of an absent output", () => {
     await convict(thread);
   }, 900_000);
 
+  it("convicts a negative output coordinate", async () => {
+    const thread = await boundThread({ prefixCount: 1, namedOutputIndex: -1 });
+    const { closed } = await convict(thread);
+    // No grammar transaction precedes the close.
+    expect(closed.measurements).toHaveLength(1);
+  }, 900_000);
+
   it("refuses on chain a claim that a held output is absent", async () => {
     const thread = await boundThread({
       underfunded: true,
@@ -223,28 +231,35 @@ describe("minAda forced rejection of an absent output", () => {
     );
   }, 900_000);
 
-  it("convicts past the last of 702 outputs at field 2's byte cap", async () => {
-    const thread = await boundThread({
-      prefixCount: 700,
-      fieldBytes: MIDGARD_CONSENSUS_LIMITS.maxOutputsPreimageBytes,
-      namedOutputIndex: 702,
-    });
-    expect(thread.f.prepared.outputItemCbors).toHaveLength(702);
-    const { closed, authenticated, minted } = await convict(thread);
-    for (const measurement of [
-      ...closed.measurements,
-      authenticated.measurement,
-      minted.measurement,
-    ]) {
-      expect(measurement.executionMemory).toBeLessThanOrEqual(
-        VAN_ROSSEM_MAX_MEMORY_UNITS,
+  it.each([
+    { coordinate: "past the last of 702 outputs", namedOutputIndex: 702 },
+    { coordinate: "negative over 702 outputs", namedOutputIndex: -1 },
+  ])(
+    "convicts a coordinate $coordinate at field 2's byte cap",
+    async ({ coordinate, namedOutputIndex }) => {
+      const thread = await boundThread({
+        prefixCount: 700,
+        fieldBytes: MIDGARD_CONSENSUS_LIMITS.maxOutputsPreimageBytes,
+        namedOutputIndex,
+      });
+      expect(thread.f.prepared.outputItemCbors).toHaveLength(702);
+      const { closed, authenticated, minted } = await convict(thread);
+      for (const measurement of [
+        ...closed.measurements,
+        authenticated.measurement,
+        minted.measurement,
+      ]) {
+        expect(measurement.executionMemory).toBeLessThanOrEqual(
+          VAN_ROSSEM_MAX_MEMORY_UNITS,
+        );
+        expect(measurement.executionSteps).toBeLessThanOrEqual(
+          VAN_ROSSEM_MAX_CPU_UNITS,
+        );
+      }
+      console.info(
+        `max-shape absent output (${coordinate}): step-02 close mem=${closed.measurement.executionMemory.toString()} cpu=${closed.measurement.executionSteps.toString()}; step-03 mem=${authenticated.measurement.executionMemory.toString()} cpu=${authenticated.measurement.executionSteps.toString()}; step-04 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
       );
-      expect(measurement.executionSteps).toBeLessThanOrEqual(
-        VAN_ROSSEM_MAX_CPU_UNITS,
-      );
-    }
-    console.info(
-      `max-shape absent output (702 outputs): step-02 close mem=${closed.measurement.executionMemory.toString()} cpu=${closed.measurement.executionSteps.toString()}; step-03 mem=${authenticated.measurement.executionMemory.toString()} cpu=${authenticated.measurement.executionSteps.toString()}; step-04 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
-    );
-  }, 1_800_000);
+    },
+    1_800_000,
+  );
 });

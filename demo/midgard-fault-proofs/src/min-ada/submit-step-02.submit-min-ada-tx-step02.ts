@@ -130,13 +130,17 @@ export const submitMinAdaTxStep02 = async ({
       `${label}: prepared transaction does not match thread state`,
     );
   }
-  const item = prepared.outputItemCbors[Number(prepared.badOutputIndex)];
-  // A rejection naming an output past field 2's last item is closed by the
-  // certified walk's count, with no output to scan.
+  // A rejection naming no output of field 2 has no output to scan: a
+  // negative index closes at once, and one past the field's last item is
+  // closed by the certified walk's count.
+  const negative = prepared.badOutputIndex < 0n;
+  const item = negative
+    ? undefined
+    : prepared.outputItemCbors[Number(prepared.badOutputIndex)];
   const absent =
-    prepared.badOutputIndex >= BigInt(prepared.outputItemCbors.length) &&
+    item === undefined &&
     state.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
-  if (prepared.badOutputIndex < 0n || (item === undefined && !absent)) {
+  if (item === undefined && !absent) {
     throw new Error(`${label}: bad output index is outside field 2`);
   }
   const anchorSourceKind = state.source_kind;
@@ -197,7 +201,9 @@ export const submitMinAdaTxStep02 = async ({
   let walkBytes = "";
   let nextStepIndex = 2;
   let continuationState: State | undefined;
-  if (!state.grammar_complete) {
+  if (negative) {
+    // The validator closes a negative index without reading the opening.
+  } else if (!state.grammar_complete) {
     const prior =
       state.grammar_checkpoint_hash === ""
         ? initialMinAdaGrammarCheckpoint({ txId: state.bad_tx_id, items })
