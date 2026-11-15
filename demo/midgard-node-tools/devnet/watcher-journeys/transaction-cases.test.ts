@@ -25,6 +25,7 @@ import { classifyFullCatalogueTransactionFixture } from "./journey-classificatio
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
 import { journeyLedgerPairs } from "./journey-ledger.js";
+import { stackNodeFeeSchedule } from "./stack-fee-schedule.test-support.js";
 import {
   buildJourneyTransactionControl,
   buildJourneyTransactionFault,
@@ -380,3 +381,65 @@ it.each([0n, 44n])(
     expect(block.payload.block_body.transaction_preimages).toHaveLength(1);
   },
 );
+
+describe("transaction fault fixtures on a predecessor with a Preprod stack's fee schedule", () => {
+  const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+  const owner = CML.PrivateKey.from_bech32(
+    walletFromSeed(account.seedPhrase, { network: "Custom" }).paymentKey,
+  )
+    .to_public()
+    .hash()
+    .to_raw_bytes();
+  let input: JourneyTransactionInput;
+  beforeAll(async () => {
+    const predecessor = await checkedFixtureBlock(
+      await buildCanonicalBlockFixture({
+        transactions: [],
+        ...(await stackNodeFeeSchedule()),
+        utxos: [
+          {
+            key: outRefCbor(0x81, 0n),
+            value: encodeMidgardTxOutput({
+              address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner)]),
+              value: { lovelace: 100_000_000n, assets: new Map() },
+            }),
+          },
+        ],
+      }),
+    );
+    input = {
+      predecessor,
+      ledgerOwnerSeedPhrase: account.seedPhrase,
+      operatorVkey: "82".repeat(28),
+      endTime: predecessor.header.endTime + 40_000n,
+      blockSlot: predecessor.header.blockSlot + 40n,
+    };
+  });
+
+  it.each(JOURNEY_TRANSACTION_CATEGORIES)(
+    "the installed catalogue proves %s as its own family and finds its control healthy",
+    async (category) => {
+      const classify = async (
+        block: Awaited<ReturnType<typeof buildJourneyTransactionControl>>,
+      ) =>
+        (
+          await classifyFullCatalogueTransactionFixture({
+            block,
+            predecessor: input.predecessor,
+            history: [],
+          })
+        ).decision;
+      expect(
+        await classify(
+          await buildJourneyTransactionFault({ ...input, category }),
+        ),
+      ).toMatchObject({ decision: "fault_detected", category });
+      expect(
+        await classify(
+          await buildJourneyTransactionControl({ ...input, category }),
+        ),
+      ).toMatchObject({ decision: "healthy" });
+    },
+    120_000,
+  );
+});

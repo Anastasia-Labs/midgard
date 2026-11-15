@@ -18,6 +18,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
@@ -212,20 +213,55 @@ export const buildJourneyHistoryTransaction = async (
       "History journey requires an output controlled by its ledger owner",
     );
   const output = decodeMidgardTxOutput(spent.output);
+  /** An output to the spent output's address paying `lovelace` and `assets`. */
+  const paying = (lovelace: bigint, assets = output.value.assets) =>
+    encodeMidgardTxOutput({ ...output, value: { lovelace, assets } });
+  /**
+   * The signed transaction spending `spendInput`, worth `available`, at the
+   * minimum fee the predecessor's schedule prices it at plus `surplus`; its
+   * last output, the `change`, pays `available` less the fee and the earlier
+   * outputs.
+   */
   const transaction = (
     spendInput: Buffer,
+    available: bigint,
     changes: Partial<FixtureTransactionInput> = {},
-  ) =>
-    signHistoryTransaction(
-      {
-        spendInputs: [spendInput],
-        outputs: [spent.output],
-        fee: 0n,
-        networkId: input.predecessor.header.expectedNetworkId,
-        ...changes,
-      },
-      key,
+    surplus = 0n,
+  ) => {
+    const { outputs: fixed = [], ...rest } = changes;
+    const kept = fixed.reduce(
+      (sum, bytes) => sum + decodeMidgardTxOutput(bytes).value.lovelace,
+      0n,
     );
+    return buildAtJourneyMinFee(
+      input.predecessor.header,
+      (minimum) => {
+        const fee = minimum + surplus;
+        const change = available - kept - fee;
+        return {
+          ...signHistoryTransaction(
+            {
+              spendInputs: [spendInput],
+              outputs: [
+                ...fixed,
+                paying(
+                  change,
+                  fixed.length === 0 ? output.value.assets : new Map(),
+                ),
+              ],
+              fee,
+              networkId: input.predecessor.header.expectedNetworkId,
+              ...rest,
+            },
+            key,
+          ),
+          change,
+        };
+      },
+      available - kept,
+    );
+  };
+  const lovelace = output.value.lovelace;
   let transactions: FixtureTransaction[];
   if (
     input.category === "nonExistentInput" ||
@@ -240,70 +276,47 @@ export const buildJourneyHistoryTransaction = async (
       throw new Error("Absent-input fixture collides with retained ledger");
     transactions = [
       input.category === "nonExistentInput"
-        ? transaction(input.honest ? spent.outRef : absent)
-        : transaction(spent.outRef, {
+        ? transaction(input.honest ? spent.outRef : absent, lovelace)
+        : transaction(spent.outRef, lovelace, {
             referenceInputs: input.honest ? [] : [absent],
           }),
     ];
-  } else {
-    const producer = transaction(spent.outRef);
+  } else if (input.category === "referenceInputNoIdx") {
+    // The producer creates two outputs: consume one and reference the other.
+    // This avoids overlapping spend/reference sets in the accepted control.
+    const half = lovelace / 2n;
+    const producer = transaction(spent.outRef, lovelace, {
+      outputs: [paying(half)],
+    });
     const produced = (index: number) =>
       encodeMidgardSpendInputItem({
         txId: Buffer.from(producer.txId, "hex"),
         outputIndex: index,
       });
-    const validInput = produced(0);
-    let consumer: FixtureTransaction;
-    if (input.category === "doubleSpend") {
-      // A different fee and balanced output make this a distinct signed body.
-      consumer = transaction(input.honest ? validInput : spent.outRef, {
-        fee: 1n,
-        outputs: [
-          encodeMidgardTxOutput({
-            ...output,
-            value: { ...output.value, lovelace: output.value.lovelace - 1n },
-          }),
-        ],
-      });
-    } else if (input.category === "nonExistentInputNoIndex") {
-      consumer = transaction(input.honest ? validInput : produced(1));
-    } else {
-      // The producer creates two outputs: consume one and reference the other.
-      // This avoids overlapping spend/reference sets in the accepted control.
-      const half = output.value.lovelace / 2n;
-      const producerWithReference = transaction(spent.outRef, {
-        outputs: [
-          encodeMidgardTxOutput({
-            ...output,
-            value: { ...output.value, lovelace: half },
-          }),
-          encodeMidgardTxOutput({
-            ...output,
-            value: {
-              lovelace: output.value.lovelace - half,
-              assets: new Map(),
-            },
-          }),
-        ],
-      });
-      const producerRef = (index: number) =>
-        encodeMidgardSpendInputItem({
-          txId: Buffer.from(producerWithReference.txId, "hex"),
-          outputIndex: index,
-        });
-      consumer = transaction(producerRef(0), {
-        referenceInputs: [producerRef(input.honest ? 1 : 2)],
-        outputs: [
-          encodeMidgardTxOutput({
-            ...output,
-            value: { ...output.value, lovelace: half },
-          }),
-        ],
-      });
-      transactions = [producerWithReference, consumer];
-      return retainHistoryTransactions({ ...input, transactions });
-    }
+    const consumer = transaction(produced(0), half, {
+      referenceInputs: [produced(input.honest ? 1 : 2)],
+    });
     transactions = [producer, consumer];
+  } else {
+    const producer = transaction(spent.outRef, lovelace);
+    const produced = (index: number) =>
+      encodeMidgardSpendInputItem({
+        txId: Buffer.from(producer.txId, "hex"),
+        outputIndex: index,
+      });
+    transactions = [
+      producer,
+      input.category === "doubleSpend"
+        ? input.honest
+          ? transaction(produced(0), producer.change)
+          : // One lovelace above the minimum fee makes this a distinct signed
+            // body spending the producer's input again.
+            transaction(spent.outRef, lovelace, {}, 1n)
+        : transaction(
+            input.honest ? produced(0) : produced(1),
+            producer.change,
+          ),
+    ];
   }
   return retainHistoryTransactions({ ...input, transactions });
 };

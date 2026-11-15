@@ -50,6 +50,7 @@ import {
 } from "./history-events.js";
 import { classifyLocalHistoryEventFixture } from "./journey-classification.test-support.js";
 import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import { stackNodeFeeSchedule } from "./stack-fee-schedule.test-support.js";
 
 const rawEventCbor = (event: StagedLocalHistoryEvent) =>
   canonical(
@@ -104,7 +105,8 @@ const openSynchronizedStage = async () => {
 /**
  * Open an empty genesis ancestor and a predecessor absorbing real deposits.
  * Its separately checked ledger owns those outputs; intervals use the exact
- * inclusion times authenticated by the published event datums.
+ * inclusion times authenticated by the published event datums. Both headers
+ * commit the fee schedule a Preprod stack's node charges.
  */
 const openFamilyWindow = async (deposits: number) => {
   stage = await openSynchronizedStage();
@@ -117,7 +119,9 @@ const openFamilyWindow = async (deposits: number) => {
         event.inclusionTime < earliest ? event.inclusionTime : earliest,
       staged[0]?.inclusionTime ?? BigInt(Date.now()),
     ) - 1n;
+  const feeSchedule = await stackNodeFeeSchedule();
   const genesis = await depositEventsRetainedBlock({
+    ...feeSchedule,
     operatorVkey: stage.operatorVkey,
     startTime: opened - 60_000n,
     endTime: opened,
@@ -128,6 +132,7 @@ const openFamilyWindow = async (deposits: number) => {
     events: [],
   });
   const predecessor = await depositEventsRetainedBlock({
+    ...feeSchedule,
     operatorVkey: stage.operatorVkey,
     startTime: opened,
     endTime: latestInclusion(staged),

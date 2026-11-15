@@ -1353,6 +1353,7 @@ jobs:
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
             watcher-journeys/forced-submission.test.ts \
+            watcher-journeys/history-cases.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-event-fresh-tip.test.ts \
             watcher-journeys/history-events.test.ts \

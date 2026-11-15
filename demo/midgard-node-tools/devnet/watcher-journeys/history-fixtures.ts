@@ -21,6 +21,7 @@ import {
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
 } from "./history-events.js";
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   createPreparedJourneyFixture,
   createTransactionJourneyFixture,
@@ -103,26 +104,31 @@ export const createWithdrawnInputJourneyFixture = (
             );
           const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
           const half = output.value.lovelace / 2n;
-          const transaction = signHistoryTransaction(
-            {
-              spendInputs: [Buffer.from(entry[0], "hex")],
-              outputs: [
-                encodeMidgardTxOutput({
-                  ...output,
-                  value: { ...output.value, lovelace: half },
-                }),
-                encodeMidgardTxOutput({
-                  ...output,
-                  value: {
-                    lovelace: output.value.lovelace - half,
-                    assets: new Map(),
-                  },
-                }),
-              ],
-              fee: 0n,
-              networkId: timed.predecessor.header.expectedNetworkId,
-            },
-            ownerKey(input),
+          const transaction = buildAtJourneyMinFee(
+            timed.predecessor.header,
+            (fee) =>
+              signHistoryTransaction(
+                {
+                  spendInputs: [Buffer.from(entry[0], "hex")],
+                  outputs: [
+                    encodeMidgardTxOutput({
+                      ...output,
+                      value: { ...output.value, lovelace: half },
+                    }),
+                    encodeMidgardTxOutput({
+                      ...output,
+                      value: {
+                        lovelace: output.value.lovelace - half - fee,
+                        assets: new Map(),
+                      },
+                    }),
+                  ],
+                  fee,
+                  networkId: timed.predecessor.header.expectedNetworkId,
+                },
+                ownerKey(input),
+              ),
+            output.value.lovelace - half,
           );
           const block = await retainHistoryTransactions({
             ...timed,

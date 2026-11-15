@@ -117,28 +117,30 @@ const buildJourneyTransaction = async (
       "Transaction journey requires a retained output owned by the ledger signer",
     );
   const output = decodeMidgardTxOutput(spent.output);
-  const changes: Partial<FixtureTransactionInput> =
-    input.category === undefined
-      ? {}
-      : mutations[input.category]({ spendInput: spent.outRef, output });
+  /** The spent output less the fee: the transaction's one output. */
+  const paying = (fee: bigint) => ({
+    ...output,
+    value: { ...output.value, lovelace: output.value.lovelace - fee },
+  });
   const minFeeB = input.minFeeB ?? input.predecessor.header.minFeeB;
   const transactionInput = (fee: bigint): FixtureTransactionInput => ({
     spendInputs: [spent.outRef],
-    outputs: [
-      encodeMidgardTxOutput({
-        ...output,
-        value: { ...output.value, lovelace: output.value.lovelace - fee },
-      }),
-    ],
+    outputs: [encodeMidgardTxOutput(paying(fee))],
     fee,
     networkId: input.predecessor.header.expectedNetworkId,
-    ...changes,
+    ...(input.category === undefined
+      ? {}
+      : mutations[input.category]({
+          spendInput: spent.outRef,
+          output: paying(fee),
+        })),
   });
   const sign = (fee: bigint) => {
-    const unsigned = buildFixtureTransaction(transactionInput(fee));
+    const body = transactionInput(fee);
+    const unsigned = buildFixtureTransaction(body);
     return buildFixtureTransaction({
-      ...transactionInput(fee),
-      addressWitnesses: changes.addressWitnesses ?? [
+      ...body,
+      addressWitnesses: body.addressWitnesses ?? [
         {
           verification_key: Buffer.from(
             key.to_public().to_raw_bytes(),
@@ -151,14 +153,16 @@ const buildJourneyTransaction = async (
       ],
     });
   };
+  // The minFee fault pays no fee. Every other transaction pays the minimum
+  // its schedule prices it at, so a fault breaks only its own rule.
   const transaction =
-    input.category === undefined
-      ? buildAtJourneyMinFee(
+    input.category === "minFee"
+      ? sign(0n)
+      : buildAtJourneyMinFee(
           { minFeeA: input.predecessor.header.minFeeA, minFeeB },
           sign,
           output.value.lovelace,
-        )
-      : sign(0n);
+        );
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,

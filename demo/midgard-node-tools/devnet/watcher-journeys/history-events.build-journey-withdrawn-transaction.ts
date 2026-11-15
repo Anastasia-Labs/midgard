@@ -2,6 +2,7 @@ import {
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
+  encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
@@ -23,6 +24,7 @@ import {
   retainJourneyWithdrawals,
   type StagedHistoryEvent,
 } from "./history-events.retain-journey-withdrawals.js";
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   journeyLedgerPairs,
@@ -225,20 +227,34 @@ export const buildJourneyWithdrawnTransaction = async (
     !input.honest && input.category === "withdrawnInput"
       ? withdrawnOutput
       : remaining;
-  const transaction = signHistoryTransaction(
-    {
-      spendInputs: [Buffer.from(selected[0], "hex")],
-      referenceInputs:
-        !input.honest && input.category === "withdrawnReferenceInput"
-          ? [withdrawn]
-          : controlReference === undefined
-            ? []
-            : [controlReference.outRef],
-      outputs: [Buffer.from(selected[1], "hex")],
-      fee: 0n,
-      networkId: input.predecessor.header.expectedNetworkId,
-    },
-    key,
+  const selectedOutput = decodeMidgardTxOutput(Buffer.from(selected[1], "hex"));
+  const transaction = buildAtJourneyMinFee(
+    input.predecessor.header,
+    (fee) =>
+      signHistoryTransaction(
+        {
+          spendInputs: [Buffer.from(selected[0], "hex")],
+          referenceInputs:
+            !input.honest && input.category === "withdrawnReferenceInput"
+              ? [withdrawn]
+              : controlReference === undefined
+                ? []
+                : [controlReference.outRef],
+          outputs: [
+            encodeMidgardTxOutput({
+              ...selectedOutput,
+              value: {
+                ...selectedOutput.value,
+                lovelace: selectedOutput.value.lovelace - fee,
+              },
+            }),
+          ],
+          fee,
+          networkId: input.predecessor.header.expectedNetworkId,
+        },
+        key,
+      ),
+    selectedOutput.value.lovelace,
   );
   const transactions = await retainHistoryTransactions({
     ...input,

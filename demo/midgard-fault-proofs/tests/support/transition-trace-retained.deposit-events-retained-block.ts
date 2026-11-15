@@ -68,6 +68,9 @@ export const depositEventsRetainedBlock = async (input: {
   /** Defaults to the fixture ledger recorded for `prevUtxosRoot`. */
   priorLedger?: readonly SDK.DaPayloadEntry[];
   events: readonly RetainedDepositEvent[];
+  /** The L2 fee schedule the header commits; zero unless given. */
+  minFeeA?: bigint;
+  minFeeB?: bigint;
 }) => {
   const ledger = new Map(
     input.priorLedger ?? fixtureLedgerEntries(input.prevUtxosRoot),
@@ -83,6 +86,8 @@ export const depositEventsRetainedBlock = async (input: {
       endTime: input.endTime,
       prevHeaderHash: input.prevHeaderHash,
       prevUtxosRoot: input.prevUtxosRoot,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
     });
   let base = await buildLedger();
   if (base.header.utxosRoot !== input.prevUtxosRoot)
