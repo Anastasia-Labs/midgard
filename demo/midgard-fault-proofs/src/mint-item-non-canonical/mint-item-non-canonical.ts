@@ -6,6 +6,7 @@ import {
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
@@ -18,6 +19,7 @@ import {
   initialMintItemScanControl,
   mintItemPolicyId,
   type MintItemScanControl,
+  mintItemScanControlData,
 } from "./scan.js";
 export { mintItemScanControlData } from "./scan.js";
 
@@ -33,6 +35,34 @@ const exactIndex = (value: number, name: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) fail(`${name} is invalid`);
   return value;
 };
+
+/**
+ * The terminal outcome of a forced `MintItemMalformed` rejection
+ * (`rule.outcome_unreachable`): no machine step emits that reason, so step 01
+ * answers the claim without opening the mint field.
+ */
+export const MINT_ITEM_OUTCOME_UNREACHABLE = 3n;
+
+/** Whether `subject` is a forced rejection with `MintItemMalformed`. */
+export const mintItemClaimIsUnreachable = (subject: VerdictSubject): boolean =>
+  subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION &&
+  subject.rejection_reason !== null &&
+  typeof subject.rejection_reason === "object" &&
+  "MintItemMalformed" in subject.rejection_reason;
+
+/**
+ * The terminal state step 01 writes for a forced `MintItemMalformed`
+ * rejection (`rule.unreachable_claim_state_v1`).
+ */
+export const mintItemUnreachableClaimState = (subject: VerdictSubject) => ({
+  subject,
+  item_index: 0n,
+  item_length: 0n,
+  item_hash: "",
+  chunk_hashes: [],
+  control: mintItemScanControlData(initialMintItemScanControl()),
+  outcome: MINT_ITEM_OUTCOME_UNREACHABLE,
+});
 
 export type MintItemFinding = {
   readonly subject: VerdictSubject;

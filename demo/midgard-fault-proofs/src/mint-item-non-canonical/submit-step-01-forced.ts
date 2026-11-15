@@ -4,6 +4,7 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -24,11 +25,14 @@ import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-bounda
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import {
   classifyMintItemFinding,
+  mintItemClaimIsUnreachable,
   type MintItemFinding,
+  mintItemUnreachableClaimState,
 } from "./mint-item-non-canonical.js";
 import {
   MintItemStep01RedeemerSchema,
   MintItemStep02DatumSchema,
+  MintItemStep04DatumSchema,
 } from "./schemas.js";
 
 export const submitMintItemNonCanonicalStep01Forced = async ({
@@ -54,7 +58,15 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyMintItemFinding(finding);
+  // No machine step emits `MintItemMalformed`, so a forced rejection with it
+  // goes straight to the terminal; every other forced subject scans an item.
+  const unreachable = mintItemClaimIsUnreachable(finding.subject);
+  if (unreachable && !verdictSubjectIsCanonical(finding.subject))
+    throw new Error(
+      "mint-item-non-canonical: verdict subject is not canonical",
+    );
+  const exact = unreachable ? finding : classifyMintItemFinding(finding);
+  const nextStepIndex = unreachable ? 3 : 1;
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -72,19 +84,27 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
     family: "mint-item-non-canonical",
     stepIndex,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: exact.subject,
-        item_index: BigInt(exact.itemIndex),
-        field_cursor: null,
-      },
-    } as never,
-    MintItemStep02DatumSchema as never,
-  );
+  const nextDatum = unreachable
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: mintItemUnreachableClaimState(exact.subject),
+        } as never,
+        MintItemStep04DatumSchema as never,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: exact.subject,
+            item_index: BigInt(exact.itemIndex),
+            field_cursor: null,
+          },
+        } as never,
+        MintItemStep02DatumSchema as never,
+      );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[1].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -134,7 +154,7 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
     stepReference,
     stepScript: contracts.steps[0].spendingScript,
     stepRole: "mint-item-non-canonical step-01 forced",
-    nextAddress: contracts.steps[1].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     preSubmitBoundary,

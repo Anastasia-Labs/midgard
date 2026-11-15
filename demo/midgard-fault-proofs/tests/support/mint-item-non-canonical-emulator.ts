@@ -24,6 +24,7 @@ import type { MintItemNonCanonicalContracts } from "../../src/mint-item-non-cano
 import {
   type MintItemEvidence,
   mintItemScanControlData,
+  mintItemUnreachableClaimState,
 } from "../../src/mint-item-non-canonical/mint-item-non-canonical.js";
 import {
   MintItemStep01RedeemerSchema,
@@ -31,6 +32,7 @@ import {
   MintItemStep02RedeemerSchema,
   MintItemStep03DatumSchema,
   MintItemStep03RedeemerSchema,
+  MintItemStep04DatumSchema,
   MintItemStep04RedeemerSchema,
 } from "../../src/mint-item-non-canonical/schemas.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
@@ -163,6 +165,44 @@ export const submitMintStep01ForcedRaw = async ({
         },
       },
       item_index: BigInt(itemIndex),
+    }),
+  });
+
+/**
+ * Step 01's forced door taking the unreachable-claim route for `subject`,
+ * whatever its direction or reason: the terminal state goes straight to step
+ * 04.
+ */
+export const submitMintStep01ForcedUnreachableRaw = async ({
+  subject,
+  forcedSource,
+  ...common
+}: Common & {
+  readonly subject: VerdictSubject;
+  readonly forcedSource: Readonly<Record<string, unknown>>;
+}) =>
+  await continueRaw({
+    common,
+    stepIndex: 0,
+    nextAddress: common.contracts.steps[3].spendingScriptAddress,
+    nextDatum: datumOf(
+      common,
+      mintItemUnreachableClaimState(subject),
+      MintItemStep04DatumSchema,
+    ),
+    redeemerSchema: MintItemStep01RedeemerSchema,
+    args: (input_index, output_index) => ({
+      source: {
+        ForcedSource: {
+          ...forcedSource,
+          membership: forcedLeafMembershipV1(
+            forcedSource.membership as ForcedTransactionSourceMembershipProof,
+          ),
+          input_index,
+          output_index,
+        },
+      },
+      item_index: 0n,
     }),
   });
 
