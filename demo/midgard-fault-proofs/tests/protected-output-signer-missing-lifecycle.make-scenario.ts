@@ -4,6 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-certificate.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import {
@@ -189,6 +190,7 @@ export const makeScenario = async ({
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
     subject: MidgardNativeTxFull | MidgardForcedTxFull,
+    fieldGrammar?: FaultProofFieldGrammarDeployment,
   ) =>
     submitProtectedOutputSignerMissingStep02({
       ...common(1),
@@ -197,6 +199,7 @@ export const makeScenario = async ({
       nativeTxCompactCbor: compactHex(subject),
       witnessSetCompactCbor: witnessSetCompactHex(subject),
       certificateReferenceScriptUtxo: certificateRef,
+      ...(fieldGrammar === undefined ? {} : { fieldGrammar }),
     });
   const step03 = (
     threadOutRef: string,

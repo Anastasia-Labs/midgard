@@ -1,8 +1,11 @@
 import {
   computeMidgardNativeTxId,
   encodeCbor,
+  encodeMidgardFieldPreimage,
   encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
+  encodeMidgardTxOutput,
+  MIDGARD_CONSENSUS_LIMITS,
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
@@ -14,6 +17,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+} from "../src/proof-fit/van-rossem.js";
 import { prepareProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
@@ -25,9 +32,11 @@ import {
 } from "./protected-output-signer-missing-lifecycle.registered-contracts.js";
 import { scanToTerminal } from "./protected-output-signer-missing-lifecycle.with-swapped-certificate-slot.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import {
   network,
   publishRemovalReferenceScripts,
@@ -89,11 +98,11 @@ const writtenOutputIndex = async (): Promise<bigint> => {
  * outputIndex }`, the forced subject a thread carries for it, and removal of
  * the block once a proof token exists.
  */
-const setupScenario = async (outputIndex: bigint) => {
+const setupScenario = async (outputIndex: bigint, forcedTx = nativeTx) => {
   const reason = {
     ProtectedOutputSignerMissing: { output_index: outputIndex },
   };
-  const s = await makeScenario({ nativeTx, forcedReason: reason });
+  const s = await makeScenario({ nativeTx: forcedTx, forcedReason: reason });
   const subject = forcedVerdictSubject({
     transactionId: s.block.nativeTxId,
     sourceKey: FORCED_ORDER_KEY,
@@ -133,6 +142,34 @@ const setupScenario = async (outputIndex: bigint) => {
     });
   };
   return { s, subject, remove };
+};
+
+/** Protected outputs, the first padded so field 2 is exactly at its cap. */
+const MAXIMUM_OUTPUT_COUNT = 700;
+const maximumOutputs = (): Buffer[] => {
+  const rest = Array.from({ length: MAXIMUM_OUTPUT_COUNT - 1 }, () =>
+    protectedOutputCbor(signerCredentialHex),
+  );
+  let pad = 0;
+  const first = () =>
+    encodeMidgardTxOutput({
+      address: Buffer.concat([
+        Buffer.from([0x68]),
+        Buffer.from(absentCredentialHex, "hex"),
+      ]),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+      script_ref: { language: "PlutusV3", scriptBytes: Buffer.alloc(pad) },
+    });
+  while (
+    encodeMidgardFieldPreimage([first(), ...rest]).length <
+    MIDGARD_CONSENSUS_LIMITS.maxOutputsPreimageBytes
+  )
+    pad++;
+  const outputs = [first(), ...rest];
+  expect(encodeMidgardFieldPreimage(outputs).length).toBe(
+    MIDGARD_CONSENSUS_LIMITS.maxOutputsPreimageBytes,
+  );
+  return outputs;
 };
 
 describe("forced ProtectedOutputSignerMissing coordinate the node writes", () => {
@@ -213,4 +250,107 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
       check: /^Validator returned false$/u,
     });
   }, 600_000);
+
+  it("convicts a negative coordinate, which names no output", async () => {
+    const { s, subject, remove } = await setupScenario(-1n);
+    const evidence = prepareProtectedOutputSignerMissingEvidence({
+      subject,
+      outputIndex: -1,
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(adjudicated),
+    });
+    expect(evidence.route).toBe("coordinate_out_of_range");
+    const bound = await s.forced01(await s.init(), evidence);
+    const direct = await s.step02(
+      bound.nextThreadOutRef,
+      evidence,
+      adjudicated,
+    );
+    expect(direct.stage).toBe("step05");
+    expect(
+      (await s.step05(direct.nextThreadOutRef, evidence)).fraudProofUnit,
+    ).toContain(s.category.categoryId);
+    expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
+  }, 600_000);
+
+  it("refuses on chain a claim that a held output is absent", async () => {
+    const written = await writtenOutputIndex();
+    const { s, subject } = await setupScenario(written);
+    const held = Object.freeze({
+      ...prepareProtectedOutputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(s.block.nativeTxId),
+        outputIndex: Number(written),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      }),
+      subject,
+      canonicalTransactionCborHex:
+        encodeMidgardForcedTxCanonical(adjudicated).toString("hex"),
+    });
+    const bound = await s.forced01(await s.init(), held);
+    await expectOnchainRefusal(
+      () =>
+        s.step02(
+          bound.nextThreadOutRef,
+          Object.freeze({
+            ...held,
+            route: "coordinate_out_of_range" as const,
+            signerRequired: false,
+          }),
+          adjudicated,
+        ),
+      {
+        refusedBy: "fraud_proofs/protected_output_signer_missing/step_02",
+        check: /^Validator returned false$/u,
+      },
+    );
+  }, 600_000);
+
+  it("convicts a negative coordinate over field 2 at its byte cap", async () => {
+    const outputs = maximumOutputs();
+    expect(outputs).toHaveLength(MAXIMUM_OUTPUT_COUNT);
+    const maximum = makeNativeTx({
+      spendInputCbors: [spent],
+      fee: 0n,
+      outputCbors: outputs,
+    });
+    const forced = materializeMidgardForcedTxFromCanonical(maximum);
+    const { s, subject, remove } = await setupScenario(-1n, maximum);
+    const evidence = prepareProtectedOutputSignerMissingEvidence({
+      subject,
+      outputIndex: -1,
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(forced),
+    });
+    expect(evidence.outputCarriage).toBe("Certified");
+    const grammar = await deployHarnessFieldGrammarCertificate(
+      s.harness,
+      "protected-output negative coordinate",
+    );
+    const initial = await s.init();
+    const bound = await captureEmulatorSubmission(s.harness.emulator, () =>
+      s.forced01(initial, evidence),
+    );
+    const direct = await captureEmulatorSubmission(s.harness.emulator, () =>
+      s.step02(
+        bound.result.nextThreadOutRef,
+        evidence,
+        forced,
+        grammar.fieldGrammar,
+      ),
+    );
+    expect(direct.result.stage).toBe("step05");
+    const minted = await captureEmulatorSubmission(s.harness.emulator, () =>
+      s.step05(direct.result.nextThreadOutRef, evidence),
+    );
+    for (const { measurement } of [bound, direct, minted]) {
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        VAN_ROSSEM_MAX_MEMORY_UNITS,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        VAN_ROSSEM_MAX_CPU_UNITS,
+      );
+    }
+    console.info(
+      `max-shape negative output coordinate (${MAXIMUM_OUTPUT_COUNT.toString()} outputs, ${encodeMidgardFieldPreimage(outputs).length.toString()} bytes): step-01 mem=${bound.measurement.executionMemory.toString()} cpu=${bound.measurement.executionSteps.toString()}; step-02 mem=${direct.measurement.executionMemory.toString()} cpu=${direct.measurement.executionSteps.toString()}; step-05 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
+    );
+    expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
+  }, 1_800_000);
 });

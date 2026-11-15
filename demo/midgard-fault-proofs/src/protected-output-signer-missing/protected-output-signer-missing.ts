@@ -59,7 +59,10 @@ export type ProtectedOutputSignerMissingEvidence =
       route: ProtectedOutputSignerMissingRoute;
       /** `true` exactly on the witness-scan route. */
       signerRequired: boolean;
-      /** Absent only when the coordinate is past the field-2 count. */
+      /**
+       * Absent only when the coordinate is negative or past the field-2
+       * count.
+       */
       outputCborHex?: string;
       /** Present only on the witness-scan route. */
       paymentCredentialHex?: string;
@@ -98,7 +101,7 @@ const exactForcedOutputIndex = (subject: VerdictSubject): number => {
     return fail("forced subject has the wrong typed rejection reason");
   }
   const outputIndex = Number(reason.ProtectedOutputSignerMissing.output_index);
-  if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+  if (!Number.isSafeInteger(outputIndex))
     return fail("forced reason output coordinate is invalid");
   return outputIndex;
 };
@@ -109,7 +112,13 @@ export const classifyProtectedOutputSignerMissingFinding = ({
 }: ProtectedOutputSignerMissingFinding): void => {
   if (!verdictSubjectIsCanonical(subject))
     return fail("subject is not canonical");
-  if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+  // A negative coordinate names no output: only a forced rejection can cite
+  // one, and step 02 answers it on the out-of-range route.
+  if (
+    !Number.isSafeInteger(outputIndex) ||
+    (outputIndex < 0 &&
+      subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+  )
     return fail("output coordinate is invalid");
   if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (exactForcedOutputIndex(subject) !== outputIndex)
@@ -172,7 +181,7 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const outputItems = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);
-  const outputCbor = outputItems[outputIndex];
+  const outputCbor = outputIndex < 0 ? undefined : outputItems[outputIndex];
   const route = classifyRoute(subject, outputCbor);
   const witnessItems = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
   if (witnessItems.length > PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES)
