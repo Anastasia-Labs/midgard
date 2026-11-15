@@ -20,6 +20,7 @@ import {
   Header,
   invalidOneStepTransitionFault,
   OutputReference,
+  type RejectionReason,
   ROOT_DOMAINS,
   TransitionStepSchema,
   ValidationTraceDescriptorSchema,
@@ -61,11 +62,25 @@ type ForcedTransitionTraceFixtureInput = {
   };
   readonly redeemerMalformedIndex?: number;
   /**
+   * The forced transaction's field-8 items, replacing the one redeemer the
+   * fixture otherwise derives; the rejection reason is unchanged.
+   */
+  readonly redeemers?: readonly Buffer[];
+  /**
    * Commits the forced transaction ForcedTxValid with one Spend redeemer whose
    * data is exactly these bytes. Such a block carries no invalid-forced no-op
    * step, so the fixture has no transition fault proof.
    */
   readonly acceptedRedeemerDataHex?: string;
+  /**
+   * Fields of the forced transaction that replace the fixture's own, such as
+   * its mint field or its witness scripts.
+   */
+  readonly nativeTx?: Partial<
+    Omit<Parameters<typeof makeNativeTx>[0], "spendInputCbors" | "fee">
+  >;
+  /** The rejection the forced leaf commits, replacing the derived one. */
+  readonly rejectionReason?: RejectionReason;
 };
 
 type ForcedTransitionTraceFixture = Awaited<
@@ -101,7 +116,10 @@ const buildForcedTransitionTraceFixture = async ({
   fieldPreimageLengthMismatchIndex,
   fieldItemWidthIllegalCoordinate,
   redeemerMalformedIndex,
+  redeemers,
   acceptedRedeemerDataHex,
+  nativeTx,
+  rejectionReason,
 }: ForcedTransitionTraceFixtureInput) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -128,19 +146,25 @@ const buildForcedTransitionTraceFixture = async ({
     referenceByte: "b1",
     outputByte: "b2",
     witnessByte: "b8",
-    ...(redeemerMalformedIndex === undefined &&
-    acceptedRedeemerDataHex === undefined
-      ? {}
-      : {
-          redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimage([
-            encodeMidgardRedeemerWitnessItem({
-              purpose: "Spend",
-              index: BigInt(redeemerMalformedIndex ?? 0),
-              redeemerCbor: Buffer.from(acceptedRedeemerDataHex ?? "00", "hex"),
-              executionUnits: { memory: 1n, steps: 2n },
-            }),
-          ]),
-        }),
+    ...(redeemers !== undefined
+      ? { redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimage(redeemers) }
+      : redeemerMalformedIndex === undefined &&
+          acceptedRedeemerDataHex === undefined
+        ? {}
+        : {
+            redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimage([
+              encodeMidgardRedeemerWitnessItem({
+                purpose: "Spend",
+                index: BigInt(redeemerMalformedIndex ?? 0),
+                redeemerCbor: Buffer.from(
+                  acceptedRedeemerDataHex ?? "00",
+                  "hex",
+                ),
+                executionUnits: { memory: 1n, steps: 2n },
+              }),
+            ]),
+          }),
+    ...nativeTx,
   });
   const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(
     materializeMidgardForcedTxFromCanonical(forcedNativeTx),
@@ -164,37 +188,39 @@ const buildForcedTransitionTraceFixture = async ({
         : {
             ForcedTxInvalid: {
               reason:
-                redeemerMalformedIndex !== undefined
-                  ? {
-                      RedeemerMalformed: {
-                        redeemer_index: BigInt(redeemerMalformedIndex),
-                      },
-                    }
-                  : fieldItemWidthIllegalCoordinate !== undefined
+                rejectionReason !== undefined
+                  ? rejectionReason
+                  : redeemerMalformedIndex !== undefined
                     ? {
-                        FieldItemWidthIllegal: {
-                          field_index: BigInt(
-                            fieldItemWidthIllegalCoordinate.fieldIndex,
-                          ),
-                          item_index: BigInt(
-                            fieldItemWidthIllegalCoordinate.itemIndex,
-                          ),
+                        RedeemerMalformed: {
+                          redeemer_index: BigInt(redeemerMalformedIndex),
                         },
                       }
-                    : fieldPreimageLengthMismatchIndex === undefined
+                    : fieldItemWidthIllegalCoordinate !== undefined
                       ? {
-                          PlutusExecutionFailed: {
-                            purpose_kind: 0n,
-                            purpose_index: 0n,
-                          },
-                        }
-                      : {
-                          FieldPreimageLengthMismatch: {
+                          FieldItemWidthIllegal: {
                             field_index: BigInt(
-                              fieldPreimageLengthMismatchIndex,
+                              fieldItemWidthIllegalCoordinate.fieldIndex,
+                            ),
+                            item_index: BigInt(
+                              fieldItemWidthIllegalCoordinate.itemIndex,
                             ),
                           },
-                        },
+                        }
+                      : fieldPreimageLengthMismatchIndex === undefined
+                        ? {
+                            PlutusExecutionFailed: {
+                              purpose_kind: 0n,
+                              purpose_index: 0n,
+                            },
+                          }
+                        : {
+                            FieldPreimageLengthMismatch: {
+                              field_index: BigInt(
+                                fieldPreimageLengthMismatchIndex,
+                              ),
+                            },
+                          },
             },
           },
   };

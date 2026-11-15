@@ -187,7 +187,8 @@ export const submitRedeemerCanonicityStep02 = async ({
     lucid,
     signer,
     plan: planned.plan,
-    read: "item",
+    // An absent coordinate is closed by the field's count, not an item.
+    read: evidence.absent ? "count" : "item",
     itemCount: planned.itemCount,
     source: {
       sourceKind: planned.sourceKind,
@@ -216,13 +217,15 @@ export const submitRedeemerCanonicityStep02 = async ({
   };
   const plan = evidence.dataPlan;
   // A readable envelope opens the data step; any other item is decided here.
+  // An absent coordinate reads no item: its canonical verdict goes straight
+  // to the terminal.
   const nextStepIndex = plan === null ? 3 : 2;
   const nextDatum =
     plan === null
       ? Data.to(
           {
             fraud_prover: signer.paymentKeyHash,
-            data: { bound, canonical: false },
+            data: { bound, canonical: evidence.absent },
           } as never,
           RedeemerCanonicityStep03DatumSchema as never,
         )
@@ -264,7 +267,7 @@ export const submitRedeemerCanonicityStep02 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening,
-            coordinate_absent: false,
+            coordinate_absent: evidence.absent,
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),
