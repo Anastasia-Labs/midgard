@@ -35,6 +35,7 @@ import {
   requireInputSetUniquenessThreadUtxo,
 } from "./submit-common.js";
 import {
+  inputSetPairNamesNoDuplicate,
   inputSetUnionIsStrictlyIncreasing,
   inputSetUniquenessCheckpoint,
   type InputSetUniqueScanState,
@@ -281,12 +282,18 @@ export const submitInputSetUniquenessStep04Finalize = async ({
     stepIndex,
   });
   requireAuthenticState(state);
+  const pairNamesNoDuplicate = inputSetPairNamesNoDuplicate({
+    bound: state.bound,
+    spendCount: state.spend_count,
+    referenceCount: state.reference_count,
+  });
   if (
-    state.cursor !== state.spend_count + state.reference_count ||
-    !inputSetUnionIsStrictlyIncreasing({
-      spendInputItemCbors,
-      referenceInputItemCbors,
-    })
+    !pairNamesNoDuplicate &&
+    (state.cursor !== state.spend_count + state.reference_count ||
+      !inputSetUnionIsStrictlyIncreasing({
+        spendInputItemCbors,
+        referenceInputItemCbors,
+      }))
   ) {
     throw new Error("input-set-uniqueness: complete unique scan is absent");
   }

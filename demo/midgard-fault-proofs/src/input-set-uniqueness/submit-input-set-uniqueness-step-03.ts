@@ -145,26 +145,10 @@ export const submitInputSetUniquenessStep03 = async ({
       referenceCertificateUtxo,
     )),
   ]);
+  // The accused pair is not checked here: in either orientation the complete
+  // scan answers it, and a pair naming no duplicate finalizes at cursor 0.
   const spendCount = BigInt(spendInputItemCbors.length);
   const referenceCount = BigInt(referenceInputItemCbors.length);
-  const inRange = (field: bigint, item: bigint) =>
-    item >= 0n &&
-    (field === 0n
-      ? item < spendCount
-      : field === 1n
-        ? item < referenceCount
-        : false);
-  if (
-    !inRange(bound.first_field_index, bound.first_item_index) ||
-    !inRange(bound.second_field_index, bound.second_item_index) ||
-    bound.first_field_index > bound.second_field_index ||
-    (bound.first_field_index === bound.second_field_index &&
-      bound.first_item_index >= bound.second_item_index)
-  ) {
-    throw new Error(
-      "input-set-uniqueness: accused coordinates are non-canonical",
-    );
-  }
   const partial = {
     bound,
     spend_count: spendCount,

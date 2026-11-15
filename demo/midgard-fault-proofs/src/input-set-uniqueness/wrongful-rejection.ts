@@ -55,6 +55,47 @@ export const bindForcedDuplicateInput = (
   return Object.freeze({ subject, ...subject.rejection_reason.DuplicateInput });
 };
 
+const coordinateIsInRange = (
+  field: bigint,
+  item: bigint,
+  spendCount: bigint,
+  referenceCount: bigint,
+): boolean =>
+  item >= 0n &&
+  (field === 0n
+    ? item < spendCount
+    : field === 1n
+      ? item < referenceCount
+      : false);
+
+/** True when the accused pair cannot name two distinct inputs: either
+ * coordinate lies outside the spend or reference field it names (or names
+ * another field), or both name the same input. Such a pair names no
+ * duplicate, so the rejection is contradicted without scanning the union. */
+export const inputSetPairNamesNoDuplicate = ({
+  bound,
+  spendCount,
+  referenceCount,
+}: {
+  readonly bound: BoundDuplicateInput;
+  readonly spendCount: bigint;
+  readonly referenceCount: bigint;
+}): boolean =>
+  !coordinateIsInRange(
+    bound.first_field_index,
+    bound.first_item_index,
+    spendCount,
+    referenceCount,
+  ) ||
+  !coordinateIsInRange(
+    bound.second_field_index,
+    bound.second_item_index,
+    spendCount,
+    referenceCount,
+  ) ||
+  (bound.first_field_index === bound.second_field_index &&
+    bound.first_item_index === bound.second_item_index);
+
 export const inputSetUnionIsStrictlyIncreasing = ({
   spendInputItemCbors,
   referenceInputItemCbors,

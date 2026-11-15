@@ -15,6 +15,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import {
+  type BoundDuplicateInput,
   submitInputSetUniquenessForcedStep01,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep03,
@@ -37,6 +38,7 @@ import {
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
 } from "./support/input-set-uniqueness-emulator.js";
+import { expectRawScanFinalizeRefused } from "./support/input-set-uniqueness-raw.submit-scan-finalize-raw.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -45,12 +47,34 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
+/** The accused pair of a forced `DuplicateInput` rejection. */
+export type AccusedInputPair = Omit<BoundDuplicateInput, "subject">;
+
+/** A forced `DuplicateInput` thread over one spend and `referenceCount`
+ * reference inputs; `overlap` repeats the spend input first among the
+ * references. `finalizeAtSeed` finalizes at cursor 0; `refuseFinalize` checks
+ * the on-chain refusal of that finalize built by hand. */
 export const exerciseForcedLifecycle = async ({
   referenceCount,
   complete,
+  accused = {
+    first_field_index: 0n,
+    first_item_index: 0n,
+    second_field_index: 1n,
+    second_item_index: 0n,
+  },
+  overlap = false,
+  finalizeAtSeed = false,
+  refuseFinalize,
 }: {
   readonly referenceCount: 400 | 819;
   readonly complete: boolean;
+  readonly accused?: AccusedInputPair;
+  readonly overlap?: boolean;
+  readonly finalizeAtSeed?: boolean;
+  readonly refuseFinalize?: (
+    finalize: () => Promise<unknown>,
+  ) => Promise<unknown>;
 }) => {
   const ownOutputs = createOwnOutputJournal();
   const harness = await makeInputSetUniquenessEmulatorHarness();
@@ -65,7 +89,9 @@ export const exerciseForcedLifecycle = async ({
   }));
   const fixture = await buildInputSetUniquenessFixture({
     spendInputs: frontier.slice(0, 1),
-    referenceInputs: frontier.slice(1),
+    referenceInputs: overlap
+      ? [frontier[0]!, ...frontier.slice(2)]
+      : frontier.slice(1),
     validity: "TxIsInvalid",
   });
   const credential = getAddressDetails(
@@ -86,14 +112,7 @@ export const exerciseForcedLifecycle = async ({
     submitted_source: fixture.forcedSource,
     verdict: {
       ForcedTxInvalid: {
-        reason: {
-          DuplicateInput: {
-            first_field_index: 0n,
-            first_item_index: 0n,
-            second_field_index: 1n,
-            second_item_index: 0n,
-          },
-        },
+        reason: { DuplicateInput: accused },
       },
     },
   } as const;
@@ -342,7 +361,7 @@ export const exerciseForcedLifecycle = async ({
   const visitedOutRefs = new Set([threadOutRef]);
   const expectedCursors: bigint[] = [];
   let cursor = 0;
-  const terminalCursor = complete ? frontier.length : 1;
+  const terminalCursor = finalizeAtSeed ? 0 : complete ? frontier.length : 1;
   while (cursor < terminalCursor) {
     console.info(`[isu-frontier] advance-start ${cursor.toString()}`);
     threadOutRef = await advance(threadOutRef, cursor);
@@ -365,7 +384,16 @@ export const exerciseForcedLifecycle = async ({
         maxTxExSteps: harness.emulator.protocolParameters.maxTxExSteps,
       });
     }
-    return;
+    return measurements;
+  }
+  if (refuseFinalize !== undefined) {
+    await expectRawScanFinalizeRefused({
+      harness,
+      threadOutRef,
+      referenceScriptUtxo: references[3],
+      refuse: refuseFinalize,
+    });
+    return measurements;
   }
   const finalized = await captureEmulatorSubmission(harness.emulator, () =>
     submitInputSetUniquenessStep04Finalize({
@@ -467,4 +495,5 @@ export const exerciseForcedLifecycle = async ({
         .toString(),
     })}`,
   );
+  return measurements;
 };
