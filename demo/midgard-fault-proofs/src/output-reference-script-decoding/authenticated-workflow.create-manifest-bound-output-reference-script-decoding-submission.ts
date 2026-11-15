@@ -162,7 +162,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         preSubmitBoundary,
       });
       return {
-        stage: "outputScan" as const,
+        stage: result.nextStage,
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };

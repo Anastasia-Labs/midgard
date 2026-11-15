@@ -1,6 +1,7 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
+import type { FaultProofFieldGrammarDeployment } from "../../src/field-grammar-certificate.js";
 import {
   certifyFaultProofFieldCarriage,
   planFaultProofFieldOpening,
@@ -164,6 +165,8 @@ export const makeOutputReferenceStages = ({
     options: {
       readonly publishedCarriageUtxos?: readonly UTxO[];
       readonly certificateUtxo?: UTxO;
+      /** The field grammar certificate, for a field past the walked limit. */
+      readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
     } = {},
   ) =>
     await captured(() =>

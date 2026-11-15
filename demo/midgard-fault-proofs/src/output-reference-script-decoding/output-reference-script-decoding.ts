@@ -87,7 +87,7 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
       PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
   ) {
     const outputIndex = Number(reason.PlutusScriptUndecodable.item_index);
-    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+    if (!Number.isSafeInteger(outputIndex))
       return fail("typed output coordinate is invalid");
     return outputIndex;
   }
@@ -112,7 +112,7 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
     )[kind];
     if (payload === undefined) return fail("typed reason payload is absent");
     const outputIndex = Number(payload.output_index);
-    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+    if (!Number.isSafeInteger(outputIndex))
       return fail("typed output coordinate is invalid");
     return outputIndex;
   }
@@ -152,7 +152,13 @@ export const classifyOutputReferenceScriptDecodingFinding = (
 ): void => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("subject is not canonical");
-  if (!Number.isSafeInteger(finding.outputIndex) || finding.outputIndex < 0)
+  // A rejection may name a negative output coordinate, which field 2 lacks;
+  // an acceptance names an output the field holds.
+  if (
+    !Number.isSafeInteger(finding.outputIndex) ||
+    (finding.outputIndex < 0 &&
+      finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+  )
     return fail("output coordinate is invalid");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (exactOutputIndex(finding.subject) !== finding.outputIndex)
@@ -208,6 +214,13 @@ export type OutputReferenceScriptDecodingEvidence =
       carriage: "Inline" | "RawUtxo" | "Certified";
       chunkProofCount: number;
       initialControlCbor: string;
+      /**
+       * The rejection names an output field 2 does not have: a negative
+       * coordinate, or one past the field's last output. Step 02 closes the
+       * thread at step 06 with no fault (`rule.absent_output_state_v1`),
+       * reading the field's count for a coordinate past it.
+       */
+      absent: boolean;
     }>;
 
 export const prepareOutputReferenceScriptDecodingEvidence = ({
@@ -234,7 +247,39 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
     return fail("transaction identity was substituted");
   const field = material.fieldPreimages[2]!;
   const output = decodeMidgardFieldPreimage(field)[outputIndex];
-  if (output === undefined) return fail("output coordinate is out of range");
+  if (output === undefined) {
+    // Canonical validation decodes no reference script at a position field 2
+    // lacks, so only a rejection naming one is wrong.
+    if (subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+      return fail("output coordinate is out of range");
+    return Object.freeze({
+      subject,
+      outputIndex,
+      canonicalTransactionCborHex: Buffer.from(
+        canonicalTransactionCbor,
+      ).toString("hex"),
+      outputFieldPreimageHex: field.toString("hex"),
+      outputCborHex: "",
+      outputLength: 0,
+      outputHashHex: "",
+      outputChunkHashes: Object.freeze([]),
+      outputScanControls: Object.freeze([]),
+      referenceScriptItemHex: "",
+      // The closed state commits an empty item at position 0, as
+      // `rule.absent_output_state_v1` does.
+      referenceScriptItemCommitmentHex: buildMidgardBoundedItem({
+        fieldIndex: 2,
+        itemIndex: 0,
+        bytes: Buffer.alloc(0),
+      }).commitment.toString("hex"),
+      resultClass: OutputReferenceScriptResultClasses.NoFault,
+      accusedClass: accusedClass(subject),
+      carriage: selectMidgardFieldCarriageTier(field.length),
+      chunkProofCount: 0,
+      initialControlCbor: "",
+      absent: true,
+    });
+  }
   if (output.length > OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES)
     return fail("output exceeds canonical size bound");
   let trace;
@@ -300,6 +345,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
             nativeTrace.bind.control,
           ).toString("hex")
         : "",
+    absent: false,
   });
   if (!admitHonestVerdict && !outputReferenceScriptEvidenceCloses(evidence))
     return fail("authenticated decoder agrees with operator verdict");

@@ -42,13 +42,16 @@ import {
   type OutputReferenceScriptDecodingContracts,
 } from "./contracts.js";
 import {
+  outputReferenceScriptCheckpoint,
   outputReferenceScriptControlData,
   type OutputReferenceScriptDecodingEvidence,
+  OutputReferenceScriptResultClasses,
 } from "./output-reference-script-decoding.js";
 import {
   OutputReferenceStep02DatumSchema,
   OutputReferenceStep02RedeemerSchema,
   OutputReferenceStep03DatumSchema,
+  OutputReferenceStep06DatumSchema,
 } from "./schemas.js";
 
 /**
@@ -120,24 +123,48 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        bound,
-        item_length: BigInt(evidence.outputLength),
-        item_hash: evidence.outputHashHex,
-        chunk_hashes: evidence.outputChunkHashes,
-        control: outputReferenceScriptControlData(
-          evidence.outputScanControls[0]!,
-        ),
-        outcome: 0n,
-      },
-    } as never,
-    OutputReferenceStep03DatumSchema as never,
-  );
+  // An absent output reads no item: the thread closes with no fault and goes
+  // straight to the terminal (`rule.absent_output_state_v1`).
+  const nextStepIndex = evidence.absent ? 5 : 2;
+  const nextHash = contracts.steps[nextStepIndex].spendingScriptHash;
+  const nextDatum = evidence.absent
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            bound,
+            total_length: 0n,
+            item_commitment: evidence.referenceScriptItemCommitmentHex,
+            control_cbor: "",
+            next_expected_script_hash: nextHash,
+            checkpoint_hash: outputReferenceScriptCheckpoint({
+              evidence,
+              controlCbor: "",
+              nextExpectedScriptHash: nextHash,
+            }),
+            result_class: BigInt(OutputReferenceScriptResultClasses.NoFault),
+          },
+        } as never,
+        OutputReferenceStep06DatumSchema as never,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            bound,
+            item_length: BigInt(evidence.outputLength),
+            item_hash: evidence.outputHashHex,
+            chunk_hashes: evidence.outputChunkHashes,
+            control: outputReferenceScriptControlData(
+              evidence.outputScanControls[0]!,
+            ),
+            outcome: 0n,
+          },
+        } as never,
+        OutputReferenceStep03DatumSchema as never,
+      );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -163,7 +190,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening,
-            coordinate_absent: false,
+            coordinate_absent: evidence.absent,
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),
@@ -181,7 +208,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     stepReference,
     stepScript: contracts.steps[1].spendingScript,
     stepRole: `${FAMILY} step02`,
-    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,
@@ -200,6 +227,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     carriageTier: planned.plan.tier,
     carriageUtxos,
     certificateUtxo,
+    nextStage: evidence.absent ? ("step06" as const) : ("outputScan" as const),
   };
 };
 
@@ -297,7 +325,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     lucid,
     signer,
     plan: planned.plan,
-    read: "item",
+    // A coordinate past the field is closed by its count, not an item.
+    read: evidence.absent ? "count" : "item",
     itemCount: items.length,
     source: {
       sourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
@@ -310,7 +339,9 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     ],
     fieldPreimageCertificatePolicyId:
       contracts.fieldPreimageCertificatePolicyId,
-    fieldGrammar,
+    // A negative coordinate closes without reading the field's count, so it
+    // needs no field grammar certificate.
+    fieldGrammar: evidence.outputIndex < 0 ? undefined : fieldGrammar,
     label: `${FAMILY} field 2`,
   });
   return await submitOutputReferenceScriptDecodingStep02Raw({
