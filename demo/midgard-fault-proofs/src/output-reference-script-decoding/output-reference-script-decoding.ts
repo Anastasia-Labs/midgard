@@ -16,16 +16,13 @@ import {
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
-  encodeVerdictSubject,
   forcedVerdictSubject,
-  hashHexWithBlake2b,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
@@ -40,6 +37,11 @@ import {
   type PlutusScriptRefusedResultClass,
   plutusUndecodableAccusedClass,
 } from "../script-decode/item-record.js";
+
+export {
+  outputReferenceScriptCheckpoint,
+  outputReferenceScriptControlData,
+} from "./output-reference-script-decoding.step-state.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY =
   "outputReferenceScriptDecoding" as const;
@@ -310,83 +312,6 @@ export const outputReferenceScriptEvidenceCloses = (
   evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
     ? evidence.resultClass !== evidence.accusedClass
     : terminalVerdictContradiction(evidence.subject, evidence.resultClass >= 0);
-
-export const outputReferenceScriptControlData = (
-  control: MidgardLedgerOutputScanControl,
-) => ({
-  version: BigInt(control.version),
-  stage: BigInt(control.stage),
-  cursor: BigInt(control.cursor),
-  map_entry_count: BigInt(control.mapEntryCount),
-  optional_field_count: BigInt(control.optionalFieldCount),
-  address: control.address.toString("hex"),
-  lovelace: control.lovelace,
-  cardano_value_size: BigInt(control.cardanoValueSize),
-  policy_remaining: BigInt(control.policyRemaining),
-  asset_remaining: BigInt(control.assetRemaining),
-  policy_asset_cursor: BigInt(control.policyAssetCursor),
-  previous_policy: control.previousPolicy.toString("hex"),
-  current_policy: control.currentPolicy.toString("hex"),
-  previous_asset_name: control.previousAssetName.toString("hex"),
-  asset_count: BigInt(control.assetFrontier.count),
-  asset_peaks: control.assetFrontier.peaks.map(({ height, hash }) => ({
-    height: BigInt(height),
-    hash: hash.toString("hex"),
-  })),
-  datum_offset: BigInt(control.datumOffset),
-  datum_length: BigInt(control.datumLength),
-  payload_remaining: BigInt(control.payloadRemaining),
-  reference_script_language: BigInt(control.referenceScriptLanguage),
-  reference_script_item_offset: BigInt(control.referenceScriptItemOffset),
-  reference_script_offset: BigInt(control.referenceScriptOffset),
-  reference_script_length: BigInt(control.referenceScriptLength),
-});
-
-const cborInteger = (value: number): Buffer => {
-  const major = value < 0 ? 1 : 0;
-  const normalized = value < 0 ? -1 - value : value;
-  if (normalized < 24) return Buffer.from([(major << 5) | normalized]);
-  if (normalized < 256) return Buffer.from([(major << 5) | 24, normalized]);
-  const result = Buffer.alloc(3);
-  result[0] = (major << 5) | 25;
-  result.writeUInt16BE(normalized, 1);
-  return result;
-};
-const cborBytes = (value: Buffer): Buffer =>
-  value.length < 24
-    ? Buffer.concat([Buffer.from([0x40 | value.length]), value])
-    : Buffer.concat([Buffer.from([0x58, value.length]), value]);
-
-/** Exact off-chain twin of `rule.checkpoint_v1`. */
-export const outputReferenceScriptCheckpoint = ({
-  evidence,
-  controlCbor,
-  nextExpectedScriptHash,
-}: {
-  readonly evidence: OutputReferenceScriptDecodingEvidence;
-  readonly controlCbor: string;
-  readonly nextExpectedScriptHash: string;
-}): string =>
-  Effect.runSync(
-    hashHexWithBlake2b(
-      Buffer.concat([
-        Buffer.from(
-          "midgard/fraud-proofs/output-reference-script-decoding/checkpoint-v1",
-          "ascii",
-        ),
-        encodeVerdictSubject(evidence.subject),
-        cborInteger(evidence.outputIndex),
-        cborInteger(evidence.accusedClass),
-        cborInteger(Buffer.from(evidence.referenceScriptItemHex, "hex").length),
-        cborBytes(
-          Buffer.from(evidence.referenceScriptItemCommitmentHex, "hex"),
-        ),
-        cborBytes(Buffer.from(controlCbor, "hex")),
-        cborBytes(Buffer.from(nextExpectedScriptHash, "hex")),
-      ]).toString("hex"),
-      32,
-    ),
-  );
 
 /** Exhaustive replay over every accepted output and exact forced coordinate. */
 export const detectOutputReferenceScriptDecodingCompleteReplay = (
