@@ -77,6 +77,19 @@ export type DaAvailabilityValidityWindow =
  * one-shot command waits for the tip and asks again, a long-running actor
  * defers the step. An interval whose upper bound does not reach past the L1
  * clock, or whose limits leave no room, is `refused`.
+ *
+ * When the tip trails the L1 clock so far that the longest range from the
+ * full lookahead starts past the tip, the interval is anchored on the tip
+ * instead: it starts the submit margin before the tip and ends the longest
+ * range later, so it is admissible now rather than after the next block. It
+ * is taken only while that end still runs the submit margin of slots past
+ * the L1 clock's slot, so the slot after the current one can include it;
+ * with one-second slots and the 120 s range, that covers a tip up to 116
+ * slots behind the clock's slot. A caller whose own rule needs the upper
+ * bound further past the clock names that room (`minimumRoomSlots`); the
+ * anchored interval is then taken only while it still runs that far. Beyond,
+ * or when `lowerLimitMs` is past the anchored start, the interval stays
+ * `not_due`.
  */
 export const daAvailabilityValidityWindow = (input: {
   readonly lucid: LucidEvolution;
@@ -85,8 +98,19 @@ export const daAvailabilityValidityWindow = (input: {
   /** The L1 clock, in ms. */
   readonly nowMs: number;
   readonly limits?: DaAvailabilityValidityLimits;
+  /**
+   * The least number of slots past the L1 clock's slot an interval anchored
+   * on a lagging tip must still run; never less than the submit margin
+   * (`SUBMIT_SLOT_VALIDITY_BUFFER`), which is the default.
+   */
+  readonly minimumRoomSlots?: number;
 }): DaAvailabilityValidityWindow => {
   const { lucid, tip, nowMs, limits = {} } = input;
+  const { minimumRoomSlots = SUBMIT_SLOT_VALIDITY_BUFFER } = input;
+  if (!Number.isSafeInteger(minimumRoomSlots))
+    throw new Error(
+      `Invalid validity window minimum room ${String(minimumRoomSlots)} slots`,
+    );
   const lookaheadMs = nowMs + DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS;
   const validTo = alignUnixTimeToSlotBoundary(
     lucid,
@@ -100,6 +124,35 @@ export const daAvailabilityValidityWindow = (input: {
       reason: "window_closed",
       detail: `the validity window closed before the L1 clock (valid_to_ms=${validTo.toString()},l1_now_ms=${nowMs.toString()})`,
     };
+  const window = validityIntervalEndingAt(lucid, tip, limits, validTo);
+  if (window.status !== "not_due") return window;
+  // The latest lower bound the tip admits, and the longest range from it.
+  const anchoredTo = Math.min(
+    validTo,
+    alignUnixTimeToSlotBoundary(
+      lucid,
+      lucid.slotToUnixTime(window.tipSlot - SUBMIT_SLOT_VALIDITY_BUFFER) +
+        Number(DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS),
+    ),
+  );
+  if (
+    Number(lucid.unixTimeToSlot(anchoredTo)) <
+    Number(lucid.unixTimeToSlot(nowMs)) +
+      Math.max(SUBMIT_SLOT_VALIDITY_BUFFER, minimumRoomSlots)
+  )
+    return window;
+  const anchored = validityIntervalEndingAt(lucid, tip, limits, anchoredTo);
+  return anchored.status === "ready" ? anchored : window;
+};
+
+/** The interval ending at `validTo`: its lower bound from the tip and the
+ * limits, and whether the tip has passed it by the submit margin. */
+const validityIntervalEndingAt = (
+  lucid: LucidEvolution,
+  tip: Pick<SubmitSlotSnapshot, "currentSlot" | "ledgerTipSlot">,
+  limits: DaAvailabilityValidityLimits,
+  validTo: number,
+): DaAvailabilityValidityWindow => {
   const tipBackdated = ledgerTipBackdatedValidFromMs({
     lucid,
     submitSlotSnapshot: tip,

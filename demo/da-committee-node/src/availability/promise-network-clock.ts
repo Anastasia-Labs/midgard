@@ -62,6 +62,8 @@ export const committeePromiseNetworkClock = (
     return slot;
   };
   return Object.freeze({
+    /** How far the wall may step from the monotonic clock before it faults. */
+    maxWallMonotonicDriftMs: input.maxWallMonotonicDriftMs,
     upperTimeMs,
     upperReadySlot,
     eligibleFutureSlots: (

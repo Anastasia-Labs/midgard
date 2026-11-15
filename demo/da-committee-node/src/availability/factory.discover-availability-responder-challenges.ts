@@ -174,11 +174,16 @@ export const availabilityResponderValidityLimits = (
  *   time its TTL rule is measured against.
  * - `deadlineNowMs`: the committee's L1 clock. Whether the response deadline
  *   has passed is decided on it alone, in both modes.
+ * - `minimumRoomSlots`: how many slots past `validToNowMs` an interval
+ *   anchored on a lagging tip must still run (the SDK window's
+ *   `minimumRoomSlots`). Promise mode sets it from its TTL rule; the plain
+ *   responder keeps the window's default.
  */
 export type AvailabilityResponderBuildTime = Readonly<{
   tipSlot: number;
   validToNowMs: number;
   deadlineNowMs: number;
+  minimumRoomSlots?: number;
 }>;
 
 /** The plain responder's build time: every "now" is the L1 clock's. */
@@ -222,6 +227,9 @@ const availabilityResponderValidity = (
     tip: { currentSlot: time.tipSlot, ledgerTipSlot: time.tipSlot },
     nowMs: time.validToNowMs,
     ...(limits === undefined ? {} : { limits }),
+    ...(time.minimumRoomSlots === undefined
+      ? {}
+      : { minimumRoomSlots: time.minimumRoomSlots }),
   });
   switch (window.status) {
     case "ready":

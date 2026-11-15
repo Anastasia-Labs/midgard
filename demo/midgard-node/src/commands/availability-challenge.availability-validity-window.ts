@@ -4,6 +4,7 @@ import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { l1NowUnixTimeMs } from "../l1-heads.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
   awaitLedgerTipAtLowerBound,
   observedLedgerTip,
@@ -13,13 +14,16 @@ import {
  * The validity interval of an availability command's transaction
  * (`SDK.daAvailabilityValidityWindow`). The command submits straight through
  * its provider, past the node's submit check, so the interval must be
- * admissible at the observed ledger tip when it is built. While the tip has
- * not reached the lower bound (it trails the L1 clock by more than the
- * backdate allows, or `lowerLimitMs` is past the last block), the command
- * waits for the tip, as the node's one-shot commands do, and takes the
- * interval again from the clock read after the wait. An interval the window
- * leaves no room for, or one that ends before the L1 clock (no block can
- * still include it), is refused.
+ * admissible at the observed ledger tip when it is built. It asks for the
+ * full lookahead of room past the L1 clock (`minimumRoomSlots`), so the
+ * window never anchors on a lagging tip: while the tip has not reached the
+ * lower bound of the interval running the lookahead past the clock (it
+ * trails the L1 clock by more than the backdate allows, or `lowerLimitMs` is
+ * past the last block), the command waits for the tip, as the node's
+ * one-shot commands do, rather than submit an interval that ends soon after
+ * the clock, and takes the interval again from the clock read after the
+ * wait. An interval the window leaves no room for, or one that ends before
+ * the L1 clock (no block can still include it), is refused.
  */
 export const availabilityValidityWindow = (
   lucid: LucidEvolution,
@@ -45,6 +49,10 @@ export const availabilityValidityWindow = (
           tip,
           nowMs,
           limits,
+          minimumRoomSlots: Math.ceil(
+            SDK.DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS /
+              canonicalSlotConfigForLucid(lucid).slotLength,
+          ),
         });
         if (window.status === "refused")
           return yield* Effect.fail(new Error(`${label}: ${window.detail}`));

@@ -8,10 +8,12 @@ import {
   Data,
   Emulator,
   generateEmulatorAccountFromPrivateKey,
+  Lucid,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import { availabilityValidityWindow } from "../src/commands/availability-challenge.availability-validity-window.js";
 import {
   availabilityPreparationAmounts,
   buildAvailabilityCommandTransaction,
@@ -412,4 +414,28 @@ describe("token-only DA challenger", () => {
     );
     expect(await f.lucid.utxosByOutRef([funding!])).toEqual([]);
   }, 300_000);
+});
+
+describe("an availability command's validity window", () => {
+  it("waits for the next block with the tip 90 s behind the L1 clock, rather than take an interval anchored on it", async () => {
+    const emulator = new Emulator([]);
+    const lucid = await Lucid(emulator, "Custom");
+    emulator.awaitSlot(300);
+    // A block every 100 slots, the last one 90 slots ago.
+    const tip = blockSizedTip(lucid, emulator, 100);
+    observeEmulatorTip(lucid, emulator, tip.tipAt);
+    tip.lastBlockSlotsAgo(90);
+    const lastBlockSlot = emulator.slot - 90;
+    const { validFrom, validTo } = await availabilityValidityWindow(
+      lucid,
+      "test",
+    );
+    // Taken once the next block lands, not at once.
+    const fromSlot = lucid.unixTimeToSlot(Number(validFrom));
+    expect(emulator.slot).toBeGreaterThanOrEqual(lastBlockSlot + 100);
+    expect(fromSlot + 2).toBeGreaterThan(lastBlockSlot);
+    expect(fromSlot + 2).toBeLessThanOrEqual(tip.tipAt(emulator.slot));
+    // The full lookahead past the L1 clock read after the wait.
+    expect(validTo).toBe(BigInt(emulator.now() + 60_000));
+  });
 });

@@ -34,6 +34,9 @@ import {
 } from "./promise-execution-scopes.js";
 import { committeePromiseStoreReadOwner } from "./promise-owned-read.js";
 import {
+  PROMISE_RESPONSE_BUILD_STAGE_MS,
+  PROMISE_RESPONSE_MIN_FUTURE_SLOTS,
+  PROMISE_RESPONSE_PROPAGATION_MS,
   promiseResponseBuildTime,
   promiseResponseTtl,
 } from "./promise-response-build.js";
@@ -131,7 +134,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
         poll: 15000,
         scheduling_lag: 2000,
         source: 10000,
-        build_sign_persist: 2000,
+        build_sign_persist: PROMISE_RESPONSE_BUILD_STAGE_MS,
         submit: 3000,
       }).map(([stage, refusalCapMs]) => ({
         stage,
@@ -330,7 +333,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
         if (buildStageTimer) clearTimeout(buildStageTimer);
         if (
           buildStageStart !== undefined &&
-          performance.now() - buildStageStart > 2000
+          performance.now() - buildStageStart > PROMISE_RESPONSE_BUILD_STAGE_MS
         )
           breach("build_sign_persist_budget_exceeded");
         buildStageStart = undefined;
@@ -348,7 +351,8 @@ export const configuredCommitteePromiseRuntime = async (input: {
           await ops.assertActuationCurrent(child ?? scope);
           if (
             buildStageStart !== undefined &&
-            performance.now() - buildStageStart >= 2000
+            performance.now() - buildStageStart >=
+              PROMISE_RESPONSE_BUILD_STAGE_MS
           )
             throw new Error(
               "Build/sign/persist stage exceeded its adopted allowance",
@@ -356,7 +360,10 @@ export const configuredCommitteePromiseRuntime = async (input: {
           if (
             freshBody &&
             builtTtl !== undefined &&
-            adoption.clock.eligibleFutureSlots(builtTtl, 3000) < 50
+            adoption.clock.eligibleFutureSlots(
+              builtTtl,
+              PROMISE_RESPONSE_PROPAGATION_MS,
+            ) < PROMISE_RESPONSE_MIN_FUTURE_SLOTS
           )
             throw new Error(
               "Actual signed-body TTL has fewer than fifty future eligible slots",
@@ -379,13 +386,18 @@ export const configuredCommitteePromiseRuntime = async (input: {
             buildStageStart = performance.now();
             buildStageTimer = setTimeout(
               () => breach("build_sign_persist_budget_exceeded"),
-              2000,
+              PROMISE_RESPONSE_BUILD_STAGE_MS,
             );
             buildStageTimer.unref();
             const builderScope = SDK.createDaAvailabilityReadScope({
               attemptTimeoutMs: Math.max(
                 1,
-                Math.ceil(Math.min(2000, (shared ?? scope).remainingMs())),
+                Math.ceil(
+                  Math.min(
+                    PROMISE_RESPONSE_BUILD_STAGE_MS,
+                    (shared ?? scope).remainingMs(),
+                  ),
+                ),
               ),
               signal: (shared ?? scope).signal,
             });
