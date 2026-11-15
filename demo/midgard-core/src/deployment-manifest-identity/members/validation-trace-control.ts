@@ -6,9 +6,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDispute: {
       purpose: "spend",
       referenceRole: "V1 validation-trace dispute",
-      manifestPosition: 57,
-      publicationPosition: 52,
-      referenceRolePosition: 42,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/dispute_v1.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"], ["opener"]],
@@ -16,9 +13,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeSource: {
       purpose: "spend",
       referenceRole: "V1 validation-trace source",
-      manifestPosition: 58,
-      publicationPosition: 53,
-      referenceRolePosition: 43,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/source_v1.main.spend",
       familyPaths: [["steps", "1"], ["source"]],
@@ -26,9 +20,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeGame: {
       purpose: "spend",
       referenceRole: "V1 validation-trace game",
-      manifestPosition: 59,
-      publicationPosition: 54,
-      referenceRolePosition: 44,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/game_v1.main.spend",
       familyPaths: [["steps", "2"], ["game"]],
@@ -36,9 +27,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeBoundary: {
       purpose: "spend",
       referenceRole: "V1 validation-trace boundary",
-      manifestPosition: 60,
-      publicationPosition: 55,
-      referenceRolePosition: 45,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/boundary_v1.main.spend",
       familyPaths: [["steps", "3"], ["boundary"]],
@@ -46,9 +34,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeTimeout: {
       purpose: "spend",
       referenceRole: "V1 validation-trace timeout",
-      manifestPosition: 61,
-      publicationPosition: 56,
-      referenceRolePosition: 46,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/timeout_v1.main.spend",
       familyPaths: [["steps", "4"], ["timeout"]],
@@ -56,9 +41,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeAward: {
       purpose: "spend",
       referenceRole: "V1 validation-trace award",
-      manifestPosition: 62,
-      publicationPosition: 57,
-      referenceRolePosition: 47,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/award_v1.main.spend",
       familyPaths: [["steps", "5"], ["award"]],
@@ -66,9 +48,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeAwardMint: {
       purpose: "mint",
       referenceRole: "V1 validation-trace award minting",
-      manifestPosition: 63,
-      publicationPosition: 58,
-      referenceRolePosition: 48,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/award_v1.main.mint",
       familyPaths: [["award"]],
@@ -76,9 +55,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeCase: {
       purpose: "spend",
       referenceRole: "V1 validation-trace case",
-      manifestPosition: 64,
-      publicationPosition: 59,
-      referenceRolePosition: 49,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/case_v1.main.spend",
       familyPaths: [["case"]],
@@ -86,9 +62,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeCaseMint: {
       purpose: "mint",
       referenceRole: "V1 validation-trace case minting",
-      manifestPosition: 65,
-      publicationPosition: 60,
-      referenceRolePosition: 50,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/case_v1.main.mint",
       familyPaths: [["case"]],
@@ -96,9 +69,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeCaseConfigMint: {
       purpose: "mint",
       referenceRole: "V1 validation-trace case configuration minting",
-      manifestPosition: 66,
-      publicationPosition: 61,
-      referenceRolePosition: 51,
       commands: ["protocol-init"],
       validatorTitle: "fraud_proofs/validation_trace/case_config_v1.main.mint",
       familyPaths: [["caseConfig"]],
@@ -106,9 +76,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeThreadExpiryWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace thread expiry",
-      manifestPosition: 67,
-      publicationPosition: 62,
-      referenceRolePosition: 52,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/thread_expiry_v1.main.withdraw",
@@ -117,9 +84,6 @@ export const validationTraceControlMembers = defineDeploymentFamily(
     validationTraceDisputeBond: {
       purpose: "spend",
       referenceRole: "V1 validation-trace dispute bond",
-      manifestPosition: 68,
-      publicationPosition: 63,
-      referenceRolePosition: 53,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/dispute_bond_v1.main.spend",

@@ -4,9 +4,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   depositHistoryRetentionSpend: {
     purpose: "spend",
     referenceRole: "deposit history retention",
-    manifestPosition: 27,
-    publicationPosition: 28,
-    referenceRolePosition: 24,
     commands: ["deposit"],
     validatorTitle: "user_events/history_data.retention.spend",
     familyPaths: [],
@@ -14,9 +11,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   depositHistoryRetirementWithdraw: {
     purpose: "withdraw",
     referenceRole: "deposit history retirement",
-    manifestPosition: 28,
-    publicationPosition: 29,
-    referenceRolePosition: 25,
     commands: ["deposit"],
     validatorTitle:
       "user_events/history_retirement.retirement_observer.withdraw",
@@ -25,9 +19,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   withdrawalHistoryRetentionSpend: {
     purpose: "spend",
     referenceRole: "withdrawal history retention",
-    manifestPosition: 29,
-    publicationPosition: 30,
-    referenceRolePosition: 26,
     commands: ["withdrawal"],
     validatorTitle: "user_events/history_data.retention.spend",
     familyPaths: [],
@@ -35,9 +26,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   withdrawalHistoryRetirementWithdraw: {
     purpose: "withdraw",
     referenceRole: "withdrawal history retirement",
-    manifestPosition: 30,
-    publicationPosition: 31,
-    referenceRolePosition: 27,
     commands: ["withdrawal"],
     validatorTitle:
       "user_events/history_retirement.retirement_observer.withdraw",
@@ -46,9 +34,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   depositSpend: {
     purpose: "spend",
     referenceRole: "deposit spending",
-    manifestPosition: 31,
-    publicationPosition: 33,
-    referenceRolePosition: 28,
     commands: ["deposit"],
     validatorTitle: "user_events/history.history.spend",
     familyPaths: [],
@@ -56,9 +41,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   depositMint: {
     purpose: "mint",
     referenceRole: "deposit minting",
-    manifestPosition: 32,
-    publicationPosition: 32,
-    referenceRolePosition: 29,
     commands: ["deposit"],
     validatorTitle: "user_events/history.history.spend",
     familyPaths: [],
@@ -66,9 +48,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   withdrawalSpend: {
     purpose: "spend",
     referenceRole: "withdrawal spending",
-    manifestPosition: 33,
-    publicationPosition: 35,
-    referenceRolePosition: 30,
     commands: ["withdrawal"],
     validatorTitle: "user_events/history.history.spend",
     familyPaths: [],
@@ -76,9 +55,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   withdrawalMint: {
     purpose: "mint",
     referenceRole: "withdrawal minting",
-    manifestPosition: 34,
-    publicationPosition: 34,
-    referenceRolePosition: 31,
     commands: ["withdrawal"],
     validatorTitle: "user_events/history.history.spend",
     familyPaths: [],
@@ -86,9 +62,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   txOrderSpend: {
     purpose: "spend",
     referenceRole: null,
-    manifestPosition: 35,
-    publicationPosition: null,
-    referenceRolePosition: null,
     commands: [],
     validatorTitle: "user_events/tx_order_v1.spend.spend",
     familyPaths: [],
@@ -96,9 +69,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   txOrderMint: {
     purpose: "mint",
     referenceRole: null,
-    manifestPosition: 36,
-    publicationPosition: null,
-    referenceRolePosition: null,
     commands: [],
     validatorTitle: "user_events/tx_order_v1.mint.mint",
     familyPaths: [],
@@ -106,9 +76,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   payoutSpend: {
     purpose: "spend",
     referenceRole: "payout spending",
-    manifestPosition: 43,
-    publicationPosition: 40,
-    referenceRolePosition: 33,
     commands: ["payout"],
     validatorTitle: "payout.spend.spend",
     familyPaths: [],
@@ -116,9 +83,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   payoutMint: {
     purpose: "mint",
     referenceRole: "payout minting",
-    manifestPosition: 44,
-    publicationPosition: 41,
-    referenceRolePosition: 34,
     commands: ["payout"],
     validatorTitle: "payout.mint.mint",
     familyPaths: [],
@@ -126,9 +90,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   reserveSpend: {
     purpose: "spend",
     referenceRole: "reserve spending",
-    manifestPosition: 45,
-    publicationPosition: 38,
-    referenceRolePosition: 35,
     commands: ["reserve"],
     validatorTitle: "reserve.spend.spend",
     familyPaths: [],
@@ -136,9 +97,6 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   reserveWithdraw: {
     purpose: "withdraw",
     referenceRole: "reserve observer",
-    manifestPosition: 46,
-    publicationPosition: 39,
-    referenceRolePosition: 36,
     commands: ["reserve"],
     validatorTitle: "reserve.withdraw.else",
     familyPaths: [],

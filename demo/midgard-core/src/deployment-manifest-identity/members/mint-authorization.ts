@@ -6,9 +6,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorization: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-01",
-      manifestPosition: 241,
-      publicationPosition: 147,
-      referenceRolePosition: 125,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
@@ -16,9 +13,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-02",
-      manifestPosition: 242,
-      publicationPosition: 148,
-      referenceRolePosition: 126,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/step_02.main.spend",
       familyPaths: [["steps", "1"]],
@@ -26,9 +20,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-03",
-      manifestPosition: 243,
-      publicationPosition: 149,
-      referenceRolePosition: 127,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/step_03.main.spend",
       familyPaths: [["steps", "2"]],
@@ -36,9 +27,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-04",
-      manifestPosition: 244,
-      publicationPosition: 150,
-      referenceRolePosition: 128,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/step_04.main.spend",
       familyPaths: [["steps", "3"]],
@@ -46,9 +34,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-05",
-      manifestPosition: 245,
-      publicationPosition: 151,
-      referenceRolePosition: 129,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/step_05.main.spend",
       familyPaths: [["steps", "4"]],
@@ -56,9 +41,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep06: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-06",
-      manifestPosition: 246,
-      publicationPosition: 152,
-      referenceRolePosition: 130,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/evaluate.main.spend",
       familyPaths: [["steps", "5"]],
@@ -66,9 +48,6 @@ export const mintAuthorizationMembers = defineDeploymentFamily(
     fraudProofMintAuthorizationStep07: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-authorization step-07",
-      manifestPosition: 247,
-      publicationPosition: 153,
-      referenceRolePosition: 131,
       commands: [],
       validatorTitle: "fraud_proofs/mint_authorization/witness_scan.main.spend",
       familyPaths: [["steps", "6"]],

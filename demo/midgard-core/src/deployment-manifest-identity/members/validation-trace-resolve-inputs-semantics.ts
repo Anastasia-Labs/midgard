@@ -5,9 +5,6 @@ export const validationTraceResolveInputsSemanticsMembers =
     validationTraceDisputeResolveInputsInitialSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace resolve-inputs Initial semantic",
-      manifestPosition: 69,
-      publicationPosition: 443,
-      referenceRolePosition: 184,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_initial_semantic_v1.main.spend",
@@ -19,9 +16,6 @@ export const validationTraceResolveInputsSemanticsMembers =
     validationTraceDisputeResolveInputsFinishSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace resolve-inputs Finish semantic",
-      manifestPosition: 70,
-      publicationPosition: 444,
-      referenceRolePosition: 185,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_finish_semantic_v1.main.spend",
@@ -34,9 +28,6 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipBegin semantic",
-      manifestPosition: 71,
-      publicationPosition: 445,
-      referenceRolePosition: 186,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_begin_semantic_v1.main.spend",
@@ -49,9 +40,6 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipStep semantic",
-      manifestPosition: 72,
-      publicationPosition: 446,
-      referenceRolePosition: 187,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_step_semantic_v1.main.spend",
@@ -64,9 +52,6 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole:
         "V1 validation-trace resolve-inputs MembershipFinalize semantic",
-      manifestPosition: 73,
-      publicationPosition: 447,
-      referenceRolePosition: 188,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_finalize_semantic_v1.main.spend",
@@ -79,9 +64,6 @@ export const validationTraceResolveInputsSemanticsMembers =
       purpose: "spend",
       referenceRole:
         "V1 validation-trace resolve-inputs NonMembership semantic",
-      manifestPosition: 74,
-      publicationPosition: 448,
-      referenceRolePosition: 189,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_non_membership_semantic_v1.main.spend",

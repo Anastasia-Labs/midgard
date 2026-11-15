@@ -160,13 +160,13 @@ by package with what enforces it. Read it before step 2, and again whenever a
    fork, and `aiken fmt` leaves no diff.
 3. **Register the deployment identity in core.** Add one member file in core,
    `members/<kebab>.ts`, spread into `members.data.ts`: every member with its
-   role, title, family paths (the first is the SDK recipe's) and positions.
-   Append the category to core `DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_*`
-   order with an unused 8-hex ID (IDs are sparse; never derive one from the
-   position), and add the members to the contract ABI and token names. SDK,
-   node and watcher tables are projections; edit none. Done when
-   `catalogue-order`, `catalogue-id`, `deployment-members`, `first-step` and
-   `reference-scripts` are `OK`. [review]
+   role, title and family paths (the first is the SDK recipe's). Append the
+   category to core `DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_*` order with an
+   unused 8-hex ID (IDs are sparse; never derive one from the position). Add
+   the members to the token names and to the contract-name list where they
+   publish (its order is the deployment order). SDK, node and watcher tables
+   are projections; edit none. Done when `catalogue-order`, `catalogue-id`,
+   `deployment-members`, `first-step` and `reference-scripts` are `OK`. [review]
 4. **Build the SDK contract chain.** `contracts/families/<kebab>.ts` reads
    titles through `deploymentValidatorTitle` and defines `build<Name>Chain`,
    wired into `contracts/build.ts`, `index.ts` and `types.ts`; add the

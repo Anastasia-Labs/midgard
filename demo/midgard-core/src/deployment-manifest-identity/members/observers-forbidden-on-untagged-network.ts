@@ -6,9 +6,6 @@ export const observersForbiddenOnUntaggedNetworkMembers =
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof observers-forbidden-on-untagged-network step-01",
-      manifestPosition: 306,
-      publicationPosition: 212,
-      referenceRolePosition: 445,
       commands: [],
       validatorTitle:
         "fraud_proofs/observers_forbidden_on_untagged_network/step_01.main.spend",
@@ -18,9 +15,6 @@ export const observersForbiddenOnUntaggedNetworkMembers =
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof observers-forbidden-on-untagged-network step-02",
-      manifestPosition: 307,
-      publicationPosition: 213,
-      referenceRolePosition: 446,
       commands: [],
       validatorTitle:
         "fraud_proofs/observers_forbidden_on_untagged_network/step_02.main.spend",

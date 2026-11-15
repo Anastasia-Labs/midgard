@@ -4,9 +4,6 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkId: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id step-01",
-    manifestPosition: 248,
-    publicationPosition: 154,
-    referenceRolePosition: 141,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/step_01.main.spend",
     familyPaths: [["firstStep"], ["steps", "0"]],
@@ -14,9 +11,6 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkIdStep02: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id step-02",
-    manifestPosition: 249,
-    publicationPosition: 155,
-    referenceRolePosition: 142,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/step_02.main.spend",
     familyPaths: [["steps", "1"]],
@@ -24,9 +18,6 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkIdForcedStep: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id forced step",
-    manifestPosition: 502,
-    publicationPosition: 408,
-    referenceRolePosition: 143,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/forced_step.main.spend",
     familyPaths: [["forcedStep"]],
@@ -34,9 +25,6 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkIdForcedScan: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id forced scan",
-    manifestPosition: 503,
-    publicationPosition: 409,
-    referenceRolePosition: 144,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/forced_scan.main.spend",
     familyPaths: [["forcedScan"]],

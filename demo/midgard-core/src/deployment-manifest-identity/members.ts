@@ -37,20 +37,6 @@ export const verifyDeploymentMembers = (
   ]);
   const roles = new Set<string>();
   const paths = new Set<string>();
-  const positions = {
-    manifest: new Set<number>(),
-    publication: new Set<number>(),
-    role: new Set<number>(),
-  };
-  const position = (
-    kind: keyof typeof positions,
-    value: number,
-    contract: string,
-  ) => {
-    if (!Number.isSafeInteger(value) || value < 0 || positions[kind].has(value))
-      throw new Error(`Invalid or duplicated ${kind} position for ${contract}`);
-    positions[kind].add(value);
-  };
   for (const [contract, member] of Object.entries(members)) {
     if (!families.has(member.family))
       throw new Error(
@@ -58,16 +44,7 @@ export const verifyDeploymentMembers = (
       );
     if (!["spend", "mint", "withdraw"].includes(member.purpose))
       throw new Error(`Invalid deployment purpose for ${contract}`);
-    position("manifest", member.manifestPosition, contract);
-    if (member.referenceRole === null) {
-      if (
-        member.publicationPosition !== null ||
-        member.referenceRolePosition !== null
-      )
-        throw new Error(
-          `Unpublished deployment member has publication positions: ${contract}`,
-        );
-    } else {
+    if (member.referenceRole !== null) {
       if (
         member.referenceRole.length === 0 ||
         !Object.prototype.hasOwnProperty.call(
@@ -80,15 +57,6 @@ export const verifyDeploymentMembers = (
           `Invalid or duplicated deployment role for ${contract}`,
         );
       roles.add(member.referenceRole);
-      if (
-        member.publicationPosition === null ||
-        member.referenceRolePosition === null
-      )
-        throw new Error(
-          `Published deployment member lacks positions: ${contract}`,
-        );
-      position("publication", member.publicationPosition, contract);
-      position("role", member.referenceRolePosition, contract);
     }
     if (
       (member.validatorTitle === null) !==
@@ -110,12 +78,6 @@ export const verifyDeploymentMembers = (
           `Invalid or duplicated family member path for ${contract}`,
         );
       paths.add(key);
-    }
-  }
-  for (const [kind, values] of Object.entries(positions)) {
-    for (let i = 0; i < values.size; i++) {
-      if (!values.has(i))
-        throw new Error(`Non-contiguous deployment ${kind} positions`);
     }
   }
   for (const family of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
@@ -141,21 +103,16 @@ export const verifyDeploymentMembers = (
 
 verifyDeploymentMembers(DEPLOYMENT_MEMBERS);
 
-export const DEPLOYMENT_MANIFEST_MEMBERS = Object.freeze(
-  (Object.keys(DEPLOYMENT_MEMBERS) as DeploymentContract[]).sort(
-    (left, right) =>
-      DEPLOYMENT_MEMBERS[left].manifestPosition -
-      DEPLOYMENT_MEMBERS[right].manifestPosition,
-  ),
-);
+/**
+ * The deployment order is the contract-name list's order. Publication, and so
+ * the reference-role map, keeps the published members in that same order.
+ */
+export const DEPLOYMENT_MANIFEST_MEMBERS: readonly DeploymentContract[] =
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES;
 
 export const DEPLOYMENT_PUBLICATION_MEMBERS = Object.freeze(
   DEPLOYMENT_MANIFEST_MEMBERS.filter(
-    (contract) => DEPLOYMENT_MEMBERS[contract].publicationPosition !== null,
-  ).sort(
-    (left, right) =>
-      DEPLOYMENT_MEMBERS[left].publicationPosition! -
-      DEPLOYMENT_MEMBERS[right].publicationPosition!,
+    (contract) => DEPLOYMENT_MEMBERS[contract].referenceRole !== null,
   ),
 );
 

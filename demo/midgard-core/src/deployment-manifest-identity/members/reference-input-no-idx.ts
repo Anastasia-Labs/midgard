@@ -6,9 +6,6 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdx: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-01",
-      manifestPosition: 55,
-      publicationPosition: 94,
-      referenceRolePosition: 171,
       commands: [],
       validatorTitle: "fraud_proofs/reference_input_no_idx/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
@@ -16,9 +13,6 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-02",
-      manifestPosition: 522,
-      publicationPosition: 95,
-      referenceRolePosition: 172,
       commands: [],
       validatorTitle: "fraud_proofs/reference_input_no_idx/step_02.main.spend",
       familyPaths: [["steps", "1"]],
@@ -26,9 +20,6 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-03",
-      manifestPosition: 523,
-      publicationPosition: 96,
-      referenceRolePosition: 173,
       commands: [],
       validatorTitle: "fraud_proofs/reference_input_no_idx/step_03.main.spend",
       familyPaths: [["steps", "2"]],
@@ -36,9 +27,6 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-04",
-      manifestPosition: 524,
-      publicationPosition: 97,
-      referenceRolePosition: 174,
       commands: [],
       validatorTitle: "fraud_proofs/reference_input_no_idx/step_04.main.spend",
       familyPaths: [["steps", "3"]],

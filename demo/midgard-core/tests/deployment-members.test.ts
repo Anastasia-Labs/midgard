@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_MEMBERS,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MEMBERS,
   DEPLOYMENT_PUBLICATION_MEMBERS,
   deploymentFamilyStepNames,
@@ -11,32 +13,10 @@ import {
 
 describe("deployment member admission", () => {
   it("requires the min-Ada yield even when every derived view omits it", () => {
-    const { fraudProofMinAdaStep02TxWithdraw: omitted, ...remaining } =
+    // Completeness comes from the independent contract-name list, not from
+    // any view derived from the rows.
+    const { fraudProofMinAdaStep02TxWithdraw: _omitted, ...members } =
       DEPLOYMENT_MEMBERS;
-    // Close all position gaps as every derived projection would. Completeness
-    // must come from the protocol ABI, not a missing numeric position.
-    const members = Object.fromEntries(
-      Object.entries(remaining).map(([contract, member]) => [
-        contract,
-        {
-          ...member,
-          manifestPosition:
-            member.manifestPosition > omitted.manifestPosition
-              ? member.manifestPosition - 1
-              : member.manifestPosition,
-          publicationPosition:
-            member.publicationPosition !== null &&
-            member.publicationPosition > omitted.publicationPosition
-              ? member.publicationPosition - 1
-              : member.publicationPosition,
-          referenceRolePosition:
-            member.referenceRolePosition !== null &&
-            member.referenceRolePosition > omitted.referenceRolePosition
-              ? member.referenceRolePosition - 1
-              : member.referenceRolePosition,
-        },
-      ]),
-    );
     expect(Object.keys(members)).not.toContain(
       "fraudProofMinAdaStep02TxWithdraw",
     );
@@ -45,27 +25,36 @@ describe("deployment member admission", () => {
     );
   });
 
-  it("refuses duplicate publication positions and roles", () => {
-    const members = {
-      ...DEPLOYMENT_MEMBERS,
-      fraudProofMinAdaStep02TxWithdraw: {
-        ...DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw,
-        publicationPosition:
-          DEPLOYMENT_MEMBERS.fraudProofMinAda.publicationPosition,
-      },
-    };
-    expect(() => verifyDeploymentMembers(members)).toThrow(
-      "duplicated publication position",
-    );
+  it("refuses a duplicated reference role", () => {
     expect(() =>
       verifyDeploymentMembers({
-        ...members,
+        ...DEPLOYMENT_MEMBERS,
         fraudProofMinAdaStep02TxWithdraw: {
           ...DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw,
           referenceRole: DEPLOYMENT_MEMBERS.fraudProofMinAda.referenceRole,
         },
       }),
     ).toThrow("duplicated deployment role");
+  });
+
+  it("derives every roster order from the contract-name list", () => {
+    expect(DEPLOYMENT_MANIFEST_MEMBERS).toEqual(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+    );
+    // Publication keeps the members that carry a role, in list order.
+    expect(DEPLOYMENT_PUBLICATION_MEMBERS).toEqual(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.filter(
+        (contract) => DEPLOYMENT_MEMBERS[contract].referenceRole !== null,
+      ),
+    );
+    expect(
+      Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+    ).toEqual(
+      DEPLOYMENT_PUBLICATION_MEMBERS.map((contract) => [
+        DEPLOYMENT_MEMBERS[contract].referenceRole,
+        contract,
+      ]),
+    );
   });
 
   it("rejects a member outside the protocol ABI", () => {
@@ -85,13 +74,10 @@ describe("deployment member admission", () => {
       "fraudProofMinAdaStep03",
       "fraudProofMinAdaStep04",
     ]);
-    const { manifestPosition, publicationPosition } =
-      DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw;
-    expect(DEPLOYMENT_MANIFEST_MEMBERS[manifestPosition]).toBe(
+    expect(DEPLOYMENT_MANIFEST_MEMBERS).toContain(
       "fraudProofMinAdaStep02TxWithdraw",
     );
-    expect(publicationPosition).not.toBeNull();
-    expect(DEPLOYMENT_PUBLICATION_MEMBERS[publicationPosition!]).toBe(
+    expect(DEPLOYMENT_PUBLICATION_MEMBERS).toContain(
       "fraudProofMinAdaStep02TxWithdraw",
     );
   });

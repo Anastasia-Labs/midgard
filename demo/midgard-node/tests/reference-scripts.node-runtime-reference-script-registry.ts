@@ -149,14 +149,14 @@ describe("node-runtime reference-script registry", () => {
     expect(byCommand.deposit.map(({ name }) => name)).toEqual([
       "deposit history retention",
       "deposit history retirement",
-      "deposit minting",
       "deposit spending",
+      "deposit minting",
     ]);
     expect(byCommand.withdrawal.map(({ name }) => name)).toEqual([
       "withdrawal history retention",
       "withdrawal history retirement",
-      "withdrawal minting",
       "withdrawal spending",
+      "withdrawal minting",
     ]);
     expect(byCommand.reserve.map(({ name }) => name)).toEqual([
       "reserve spending",

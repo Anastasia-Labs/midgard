@@ -4,9 +4,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   referenceScriptAuthMint: {
     purpose: "mint",
     referenceRole: "reference-script-auth minting",
-    manifestPosition: 0,
-    publicationPosition: 0,
-    referenceRolePosition: 0,
     commands: ["protocol-init", "reference-script-auth"],
     validatorTitle: null,
     familyPaths: [],
@@ -14,9 +11,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   hubOracleMint: {
     purpose: "mint",
     referenceRole: "hub-oracle minting",
-    manifestPosition: 1,
-    publicationPosition: 1,
-    referenceRolePosition: 1,
     commands: ["protocol-init", "hub-oracle"],
     validatorTitle: "hub_oracle.mint.mint",
     familyPaths: [],
@@ -24,9 +18,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daParamsGovernorSpend: {
     purpose: "spend",
     referenceRole: "da-params-governor spending",
-    manifestPosition: 2,
-    publicationPosition: 2,
-    referenceRolePosition: 2,
     commands: ["da"],
     validatorTitle: "da_params_governor.da_params_governor.spend",
     familyPaths: [],
@@ -34,9 +25,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daParamsGovernorMint: {
     purpose: "mint",
     referenceRole: "da-params-governor minting",
-    manifestPosition: 3,
-    publicationPosition: 3,
-    referenceRolePosition: 3,
     commands: ["protocol-init", "da"],
     validatorTitle: "da_params_governor.da_params_governor.mint",
     familyPaths: [],
@@ -44,9 +32,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daBondPoolSpend: {
     purpose: "spend",
     referenceRole: "da-bond-pool spending",
-    manifestPosition: 4,
-    publicationPosition: 4,
-    referenceRolePosition: 4,
     commands: ["da"],
     validatorTitle: "da_bond_pool.da_bond_pool.spend",
     familyPaths: [],
@@ -54,9 +39,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daBondPoolMint: {
     purpose: "mint",
     referenceRole: "da-bond-pool minting",
-    manifestPosition: 5,
-    publicationPosition: 5,
-    referenceRolePosition: 5,
     commands: ["protocol-init", "da"],
     validatorTitle: "da_bond_pool.da_bond_pool.mint",
     familyPaths: [],
@@ -64,9 +46,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daAttestationSpend: {
     purpose: "spend",
     referenceRole: "da-attestation spending",
-    manifestPosition: 6,
-    publicationPosition: 6,
-    referenceRolePosition: 6,
     commands: ["da"],
     validatorTitle: "da_attestation.da_attestation.spend",
     familyPaths: [],
@@ -74,9 +53,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   daAttestationMint: {
     purpose: "mint",
     referenceRole: "da-attestation minting",
-    manifestPosition: 7,
-    publicationPosition: 7,
-    referenceRolePosition: 7,
     commands: ["protocol-init", "da"],
     validatorTitle: "da_attestation.da_attestation.mint",
     familyPaths: [],
@@ -84,9 +60,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueSpend: {
     purpose: "spend",
     referenceRole: "state-queue spending",
-    manifestPosition: 8,
-    publicationPosition: 10,
-    referenceRolePosition: 8,
     commands: ["state-queue"],
     validatorTitle: "state_queue.spend.spend",
     familyPaths: [],
@@ -94,9 +67,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueMint: {
     purpose: "mint",
     referenceRole: "state-queue minting",
-    manifestPosition: 9,
-    publicationPosition: 11,
-    referenceRolePosition: 9,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue.mint.mint",
     familyPaths: [],
@@ -104,9 +74,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueCommitWithdraw: {
     purpose: "withdraw",
     referenceRole: "state-queue commit withdrawal",
-    manifestPosition: 10,
-    publicationPosition: 12,
-    referenceRolePosition: 10,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue_yields.commit.withdraw",
     familyPaths: [],
@@ -114,9 +81,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueUnattestedTimeoutWithdraw: {
     purpose: "withdraw",
     referenceRole: "state-queue unattested-timeout withdrawal",
-    manifestPosition: 11,
-    publicationPosition: 13,
-    referenceRolePosition: 11,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue_yields.remove_unattested.withdraw",
     familyPaths: [],
@@ -124,9 +88,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueUnavailableTimeoutWithdraw: {
     purpose: "withdraw",
     referenceRole: "state-queue unavailable-timeout withdrawal",
-    manifestPosition: 12,
-    publicationPosition: 14,
-    referenceRolePosition: 12,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue_yields.remove_unavailable.withdraw",
     familyPaths: [],
@@ -134,9 +95,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueFraudRemovalWithdraw: {
     purpose: "withdraw",
     referenceRole: "state-queue fraud-removal withdrawal",
-    manifestPosition: 13,
-    publicationPosition: 15,
-    referenceRolePosition: 13,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue_yields.remove_fraudulent.withdraw",
     familyPaths: [],
@@ -144,9 +102,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   stateQueueMergeWithdraw: {
     purpose: "withdraw",
     referenceRole: "state-queue merge withdrawal",
-    manifestPosition: 14,
-    publicationPosition: 16,
-    referenceRolePosition: 14,
     commands: ["protocol-init", "state-queue"],
     validatorTitle: "state_queue_yields.merge.withdraw",
     familyPaths: [],
@@ -154,9 +109,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   schedulerSpend: {
     purpose: "spend",
     referenceRole: "scheduler spending",
-    manifestPosition: 15,
-    publicationPosition: 8,
-    referenceRolePosition: 15,
     commands: ["scheduler"],
     validatorTitle: "scheduler.spend.spend",
     familyPaths: [],
@@ -164,9 +116,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   schedulerMint: {
     purpose: "mint",
     referenceRole: "scheduler minting",
-    manifestPosition: 16,
-    publicationPosition: 9,
-    referenceRolePosition: 16,
     commands: ["protocol-init", "scheduler"],
     validatorTitle: "scheduler.mint.mint",
     familyPaths: [],
@@ -174,9 +123,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   registeredOperatorsSpend: {
     purpose: "spend",
     referenceRole: "registered-operators spending",
-    manifestPosition: 17,
-    publicationPosition: 17,
-    referenceRolePosition: 17,
     commands: ["registered-operators"],
     validatorTitle: "operator_directory/registered_operators.spend.spend",
     familyPaths: [],
@@ -184,9 +130,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   registeredOperatorsMint: {
     purpose: "mint",
     referenceRole: "registered-operators minting",
-    manifestPosition: 18,
-    publicationPosition: 18,
-    referenceRolePosition: 18,
     commands: ["protocol-init", "registered-operators"],
     validatorTitle: "operator_directory/registered_operators.mint.mint",
     familyPaths: [],
@@ -194,9 +137,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   activeOperatorsSpend: {
     purpose: "spend",
     referenceRole: "active-operators spending",
-    manifestPosition: 19,
-    publicationPosition: 19,
-    referenceRolePosition: 19,
     commands: ["active-operators"],
     validatorTitle: "operator_directory/active_operators.spend.spend",
     familyPaths: [],
@@ -204,9 +144,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   activeOperatorsMint: {
     purpose: "mint",
     referenceRole: "active-operators minting",
-    manifestPosition: 20,
-    publicationPosition: 20,
-    referenceRolePosition: 20,
     commands: ["protocol-init", "active-operators"],
     validatorTitle: "operator_directory/active_operators.mint.mint",
     familyPaths: [],
@@ -214,9 +151,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   retiredOperatorsSpend: {
     purpose: "spend",
     referenceRole: "retired-operators spending",
-    manifestPosition: 21,
-    publicationPosition: 21,
-    referenceRolePosition: 21,
     commands: ["retired-operators"],
     validatorTitle: "operator_directory/retired_operators.spend.spend",
     familyPaths: [],
@@ -224,9 +158,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   retiredOperatorsMint: {
     purpose: "mint",
     referenceRole: "retired-operators minting",
-    manifestPosition: 22,
-    publicationPosition: 22,
-    referenceRolePosition: 22,
     commands: ["protocol-init", "retired-operators"],
     validatorTitle: "operator_directory/retired_operators.mint.mint",
     familyPaths: [],
@@ -234,9 +165,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   settlementSpend: {
     purpose: "spend",
     referenceRole: null,
-    manifestPosition: 41,
-    publicationPosition: null,
-    referenceRolePosition: null,
     commands: [],
     validatorTitle: "settlement.spend.spend",
     familyPaths: [],
@@ -244,9 +172,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   settlementMint: {
     purpose: "mint",
     referenceRole: "settlement minting",
-    manifestPosition: 42,
-    publicationPosition: 36,
-    referenceRolePosition: 32,
     commands: ["settlement"],
     validatorTitle: "settlement.mint.mint",
     familyPaths: [],
@@ -254,9 +179,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   correctionLockSpend: {
     purpose: "spend",
     referenceRole: "correction-lock spending",
-    manifestPosition: 620,
-    publicationPosition: 621,
-    referenceRolePosition: 395,
     commands: ["state-queue"],
     validatorTitle: "correction_lock.spend.spend",
     familyPaths: [],
@@ -264,9 +186,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeSpend: {
     purpose: "spend",
     referenceRole: "availability-challenge spending",
-    manifestPosition: 621,
-    publicationPosition: 42,
-    referenceRolePosition: 616,
     commands: [],
     validatorTitle: "availability_challenge.availability_challenge.spend",
     familyPaths: [],
@@ -274,9 +193,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeMint: {
     purpose: "mint",
     referenceRole: "availability-challenge minting",
-    manifestPosition: 622,
-    publicationPosition: 43,
-    referenceRolePosition: 617,
     commands: ["da"],
     validatorTitle: "availability_challenge.availability_challenge.mint",
     familyPaths: [],
@@ -284,9 +200,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeOpenWithdraw: {
     purpose: "withdraw",
     referenceRole: "availability-challenge open withdrawal",
-    manifestPosition: 623,
-    publicationPosition: 44,
-    referenceRolePosition: 618,
     commands: [],
     validatorTitle: "availability_challenge_yields.open.withdraw",
     familyPaths: [],
@@ -294,9 +207,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeSettleWithdraw: {
     purpose: "withdraw",
     referenceRole: "availability-challenge settle withdrawal",
-    manifestPosition: 624,
-    publicationPosition: 45,
-    referenceRolePosition: 619,
     commands: [],
     validatorTitle: "availability_challenge_yields.settle.withdraw",
     familyPaths: [],
@@ -304,9 +214,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeCloseWithdraw: {
     purpose: "withdraw",
     referenceRole: "availability-challenge close withdrawal",
-    manifestPosition: 625,
-    publicationPosition: 46,
-    referenceRolePosition: 620,
     commands: [],
     validatorTitle: "availability_challenge_yields.close.withdraw",
     familyPaths: [],
@@ -314,9 +221,6 @@ export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
   availabilityChallengeTimeoutWithdraw: {
     purpose: "withdraw",
     referenceRole: "availability-challenge timeout withdrawal",
-    manifestPosition: 626,
-    publicationPosition: 47,
-    referenceRolePosition: 621,
     commands: [],
     validatorTitle: "availability_challenge_yields.timeout.withdraw",
     familyPaths: [],

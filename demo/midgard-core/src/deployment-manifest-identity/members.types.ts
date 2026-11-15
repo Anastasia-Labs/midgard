@@ -1,7 +1,10 @@
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "./catalogue-roles.deployment-manifest-contract-names.additions.js";
 import type { DeploymentManifestFraudProofCatalogueCategory } from "./catalogue-roles.protocol-categories.js";
 
-/** The contract-name set is maintained independently of the member rows. */
+/**
+ * The contract-name list is maintained independently of the member rows, and
+ * its order is the deployment order every roster view derives.
+ */
 export type DeploymentContract =
   (typeof DEPLOYMENT_MANIFEST_CONTRACT_NAMES)[number];
 export type DeploymentFamily =
@@ -37,10 +40,8 @@ export type DeploymentScriptCommandName = Exclude<
 export type DeploymentMember = Readonly<{
   family: DeploymentFamily;
   purpose: DeploymentScriptPurpose;
+  /** Null for the few members the deployment applies but never publishes. */
   referenceRole: string | null;
-  manifestPosition: number;
-  publicationPosition: number | null;
-  referenceRolePosition: number | null;
   commands: readonly DeploymentScriptCommandName[];
   /** Null only for the native reference-script authorization policy. */
   validatorTitle: string | null;

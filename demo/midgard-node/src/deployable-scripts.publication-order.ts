@@ -12,7 +12,7 @@ const recipeContext: SDK.DeploymentRecipeContext = {
   phasMembership: loadPhasMembershipWithdrawalScript,
 };
 
-/** Every deployment member, in the manifest's historical serialization order. */
+/** Every deployment member, in the contract-name list's order. */
 export const manifestDeployableScripts = (
   contracts: SDK.MidgardValidators,
 ): readonly SDK.DeploymentScript[] => {
@@ -21,7 +21,7 @@ export const manifestDeployableScripts = (
   return scripts;
 };
 
-/** The same members projected into the historical reference publication order. */
+/** The published members, in that same order. */
 export const publishedDeployableScripts = (
   contracts: SDK.MidgardValidators,
 ): readonly SDK.PublishedDeploymentScript[] => {

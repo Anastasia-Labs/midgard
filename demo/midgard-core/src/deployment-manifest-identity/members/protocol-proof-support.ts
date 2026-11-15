@@ -4,9 +4,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fraudProofCatalogueSpend: {
     purpose: "spend",
     referenceRole: null,
-    manifestPosition: 23,
-    publicationPosition: null,
-    referenceRolePosition: null,
     commands: [],
     validatorTitle: "fraud_proof_catalogue.spend.else",
     familyPaths: [],
@@ -14,9 +11,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fraudProofCatalogueMint: {
     purpose: "mint",
     referenceRole: "fraud-proof-catalogue minting",
-    manifestPosition: 24,
-    publicationPosition: 23,
-    referenceRolePosition: 23,
     commands: ["protocol-init"],
     validatorTitle: "fraud_proof_catalogue.mint.mint",
     familyPaths: [],
@@ -24,9 +18,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fraudProofSpend: {
     purpose: "spend",
     referenceRole: null,
-    manifestPosition: 25,
-    publicationPosition: null,
-    referenceRolePosition: null,
     commands: [],
     validatorTitle: "fraud_proof.spend.else",
     familyPaths: [],
@@ -34,9 +25,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fraudProofMint: {
     purpose: "mint",
     referenceRole: "V1 fraud-proof token minting",
-    manifestPosition: 26,
-    publicationPosition: 25,
-    referenceRolePosition: 146,
     commands: [],
     validatorTitle: "fraud_proof.mint.mint",
     familyPaths: [],
@@ -44,9 +32,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fieldPreimageCertificateSpend: {
     purpose: "spend",
     referenceRole: "V1 field-preimage certificate",
-    manifestPosition: 37,
-    publicationPosition: 48,
-    referenceRolePosition: 38,
     commands: [],
     validatorTitle:
       "field_preimage_certificate.field_preimage_certificate.spend",
@@ -55,9 +40,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fieldPreimageCertificateMint: {
     purpose: "mint",
     referenceRole: "V1 field-preimage certificate minting",
-    manifestPosition: 38,
-    publicationPosition: 49,
-    referenceRolePosition: 39,
     commands: [],
     validatorTitle:
       "field_preimage_certificate.field_preimage_certificate.mint",
@@ -66,9 +48,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fieldGrammarCertificateSpend: {
     purpose: "spend",
     referenceRole: "V1 field grammar certificate",
-    manifestPosition: 741,
-    publicationPosition: 736,
-    referenceRolePosition: 736,
     commands: [],
     validatorTitle: "field_grammar_certificate.field_grammar_certificate.spend",
     familyPaths: [],
@@ -76,9 +55,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   fieldGrammarCertificateMint: {
     purpose: "mint",
     referenceRole: "V1 field grammar certificate minting",
-    manifestPosition: 742,
-    publicationPosition: 737,
-    referenceRolePosition: 737,
     commands: [],
     validatorTitle: "field_grammar_certificate.field_grammar_certificate.mint",
     familyPaths: [],
@@ -86,9 +62,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeSpend: {
     purpose: "spend",
     referenceRole: "V1 script decode",
-    manifestPosition: 39,
-    publicationPosition: 50,
-    referenceRolePosition: 40,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_v1.spend",
     familyPaths: [],
@@ -96,9 +69,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeMint: {
     purpose: "mint",
     referenceRole: "V1 script decode minting",
-    manifestPosition: 40,
-    publicationPosition: 51,
-    referenceRolePosition: 41,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_v1.mint",
     familyPaths: [],
@@ -106,9 +76,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeTermWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode term staker",
-    manifestPosition: 627,
-    publicationPosition: 622,
-    referenceRolePosition: 622,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_term_v1.withdraw",
     familyPaths: [],
@@ -116,9 +83,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeValueWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode value staker",
-    manifestPosition: 628,
-    publicationPosition: 623,
-    referenceRolePosition: 623,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_value_v1.withdraw",
     familyPaths: [],
@@ -126,9 +90,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeListWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode list staker",
-    manifestPosition: 629,
-    publicationPosition: 624,
-    referenceRolePosition: 624,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_list_v1.withdraw",
     familyPaths: [],
@@ -136,9 +97,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeFoldWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode fold staker",
-    manifestPosition: 630,
-    publicationPosition: 625,
-    referenceRolePosition: 625,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_fold_v1.withdraw",
     familyPaths: [],
@@ -146,9 +104,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeBytesWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode bytes staker",
-    manifestPosition: 631,
-    publicationPosition: 626,
-    referenceRolePosition: 626,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_bytes_v1.withdraw",
     familyPaths: [],
@@ -156,9 +111,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   scriptDecodeDataWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 script decode data staker",
-    manifestPosition: 632,
-    publicationPosition: 627,
-    referenceRolePosition: 627,
     commands: [],
     validatorTitle: "script_decode_v1.script_decode_data_v1.withdraw",
     familyPaths: [],
@@ -166,9 +118,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   phasMembershipWithdraw: {
     purpose: "withdraw",
     referenceRole: "membership proof withdrawal",
-    manifestPosition: 47,
-    publicationPosition: 37,
-    referenceRolePosition: 37,
     commands: ["phas-membership"],
     validatorTitle: "phas.membership.withdraw",
     familyPaths: [],
@@ -176,9 +125,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   computationThreadMint: {
     purpose: "mint",
     referenceRole: "V1 fraud-proof computation-thread minting",
-    manifestPosition: 504,
-    publicationPosition: 24,
-    referenceRolePosition: 145,
     commands: [],
     validatorTitle: "computation_thread.mint.mint",
     familyPaths: [],
@@ -186,9 +132,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   chunkedVerifyWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 MPF chunked-verify withdrawal",
-    manifestPosition: 505,
-    publicationPosition: 26,
-    referenceRolePosition: 147,
     commands: [],
     validatorTitle: "mpf_chunked_verify.verify.withdraw",
     familyPaths: [],
@@ -196,9 +139,6 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   pexcludesWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 MPF pexcludes withdrawal",
-    manifestPosition: 506,
-    publicationPosition: 27,
-    referenceRolePosition: 148,
     commands: [],
     validatorTitle: "pexcludes.exclusion.withdraw",
     familyPaths: [],

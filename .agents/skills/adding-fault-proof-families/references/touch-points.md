@@ -53,9 +53,9 @@ different prefix. [script: .agents/skills/adding-fault-proof-families/scripts/fa
 
 | Owner | Surface and enforcement |
 | ----- | ----------------------- |
-| `members/<kebab>.ts` (the one new file), spread into `members.data.ts` | Family, purpose, reference role, compiler title, ordered `familyPaths` (the first is the SDK recipe's path) and explicit manifest/publication/role positions; `verifyDeploymentMembers` admits complete metadata, and core/node tests pin behavior |
+| `members/<kebab>.ts` (the one new file), spread into `members.data.ts` | Family, purpose, reference role, compiler title and ordered `familyPaths` (the first is the SDK recipe's path); `verifyDeploymentMembers` admits complete metadata, and core/node tests pin behavior |
 | `catalogue-roles.protocol-categories.ts` | Category order (append at the end) and an unused 8-hex ID; `catalogue-order`, `catalogue-id` (format, uniqueness); SDK, node and watcher read these |
-| `catalogue-roles.deployment-manifest-contract-names.ts` | Independent positional contract ABI; `deployment-members` compares reached member keys |
+| `catalogue-roles.deployment-manifest-contract-names.ts` | Independent contract-name list; its order is the manifest, publication and role order; `deployment-members` compares reached member keys |
 | `reference-script-tokens.ts` | Stable token names, the only copy; `reference-scripts` checks every family member's role |
 | `reference-script-contracts.ts`, `catalogue-roles.deployment-manifest-fraud-proof-contract-by-category.ts` | Derived from the members; nothing to edit |
 
