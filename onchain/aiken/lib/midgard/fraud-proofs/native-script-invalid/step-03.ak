@@ -32,6 +32,13 @@ pub type Args {
     addr_tx_wits_opening: FieldOpeningV1,
     item_budget: Int,
   }
+  /// Closes the absent-script state step 02 wrote for a script position field
+  /// 6 does not have.
+  AbsentFinalize {
+    input_index: Int,
+    output_index: Int,
+    fraud_proof_mint_redeemer_index: Int,
+  }
 }
 
 pub type Datum =

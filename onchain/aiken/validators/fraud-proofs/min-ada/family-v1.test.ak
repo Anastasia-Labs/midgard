@@ -26,7 +26,8 @@ use midgard/fraud_proofs/min_ada/step_02.{
   Args as Step02Args, Datum as Step02Datum, State, YieldMinAdaStep02V1,
 }
 use midgard/fraud_proofs/min_ada/step_03.{
-  Args as Step03Args, Datum as Step03Datum, MinAdaTxDescriptor, MinAdaTxScan,
+  Args as Step03Args, Datum as Step03Datum, MinAdaTxAbsent, MinAdaTxDescriptor,
+  MinAdaTxScan,
 }
 use midgard/fraud_proofs/min_ada/step_04.{
   Args as Step04Args, Datum as Step04Datum, PredicateAuthenticated,
@@ -331,6 +332,35 @@ test q27_min_ada_step_01_rejects_a_forced_state_with_the_wrong_direction() fail 
   run_forced_step_01(ForcedTxValid, 0, 0, 1)
 }
 
+test q27_min_ada_step_01_binds_a_negative_rejected_forced_output() {
+  run_forced_step_01(
+    ForcedTxInvalid { reason: OutputBelowMinAda { output_index: -1 } },
+    1,
+    -1,
+    1,
+  )
+}
+
+test q27_min_ada_step_01_binds_a_huge_rejected_forced_output() {
+  run_forced_step_01(
+    ForcedTxInvalid {
+      reason: OutputBelowMinAda { output_index: 9_223_372_036_854_775_808 },
+    },
+    1,
+    9_223_372_036_854_775_808,
+    1,
+  )
+}
+
+test q27_min_ada_step_01_binds_the_negative_reason_index_exactly() fail {
+  run_forced_step_01(
+    ForcedTxInvalid { reason: OutputBelowMinAda { output_index: -1 } },
+    1,
+    -2,
+    1,
+  )
+}
+
 fn run_tx_finalize(
   output: MidgardTxOutput,
   carried_output_cbor: ByteArray,
@@ -441,6 +471,148 @@ test q27_min_ada_tx_rejects_one_lovelace_above_the_floor() fail {
 
 test q27_min_ada_tx_rejects_a_forged_or_malformed_output_opening() fail {
   run_tx_finalize(output_at_delta(-1), #"ff")
+}
+
+// ## A claimed output field 2 does not have
+//
+// Step 02 answers a negative coordinate before opening field 2, and one at or
+// past the field's count once its grammar is certified, with the absent state;
+// step 03 contradicts only a rejection with it.
+
+/// Step 02 over the one-output fixture field, its grammar certified when
+/// `certified`, handing `claimed` on as the absent state in `direction`.
+fn run_absent_step_02(direction: Int, claimed: Int, certified: Bool) -> Bool {
+  let output_cbor = encode_midgard_tx_output(output_at_delta(-1))
+  let block = fixture.native_block_fixture_v1(
+    transaction_with_output(output_at_delta(-1)),
+  )
+  let outputs_opening = forced_fixture.from_native_opening(
+    fixture.inline_body_opening(block.compact_cbor, [output_cbor]),
+  )
+  let Pair(grammar_checkpoint_hash, grammar_checkpoint_bytes) = if certified {
+    let Pair(view, initial) = field_opening.opened_field_grammar_certification(
+      outputs_opening,
+      field_opening.BodyAnchor {
+        tx_id: block.tx_id,
+        source_kind: substrate.source_kind_forced,
+      },
+      2,
+      [],
+      fixture.test_certificate_policy_id,
+    )
+    let grammar = field_walk.certify_field_grammar(view, initial, 32)
+    Pair(
+      field_walk.field_grammar_checkpoint_hash(grammar),
+      field_walk.encode_field_grammar_checkpoint(grammar),
+    )
+  } else {
+    Pair(#"", #"")
+  }
+  let state = State {
+    grammar_checkpoint_hash,
+    grammar_complete: certified,
+    walk_checkpoint_hash: #"",
+    direction,
+    source_kind: substrate.source_kind_forced,
+    bad_tx_id: block.tx_id,
+    fault: MinAdaTx { output_index: claimed },
+  }
+  let next_state_data: Data = MinAdaTxAbsent { direction }
+  let base_tx = fixture.continue_mid_step_l1_tx_v1(
+    fixture.ct_token_asset_name(block),
+    next_state_data,
+  )
+  let step_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(state),
+  }
+  let spend_redeemer = ct.Continue(
+    Step02Args {
+      grammar_checkpoint_bytes,
+      walk_checkpoint_bytes: #"",
+      input_index: 0,
+      output_index: 0,
+      yield_to_ref_input_index: list.length(base_tx.reference_inputs),
+      outputs_opening,
+    },
+  )
+  let l1_tx = with_authenticated_yield(
+    base_tx,
+    min_ada_yield.tx_role,
+    tx_yield_hash,
+    step_datum,
+    spend_redeemer,
+  )
+  and {
+    step_02_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      Some(step_datum),
+      spend_redeemer,
+      fixture.own_out_ref(),
+      l1_tx,
+    ),
+    step_02_yields.tx.withdraw(
+      fixture.step_script_hash,
+      fixture.test_certificate_policy_id,
+      YieldMinAdaStep02V1,
+      address.Script(tx_yield_hash),
+      l1_tx,
+    ),
+  }
+}
+
+test q27_min_ada_step_02_hands_a_negative_output_on_as_absent() {
+  run_absent_step_02(1, -1, False)
+}
+
+test q27_min_ada_step_02_hands_an_output_at_the_count_on_as_absent() {
+  run_absent_step_02(1, 1, True)
+}
+
+test q27_min_ada_step_02_hands_a_huge_output_on_as_absent() {
+  run_absent_step_02(1, 9_223_372_036_854_775_808, True)
+}
+
+test q27_min_ada_step_02_refuses_the_last_output_as_absent() fail {
+  run_absent_step_02(1, 0, True)
+}
+
+test q27_min_ada_step_02_refuses_an_absent_output_before_certification() fail {
+  run_absent_step_02(1, 1, False)
+}
+
+fn run_absent_step_03(direction: Int, successor: ByteArray) -> Bool {
+  let terminal_state: Data = PredicateAuthenticated
+  let asset_name = fixture.ct_token_asset_name(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+  )
+  step_03_validator.main.spend(
+    successor,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(MinAdaTxAbsent { direction }),
+      },
+    ),
+    ct.Continue(Step03Args { window: #"", input_index: 0, output_index: 0 }),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(asset_name, terminal_state),
+  )
+}
+
+test q27_min_ada_step_03_convicts_a_rejection_of_an_absent_output() {
+  run_absent_step_03(1, fixture.next_step_script_hash)
+}
+
+test q27_min_ada_step_03_refuses_an_acceptance_of_an_absent_output() fail {
+  run_absent_step_03(0, fixture.next_step_script_hash)
+}
+
+test q27_min_ada_step_03_hands_an_absent_output_only_to_step_04() fail {
+  run_absent_step_03(1, fixture.step_script_hash)
 }
 
 fn run_tx_predicate(total_length: Int, lovelace: Int) -> Bool {

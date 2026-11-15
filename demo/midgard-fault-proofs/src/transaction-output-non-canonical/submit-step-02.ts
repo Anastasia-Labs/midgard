@@ -237,6 +237,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),
+            coordinate_absent: false,
           },
         ],
       } as never,

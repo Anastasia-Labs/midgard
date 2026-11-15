@@ -54,6 +54,14 @@ export const MintDeclaredAssetLimitStep02ActionSchema = Data.Enum([
       checkpoint_bytes: Data.Bytes(),
     }),
   }),
+  Data.Object({
+    AuthenticateAbsent: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      opening: FieldOpeningSchema,
+      checkpoint_bytes: Data.Bytes(),
+    }),
+  }),
 ]);
 export const MintDeclaredAssetLimitStep02RedeemerSchema =
   faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep02ActionSchema);

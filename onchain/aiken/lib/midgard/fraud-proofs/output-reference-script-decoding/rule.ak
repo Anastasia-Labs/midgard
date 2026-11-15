@@ -42,6 +42,11 @@ pub const result_plutus_refused_base: Int = 100
 /// The `item_kind` of `PlutusScriptUndecodable` this family proves.
 pub const item_kind: Int = 1
 
+/// The accused class of a `PlutusScriptUndecodable` naming a class below 1,
+/// which the machine never emits. No reference script closes at it: a refused
+/// Plutus script closes at `result_plutus_refused_base + c` with `c >= 1`.
+pub const result_unreachable_class: Int = result_plutus_refused_base
+
 const output_chunk_bytes: Int = 4095
 
 const checkpoint_domain: ByteArray =
@@ -88,7 +93,8 @@ pub fn bind_output_v1(
   subject: substrate.VerdictSubjectV1,
   output_index: Int,
 ) -> BoundOutputV1 {
-  expect output_index >= 0
+  // A rejection binds its reason's exact coordinate, which may name no output;
+  // step 02 answers such a coordinate with `absent_output_state_v1`.
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
     when substrate.opened_rejection_reason_v1(subject) is {
       OutputReferenceScriptMalformed { output_index: actual } -> {
@@ -106,12 +112,16 @@ pub fn bind_output_v1(
       PlutusScriptUndecodable { item_kind: kind, item_index: actual, class } -> {
         expect kind == item_kind
         expect actual == output_index
-        expect class >= 1
-        result_plutus_refused_base + class
+        if class >= 1 {
+          result_plutus_refused_base + class
+        } else {
+          result_unreachable_class
+        }
       }
       _ -> fail @"reason outside output-reference-script-decoding"
     }
   } else {
+    expect output_index >= 0
     result_pending
   }
   BoundOutputV1 { subject, output_index, accused_class }
@@ -380,6 +390,25 @@ pub fn bind_reference_script_v1(
       }
     }
   }
+}
+
+/// The closed state for an output coordinate field 2 does not have: a negative
+/// position, or one at or past the field's authenticated count. Canonical
+/// validation decodes no reference script there, so it closes with no fault,
+/// as an output without a reference script does. The commitment is an empty
+/// item's: a closed state reads no chunk.
+pub fn absent_output_state_v1(
+  bound: BoundOutputV1,
+  final_hash: ByteArray,
+) -> ReferenceScriptScanStateV1 {
+  scan_state_with(
+    bound,
+    0,
+    bounded_item_v1.from_bytes(outputs_field_index, 0, #""),
+    #"",
+    final_hash,
+    result_no_fault,
+  )
 }
 
 pub fn scan_state_is_authentic_v1(state: ReferenceScriptScanStateV1) -> Bool {

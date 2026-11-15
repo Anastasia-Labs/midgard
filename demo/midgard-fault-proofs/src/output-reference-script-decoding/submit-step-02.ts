@@ -163,6 +163,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening,
+            coordinate_absent: false,
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),

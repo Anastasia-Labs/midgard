@@ -78,14 +78,16 @@ validator main(
           source_kind: bound.subject.source_kind,
         }
         if coordinate_out_of_range {
-          // Canonical validation never evaluates a position at or past the
-          // field's count, so a forced rejection citing one needs no signer.
+          // Canonical validation never evaluates a negative position or one
+          // at or past the field's count, so a forced rejection citing one
+          // needs no signer.
           // Both routes answer only with an authenticated count: the walk
           // refuses the provisional count of a certified variable-width
           // view, and the certified count is the field grammar
           // certificate's.
+          // A negative position names no output, so it needs no count.
           expect
-            bound.output_index >= opened_certified_field_item_count(
+            bound.output_index < 0 || bound.output_index >= opened_certified_field_item_count(
               opening,
               anchor,
               outputs_field_index,
@@ -558,6 +560,75 @@ test protected_output_step_02_closes_a_forced_out_of_range_coordinate_directly()
   let subject = forced_subject(block, 1)
   run_direct_exit(
     bound_state(block, subject, 1),
+    opening_of(block, outputs),
+    True,
+    handoff_tx(block, direct_verdict(subject)),
+  )
+}
+
+/// A forced coordinate at the authenticated field-2 count (one output, index
+/// 1) names an output the transaction does not have.
+test protected_output_step_02_closes_a_forced_coordinate_at_the_count_directly() {
+  let outputs = [protected_key_output(credential_a)]
+  let block = block_with_outputs(outputs)
+  let subject = forced_subject(block, 1)
+  run_direct_exit(
+    bound_state(block, subject, 1),
+    opening_of(block, outputs),
+    True,
+    handoff_tx(block, direct_verdict(subject)),
+  )
+}
+
+/// A negative forced coordinate names no output; it closes on the flagged
+/// arm with no count needed.
+test protected_output_step_02_closes_a_forced_negative_coordinate_directly() {
+  let outputs = [protected_key_output(credential_a)]
+  let block = block_with_outputs(outputs)
+  let subject = forced_subject(block, -1)
+  run_direct_exit(
+    bound_state(block, subject, -1),
+    opening_of(block, outputs),
+    True,
+    handoff_tx(block, direct_verdict(subject)),
+  )
+}
+
+/// A forced coordinate far past the count (2^63) closes likewise.
+test protected_output_step_02_closes_a_forced_huge_coordinate_directly() {
+  let outputs = [protected_key_output(credential_a)]
+  let block = block_with_outputs(outputs)
+  let huge = 9223372036854775808
+  let subject = forced_subject(block, huge)
+  run_direct_exit(
+    bound_state(block, subject, huge),
+    opening_of(block, outputs),
+    True,
+    handoff_tx(block, direct_verdict(subject)),
+  )
+}
+
+/// Honest refusal: an accepted subject has no fault at a negative coordinate.
+test protected_output_step_02_refuses_an_accepted_negative_direct_exit() fail {
+  let outputs = [protected_key_output(credential_a)]
+  let block = block_with_outputs(outputs)
+  let subject = accepted_subject(block)
+  run_direct_exit(
+    bound_state(block, subject, -1),
+    opening_of(block, outputs),
+    True,
+    handoff_tx(block, direct_verdict(subject)),
+  )
+}
+
+/// Honest refusal at the last in-range coordinate (count - 1 = 0): the
+/// output is a protected pub-key output, so the flagged arm is refused.
+test protected_output_step_02_refuses_the_flagged_arm_at_the_last_in_range_coordinate() fail {
+  let outputs = [protected_key_output(credential_a)]
+  let block = block_with_outputs(outputs)
+  let subject = forced_subject(block, 0)
+  run_direct_exit(
+    bound_state(block, subject, 0),
     opening_of(block, outputs),
     True,
     handoff_tx(block, direct_verdict(subject)),

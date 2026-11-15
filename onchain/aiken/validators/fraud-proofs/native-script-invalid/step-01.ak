@@ -94,8 +94,9 @@ validator main(
           header,
           membership,
         )
-        expect Some(WitnessNativeScriptFalse { script_index }) = subject.rejection_reason
-        expect script_index >= 0
+        // The reason's coordinate may name no script witness; step 02 binds
+        // it exactly and answers that case with the absent-script state.
+        expect Some(WitnessNativeScriptFalse { .. }) = subject.rejection_reason
         let verified = verify_forced_tx_compact_cbor_v1(
           subject.transaction_id,
           membership.value.submitted_source.compact_cbor,

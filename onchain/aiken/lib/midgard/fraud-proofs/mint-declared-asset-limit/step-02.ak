@@ -27,6 +27,16 @@ pub type ActionV1 {
     opening: FieldOpeningV1,
     checkpoint_bytes: ByteArray,
   }
+  /// Closes a rejection naming a policy the mint field does not have: a
+  /// negative coordinate, or one at or past the field's count. From `Bound`
+  /// the count is the directly opened field's and `checkpoint_bytes` is
+  /// empty; from `Grammar` it is the certified walk's.
+  AuthenticateAbsent {
+    input_index: Int,
+    output_index: Int,
+    opening: FieldOpeningV1,
+    checkpoint_bytes: ByteArray,
+  }
 }
 
 pub type Datum =

@@ -66,7 +66,6 @@ validator main(
         expect None = prior
         expect output_hash == step_02_validator_script_hash
         let MinAdaTx { output_index: claimed_index } = fault
-        expect claimed_index >= 0
         let (direction, source_kind, bad_tx_id) = when forced_source is {
           Some(source) -> {
             expect None = tx_inclusion
@@ -150,6 +149,13 @@ validator main(
             )
           }
         }
+        // An acceptance names one of the transaction's outputs. A rejection
+        // binds its reason's exact coordinate above, which may name no
+        // output; step 02 answers that coordinate with the absent state.
+        expect or {
+            direction == substrate.direction_wrongful_rejection,
+            claimed_index >= 0,
+          }
         let expected: Data = step_02.State {
           grammar_checkpoint_hash: #"",
           grammar_complete: False,

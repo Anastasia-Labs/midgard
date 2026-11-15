@@ -196,3 +196,26 @@ test observer_order_invalid_exhaustion_refuses_decided_scan() fail {
   // A walk that reached its ordinal has decided; it cannot be exhausted.
   rule.exhaust_scan_v1(scan(rejected(1), 1, [observer_a, observer_b])).seen == 2
 }
+
+// --- negative ordinals ----------------------------------------------------
+
+test observer_order_invalid_negative_ordinal_contradicts_rejection() {
+  // A negative ordinal names no item, so it names no offending later item:
+  // the scan exhausts before walking any item.
+  let terminal = rule.exhaust_scan_v1(scan(rejected(-1), -1, []))
+  and {
+    terminal.seen == 0,
+    terminal.outcome == rule.outcome_ordered,
+    rule.terminal_contradiction_v1(rule.decision_v1(terminal)),
+  }
+}
+
+test observer_order_invalid_negative_ordinal_refuses_acceptance() fail {
+  // An accepted subject cannot bind a negative ordinal.
+  rule.bind_observer_v1(accepted(), -1).observer_index == -1
+}
+
+test observer_order_invalid_negative_ordinal_refuses_an_item() fail {
+  // A negative ordinal never scans an item.
+  scan(rejected(-1), -1, [observer_a]).seen == 1
+}

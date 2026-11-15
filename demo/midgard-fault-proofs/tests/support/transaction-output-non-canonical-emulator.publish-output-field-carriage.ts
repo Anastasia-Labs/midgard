@@ -61,6 +61,7 @@ export const submitOutputStep02Raw = async ({
       output_index,
       opening,
       grammar_ref_input_index: null,
+      coordinate_absent: false,
     }),
     carriageUtxos,
     extraReferenceInputs,

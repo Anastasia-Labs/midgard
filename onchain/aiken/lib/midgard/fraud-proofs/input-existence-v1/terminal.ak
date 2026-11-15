@@ -1,13 +1,15 @@
 use cardano/transaction.{Input, Redeemer, ScriptPurpose}
 use midgard/fraud_proofs/common.{verify_non_membership_carried}
 use midgard/fraud_proofs/first_fault_v1 as order
+use midgard/fraud_proofs/input_existence_v1/select.{
+  reason_permits_absent_selection_v1,
+}
 use midgard/fraud_proofs/input_existence_v1/types.{
   Absent, LedgerEvidenceV1, LedgerStateV1, OutOfDomain, Present,
 }
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/mpf_proof_v1
-use midgard/rejection_reason_v1.{InputNotFound}
 
 pub fn decisive_fault_v1(
   state: LedgerStateV1,
@@ -56,11 +58,10 @@ pub fn verdict_contradiction_v1(
   if !absent {
     and {
       state.subject.direction == substrate.direction_wrongful_rejection,
-      state.subject.rejection_reason == Some(
-        InputNotFound {
-          source_kind: state.source_kind,
-          input_index: state.input_index,
-        },
+      reason_permits_absent_selection_v1(
+        state.subject,
+        state.source_kind,
+        state.input_index,
       ),
     }
   } else {

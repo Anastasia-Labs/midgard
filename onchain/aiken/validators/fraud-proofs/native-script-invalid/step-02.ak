@@ -7,7 +7,8 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1 as opening
 use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_02.{
-  Args, CertifyScriptField, Datum, SelectCertifiedScript, SpendRedeemer, State,
+  Args, CertifyScriptField, Datum, SelectAbsentScript, SelectCertifiedScript,
+  SpendRedeemer, State,
 }
 use midgard/fraud_proofs/native_script_invalid/step_03
 use midgard/fraud_proofs/native_tx/components.{
@@ -16,7 +17,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, NativeCardanoScript,
 }
-use midgard/native_tx_field_access_v1.{field_item_at}
+use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
 use midgard/native_tx_machine_walk_v1 as walk
 
 validator main(
@@ -45,7 +46,8 @@ validator main(
         let Pair(input_index, output_index) = when action is {
           Args { input_index, output_index, .. } |
           CertifyScriptField { input_index, output_index, .. } |
-          SelectCertifiedScript { input_index, output_index, .. } ->
+          SelectCertifiedScript { input_index, output_index, .. } |
+          SelectAbsentScript { input_index, output_index, .. } ->
             Pair(input_index, output_index)
         }
         let
@@ -177,6 +179,51 @@ validator main(
               expect output_state_data == expected
               True
             }
+          }
+          SelectAbsentScript {
+            script_index,
+            script_tx_wits_opening,
+            grammar_checkpoint_bytes,
+            ..
+          } -> {
+            expect rule.bind_script_index(state.subject, script_index)
+            expect or {
+                script_index < 0,
+                script_index >= if state.grammar_complete {
+                  let Pair(_, start) = opening.opened_certified_field_walk_from_grammar(
+                    script_tx_wits_opening,
+                    anchor,
+                    opening.script_witnesses_field_index,
+                    state.grammar_checkpoint_hash,
+                    grammar_checkpoint_bytes,
+                    tx.reference_inputs,
+                    field_preimage_certificate_policy_id,
+                  )
+                  walk.walk_next_item_index(start) + walk.walk_remaining(start)
+                } else {
+                  expect grammar_checkpoint_bytes == #""
+                  field_item_count(
+                    opening.opened_field_view(
+                      script_tx_wits_opening,
+                      anchor,
+                      opening.script_witnesses_field_index,
+                      tx.reference_inputs,
+                      field_preimage_certificate_policy_id,
+                    ),
+                  )
+                },
+              }
+            let expected: Data = step_03.State {
+              subject: state.subject,
+              bad_tx_id: state.bad_tx_id,
+              bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
+              script_item_hash: rule.absent_script_item_hash,
+              validity_interval_start: state.validity_interval_start,
+              validity_interval_end: state.validity_interval_end,
+            }
+            expect output_script_hash == step_03_validator_script_hash
+            expect output_state_data == expected
+            True
           }
         }
       }

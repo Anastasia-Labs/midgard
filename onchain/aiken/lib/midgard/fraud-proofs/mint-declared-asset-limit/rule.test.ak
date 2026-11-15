@@ -308,3 +308,18 @@ test mint_declared_limit_fold_state_golden_vector() {
   trace @"fold_state_golden": rule.encode_fold_state_v1(partial)
   bytearray.length(rule.encode_fold_state_v1(partial)) > 0
 }
+
+test mint_declared_limit_binds_a_negative_rejected_coordinate() {
+  rule.bind_policy_v1(rejected(-1), -1).policy_index == -1
+}
+
+test mint_declared_limit_binds_a_huge_rejected_coordinate() {
+  rule.bind_policy_v1(
+    rejected(9_223_372_036_854_775_808),
+    9_223_372_036_854_775_808,
+  ).policy_index == 9_223_372_036_854_775_808
+}
+
+test mint_declared_limit_negative_rejected_coordinate_binds_its_reason() fail {
+  rule.bind_policy_v1(rejected(-1), -2).policy_index == -2
+}

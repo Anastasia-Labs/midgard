@@ -9,23 +9,26 @@ use midgard/fraud_proofs/field_opening_v1.{
   resume_opened_field_grammar_certification,
 }
 use midgard/fraud_proofs/mint_declared_asset_limit/rule.{
-  initial_fold_v1, mint_field_index, staged_policy_budget,
+  BoundPolicyV1, absent_policy_decision_v1, initial_fold_v1, mint_field_index,
+  staged_policy_budget,
 }
 use midgard/fraud_proofs/mint_declared_asset_limit/state.{Bound, Grammar}
 use midgard/fraud_proofs/mint_declared_asset_limit/step_02.{
-  ActionV1, AuthenticateDirect, Datum, FinishGrammar, ResumeGrammar,
-  SpendRedeemer, StartGrammar,
+  ActionV1, AuthenticateAbsent, AuthenticateDirect, Datum, FinishGrammar,
+  ResumeGrammar, SpendRedeemer, StartGrammar,
 }
 use midgard/native_tx_field_access_v1.{
-  field_count_requires_certification, field_item_at,
+  field_count_requires_certification, field_item_at, field_item_count,
 }
 use midgard/native_tx_machine_walk_v1.{
   certify_field_grammar, field_grammar_checkpoint_hash,
-  field_grammar_is_complete, field_walk_checkpoint_hash,
+  field_grammar_is_complete, field_walk_checkpoint_hash, walk_next_item_index,
+  walk_remaining,
 }
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
+  step_04_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
 ) {
@@ -52,6 +55,7 @@ validator main(
           own_out_ref,
           tx,
           step_03_validator_script_hash,
+          step_04_validator_script_hash,
           computation_thread_token_policy_id,
           field_preimage_certificate_policy_id,
         )
@@ -69,6 +73,7 @@ fn execute(
   own_out_ref: OutputReference,
   tx: Transaction,
   step_03_hash: ScriptHash,
+  step_04_hash: ScriptHash,
   thread_policy: PolicyId,
   certificate_policy: PolicyId,
 ) -> Bool {
@@ -182,6 +187,53 @@ fn execute(
         output_state == expected,
       }
     }
+    AuthenticateAbsent { opening, checkpoint_bytes, .. } -> {
+      let bound = absent_bound(state)
+      let anchor = BodyAnchor {
+        tx_id: bound.subject.transaction_id,
+        source_kind: bound.subject.source_kind,
+      }
+      expect or {
+          bound.policy_index < 0,
+          bound.policy_index >= when state is {
+            Bound { .. } -> {
+              expect checkpoint_bytes == #""
+              let Pair(view, _) = opened_field_walk(
+                opening,
+                anchor,
+                mint_field_index,
+                reference_inputs,
+                certificate_policy,
+              )
+              field_item_count(view)
+            }
+            Grammar { checkpoint_hash, .. } -> {
+              let Pair(_, start) = opened_certified_field_walk_from_grammar(
+                opening,
+                anchor,
+                mint_field_index,
+                checkpoint_hash,
+                checkpoint_bytes,
+                reference_inputs,
+                certificate_policy,
+              )
+              walk_next_item_index(start) + walk_remaining(start)
+            }
+          },
+        }
+      let expected: Data = absent_policy_decision_v1(bound)
+      and {
+        output_hash == step_04_hash,
+        output_state == expected,
+      }
+    }
+  }
+}
+
+fn absent_bound(state) -> BoundPolicyV1 {
+  when state is {
+    Bound { bound } -> bound
+    Grammar { bound, .. } -> bound
   }
 }
 
@@ -198,6 +250,7 @@ fn input_index(action: ActionV1) -> Int {
     StartGrammar { input_index, .. } -> input_index
     ResumeGrammar { input_index, .. } -> input_index
     FinishGrammar { input_index, .. } -> input_index
+    AuthenticateAbsent { input_index, .. } -> input_index
   }
 }
 
@@ -207,5 +260,6 @@ fn output_index(action: ActionV1) -> Int {
     StartGrammar { output_index, .. } -> output_index
     ResumeGrammar { output_index, .. } -> output_index
     FinishGrammar { output_index, .. } -> output_index
+    AuthenticateAbsent { output_index, .. } -> output_index
   }
 }

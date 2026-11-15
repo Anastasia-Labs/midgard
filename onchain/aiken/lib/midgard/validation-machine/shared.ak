@@ -368,8 +368,15 @@ pub fn output_meets_min_ada_v1(
 /// A rejection-reason coordinate the machine does not carry yet: the four
 /// DuplicateInput coordinates (arm 3) and the `input_index` of arms 18–23
 /// and of `InputAssetAccumulationLimit`. Sites that emit it write this fixed
-/// sentinel, and the off-chain trace builder and forced-leaf writer write the
-/// same value for those arms.
+/// sentinel, and the off-chain trace builder writes the same value for those
+/// arms.
+///
+/// A forced leaf never carries the sentinel: the operator's forced verdict
+/// names the exact subject coordinates, which the forced-leaf families reopen
+/// by field position. The forced-leaf families that convict a negative
+/// coordinate as one the transaction does not have rely on this; any later
+/// binding of a forced reason to a machine or trace reason must keep it, or
+/// drop those negative branches in the same change.
 ///
 /// The sentinel is interim. It is sound only while no reader compares a
 /// machine-emitted reason with an independently written one at these arms:

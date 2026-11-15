@@ -79,6 +79,7 @@ export const buildMintDeclaredAssetLimitChain = ({
       MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES.step02,
       [
         step03.spendingScriptHash,
+        step04.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
       ],

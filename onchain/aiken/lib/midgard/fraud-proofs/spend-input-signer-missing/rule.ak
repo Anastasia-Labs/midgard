@@ -30,7 +30,8 @@ pub type WitnessScanV1 {
 /// Terminal verdict. `signer_required` is `True` when the coordinate is an
 /// in-range pub-key spend input and `signer_missing` is the complete scan's
 /// answer; it is `False` when canonical validation needs no signer at the
-/// coordinate (a script credential, or a position past the field-0 count),
+/// coordinate (a script credential, or a position the field-0 count does not
+/// reach: negative, or at or past the count),
 /// in which case `signer_missing` is `False` by construction.
 pub type VerdictV1 {
   subject: substrate.VerdictSubjectV1,
@@ -40,13 +41,16 @@ pub type VerdictV1 {
 
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+///
+/// `input_index` may be negative: such a coordinate names no spend input, and
+/// step 02 sends it to `direct_verdict_v1`, which accepts it only for a
+/// wrongful forced rejection.
 pub fn bind_spend_input_v1(
   subject: substrate.VerdictSubjectV1,
   input_index: Int,
   prior_root: ByteArray,
   witness_set_hash: ByteArray,
 ) -> BoundSpendInputV1 {
-  expect input_index >= 0
   expect bytearray.length(prior_root) == 32
   expect bytearray.length(witness_set_hash) == 32
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {

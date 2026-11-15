@@ -49,7 +49,10 @@ validator tx(
     expect InlineDatum(next_datum_data) = next_output.datum
     expect next_datum: ct.StepDatum<Data> = next_datum_data
     expect Some(output_state) = next_datum.data
-    if !state.grammar_complete {
+    let absent: Data = step_03.MinAdaTxAbsent { direction: state.direction }
+    if bad_output_index < 0 {
+      output_state == absent
+    } else if !state.grammar_complete {
       expect state.walk_checkpoint_hash == #""
       let Pair(view, prior) = if state.grammar_checkpoint_hash == #"" {
         expect grammar_checkpoint_bytes == #""
@@ -105,7 +108,9 @@ validator tx(
       }
       let remaining = bad_output_index - walk.walk_next_item_index(prior)
       expect remaining >= 0
-      if remaining >= 32 {
+      if remaining >= walk.walk_remaining(prior) {
+        output_state == absent
+      } else if remaining >= 32 {
         let next = walk.walk_skip(view, prior, 32)
         let expected: Data = State {
           ..state,

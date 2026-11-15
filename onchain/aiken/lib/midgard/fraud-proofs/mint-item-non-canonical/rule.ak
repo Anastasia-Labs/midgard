@@ -18,6 +18,11 @@ pub const outcome_canonical: Int = 1
 
 pub const outcome_non_canonical: Int = 2
 
+/// The terminal state of a forced `MintItemMalformed` rejection: no machine
+/// step emits that reason, so the claim is answered without opening the mint
+/// field.
+pub const outcome_unreachable: Int = 3
+
 pub const scan_chunk_bytes: Int = 4095
 
 pub const scan_window_bytes: Int = 8190
@@ -45,10 +50,26 @@ pub fn bind_item_v1(
   item_index: Int,
 ) -> BoundItemV1 {
   expect item_index >= 0
-  // Malformed mint currently has no typed rejection arm. Never reinterpret
-  // a different family's forced rejection as this statement.
+  // The item scan proves an accepted transaction's mint item malformed. A
+  // forced `MintItemMalformed` rejection takes `unreachable_claim_state_v1`.
   expect subject.direction == substrate.direction_wrongful_acceptance
   BoundItemV1 { subject, item_index, field_cursor: None }
+}
+
+/// The state step 01 hands to the terminal for a forced
+/// `MintItemMalformed` rejection.
+pub fn unreachable_claim_state_v1(
+  subject: substrate.VerdictSubjectV1,
+) -> MintScanStateV1 {
+  MintScanStateV1 {
+    subject,
+    item_index: 0,
+    item_length: 0,
+    item_hash: #"",
+    chunk_hashes: [],
+    control: scan.initial(#""),
+    outcome: outcome_unreachable,
+  }
 }
 
 pub fn initial_scan_v1(
@@ -183,6 +204,15 @@ pub fn advance_scan_v1(
 }
 
 pub fn terminal_contradiction_v1(state: MintScanStateV1) -> Bool {
+  if state.outcome == outcome_unreachable {
+    // Only step 01 writes this outcome, for a forced rejection it opened.
+    substrate.terminal_contradiction_v1(state.subject, False)
+  } else {
+    scanned_contradiction_v1(state)
+  }
+}
+
+fn scanned_contradiction_v1(state: MintScanStateV1) -> Bool {
   expect and {
       state_is_well_formed_v1(state),
       state.outcome != outcome_scanning,

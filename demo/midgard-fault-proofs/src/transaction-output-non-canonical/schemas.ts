@@ -30,6 +30,8 @@ export const TransactionOutputStep02ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   opening: FieldOpeningSchema,
   grammar_ref_input_index: Data.Nullable(Data.Integer()),
+  /** `True` closes a claimed output field 2 does not have. */
+  coordinate_absent: Data.Boolean(),
 });
 export const TransactionOutputStep02RedeemerSchema =
   faultProofStepRedeemerSchema(TransactionOutputStep02ArgsSchema);

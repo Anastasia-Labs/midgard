@@ -71,17 +71,32 @@ fn coordinate_is_in_range(
   }
 }
 
-fn coordinate_precedes(
-  first_field: Int,
-  first_item: Int,
-  second_field: Int,
-  second_item: Int,
+/// True when the pair cannot name two distinct inputs of the transaction:
+/// either coordinate is outside its field's authenticated count (or names a
+/// field other than spend or reference inputs), or both name the same input.
+/// Such a pair names no duplicate, so the rejection is contradicted without
+/// scanning the union.
+pub fn pair_names_no_duplicate_v1(
+  bound: BoundDuplicateInputV1,
+  spend_count: Int,
+  reference_count: Int,
 ) -> Bool {
   or {
-    first_field < second_field,
+    !coordinate_is_in_range(
+      bound.first_field_index,
+      bound.first_item_index,
+      spend_count,
+      reference_count,
+    ),
+    !coordinate_is_in_range(
+      bound.second_field_index,
+      bound.second_item_index,
+      spend_count,
+      reference_count,
+    ),
     and {
-      first_field == second_field,
-      first_item < second_item,
+      bound.first_field_index == bound.second_field_index,
+      bound.first_item_index == bound.second_item_index,
     },
   }
 }
@@ -140,28 +155,9 @@ pub fn initial_scan_state_v1(
   reference_count: Int,
   scan_script_hash: ByteArray,
 ) -> UniqueScanStateV1 {
-  expect and {
-      spend_count >= 0,
-      reference_count >= 0,
-      coordinate_is_in_range(
-        bound.first_field_index,
-        bound.first_item_index,
-        spend_count,
-        reference_count,
-      ),
-      coordinate_is_in_range(
-        bound.second_field_index,
-        bound.second_item_index,
-        spend_count,
-        reference_count,
-      ),
-      coordinate_precedes(
-        bound.first_field_index,
-        bound.first_item_index,
-        bound.second_field_index,
-        bound.second_item_index,
-      ),
-    }
+  // The pair is not checked here: in either orientation it is answered by
+  // the complete scan, and a pair naming no duplicate finalizes at cursor 0.
+  expect spend_count >= 0 && reference_count >= 0
   state_with(bound, spend_count, reference_count, 0, #"", scan_script_hash)
 }
 
@@ -247,7 +243,14 @@ pub fn advance_unique_batch_v1(
 pub fn unique_scan_is_complete_v1(state: UniqueScanStateV1) -> Bool {
   and {
     scan_state_is_authentic_v1(state),
-    state.cursor == state.spend_count + state.reference_count,
+    or {
+      state.cursor == state.spend_count + state.reference_count,
+      pair_names_no_duplicate_v1(
+        state.bound,
+        state.spend_count,
+        state.reference_count,
+      ),
+    },
     substrate.terminal_contradiction_v1(state.bound.subject, False),
   }
 }

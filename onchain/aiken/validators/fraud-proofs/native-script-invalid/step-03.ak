@@ -15,7 +15,7 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_03.{
-  Datum, DirectFinalize, SpendRedeemer, StartSignerScan, State,
+  AbsentFinalize, Datum, DirectFinalize, SpendRedeemer, StartSignerScan, State,
   direct_script_bytes_limit, direct_signer_limit,
   staged_signer_start_batch_limit,
 }
@@ -65,6 +65,34 @@ validator main(
       ct.Continue(action) -> {
         expect Some(step_datum) = datum
         when action is {
+          AbsentFinalize {
+            input_index,
+            output_index,
+            fraud_proof_mint_redeemer_index,
+          } -> {
+            let Transaction { inputs, outputs, redeemers, .. } = tx
+            let
+                _own_script_hash,
+                _thread_asset_name,
+                _fraud_prover,
+                m_input_state_data
+              <- finalize(
+              computation_thread_token_policy_id,
+              fraud_proof_token_policy_id,
+              fraud_proof_token_address,
+              step_datum,
+              input_index,
+              output_index,
+              fraud_proof_mint_redeemer_index,
+              own_out_ref,
+              inputs,
+              outputs,
+              redeemers,
+            )
+            expect Some(state) = m_input_state_data
+            expect state.script_item_hash == rule.absent_script_item_hash
+            rule.absent_script_terminal(state.subject)
+          }
           DirectFinalize {
             input_index,
             output_index,

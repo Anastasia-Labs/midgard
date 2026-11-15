@@ -8,6 +8,7 @@ use cardano/transaction.{Input, Transaction}
 use fraud_proofs/witness_script_decoding/step_02 as step_02_validator
 use midgard/computation_thread as ct
 use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, WitnessFieldOpening}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -18,6 +19,9 @@ use midgard/fraud_proofs/witness_script_decoding/step_02.{
   Args as Step02Args, Datum as Step02Datum, SpendRedeemer as Step02Redeemer,
 }
 use midgard/native_tx_field_access_v1 as field_access
+use midgard/rejection_reason_v1.{
+  PlutusScriptUndecodable, RejectionReasonV1, WitnessScriptHeaderMalformed,
+}
 
 /// No case here reads a decode record, so no reference input carries this.
 const script_decode_policy_id =
@@ -195,6 +199,7 @@ fn step_02_case(route: Route, index: Int, item: ByteArray) -> Step02Case {
         output_index: 0,
         opening: route.opening,
         record_reference_input_index: -1,
+        coordinate_absent: False,
         grammar_ref_input_index: route.grammar_ref_input_index,
       },
     ),
@@ -341,4 +346,122 @@ test step_02_walked_route_at_the_walked_limit_cost() {
   run_step_02(
     step_02_case(walked_limit_route(), walked_limit_index, accused_script()),
   )
+}
+
+// ## Coordinates field 6 does not have
+//
+// A forced rejection citing a script witness the field lacks (a negative
+// position, or one at or past the authenticated count) closes with no fault,
+// which convicts it at the terminal.
+
+fn forced_bound(
+  block: fixture.NativeBlockFixtureV1,
+  reason: RejectionReasonV1,
+  index: Int,
+) -> rule.BoundWitnessScriptV1 {
+  rule.bind_subject_v1(
+    substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_rejection,
+      source_kind: substrate.source_kind_forced,
+      transaction_id: block.tx_id,
+      source_key: #"81",
+      rejection_reason: Some(reason),
+    },
+    block.compact.witness_set_hash,
+    index,
+  )
+}
+
+fn header_at(route: Route, index: Int) -> rule.BoundWitnessScriptV1 {
+  forced_bound(
+    route.block,
+    WitnessScriptHeaderMalformed { script_index: index },
+    index,
+  )
+}
+
+/// Step 02 on the absent arm for `bound`.
+fn absent_case(route: Route, bound: rule.BoundWitnessScriptV1) -> Step02Case {
+  let next_state: Data = rule.absent_script_state_v1(
+    bound,
+    fixture.next_step_script_hash,
+  )
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      Step02Args {
+        input_index: 0,
+        output_index: 0,
+        opening: forced_fixture.from_native_opening(route.opening),
+        record_reference_input_index: -1,
+        coordinate_absent: True,
+        grammar_ref_input_index: route.grammar_ref_input_index,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+      reference_inputs: route.reference_inputs,
+    },
+  }
+}
+
+test step_02_absent_closes_a_script_at_the_count() {
+  let route = inline_route()
+  run_step_02(absent_case(route, header_at(route, 1)))
+}
+
+test step_02_absent_closes_a_script_far_past_the_count() {
+  let route = inline_route()
+  run_step_02(absent_case(route, header_at(route, 9223372036854775808)))
+}
+
+test step_02_absent_closes_a_negative_script() {
+  let route = inline_route()
+  run_step_02(absent_case(route, header_at(route, -1)))
+}
+
+test step_02_absent_closes_an_undecodable_claim_at_the_count() {
+  let route = inline_route()
+  run_step_02(
+    absent_case(
+      route,
+      forced_bound(
+        route.block,
+        PlutusScriptUndecodable { item_kind: 0, item_index: 1, class: 3 },
+        1,
+      ),
+    ),
+  )
+}
+
+test step_02_absent_refuses_the_last_in_range_script() fail {
+  let route = inline_route()
+  run_step_02(absent_case(route, header_at(route, 0)))
+}
+
+test step_02_absent_certified_route_closes_a_script_at_the_count() {
+  let route = certified_route(honest_certificate)
+  run_step_02(absent_case(route, header_at(route, certified_count)))
+}
+
+test step_02_absent_certified_route_refuses_the_last_in_range_script() fail {
+  let route = certified_route(honest_certificate)
+  run_step_02(absent_case(route, header_at(route, certified_count - 1)))
+}
+
+test step_02_absent_certified_route_fixture_only_at_the_tier3_maximum() {
+  let route = certified_route(honest_certificate)
+  let case = absent_case(route, header_at(route, certified_count))
+  case.datum != None
+}
+
+test step_02_absent_certified_route_at_the_tier3_maximum_cost() {
+  let route = certified_route(honest_certificate)
+  run_step_02(absent_case(route, header_at(route, certified_count)))
 }

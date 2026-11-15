@@ -1,6 +1,8 @@
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/redeemer_canonicity/rule
-use midgard/rejection_reason_v1.{RedeemerMalformed, RedeemerMissing}
+use midgard/rejection_reason_v1.{
+  PlutusExecutionFailed, RedeemerMalformed, RedeemerMissing,
+}
 
 const tx_id =
   #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -54,8 +56,40 @@ test redeemer_canonicity_refuses_other_typed_reason() fail {
   ).redeemer_index == 0
 }
 
+/// An accepted subject at a negative coordinate has nothing to convict: the
+/// only verdict step 02 can write for it is the canonical one, which the
+/// terminal refuses for an acceptance.
 test redeemer_canonicity_refuses_negative_coordinate() fail {
-  bind(accepted(), -1).redeemer_index == -1
+  rule.terminal_contradiction_v1(
+    rule.TerminalStateV1 { bound: bind(accepted(), -1), canonical: True },
+  )
+}
+
+/// A forced rejection naming a negative redeemer binds, and the canonical
+/// verdict step 02 writes for a coordinate the field lacks convicts it.
+test redeemer_canonicity_binds_a_negative_forced_coordinate() {
+  rule.terminal_contradiction_v1(
+    rule.TerminalStateV1 { bound: bind(rejected(-1), -1), canonical: True },
+  )
+}
+
+fn execution_failed() -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    ..rejected(0),
+    rejection_reason: Some(
+      PlutusExecutionFailed { purpose_kind: 1, purpose_index: 0 },
+    ),
+  }
+}
+
+/// A forced `PlutusExecutionFailed` binds with the sentinel coordinate -1,
+/// which names no redeemer.
+test redeemer_canonicity_binds_a_forced_execution_failure_at_the_sentinel() {
+  bind(execution_failed(), -1).redeemer_index == -1
+}
+
+test redeemer_canonicity_refuses_an_execution_failure_at_a_redeemer() fail {
+  bind(execution_failed(), 0).redeemer_index == 0
 }
 
 test redeemer_canonicity_wrongful_acceptance_convicts_malformed() {

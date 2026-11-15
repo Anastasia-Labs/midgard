@@ -95,6 +95,7 @@ export const buildResolvedOutputNonCanonicalChain = ({
       RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step02,
       [
         step03.spendingScriptHash,
+        step05.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
       ],

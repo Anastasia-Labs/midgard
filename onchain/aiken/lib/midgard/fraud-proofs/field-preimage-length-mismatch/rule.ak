@@ -17,10 +17,14 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
   VerifiedTxSourceView,
 }
+use midgard/fraud_proofs/proof_thread_substrate_v1.{
+  VerdictSubjectV1, rejection_reason_of_v1,
+}
 use midgard/native_tx_field_access_v1.{
   authenticated_committed_preimage, field_count,
   max_transaction_aggregate_field_bytes,
 }
+use midgard/rejection_reason_v1.{FieldPreimageLengthMismatch}
 
 pub type LengthEvidenceV1 {
   field_index: Int,
@@ -106,13 +110,38 @@ pub fn authenticated_length_evidence_v1(
   }
 }
 
+/// A forced rejection may name a field coordinate outside the native transaction's
+/// field layout. The machine never emits a length mismatch for a field the
+/// transaction does not have, so the decisive fault does not hold there.
+pub fn field_index_out_of_domain_v1(field_index: Int) -> Bool {
+  field_index < 0 || field_index >= field_count
+}
+
+/// Binds a wrongful forced rejection whose `FieldPreimageLengthMismatch` names a
+/// field outside the layout. The reason exists only on a rejection subject
+/// (`rejection_reason_of_v1`), so an acceptance subject cannot bind here.
+pub fn bind_out_of_domain_field_v1(subject: VerdictSubjectV1) -> Int {
+  expect FieldPreimageLengthMismatch { field_index } = rejection_reason_of_v1(
+    subject,
+  )
+  expect field_index_out_of_domain_v1(field_index)
+  field_index
+}
+
+/// An out-of-layout field carries no preimage, so no mismatch holds for it.
 pub fn decisive_fault_holds_v1(
   field_index: Int,
   declared_length: Int,
   actual_length: Int,
 ) -> Bool {
-  expect field_index >= 0
-  expect field_index < field_count
+  if field_index_out_of_domain_v1(field_index) {
+    False
+  } else {
+    in_layout_fault_holds_v1(declared_length, actual_length)
+  }
+}
+
+fn in_layout_fault_holds_v1(declared_length: Int, actual_length: Int) -> Bool {
   expect declared_length >= 0
   expect actual_length >= 0
   expect actual_length <= max_transaction_aggregate_field_bytes

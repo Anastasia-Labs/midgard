@@ -12,7 +12,9 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/first_fault_v1 as order
 use midgard/fraud_proofs/input_existence_v1/select
 use midgard/fraud_proofs/input_existence_v1/terminal
-use midgard/fraud_proofs/input_existence_v1/types.{Absent, LedgerStateV1}
+use midgard/fraud_proofs/input_existence_v1/types.{
+  Absent, LedgerStateV1, OutOfDomain,
+}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   decode_forced_tx_compact_v1, encode_forced_tx_compact_v1,
@@ -110,6 +112,65 @@ fn run_in(
   claim_opening: ClaimOpening,
   network_id: Int,
 ) -> Bool {
+  let state = ledger_state(
+    spend_keys,
+    reference_keys,
+    observed_kind,
+    observed_index,
+    r,
+    claim_opening,
+    network_id,
+  )
+  let root = state.pre_utxos_root
+  expect Some(selected_input) = state.selected_input
+  terminal.verdict_contradiction_v1(
+    state,
+    Absent {
+      non_membership: RedeemerCarriedNonMembership {
+        non_membership_proof: [],
+        non_membership_proof_script_redeemer_index: 0,
+      },
+    },
+    [],
+    [
+      fixture.pexcludes_withdraw_redeemer_entry(
+        root,
+        encode_midgard_tx_input(selected_input),
+        [],
+      ),
+    ],
+  )
+}
+
+/// The select and terminal steps over a selection that reads no input: the
+/// observed coordinate lies outside the observed field.
+fn run_unread(
+  observed_kind: Int,
+  observed_index: Int,
+  r: reason.RejectionReasonV1,
+) -> Bool {
+  let state = ledger_state(
+    [10, 30],
+    [20],
+    observed_kind,
+    observed_index,
+    r,
+    Honest,
+    255,
+  )
+  expect state.selected_input == None
+  terminal.verdict_contradiction_v1(state, OutOfDomain, [], [])
+}
+
+fn ledger_state(
+  spend_keys: List<Int>,
+  reference_keys: List<Int>,
+  observed_kind: Int,
+  observed_index: Int,
+  r: reason.RejectionReasonV1,
+  claim_opening: ClaimOpening,
+  network_id: Int,
+) -> LedgerStateV1 {
   let spend = preimage(spend_keys)
   let reference = preimage(reference_keys)
   let base = decode_forced_tx_compact_v1(
@@ -191,7 +252,7 @@ fn run_in(
     witness_set_hash: compact.witness_set_hash,
     validity_code: None,
   }
-  let state = LedgerStateV1 {
+  LedgerStateV1 {
     subject,
     compact: compact_view,
     network_order_context: order.network_order_context_v1(
@@ -204,24 +265,6 @@ fn run_in(
     claimed_input: claimed,
     pre_utxos_root: root,
   }
-  expect Some(selected_input) = selected
-  terminal.verdict_contradiction_v1(
-    state,
-    Absent {
-      non_membership: RedeemerCarriedNonMembership {
-        non_membership_proof: [],
-        non_membership_proof_script_redeemer_index: 0,
-      },
-    },
-    [],
-    [
-      fixture.pexcludes_withdraw_redeemer_entry(
-        root,
-        encode_midgard_tx_input(selected_input),
-        [],
-      ),
-    ],
-  )
 }
 
 test actual_source_smaller_spend_absence_convicts_later_reference_absence() {
@@ -544,4 +587,45 @@ test n7_ledger_state_wire_has_context_after_compact() {
     pre_utxos_root: #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   }
   cbor.serialise(state) == #"d8799fd8799f0100005820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa40d87a80ffd8799fd8799f58200101010101010101010101010101010101010101010101010101010101010101582002020202020202020202020202020202020202020202020202020202020202025820030303030303030303030303030303030303030303030303030303030303030304050658200707070707070707070707070707070707070707070707070707070707070707582008080808080808080808080808080808080808080808080808080808080808085820090909090909090909090909090909090909090909090909090909090909090958200a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a58200b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b01ff58200c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0cd87a80ffd8799fd87a80ff0107d8799fd8799f5820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd09ffffd87a805820eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeff"
+}
+
+// A not-found claim naming a source kind outside the two input fields convicts
+// without reading or proving any input.
+test unread_not_found_claim_in_kind_two_convicts() {
+  run_unread(0, -1, reason.InputNotFound { source_kind: 2, input_index: 0 })
+}
+
+test unread_not_found_claim_in_maximum_kind_convicts() {
+  run_unread(
+    1,
+    1,
+    reason.InputNotFound { source_kind: 18446744073709551615, input_index: 5 },
+  )
+}
+
+test unread_not_found_claim_in_negative_kind_convicts() {
+  run_unread(0, 2, reason.InputNotFound { source_kind: -1, input_index: 0 })
+}
+
+// The existing exact out-of-range claim still convicts through the same path.
+test unread_not_found_claim_at_spend_count_convicts() {
+  run_unread(0, 2, reason.InputNotFound { source_kind: 0, input_index: 2 })
+}
+
+// An in-domain claim permits no unread selection other than its own
+// coordinate.
+test unread_selection_refuses_an_in_range_spend_claim() fail {
+  run_unread(0, -1, reason.InputNotFound { source_kind: 0, input_index: 0 })
+}
+
+test unread_selection_refuses_the_last_reference_claim() fail {
+  run_unread(1, 1, reason.InputNotFound { source_kind: 1, input_index: 0 })
+}
+
+test unread_selection_refuses_another_reason() fail {
+  run_unread(
+    0,
+    -1,
+    reason.InputSpentOutputNonCanonical { source_kind: 2, input_index: 0 },
+  )
 }

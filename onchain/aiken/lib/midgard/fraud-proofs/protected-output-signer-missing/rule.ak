@@ -34,7 +34,8 @@ pub type WitnessScanV1 {
 /// in-range protected pub-key output and `signer_present` is the complete
 /// scan's answer; it is `False` when canonical validation needs no signer at
 /// the coordinate (an unprotected output, a protected script output, or a
-/// position past the field-2 count), in which case `signer_present` is
+/// negative position or one at or past the field-2 count), in which case
+/// `signer_present` is
 /// `False` by construction.
 pub type VerdictV1 {
   subject: substrate.VerdictSubjectV1,
@@ -44,11 +45,14 @@ pub type VerdictV1 {
 
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+///
+/// `output_index` may be negative: such a coordinate names no output, and
+/// step 02 sends it to `direct_verdict_v1`, which accepts it only for a
+/// wrongful forced rejection.
 pub fn bind_output_v1(
   subject: substrate.VerdictSubjectV1,
   output_index: Int,
 ) -> BoundOutputV1 {
-  expect output_index >= 0
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     Some(
       substrate.bind_opened_rejection_reason_v1(

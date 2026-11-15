@@ -85,6 +85,7 @@ export const buildMintItemNonCanonicalChain = ({
       MINT_ITEM_NON_CANONICAL_FAULT_PROOF_TITLES.step01,
       [
         step02.spendingScriptHash,
+        step04.spendingScriptHash,
         computationThread.policyId,
         hubOraclePolicyId,
       ],

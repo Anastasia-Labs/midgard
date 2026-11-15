@@ -38,12 +38,20 @@ test field_preimage_length_mismatch_maps_all_nine_coordinates_in_wire_order() {
   }
 }
 
-test field_preimage_length_mismatch_rejects_negative_coordinate() fail {
-  rule.decisive_fault_holds_v1(-1, 1, 2)
+test field_preimage_length_mismatch_negative_coordinate_holds_no_fault() {
+  !rule.decisive_fault_holds_v1(-1, 1, 2)
 }
 
-test field_preimage_length_mismatch_rejects_coordinate_nine() fail {
-  rule.decisive_fault_holds_v1(9, 1, 2)
+test field_preimage_length_mismatch_coordinate_nine_holds_no_fault() {
+  !rule.decisive_fault_holds_v1(9, 1, 2)
+}
+
+test field_preimage_length_mismatch_huge_coordinate_holds_no_fault() {
+  !rule.decisive_fault_holds_v1(9223372036854775808, 1, 2)
+}
+
+test field_preimage_length_mismatch_last_field_mismatch_is_a_fault() {
+  rule.decisive_fault_holds_v1(8, 1, 2)
 }
 
 test field_preimage_length_mismatch_accepts_maximum_actual_length() {

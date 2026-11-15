@@ -38,6 +38,21 @@ pub const result_plutus_refused_base: Int = 100
 /// The `item_kind` of `PlutusScriptUndecodable` this family proves.
 pub const item_kind: Int = 0
 
+/// The `item_kind` of `PlutusScriptUndecodable` the output reference script
+/// family proves; this family refuses it.
+const output_item_kind: Int = 1
+
+/// The accused class of a `PlutusScriptUndecodable` the machine never emits:
+/// one naming a kind outside witness scripts and output reference scripts, or
+/// a class below 1. No item closes at it: a refused Plutus item closes at
+/// `result_plutus_refused_base + c` with `c >= 1`.
+pub const result_unreachable_class: Int = result_plutus_refused_base
+
+/// The item commitment of an absent script: an empty item's, fixed when the
+/// module compiles.
+const absent_item_commitment: ByteArray =
+  bounded_item_v1.from_bytes(field_index, 0, #"")
+
 const checkpoint_domain: ByteArray =
   "midgard/fraud-proofs/witness-script-decoding/checkpoint-v1"
 
@@ -76,7 +91,8 @@ pub fn bind_subject_v1(
   script_index: Int,
 ) -> BoundWitnessScriptV1 {
   expect bytearray.length(witness_set_hash) == 32
-  expect script_index >= 0
+  // A rejection binds its reason's exact coordinate, which may name no script
+  // witness; step 02 answers such a coordinate with `absent_script_state_v1`.
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
     when substrate.opened_rejection_reason_v1(subject) is {
       WitnessScriptHeaderMalformed { script_index: actual } -> {
@@ -96,14 +112,18 @@ pub fn bind_subject_v1(
         result_depth_limit
       }
       PlutusScriptUndecodable { item_kind: kind, item_index: actual, class } -> {
-        expect kind == item_kind
+        expect kind != output_item_kind
         expect actual == script_index
-        expect class >= 1
-        result_plutus_refused_base + class
+        if kind == item_kind && class >= 1 {
+          result_plutus_refused_base + class
+        } else {
+          result_unreachable_class
+        }
       }
       _ -> fail @"reason outside witness-script-decoding"
     }
   } else {
+    expect script_index >= 0
     result_pending
   }
   BoundWitnessScriptV1 {
@@ -235,6 +255,24 @@ pub fn authenticate_item_v1(
       )
     }
   }
+}
+
+/// The closed state for a script coordinate field 6 does not have: a negative
+/// position, or one at or past the field's authenticated count. Canonical
+/// validation decodes no script there, so it closes with no fault. The
+/// commitment is an empty item's: a closed state reads no chunk.
+pub fn absent_script_state_v1(
+  bound: BoundWitnessScriptV1,
+  scan_script_hash: ByteArray,
+) -> WitnessScriptScanStateV1 {
+  state_with(
+    bound,
+    0,
+    absent_item_commitment,
+    #"",
+    scan_script_hash,
+    result_no_fault,
+  )
 }
 
 pub fn state_is_authentic_v1(state: WitnessScriptScanStateV1) -> Bool {

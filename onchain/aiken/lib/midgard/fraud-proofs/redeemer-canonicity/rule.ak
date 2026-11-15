@@ -1,4 +1,6 @@
-//// Narrow total rule for `redeemerCanonicity` (`00000028`).
+//// Narrow total rule for `redeemerCanonicity` (`00000028`). It answers two
+//// wrongful forced rejections: `RedeemerMalformed`, and `PlutusExecutionFailed`
+//// of a transaction whose redeemer field has no items.
 
 use aiken/builtin
 use aiken/cbor
@@ -9,7 +11,7 @@ use midgard/canonical_plutus_data_stream_v1.{
   StreamCanonical, StreamFrameV1, StreamNonCanonical, StreamPaused,
 } as stream
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/rejection_reason_v1.{RedeemerMalformed}
+use midgard/rejection_reason_v1.{PlutusExecutionFailed, RedeemerMalformed}
 
 pub const redeemer_field_index: Int = 8
 
@@ -26,26 +28,63 @@ pub type TerminalStateV1 {
   canonical: Bool,
 }
 
+/// The coordinate a bound `PlutusExecutionFailed` carries: it names no
+/// redeemer, so the item arm of step 02 refuses it and only the absent arm,
+/// on a transaction with no redeemers, can answer it.
+pub const execution_failed_redeemer_index: Int = -1
+
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+///
+/// A wrongful rejection binds one of two reasons: `RedeemerMalformed` at
+/// exactly `redeemer_index`, or `PlutusExecutionFailed` (any purpose) at
+/// `execution_failed_redeemer_index`. `redeemer_index` may be negative: such
+/// a coordinate names no redeemer, so the item arm of step 02 refuses it, and
+/// the canonical verdict its absent arm writes convicts only a wrongful
+/// rejection (`terminal_contradiction_v1`).
 pub fn bind_redeemer_v1(
   subject: substrate.VerdictSubjectV1,
   witness_set_hash: ByteArray,
   redeemer_index: Int,
 ) -> BoundRedeemerV1 {
   expect bytearray.length(witness_set_hash) == 32
-  expect redeemer_index >= 0
-  expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    Some(
-      substrate.bind_opened_rejection_reason_v1(
-        subject,
-        RedeemerMalformed { redeemer_index },
-      ),
-    )
-  } else {
-    None
-  }
+  expect
+    if subject.direction == substrate.direction_wrongful_rejection {
+      when substrate.opened_rejection_reason_v1(subject) is {
+        PlutusExecutionFailed { .. } ->
+          redeemer_index == execution_failed_redeemer_index
+        _ -> {
+          expect _reason = substrate.bind_opened_rejection_reason_v1(
+            subject,
+            RedeemerMalformed { redeemer_index },
+          )
+          True
+        }
+      }
+    } else {
+      True
+    }
   BoundRedeemerV1 { subject, witness_set_hash, redeemer_index }
+}
+
+/// Whether `bound` claims a Plutus execution failure.
+pub fn claims_execution_failure_v1(bound: BoundRedeemerV1) -> Bool {
+  when bound.subject.rejection_reason is {
+    Some(PlutusExecutionFailed { .. }) -> True
+    _ -> False
+  }
+}
+
+/// Whether field 8, holding `count` items, lacks the coordinate `bound`
+/// claims. A transaction with no redeemers runs no Plutus script, so it has
+/// no execution that could fail; any other claim names a redeemer, absent
+/// when its position is negative or at or past the count.
+pub fn claimed_coordinate_absent_v1(bound: BoundRedeemerV1, count: Int) -> Bool {
+  if claims_execution_failure_v1(bound) {
+    count == 0
+  } else {
+    bound.redeemer_index < 0 || bound.redeemer_index >= count
+  }
 }
 
 fn supported_purpose(tag: Int) -> Bool {

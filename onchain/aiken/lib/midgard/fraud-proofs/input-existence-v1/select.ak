@@ -10,6 +10,26 @@ use midgard/native_tx_field_access_v1.{FieldViewV1}
 use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
 use midgard/rejection_reason_v1.{InputNotFound}
 
+/// The verdict permits reading no input at `(field_index, index)` when it
+/// claims exactly that input is not found, or when its `InputNotFound` names a
+/// source kind outside the two input fields: the machine emits that arm only
+/// for kind 0 (spend inputs) or kind 1 (reference inputs).
+pub fn reason_permits_absent_selection_v1(
+  subject: substrate.VerdictSubjectV1,
+  field_index: Int,
+  index: Int,
+) -> Bool {
+  when subject.rejection_reason is {
+    Some(InputNotFound { source_kind, input_index }) ->
+      if source_kind == 0 || source_kind == 1 {
+        source_kind == field_index && input_index == index
+      } else {
+        True
+      }
+    _ -> False
+  }
+}
+
 pub fn selected_index_v1(
   subject: substrate.VerdictSubjectV1,
   field_index: Int,
@@ -19,8 +39,10 @@ pub fn selected_index_v1(
   // (`subject_event_step_index_v1`) that the select step runs on it.
   expect field_index == 0 || field_index == 1
   expect
-    chosen_index >= 0 || subject.rejection_reason == Some(
-      InputNotFound { source_kind: field_index, input_index: chosen_index },
+    chosen_index >= 0 || reason_permits_absent_selection_v1(
+      subject,
+      field_index,
+      chosen_index,
     )
   chosen_index
 }
@@ -41,8 +63,10 @@ pub fn selected_input_v1(
 ) -> Option<MidgardTxInput> {
   let selected = input_at_or_none(view, index)
   expect
-    selected != None || subject.rejection_reason == Some(
-      InputNotFound { source_kind: field_index, input_index: index },
+    selected != None || reason_permits_absent_selection_v1(
+      subject,
+      field_index,
+      index,
     )
   selected
 }

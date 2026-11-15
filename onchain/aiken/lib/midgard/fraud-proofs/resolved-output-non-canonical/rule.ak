@@ -51,22 +51,47 @@ pub type DatumStepV1 {
 
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+///
+/// An acceptance names one of the transaction's spend or reference inputs. A
+/// rejection binds its reason's exact coordinate, which may name no input of
+/// the transaction; step 02 then contradicts it with `absent_input_verdict_v1`.
 pub fn bind_input_v1(
   subject: substrate.VerdictSubjectV1,
   source_kind: Int,
   input_index: Int,
   prior_root: ByteArray,
 ) -> BoundInputV1 {
-  expect source_kind == 0 || source_kind == 1
-  expect input_index >= 0
   expect bytearray.length(prior_root) == 32
-  expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    let expected = InputSpentOutputNonCanonical { source_kind, input_index }
-    Some(substrate.bind_opened_rejection_reason_v1(subject, expected))
-  } else {
-    None
-  }
+  expect
+    if subject.direction == substrate.direction_wrongful_rejection {
+      let expected = InputSpentOutputNonCanonical { source_kind, input_index }
+      expect _reason = substrate.bind_opened_rejection_reason_v1(
+        subject,
+        expected,
+      )
+      True
+    } else {
+      and {
+        source_kind == 0 || source_kind == 1,
+        input_index >= 0,
+      }
+    }
   BoundInputV1 { subject, source_kind, input_index, prior_root }
+}
+
+/// The bound coordinate names neither input field, or a negative position in
+/// one. Only a rejection binds such a coordinate (`bind_input_v1`).
+pub fn outside_input_fields_v1(bound: BoundInputV1) -> Bool {
+  or {
+    bound.source_kind != 0 && bound.source_kind != 1,
+    bound.input_index < 0,
+  }
+}
+
+/// The verdict for a coordinate that names no input of the transaction: the
+/// machine reads no resolved output there, so none is non-canonical.
+pub fn absent_input_verdict_v1(bound: BoundInputV1) -> CanonicalVerdictV1 {
+  CanonicalVerdictV1 { subject: bound.subject, output_is_non_canonical: False }
 }
 
 pub fn authenticate_out_ref_v1(

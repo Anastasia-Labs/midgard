@@ -72,8 +72,11 @@ validator main(
           True
         } else {
           expect output_script_hash == step_03_validator_script_hash
-          expect step_03.MinAdaTxScan { .. }: step_03.State = output_state_data
-          True
+          expect next: step_03.State = output_state_data
+          when next is {
+            step_03.MinAdaTxScan { .. } | step_03.MinAdaTxAbsent { .. } -> True
+            step_03.MinAdaTxDescriptor { .. } -> False
+          }
         }
         expect _yield_hash = require_authenticated_zero_yield(
           reference_inputs,

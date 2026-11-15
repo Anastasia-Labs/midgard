@@ -71,6 +71,8 @@ export const OutputReferenceStep02RedeemerSchema = faultProofStepRedeemerSchema(
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     opening: FieldOpeningSchema,
+    /** `True` closes a claimed output field 2 does not have. */
+    coordinate_absent: Data.Boolean(),
     grammar_ref_input_index: Data.Nullable(Data.Integer()),
   }),
 );

@@ -82,6 +82,15 @@ export const NativeScriptInvalidStep02ArgsSchema = Data.Enum([
       item_budget: Data.Integer(),
     }),
   }),
+  Data.Object({
+    SelectAbsentScript: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningSchema,
+      grammar_checkpoint_bytes: Data.Bytes(),
+    }),
+  }),
 ]);
 export const NativeScriptInvalidStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep02ArgsSchema);
@@ -114,6 +123,13 @@ export const NativeScriptInvalidStep03ArgsSchema = Data.Enum([
       script_item_cbor: Data.Bytes(),
       addr_tx_wits_opening: FieldOpeningSchema,
       item_budget: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    AbsentFinalize: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
     }),
   }),
 ]);

@@ -11,6 +11,7 @@ use fraud_proofs/output_reference_script_decoding/step_02 as step_02_validator
 use fraud_proofs/output_reference_script_decoding/step_04 as step_04_validator
 use midgard/computation_thread as ct
 use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -24,6 +25,9 @@ use midgard/fraud_proofs/output_reference_script_decoding/step_04.{
   Args as Step04Args, Datum as Step04Datum, SpendRedeemer as Step04Redeemer,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/rejection_reason_v1.{
+  OutputReferenceScriptMalformed, PlutusScriptUndecodable, RejectionReasonV1,
+}
 
 /// No case here reads a decode record, so no reference input carries this.
 const script_decode_policy_id =
@@ -264,6 +268,7 @@ fn step_02_case(route: Route, index: Int, item: ByteArray) -> Step02Case {
         input_index: 0,
         output_index: 0,
         opening: route.opening,
+        coordinate_absent: False,
         grammar_ref_input_index: route.grammar_ref_input_index,
       },
     ),
@@ -274,9 +279,17 @@ fn step_02_case(route: Route, index: Int, item: ByteArray) -> Step02Case {
   }
 }
 
+/// The terminal a scan with nothing to decode pays to; no item-arm case here
+/// reaches it.
+const step_06_hash = #"7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d"
+
+/// The output scan an absent-arm case does not pay to.
+const step_03_hash = #"7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
+
 fn run_step_02(case: Step02Case) -> Bool {
   step_02_validator.main.spend(
     fixture.next_step_script_hash,
+    step_06_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
     grammar.test_grammar_certificate_policy_id,
@@ -545,4 +558,135 @@ test step_04_walked_route_at_the_walked_limit_cost() {
       scripted_output(),
     ),
   )
+}
+
+// ## Coordinates field 2 does not have
+//
+// A forced rejection citing an output the field lacks (a negative position,
+// or one at or past the authenticated count) closes with no fault straight at
+// the terminal, which convicts it.
+
+fn forced_bound(
+  tx_id: ByteArray,
+  reason: RejectionReasonV1,
+  index: Int,
+) -> rule.BoundOutputV1 {
+  rule.bind_output_v1(
+    substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_rejection,
+      source_kind: substrate.source_kind_forced,
+      transaction_id: tx_id,
+      source_key: #"81",
+      rejection_reason: Some(reason),
+    },
+    index,
+  )
+}
+
+fn malformed_at(route: Route, index: Int) -> rule.BoundOutputV1 {
+  forced_bound(
+    route.tx_id,
+    OutputReferenceScriptMalformed { output_index: index },
+    index,
+  )
+}
+
+/// Step 02 on the absent arm for `bound`, paying the terminal.
+fn absent_case(route: Route, bound: rule.BoundOutputV1) -> Step02Case {
+  let next_state: Data = rule.absent_output_state_v1(
+    bound,
+    fixture.next_step_script_hash,
+  )
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      Step02Args {
+        input_index: 0,
+        output_index: 0,
+        opening: forced_fixture.from_native_opening(route.opening),
+        coordinate_absent: True,
+        grammar_ref_input_index: route.grammar_ref_input_index,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+      reference_inputs: route.reference_inputs,
+    },
+  }
+}
+
+/// Step 02 with the terminal as the fixture successor.
+fn run_absent(case: Step02Case) -> Bool {
+  step_02_validator.main.spend(
+    step_03_hash,
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+test step_02_absent_closes_an_output_at_the_count() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 1)))
+}
+
+test step_02_absent_closes_an_output_far_past_the_count() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 9223372036854775808)))
+}
+
+test step_02_absent_closes_a_negative_output() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, -1)))
+}
+
+test step_02_absent_closes_an_undecodable_claim_at_the_count() {
+  let route = inline_route()
+  run_absent(
+    absent_case(
+      route,
+      forced_bound(
+        route.tx_id,
+        PlutusScriptUndecodable { item_kind: 1, item_index: 1, class: 3 },
+        1,
+      ),
+    ),
+  )
+}
+
+test step_02_absent_refuses_the_last_in_range_output() fail {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 0)))
+}
+
+test step_02_absent_certified_route_closes_an_output_at_the_count() {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count)))
+}
+
+test step_02_absent_certified_route_refuses_the_last_in_range_output() fail {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count - 1)))
+}
+
+test step_02_absent_certified_route_fixture_only_at_the_tier3_maximum() {
+  let route = certified_route(honest_certificate)
+  let case = absent_case(route, malformed_at(route, certified_count))
+  case.datum != None
+}
+
+test step_02_absent_certified_route_at_the_tier3_maximum_cost() {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count)))
 }

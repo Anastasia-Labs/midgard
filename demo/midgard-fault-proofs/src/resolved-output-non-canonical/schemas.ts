@@ -71,7 +71,8 @@ export const ResolvedOutputStep02DatumSchema = faultProofStepDatumSchema(
 export const ResolvedOutputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningSchema,
+  /** `None` exactly when the bound coordinate names no readable input. */
+  opening: Data.Nullable(FieldOpeningSchema),
 });
 export const ResolvedOutputStep02RedeemerSchema = faultProofStepRedeemerSchema(
   ResolvedOutputStep02ArgsSchema,

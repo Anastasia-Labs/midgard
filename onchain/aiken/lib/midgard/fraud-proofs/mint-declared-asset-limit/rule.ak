@@ -73,11 +73,13 @@ pub type DecisionStateV1 {
 
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+/// An acceptance names one of the transaction's mint policies. A rejection
+/// binds its reason's exact coordinate, which may name no policy; step 02
+/// answers that coordinate with `absent_policy_decision_v1`.
 pub fn bind_policy_v1(
   subject: substrate.VerdictSubjectV1,
   policy_index: Int,
 ) -> BoundPolicyV1 {
-  expect policy_index >= 0
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     Some(
       substrate.bind_opened_rejection_reason_v1(
@@ -86,9 +88,21 @@ pub fn bind_policy_v1(
       ),
     )
   } else {
+    expect policy_index >= 0
     None
   }
   BoundPolicyV1 { subject, policy_index }
+}
+
+/// The decision for a bound policy the mint field does not have. Canonical
+/// validation declares no asset count at that position, so no limit is
+/// crossed there.
+pub fn absent_policy_decision_v1(bound: BoundPolicyV1) -> DecisionStateV1 {
+  DecisionStateV1 {
+    subject: bound.subject,
+    policy_index: bound.policy_index,
+    crossing: False,
+  }
 }
 
 /// Reads exactly the scalars `script_sources_begin_mint_policy` inspects

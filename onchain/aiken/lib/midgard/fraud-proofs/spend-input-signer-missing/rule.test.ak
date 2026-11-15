@@ -98,3 +98,27 @@ test accepted_unrequired_signer_never_closes() fail {
     },
   )
 }
+
+/// A negative coordinate names no spend input, so canonical validation never
+/// evaluates it: a forced rejection citing one closes with no scan.
+test forced_negative_coordinate_closes() {
+  let subject = forced_subject(-1)
+  let bound = rule.bind_spend_input_v1(
+    subject,
+    -1,
+    prior_root,
+    witness_set_hash,
+  )
+  rule.terminal_v1(rule.direct_verdict_v1(bound))
+}
+
+/// An accepted subject at a negative coordinate has no fault to close on.
+test accepted_negative_coordinate_never_closes() fail {
+  let bound = rule.bind_spend_input_v1(
+    accepted_subject(),
+    -1,
+    prior_root,
+    witness_set_hash,
+  )
+  rule.terminal_v1(rule.direct_verdict_v1(bound))
+}

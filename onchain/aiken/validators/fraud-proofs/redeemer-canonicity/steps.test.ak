@@ -8,6 +8,7 @@ use cardano/transaction.{Input, Transaction}
 use fraud_proofs/redeemer_canonicity/step_02 as step_02_validator
 use midgard/computation_thread as ct
 use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, WitnessFieldOpening}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -17,6 +18,9 @@ use midgard/fraud_proofs/redeemer_canonicity/step_02.{
   Args as Step02Args, Datum as Step02Datum, SpendRedeemer as Step02Redeemer,
 }
 use midgard/native_tx_field_access_v1 as field_access
+use midgard/rejection_reason_v1.{
+  PlutusExecutionFailed, RedeemerMalformed, RejectionReasonV1,
+}
 
 /// The successor a finished data scan pays to; no case here finishes one.
 const step_03_hash = #"7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
@@ -188,6 +192,7 @@ fn step_02_case(route: Route, index: Int, item: ByteArray) -> Step02Case {
         input_index: 0,
         output_index: 0,
         opening: route.opening,
+        coordinate_absent: False,
         grammar_ref_input_index: route.grammar_ref_input_index,
       },
     ),
@@ -333,5 +338,208 @@ test step_02_walked_route_fixture_only_at_the_walked_limit() {
 test step_02_walked_route_at_the_walked_limit_cost() {
   run_step_02(
     step_02_case(walked_limit_route(), walked_limit_index, accused_redeemer()),
+  )
+}
+
+// ## Coordinates the field does not have
+//
+// A forced rejection citing a redeemer the field lacks (a negative position,
+// or one at or past the authenticated count), or a Plutus execution failure
+// of a transaction with no redeemers, is answered by the canonical verdict
+// straight at the terminal.
+
+fn forced_bound(
+  block: fixture.NativeBlockFixtureV1,
+  reason: RejectionReasonV1,
+  index: Int,
+) -> rule.BoundRedeemerV1 {
+  rule.BoundRedeemerV1 {
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_rejection,
+      source_kind: substrate.source_kind_forced,
+      transaction_id: block.tx_id,
+      source_key: #"81",
+      rejection_reason: Some(reason),
+    },
+    witness_set_hash: block.compact.witness_set_hash,
+    redeemer_index: index,
+  }
+}
+
+fn malformed_at(route: Route, index: Int) -> rule.BoundRedeemerV1 {
+  forced_bound(route.block, RedeemerMalformed { redeemer_index: index }, index)
+}
+
+fn execution_failed(route: Route) -> rule.BoundRedeemerV1 {
+  forced_bound(
+    route.block,
+    PlutusExecutionFailed { purpose_kind: 1, purpose_index: 0 },
+    -1,
+  )
+}
+
+/// Step 02 on the absent arm for `bound`, writing the canonical verdict to
+/// the terminal.
+fn absent_case(route: Route, bound: rule.BoundRedeemerV1) -> Step02Case {
+  let next_state: Data = rule.TerminalStateV1 { bound, canonical: True }
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      Step02Args {
+        input_index: 0,
+        output_index: 0,
+        opening: forced_fixture.from_native_opening(route.opening),
+        coordinate_absent: True,
+        grammar_ref_input_index: route.grammar_ref_input_index,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+      reference_inputs: route.reference_inputs,
+    },
+  }
+}
+
+/// Step 02 with the terminal as the fixture successor.
+fn run_absent(case: Step02Case) -> Bool {
+  step_02_validator.main.spend(
+    step_03_hash,
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+/// Tier 1 over an empty field 8: the transaction has no redeemers.
+fn empty_route() -> Route {
+  let preimage = field_access.encode_field_preimage([])
+  let block = fixture.committed_field_preimage_block_fixture_v1(
+    base_block(),
+    8,
+    preimage,
+  )
+  Route {
+    block,
+    opening: WitnessFieldOpening {
+      native_tx_compact_cbor: block.compact_cbor,
+      witness_set: block.witness_set_compact,
+      carriage: field_access.Inline { preimage },
+    },
+    grammar_ref_input_index: None,
+    reference_inputs: [],
+  }
+}
+
+test step_02_absent_closes_a_redeemer_at_the_count() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 1)))
+}
+
+test step_02_absent_closes_a_redeemer_far_past_the_count() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 9223372036854775808)))
+}
+
+test step_02_absent_closes_a_negative_redeemer() {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, -1)))
+}
+
+/// Honest refusal at the last in-range coordinate (count - 1): the redeemer
+/// is there, so the absent arm is refused.
+test step_02_absent_refuses_the_last_in_range_redeemer() fail {
+  let route = inline_route()
+  run_absent(absent_case(route, malformed_at(route, 0)))
+}
+
+/// The absent arm writes only the canonical verdict.
+test step_02_absent_refuses_a_malformed_verdict() fail {
+  let route = inline_route()
+  let bound = malformed_at(route, 1)
+  let next_state: Data = rule.TerminalStateV1 { bound, canonical: False }
+  run_absent(
+    Step02Case {
+      ..absent_case(route, bound),
+      tx: Transaction {
+        ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+        reference_inputs: [],
+      },
+    },
+  )
+}
+
+/// The absent arm continues only at the terminal.
+test step_02_absent_refuses_the_data_step_successor() fail {
+  let route = inline_route()
+  let case = absent_case(route, malformed_at(route, 1))
+  run_step_02(case)
+}
+
+/// The certified count serves a chunked field: a forced coordinate at it
+/// closes directly.
+test step_02_absent_certified_route_closes_a_redeemer_at_the_count() {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count)))
+}
+
+test step_02_absent_certified_route_refuses_the_last_in_range_redeemer() fail {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count - 1)))
+}
+
+test step_02_absent_certified_route_fixture_only_at_the_tier3_maximum() {
+  let route = certified_route(honest_certificate)
+  let case = absent_case(route, malformed_at(route, certified_count))
+  case.datum != None
+}
+
+test step_02_absent_certified_route_at_the_tier3_maximum_cost() {
+  let route = certified_route(honest_certificate)
+  run_absent(absent_case(route, malformed_at(route, certified_count)))
+}
+
+/// A transaction with no redeemers runs no Plutus script, so a forced
+/// `PlutusExecutionFailed` is contradicted by the empty field 8.
+test step_02_absent_closes_an_execution_failure_without_redeemers() {
+  let route = empty_route()
+  run_absent(absent_case(route, execution_failed(route)))
+}
+
+/// Honest refusal: with one redeemer the execution-failure claim cannot be
+/// decided from the field's count.
+test step_02_absent_refuses_an_execution_failure_with_a_redeemer() fail {
+  let route = inline_route()
+  run_absent(absent_case(route, execution_failed(route)))
+}
+
+/// The execution-failure sentinel names no redeemer to read, so the item arm
+/// refuses it.
+test step_02_item_arm_refuses_an_execution_failure() fail {
+  let route = inline_route()
+  let bound = execution_failed(route)
+  run_absent(
+    Step02Case {
+      ..absent_case(route, bound),
+      redeemer: ct.Continue(
+        Step02Args {
+          input_index: 0,
+          output_index: 0,
+          opening: forced_fixture.from_native_opening(route.opening),
+          coordinate_absent: False,
+          grammar_ref_input_index: None,
+        },
+      ),
+    },
   )
 }

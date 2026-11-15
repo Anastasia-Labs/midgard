@@ -73,7 +73,27 @@ registered families follow this rule.
 `PlutusExecutionFailed` remains on the interactive CEK/validation-dispute path
 because resolving it requires authenticated execution traces. Static selection
 or malformed-data facts that share a coarse Plutus code do not inherit that
-interactive classification.
+interactive classification. One case needs no trace: a forced
+`PlutusExecutionFailed` rejection of a transaction whose redeemer field 8 has
+an authenticated count of zero runs no Plutus script, so `redeemerCanonicity`
+(`00000028`) contradicts it single-party. That family therefore answers two
+wrongful forced rejections: `RedeemerMalformed`, and `PlutusExecutionFailed` of
+a transaction with no redeemers. A forced `PlutusExecutionFailed` of a
+transaction with redeemers stays unanswered until forced leaves are bound to
+their execution order.
+
+A wrongful forced rejection whose reason names a coordinate the transaction
+does not have (a negative ordinal, one at or past the authenticated item count
+of the field the reason names, or a source or item kind outside the reason's
+domain) is contradicted by the family that owns the reason, from the
+authenticated count alone.
+
+`MintItemMalformed` has no emission site in the validation machine, so
+`mintItemNonCanonical` (`00000036`) contradicts every forced rejection carrying
+it without opening the mint field. That branch is sound only while no machine
+step emits the reason: the change that adds an emission site must, in the same
+change, replace the branch with one that proves the claimed coordinate absent
+or the item well-formed.
 
 ## 6. Verification obligations
 

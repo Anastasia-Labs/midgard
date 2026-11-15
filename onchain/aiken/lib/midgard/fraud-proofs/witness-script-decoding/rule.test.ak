@@ -682,7 +682,111 @@ test refuses_an_undecodable_coordinate_substitution() fail {
   True
 }
 
-test refuses_an_undecodable_class_zero() fail {
-  expect _ = rule.bind_subject_v1(undecodable(0), witness_hash, 0)
+// ## Claims the machine cannot emit, and coordinates field 6 does not have
+
+test undecodable_class_zero_binds_the_unreachable_class() {
+  let bound = rule.bind_subject_v1(undecodable(0), witness_hash, 0)
+  and {
+    bound.accused_class == rule.result_unreachable_class,
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(0), Some(fixture.plutus_script_record_v1(16))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(0), Some(fixture.plutus_script_record_v1(0))),
+    ),
+  }
+}
+
+test undecodable_class_past_the_last_convicts() {
+  rule.terminal_contradiction_v1(
+    plutus_closed(undecodable(18), Some(fixture.plutus_script_record_v1(16))),
+  )
+}
+
+fn undecodable_kind(kind: Int, index: Int) -> substrate.VerdictSubjectV1 {
+  forced_subject_with(
+    PlutusScriptUndecodable { item_kind: kind, item_index: index, class: 1 },
+  )
+}
+
+test undecodable_kind_two_binds_the_unreachable_class() {
+  rule.bind_subject_v1(undecodable_kind(2, 0), witness_hash, 0).accused_class == rule.result_unreachable_class
+}
+
+test undecodable_maximum_kind_binds_the_unreachable_class() {
+  rule.bind_subject_v1(
+    undecodable_kind(18446744073709551615, 0),
+    witness_hash,
+    0,
+  ).accused_class == rule.result_unreachable_class
+}
+
+/// Step 03 forwards the absent state closed, as it forwards every closed one.
+fn absent_closed(
+  subject: substrate.VerdictSubjectV1,
+  index: Int,
+) -> rule.WitnessScriptScanStateV1 {
+  let state = rule.absent_script_state_v1(
+    rule.bind_subject_v1(subject, witness_hash, index),
+    scan_hash,
+  )
+  rule.closed_state_v1(state, state.result_class, final_hash)
+}
+
+test absent_script_convicts_each_witness_arm() {
+  and {
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        forced_subject_with(WitnessScriptHeaderMalformed { script_index: 1 }),
+        1,
+      ),
+    ),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        forced_subject_with(WitnessNativeScriptMalformed { script_index: -1 }),
+        -1,
+      ),
+    ),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        forced_subject_with(WitnessNativeScriptNodeLimit { script_index: 7 }),
+        7,
+      ),
+    ),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        forced_subject_with(
+          WitnessNativeScriptDepthLimit { script_index: 9223372036854775808 },
+        ),
+        9223372036854775808,
+      ),
+    ),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        forced_subject_with(
+          PlutusScriptUndecodable { item_kind: 0, item_index: 3, class: 4 },
+        ),
+        3,
+      ),
+    ),
+    rule.terminal_contradiction_v1(absent_closed(undecodable_kind(2, -1), -1)),
+  }
+}
+
+test absent_script_state_is_authentic() {
+  rule.state_is_authentic_v1(
+    absent_closed(
+      forced_subject_with(WitnessScriptHeaderMalformed { script_index: -1 }),
+      -1,
+    ),
+  )
+}
+
+test absent_script_refuses_an_acceptance() {
+  !rule.terminal_contradiction_v1(absent_closed(accepted_subject(), 4))
+}
+
+test refuses_an_accepted_negative_script() fail {
+  expect _ = rule.bind_subject_v1(accepted_subject(), witness_hash, -1)
   True
 }

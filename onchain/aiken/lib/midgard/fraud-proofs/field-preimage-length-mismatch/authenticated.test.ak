@@ -8,7 +8,8 @@ use midgard/fraud_proofs/canonical_decodability/rule.{
   BodyFieldClaim, CommittedFieldClaimV1, WitnessFieldClaim,
 } as claim_rule
 use midgard/fraud_proofs/field_preimage_length_mismatch/rule.{
-  LengthEvidenceV1, authenticated_length_evidence_v1, decisive_fault_holds_v1,
+  LengthEvidenceV1, authenticated_length_evidence_v1,
+  bind_out_of_domain_field_v1, decisive_fault_holds_v1,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
@@ -293,6 +294,62 @@ test field_preimage_length_authenticated_rejects_negative_coordinate() fail {
     inline_body_claim(-1, spend_inputs_preimage(b)),
   )
   e.field_index == -1
+}
+
+// ## Forced rejections naming a field outside the layout
+
+fn out_of_domain_terminal(b: fixture.NativeBlockFixtureV1, field: Int) -> Bool {
+  let subject = rejected(b, field)
+  terminal(
+    subject,
+    LengthEvidenceV1 {
+      field_index: bind_out_of_domain_field_v1(subject),
+      declared_length: 0,
+      actual_length: 0,
+    },
+  )
+}
+
+test field_preimage_length_authenticated_forced_coordinate_nine_convicts() {
+  out_of_domain_terminal(block(), 9)
+}
+
+test field_preimage_length_authenticated_forced_negative_coordinate_convicts() {
+  out_of_domain_terminal(block(), -1)
+}
+
+test field_preimage_length_authenticated_forced_huge_coordinate_convicts() {
+  out_of_domain_terminal(block(), 9223372036854775808)
+}
+
+test field_preimage_length_authenticated_out_of_domain_refuses_last_field() fail {
+  out_of_domain_terminal(block(), redeemers_field)
+}
+
+test field_preimage_length_authenticated_out_of_domain_refuses_acceptance() fail {
+  let b = block()
+  bind_out_of_domain_field_v1(accepted(b)) == 9
+}
+
+test field_preimage_length_authenticated_honest_last_field_rejection_is_refused() {
+  let b = block()
+  let lengths = honest_lengths(b)
+  let e = bind_forced_coordinate(
+    rejected(b, redeemers_field),
+    evidence(
+      b,
+      NativeTxFieldPreimageLengthsV1 {
+        ..lengths,
+        redeemers: lengths.redeemers + 7,
+      },
+      inline_witness_claim(
+        redeemers_field,
+        b.witness_set_compact,
+        redeemers_preimage(b),
+      ),
+    ),
+  )
+  !terminal(rejected(b, redeemers_field), e)
 }
 
 test field_preimage_length_authenticated_rejects_body_claim_on_witness_field() fail {

@@ -10,6 +10,7 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/scan as min_ada_scan
 use midgard/fraud_proofs/min_ada/step_03.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_ada/step_04 as step_04
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/transaction_output_non_canonical/rule as scan_rule
 use midgard/validation_machine/shared as vm_shared
 
@@ -69,6 +70,14 @@ validator main(
               step_03.MinAdaTxScan { direction, scan: next }
             }
             output_state_data == expected
+          }
+          // Canonical validation applies no minimum-Ada rule to an output
+          // field 2 does not have: only a rejection is contradicted.
+          step_03.MinAdaTxAbsent { direction } -> {
+            expect output_script_hash == step_04_validator_script_hash
+            let expected_output_state: Data = step_04.PredicateAuthenticated
+            expect output_state_data == expected_output_state
+            direction == substrate.direction_wrongful_rejection
           }
           step_03.MinAdaTxDescriptor { direction, total_length, lovelace } -> {
             expect output_script_hash == step_04_validator_script_hash

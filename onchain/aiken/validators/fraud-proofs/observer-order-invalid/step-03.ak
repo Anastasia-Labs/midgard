@@ -109,9 +109,10 @@ fn advance(
 ) -> Pair<ScanStateV1, FieldWalkCheckpointV1> {
   if state.outcome != outcome_scanning {
     Pair(state, checkpoint)
-  } else if walk_is_complete(checkpoint) {
+  } else if state.observer_index < 0 || walk_is_complete(checkpoint) {
     // The engine's own end: the whole field was walked strictly ordered
     // without reaching the cited ordinal, so no offending later item exists.
+    // A negative ordinal names no item, so it exhausts before any is walked.
     Pair(exhaust_scan_v1(state), checkpoint)
   } else if budget == 0 {
     Pair(state, checkpoint)

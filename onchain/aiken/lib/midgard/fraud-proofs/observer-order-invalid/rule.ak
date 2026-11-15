@@ -41,13 +41,13 @@ pub fn bind_observer_v1(
   subject: substrate.VerdictSubjectV1,
   observer_index: Int,
 ) -> BoundObserverV1 {
-  expect observer_index >= 0
   expect
     if subject.direction == substrate.direction_wrongful_rejection {
       // The forced leaf's typed reason is bound exactly. Every ordinal it
-      // can name is admissible here: a rejection naming ordinal 0, or an
-      // ordinal the field never reaches, names no offending later item, and
-      // the walk contradicts it by exhausting the field strictly ordered.
+      // can name is admissible here: a rejection naming ordinal 0, a
+      // negative ordinal, or an ordinal the field never reaches names no
+      // offending later item, and the walk contradicts it by exhausting
+      // (see `exhaust_scan_v1`).
       expect _reason = substrate.bind_opened_rejection_reason_v1(
         subject,
         ObserverOrderInvalid { observer_index },
@@ -120,11 +120,18 @@ pub fn scan_item_v1(
 /// ordinal: an `ObserverOrderInvalid` rejection naming one is wrong, and an
 /// acceptance is honest. Only reachable when the cited ordinal is at or past
 /// the field's item count, because `scan_item_v1` decides at the ordinal
-/// itself whenever the walk reaches it.
+/// itself whenever the walk reaches it, or when the cited ordinal is
+/// negative and so names no item at all; `scan_item_v1` refuses every item
+/// for a negative ordinal, so such a scan exhausts before walking any. Only a
+/// wrongful forced rejection can carry a negative ordinal
+/// (`bind_observer_v1`).
 pub fn exhaust_scan_v1(state: ScanStateV1) -> ScanStateV1 {
   expect and {
       state.outcome == outcome_scanning,
-      state.seen <= state.observer_index,
+      or {
+        state.observer_index < 0,
+        state.seen <= state.observer_index,
+      },
     }
   ScanStateV1 { ..state, outcome: outcome_ordered }
 }

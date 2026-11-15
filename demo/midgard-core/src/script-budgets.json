@@ -3559,8 +3559,8 @@
       "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_04_certified_route_at_the_tier3_maximum_cost",
       "minusControl": "step_04_certified_route_fixture_only_at_the_tier3_maximum",
       "ceiling": {
-        "mem": 3421686,
-        "cpu": 1229271555
+        "mem": 3416531,
+        "cpu": 1228746445
       }
     },
     "fraud_proofs/network_id/step_02/network_id_step_02_certified_route_at_the_tier3_maximum_cost - network_id_step_02_certified_route_fixture_only_at_the_tier3_maximum": {
@@ -3671,7 +3671,7 @@
       "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_04_walked_route_at_the_walked_limit_cost",
       "minusControl": "step_04_walked_route_fixture_only_at_the_walked_limit",
       "ceiling": {
-        "mem": 7860132,
+        "mem": 7857194,
         "cpu": 4410237385
       }
     },
@@ -3737,6 +3737,54 @@
       "ceiling": {
         "mem": 9503164,
         "cpu": 2825434893
+      }
+    },
+    "fraud_proofs/output_reference_script_decoding/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/output_reference_script_decoding/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 1002659,
+        "cpu": 356481802
+      }
+    },
+    "fraud_proofs/redeemer_canonicity/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/redeemer_canonicity/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 854373,
+        "cpu": 285914954
+      }
+    },
+    "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/transaction_output_non_canonical/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 822026,
+        "cpu": 275906134
+      }
+    },
+    "fraud_proofs/witness_script_decoding/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/witness_script_decoding/steps.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 926488,
+        "cpu": 327005931
+      }
+    },
+    "fraud_proofs/mint_declared_asset_limit/absent.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/mint_declared_asset_limit/absent.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 1814423,
+        "cpu": 483254556
+      }
+    },
+    "fraud_proofs/native_script_invalid/absent.test/step_02_absent_certified_route_at_the_tier3_maximum_cost - step_02_absent_certified_route_fixture_only_at_the_tier3_maximum": {
+      "test": "fraud_proofs/native_script_invalid/absent.test/step_02_absent_certified_route_at_the_tier3_maximum_cost",
+      "minusControl": "step_02_absent_certified_route_fixture_only_at_the_tier3_maximum",
+      "ceiling": {
+        "mem": 4367247,
+        "cpu": 907682181
       }
     }
   },

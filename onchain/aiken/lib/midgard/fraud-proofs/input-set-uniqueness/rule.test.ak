@@ -73,24 +73,6 @@ test incomplete_scan_cannot_finalize() fail {
   )
 }
 
-test out_of_range_accused_coordinate_is_refused() fail {
-  rule.initial_scan_state_v1(
-    rule.bind_forced_duplicate_reason_v1(subject(0, 0, 1, 2)),
-    2,
-    1,
-    scan_hash,
-  ).cursor == 0
-}
-
-test reversed_accused_coordinate_is_refused() fail {
-  rule.initial_scan_state_v1(
-    rule.bind_forced_duplicate_reason_v1(subject(1, 0, 0, 1)),
-    2,
-    1,
-    scan_hash,
-  ).cursor == 0
-}
-
 test malformed_checkpoint_is_refused() fail {
   let state = initial()
   rule.scan_state_is_authentic_v1(
@@ -139,4 +121,108 @@ test batch_cannot_advance_past_authenticated_total() fail {
     [item_a, item_b, item_c, item_c],
     scan_hash,
   ).cursor == 4
+}
+
+// ## Pairs that cannot name two distinct inputs
+//
+// A pair whose coordinate the transaction does not have, or whose two
+// coordinates are the same, names no duplicate, so the rejection is
+// contradicted without scanning the union. Any other pair, in either
+// orientation, is answered only by the complete strict scan.
+
+/// The scan state seeded for `bound` over 2 spend inputs and 1 reference input.
+fn seeded(
+  first_field: Int,
+  first_item: Int,
+  second_field: Int,
+  second_item: Int,
+) -> rule.UniqueScanStateV1 {
+  rule.initial_scan_state_v1(
+    rule.bind_forced_duplicate_reason_v1(
+      subject(first_field, first_item, second_field, second_item),
+    ),
+    2,
+    1,
+    scan_hash,
+  )
+}
+
+test absent_reference_coordinate_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 0, 1, 1))
+}
+
+test absent_spend_coordinate_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 2, 1, 0))
+}
+
+test huge_coordinate_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 0, 0, 9_223_372_036_854_775_808))
+}
+
+test negative_first_coordinate_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, -1, 0, 1))
+}
+
+test negative_second_coordinate_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 0, 1, -1))
+}
+
+test unknown_first_kind_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(2, 0, 0, 1))
+}
+
+test huge_second_kind_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 0, 9_223_372_036_854_775_808, 0))
+}
+
+test negative_kind_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(-1, 0, 0, 1))
+}
+
+test same_coordinate_twice_finalizes_without_a_scan() {
+  rule.unique_scan_is_complete_v1(seeded(0, 1, 0, 1))
+}
+
+test in_range_distinct_pair_cannot_finalize_without_a_scan() fail {
+  rule.unique_scan_is_complete_v1(seeded(0, 0, 1, 0))
+}
+
+test the_last_coordinates_cannot_finalize_without_a_scan() fail {
+  rule.unique_scan_is_complete_v1(seeded(0, 1, 1, 0))
+}
+
+test reversed_in_range_pair_cannot_finalize_without_a_scan() fail {
+  rule.unique_scan_is_complete_v1(seeded(1, 0, 0, 1))
+}
+
+test reversed_in_range_pair_over_a_duplicate_set_is_refused() fail {
+  let s1 = rule.advance_unique_scan_v1(seeded(1, 0, 0, 1), item_a, scan_hash)
+  let s2 = rule.advance_unique_scan_v1(s1, item_a, scan_hash)
+  let s3 = rule.advance_unique_scan_v1(s2, item_c, scan_hash)
+  rule.unique_scan_is_complete_v1(s3)
+}
+
+test reversed_in_range_pair_over_a_strict_set_is_contradicted_by_the_scan() {
+  let state = rule.advance_unique_batch_v1(
+    seeded(1, 0, 0, 1),
+    [item_a, item_b, item_c],
+    scan_hash,
+  )
+  rule.unique_scan_is_complete_v1(state)
+}
+
+test absent_coordinate_cannot_contradict_an_acceptance() fail {
+  let state = seeded(0, 0, 1, 1)
+  rule.unique_scan_is_complete_v1(
+    rule.UniqueScanStateV1 {
+      ..state,
+      bound: rule.BoundDuplicateInputV1 {
+        ..state.bound,
+        subject: substrate.VerdictSubjectV1 {
+          ..state.bound.subject,
+          direction: substrate.direction_wrongful_acceptance,
+        },
+      },
+    },
+  )
 }

@@ -488,3 +488,62 @@ test refuses_an_undecodable_output_coordinate_substitution() fail {
   expect _ = rule.bind_output_v1(undecodable(1), 1)
   True
 }
+
+// ## Claims the machine cannot emit, and coordinates field 2 does not have
+
+test undecodable_class_zero_binds_the_unreachable_class() {
+  and {
+    rule.bind_output_v1(undecodable(0), 0).accused_class == rule.result_unreachable_class,
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(0), Some(fixture.plutus_script_record_v1(16))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(0), Some(fixture.plutus_script_record_v1(0))),
+    ),
+  }
+}
+
+fn absent_closed(
+  subject: substrate.VerdictSubjectV1,
+  index: Int,
+) -> rule.ReferenceScriptScanStateV1 {
+  rule.absent_output_state_v1(rule.bind_output_v1(subject, index), final_hash)
+}
+
+test absent_output_convicts_each_arm() {
+  and {
+    rule.terminal_contradiction_v1(absent_closed(forced_subject(1), 1)),
+    rule.terminal_contradiction_v1(absent_closed(forced_subject(-1), -1)),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        substrate.VerdictSubjectV1 {
+          ..forced_subject(0),
+          rejection_reason: Some(
+            OutputReferenceScriptNodeLimit { output_index: 9223372036854775808 },
+          ),
+        },
+        9223372036854775808,
+      ),
+    ),
+    rule.terminal_contradiction_v1(
+      absent_closed(
+        substrate.VerdictSubjectV1 {
+          ..forced_subject(0),
+          rejection_reason: Some(
+            PlutusScriptUndecodable { item_kind: 1, item_index: 4, class: 2 },
+          ),
+        },
+        4,
+      ),
+    ),
+  }
+}
+
+test absent_output_refuses_an_acceptance() {
+  !rule.terminal_contradiction_v1(absent_closed(accepted_subject(), 3))
+}
+
+test refuses_an_accepted_negative_output() fail {
+  expect _ = rule.bind_output_v1(accepted_subject(), -1)
+  True
+}

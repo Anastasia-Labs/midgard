@@ -104,6 +104,7 @@ export const buildOutputReferenceScriptDecodingChain = ({
       OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
       [
         step03.spendingScriptHash,
+        step06.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
         fieldGrammarCertificatePolicyId,

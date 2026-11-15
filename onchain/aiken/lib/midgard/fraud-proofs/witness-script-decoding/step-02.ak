@@ -9,6 +9,11 @@ pub type Args {
   /// Reference input holding the script's decode record when the item is a
   /// Plutus script, or -1.
   record_reference_input_index: Int,
+  /// `True` names the arm that answers a forced rejection whose script
+  /// coordinate field 6 does not have: a negative position, or one at or past
+  /// the field's authenticated count. The validator decides the claim from
+  /// that count, never from the flag alone.
+  coordinate_absent: Bool,
   /// `None` reads the script by walking field 6; `Some(i)` reads it through
   /// the field grammar certificate at reference input `i`, so the step's cost
   /// no longer grows with the field's item count.

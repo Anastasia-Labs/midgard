@@ -6,6 +6,11 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   opening: FieldOpeningV1,
+  /// `True` names the arm that answers a forced rejection whose output
+  /// coordinate field 2 does not have: a negative position, or one at or past
+  /// the field's authenticated count. The validator decides the claim from
+  /// that count, never from the flag alone.
+  coordinate_absent: Bool,
   /// `None` reads the output by walking the field; `Some(i)` reads it through
   /// the field grammar certificate at reference input `i`, so the step's cost
   /// no longer grows with the field's item count.

@@ -28,6 +28,17 @@ pub type Args {
     >,
     claim: CommittedFieldClaimV1,
   }
+  /// A forced rejection naming a field outside the native layout. No field is
+  /// opened: the claimed coordinate alone shows the machine cannot emit it.
+  AuthenticateForcedOutOfDomain {
+    input_index: Int,
+    output_index: Int,
+    header: ledger_state.HeaderV1,
+    membership: transition_trace.ForcedLeafMembershipV1<
+      ledger_state.TxOrderId,
+      ledger_state.ForcedInclusionTxV1,
+    >,
+  }
 }
 
 pub type SpendRedeemer =

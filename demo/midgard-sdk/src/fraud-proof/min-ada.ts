@@ -126,6 +126,11 @@ export const MinAdaStep03StateSchema = Data.Enum([
       lovelace: Data.Integer(),
     }),
   }),
+  Data.Object({
+    MinAdaTxAbsent: Data.Object({
+      direction: Data.Integer(),
+    }),
+  }),
 ]);
 export const MinAdaStep03DatumSchema = faultProofStepDatumSchema(
   MinAdaStep03StateSchema,

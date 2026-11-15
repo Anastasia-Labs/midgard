@@ -201,6 +201,53 @@ test resolved_output_non_canonical_refuses_other_reason() fail {
   rule.bind_input_v1(subject, 1, 4, prior_root).input_index == 4
 }
 
+// A forced rejection naming no input of the transaction: the bind accepts its
+// exact coordinate, and the direct verdict contradicts it.
+
+fn absent_input_convicts(source_kind: Int, input_index: Int) -> Bool {
+  let bound = rule.bind_input_v1(
+    rejected(source_kind, input_index),
+    source_kind,
+    input_index,
+    prior_root,
+  )
+  and {
+    rule.outside_input_fields_v1(bound),
+    rule.terminal_contradiction_v1(rule.absent_input_verdict_v1(bound)),
+  }
+}
+
+test resolved_output_non_canonical_forced_kind_two_convicts() {
+  absent_input_convicts(2, 0)
+}
+
+test resolved_output_non_canonical_forced_maximum_kind_convicts() {
+  absent_input_convicts(18446744073709551615, 0)
+}
+
+test resolved_output_non_canonical_forced_negative_index_convicts() {
+  absent_input_convicts(1, -1)
+}
+
+// An index at or past the field's count is in the fields' domain; the step
+// compares it with the authenticated count before writing the direct verdict.
+test resolved_output_non_canonical_forced_index_at_count_binds_in_domain() {
+  let bound = rule.bind_input_v1(rejected(0, 2), 0, 2, prior_root)
+  and {
+    !rule.outside_input_fields_v1(bound),
+    rule.terminal_contradiction_v1(rule.absent_input_verdict_v1(bound)),
+  }
+}
+
+test resolved_output_non_canonical_absent_verdict_refuses_acceptance() fail {
+  let bound = rule.bind_input_v1(accepted(), 0, 0, prior_root)
+  rule.terminal_contradiction_v1(rule.absent_input_verdict_v1(bound))
+}
+
+test resolved_output_non_canonical_forced_kind_two_refuses_substitution() fail {
+  rule.bind_input_v1(rejected(2, 0), 3, 0, prior_root).source_kind == 3
+}
+
 test resolved_output_non_canonical_refuses_prior_root_substitution() fail {
   rule.bind_input_v1(accepted(), 0, 0, #"00").input_index == 0
 }

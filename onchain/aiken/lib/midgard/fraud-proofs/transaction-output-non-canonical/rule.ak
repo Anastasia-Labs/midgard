@@ -21,6 +21,10 @@ pub const outcome_canonical: Int = 1
 
 pub const outcome_non_canonical: Int = 2
 
+/// The outcome of a claimed output field 2 does not have. Only this family's
+/// step 02 writes it, and only its terminal reads it.
+pub const outcome_absent: Int = 3
+
 pub const scan_chunk_bytes: Int = 4095
 
 pub const scan_window_bytes: Int = 8190
@@ -58,11 +62,13 @@ pub type DatumStepV1 {
 
 /// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
 /// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
+/// An acceptance names one of the transaction's outputs. A rejection binds its
+/// reason's exact coordinate, which may name no output; step 02 answers that
+/// coordinate with `absent_output_state_v1`.
 pub fn bind_output_v1(
   subject: substrate.VerdictSubjectV1,
   output_index: Int,
 ) -> BoundOutputV1 {
-  expect output_index >= 0
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     Some(
       substrate.bind_opened_rejection_reason_v1(
@@ -71,9 +77,24 @@ pub fn bind_output_v1(
       ),
     )
   } else {
+    expect output_index >= 0
     None
   }
   BoundOutputV1 { subject, output_index }
+}
+
+/// The terminal state of a bound output field 2 does not have. It reads no
+/// item, so it carries none.
+pub fn absent_output_state_v1(bound: BoundOutputV1) -> OutputScanStateV1 {
+  OutputScanStateV1 {
+    subject: bound.subject,
+    output_index: bound.output_index,
+    item_length: 0,
+    item_hash: #"",
+    chunk_hashes: [],
+    control: ledger_output_scan_v1.initial_control_v1(),
+    outcome: outcome_absent,
+  }
 }
 
 pub fn initial_scan_v1(
@@ -299,15 +320,22 @@ pub fn advance_datum_v1(
   }
 }
 
+/// Canonical validation reads no output at a position field 2 lacks, so no
+/// non-canonical output holds there: an absent state contradicts only a
+/// rejection.
 pub fn terminal_contradiction_v1(state: OutputScanStateV1) -> Bool {
-  expect and {
-      state_is_well_formed_v1(state),
-      state.outcome != outcome_scanning,
-    }
-  substrate.terminal_contradiction_v1(
-    state.subject,
-    state.outcome == outcome_non_canonical,
-  )
+  if state.outcome == outcome_absent {
+    substrate.terminal_contradiction_v1(state.subject, False)
+  } else {
+    expect and {
+        state_is_well_formed_v1(state),
+        state.outcome != outcome_scanning,
+      }
+    substrate.terminal_contradiction_v1(
+      state.subject,
+      state.outcome == outcome_non_canonical,
+    )
+  }
 }
 
 pub fn encode_bound_output_v1(bound: BoundOutputV1) -> ByteArray {

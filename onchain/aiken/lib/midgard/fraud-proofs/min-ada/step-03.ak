@@ -10,6 +10,9 @@ use midgard/fraud_proofs/transaction_output_non_canonical/rule.{
 pub type State {
   MinAdaTxScan { direction: Int, scan: OutputScanStateV1 }
   MinAdaTxDescriptor { direction: Int, total_length: Int, lovelace: Int }
+  /// The claimed output is one field 2 does not have: a negative coordinate,
+  /// or one at or past the field's certified count.
+  MinAdaTxAbsent { direction: Int }
 }
 
 pub type Args {

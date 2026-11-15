@@ -13,6 +13,7 @@ use fraud_proofs/transaction_output_non_canonical/step_04 as step_04_validator
 use midgard/canonical_plutus_data_stream_v1 as stream
 use midgard/computation_thread as ct
 use midgard/field_grammar_certificate_v1.{FieldGrammarCertificateV1}
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
@@ -83,6 +84,15 @@ fn rejected() -> substrate.VerdictSubjectV1 {
   }
 }
 
+/// Step 02's step-04 successor in the cases that read an item: no case there
+/// hands over to it.
+const absent_terminal_hash =
+  #"7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d"
+
+/// Step 02's step-03 successor in the absent cases: none hands over to it.
+const scan_successor_hash =
+  #"7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
+
 fn bound(index: Int) -> rule.BoundOutputV1 {
   rule.BoundOutputV1 { subject: accepted(), output_index: index }
 }
@@ -98,6 +108,7 @@ fn run_step_02(
   let next_state_data: Data = next_state
   step_02_validator.main.spend(
     successor,
+    absent_terminal_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
     grammar.test_grammar_certificate_policy_id,
@@ -113,6 +124,7 @@ fn run_step_02(
         output_index: 0,
         opening: fixture.inline_body_opening(block().compact_cbor, items),
         grammar_ref_input_index: None,
+        coordinate_absent: False,
       },
     ),
     fixture.own_out_ref(),
@@ -260,6 +272,7 @@ fn tier3_step_02(
           preimage,
         ),
         grammar_ref_input_index,
+        coordinate_absent: False,
       },
     ),
     tx: Transaction {
@@ -284,6 +297,7 @@ fn honest_certificate(
 fn run_certified_step_02(case: Step02Case) -> Bool {
   step_02_validator.main.spend(
     fixture.next_step_script_hash,
+    absent_terminal_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
     grammar.test_grammar_certificate_policy_id,
@@ -819,4 +833,165 @@ test step_04_refuses_a_scanning_checkpoint() fail {
 
 test step_04_refuses_the_honest_accepted_terminal() fail {
   run_step_04(terminal_of(rule.initial_scan_v1(bound(0), committed_output())))
+}
+
+// ## Step 02 and 04: a rejection naming an output field 2 lacks
+
+/// The forced rejection of the committing transaction `tx_id` naming output
+/// `index`, bound.
+fn rejected_bound(tx_id: ByteArray, index: Int) -> rule.BoundOutputV1 {
+  rule.bind_output_v1(
+    substrate.VerdictSubjectV1 {
+      ..rejected(),
+      transaction_id: tx_id,
+      rejection_reason: Some(OutputNonCanonical { output_index: index }),
+    },
+    index,
+  )
+}
+
+/// Step 02 closing `bound` as absent over `opening`.
+fn absent_step_02(
+  bound: rule.BoundOutputV1,
+  opening,
+  grammar_ref_input_index: Option<Int>,
+  reference_inputs: List<Input>,
+) -> Step02Case {
+  let next_state: Data = rule.absent_output_state_v1(bound)
+  Step02Case {
+    datum: Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    redeemer: ct.Continue(
+      Step02Args {
+        input_index: 0,
+        output_index: 0,
+        opening: forced_fixture.from_native_opening(opening),
+        grammar_ref_input_index,
+        coordinate_absent: True,
+      },
+    ),
+    tx: Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state),
+      reference_inputs,
+    },
+  }
+}
+
+fn run_absent_step_02(case: Step02Case, step_04_hash: ByteArray) -> Bool {
+  step_02_validator.main.spend(
+    scan_successor_hash,
+    step_04_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    grammar.test_grammar_certificate_policy_id,
+    case.datum,
+    case.redeemer,
+    fixture.own_out_ref(),
+    case.tx,
+  )
+}
+
+/// Field 2 of the fixture transaction holds one output.
+fn inline_absent(index: Int) -> Bool {
+  run_absent_step_02(
+    absent_step_02(
+      rejected_bound(block().tx_id, index),
+      fixture.inline_body_opening(block().compact_cbor, [committed_output()]),
+      None,
+      [],
+    ),
+    fixture.next_step_script_hash,
+  )
+}
+
+test step_02_absent_output_at_the_count_hands_the_absent_state_to_step_04() {
+  inline_absent(1)
+}
+
+test step_02_absent_output_past_the_count_hands_the_absent_state_to_step_04() {
+  inline_absent(9_223_372_036_854_775_808)
+}
+
+test step_02_negative_output_hands_the_absent_state_to_step_04() {
+  inline_absent(-1)
+}
+
+test step_02_absent_output_refuses_the_last_output() fail {
+  inline_absent(0)
+}
+
+test step_02_absent_output_refuses_the_scan_successor() fail {
+  run_absent_step_02(
+    absent_step_02(
+      rejected_bound(block().tx_id, 1),
+      fixture.inline_body_opening(block().compact_cbor, [committed_output()]),
+      None,
+      [],
+    ),
+    scan_successor_hash,
+  )
+}
+
+/// Step 02 closing output `index` of the tier-3 field as absent, its count
+/// read through the honest grammar certificate.
+fn certified_absent(index: Int) -> Step02Case {
+  let preimage = certified_preimage()
+  let committed = fixture.committed_field_preimage_block_fixture_v1(
+    block(),
+    2,
+    preimage,
+  )
+  absent_step_02(
+    rejected_bound(committed.tx_id, index),
+    fixture.certified_body_opening(committed.compact_cbor, preimage),
+    Some(grammar.grammar_ref_input_index_v1(preimage)),
+    grammar.certified_grammar_reference_inputs_v1(
+      committed.tx_id,
+      2,
+      preimage,
+      honest_certificate(committed.tx_id, preimage),
+    ),
+  )
+}
+
+test step_02_absent_certified_route_closes_an_output_at_the_count() {
+  run_absent_step_02(
+    certified_absent(certified_count),
+    fixture.next_step_script_hash,
+  )
+}
+
+test step_02_absent_certified_route_refuses_the_last_output() fail {
+  run_absent_step_02(
+    certified_absent(certified_count - 1),
+    fixture.next_step_script_hash,
+  )
+}
+
+test step_02_absent_certified_route_fixture_only_at_the_tier3_maximum() {
+  let case = certified_absent(certified_count)
+  case.datum != None
+}
+
+test step_02_absent_certified_route_at_the_tier3_maximum_cost() {
+  run_absent_step_02(
+    certified_absent(certified_count),
+    fixture.next_step_script_hash,
+  )
+}
+
+test step_04_mints_on_an_absent_rejected_output() {
+  run_step_04(rule.absent_output_state_v1(rejected_bound(block().tx_id, 1)))
+}
+
+test step_04_mints_on_a_negative_rejected_output() {
+  run_step_04(rule.absent_output_state_v1(rejected_bound(block().tx_id, -1)))
+}
+
+test step_04_refuses_an_absent_accepted_output() fail {
+  run_step_04(rule.absent_output_state_v1(bound(1)))
 }

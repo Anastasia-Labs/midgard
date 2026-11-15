@@ -87,9 +87,10 @@ validator main(
           certificate_policy,
         )
         // Field 0 is fixed-stride, so its count is authenticated under every
-        // carriage tier. Canonical validation never evaluates a position at
-        // or past it, so a forced rejection citing one needs no signer.
-        if bound.input_index >= spend_input_count(view) {
+        // carriage tier. Canonical validation never evaluates a negative
+        // position or one at or past the count, so a forced rejection citing
+        // one needs no signer.
+        if bound.input_index < 0 || bound.input_index >= spend_input_count(view) {
           let expected: Data = direct_verdict_v1(bound)
           and {
             next_hash == step_05_hash,
@@ -435,6 +436,82 @@ test spend_input_step_02_closes_a_forced_out_of_range_coordinate_directly() {
       ),
       redeemers: [],
     },
+  )
+}
+
+/// A forced coordinate at the authenticated field-0 count names an input the
+/// transaction does not have; it closes without any membership.
+test spend_input_step_02_closes_a_forced_coordinate_at_the_count_directly() {
+  let block = fixture.challenged_block_v1()
+  expect [_] = block.tx.body.inputs
+  let (_, root) = prior_material(block, PubKeyCredential(credential_a))
+  let subject = forced_subject(block, 1)
+  let state = bound_state(block, subject, 1, root)
+  run_direct_exit(
+    state,
+    args_of(block, #""),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        direct_verdict(subject),
+      ),
+      redeemers: [],
+    },
+  )
+}
+
+/// A negative forced coordinate names no input; it closes without any
+/// membership.
+test spend_input_step_02_closes_a_forced_negative_coordinate_directly() {
+  let block = fixture.challenged_block_v1()
+  let (_, root) = prior_material(block, PubKeyCredential(credential_a))
+  let subject = forced_subject(block, -1)
+  let state = bound_state(block, subject, -1, root)
+  run_direct_exit(
+    state,
+    args_of(block, #""),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        direct_verdict(subject),
+      ),
+      redeemers: [],
+    },
+  )
+}
+
+/// Honest refusal: an accepted subject has no fault at a negative coordinate.
+test spend_input_step_02_refuses_an_accepted_negative_coordinate() fail {
+  let block = fixture.challenged_block_v1()
+  let (_, root) = prior_material(block, PubKeyCredential(credential_a))
+  let subject = accepted_subject(block)
+  let state = bound_state(block, subject, -1, root)
+  run_direct_exit(
+    state,
+    args_of(block, #""),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(
+        fixture.ct_token_asset_name(block),
+        direct_verdict(subject),
+      ),
+      redeemers: [],
+    },
+  )
+}
+
+/// Honest refusal at the last in-range coordinate (count - 1): a pub-key
+/// spend input really needs its signer, so the forced rejection cannot take
+/// the direct exit.
+test spend_input_step_02_refuses_a_direct_exit_at_the_last_in_range_coordinate() fail {
+  let block = fixture.challenged_block_v1()
+  expect [_] = block.tx.body.inputs
+  let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))
+  let subject = forced_subject(block, 0)
+  let state = bound_state(block, subject, 0, root)
+  run_direct_exit(
+    state,
+    args_of(block, descriptor),
+    handoff_tx(block, direct_verdict(subject), root, descriptor),
   )
 }
 

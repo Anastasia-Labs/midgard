@@ -8,15 +8,16 @@ use midgard/fraud_proofs/field_opening_v1.{
   spend_inputs_field_index,
 }
 use midgard/fraud_proofs/resolved_output_non_canonical/rule.{
-  authenticate_out_ref_v1,
+  absent_input_verdict_v1, authenticate_out_ref_v1, outside_input_fields_v1,
 }
 use midgard/fraud_proofs/resolved_output_non_canonical/step_02.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/native_tx_machine_walk_v1.{spend_input_at}
+use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
 
 validator main(
   step_03_hash: ScriptHash,
+  step_05_hash: ScriptHash,
   thread_policy: PolicyId,
   certificate_policy: PolicyId,
 ) {
@@ -50,33 +51,55 @@ validator main(
           tx.extra_signatories,
         )
         expect Some(bound) = state
-        let field_index = if bound.source_kind == 0 {
-          spend_inputs_field_index
-        } else {
-          reference_inputs_field_index
-        }
-        let view = opened_field_view(
-          opening,
-          BodyAnchor {
-            tx_id: bound.subject.transaction_id,
-            source_kind: bound.subject.source_kind,
-          },
-          field_index,
-          reference_inputs,
-          certificate_policy,
-        )
-        let selected = spend_input_at(view, bound.input_index)
-        let authenticated = authenticate_out_ref_v1(
-          bound,
-          OutputReference {
-            transaction_id: selected.tx_id,
-            output_index: selected.output_index,
-          },
-        )
-        let expected: Data = authenticated
-        and {
-          next_hash == step_03_hash,
-          next_state == expected,
+        // A coordinate that names no input of the transaction closes with the
+        // direct verdict. Only a rejection binds one (`bind_input_v1`).
+        when opening is {
+          None -> {
+            let absent: Data = absent_input_verdict_v1(bound)
+            and {
+              outside_input_fields_v1(bound),
+              next_hash == step_05_hash,
+              next_state == absent,
+            }
+          }
+          Some(opening) -> {
+            let field_index = if bound.source_kind == 0 {
+              spend_inputs_field_index
+            } else {
+              reference_inputs_field_index
+            }
+            let view = opened_field_view(
+              opening,
+              BodyAnchor {
+                tx_id: bound.subject.transaction_id,
+                source_kind: bound.subject.source_kind,
+              },
+              field_index,
+              reference_inputs,
+              certificate_policy,
+            )
+            if bound.input_index >= spend_input_count(view) {
+              let absent: Data = absent_input_verdict_v1(bound)
+              and {
+                next_hash == step_05_hash,
+                next_state == absent,
+              }
+            } else {
+              let selected = spend_input_at(view, bound.input_index)
+              let authenticated = authenticate_out_ref_v1(
+                bound,
+                OutputReference {
+                  transaction_id: selected.tx_id,
+                  output_index: selected.output_index,
+                },
+              )
+              let expected: Data = authenticated
+              and {
+                next_hash == step_03_hash,
+                next_state == expected,
+              }
+            }
+          }
         }
       }
     }

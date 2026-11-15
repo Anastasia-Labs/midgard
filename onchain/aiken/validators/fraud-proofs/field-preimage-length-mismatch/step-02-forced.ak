@@ -4,10 +4,11 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_preimage_length_mismatch/rule.{
-  authenticated_length_evidence_v1,
+  authenticated_length_evidence_v1, bind_out_of_domain_field_v1,
 }
 use midgard/fraud_proofs/field_preimage_length_mismatch/step_02.{
-  AuthenticateForced, Datum, PendingForced, SpendRedeemer,
+  AuthenticateForced, AuthenticateForcedOutOfDomain, Datum, PendingForced,
+  SpendRedeemer,
 }
 use midgard/fraud_proofs/field_preimage_length_mismatch/step_03
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
@@ -89,6 +90,48 @@ validator main(
           field_index: evidence.field_index,
           declared_length: evidence.declared_length,
           actual_length: evidence.actual_length,
+        }
+        output_state_data == expected
+      }
+      ct.Continue(AuthenticateForcedOutOfDomain {
+        input_index,
+        output_index,
+        header,
+        membership,
+      }) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let
+            _,
+            thread_asset_name,
+            _,
+            input_state,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          tx.extra_signatories,
+        )
+        expect output_script_hash == step_03_validator_script_hash
+        expect Some(PendingForced) = input_state
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
+          thread_asset_name,
+          header,
+          membership,
+        )
+        // The terminal's decisive rule holds no fault outside the layout, so
+        // the recorded lengths are inert and the rejection is contradicted.
+        let expected: Data = step_03.State {
+          subject,
+          field_index: bind_out_of_domain_field_v1(subject),
+          declared_length: 0,
+          actual_length: 0,
         }
         output_state_data == expected
       }

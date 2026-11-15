@@ -6,12 +6,13 @@ use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
 use midgard/fraud_proofs/mint_item_non_canonical/rule.{
-  BoundItemV1, bind_item_v1,
+  BoundItemV1, bind_item_v1, unreachable_claim_state_v1,
 }
 use midgard/fraud_proofs/mint_item_non_canonical/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/rejection_reason_v1.{MintItemMalformed}
 
 fn output_state(bound: BoundItemV1) -> Data {
   let value: Data = bound
@@ -20,6 +21,7 @@ fn output_state(bound: BoundItemV1) -> Data {
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
+  step_04_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
@@ -83,10 +85,24 @@ validator main(
           header,
           membership,
         )
-        let bound = bind_item_v1(subject, item_index)
-        and {
-          next_hash == step_02_validator_script_hash,
-          next_state == output_state(bound),
+        if subject.direction == substrate.direction_wrongful_rejection {
+          // No machine step emits `MintItemMalformed`, so a forced leaf
+          // rejecting with it goes straight to the terminal. This is sound
+          // only while no machine step emits that reason: the change that
+          // adds one must, in the same change, replace this branch with one
+          // that proves the claimed coordinate absent or the item well-formed.
+          expect Some(MintItemMalformed { .. }) = subject.rejection_reason
+          let terminal: Data = unreachable_claim_state_v1(subject)
+          and {
+            next_hash == step_04_validator_script_hash,
+            next_state == terminal,
+          }
+        } else {
+          let bound = bind_item_v1(subject, item_index)
+          and {
+            next_hash == step_02_validator_script_hash,
+            next_state == output_state(bound),
+          }
         }
       }
     }

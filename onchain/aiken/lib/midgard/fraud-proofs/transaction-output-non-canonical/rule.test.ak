@@ -299,3 +299,29 @@ test forced_distinct_ascending_value_convicts() {
     rule.terminal_contradiction_v1(state),
   }
 }
+
+test negative_rejected_output_coordinate_binds() {
+  rule.bind_output_v1(rejected(-1), -1).output_index == -1
+}
+
+test negative_rejected_output_coordinate_binds_its_reason() fail {
+  rule.bind_output_v1(rejected(-1), -2).output_index == -2
+}
+
+test absent_output_convicts_the_rejection() {
+  rule.terminal_contradiction_v1(
+    rule.absent_output_state_v1(rule.bind_output_v1(rejected(-1), -1)),
+  )
+}
+
+test absent_output_at_the_count_convicts_the_rejection() {
+  rule.terminal_contradiction_v1(
+    rule.absent_output_state_v1(rule.bind_output_v1(rejected(7), 7)),
+  )
+}
+
+test absent_output_refuses_an_acceptance() fail {
+  rule.terminal_contradiction_v1(
+    rule.absent_output_state_v1(rule.bind_output_v1(accepted(), 7)),
+  )
+}

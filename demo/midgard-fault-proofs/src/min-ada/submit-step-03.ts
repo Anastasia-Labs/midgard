@@ -254,6 +254,8 @@ export const submitMinAdaStep03 = async ({
       scanState = nextState.MinAdaTxScan;
     }
   }
+  if (!("MinAdaTxDescriptor" in state))
+    throw new Error(`${label}: no off-chain finalize for an absent output`);
   const facts = state.MinAdaTxDescriptor;
   if (
     !unsafeSkipLocalViolationCheckForTest &&

@@ -67,11 +67,6 @@ test accepted_subject_binds_any_in_range_coordinate() {
   rule.bind_output_v1(accepted_subject(), 7).output_index == 7
 }
 
-test negative_output_coordinate_is_refused() fail {
-  expect _ = rule.bind_output_v1(accepted_subject(), -1)
-  True
-}
-
 test forced_no_signer_required_closes() {
   let subject = forced_subject(4)
   let verdict = rule.direct_verdict_v1(rule.bind_output_v1(subject, 4))
@@ -99,4 +94,17 @@ test accepted_unrequired_signer_never_closes() fail {
       signer_present: False,
     },
   )
+}
+
+/// A negative coordinate names no output, so a forced rejection citing it
+/// closes on the direct verdict.
+test forced_negative_coordinate_closes() {
+  let bound = rule.bind_output_v1(forced_subject(-1), -1)
+  rule.terminal_v1(rule.direct_verdict_v1(bound))
+}
+
+/// An accepted subject at a negative coordinate has no fault to close on.
+test accepted_negative_coordinate_never_closes() fail {
+  let bound = rule.bind_output_v1(accepted_subject(), -1)
+  rule.terminal_v1(rule.direct_verdict_v1(bound))
 }

@@ -263,6 +263,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
                     scriptDecodeRecordUtxo,
                     `${FAMILY} step 02 decode record`,
                   ),
+            coordinate_absent: false,
             grammar_ref_input_index: grammar.grammarRefInputIndex(
               ctx.referenceInputs,
             ),
