@@ -159,7 +159,13 @@ describe("committee availability responder through the durable production path",
                   f.lucid,
                   deployment,
                   action,
-                  f.emulator.now(),
+                  // The emulator has no block gaps: its slot is the tip and
+                  // its time the L1 clock.
+                  {
+                    tipSlot: f.emulator.slot,
+                    validToNowMs: f.emulator.now(),
+                    deadlineNowMs: f.emulator.now(),
+                  },
                 )
               ).tx,
           });

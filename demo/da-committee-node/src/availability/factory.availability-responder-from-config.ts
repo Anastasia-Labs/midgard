@@ -14,6 +14,7 @@ import {
 } from "../l1/deployment.js";
 import { committeeAvailabilityReads } from "../l1/follower/availability-reads.js";
 import { ownWalletAddress } from "../l1/follower/committee-follower-config.js";
+import { committeeL1Clock, committeeL1NowMs } from "../l1/follower/l1-clock.js";
 import type { CommitteeL1Follower } from "../l1/follower/l1-follower.js";
 import { selectL1KeySourceWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
@@ -24,10 +25,8 @@ import {
   availabilityResponderOperations,
 } from "./factory.availability-responder-operations.js";
 import { configuredCommitteePromiseRuntime } from "./factory.configured-promise-runtime.js";
-import {
-  availabilityResponderTransactionOperation,
-  discoverAvailabilityResponderChallenges,
-} from "./factory.discover-availability-responder-challenges.js";
+import { discoverAvailabilityResponderChallenges } from "./factory.discover-availability-responder-challenges.js";
+import { runPlainAvailabilityResponderOperation } from "./plain-response-run.js";
 import type { CommitteePromiseAdmissionSource } from "./promise-admission.js";
 import { assertCommitteePromiseEnrollment } from "./promise-profile-selection.js";
 import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
@@ -79,6 +78,13 @@ export const availabilityResponderFromConfig = async (
     ...(follower.retention === null ? {} : { retention: follower.retention }),
   });
   const lucid = await follower.lucid();
+  const { slotConfig } = lucid.config();
+  if (slotConfig === undefined)
+    throw new Error(
+      "Live availability responder requires the follower's slot configuration",
+    );
+  // The only "now" any responder validity or deadline decision is taken at.
+  const l1Clock = committeeL1Clock({ slotConfig });
   const actor = await selectAvailabilityResponderWallet(lucid, {
     ...config,
     availabilitySubmitterKeySource: config.availabilitySubmitterKeySource,
@@ -151,6 +157,7 @@ export const availabilityResponderFromConfig = async (
         deployment,
         actorId: actor,
         journal,
+        l1Clock,
       });
     } catch (error) {
       journal.close();
@@ -175,6 +182,7 @@ export const availabilityResponderFromConfig = async (
         // The node's LocalTxSubmission, through the follower's provider.
         submit: (signedCbor) => provider.submitTx(signedCbor),
       },
+      l1Clock,
     });
   return {
     close: () => journal.close(),
@@ -195,6 +203,7 @@ export const availabilityResponderFromConfig = async (
       deploymentFingerprint: config.deploymentFingerprint,
       deploymentIdentity: deployment.hubOraclePolicyId,
       store,
+      now: () => committeeL1NowMs(l1Clock),
       reconcile,
       discover: async () => {
         await assertActuationCurrent();
@@ -223,9 +232,12 @@ export const availabilityResponderFromConfig = async (
         return snapshots;
       },
       execute: async (action) => {
-        const result = await SDK.runDaAvailabilityOperation(
+        const result = await runPlainAvailabilityResponderOperation(
           context,
-          availabilityResponderTransactionOperation(lucid, deployment, action),
+          lucid,
+          deployment,
+          action,
+          l1Clock,
         );
         if (result.status === "conflict")
           throw new Error(

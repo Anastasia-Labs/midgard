@@ -13,6 +13,7 @@ import {
   scene,
 } from "./helpers/availability-sdk-read-scope.js";
 import { followerBoundary } from "./helpers/follower-boundary.js";
+import { testL1Clock } from "./helpers/l1-clock.js";
 
 afterEach(() => {
   journals.splice(0).forEach((journal) => journal.close());
@@ -91,6 +92,7 @@ const fixture = () => {
     reads,
     assertSourceHealthy: async () => {},
     context: s.context,
+    l1Clock: testL1Clock(),
   });
   const guard = committeeClaimReconciliation({
     journal: s.journal,

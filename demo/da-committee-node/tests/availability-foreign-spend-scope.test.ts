@@ -4,14 +4,17 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../src/availability/awaiting-scan-error.js";
 import { availabilityResponderOperations } from "../src/availability/factory.js";
 import type { CommitteeAvailabilityReads } from "../src/l1/follower/availability-reads.js";
+import { committeeL1NowMs } from "../src/l1/follower/l1-clock.js";
 import {
   dirs,
   journals,
   scene,
 } from "./helpers/availability-sdk-read-scope.js";
 import { followerBoundary } from "./helpers/follower-boundary.js";
+import { testL1Clock } from "./helpers/l1-clock.js";
 
 afterEach(() => {
   journals.splice(0).forEach((journal) => journal.close());
@@ -58,6 +61,7 @@ const fixture = () => {
       },
     },
   };
+  const l1Clock = testL1Clock();
   const operations = availabilityResponderOperations({
     lucid: {
       transactionStatus: async (txHash: string) => {
@@ -72,8 +76,9 @@ const fixture = () => {
     reads,
     assertSourceHealthy: async () => {},
     context: s.context,
+    l1Clock,
   });
-  return { intent, operations, consulted };
+  return { intent, operations, consulted, l1Clock };
 };
 
 describe("committee observation on the follower's facts", () => {
@@ -89,6 +94,18 @@ describe("committee observation on the follower's facts", () => {
     } finally {
       scope.close();
     }
+  });
+
+  it("observes the boundary's slot as the committee's L1 tip", async () => {
+    const f = fixture();
+    expect(() => committeeL1NowMs(f.l1Clock)).toThrow(
+      AvailabilityResponderAwaitingScanError,
+    );
+
+    await f.operations.readBoundary();
+
+    expect(f.l1Clock.tipSlot()).toBe(1000);
+    expect(() => committeeL1NowMs(f.l1Clock)).not.toThrow();
   });
 
   it("reads nothing under a closed scope", async () => {

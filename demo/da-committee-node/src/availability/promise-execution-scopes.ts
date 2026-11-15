@@ -9,6 +9,12 @@ export const committeePromiseExecutionScopes = (args: {
   /** The follower's current view; throws while it holds the committee. */
   readCursor: () => Promise<unknown>;
   breach: (reason: string) => void;
+  /**
+   * The clock an execution scope's protocol deadline is measured on: the
+   * committee's L1 clock, never the wall clock. Read only for a scope
+   * opened with a deadline.
+   */
+  nowMs: () => number;
 }) => {
   type Phase = {
     controller: AbortController;
@@ -26,6 +32,7 @@ export const committeePromiseExecutionScopes = (args: {
       attemptTimeoutMs: 15000,
       deadlineEpochMs,
       signal: phase.controller.signal,
+      nowMs: args.nowMs,
     });
     const scope: SDK.DaAvailabilityReadScope = Object.freeze({
       ...raw,

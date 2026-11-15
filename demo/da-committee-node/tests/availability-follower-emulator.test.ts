@@ -18,6 +18,7 @@ import {
   noChainIndexCommitteeConfig,
   transactionId,
 } from "./helpers/emulator-follower.js";
+import { testL1Clock } from "./helpers/l1-clock.js";
 
 /**
  * The availability responder's reconcile on the committee follower's facts,
@@ -105,6 +106,8 @@ const fixture = async (action: "settle" | "prepare" = "settle") => {
       },
       submit,
     },
+    // The follower's blocks carry the wallet emulator's slots.
+    l1Clock: testL1Clock({ slotConfig: wallet.lucid.config().slotConfig! }),
   });
   const discover = vi.fn(async () => []);
   const responder = new AvailabilityResponder({
@@ -114,6 +117,7 @@ const fixture = async (action: "settle" | "prepare" = "settle") => {
     discover,
     reconcile: operations.reconcile,
     execute: vi.fn(async () => "pending" as const),
+    now: () => 2_000,
   });
   return {
     follower,

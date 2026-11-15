@@ -17,8 +17,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { availabilityResponderTransactionOperation } from "../src/availability/factory.discover-availability-responder-challenges.js";
+import {
+  availabilityResponderPublicationDeadlineMs,
+  availabilityResponderTransactionOperation,
+} from "../src/availability/factory.discover-availability-responder-challenges.js";
 import { challengeFixture, payload } from "./helpers/availability-challenge.js";
+import { testBuildTime } from "./helpers/l1-clock.js";
 
 const dirs: string[] = [];
 const journals: ReturnType<typeof openAvailabilityOperationJournal>[] = [];
@@ -103,7 +107,7 @@ const scene = () => {
 };
 
 describe("absolute unsigned availability deadlines", () => {
-  it("uses the authenticated publication deadline without applying it to completion", () => {
+  it("uses the authenticated publication deadline without applying it to completion, and never on the runner's wall clock", () => {
     const { challenge } = challengeFixture();
     const publication = planDaAvailabilityPublications({
       commitment: challenge.record.datum.commitment,
@@ -113,30 +117,37 @@ describe("absolute unsigned availability deadlines", () => {
     // This checks operation metadata before the provider/build is invoked.
     const lucid = {} as LucidEvolution;
     const deployment = {} as DaAvailabilityDeployment;
-    const publicationOperation = availabilityResponderTransactionOperation(
-      lucid,
-      deployment,
-      {
-        kind: "publish",
-        challenge,
-        tranche: challenge.tranches[0]!,
-        publication,
-      },
-    );
-    expect(publicationOperation.unsignedDeadlineMs).toBe(
+    const publish = {
+      kind: "publish" as const,
+      challenge,
+      tranche: challenge.tranches[0]!,
+      publication,
+    };
+    expect(availabilityResponderPublicationDeadlineMs(publish)).toBe(
       Number(challenge.record.datum.response_deadline),
     );
-    for (const action of [
+    const completions = [
       { kind: "settle" as const, challenge, tranche: challenge.tranches[0]! },
       { kind: "close" as const, challenge },
-    ])
+    ];
+    for (const action of completions)
       expect(
-        availabilityResponderTransactionOperation(lucid, deployment, action)
-          .unsignedDeadlineMs,
+        availabilityResponderPublicationDeadlineMs(action),
       ).toBeUndefined();
+    // The committee decides the deadline on its L1 clock; the runner would
+    // measure an `unsignedDeadlineMs` on its wall clock.
+    for (const action of [publish, ...completions])
+      expect(
+        availabilityResponderTransactionOperation(
+          lucid,
+          deployment,
+          action,
+          testBuildTime(),
+        ),
+      ).not.toHaveProperty("unsignedDeadlineMs");
   });
 
-  it("forwards cancellation through the production adapter before provider reads", async () => {
+  it("forwards cancellation through the production adapter before provider or clock reads", async () => {
     const { challenge } = challengeFixture();
     const controller = new AbortController();
     controller.abort(new Error("operation cancelled"));
@@ -144,6 +155,8 @@ describe("absolute unsigned availability deadlines", () => {
       {} as LucidEvolution,
       {} as DaAvailabilityDeployment,
       { kind: "close", challenge },
+      // No tip observed: a clock read would wait for the follower instead.
+      testBuildTime(),
     );
     await expect(operation.build(controller.signal)).rejects.toThrow(
       "operation cancelled",

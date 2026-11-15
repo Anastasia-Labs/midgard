@@ -11,15 +11,21 @@ const fixture = () => {
   vi.spyOn(performance, "now").mockImplementation(() => monotonic);
   const follower = { readView: async (): Promise<unknown> => ({}) };
   const breach = vi.fn();
+  // The committee's L1 clock, which runs on its own: the wall clock never
+  // moves a scope's protocol deadline.
+  let l1NowMs = 1_000_000;
   const scopes = committeePromiseExecutionScopes({
     readCursor: () => follower.readView(),
     breach,
+    nowMs: () => l1NowMs,
   });
   const advance = async (ms: number) => {
     monotonic += ms;
+    l1NowMs += ms;
     await vi.advanceTimersByTimeAsync(ms);
   };
-  return { follower, breach, scopes, advance };
+  const skewWall = (ms: number) => vi.setSystemTime(Date.now() + ms);
+  return { follower, breach, scopes, advance, skewWall, l1: () => l1NowMs };
 };
 afterEach(() => {
   vi.restoreAllMocks();
@@ -41,6 +47,22 @@ describe("installed cursor/source and owned critical-stage deadlines", () => {
         "Complete source budget exceeded",
       );
       expect(f.breach).toHaveBeenCalledWith("complete_source_budget_exceeded");
+    } finally {
+      scope.close();
+    }
+  });
+  it("measures a scope's protocol deadline on the L1 clock, whatever the wall clock reads", async () => {
+    const f = fixture();
+    const scope = f.scopes.open(f.l1() + 8000);
+    try {
+      f.skewWall(120_000);
+      expect(scope.remainingMs()).toBe(8000);
+      f.skewWall(-240_000);
+      await f.advance(7999);
+      expect(scope.remainingMs()).toBe(1);
+      expect(() => scope.assertCurrent()).not.toThrow();
+      await f.advance(1);
+      expect(() => scope.assertCurrent()).toThrow();
     } finally {
       scope.close();
     }

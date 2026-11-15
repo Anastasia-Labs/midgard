@@ -8,6 +8,7 @@ import {
   type FollowerBoundary,
   sameBoundary,
 } from "../l1/follower/availability-reads.js";
+import type { CommitteeL1Clock } from "../l1/follower/l1-clock.js";
 import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 
 /**
@@ -22,6 +23,13 @@ import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js
  * whose Publish, Settle or Close lost its race to another transaction (every
  * one of them spends only protocol UTxOs) expires that intent once the rival
  * spend is final, instead of waiting on it forever.
+ *
+ * Every boundary read observes its point's slot on the committee's L1 clock
+ * (`l1Clock`), which the responder's validity and deadline decisions read.
+ * The operation context keeps the SDK's wall clock (`nowMs` unset): journal
+ * leases are compared across every process sharing the journal (a second
+ * committee process, the node's availability command), and two processes'
+ * L1 clocks can disagree by the age of the tip each last observed.
  */
 /** The view moved under an observation: the next pass observes again. */
 const moved = {
@@ -38,6 +46,8 @@ export const availabilityResponderOperations = (input: {
     SDK.DaAvailabilityOperationContext,
     "observe" | "assertActuationCurrent" | "readBoundary"
   >;
+  /** The committee's L1 clock; each boundary read observes its tip. */
+  readonly l1Clock: CommitteeL1Clock;
 }) => {
   const { reads } = input;
   /** The view the last reconciliation ran at; new actions need it current. */
@@ -49,6 +59,7 @@ export const availabilityResponderOperations = (input: {
     const read = <T>(run: () => Promise<T>) =>
       scope === undefined ? run() : scope.read(run);
     const boundary = await read(() => reads.readBoundary());
+    input.l1Clock.observeTipSlot(boundary.slot);
     // Work reconciled at a view a rollback since undid is stale (§8.1).
     if (
       reconciledView !== undefined &&

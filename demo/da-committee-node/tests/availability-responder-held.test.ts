@@ -22,6 +22,7 @@ import {
 } from "../src/availability/responder.js";
 import { createAvailabilityResponseLoop } from "../src/availability-response-loop.js";
 import { followerBoundary } from "./helpers/follower-boundary.js";
+import { testL1Clock } from "./helpers/l1-clock.js";
 
 /**
  * A held intent stops the responder signing, so it must never read as an
@@ -162,6 +163,7 @@ const confirmedSettle = async () => {
         throw new Error("a held intent is never resubmitted");
       },
     },
+    l1Clock: testL1Clock(),
   });
   return { ours, journal, operations };
 };
@@ -184,6 +186,7 @@ describe("a held availability intent on the committee", () => {
         discover,
         reconcile: operations.reconcile,
         execute: async () => "pending",
+        now: () => 2_000,
       });
       const report = await responder.drain();
       expect(report).toEqual({
@@ -208,6 +211,7 @@ describe("a held availability intent on the committee", () => {
       discover: async () => [],
       reconcile: async () => ({ held: "conflict detail" }),
       execute: async () => "pending",
+      now: () => 2_000,
     });
     await expect(responder.tick()).resolves.toEqual({
       challenges: 0,

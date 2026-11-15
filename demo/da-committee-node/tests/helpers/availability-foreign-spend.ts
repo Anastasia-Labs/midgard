@@ -18,7 +18,9 @@ import { expect, vi } from "vitest";
 import { AvailabilityResponderAwaitingScanError } from "../../src/availability/awaiting-scan-error.js";
 import { availabilityResponderOperations } from "../../src/availability/factory.js";
 import { AvailabilityResponder } from "../../src/availability/responder.js";
+import { committeeL1NowMs } from "../../src/l1/follower/l1-clock.js";
 import { followerBoundary } from "./follower-boundary.js";
+import { testL1Clock } from "./l1-clock.js";
 
 /**
  * The committee responder over fake follower reads, for its foreign-spend
@@ -189,6 +191,7 @@ export const fixture = async (
           )
         : lucid.utxosByOutRef(refs),
   } as unknown as LucidEvolution;
+  const l1Clock = testL1Clock({ slotConfig: lucid.config().slotConfig! });
   const operations = availabilityResponderOperations({
     lucid: observed,
     reads: {
@@ -253,6 +256,7 @@ export const fixture = async (
         throw new Error("reconcile must not resubmit a spent intent");
       },
     },
+    l1Clock,
   });
   const discover = vi.fn(async () => []);
   const execute = vi.fn(async () => "pending" as const);
@@ -263,6 +267,7 @@ export const fixture = async (
     discover,
     reconcile: operations.reconcile,
     execute,
+    now: () => committeeL1NowMs(l1Clock),
   });
   const state = () => journal.get(ours.id)?.state;
   return {

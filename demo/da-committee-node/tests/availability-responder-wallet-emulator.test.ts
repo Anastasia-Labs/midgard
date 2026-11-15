@@ -21,6 +21,7 @@ import {
   emulatorFollower,
   noChainIndexCommitteeConfig,
 } from "./helpers/emulator-follower.js";
+import { testL1Clock } from "./helpers/l1-clock.js";
 
 /**
  * The availability responder signs a step whose collateral its wallet
@@ -142,6 +143,7 @@ const fixture = async () => {
         return emulator.submitTx(signedCbor);
       },
     },
+    l1Clock: testL1Clock({ slotConfig: lucid.config().slotConfig! }),
   });
   const collateralLovelace =
     (FEE * BigInt(lucid.config().protocolParameters!.collateralPercentage) +

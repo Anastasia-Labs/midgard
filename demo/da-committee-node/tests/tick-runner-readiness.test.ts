@@ -452,6 +452,7 @@ describe("committee tick with the availability responder", () => {
       discover: async () => [],
       execute: async () => "confirmed",
       reconcile,
+      now: () => 2_000,
     });
 
   it("logs one compact line and no error while the responder awaits the next scan", async () => {

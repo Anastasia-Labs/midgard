@@ -129,6 +129,7 @@ describe("availability responder lifecycle", () => {
       discover,
       execute,
       reconcile: async () => "pending",
+      now: () => 2_000,
     });
     expect(await responder.tick()).toMatchObject({ status: "pending" });
     expect(discover).not.toHaveBeenCalled();

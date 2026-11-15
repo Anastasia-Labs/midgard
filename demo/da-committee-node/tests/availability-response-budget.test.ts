@@ -1,9 +1,10 @@
+import {
+  DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS,
+  DA_AVAILABILITY_VALIDITY_BACKDATE_MS,
+  DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS,
+} from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS,
-  AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS,
-} from "../src/availability/factory.discover-availability-responder-challenges.js";
 import {
   AVAILABILITY_RESPONDER_RETRY_POLICY,
   availabilityResponderRetryBoundMs,
@@ -80,14 +81,16 @@ type BoundedWait = Readonly<{
  * journal marks it expired. Reconciliation (midgard-sdk
  * availability-challenge-operation.reconcile.ts) marks it expired when the
  * canonical boundary's slot, the slot of the tip block, reaches the intent's
- * validity upper bound. The transaction was built at most span minus backdate
- * before that bound, and the tip passes the bound only with the next L1 block,
- * which is counted like every other block: at the mean block time times the
- * safety factor.
+ * validity upper bound. The responder takes its interval from
+ * `SDK.daAvailabilityValidityWindow` on the committee's L1 clock: the upper
+ * bound runs at most the lookahead past the L1 clock, so the transaction was
+ * built at most the lookahead before that bound (the lower bound is backdated
+ * from the tip, and the whole interval stays within the validator's longest
+ * range). The tip passes the bound only with the next L1 block, which is
+ * counted like every other block: at the mean block time times the safety
+ * factor.
  */
-const A5_VALIDITY_REMAINING_MS =
-  AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS -
-  AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS;
+const A5_VALIDITY_REMAINING_MS = DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS;
 const A5_EXPIRY_BLOCK_MS = script.l1BlocksBudgetMs(1);
 
 const B6_RETRY_BOUND_MS = availabilityResponderRetryBoundMs();
@@ -121,9 +124,9 @@ const BOUNDED_WAITS: readonly BoundedWait[] = [
     name: "rebroadcast before replace",
     ms: A5_VALIDITY_REMAINING_MS + A5_EXPIRY_BLOCK_MS,
     derivation:
-      `validity span ${AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS.toString()} ms - backdate ` +
-      `${AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS.toString()} ms ` +
-      `(factory.discover-availability-responder-challenges.ts) + one expiry block ` +
+      `validity lookahead ${DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS.toString()} ms past the L1 clock ` +
+      `(DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS, midgard-sdk ` +
+      `availability-challenge-transactions.validity-window.ts) + one expiry block ` +
       `${A5_EXPIRY_BLOCK_MS.toString()} ms`,
   },
 ];
@@ -233,6 +236,14 @@ describe("availability response budget (B1)", () => {
       expect(Number.isSafeInteger(wait.ms) && wait.ms >= 0).toBe(true);
     }
     expect(B6_RETRY_BOUND_MS).toBeGreaterThan(0);
+  });
+
+  it("A5 waits out the 60 s validity lookahead, which fits the validator's range with the backdate", () => {
+    expect(A5_VALIDITY_REMAINING_MS).toBe(60_000);
+    expect(
+      DA_AVAILABILITY_VALIDITY_BACKDATE_MS +
+        DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS,
+    ).toBeLessThanOrEqual(Number(DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS));
   });
 
   it("every named wait has a time bound in the code", () => {

@@ -73,6 +73,18 @@ export const challengeFixture = (
   };
 };
 
+/** `base` (the fixture's challenge by default) answerable until `deadlineMs`. */
+export const withResponseDeadline = (
+  deadlineMs: number,
+  base: AvailabilityResponderChallenge = challengeFixture().challenge,
+): AvailabilityResponderChallenge => ({
+  ...base,
+  record: {
+    ...base.record,
+    datum: { ...base.record.datum, response_deadline: BigInt(deadlineMs) },
+  },
+});
+
 export const record: DaPayloadRecord = {
   deploymentFingerprint,
   headerHash: commitment.header_hash,

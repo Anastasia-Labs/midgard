@@ -4,6 +4,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import type { CommitteeStore } from "../store.js";
 import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 import { retainedAvailabilityPayload } from "./retained-payload.js";
+import { AvailabilityResponderValidityDeferredError } from "./validity-deferred-error.js";
 
 export type AvailabilityResponderChallenge = Readonly<{
   /**
@@ -114,7 +115,13 @@ export type AvailabilityResponderDeps = Readonly<{
   execute: (
     action: AvailabilityResponderAction,
   ) => Promise<"confirmed" | "included" | "pending">;
-  now?: () => number;
+  /**
+   * The committee's L1 clock, in ms (`committeeL1NowMs`): whether a response
+   * deadline has passed is decided on it, never on the wall clock. It throws
+   * `AvailabilityResponderAwaitingScanError` while no follower tip has been
+   * observed.
+   */
+  now: () => number;
 }>;
 
 /**
@@ -187,20 +194,24 @@ export class AvailabilityResponder {
         challenges: challenges.length,
         headerHash: record.commitment.header_hash,
       };
-      let executionStarted = false;
+      const deadlinePassed = () => {
+        missedDeadlines.push({
+          headerHash: record.commitment.header_hash,
+          responseDeadline: record.response_deadline.toString(),
+        });
+        deferred ??= {
+          ...base,
+          status: "unavailable",
+          detail:
+            "The response deadline has passed; no answer can land and terminal timeout remains available to the challenger",
+        };
+      };
+      /** Set once execution started: the step then ends with it. */
+      let kind: AvailabilityResponderAction["kind"] | undefined;
       try {
         const action = await this.nextAction(challenge);
         if (action === "deadline_passed") {
-          missedDeadlines.push({
-            headerHash: record.commitment.header_hash,
-            responseDeadline: record.response_deadline.toString(),
-          });
-          deferred ??= {
-            ...base,
-            status: "unavailable",
-            detail:
-              "The response deadline has passed; no answer can land and terminal timeout remains available to the challenger",
-          };
+          deadlinePassed();
           continue;
         }
         if (action === undefined) {
@@ -212,18 +223,32 @@ export class AvailabilityResponder {
           };
           continue;
         }
-        executionStarted = true;
+        kind = action.kind;
         const status = await this.deps.execute(action);
         return withMissed({ ...base, action: action.kind, status });
       } catch (error) {
         if (error instanceof AvailabilityResponderAwaitingScanError)
           return withMissed({ ...base, ...awaitingScanReport(error) });
+        // Nothing was built, signed or journaled: the window is not
+        // admissible on the L1 clock yet (the step waits for L1 to move), or
+        // the publication window closed (the deadline passed).
+        if (error instanceof AvailabilityResponderValidityDeferredError) {
+          if (error.reason === "deadline_passed") deadlinePassed();
+          else
+            deferred ??= {
+              ...base,
+              ...(kind === undefined ? {} : { action: kind }),
+              status: "pending",
+              detail: error.message,
+            };
+          continue;
+        }
         const failure = {
           ...base,
           status: "failed" as const,
           detail: error instanceof Error ? error.message : String(error),
         };
-        if (executionStarted) return withMissed(failure);
+        if (kind !== undefined) return withMissed(failure);
         deferred ??= failure;
       }
     }
@@ -257,7 +282,7 @@ export class AvailabilityResponder {
     if ("Receipt" in nextTranche.datum) {
       return { kind: "settle", challenge, tranche: nextTranche };
     }
-    const now = BigInt((this.deps.now ?? Date.now)());
+    const now = BigInt(this.deps.now());
     if (now >= record.response_deadline) return "deadline_passed";
     const payload = await retainedAvailabilityPayload({
       store: this.deps.store,

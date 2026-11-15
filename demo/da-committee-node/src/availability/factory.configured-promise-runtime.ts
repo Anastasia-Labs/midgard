@@ -5,6 +5,10 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";
 import type { CommitteeL1ClientConfig } from "../config.js";
 import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";
+import {
+  type CommitteeL1Clock,
+  committeeL1NowMs,
+} from "../l1/follower/l1-clock.js";
 import type { CommitteeStore } from "../store.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
@@ -13,6 +17,7 @@ import {
   committeeBoundReadContext,
 } from "./factory.availability-responder-operations.js";
 import {
+  availabilityResponderPublicationDeadlineMs,
   availabilityResponderTransactionOperation,
   discoverAvailabilityResponderChallenges,
 } from "./factory.discover-availability-responder-challenges.js";
@@ -28,6 +33,10 @@ import {
   committeePromiseOwnedStage,
 } from "./promise-execution-scopes.js";
 import { committeePromiseStoreReadOwner } from "./promise-owned-read.js";
+import {
+  promiseResponseBuildTime,
+  promiseResponseTtl,
+} from "./promise-response-build.js";
 import { committeePromiseRetirementRuntime } from "./promise-retirement-runtime.js";
 import type { CommitteePromiseRuntimePolicyAuthority } from "./promise-runtime-policy.js";
 import { AvailabilityResponder } from "./responder.js";
@@ -47,14 +56,19 @@ export const configuredCommitteePromiseRuntime = async (input: {
   actorId: string;
   store: CommitteeStore;
   journal: AvailabilityOperationJournal;
+  /** The committee's L1 clock: every response validity and deadline
+   * decision, and the response read scope's deadline, are taken on it. */
+  l1Clock: CommitteeL1Clock;
 }) => {
-  const { config, lucid, reads, deployment, journal, store, actorId } = input;
+  const { config, lucid, reads, deployment, journal, store, actorId, l1Clock } =
+    input;
   let authority: CommitteePromiseRuntimePolicyAuthority | undefined;
   let loopInstalled = false;
   const breach = (reason: string) => authority?.breach(reason);
   const scopes = committeePromiseExecutionScopes({
     readCursor: () => reads.readBoundary(),
     breach,
+    nowMs: () => committeeL1NowMs(l1Clock),
   });
   const actorRuntime = committeePromiseActorRuntime(breach);
   const storeReads = committeePromiseStoreReadOwner();
@@ -98,6 +112,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
       ),
       submit: async (signedCbor) => submit(signedCbor),
     },
+    l1Clock,
   });
   const setup = scopes.open();
   let adoption: Awaited<ReturnType<typeof loadCommitteePromiseCausalAdoption>>;
@@ -243,6 +258,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
     deploymentFingerprint: config.deploymentFingerprint,
     deploymentIdentity: deployment.hubOraclePolicyId,
     store,
+    now: () => committeeL1NowMs(l1Clock),
     reconcile: async () => {
       const scope = scopes.open();
       try {
@@ -296,12 +312,16 @@ export const configuredCommitteePromiseRuntime = async (input: {
               action.challenge.record.datum.commitment.header_hash &&
             row.state === "expired",
         );
+      const buildTime = promiseResponseBuildTime(l1Clock, adoption.clock);
       const operation = availabilityResponderTransactionOperation(
         lucid,
         deployment,
         action,
+        buildTime,
       );
-      const scope = scopes.open(operation.unsignedDeadlineMs);
+      const scope = scopes.open(
+        availabilityResponderPublicationDeadlineMs(action),
+      );
       let builtTtl: number | undefined;
       let freshBody = true;
       let buildStageStart: number | undefined;
@@ -378,19 +398,9 @@ export const configuredCommitteePromiseRuntime = async (input: {
                       lucid,
                       deployment,
                       action,
+                      buildTime,
                     ).build(builderScope.signal, builderScope);
-                    const signedBuilder = "toTransaction" in tx ? tx : tx.tx;
-                    const ttl = signedBuilder.toTransaction().body().ttl();
-                    if (ttl === undefined)
-                      throw new Error("Built response has no exclusive TTL");
-                    builtTtl = Number(ttl);
-                    if (
-                      !Number.isSafeInteger(builtTtl) ||
-                      adoption.clock.eligibleFutureSlots(builtTtl, 3000) < 50
-                    )
-                      throw new Error(
-                        "Built response TTL has insufficient future slots",
-                      );
+                    builtTtl = promiseResponseTtl(tx, adoption.clock);
                     return tx;
                   } finally {
                     await storeReads.join();
