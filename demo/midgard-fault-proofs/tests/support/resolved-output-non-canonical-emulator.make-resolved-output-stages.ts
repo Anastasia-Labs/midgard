@@ -34,6 +34,7 @@ import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import {
+  type ResolvedOutputAbsentInputEvidence,
   type ResolvedOutputCoordinate,
   type ResolvedOutputEvidence,
   type ResolvedOutputForcedSource,
@@ -175,7 +176,7 @@ export const makeResolvedOutputStages = async (
 
   const step01Forced = async (
     threadOutRef: string,
-    evidence: ResolvedOutputEvidence,
+    evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
     forcedSource: ResolvedOutputForcedSource = forcedSourceOf(block),
   ) =>
     await capture(() =>
@@ -245,7 +246,7 @@ export const makeResolvedOutputStages = async (
 
   const step02 = async (
     threadOutRef: string,
-    evidence: ResolvedOutputEvidence,
+    evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
     options: {
       readonly certificateUtxo?: UTxO;
       readonly publishedCarriageUtxos?: readonly UTxO[];
@@ -541,7 +542,7 @@ export const makeResolvedOutputStages = async (
 
   const step05 = async (
     threadOutRef: string,
-    evidence: ResolvedOutputEvidence,
+    evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
   ) =>
     await capture(() =>
       submitResolvedOutputNonCanonicalStep05({

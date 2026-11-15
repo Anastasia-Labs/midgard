@@ -36,11 +36,16 @@ import {
 } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
-import { type ResolvedOutputEvidence } from "./resolved-output-non-canonical.js";
+import {
+  type ResolvedOutputAbsentInputEvidence,
+  type ResolvedOutputEvidence,
+  resolvedOutputEvidenceIsAbsent,
+} from "./resolved-output-non-canonical.js";
 import {
   ResolvedOutputStep02DatumSchema,
   ResolvedOutputStep02RedeemerSchema,
   ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep05DatumSchema,
 } from "./schemas.js";
 
 export const submitResolvedOutputNonCanonicalStep02 = async ({
@@ -68,7 +73,11 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ResolvedOutputEvidence;
+  /**
+   * Absent-input evidence closes at the terminal with no non-canonical
+   * output, opening the named input field only to count it.
+   */
+  readonly evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly publishCarriage?: boolean;
@@ -112,40 +121,49 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     throw new Error(
       "resolved-output-non-canonical: opening coordinate differs from thread",
     );
+  const absent = resolvedOutputEvidenceIsAbsent(evidence);
   const txMaterial = (
     evidence.subject.source_kind === 1n
       ? deriveMidgardForcedTxFaultEvidenceMaterial
       : deriveMidgardNativeTxFaultEvidenceMaterial
   )(Buffer.from(evidence.canonicalTransactionCborHex, "hex"));
-  const fieldIndex = evidence.coordinate.sourceKind;
-  const items = decodeMidgardFieldPreimage(
-    txMaterial.fieldPreimages[fieldIndex]!,
-  );
-  const planned = planFaultProofFieldOpening({
-    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-    fieldIndex,
-    anchorTxId: evidence.subject.transaction_id,
-    nativeTxCompactCbor,
-    itemCbors: items,
-    owner: signer.paymentKeyHash,
-    publish: publishCarriage,
-    label: "resolved-output-non-canonical field opening",
-  });
+  // A coordinate naming no input field is answered without an opening.
+  const fieldIndex =
+    absent && !evidence.namesInputField
+      ? undefined
+      : evidence.coordinate.sourceKind;
+  const planned =
+    fieldIndex === undefined
+      ? undefined
+      : planFaultProofFieldOpening({
+          anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+          fieldIndex,
+          anchorTxId: evidence.subject.transaction_id,
+          nativeTxCompactCbor,
+          itemCbors: decodeMidgardFieldPreimage(
+            txMaterial.fieldPreimages[fieldIndex]!,
+          ),
+          owner: signer.paymentKeyHash,
+          publish: publishCarriage,
+          label: "resolved-output-non-canonical field opening",
+        });
   signer.selectWallet(lucid);
   const carriageUtxos =
-    publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriage({
-      ownOutputs,
-      lucid,
-      signer,
-      planned,
-      publisherAddress: signer.address,
-      label: "resolved-output-non-canonical field opening",
-      preSubmitBoundary: publicationPreSubmitBoundary,
-    }));
+    planned === undefined
+      ? []
+      : (publishedCarriageUtxos ??
+        (await publishFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.address,
+          label: "resolved-output-non-canonical field opening",
+          preSubmitBoundary: publicationPreSubmitBoundary,
+        })));
   const certificateUtxo =
     suppliedCertificateUtxo ??
-    (planned.plan.tier === "Certified"
+    (planned?.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
           ownOutputs,
           lucid,
@@ -170,33 +188,47 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     family: "resolved-output-non-canonical",
     stepIndex,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: evidence.subject,
-        prior_root: evidence.resolved.priorRoot,
-        out_ref: {
-          transactionId: evidence.resolved.transactionId,
-          outputIndex: BigInt(evidence.resolved.outputIndex),
-        },
-      },
-    } as never,
-    ResolvedOutputStep03DatumSchema as never,
-  );
+  // An absent input closes with the terminal verdict: the machine resolves
+  // no output there, so none is non-canonical.
+  const nextStepIndex = absent ? 5 : 2;
+  const nextDatum = absent
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: { subject: evidence.subject, output_is_non_canonical: false },
+        } as never,
+        ResolvedOutputStep05DatumSchema as never,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: evidence.subject,
+            prior_root: evidence.resolved.priorRoot,
+            out_ref: {
+              transactionId: evidence.resolved.transactionId,
+              outputIndex: BigInt(evidence.resolved.outputIndex),
+            },
+          },
+        } as never,
+        ResolvedOutputStep03DatumSchema as never,
+      );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
-    const opening: FieldOpening = faultProofFieldOpening({
-      planned,
-      referenceInputs: ctx.referenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: "resolved-output-non-canonical field opening",
-    });
+    const opening: FieldOpening | null =
+      planned === undefined
+        ? null
+        : faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: "resolved-output-non-canonical field opening",
+          });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,
@@ -229,7 +261,7 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     stepReference,
     stepScript: contracts.steps[1].spendingScript,
     stepRole: "resolved-output-non-canonical step-02",
-    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,
@@ -243,6 +275,7 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
-    carriageTier: planned.plan.tier,
+    carriageTier: planned?.plan.tier ?? null,
+    nextStage: absent ? ("step05" as const) : ("step03" as const),
   };
 };

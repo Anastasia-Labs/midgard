@@ -10,6 +10,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
+  type ResolvedOutputAbsentInputEvidence,
   type ResolvedOutputEvidence,
   resolvedOutputEvidenceCloses,
 } from "./resolved-output-non-canonical.js";
@@ -35,7 +36,7 @@ export const submitResolvedOutputNonCanonicalStep05 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ResolvedOutputEvidence;
+  readonly evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;

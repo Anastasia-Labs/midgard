@@ -1,15 +1,26 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
+  encodeMidgardFieldPreimage,
   encodeMidgardSpendInputItem,
+  MIDGARD_CONSENSUS_LIMITS,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+} from "../src/proof-fit/van-rossem.js";
+import {
+  prepareResolvedOutputAbsentInputEvidence,
+  type ResolvedOutputAbsentInputEvidence,
+} from "../src/resolved-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
@@ -38,6 +49,14 @@ import {
  * ledger, so the suite fails if the writer and the proof disagree on the
  * source kind or on how inputs are counted: one position early names the
  * canonical output and convicts; the written position is refused on chain.
+ *
+ * A coordinate that names no input of the transaction (one past the field's
+ * last input, a negative position, or a source kind outside the spend and
+ * reference fields) is a wrongful rejection too: step 02 counts the named
+ * field, or reads nothing for a negative position or a kind outside both, and
+ * closes with no non-canonical output, which convicts. A claim that the
+ * written input is absent is refused at step 02, and both routes convict over
+ * the spend field at its byte cap.
  */
 
 const priorEntries = [
@@ -232,3 +251,190 @@ for (const shape of shapes) {
     }, 900_000);
   });
 }
+
+type Scenario = Awaited<ReturnType<typeof setupScenario>>;
+
+/** The rejection's subject over the committed forced leaf. */
+const forcedSubjectOf = ({ block }: Pick<Scenario, "block">) => {
+  if (block.forced === undefined) throw new Error("block is not forced");
+  return forcedVerdictSubject({
+    transactionId: block.nativeTxId,
+    sourceKey: block.forced.membership.key,
+    rejectionReason: block.forced.reason,
+  });
+};
+
+/** A block whose forced leaf rejects `nativeTx` for `coordinate`. */
+const commitForcedCoordinate = async (
+  nativeTx: MidgardNativeTxFull,
+  coordinate: { readonly sourceKind: number; readonly inputIndex: number },
+) => {
+  const context = await makeResolvedOutputContext();
+  const prior = await priorLedgerOf(0);
+  const block = await commitBlock({
+    context,
+    nativeTx,
+    priorRoot: prior.priorRoot,
+    reason: {
+      InputSpentOutputNonCanonical: {
+        source_kind: BigInt(coordinate.sourceKind),
+        input_index: BigInt(coordinate.inputIndex),
+      },
+    },
+  });
+  const stages = await makeResolvedOutputStages(context, block);
+  return { context, prior, block, stages };
+};
+
+/**
+ * Drives `evidence` from Init through step 02 and returns step 02's capture.
+ */
+const authenticateAbsent = async (
+  stages: Scenario["stages"],
+  evidence: ResolvedOutputAbsentInputEvidence,
+) => {
+  const bound = await stages.step01Forced(
+    stages.threadOf(await stages.init()),
+    evidence,
+  );
+  return await stages.step02(bound.result.nextThreadOutRef, evidence);
+};
+
+/** Convicts with the absent verdict and removes the block. */
+const convictAbsent = async (
+  { context, block, stages }: Pick<Scenario, "context" | "block" | "stages">,
+  evidence: ResolvedOutputAbsentInputEvidence,
+) => {
+  const opened = await authenticateAbsent(stages, evidence);
+  expect(opened.result.nextStage).toBe("step05");
+  const minted = await stages.step05(opened.result.nextThreadOutRef, evidence);
+  expect(minted.result.fraudProofUnit).toBeTruthy();
+  await stages.remove();
+  const [txHash, outputIndex] = block.fraudulentBlockOutRef.split("#");
+  expect(
+    await context.harness.proverLucid.utxosByOutRef([
+      { txHash: txHash!, outputIndex: Number(outputIndex) },
+    ]),
+  ).toHaveLength(0);
+  return { opened, minted };
+};
+
+const absentEvidenceOf = (scenario: Pick<Scenario, "block" | "prior">) =>
+  prepareResolvedOutputAbsentInputEvidence({
+    subject: forcedSubjectOf(scenario),
+    canonicalTransactionCbor: scenario.block.canonicalCbor,
+    priorRoot: scenario.prior.priorRoot,
+  });
+
+for (const shape of shapes) {
+  describe(`forced ${shape.label} InputSpentOutputNonCanonical coordinate the transaction lacks`, () => {
+    it("convicts a coordinate past the last input", async () => {
+      const scenario = await commitForcedCoordinate(shape.nativeTx, {
+        sourceKind: shape.sourceKind,
+        inputIndex: inputItems.length,
+      });
+      const evidence = absentEvidenceOf(scenario);
+      expect(evidence.namesInputField).toBe(true);
+      await convictAbsent(scenario, evidence);
+    }, 900_000);
+  });
+}
+
+describe("forced InputSpentOutputNonCanonical coordinate outside the input fields", () => {
+  it.each([
+    {
+      coordinateName: "a source kind naming neither field",
+      sourceKind: 2,
+      inputIndex: 0,
+    },
+    {
+      coordinateName: "a negative spend position",
+      sourceKind: 0,
+      inputIndex: -1,
+    },
+  ])(
+    "convicts $coordinateName with no opening",
+    async ({ sourceKind, inputIndex }) => {
+      const scenario = await commitForcedCoordinate(shapes[0].nativeTx, {
+        sourceKind,
+        inputIndex,
+      });
+      const evidence = absentEvidenceOf(scenario);
+      expect(evidence.namesInputField).toBe(false);
+      const { opened } = await convictAbsent(scenario, evidence);
+      expect(opened.result.carriageTier).toBeNull();
+    },
+    900_000,
+  );
+
+  it("refuses on chain a claim that the written input is absent", async () => {
+    const shape = shapes[0];
+    const scenario = await setupScenario(shape, 0);
+    expect(() => absentEvidenceOf(scenario)).toThrow(
+      /input coordinate is present/u,
+    );
+    // What a lying prover holds: the written input, claimed absent.
+    const lying: ResolvedOutputAbsentInputEvidence = {
+      absent: true,
+      subject: forcedSubjectOf(scenario),
+      coordinate: scenario.coordinate,
+      resolved: { priorRoot: scenario.prior.priorRoot },
+      outputIsNonCanonical: false,
+      canonicalTransactionCborHex: scenario.block.canonicalCbor.toString("hex"),
+      namesInputField: true,
+    };
+    await expectOnchainRefusal(
+      () => authenticateAbsent(scenario.stages, lying),
+      {
+        refusedBy: "fraud_proofs/resolved_output_non_canonical/step_02",
+        check: /^Validator returned false$/u,
+      },
+    );
+  }, 900_000);
+});
+
+const maxShapeInputs = (): readonly Buffer[] => {
+  const inputs: Buffer[] = [];
+  for (;;) {
+    const next = outRefOf(inputs.length.toString(16).padStart(64, "0"));
+    if (
+      encodeMidgardFieldPreimage([...inputs, next]).length >
+      MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes
+    )
+      return inputs;
+    inputs.push(next);
+  }
+};
+
+describe("forced InputSpentOutputNonCanonical coordinate at the consensus maximum", () => {
+  it.each([
+    { position: "past the last", past: true },
+    { position: "at a negative position", past: false },
+  ])(
+    "convicts a coordinate $position of the most spend inputs field 0 holds",
+    async ({ past }) => {
+      const inputs = maxShapeInputs();
+      const inputIndex = past ? inputs.length : -1;
+      const scenario = await commitForcedCoordinate(
+        makeNativeTx({ spendInputCbors: inputs, fee: 9n, outputCbors: [] }),
+        { sourceKind: 0, inputIndex },
+      );
+      const evidence = absentEvidenceOf(scenario);
+      const { opened, minted } = await convictAbsent(scenario, evidence);
+      // A negative position is absent without opening the field.
+      expect(opened.result.carriageTier).toBe(past ? "Certified" : null);
+      for (const { measurement } of [opened, minted]) {
+        expect(measurement.executionMemory).toBeLessThanOrEqual(
+          VAN_ROSSEM_MAX_MEMORY_UNITS,
+        );
+        expect(measurement.executionSteps).toBeLessThanOrEqual(
+          VAN_ROSSEM_MAX_CPU_UNITS,
+        );
+      }
+      console.info(
+        `max-shape absent input ${inputIndex.toString()} (${inputs.length.toString()} spend inputs): step-02 mem=${opened.measurement.executionMemory.toString()} cpu=${opened.measurement.executionSteps.toString()}; step-05 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
+      );
+    },
+    1_800_000,
+  );
+});

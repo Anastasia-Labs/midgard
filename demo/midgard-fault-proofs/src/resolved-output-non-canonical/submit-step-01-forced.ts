@@ -32,7 +32,9 @@ import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-bounda
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   classifyResolvedOutputNonCanonicalFinding,
+  type ResolvedOutputAbsentInputEvidence,
   type ResolvedOutputEvidence,
+  resolvedOutputEvidenceIsAbsent,
 } from "./resolved-output-non-canonical.js";
 import {
   ResolvedOutputStep01RedeemerSchema,
@@ -55,7 +57,7 @@ export type ResolvedOutputForcedSource = Readonly<{
  * binding; this only refuses to sign a transaction the chain would refuse.
  */
 export const requireResolvedOutputForcedSource = (
-  finding: ResolvedOutputEvidence,
+  finding: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
   source: ResolvedOutputForcedSource,
 ): ResolvedOutputForcedSource => {
   const fail = (message: string): never => {
@@ -100,13 +102,17 @@ export const submitResolvedOutputNonCanonicalStep01Forced = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: ResolvedOutputEvidence;
+  /** Absent-input evidence binds a coordinate that names no input. */
+  readonly finding: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence;
   readonly forcedSource: ResolvedOutputForcedSource;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifyResolvedOutputNonCanonicalFinding(finding);
+  // Absent-input evidence was classified when it was prepared; its
+  // coordinate may name no input field, which no present finding binds.
+  if (!resolvedOutputEvidenceIsAbsent(finding))
+    classifyResolvedOutputNonCanonicalFinding(finding);
   requireResolvedOutputForcedSource(finding, forcedSource);
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({

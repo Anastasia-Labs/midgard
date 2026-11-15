@@ -329,6 +329,79 @@ export const prepareResolvedOutputNonCanonicalEvidence = ({
   return evidence;
 };
 
+/**
+ * A rejection whose coordinate names no input of the transaction: a source
+ * kind outside the spend and reference fields, a negative position, or one at
+ * or past the field's input count. The machine resolves no output there, so
+ * the rejection is wrong; step 02 closes it with no non-canonical output.
+ */
+export type ResolvedOutputAbsentInputEvidence = Readonly<{
+  absent: true;
+  subject: VerdictSubject;
+  coordinate: Readonly<{ sourceKind: number; inputIndex: number }>;
+  resolved: Readonly<{ priorRoot: string }>;
+  outputIsNonCanonical: false;
+  canonicalTransactionCborHex: string;
+  /** False when the coordinate names no input field at all. */
+  namesInputField: boolean;
+}>;
+
+export const prepareResolvedOutputAbsentInputEvidence = ({
+  subject,
+  canonicalTransactionCbor,
+  priorRoot,
+}: {
+  readonly subject: VerdictSubject;
+  readonly canonicalTransactionCbor: Uint8Array;
+  readonly priorRoot: string;
+}): ResolvedOutputAbsentInputEvidence => {
+  if (!verdictSubjectIsCanonical(subject))
+    return fail("subject is not canonical");
+  hex(priorRoot, 32, "prior root");
+  const reason = subject.rejection_reason;
+  if (
+    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION ||
+    reason === null ||
+    typeof reason === "string" ||
+    !("InputSpentOutputNonCanonical" in reason)
+  )
+    return fail("subject is not an InputSpentOutputNonCanonical rejection");
+  const sourceKind = Number(reason.InputSpentOutputNonCanonical.source_kind);
+  const inputIndex = Number(reason.InputSpentOutputNonCanonical.input_index);
+  if (!Number.isSafeInteger(sourceKind) || !Number.isSafeInteger(inputIndex))
+    return fail("reason coordinate is outside the safe integer range");
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    canonicalTransactionCbor,
+  );
+  if (material.transactionId.toString("hex") !== subject.transaction_id)
+    return fail("transaction identity was substituted");
+  const namesInputField =
+    (sourceKind === 0 || sourceKind === 1) && inputIndex >= 0;
+  if (
+    namesInputField &&
+    inputIndex <
+      decodeMidgardInputFieldPreimage(material.fieldPreimages[sourceKind]!)
+        .length
+  )
+    return fail("input coordinate is present");
+  return Object.freeze({
+    absent: true,
+    subject,
+    coordinate: Object.freeze({ sourceKind, inputIndex }),
+    resolved: Object.freeze({ priorRoot }),
+    outputIsNonCanonical: false,
+    canonicalTransactionCborHex: Buffer.from(canonicalTransactionCbor).toString(
+      "hex",
+    ),
+    namesInputField,
+  });
+};
+
+export const resolvedOutputEvidenceIsAbsent = (
+  evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
+): evidence is ResolvedOutputAbsentInputEvidence =>
+  "absent" in evidence && evidence.absent;
+
 export const resolvedOutputEvidenceIdentity = (
   evidence: ResolvedOutputNonCanonicalEvidence,
 ): string =>
@@ -346,7 +419,10 @@ export const resolvedOutputEvidenceIdentity = (
   ].join(":");
 
 export const resolvedOutputEvidenceCloses = (
-  evidence: ResolvedOutputNonCanonicalEvidence,
+  evidence: Pick<
+    ResolvedOutputNonCanonicalEvidence,
+    "subject" | "outputIsNonCanonical"
+  >,
 ): boolean =>
   terminalVerdictContradiction(evidence.subject, evidence.outputIsNonCanonical);
 
