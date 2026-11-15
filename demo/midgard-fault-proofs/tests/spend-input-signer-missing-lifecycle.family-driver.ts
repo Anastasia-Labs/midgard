@@ -127,6 +127,7 @@ export const familyDriver = (
       referenceScriptUtxo: references[1]!,
       membershipReferenceScriptUtxo:
         harness.witnessReferenceScripts.phasMembershipWithdraw!,
+      certificateReferenceScriptUtxo: certificateReference,
     });
   const step03 = (
     threadOutRef: string,

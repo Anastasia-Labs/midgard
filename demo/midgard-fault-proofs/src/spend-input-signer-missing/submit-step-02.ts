@@ -58,9 +58,9 @@ import {
 /**
  * Step 02 resolves the bound spend input and classifies its credential the
  * way the validator does: a pub-key credential is handed to the witness scan
- * at step 03; a script credential, or a coordinate past the field-0 count,
- * closes at step 05 with the direct verdict. The out-of-range arm reads no
- * prior-ledger membership, so it carries none.
+ * at step 03; a script credential, or a negative coordinate or one past the
+ * field-0 count, closes at step 05 with the direct verdict. The out-of-range
+ * arm reads no prior-ledger membership, so it carries none.
  */
 export const submitSpendInputSignerMissingStep02 = async ({
   lucid,

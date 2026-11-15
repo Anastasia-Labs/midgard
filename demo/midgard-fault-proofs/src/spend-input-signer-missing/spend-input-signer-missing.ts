@@ -55,9 +55,9 @@ export type SpendInputSignerMissingFinding = Readonly<{
  * Which physical route step 02 takes. Canonical validation consults the
  * signer frontier only for a resolved pub-key spend input at a position its
  * cursor visits (`input_signer_authorization`); a script credential is
- * authorized with no signer and a position past the field-0 count is never
- * evaluated, so a forced rejection citing either is wrong without any
- * witness and step 02 closes at step 05 directly.
+ * authorized with no signer and a negative position or one past the field-0
+ * count is never evaluated, so a forced rejection citing either is wrong
+ * without any witness and step 02 closes at step 05 directly.
  */
 export type SpendInputSignerMissingRoute =
   | "witness_scan"
@@ -75,7 +75,10 @@ export type SpendInputSignerMissingEvidence = SpendInputSignerMissingFinding &
     route: SpendInputSignerMissingRoute;
     /** `true` exactly on the witness-scan route. */
     signerRequired: boolean;
-    /** Absent only when the coordinate is past the field-0 count. */
+    /**
+     * Absent only when the coordinate is negative or past the field-0
+     * count.
+     */
     resolved?: AuthenticatedPriorLedgerOutput;
     /** Present only on the witness-scan route. */
     paymentCredentialHex?: string;
@@ -121,10 +124,10 @@ const exactForcedInputIndex = (subject: VerdictSubject): number => {
     !("SpendInputSignerMissing" in reason)
   )
     return fail("forced subject has the wrong typed rejection reason");
-  return nonNegativeIndex(
-    Number(reason.SpendInputSignerMissing.input_index),
-    "forced reason input coordinate",
-  );
+  const inputIndex = Number(reason.SpendInputSignerMissing.input_index);
+  if (!Number.isSafeInteger(inputIndex))
+    return fail("forced reason input coordinate is invalid");
+  return inputIndex;
 };
 
 export const classifySpendInputSignerMissingFinding = ({
@@ -133,16 +136,19 @@ export const classifySpendInputSignerMissingFinding = ({
 }: SpendInputSignerMissingFinding): void => {
   if (!verdictSubjectIsCanonical(subject))
     return fail("subject is not canonical");
-  nonNegativeIndex(inputIndex, "input coordinate");
+  // A negative coordinate names no input: only a forced rejection can cite
+  // one, and step 02 answers it on the out-of-range route.
   if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (exactForcedInputIndex(subject) !== inputIndex)
       return fail("reason input coordinate was substituted");
-  } else if (
+    return;
+  }
+  if (
     subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     subject.rejection_reason !== null
-  ) {
+  )
     return fail("subject polarity is invalid");
-  }
+  nonNegativeIndex(inputIndex, "input coordinate");
 };
 
 /** A direct route contradicts only a wrongful forced rejection. */
@@ -163,7 +169,7 @@ export const prepareSpendInputSignerMissingEvidence = ({
   priorRoot = resolved?.priorRoot,
 }: SpendInputSignerMissingFinding & {
   readonly canonicalTransactionCbor: Uint8Array;
-  /** Required for an in-range coordinate; absent past the field-0 count. */
+  /** Required for an in-range coordinate; absent for any other. */
   readonly resolved?: AuthenticatedPriorLedgerOutput;
   /** Defaults to `resolved.priorRoot`; required when `resolved` is absent. */
   readonly priorRoot?: string;
@@ -221,9 +227,12 @@ export const prepareSpendInputSignerMissingEvidence = ({
       );
     return evidence;
   };
-  const selected = decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!)[
-    inputIndex
-  ];
+  const selected =
+    inputIndex < 0
+      ? undefined
+      : decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!)[
+          inputIndex
+        ];
   if (selected === undefined) {
     directRoute(
       subject,
