@@ -56,11 +56,13 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     )
       throw new Error(`${category}: wrong forced direction`);
     const reason = leaf.verdict.ForcedTxInvalid.reason;
-    if (
-      typeof reason !== "object" ||
-      !("InputNotFound" in reason) ||
-      reason.InputNotFound.source_kind !== sourceKind
-    )
+    if (typeof reason !== "object" || !("InputNotFound" in reason))
+      throw new Error(`${category}: wrong typed rejection/source kind`);
+    // A source kind outside the two input fields names no input, so either
+    // input family proves it from the position before its field's first input.
+    const claimedKind = reason.InputNotFound.source_kind;
+    const kindOutsideInputs = claimedKind !== 0n && claimedKind !== 1n;
+    if (claimedKind !== sourceKind && !kindOutsideInputs)
       throw new Error(`${category}: wrong typed rejection/source kind`);
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       Buffer.from(fullTransactionCbor, "hex"),
@@ -78,7 +80,9 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     const inputItems = decodeMidgardFieldPreimage(
       material.fieldPreimages[fieldIndex]!,
     );
-    const inputIndex = reason.InputNotFound.input_index;
+    const inputIndex = kindOutsideInputs
+      ? -1n
+      : reason.InputNotFound.input_index;
     const item =
       inputIndex >= 0n && inputIndex < BigInt(inputItems.length)
         ? decodeMidgardSpendInputItem(inputItems[Number(inputIndex)]!)

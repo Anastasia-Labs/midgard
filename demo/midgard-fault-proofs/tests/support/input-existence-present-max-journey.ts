@@ -74,6 +74,11 @@ export const PRESENT_MAX_SELECTED_INDEX = 818n;
  * closed by a branch or a leaf, the largest openings the verifier admits. */
 export type PresentMaxShape = "branches" | "forks_leaf" | "forks_branch";
 export type PresentMaxField = 0 | 1;
+/** `present` names the last input, which the ledger holds; `kindOutsideInputs`
+ * names a 64-bit source kind and index outside both input fields, which the
+ * proof observes before the field's first input without a ledger witness. */
+export type PresentMaxClaim = "present" | "kindOutsideInputs";
+export const KIND_OUTSIDE_INPUTS_COORDINATE = 2n ** 63n;
 
 export type PresentMaxRow = {
   readonly label: string;
@@ -120,13 +125,16 @@ const families = {
 
 /** Drives the forced wrongful-rejection proof of `field` at the Present
  * maximum through setup, carriage, init, the four steps and the removal,
- * and returns the measurement of every submitted transaction. */
+ * and returns the measurement of every submitted transaction. `claim` picks
+ * the rejection's coordinate. */
 export const runPresentMaxJourney = async ({
   field,
   shape,
+  claim = "present",
 }: {
   readonly field: PresentMaxField;
   readonly shape: PresentMaxShape;
+  readonly claim?: PresentMaxClaim;
 }): Promise<readonly PresentMaxRow[]> => {
   const family = families[field];
   const harness = await makeFaultProofEmulatorHarness({
@@ -215,10 +223,16 @@ export const runPresentMaxJourney = async ({
     verdict: {
       ForcedTxInvalid: {
         reason: {
-          InputNotFound: {
-            source_kind: BigInt(field),
-            input_index: PRESENT_MAX_SELECTED_INDEX,
-          },
+          InputNotFound:
+            claim === "present"
+              ? {
+                  source_kind: BigInt(field),
+                  input_index: PRESENT_MAX_SELECTED_INDEX,
+                }
+              : {
+                  source_kind: KIND_OUTSIDE_INPUTS_COORDINATE,
+                  input_index: KIND_OUTSIDE_INPUTS_COORDINATE,
+                },
         },
       },
     },
@@ -305,7 +319,11 @@ export const runPresentMaxJourney = async ({
   const fullTransactionCbor =
     encodeMidgardForcedTxCanonical(native).toString("hex");
   const material = family.material(forcedSource, fullTransactionCbor);
-  expect(material.selectedInput).not.toBeNull();
+  if (claim === "present") expect(material.selectedInput).not.toBeNull();
+  else {
+    expect(material.inputIndex).toBe(-1n);
+    expect(material.selectedInput).toBeNull();
+  }
   const prepared: PreparedNonExistentInputWrongfulRejection = {
     headerHash: computeHash28(SDK.encodeHeaderCbor(header)).toString("hex"),
     forcedSource,
@@ -313,10 +331,13 @@ export const runPresentMaxJourney = async ({
     ...material,
     eventMembership,
     transitionMembership,
-    ledgerMembership: {
-      value: descriptor.toString("hex"),
-      proof: Data.from(ledger.proofCbor, SDK.Proof),
-    },
+    ledgerMembership:
+      claim === "present"
+        ? {
+            value: descriptor.toString("hex"),
+            proof: Data.from(ledger.proofCbor, SDK.Proof),
+          }
+        : null,
   };
   const artifact = family.artifact(prepared);
   const setup = await captures("setup", () =>

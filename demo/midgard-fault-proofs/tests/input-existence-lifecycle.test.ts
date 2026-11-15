@@ -47,6 +47,7 @@ type Case =
   | "forced_missing"
   | "honest_forced_rejection"
   | "out_of_domain_rejection"
+  | "kind_outside_inputs_rejection"
   | "prior_ledger_present_rejection"
   | InitialAbsence
   | Exclude<InputChronology, `withdrawal_${string}`>;
@@ -66,6 +67,7 @@ const cases: readonly Case[] = [
   "forced_missing",
   "honest_forced_rejection",
   "out_of_domain_rejection",
+  "kind_outside_inputs_rejection",
   "prior_ledger_present_rejection",
   "forced_creator",
   "normal_creator",
@@ -108,15 +110,19 @@ describe("registered event-relative input-existence lifecycle", () => {
         const rejected =
           kind === "honest_forced_rejection" ||
           kind === "out_of_domain_rejection" ||
+          kind === "kind_outside_inputs_rejection" ||
           kind === "prior_ledger_present_rejection" ||
           kind === "absent_input_rejection";
         const chronology = isInitialAbsence(kind)
           ? initialAbsenceSource[kind]
           : inputChronologies.find((scenario) => scenario === kind);
-        const outOfDomain = kind === "out_of_domain_rejection";
+        // A source kind outside the two input fields names no input, so the
+        // prover observes no input of `field` either.
+        const kindOutside = kind === "kind_outside_inputs_rejection";
+        const outOfDomain = kind === "out_of_domain_rejection" || kindOutside;
         const reason: SDK.RejectionReason = {
           InputNotFound: {
-            source_kind: BigInt(field),
+            source_kind: kindOutside ? 2n : BigInt(field),
             input_index: outOfDomain ? 1n : 0n,
           },
         };

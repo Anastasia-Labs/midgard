@@ -36,14 +36,21 @@ export const deriveInputExistenceSelection = ({
   readonly owner: string;
 }) => {
   const reason = source.subject.rejection_reason;
-  const exactClaim =
-    reason !== null &&
-    typeof reason === "object" &&
-    "InputNotFound" in reason &&
-    reason.InputNotFound.source_kind === BigInt(field)
-      ? reason.InputNotFound.input_index
+  const notFound =
+    reason !== null && typeof reason === "object" && "InputNotFound" in reason
+      ? reason.InputNotFound
       : undefined;
-  const selectedIndex = inputIndex ?? exactClaim;
+  const exactClaim =
+    notFound?.source_kind === BigInt(field) ? notFound.input_index : undefined;
+  // An `InputNotFound` naming a source kind outside the two input fields
+  // names no input, so no observed input need exist: the prover observes the
+  // position before `field`'s first input.
+  const kindOutsideInputs =
+    notFound !== undefined &&
+    notFound.source_kind !== 0n &&
+    notFound.source_kind !== 1n;
+  const selectedIndex =
+    inputIndex ?? exactClaim ?? (kindOutsideInputs ? -1n : undefined);
   if (selectedIndex === undefined)
     throw new Error("input-existence: observed input index is required");
   const bytes = source.fieldPreimages[field];
@@ -54,7 +61,11 @@ export const deriveInputExistenceSelection = ({
     selectedIndex >= 0n && selectedIndex < BigInt(inputItems.length)
       ? inputItems[Number(selectedIndex)]
       : undefined;
-  if (selectedItem === undefined && selectedIndex !== exactClaim)
+  if (
+    selectedItem === undefined &&
+    selectedIndex !== exactClaim &&
+    !kindOutsideInputs
+  )
     throw new Error(
       "input-existence: only the exact named input may be out of domain",
     );

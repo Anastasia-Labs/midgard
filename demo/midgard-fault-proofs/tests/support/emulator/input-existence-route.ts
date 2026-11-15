@@ -5,7 +5,9 @@
  * and confirm the thread is kept and no proof minted. The caller runs
  * `expectOnchainRefusal` itself so a traced pin is checked against the file
  * that declares it. `submitStep` replaces the local submitter, for a prover
- * that carries evidence the local submitter would not admit. */
+ * that carries evidence the local submitter would not admit. `carriage`
+ * names published, certified field bytes for a field too large to inline.
+ * Returns the measurement of every transaction the route submitted. */
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -45,6 +47,7 @@ export const runInputExistenceRoute = async ({
   prepared,
   fraudulentBlockOutRef,
   submitStep = submitInputExistenceStep,
+  carriage,
   outcome,
 }: {
   readonly h: Harness;
@@ -52,6 +55,10 @@ export const runInputExistenceRoute = async ({
   readonly prepared: PreparedInputExistence;
   readonly fraudulentBlockOutRef: string;
   readonly submitStep?: typeof submitInputExistenceStep;
+  readonly carriage?: Readonly<{
+    fieldCarriageUtxos: readonly UTxO[];
+    certificatePolicyId: string;
+  }>;
   readonly outcome:
     | Readonly<{ kind: "conviction" }>
     | Readonly<{
@@ -103,6 +110,7 @@ export const runInputExistenceRoute = async ({
     }),
   );
   checkFit(init.measurement);
+  const measurements = [init.measurement];
   let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
   const send = (stepIndex: 0 | 1 | 2 | 3) =>
     submitStep({
@@ -127,6 +135,7 @@ export const runInputExistenceRoute = async ({
         fraudProofMint: fp,
       },
       witnessReferenceScripts: h.witnessReferenceScripts,
+      ...carriage,
     });
   const decisive = outcome.kind === "refusal" ? (outcome.atStep ?? 3) : 3;
   for (const index of decisive === 2
@@ -136,6 +145,7 @@ export const runInputExistenceRoute = async ({
       send(index),
     );
     checkFit(submitted.measurement);
+    measurements.push(submitted.measurement);
     threadOutRef = submitted.result.nextThreadOutRef;
   }
   if (outcome.kind === "refusal") {
@@ -147,10 +157,11 @@ export const runInputExistenceRoute = async ({
         { txHash: txHash!, outputIndex: Number(index) },
       ]),
     ).toHaveLength(1);
-    return;
+    return measurements;
   }
   const final = await captureEmulatorSubmission(h.emulator, () => send(3));
   checkFit(final.measurement);
+  measurements.push(final.measurement);
   expect(final.result.fraudProofOutRef).toBe(final.result.nextThreadOutRef);
   const [txHash, index] = final.result.fraudProofOutRef!.split("#");
   const [proof] = await h.proverLucid.utxosByOutRef([
@@ -167,4 +178,5 @@ export const runInputExistenceRoute = async ({
       unit.startsWith(h.contracts.computationThread.policyId),
     ),
   ).toHaveLength(0);
+  return measurements;
 };

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  KIND_OUTSIDE_INPUTS_COORDINATE,
   PRESENT_MAX_INPUT_COUNT,
   PRESENT_MAX_SELECTED_INDEX,
+  type PresentMaxClaim,
   type PresentMaxField,
   type PresentMaxRow,
   type PresentMaxShape,
@@ -31,14 +33,23 @@ const cases: readonly (readonly [PresentMaxField, PresentMaxShape])[] = [
   [1, "forks_branch"],
 ];
 
-describe("input-existence Present maximum fit", () => {
-  it.each(cases)(
-    "fits every transaction of the deep 819-input wrongful-rejection proof (field %i, %s)",
-    async (field, shape) => {
-      const rows = await runPresentMaxJourney({ field, shape });
+const claims: Readonly<Record<PresentMaxClaim, string>> = {
+  present: `index ${PRESENT_MAX_SELECTED_INDEX.toString()}`,
+  kindOutsideInputs: `source kind and index ${KIND_OUTSIDE_INPUTS_COORDINATE.toString()}`,
+};
+
+describe("input-existence forced wrongful-rejection maximum fit", () => {
+  it.each(
+    (Object.keys(claims) as PresentMaxClaim[]).flatMap((claim) =>
+      cases.map(([field, shape]) => [claim, field, shape] as const),
+    ),
+  )(
+    "fits every transaction of the deep 819-input wrongful-rejection proof (%s, field %i, %s)",
+    async (claim, field, shape) => {
+      const rows = await runPresentMaxJourney({ field, shape, claim });
       console.info(
         [
-          `Present maximum (field ${field.toString()}, ${shape}, ${PRESENT_MAX_INPUT_COUNT.toString()} inputs, index ${PRESENT_MAX_SELECTED_INDEX.toString()}): limits ${MAX_SIGNED_BYTES.toString()} B / ${MAX_MEMORY.toString()} mem / ${MAX_CPU.toString()} cpu`,
+          `Present maximum (${claim}, field ${field.toString()}, ${shape}, ${PRESENT_MAX_INPUT_COUNT.toString()} inputs, ${claims[claim]}): limits ${MAX_SIGNED_BYTES.toString()} B / ${MAX_MEMORY.toString()} mem / ${MAX_CPU.toString()} cpu`,
           ...rows.map(marginLine),
         ].join("\n"),
       );
