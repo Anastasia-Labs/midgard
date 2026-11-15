@@ -1,5 +1,6 @@
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
@@ -14,9 +15,6 @@ export type JourneyValidationTraceInput = {
   blockSlot: bigint;
 };
 
-/** Fee rounds before the priced transaction stops growing. */
-const FEE_ROUNDS = 32;
-
 /**
  * The owner's signed mint under a Plutus V3 policy, the fee its size prices
  * under the predecessor's schedule paid from the spent output, committed
@@ -26,25 +24,17 @@ const FEE_ROUNDS = 32;
 const buildJourneyPlutusMintBlock = async (
   input: JourneyValidationTraceInput & { failing: boolean },
 ) => {
-  const { minFeeA, minFeeB } = input.predecessor.header;
-  const build = (fee: bigint) =>
-    buildJourneyScriptTransaction({
-      predecessor: input.predecessor,
-      ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
-      variant: input.failing ? "failingPlutusMint" : "plutusMint",
-      fee,
-    }).transaction;
-  let fee = minFeeB;
-  let transaction = build(fee);
-  for (let round = 0; ; round += 1) {
-    const required =
-      minFeeA * BigInt(transaction.canonicalCbor.length) + minFeeB;
-    if (fee >= required) break;
-    if (round === FEE_ROUNDS)
-      throw new Error("Plutus mint journey fee did not settle");
-    fee = required;
-    transaction = build(fee);
-  }
+  const { minFeeB } = input.predecessor.header;
+  const transaction = buildAtJourneyMinFee(
+    input.predecessor.header,
+    (fee) =>
+      buildJourneyScriptTransaction({
+        predecessor: input.predecessor,
+        ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
+        variant: input.failing ? "failingPlutusMint" : "plutusMint",
+        fee,
+      }).transaction,
+  );
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,

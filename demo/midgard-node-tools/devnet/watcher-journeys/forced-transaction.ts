@@ -15,6 +15,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 import { journeyNetwork } from "./journey-network.js";
 
@@ -115,14 +116,20 @@ export const buildJourneyOwnerMintTransaction = (
  * witness, script integrity hash, output reference script, auxiliary data or
  * validity upper bound. Its single spend input, output, required signer, mint
  * policy and native script witness are the coordinates the wrongful claims
- * name.
+ * name. It pays the minimum fee the predecessor's schedule prices it at, the
+ * schedule its block's replay applies.
  */
 export const prepareJourneyForcedTransaction = (
   input: JourneyOwnerTransactionInput,
-) =>
-  buildJourneyOwnerMintTransaction({
-    predecessor: input.predecessor,
-    ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
-    policyScript: alwaysNativeScript,
-    fee: 0n,
-  });
+) => ({
+  transaction: buildAtJourneyMinFee(
+    input.predecessor.header,
+    (fee) =>
+      buildJourneyOwnerMintTransaction({
+        predecessor: input.predecessor,
+        ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
+        policyScript: alwaysNativeScript,
+        fee,
+      }).transaction,
+  ),
+});

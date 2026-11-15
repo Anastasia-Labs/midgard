@@ -12,6 +12,7 @@ import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-sup
 import type * as SDK from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
@@ -120,11 +121,8 @@ const buildJourneyTransaction = async (
     input.category === undefined
       ? {}
       : mutations[input.category]({ spendInput: spent.outRef, output });
-  let fee =
-    input.category === undefined
-      ? (input.minFeeB ?? input.predecessor.header.minFeeB)
-      : 0n;
-  const transactionInput = (): FixtureTransactionInput => ({
+  const minFeeB = input.minFeeB ?? input.predecessor.header.minFeeB;
+  const transactionInput = (fee: bigint): FixtureTransactionInput => ({
     spendInputs: [spent.outRef],
     outputs: [
       encodeMidgardTxOutput({
@@ -136,10 +134,10 @@ const buildJourneyTransaction = async (
     networkId: input.predecessor.header.expectedNetworkId,
     ...changes,
   });
-  const sign = () => {
-    const unsigned = buildFixtureTransaction(transactionInput());
+  const sign = (fee: bigint) => {
+    const unsigned = buildFixtureTransaction(transactionInput(fee));
     return buildFixtureTransaction({
-      ...transactionInput(),
+      ...transactionInput(fee),
       addressWitnesses: changes.addressWitnesses ?? [
         {
           verification_key: Buffer.from(
@@ -153,20 +151,14 @@ const buildJourneyTransaction = async (
       ],
     });
   };
-  let transaction = sign();
-  if (input.category === undefined) {
-    for (let attempt = 0; attempt < 32; attempt += 1) {
-      const required =
-        input.predecessor.header.minFeeA *
-          BigInt(transaction.canonicalCbor.length) +
-        (input.minFeeB ?? input.predecessor.header.minFeeB);
-      if (fee >= required) break;
-      if (required >= output.value.lovelace)
-        throw new Error("Journey control has insufficient value for its fee");
-      fee = required;
-      transaction = sign();
-    }
-  }
+  const transaction =
+    input.category === undefined
+      ? buildAtJourneyMinFee(
+          { minFeeA: input.predecessor.header.minFeeA, minFeeB },
+          sign,
+          output.value.lovelace,
+        )
+      : sign(0n);
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,
@@ -174,7 +166,7 @@ const buildJourneyTransaction = async (
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,
-    minFeeB: input.minFeeB ?? input.predecessor.header.minFeeB,
+    minFeeB,
   });
   if (input.category === undefined && block.replay.trace.verdict !== "accepted")
     throw new Error("Journey recovery transaction failed honest validation");

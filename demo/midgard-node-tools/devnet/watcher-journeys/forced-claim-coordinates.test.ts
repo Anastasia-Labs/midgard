@@ -32,6 +32,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
+import { stackNodeFeeSchedule } from "./stack-fee-schedule.test-support.js";
 
 const account = generateEmulatorAccount({ lovelace: 100_000_000n });
 const owner = Buffer.from(
@@ -58,6 +59,7 @@ beforeAll(async () => {
   predecessor = await checkedFixtureBlock(
     await buildCanonicalBlockFixture({
       transactions: [],
+      ...(await stackNodeFeeSchedule()),
       utxos: [
         {
           key: outRefCbor(0x81, 0n),

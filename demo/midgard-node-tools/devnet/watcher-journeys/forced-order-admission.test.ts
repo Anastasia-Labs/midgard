@@ -29,6 +29,7 @@ import {
   JOURNEY_SCRIPT_FORCED_CATEGORIES,
   type JourneyScriptForcedCategory,
 } from "./script-cases.js";
+import { stackNodeFeeSchedule } from "./stack-fee-schedule.test-support.js";
 import {
   buildJourneyForcedTransaction,
   JOURNEY_FORCED_TRANSACTION_CATEGORIES,
@@ -113,6 +114,7 @@ beforeAll(async () => {
   predecessor = await checkedFixtureBlock(
     await buildCanonicalBlockFixture({
       transactions: [],
+      ...(await stackNodeFeeSchedule()),
       utxos: [
         {
           key: outRefCbor(0x81, 0n),
