@@ -4,6 +4,7 @@ import {
   MinAdaStep03DatumSchema,
   MinAdaStep03SpendRedeemerSchema,
   MinAdaStep04DatumSchema,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -254,13 +255,14 @@ export const submitMinAdaStep03 = async ({
       scanState = nextState.MinAdaTxScan;
     }
   }
-  if (!("MinAdaTxDescriptor" in state))
-    throw new Error(`${label}: no off-chain finalize for an absent output`);
-  const facts = state.MinAdaTxDescriptor;
-  if (
-    !unsafeSkipLocalViolationCheckForTest &&
-    !minAdaDescriptorIsFault(facts)
-  ) {
+  // Canonical validation applies no minimum-Ada rule to an output field 2
+  // does not have, so an absent output contradicts only a rejection.
+  const isFault =
+    "MinAdaTxAbsent" in state
+      ? state.MinAdaTxAbsent.direction ===
+        PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+      : minAdaDescriptorIsFault(state.MinAdaTxDescriptor);
+  if (!unsafeSkipLocalViolationCheckForTest && !isFault) {
     throw new Error(
       `${label}: authenticated descriptor does not violate min-Ada`,
     );

@@ -1,6 +1,7 @@
 import {
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -130,24 +131,31 @@ export const submitMinAdaTxStep02 = async ({
     );
   }
   const item = prepared.outputItemCbors[Number(prepared.badOutputIndex)];
-  if (item === undefined) {
+  // A rejection naming an output past field 2's last item is closed by the
+  // certified walk's count, with no output to scan.
+  const absent =
+    prepared.badOutputIndex >= BigInt(prepared.outputItemCbors.length) &&
+    state.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
+  if (prepared.badOutputIndex < 0n || (item === undefined && !absent)) {
     throw new Error(`${label}: bad output index is outside field 2`);
   }
-  const facts = minAdaOutputFacts(Buffer.from(item, "hex"));
   const anchorSourceKind = state.source_kind;
   if (anchorSourceKind !== 0n && anchorSourceKind !== 1n)
     throw new Error(`${label}: unknown transaction source kind`);
-  if (
-    facts === null ||
-    (!unsafeSkipLocalViolationCheckForTest &&
-      outputMeetsMinAda(
-        MIDGARD_COINS_PER_UTXO_BYTE,
-        BigInt(facts.totalLength),
-        facts.lovelace,
-      ) !==
-        (state.direction === 1n))
-  ) {
-    throw new Error(`${label}: selected output does not violate min-Ada`);
+  if (item !== undefined) {
+    const facts = minAdaOutputFacts(Buffer.from(item, "hex"));
+    if (
+      facts === null ||
+      (!unsafeSkipLocalViolationCheckForTest &&
+        outputMeetsMinAda(
+          MIDGARD_COINS_PER_UTXO_BYTE,
+          BigInt(facts.totalLength),
+          facts.lovelace,
+        ) !==
+          (state.direction === 1n))
+    ) {
+      throw new Error(`${label}: selected output does not violate min-Ada`);
+    }
   }
   const planned = planFaultProofFieldOpening({
     anchorSourceKind,
@@ -232,7 +240,10 @@ export const submitMinAdaTxStep02 = async ({
       state.walk_checkpoint_hash === ""
         ? ""
         : encodeMinAdaSemanticCheckpoint(prior).toString("hex");
-    if (Number(prepared.badOutputIndex) - prior.nextItemIndex >= 32) {
+    if (
+      !absent &&
+      Number(prepared.badOutputIndex) - prior.nextItemIndex >= 32
+    ) {
       const next = advanceMinAdaSemanticCheckpoint({
         checkpoint: prior,
         txId: state.bad_tx_id,
@@ -254,18 +265,20 @@ export const submitMinAdaTxStep02 = async ({
     : Data.to(
         {
           fraud_prover: signer.paymentKeyHash,
-          data: {
-            MinAdaTxScan: {
-              direction: state.direction,
-              scan: minAdaInitialScanState(
-                minAdaOutputScanEvidence(
-                  state.bad_tx_id,
-                  prepared.badOutputIndex,
-                  prepared.outputItemCbors,
-                ),
-              ),
-            },
-          },
+          data: absent
+            ? { MinAdaTxAbsent: { direction: state.direction } }
+            : {
+                MinAdaTxScan: {
+                  direction: state.direction,
+                  scan: minAdaInitialScanState(
+                    minAdaOutputScanEvidence(
+                      state.bad_tx_id,
+                      prepared.badOutputIndex,
+                      prepared.outputItemCbors,
+                    ),
+                  ),
+                },
+              },
         },
         Step03Datum,
       );
