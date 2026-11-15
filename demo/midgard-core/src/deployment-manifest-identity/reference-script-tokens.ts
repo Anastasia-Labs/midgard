@@ -279,7 +279,6 @@ export const DEPLOYMENT_MANIFEST_BASE_REFERENCE_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace canonical-decode item settlement":
     "V1VtdCanonicalSettle",
   "V1 validation-trace proof-item publication": "V1VtdProofItem",
-  "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
   "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
   "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
   "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
