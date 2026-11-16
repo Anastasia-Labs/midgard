@@ -87,7 +87,7 @@ export const buildMintDeclaredAssetLimitArtifact = ({
     position: natural(Number(position), "position"),
     transactionId: evidence.subject.transaction_id,
     sourceKind,
-    policyIndex: evidence.policyIndex,
+    policyIndex: natural(Number(evidence.policyIndex), "policy index"),
     subjectCbor: Data.to(
       evidence.subject as never,
       MintDeclaredAssetLimitVerdictSubjectSchema as never,
@@ -210,7 +210,7 @@ export const admitMintDeclaredAssetLimitArtifact = (
   )
     throw new Error("mintDeclaredAssetLimit artifact field commitment changed");
   const evidence = prepareMintDeclaredAssetLimitEvidence({
-    finding: { subject, policyIndex: artifact.policyIndex },
+    finding: { subject, policyIndex: BigInt(artifact.policyIndex) },
     fieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
   });

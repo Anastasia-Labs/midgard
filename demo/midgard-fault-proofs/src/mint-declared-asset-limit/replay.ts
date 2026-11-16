@@ -202,7 +202,7 @@ const acceptedEvidence = (
     const evidence = prepareMintDeclaredAssetLimitEvidence({
       finding: {
         subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-        policyIndex,
+        policyIndex: BigInt(policyIndex),
       },
       fieldPreimage: field,
       committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -301,7 +301,7 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
             sourceKey: transaction.key,
             rejectionReason: reason,
           }),
-          policyIndex,
+          policyIndex: BigInt(policyIndex),
         },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -382,7 +382,7 @@ export const prepareMintDeclaredAssetLimitAcceptedArtifact = async (
   const evidence = prepareMintDeclaredAssetLimitEvidence({
     finding: {
       subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-      policyIndex: detection.policyIndex,
+      policyIndex: BigInt(detection.policyIndex),
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -441,7 +441,7 @@ export const prepareMintDeclaredAssetLimitForcedArtifact = async (
         sourceKey: transaction.key,
         rejectionReason: verdict.ForcedTxInvalid.reason,
       }),
-      policyIndex: detection.policyIndex,
+      policyIndex: BigInt(detection.policyIndex),
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

@@ -76,7 +76,7 @@ const crossing = (policyByte: number, padding = 0): Buffer =>
 const evidence = (subject: typeof accepted, item: Buffer) => {
   const field = encodeMidgardFieldPreimage([item]);
   return prepareMintDeclaredAssetLimitEvidence({
-    finding: { subject, policyIndex: 0 },
+    finding: { subject, policyIndex: 0n },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
@@ -118,7 +118,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     expect(() =>
       classifyMintDeclaredAssetLimitFinding({
         subject: rejected(2),
-        policyIndex: 1,
+        policyIndex: 1n,
       }),
     ).toThrow(/coordinate changed/u);
     const wrongReason = forcedVerdictSubject({
@@ -129,7 +129,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     expect(() =>
       classifyMintDeclaredAssetLimitFinding({
         subject: wrongReason,
-        policyIndex: 0,
+        policyIndex: 0n,
       }),
     ).toThrow(/not MintDeclaredAssetLimit/u);
   });
@@ -138,14 +138,14 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const field = encodeMidgardFieldPreimage([singleton(1)]);
     expect(() =>
       prepareMintDeclaredAssetLimitEvidence({
-        finding: { subject: accepted, policyIndex: 0 },
+        finding: { subject: accepted, policyIndex: 0n },
         fieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/do not match/u);
     expect(() =>
       prepareMintDeclaredAssetLimitEvidence({
-        finding: { subject: accepted, policyIndex: 1 },
+        finding: { subject: accepted, policyIndex: 1n },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),

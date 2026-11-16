@@ -155,18 +155,16 @@ export const decodeMintDeclaredPolicyHeader = (item: Uint8Array): Header => {
   });
 };
 
-const reasonPolicyIndex = (reason: RejectionReason): number => {
+const reasonPolicyIndex = (reason: RejectionReason): bigint => {
   if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
     return fail("typed rejection reason is not MintDeclaredAssetLimit");
-  const policyIndex = Number(reason.MintDeclaredAssetLimit.policy_index);
-  if (!Number.isSafeInteger(policyIndex))
-    return fail("reason policy index must be a safe integer");
-  return policyIndex;
+  return reason.MintDeclaredAssetLimit.policy_index;
 };
 
 export type MintDeclaredAssetLimitFinding = Readonly<{
   subject: VerdictSubject;
-  policyIndex: number;
+  /** Any integer the rejection codec admits; a wrongful rejection may name one field 5 lacks. */
+  policyIndex: bigint;
 }>;
 
 export const classifyMintDeclaredAssetLimitFinding = (
@@ -174,13 +172,13 @@ export const classifyMintDeclaredAssetLimitFinding = (
 ): MintDeclaredAssetLimitFinding => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
-  // A wrongful rejection may name a negative policy coordinate, which field 5
-  // lacks; a wrongful acceptance names a policy the field holds.
-  const policyIndex =
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION &&
-    Number.isSafeInteger(finding.policyIndex)
-      ? finding.policyIndex
-      : exactIndex(finding.policyIndex, "policy index");
+  // A wrongful rejection may name any policy coordinate, including one field
+  // 5 lacks; a wrongful acceptance names a policy the field holds.
+  const policyIndex = finding.policyIndex;
+  if (typeof policyIndex !== "bigint")
+    return fail("policy index must be an integer");
+  if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
+    exactIndex(Number(policyIndex), "policy index");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");

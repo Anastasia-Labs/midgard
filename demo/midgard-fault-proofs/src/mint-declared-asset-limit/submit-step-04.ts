@@ -42,7 +42,7 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly policyIndex: number;
+  readonly policyIndex: bigint;
   readonly crossing: boolean;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
@@ -69,7 +69,7 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
     family: "mint-declared-asset-limit",
     stepIndex,
   });
-  if (state.policy_index !== BigInt(policyIndex) || state.crossing !== crossing)
+  if (state.policy_index !== policyIndex || state.crossing !== crossing)
     throw new Error(
       "mintDeclaredAssetLimit: terminal datum differs from evidence",
     );

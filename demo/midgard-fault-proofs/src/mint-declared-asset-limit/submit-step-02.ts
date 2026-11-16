@@ -216,10 +216,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
             unknown
           >)
         : undefined;
-  if (
-    selected === undefined ||
-    selected.policy_index !== BigInt(evidence.policyIndex)
-  )
+  if (selected === undefined || selected.policy_index !== evidence.policyIndex)
     throw new Error("mintDeclaredAssetLimit: step-02 datum coordinate changed");
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
@@ -231,14 +228,14 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     next.kind === "absent"
       ? {
           subject: evidence.subject,
-          policy_index: BigInt(evidence.policyIndex),
+          policy_index: evidence.policyIndex,
           crossing: false,
         }
       : next.kind === "fold"
         ? mintDeclaredFoldStateData({
             subject: evidence.subject,
             target: {
-              policyIndex: evidence.policyIndex,
+              policyIndex: Number(evidence.policyIndex),
               targetPolicyId: evidence.targetPolicyId,
               targetDeclaredCount: evidence.targetDeclaredCount,
             },
@@ -249,7 +246,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
             Grammar: {
               bound: {
                 subject: evidence.subject,
-                policy_index: BigInt(evidence.policyIndex),
+                policy_index: evidence.policyIndex,
               },
               checkpoint_hash: next.checkpointHash,
             },
@@ -452,7 +449,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     (action.kind === "direct" ||
       (action.kind === "absent" &&
         !action.fromGrammar &&
-        evidence.policyIndex >= 0)) &&
+        evidence.policyIndex >= 0n)) &&
     planned.plan.tier === "Certified"
   )
     throw new Error("mintDeclaredAssetLimit: certified field requires grammar");

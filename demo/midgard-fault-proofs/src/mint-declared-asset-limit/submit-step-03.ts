@@ -160,7 +160,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
     next.kind === "decision"
       ? {
           subject: evidence.subject,
-          policy_index: BigInt(evidence.policyIndex),
+          policy_index: evidence.policyIndex,
           crossing: next.crossing,
         }
       : next.data;
@@ -287,7 +287,7 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
       ? initialMintDeclaredFoldSnapshot(staged)
       : staged.walk[walkOrdinal - 1]!;
   if (
-    staged.target.policyIndex !== evidence.policyIndex ||
+    BigInt(staged.target.policyIndex) !== evidence.policyIndex ||
     staged.target.targetPolicyId !== evidence.targetPolicyId ||
     staged.target.targetDeclaredCount !== evidence.targetDeclaredCount
   )

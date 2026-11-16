@@ -254,7 +254,10 @@ export const acceptedBlock = async (txs: readonly MintTx[]) => {
 
 export const acceptedEvidence = (tx: MintTx, policyIndex: number) =>
   prepareMintDeclaredAssetLimitEvidence({
-    finding: { subject: acceptedVerdictSubject(tx.id), policyIndex },
+    finding: {
+      subject: acceptedVerdictSubject(tx.id),
+      policyIndex: BigInt(policyIndex),
+    },
     fieldPreimage: tx.mintField,
     committedFieldHashHex: tx.commitmentHex,
   });

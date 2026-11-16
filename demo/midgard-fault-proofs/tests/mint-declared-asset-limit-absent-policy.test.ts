@@ -89,7 +89,7 @@ const boundForcedThread = async ({
   claimAbsent = false,
 }: {
   readonly policies: readonly Buffer[];
-  readonly policyIndex: number;
+  readonly policyIndex: bigint;
   /** Binds a claim that the policy is absent, whatever field 5 holds. */
   readonly claimAbsent?: boolean;
 }) => {
@@ -109,7 +109,7 @@ const boundForcedThread = async ({
   if (credential?.type !== "Key") throw new Error("missing funder key");
   const field = encodeMidgardFieldPreimage(policies);
   const rejectionReason = {
-    MintDeclaredAssetLimit: { policy_index: BigInt(policyIndex) },
+    MintDeclaredAssetLimit: { policy_index: policyIndex },
   } as const;
   const forced = await buildInvalidForcedTransitionTraceFixture({
     operatorVkey: credential.hash,
@@ -209,11 +209,11 @@ const boundForcedThread = async ({
     referenceScriptUtxo: references[0],
   });
   const staged =
-    policyIndex >= 0 && policyIndex < policies.length
+    policyIndex >= 0n && policyIndex < BigInt(policies.length)
       ? planMintDeclaredAssetLimitField({
           transactionId,
           fieldPreimageCbor: field.toString("hex"),
-          policyIndex,
+          policyIndex: Number(policyIndex),
         })
       : planMintDeclaredAbsentPolicy({
           transactionId,
@@ -227,7 +227,7 @@ const boundForcedThread = async ({
    */
   const authenticate = async () => {
     const fromGrammar =
-      carriage.planned.plan.tier === "Certified" && policyIndex >= 0;
+      carriage.planned.plan.tier === "Certified" && policyIndex >= 0n;
     const step02Measurements: CompleteSignedTransactionMeasurement[] = [];
     const decode = async (
       threadOutRef: string,
@@ -284,7 +284,7 @@ describe("mintDeclaredAssetLimit forced rejection of an absent policy", () => {
   it("convicts a policy coordinate past field 5's last item", async () => {
     const thread = await boundForcedThread({
       policies: policiesOf(1),
-      policyIndex: 1,
+      policyIndex: 1n,
     });
     expect(thread.evidence.absent).toBe(true);
     expect(thread.carriage.planned.plan.tier).not.toBe("Certified");
@@ -296,7 +296,7 @@ describe("mintDeclaredAssetLimit forced rejection of an absent policy", () => {
   it("convicts a negative policy coordinate", async () => {
     const thread = await boundForcedThread({
       policies: policiesOf(1),
-      policyIndex: -1,
+      policyIndex: -1n,
     });
     expect(thread.evidence.absent).toBe(true);
     const closed = await thread.authenticate();
@@ -305,10 +305,29 @@ describe("mintDeclaredAssetLimit forced rejection of an absent policy", () => {
     expect(minted.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
   }, 900_000);
 
+  it.each([
+    { label: "2^53 + 1", policyIndex: 2n ** 53n + 1n },
+    { label: "the codec's largest, 2^64 - 1", policyIndex: 2n ** 64n - 1n },
+    { label: "the codec's smallest, -2^64", policyIndex: -(2n ** 64n) },
+  ])(
+    "convicts a policy coordinate at $label",
+    async ({ policyIndex }) => {
+      const thread = await boundForcedThread({
+        policies: policiesOf(1),
+        policyIndex,
+      });
+      expect(thread.evidence.absent).toBe(true);
+      const closed = await thread.authenticate();
+      const minted = await thread.convict(closed.result.nextThreadOutRef);
+      expect(minted.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
+    },
+    900_000,
+  );
+
   it("refuses on chain a claim that a held policy is absent", async () => {
     const thread = await boundForcedThread({
       policies: policiesOf(1),
-      policyIndex: 0,
+      policyIndex: 0n,
       claimAbsent: true,
     });
     expect(thread.prepare().absent).toBe(false);
@@ -325,7 +344,7 @@ describe("mintDeclaredAssetLimit forced rejection of an absent policy", () => {
     "convicts a $coordinate coordinate over the most policies field 5 holds",
     async ({ negative }) => {
       const count = maximumPolicyCount();
-      const policyIndex = negative ? -1 : count;
+      const policyIndex = negative ? -1n : BigInt(count);
       const thread = await boundForcedThread({
         policies: policiesOf(count),
         policyIndex,

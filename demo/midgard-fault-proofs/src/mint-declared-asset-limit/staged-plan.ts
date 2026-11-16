@@ -245,13 +245,13 @@ export const planMintDeclaredAbsentPolicy = ({
 }: {
   readonly transactionId: string;
   readonly fieldPreimageCbor: string;
-  readonly policyIndex: number;
+  readonly policyIndex: bigint;
   readonly itemBudget?: number;
 }): MintDeclaredAssetLimitGrammarPlan => {
   const items = decodeMidgardFieldPreimage(
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
-  if (policyIndex >= 0 && policyIndex < items.length)
+  if (policyIndex >= 0n && policyIndex < BigInt(items.length))
     throw new Error("mintDeclaredAssetLimit policy coordinate is in field 5");
   return planMintDeclaredGrammar({ transactionId, items, itemBudget });
 };

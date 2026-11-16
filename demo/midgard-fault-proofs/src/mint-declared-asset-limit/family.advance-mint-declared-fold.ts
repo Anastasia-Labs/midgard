@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   assetKeyPrecedes,
   beginMintDeclaredPolicy,
@@ -242,7 +243,7 @@ export const prepareMintDeclaredAssetLimitEvidence = ({
   if (actual !== committedFieldHashHex)
     return fail("retained field-5 bytes do not match the compact commitment");
   const items = decodeMidgardFieldPreimage(fieldPreimage);
-  const target = items[finding.policyIndex];
+  const target = claimedItem(items, finding.policyIndex);
   const common = {
     ...finding,
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
@@ -264,7 +265,7 @@ export const prepareMintDeclaredAssetLimitEvidence = ({
   }
   return Object.freeze({
     ...common,
-    ...foldMintDeclaredAssetLimit(items, finding.policyIndex),
+    ...foldMintDeclaredAssetLimit(items, Number(finding.policyIndex)),
     targetItemHex: target.toString("hex"),
     absent: false,
   });

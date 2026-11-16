@@ -38,7 +38,7 @@ import {
 
 const boundDatum = (
   subject: VerdictSubject,
-  policyIndex: number,
+  policyIndex: bigint,
   signer: ResolvedProverSigner,
 ): string =>
   Data.to(
@@ -46,7 +46,7 @@ const boundDatum = (
       fraud_prover: signer.paymentKeyHash,
       data: {
         Bound: {
-          bound: { subject, policy_index: BigInt(policyIndex) },
+          bound: { subject, policy_index: policyIndex },
         },
       },
     } as never,
@@ -107,7 +107,7 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
           inclusion: { RedeemerCarriedInclusion: [inclusion] },
         },
       },
-      policy_index: BigInt(exact.policyIndex),
+      policy_index: exact.policyIndex,
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
@@ -142,8 +142,8 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly subject: VerdictSubject;
-  readonly datumPolicyIndex: number;
-  readonly redeemerPolicyIndex: number;
+  readonly datumPolicyIndex: bigint;
+  readonly redeemerPolicyIndex: bigint;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -202,7 +202,7 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
                 output_index: resolvedOutputIndex,
               },
             },
-            policy_index: BigInt(redeemerPolicyIndex),
+            policy_index: redeemerPolicyIndex,
           },
         ],
       } as never,

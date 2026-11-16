@@ -259,7 +259,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     const zItems = zPlan.items;
     const zEvidence: MintDeclaredAssetLimitEvidence = {
       subject: acceptedVerdictSubject(z.id),
-      policyIndex: 1,
+      policyIndex: 1n,
       crossing: false,
       accumulatedCount: 1,
       targetPolicyId: zPlan.target.targetPolicyId,
@@ -782,7 +782,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         submitMintDeclaredAssetLimitStep04Raw({
           ...common,
           threadOutRef: yStep03.nextThreadOutRef,
-          policyIndex: 1,
+          policyIndex: 1n,
           crossing: false,
           referenceScriptUtxo: references[3],
           witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -793,7 +793,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     // A coordinate outside field 5 binds (step 01 checks only its sign) and
     // is refused where the item is authenticated.
     const outsideThread = await initThread("init-outside-coordinate");
-    const outsideEvidence = { ...yEvidence, policyIndex: 5 };
+    const outsideEvidence = { ...yEvidence, policyIndex: 5n };
     const outsideStep01 = await measured("step-01-outside-coordinate", () =>
       bindAccepted(outsideThread, outsideEvidence, yInclusion!),
     );
@@ -1095,7 +1095,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
             sourceKey: key,
             rejectionReason: tx.reason,
           }),
-          policyIndex: 0,
+          policyIndex: 0n,
         },
         fieldPreimage: tx.mintField,
         committedFieldHashHex: midgardFieldCommitment(tx.mintField).toString(
@@ -1285,8 +1285,8 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         ...common,
         threadOutRef: mutatedThread,
         subject: aEvidence.subject,
-        datumPolicyIndex: 0,
-        redeemerPolicyIndex: 0,
+        datumPolicyIndex: 0n,
+        redeemerPolicyIndex: 0n,
         forcedSource: {
           header,
           membership: membershipA,
@@ -1307,13 +1307,13 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       () =>
         rawBind({
           subject: subjectAt(1),
-          datumPolicyIndex: 1,
-          redeemerPolicyIndex: 1,
+          datumPolicyIndex: 1n,
+          redeemerPolicyIndex: 1n,
         }),
     );
     await refused(
       "subject coordinate: datum policy 1 against redeemer policy 0",
-      () => rawBind({ datumPolicyIndex: 1 }),
+      () => rawBind({ datumPolicyIndex: 1n }),
     );
     progress("refusal: a rejection leaf bound as wrongful acceptance");
     await expectOnchainRefusal(
@@ -1336,8 +1336,8 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       () =>
         rawBind({
           subject: subjectAt(1),
-          datumPolicyIndex: 1,
-          redeemerPolicyIndex: 1,
+          datumPolicyIndex: 1n,
+          redeemerPolicyIndex: 1n,
           forcedSource: {
             header,
             membership: {
@@ -1409,7 +1409,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         submitMintDeclaredAssetLimitStep04Raw({
           ...common,
           threadOutRef: bStep03.nextThreadOutRef,
-          policyIndex: 0,
+          policyIndex: 0n,
           crossing: true,
           referenceScriptUtxo: references[3],
           witnessReferenceScripts: harness.witnessReferenceScripts,
