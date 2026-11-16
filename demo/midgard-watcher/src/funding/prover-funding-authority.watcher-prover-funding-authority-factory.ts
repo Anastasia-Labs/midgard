@@ -2,6 +2,7 @@ import {
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
   type WorkflowFundingReservationPermit,
+  type WorkflowFundingReservationPort,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
@@ -117,3 +118,33 @@ export const snapshot = ({
     state: record.state,
     activeInputs: record.activeInputs,
   });
+
+/** The port's `releaseProducedOutputs`, when the store keeps it: at a
+ * completion short of release finality the proof's own outputs and unspent
+ * inputs fund other proofs. */
+export const releaseProducedOutputsPort = ({
+  store,
+  plan,
+  rollbackGeneration,
+}: {
+  readonly store: WatcherProverFundingReservationStore;
+  readonly plan: WatcherProverFundingReservationPlan;
+  readonly rollbackGeneration: string;
+}) => {
+  const release = store.releaseProducedOutputs?.bind(store);
+  return release === undefined
+    ? {}
+    : {
+        releaseProducedOutputs: async ({
+          expectedRevision,
+          journal,
+        }: Parameters<
+          NonNullable<WorkflowFundingReservationPort["releaseProducedOutputs"]>
+        >[0]) =>
+          snapshot({
+            plan,
+            record: await release({ plan, expectedRevision, journal }),
+            rollbackGeneration,
+          }),
+      };
+};

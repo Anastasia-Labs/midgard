@@ -162,6 +162,16 @@ export interface WorkflowFundingReservationPort {
     readonly code: "unexpected_spend" | "reservation_collision";
     readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
+  /** At a completion short of release finality: frees the outputs this
+   * reservation's own transactions produced (change, prover rewards) and its
+   * unspent inputs for other proofs. The inputs its attempts consumed stay
+   * leased until the final release, so an exact re-landing after a rollback
+   * still holds them; a released output vanishes anyway if the transaction
+   * that produced it rolls back. */
+  releaseProducedOutputs?(input: {
+    readonly expectedRevision: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
   /** Releases the reservation at its workflow's final completion. */
   release(input: {
     readonly expectedRevision: string;

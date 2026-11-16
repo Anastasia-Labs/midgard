@@ -149,6 +149,14 @@ export const openInternal = async (
         REFERENCES watcher_prover_funding_reservation_v1(reservation_id)
         ON DELETE CASCADE
     ) STRICT;
+    -- A reservation whose workflow recorded a completion short of release
+    -- finality: its transactions' outputs are no longer leased.
+    CREATE TABLE IF NOT EXISTS watcher_prover_funding_produced_release_v1 (
+      reservation_id TEXT PRIMARY KEY,
+      FOREIGN KEY (reservation_id)
+        REFERENCES watcher_prover_funding_reservation_v1(reservation_id)
+        ON DELETE CASCADE
+    ) STRICT;
   `);
   const journal = createWatcherWorkflowJournal(database);
   const fundingRevision = openProverFundingRevision(database);
@@ -187,6 +195,15 @@ export const openInternal = async (
     INSERT INTO watcher_prover_funding_lease_v1(
       out_ref, reservation_id, lease_phase, role
     ) VALUES (?, ?, ?, ?)
+  `);
+  const insertProducedRelease = database.prepare(`
+    INSERT OR IGNORE INTO watcher_prover_funding_produced_release_v1(
+      reservation_id
+    ) VALUES (?)
+  `);
+  const selectProducedRelease = database.prepare(`
+    SELECT 1 AS present FROM watcher_prover_funding_produced_release_v1
+    WHERE reservation_id = ?
   `);
   const deleteLeases = database.prepare(`
     DELETE FROM watcher_prover_funding_lease_v1
@@ -436,6 +453,25 @@ export const openInternal = async (
     );
   };
 
+  const producedReleased = (reservationId: string): boolean =>
+    selectProducedRelease.get(reservationId) !== undefined;
+  /** An output of a reservation that released its produced outputs, which
+   * another reservation took meanwhile: it stays with that one, so a
+   * rollback that lands the producing transaction again never contends
+   * for it. */
+  const producedOutputTaken = (
+    reservationId: string,
+    outRef: string,
+  ): boolean => {
+    if (outputTransferredToAnotherReservation(reservationId, outRef))
+      return true;
+    if (!producedReleased(reservationId)) return false;
+    const lease = selectLease.get(outRef) as
+      | Readonly<{ reservation_id: string }>
+      | undefined;
+    return lease !== undefined && lease.reservation_id !== reservationId;
+  };
+
   const leaseInputs = (record: WatcherProverFundingReservationRecord) => {
     // A released reservation retains no signed attempt, so none is read.
     const completed = record.state === "released";
@@ -453,6 +489,7 @@ export const openInternal = async (
           .map((saved) => saved.transition.transactionHash),
       ),
       completed,
+      producedReleased: producedReleased(record.reservationId),
     });
   };
 
@@ -461,7 +498,7 @@ export const openInternal = async (
     projectRetainedProverFundingLeases({
       records: all,
       readInputs: leaseInputs,
-      transferred: outputTransferredToAnotherReservation,
+      transferred: producedOutputTaken,
     });
 
   /** While the funding revision stands, the audit and lease projection
@@ -1098,11 +1135,7 @@ export const openInternal = async (
         const active = [
           ...current.activeInputs.filter(({ outRef }) => !consumed.has(outRef)),
           ...current.pendingTransition.producedInputs.filter(
-            ({ outRef }) =>
-              !outputTransferredToAnotherReservation(
-                current.reservationId,
-                outRef,
-              ),
+            ({ outRef }) => !producedOutputTaken(current.reservationId, outRef),
           ),
         ];
         const next = nextRecord({
@@ -1219,6 +1252,39 @@ export const openInternal = async (
             current.pendingTransition.transitionDigest,
           );
         }
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
+    },
+    releaseProducedOutputs: async (release) => {
+      const { plan, journal: entries } = release;
+      assertPlan(plan);
+      assertJournalIdentity(plan, entries);
+      const last = entries.at(-1);
+      if (
+        last !== undefined &&
+        last.event.kind !== "terminal_included" &&
+        last.event.kind !== "completed"
+      )
+        throw new Error(
+          "prover reservation output release lacks its inclusion",
+        );
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== release.expectedRevision
+        )
+          throw new Error("prover reservation output release mismatch");
+        insertProducedRelease.run(current.reservationId);
+        // A pending attempt keeps its inputs until it resolves.
+        const next =
+          current.pendingTransition === null
+            ? nextRecord({ current, activeInputs: [] })
+            : nextRecord({ current });
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;

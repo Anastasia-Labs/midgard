@@ -217,6 +217,15 @@ export type WatcherProverFundingReservationStore = Readonly<{
       readonly code: "unexpected_spend" | "reservation_collision";
     },
   ): Promise<WatcherProverFundingReservationRecord>;
+  /** At a completion short of release finality: no longer leases the
+   * outputs the reservation's own transactions produced, nor its unspent
+   * inputs; the inputs its attempts consumed stay leased until `release`. */
+  releaseProducedOutputs?(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
   /** Releases the reservation at its workflow's final completion. */
   release(
     input: Journaled & {

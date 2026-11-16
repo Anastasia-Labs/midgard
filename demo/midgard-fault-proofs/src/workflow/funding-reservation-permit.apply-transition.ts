@@ -283,8 +283,10 @@ export const conflictWorkflowFundingReservationTransaction = async (
   input: JournaledChange & { readonly transactionHash: string },
 ): Promise<void> => await applyTransition({ ...input, outcome: "conflict" });
 
-/** Records a completion. Only a final completion releases the reservation,
- * in the same commit; an earlier one is recorded alone. */
+/** Records a completion. A final completion releases the reservation, in
+ * the same commit; an earlier one frees the outputs the proof's own
+ * transactions produced, in the same commit, so they fund other proofs while
+ * this one awaits release finality. */
 export const releaseWorkflowFundingReservation = async ({
   writer,
   event,
@@ -296,7 +298,30 @@ export const releaseWorkflowFundingReservation = async ({
   >;
 }): Promise<void> => {
   const state = stateForJournal(writer.journal);
-  if (state === undefined || !isFinalWorkflowCompletion(event)) {
+  if (!isFinalWorkflowCompletion(event)) {
+    const releaseProduced = state?.port.releaseProducedOutputs?.bind(
+      state.port,
+    );
+    if (state === undefined || releaseProduced === undefined) {
+      await appendWorkflowJournalEvents(writer, [event]);
+      return;
+    }
+    state.snapshot = parseStateSnapshot(
+      state,
+      await commitWithJournal({
+        port: state.port,
+        writer,
+        events: [event],
+        change: async ({ journal }) =>
+          await releaseProduced({
+            expectedRevision: state.snapshot.revision,
+            journal,
+          }),
+      }),
+    );
+    return;
+  }
+  if (state === undefined) {
     await appendWorkflowJournalEvents(writer, [event]);
     return;
   }

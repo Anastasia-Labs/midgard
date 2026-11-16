@@ -13,6 +13,7 @@ import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-id
 import { resolveOwnThreadCustody } from "./prover-funding-authority.resolve-own-thread-custody.js";
 import {
   readRecord,
+  releaseProducedOutputsPort,
   snapshot,
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthority,
@@ -465,6 +466,11 @@ export const createWatcherProverFundingAuthority = async (input: {
         }),
         rollbackGeneration: input.rollbackGeneration,
       }),
+    ...releaseProducedOutputsPort({
+      store: input.store,
+      plan,
+      rollbackGeneration: input.rollbackGeneration,
+    }),
     release: async ({
       expectedRevision,
       journal,

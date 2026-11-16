@@ -6,25 +6,32 @@ import type { WatcherProverFundingReservationRecord } from "./prover-funding-res
 
 /** Consumed inputs and change of a signed attempt stay leased until final
  * completion: re-landing its exact bytes, or a replacement that must spend one
- * of its inputs, needs them. Collateral is never retained for an attempt; a
- * confirmed attempt's collateral is free once the reservation stops using it,
- * and a rollback whose collateral was spent meanwhile re-signs. */
+ * of its inputs, needs them. Once its workflow recorded its correction's
+ * inclusion (`producedReleased`), only the consumed inputs stay: no later
+ * step spends its outputs, which then fund other proofs, and an exact
+ * re-landing needs only what it spent. Collateral is never retained for an
+ * attempt; a confirmed attempt's collateral is free once the reservation
+ * stops using it, and a rollback whose collateral was spent meanwhile
+ * re-signs. */
 export const retainedProverFundingInputs = ({
   record,
   submissions,
   abandonedTransactionHashes,
   completed,
+  producedReleased = false,
 }: {
   readonly record: WatcherProverFundingReservationRecord;
   readonly submissions: readonly WorkflowFundingPreparedTransition[];
   readonly abandonedTransactionHashes: ReadonlySet<string>;
   readonly completed: boolean;
+  readonly producedReleased?: boolean;
 }) => {
   const inputs = new Map<string, "funding" | "collateral">();
   for (const transition of completed ? [] : submissions) {
     if (abandonedTransactionHashes.has(transition.transactionHash)) continue;
     for (const outRef of transition.consumedOutRefs)
       inputs.set(outRef, "funding");
+    if (producedReleased) continue;
     for (const value of transition.producedInputs)
       inputs.set(value.outRef, value.role);
   }
