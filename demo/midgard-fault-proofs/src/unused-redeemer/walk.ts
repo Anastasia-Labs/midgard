@@ -64,10 +64,11 @@ export const unusedRedeemerWalkResult = (
   material: DirectScriptMaterial,
   redeemerIndex: bigint,
 ) => {
-  if (redeemerIndex < 0n)
-    throw new Error("unused-redeemer: redeemer index must be non-negative");
   const pointers = unusedRedeemerPointers(material);
-  const reached = redeemerIndex < BigInt(pointers.length);
+  // A negative index, like one past the field, names no redeemer: the walk
+  // runs to the field's end without reaching it.
+  const reached =
+    redeemerIndex >= 0n && redeemerIndex < BigInt(pointers.length);
   const at = reached ? Number(redeemerIndex) : pointers.length;
   const pointer = pointers[at] ?? OUT_OF_RANGE_POINTER;
   const repeated =

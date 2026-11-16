@@ -130,7 +130,7 @@ export const prepareObserverOrderInvalidAcceptedArtifact = async (
   const evidence = prepareObserverOrderInvalidEvidence({
     finding: {
       subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-      observerIndex: BigInt(detection.observerIndex),
+      observerIndex: detection.observerIndex,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -189,7 +189,7 @@ export const prepareObserverOrderInvalidForcedArtifact = async (
         sourceKey: transaction.key,
         rejectionReason: verdict.ForcedTxInvalid.reason,
       }),
-      observerIndex: BigInt(detection.observerIndex),
+      observerIndex: detection.observerIndex,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

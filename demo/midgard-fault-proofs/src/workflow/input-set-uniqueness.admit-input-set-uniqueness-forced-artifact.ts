@@ -10,6 +10,7 @@ import { INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID } from "../input-s
 import { INPUT_SET_UNIQUENESS_VIOLATION_ID } from "../input-set-uniqueness/scan.js";
 import {
   bindForcedDuplicateInput,
+  inputSetPairNamesNoDuplicate,
   inputSetUnionIsStrictlyIncreasing,
 } from "../input-set-uniqueness/wrongful-rejection.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -132,7 +133,13 @@ export const admitInputSetUniquenessForcedArtifact = (
     parsed.referenceInputItemCbors,
     "input-set-uniqueness forced reference inputs",
   );
+  const namesNoDuplicate = inputSetPairNamesNoDuplicate({
+    bound,
+    spendCount: BigInt(spends.length),
+    referenceCount: BigInt(references.length),
+  });
   if (
+    !namesNoDuplicate &&
     !inputSetUnionIsStrictlyIncreasing({
       spendInputItemCbors: spends,
       referenceInputItemCbors: references,
@@ -147,13 +154,14 @@ export const admitInputSetUniquenessForcedArtifact = (
         ? BigInt(references.length)
         : -1n;
   if (
-    bound.first_item_index < 0n ||
-    bound.second_item_index < 0n ||
-    bound.first_item_index >= count(bound.first_field_index) ||
-    bound.second_item_index >= count(bound.second_field_index) ||
-    bound.first_field_index > bound.second_field_index ||
-    (bound.first_field_index === bound.second_field_index &&
-      bound.first_item_index >= bound.second_item_index)
+    !namesNoDuplicate &&
+    (bound.first_item_index < 0n ||
+      bound.second_item_index < 0n ||
+      bound.first_item_index >= count(bound.first_field_index) ||
+      bound.second_item_index >= count(bound.second_field_index) ||
+      bound.first_field_index > bound.second_field_index ||
+      (bound.first_field_index === bound.second_field_index &&
+        bound.first_item_index >= bound.second_item_index))
   ) {
     throw new Error("input-set-uniqueness forced coordinates changed");
   }

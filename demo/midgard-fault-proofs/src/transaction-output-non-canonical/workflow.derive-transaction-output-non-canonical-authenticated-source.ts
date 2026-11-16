@@ -18,7 +18,10 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedItem } from "../evidence/claimed-coordinate.js";
+import {
+  claimedFieldItems,
+  claimedItem,
+} from "../evidence/claimed-coordinate.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -68,13 +71,11 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock = (
         : [forcedCoordinate];
     for (const coordinate of coordinates) {
       const fieldPreimage = material.fieldPreimages[2]!;
-      const item = claimedItem(
-        decodeMidgardFieldPreimage(fieldPreimage),
-        coordinate.itemIndex,
-      );
-      // The complete replay finds no output at a coordinate field 2 lacks;
-      // the header classifier answers such a claim, not this family.
-      if (item === undefined || item.length > 16_384) continue;
+      const items = claimedFieldItems(fieldPreimage);
+      if (items === undefined) continue;
+      // An output field 2 lacks is proven absent; only a rejection names one.
+      const item = claimedItem(items, coordinate.itemIndex);
+      if (item !== undefined && item.length > 16_384) continue;
       const prepared = prepareTransactionOutputEvidence({
         finding: { subject, fieldIndex: 2, itemIndex: coordinate.itemIndex },
         fieldPreimage,

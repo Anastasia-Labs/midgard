@@ -11,7 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedFieldItems } from "../evidence/claimed-coordinate.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
@@ -49,7 +49,8 @@ export type MintDeclaredAssetLimitReplayDetection = DetectionSubject &
     violationId: typeof MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID;
     position: bigint;
     transactionId: string;
-    policyIndex: number;
+    /** The policy coordinate; a forced rejection may name one field 5 lacks. */
+    policyIndex: bigint;
     source: "accepted" | "forced";
     direction: "wrongfulAcceptance" | "wrongfulRejection";
     forcedIndex?: number;
@@ -244,7 +245,7 @@ export const detectMintDeclaredAssetLimitAcceptedRawReplay = (
           violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
           position: BigInt(transaction.index),
           transactionId: transaction.nodeTxId,
-          policyIndex,
+          policyIndex: BigInt(policyIndex),
           source: "accepted",
           direction: "wrongfulAcceptance",
         }),
@@ -267,10 +268,7 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
       const reason = verdict.ForcedTxInvalid.reason;
       if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
         return;
-      const policyIndex = claimedIndex(
-        reason.MintDeclaredAssetLimit.policy_index,
-      );
-      if (policyIndex === undefined) return;
+      const policyIndex = reason.MintDeclaredAssetLimit.policy_index;
       const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
@@ -288,12 +286,9 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
         );
       const field =
         material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
-      if (
-        field === undefined ||
-        claimedItem(decodeMidgardFieldPreimage(field), policyIndex) ===
-          undefined
-      )
-        return;
+      // A policy a well-formed field 5 lacks is prepared as absent, which
+      // step 02 closes; a malformed field belongs to the shape families.
+      if (field === undefined || claimedFieldItems(field) === undefined) return;
       const evidence = prepareMintDeclaredAssetLimitEvidence({
         finding: {
           subject: SDK.forcedVerdictSubject({
@@ -301,7 +296,7 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
             sourceKey: transaction.key,
             rejectionReason: reason,
           }),
-          policyIndex: BigInt(policyIndex),
+          policyIndex,
         },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -382,7 +377,7 @@ export const prepareMintDeclaredAssetLimitAcceptedArtifact = async (
   const evidence = prepareMintDeclaredAssetLimitEvidence({
     finding: {
       subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-      policyIndex: BigInt(detection.policyIndex),
+      policyIndex: detection.policyIndex,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -441,7 +436,7 @@ export const prepareMintDeclaredAssetLimitForcedArtifact = async (
         sourceKey: transaction.key,
         rejectionReason: verdict.ForcedTxInvalid.reason,
       }),
-      policyIndex: BigInt(detection.policyIndex),
+      policyIndex: detection.policyIndex,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

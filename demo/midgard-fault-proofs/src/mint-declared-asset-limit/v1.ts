@@ -351,18 +351,32 @@ const currentAction = async ({
       utxo.datum,
       MintDeclaredAssetLimitStep02DatumSchema as never,
     ) as { data: Record<string, unknown> };
+    // An absent policy closes at once when negative or when the field opens
+    // directly; past a certified field's last item it closes after the
+    // grammar walk.
+    const absent = admitted.evidence.absent === true;
+    const absentAtOnce =
+      absent &&
+      (admitted.evidence.policyIndex < 0n ||
+        admitted.evidence.carriage !== "Certified");
     if ("Bound" in state.data)
-      return admitted.evidence.carriage === "Certified"
+      return absentAtOnce
         ? {
             stage: "step_02",
             threadOutRef: stage.threadOutRef,
-            action: { kind: "grammar_start" },
+            action: { kind: "absent", fromGrammar: false },
           }
-        : {
-            stage: "step_02",
-            threadOutRef: stage.threadOutRef,
-            action: { kind: "direct" },
-          };
+        : admitted.evidence.carriage === "Certified"
+          ? {
+              stage: "step_02",
+              threadOutRef: stage.threadOutRef,
+              action: { kind: "grammar_start" },
+            }
+          : {
+              stage: "step_02",
+              threadOutRef: stage.threadOutRef,
+              action: { kind: "direct" },
+            };
     const grammar = (state.data.Grammar as { checkpoint_hash: string })
       .checkpoint_hash;
     const ordinal = admitted.staged.grammar.findIndex(
@@ -374,7 +388,9 @@ const currentAction = async ({
       ? {
           stage: "step_02",
           threadOutRef: stage.threadOutRef,
-          action: { kind: "grammar_finish" },
+          action: absent
+            ? { kind: "absent", fromGrammar: true }
+            : { kind: "grammar_finish" },
         }
       : {
           stage: "step_02",
@@ -383,6 +399,9 @@ const currentAction = async ({
         };
   }
   if (stage.step === 3) {
+    const staged = admitted.staged;
+    if (!("walk" in staged))
+      throw new Error("mintDeclaredAssetLimit absent policy reached the fold");
     const [txHash, outputIndex] = stage.threadOutRef.split("#");
     const [utxo] = await workflow.lucid.utxosByOutRef([
       { txHash: txHash!, outputIndex: Number(outputIndex) },
@@ -394,19 +413,19 @@ const currentAction = async ({
       MintDeclaredAssetLimitStep03DatumSchema as never,
     ) as { data: MintDeclaredAssetLimitFoldStateData };
     const ordinal = [
-      initialMintDeclaredFoldSnapshot(admitted.staged),
-      ...admitted.staged.walk,
+      initialMintDeclaredFoldSnapshot(staged),
+      ...staged.walk,
     ].findIndex((snapshot) =>
       mintDeclaredFoldDataMatches(
         state.data,
         mintDeclaredFoldSnapshotData({
           evidence: admitted.evidence,
-          staged: admitted.staged,
+          staged,
           snapshot,
         }),
       ),
     );
-    if (ordinal < 0 || ordinal >= admitted.staged.walk.length)
+    if (ordinal < 0 || ordinal >= staged.walk.length)
       throw new Error("mintDeclaredAssetLimit fold checkpoint substitution");
     return {
       stage: "step_03",

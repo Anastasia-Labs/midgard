@@ -346,7 +346,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
       position,
       transactionId: txId,
-      policyIndex: 0,
+      policyIndex: 0n,
       source: "accepted",
       direction: "wrongfulAcceptance",
     });

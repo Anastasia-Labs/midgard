@@ -10,6 +10,7 @@ import {
 import {
   bindForcedDuplicateInput,
   type BoundDuplicateInput,
+  inputSetPairNamesNoDuplicate,
   inputSetUnionIsStrictlyIncreasing,
 } from "./wrongful-rejection.js";
 
@@ -75,14 +76,6 @@ export const detectInputSetUniquenessForcedReplay = (
       };
       const spendInputItemCbors = items(0);
       const referenceInputItemCbors = items(1);
-      if (
-        !inputSetUnionIsStrictlyIncreasing({
-          spendInputItemCbors,
-          referenceInputItemCbors,
-        })
-      ) {
-        return;
-      }
       const bound = bindForcedDuplicateInput(
         forcedVerdictSubject({
           transactionId: transaction.value.tx_id,
@@ -96,14 +89,26 @@ export const detectInputSetUniquenessForcedReplay = (
           : field === 1n
             ? BigInt(referenceInputItemCbors.length)
             : -1n;
+      // A pair that cannot name two distinct inputs contradicts the
+      // rejection whatever the union holds.
+      const namesNoDuplicate = inputSetPairNamesNoDuplicate({
+        bound,
+        spendCount: BigInt(spendInputItemCbors.length),
+        referenceCount: BigInt(referenceInputItemCbors.length),
+      });
       if (
-        bound.first_item_index < 0n ||
-        bound.second_item_index < 0n ||
-        bound.first_item_index >= count(bound.first_field_index) ||
-        bound.second_item_index >= count(bound.second_field_index) ||
-        bound.first_field_index > bound.second_field_index ||
-        (bound.first_field_index === bound.second_field_index &&
-          bound.first_item_index >= bound.second_item_index)
+        !namesNoDuplicate &&
+        (!inputSetUnionIsStrictlyIncreasing({
+          spendInputItemCbors,
+          referenceInputItemCbors,
+        }) ||
+          bound.first_item_index < 0n ||
+          bound.second_item_index < 0n ||
+          bound.first_item_index >= count(bound.first_field_index) ||
+          bound.second_item_index >= count(bound.second_field_index) ||
+          bound.first_field_index > bound.second_field_index ||
+          (bound.first_field_index === bound.second_field_index &&
+            bound.first_item_index >= bound.second_item_index))
       ) {
         return;
       }

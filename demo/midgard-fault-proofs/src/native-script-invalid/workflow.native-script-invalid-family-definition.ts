@@ -94,7 +94,10 @@ export const NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily({
         const planned =
           input.stage === "step_02"
             ? scriptFieldPlan(admitted, context.signer.paymentKeyHash)
-            : input.stage === "step_03" || input.stage === "step_04"
+            : // An absent script's finalize opens no signer field.
+              (input.stage === "step_03" &&
+                  admitted.prepared.scriptItemCbor !== "") ||
+                input.stage === "step_04"
               ? signerFieldPlan(admitted, context.signer.paymentKeyHash)
               : null;
         if (planned === null) return null;

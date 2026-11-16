@@ -39,6 +39,7 @@ import {
   type FraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
@@ -134,9 +135,7 @@ export const submitMinAdaTxStep02 = async ({
   // negative index closes at once, and one past the field's last item is
   // closed by the certified walk's count.
   const negative = prepared.badOutputIndex < 0n;
-  const item = negative
-    ? undefined
-    : prepared.outputItemCbors[Number(prepared.badOutputIndex)];
+  const item = claimedItem(prepared.outputItemCbors, prepared.badOutputIndex);
   const absent =
     item === undefined &&
     state.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;

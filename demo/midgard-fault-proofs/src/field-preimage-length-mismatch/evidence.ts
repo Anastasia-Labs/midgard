@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -9,7 +10,7 @@ import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
-import { claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedIndex } from "../evidence/claimed-coordinate.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
@@ -21,12 +22,22 @@ import type { FieldPreimageLengthStage } from "./config.js";
 import { exactFieldPreimageLengthRawFinding } from "./evidence-raw.js";
 import { fieldPreimageLengthCommittedClaim } from "./prepare-accepted.js";
 import {
+  fieldPreimageLengthOutOfDomain,
+  type PreparedFieldPreimageLengthOutOfDomain,
   type PreparedFieldPreimageLengthWorkflow,
+  prepareFieldPreimageLengthOutOfDomainWorkflow,
   prepareFieldPreimageLengthWorkflow,
 } from "./workflow.js";
 
 export const FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID =
   "field-preimage-length-mismatch" as const;
+
+const fieldPreimageLengthDetectionId = (
+  position: number,
+  transactionId: string,
+  fieldIndex: bigint,
+) =>
+  `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${position.toString()}:${transactionId}:${fieldIndex.toString()}:wrongfulRejection`;
 
 /** Complete canonical scan of forced wrongful-rejection contradictions. */
 export const detectFieldPreimageLengthCompleteReplay = (
@@ -45,7 +56,7 @@ export const detectFieldPreimageLengthCompleteReplay = (
     ) {
       continue;
     }
-    const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
+    const claimedField = reason.FieldPreimageLengthMismatch.field_index;
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     );
@@ -60,11 +71,30 @@ export const detectFieldPreimageLengthCompleteReplay = (
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
       );
     }
-    const preimage = claimedItem(
-      material.fieldPreimages,
-      reason.FieldPreimageLengthMismatch.field_index,
-    );
-    if (preimage === undefined) continue;
+    const detection = {
+      ...forcedTransactionSubject(forced.key),
+      detectionId: fieldPreimageLengthDetectionId(
+        position,
+        forced.value.tx_id,
+        claimedField,
+      ),
+      headerHash: block.headerHash,
+      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
+      position: BigInt(position),
+    };
+    const fieldIndex = claimedIndex(claimedField, MIDGARD_FIELD_COUNT);
+    // A field outside the native layout has no preimage whose length could
+    // mismatch, so the rejection is contradicted outright.
+    if (fieldIndex === undefined) {
+      prepareFieldPreimageLengthOutOfDomainWorkflow({
+        headerHash: block.headerHash,
+        transactionId: forced.value.tx_id,
+        fieldIndex: claimedField,
+      });
+      detections.push(detection);
+      continue;
+    }
+    const preimage = material.fieldPreimages[fieldIndex]!;
     const declaredLength = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(
         forced.value.submitted_source.field_preimage_lengths_cbor,
@@ -84,13 +114,7 @@ export const detectFieldPreimageLengthCompleteReplay = (
       fieldPreimage: preimage,
       forcedRejectionReason: reason,
     });
-    detections.push({
-      ...forcedTransactionSubject(forced.key),
-      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${position.toString()}:${forced.value.tx_id}:${fieldIndex.toString()}:wrongfulRejection`,
-      headerHash: block.headerHash,
-      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
-      position: BigInt(position),
-    });
+    detections.push(detection);
   }
   return Object.freeze(detections);
 };
@@ -107,6 +131,24 @@ export type AuthenticatedFieldPreimageLengthEvidence = Readonly<{
   >;
 }>;
 
+/** A forced rejection naming a field outside the native layout. */
+export type OutOfDomainFieldPreimageLengthEvidence = Readonly<{
+  prepared: PreparedFieldPreimageLengthOutOfDomain;
+  fieldMaterial: AuthenticatedFieldPreimageLengthEvidence["fieldMaterial"];
+  stageEvidence: Required<
+    Pick<FieldPreimageLengthStage, "forcedHeader" | "forcedMembership">
+  >;
+}>;
+
+export type FieldPreimageLengthWorkflowEvidence =
+  | AuthenticatedFieldPreimageLengthEvidence
+  | OutOfDomainFieldPreimageLengthEvidence;
+
+export const inDomainFieldPreimageLengthEvidence = (
+  evidence: FieldPreimageLengthWorkflowEvidence,
+): evidence is AuthenticatedFieldPreimageLengthEvidence =>
+  !fieldPreimageLengthOutOfDomain(evidence.prepared);
+
 export type RoutedFieldPreimageLengthEvidence =
   AuthenticatedFieldPreimageLengthEvidence &
     Readonly<{
@@ -122,8 +164,8 @@ const inlineCarriage = (preimage: Uint8Array): SDK.FieldCarriage => ({
 export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
   block: Awaited<ReturnType<typeof canonicalBlockEvidenceFromVerifiedPayload>>,
   selected?: CanonicalViolationDetection,
-): Promise<AuthenticatedFieldPreimageLengthEvidence> => {
-  const findings: AuthenticatedFieldPreimageLengthEvidence[] = [];
+): Promise<FieldPreimageLengthWorkflowEvidence> => {
+  const findings: FieldPreimageLengthWorkflowEvidence[] = [];
   for (const [
     position,
     forced,
@@ -147,11 +189,15 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
     ) {
       continue;
     }
-    const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
+    const claimedField = reason.FieldPreimageLengthMismatch.field_index;
     if (
       selected !== undefined &&
       selected.detectionId !==
-        `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${position.toString()}:${forced.value.tx_id}:${fieldIndex.toString()}:wrongfulRejection`
+        fieldPreimageLengthDetectionId(
+          position,
+          forced.value.tx_id,
+          claimedField,
+        )
     )
       continue;
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
@@ -168,11 +214,36 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
       );
     }
-    const preimage = claimedItem(
-      material.fieldPreimages,
-      reason.FieldPreimageLengthMismatch.field_index,
-    );
-    if (preimage === undefined) continue;
+    const fieldMaterial = Object.freeze({
+      nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),
+      witnessSetCompactCbor:
+        material.proofSource.witnessSetCompactCbor.toString("hex"),
+    });
+    const eventKey: SDK.EventKey = {
+      ForcedTransactionEventKey: { tx_order_id: forced.key },
+    };
+    const fieldIndex = claimedIndex(claimedField, MIDGARD_FIELD_COUNT);
+    if (fieldIndex === undefined) {
+      findings.push(
+        Object.freeze({
+          prepared: prepareFieldPreimageLengthOutOfDomainWorkflow({
+            headerHash: block.headerHash,
+            transactionId: forced.value.tx_id,
+            fieldIndex: claimedField,
+          }),
+          fieldMaterial,
+          stageEvidence: Object.freeze({
+            forcedHeader: block.header,
+            forcedMembership: await buildForcedTransactionLeafMembershipProof({
+              reconstruction: block.reconstruction,
+              eventKey,
+            }),
+          }),
+        }),
+      );
+      continue;
+    }
+    const preimage = material.fieldPreimages[fieldIndex]!;
     const basePrepared = prepareFieldPreimageLengthWorkflow({
       headerHash: block.headerHash,
       transactionId: forced.value.tx_id,
@@ -200,9 +271,6 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
         )
         .digest("hex"),
     });
-    const eventKey: SDK.EventKey = {
-      ForcedTransactionEventKey: { tx_order_id: forced.key },
-    };
     const membership = await buildForcedTransactionLeafMembershipProof({
       reconstruction: block.reconstruction,
       eventKey,
@@ -210,11 +278,7 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
     findings.push(
       Object.freeze({
         prepared,
-        fieldMaterial: Object.freeze({
-          nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),
-          witnessSetCompactCbor:
-            material.proofSource.witnessSetCompactCbor.toString("hex"),
-        }),
+        fieldMaterial,
         stageEvidence: Object.freeze({
           forcedHeader: block.header,
           forcedMembership: membership,
@@ -260,7 +324,7 @@ export const detectAuthenticatedFieldPreimageLengthEvidence = async ({
 }: {
   readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-}): Promise<AuthenticatedFieldPreimageLengthEvidence> => {
+}): Promise<FieldPreimageLengthWorkflowEvidence> => {
   const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
     observation,
   });

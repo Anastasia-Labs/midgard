@@ -20,12 +20,15 @@ import {
   submitFieldPreimageLengthCancel,
   submitFieldPreimageLengthForcedAuthentication,
   submitFieldPreimageLengthForcedDispatch,
+  submitFieldPreimageLengthForcedOutOfDomain,
   submitFieldPreimageLengthInit,
   submitFieldPreimageLengthTerminal,
 } from "./submit-lucid.js";
-import type {
-  FieldPreimageLengthAction,
-  PreparedFieldPreimageLengthWorkflow,
+import {
+  type FieldPreimageLengthAction,
+  fieldPreimageLengthOutOfDomain,
+  type PreparedFieldPreimageLengthEvidence,
+  type PreparedFieldPreimageLengthWorkflow,
 } from "./workflow.js";
 
 export const FIELD_PREIMAGE_LENGTH_CONFIG =
@@ -76,7 +79,7 @@ export type LoadManifestBoundFieldPreimageLengthConfig = Readonly<{
 
 export type FieldPreimageLengthLucidSubmissionContext = Readonly<{
   config: ManifestBoundFieldPreimageLengthConfig;
-  prepared: PreparedFieldPreimageLengthWorkflow;
+  prepared: PreparedFieldPreimageLengthEvidence;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }>;
 
@@ -115,6 +118,14 @@ export type FieldPreimageLengthStage = Readonly<{
   cancelStepIndex?: 0 | 1 | 2 | 3;
 }>;
 
+const inDomain = (
+  prepared: PreparedFieldPreimageLengthEvidence,
+): PreparedFieldPreimageLengthWorkflow => {
+  if (fieldPreimageLengthOutOfDomain(prepared))
+    throw new Error("field-preimage-length field is outside the native layout");
+  return prepared;
+};
+
 const required = <T>(value: T | undefined, label: string): T => {
   if (value === undefined)
     throw new Error(`field-preimage-length missing ${label}`);
@@ -139,7 +150,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
   readonly remove: FieldPreimageLengthLucidSubmitter;
   readonly boundary?: (
     action: Exclude<FieldPreimageLengthAction, "complete">,
-    prepared: PreparedFieldPreimageLengthWorkflow,
+    prepared: PreparedFieldPreimageLengthEvidence,
   ) => FraudProofPreSubmitBoundary;
 }): FieldPreimageLengthLucidBuilders => {
   const stage = async (
@@ -209,6 +220,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
       ).txHash;
     },
     authenticateAccepted: async (context) => {
+      const prepared = inDomain(context.prepared);
       const resolved = await stage(context, "authenticate");
       return (
         await submitFieldPreimageLengthAcceptedAuthentication({
@@ -223,7 +235,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
           ...(resolved.acceptedClaimResolver === undefined
             ? {}
             : { claimResolver: resolved.acceptedClaimResolver }),
-          prepared: context.prepared,
+          prepared,
           carriageReferenceInputs:
             resolved.acceptedCarriageReferenceInputs ?? [],
           preSubmitBoundary: boundary?.("authenticate", context.prepared),
@@ -232,6 +244,22 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     },
     authenticateForced: async (context) => {
       const resolved = await stage(context, "authenticate");
+      if (fieldPreimageLengthOutOfDomain(context.prepared))
+        return (
+          await submitFieldPreimageLengthForcedOutOfDomain({
+            config: context.config,
+            threadOutRef: required(
+              resolved.threadOutRef,
+              "authentication thread out-ref",
+            ),
+            header: required(resolved.forcedHeader, "forced header"),
+            membership: required(
+              resolved.forcedMembership,
+              "forced membership",
+            ),
+            preSubmitBoundary: boundary?.("authenticate", context.prepared),
+          })
+        ).txHash;
       return (
         await submitFieldPreimageLengthForcedAuthentication({
           config: context.config,

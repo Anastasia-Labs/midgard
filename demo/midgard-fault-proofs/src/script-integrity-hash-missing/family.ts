@@ -10,6 +10,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { cborDefiniteBytes } from "../cbor-serialise.js";
 import {
   type ForcedLeafEvidence,
   forcedLeafVerdictSubject,
@@ -180,17 +181,6 @@ export const prepareScriptIntegrityHashMissingEvidence = (
   return Object.freeze({ ...evidence });
 };
 
-const cborBytes = (bytes: Buffer): Buffer => {
-  if (bytes.length < 24)
-    return Buffer.concat([Buffer.from([0x40 + bytes.length]), bytes]);
-  if (bytes.length <= 0xff)
-    return Buffer.concat([Buffer.from([0x58, bytes.length]), bytes]);
-  const header = Buffer.alloc(3);
-  header[0] = 0x59;
-  header.writeUInt16BE(bytes.length, 1);
-  return Buffer.concat([header, bytes]);
-};
-
 /** Exact twin of Aiken `encode_decision_state_v1`. */
 export const encodeScriptIntegrityHashMissingDecisionState = (
   evidence: ScriptIntegrityHashMissingEvidence,
@@ -199,8 +189,8 @@ export const encodeScriptIntegrityHashMissingDecisionState = (
   const boolSchema = Data.Boolean();
   return Buffer.concat([
     Buffer.from([0x84]),
-    cborBytes(subject),
-    cborBytes(
+    cborDefiniteBytes(subject),
+    cborDefiniteBytes(
       Buffer.from(
         canonicalHex(evidence.scriptIntegrityHash, 32, "scriptIntegrityHash"),
         "hex",

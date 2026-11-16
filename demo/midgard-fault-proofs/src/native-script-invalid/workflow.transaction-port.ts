@@ -22,7 +22,10 @@ import { submitNativeScriptInvalidInit } from "./submit-init.js";
 import { submitNativeScriptInvalidStep01 } from "./submit-step-01.js";
 import { submitNativeScriptInvalidStep01Forced } from "./submit-step-01-forced.js";
 import { submitNativeScriptInvalidStep02 } from "./submit-step-02.js";
-import { submitNativeScriptInvalidStep03 } from "./submit-step-03.js";
+import {
+  submitNativeScriptInvalidStep03,
+  submitNativeScriptInvalidStep03AbsentFinalize,
+} from "./submit-step-03.js";
 import { submitNativeScriptInvalidStep03StartSignerScan } from "./submit-step-03-staged.js";
 import { submitNativeScriptInvalidStep04 } from "./submit-step-04.js";
 import { submitNativeScriptInvalidStep05 } from "./submit-step-05.js";
@@ -183,6 +186,26 @@ export const transactionPort = (
         ),
       });
     }
+    // A position field 6 lacks closed at step 02 with no script selected;
+    // step 03 finalizes it without evaluating one.
+    if (stage === "step_03" && admitted.prepared.scriptItemCbor === "")
+      return Object.freeze({
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitNativeScriptInvalidStep03AbsentFinalize({
+              lucid: config.lucid,
+              contracts: config.contracts,
+              categoryId,
+              signer: config.signer,
+              threadOutRef: threadOutRef(),
+              referenceScriptUtxo: config.references.steps[2],
+              witnessReferenceScripts: config.references.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      });
     if (stage === "step_03") {
       const carriage = await resolveField({
         ownOutputs,

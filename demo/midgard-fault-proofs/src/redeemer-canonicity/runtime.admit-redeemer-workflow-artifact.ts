@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { admitClaimedCoordinateDecimal } from "../evidence/claimed-coordinate.js";
 import {
   type FaultProofFieldGrammarDeployment,
   requireFaultProofFieldGrammarDeployment,
@@ -215,11 +216,12 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
   ) as Parameters<
     typeof prepareRedeemerCanonicityEvidence
   >[0]["finding"]["subject"];
-  const { redeemerIndex } = artifact;
-  if (typeof redeemerIndex !== "number" || !Number.isSafeInteger(redeemerIndex))
-    throw new Error("redeemerCanonicity prepared artifact changed");
+  const redeemerIndex = admitClaimedCoordinateDecimal(
+    artifact.redeemerIndex,
+    "redeemerCanonicity redeemer index",
+  );
   const evidence = prepareRedeemerCanonicityEvidence({
-    finding: { subject, redeemerIndex: BigInt(redeemerIndex) },
+    finding: { subject, redeemerIndex },
     fieldPreimage: Buffer.from(
       cursorStringField(artifact, "fieldPreimageHex"),
       "hex",

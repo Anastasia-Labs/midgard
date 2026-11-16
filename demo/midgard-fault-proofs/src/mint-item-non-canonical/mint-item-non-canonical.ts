@@ -64,6 +64,35 @@ export const mintItemUnreachableClaimState = (subject: VerdictSubject) => ({
   outcome: MINT_ITEM_OUTCOME_UNREACHABLE,
 });
 
+/**
+ * The evidence of a forced `MintItemMalformed` rejection, whatever policy it
+ * names: step 01 answers the claim from the subject alone and opens no item,
+ * so the evidence carries no field bytes.
+ */
+export const prepareMintItemUnreachableClaimEvidence = (
+  subject: VerdictSubject,
+): MintItemEvidence => {
+  if (!mintItemClaimIsUnreachable(subject))
+    fail("subject is not a forced MintItemMalformed rejection");
+  if (!verdictSubjectIsCanonical(subject))
+    fail("verdict subject is not canonical");
+  return Object.freeze({
+    subject,
+    fieldIndex: MINT_ITEM_NON_CANONICAL_MINT_FIELD,
+    itemIndex: 0,
+    fieldPreimageHex: "",
+    fieldCommitmentHex: "",
+    itemHex: "",
+    itemLength: 0,
+    itemHash: "",
+    chunkHashes: Object.freeze([]),
+    carriage: "Inline",
+    canonical: true,
+    scanControls: Object.freeze([]),
+    decisiveFaultHolds: true,
+  });
+};
+
 export type MintItemFinding = {
   readonly subject: VerdictSubject;
   readonly fieldIndex: 5;

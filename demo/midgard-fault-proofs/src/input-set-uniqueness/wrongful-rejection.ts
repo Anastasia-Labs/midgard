@@ -8,6 +8,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { cborDefiniteBytes } from "../cbor-serialise.js";
+
 const DOMAIN = Buffer.from(
   "midgard/fraud-proofs/input-set-uniqueness/checkpoint-v1",
   "utf8",
@@ -111,18 +113,6 @@ export const inputSetUnionIsStrictlyIncreasing = ({
   );
 };
 
-const cborBytes = (hex: string): Buffer => {
-  const bytes = Buffer.from(hex, "hex");
-  if (bytes.length < 24)
-    return Buffer.concat([Buffer.from([0x40 + bytes.length]), bytes]);
-  if (bytes.length <= 0xff)
-    return Buffer.concat([Buffer.from([0x58, bytes.length]), bytes]);
-  const head = Buffer.alloc(3);
-  head[0] = 0x59;
-  head.writeUInt16BE(bytes.length, 1);
-  return Buffer.concat([head, bytes]);
-};
-
 export const inputSetUniquenessCheckpoint = ({
   bound,
   spendCount,
@@ -155,8 +145,8 @@ export const inputSetUniquenessCheckpoint = ({
     DOMAIN,
     encodeVerdictSubject(bound.subject),
     ...integers,
-    cborBytes(previousItem),
-    cborBytes(nextExpectedScriptHash),
+    cborDefiniteBytes(Buffer.from(previousItem, "hex")),
+    cborDefiniteBytes(Buffer.from(nextExpectedScriptHash, "hex")),
   ]).toString("hex");
   return Effect.runSync(hashHexWithBlake2b(material, 32));
 };

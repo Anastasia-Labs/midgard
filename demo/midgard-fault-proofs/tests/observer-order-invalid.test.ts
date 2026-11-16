@@ -272,7 +272,7 @@ describe("observerOrderInvalid V1 semantics", () => {
       violationId: OBSERVER_ORDER_INVALID_VIOLATION_ID,
       position,
       transactionId: txId,
-      observerIndex: 1,
+      observerIndex: 1n,
       source: "accepted",
       direction: "wrongfulAcceptance",
     });

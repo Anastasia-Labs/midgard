@@ -12,7 +12,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedItem } from "../evidence/claimed-coordinate.js";
+import {
+  claimedFieldItems,
+  claimedItem,
+} from "../evidence/claimed-coordinate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
@@ -107,15 +110,18 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
       const coordinate = reason.OutputNonCanonical;
       const fieldIndex = 2 as const;
       const itemIndex = coordinate.output_index;
-      const preimage = material.fieldPreimages[fieldIndex];
-      const item =
-        preimage === undefined
+      const fieldPreimage = material.fieldPreimages[fieldIndex];
+      const items =
+        fieldPreimage === undefined
           ? undefined
-          : claimedItem(decodeMidgardFieldPreimage(preimage), itemIndex);
-      if (item === undefined || item.length > 16_384) {
-        return [];
-      }
-      const fieldPreimage = material.fieldPreimages[fieldIndex]!;
+          : claimedFieldItems(fieldPreimage);
+      // A malformed field belongs to the shape families.
+      if (fieldPreimage === undefined || items === undefined) return [];
+      // An output the field lacks is wrongly rejected: step 02 closes it on
+      // the field's count.
+      const item = claimedItem(items, itemIndex);
+      if (item !== undefined && item.length > 16_384) return [];
+      const itemLength = item?.length ?? 0;
       const prepared = prepareTransactionOutputEvidence({
         finding: {
           subject: forcedVerdictSubject({
@@ -134,11 +140,14 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
       return [
         {
           ...forcedTransactionSubject(transaction.key),
-          detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
+          detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${itemLength.toString()}`,
           headerHash: evidence.headerHash,
           violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,
           position: BigInt(forcedIndex),
-          diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for legal field ${fieldIndex.toString()} item ${itemIndex.toString()} width ${item.length.toString()}`,
+          diagnostic:
+            item === undefined
+              ? `forced transaction ${transaction.value.tx_id} was rejected for output ${itemIndex.toString()}, which field ${fieldIndex.toString()} does not hold`
+              : `forced transaction ${transaction.value.tx_id} was rejected for legal field ${fieldIndex.toString()} item ${itemIndex.toString()} width ${item.length.toString()}`,
         },
       ];
     },

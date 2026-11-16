@@ -5,6 +5,10 @@ import type { VerdictSubject } from "@al-ft/midgard-sdk";
 import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  admitClaimedCoordinateDecimal,
+  claimedCoordinateDecimal,
+} from "../evidence/claimed-coordinate.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
   type MintDeclaredAssetLimitEvidence,
@@ -12,7 +16,9 @@ import {
   prepareMintDeclaredAssetLimitEvidence,
 } from "./family.js";
 import {
+  type MintDeclaredAssetLimitGrammarPlan,
   type MintDeclaredAssetLimitStagedPlan,
+  planMintDeclaredAbsentPolicy,
   planMintDeclaredAssetLimitStagedWalk,
 } from "./staged-plan.js";
 
@@ -27,7 +33,8 @@ export type MintDeclaredAssetLimitArtifact = JournalJsonObject &
     position: number;
     transactionId: string;
     sourceKind: "accepted" | "forced";
-    policyIndex: number;
+    /** The claimed policy's decimal: a rejection may name any codec integer. */
+    policyIndex: string;
     subjectCbor: string;
     nativeTxCompactCbor: string;
     witnessSetCompactCbor: string;
@@ -87,7 +94,7 @@ export const buildMintDeclaredAssetLimitArtifact = ({
     position: natural(Number(position), "position"),
     transactionId: evidence.subject.transaction_id,
     sourceKind,
-    policyIndex: natural(Number(evidence.policyIndex), "policy index"),
+    policyIndex: claimedCoordinateDecimal(evidence.policyIndex),
     subjectCbor: Data.to(
       evidence.subject as never,
       MintDeclaredAssetLimitVerdictSubjectSchema as never,
@@ -121,7 +128,8 @@ export const buildMintDeclaredAssetLimitArtifact = ({
 export type AdmittedMintDeclaredAssetLimitArtifact = Readonly<{
   artifact: MintDeclaredAssetLimitArtifact;
   evidence: MintDeclaredAssetLimitEvidence;
-  staged: MintDeclaredAssetLimitStagedPlan;
+  /** The fold plan of a held policy; only the grammar for an absent one. */
+  staged: MintDeclaredAssetLimitStagedPlan | MintDeclaredAssetLimitGrammarPlan;
 }>;
 
 export const admitMintDeclaredAssetLimitArtifact = (
@@ -169,7 +177,12 @@ export const admitMintDeclaredAssetLimitArtifact = (
               "mintDeclaredAssetLimit artifact source kind changed",
             );
           })(),
-    policyIndex: natural(raw.policyIndex, "policy index"),
+    policyIndex: claimedCoordinateDecimal(
+      admitClaimedCoordinateDecimal(
+        raw.policyIndex,
+        "mintDeclaredAssetLimit policy index",
+      ),
+    ),
     subjectCbor: hex(raw.subjectCbor, null, "subject"),
     nativeTxCompactCbor: hex(raw.nativeTxCompactCbor, null, "compact source"),
     witnessSetCompactCbor: hex(
@@ -204,13 +217,14 @@ export const admitMintDeclaredAssetLimitArtifact = (
     throw new Error(
       "mintDeclaredAssetLimit artifact subject changed transaction",
     );
+  const policyIndex = BigInt(artifact.policyIndex);
   const field = Buffer.from(artifact.fieldPreimageCbor, "hex");
   if (
     midgardFieldCommitment(field).toString("hex") !== artifact.fieldCommitment
   )
     throw new Error("mintDeclaredAssetLimit artifact field commitment changed");
   const evidence = prepareMintDeclaredAssetLimitEvidence({
-    finding: { subject, policyIndex: BigInt(artifact.policyIndex) },
+    finding: { subject, policyIndex },
     fieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
   });
@@ -222,11 +236,17 @@ export const admitMintDeclaredAssetLimitArtifact = (
   return Object.freeze({
     artifact,
     evidence,
-    staged: planMintDeclaredAssetLimitStagedWalk({
-      transactionId: artifact.transactionId,
-      fieldPreimageCbor: artifact.fieldPreimageCbor,
-      policyIndex: artifact.policyIndex,
-    }),
+    staged: evidence.absent
+      ? planMintDeclaredAbsentPolicy({
+          transactionId: artifact.transactionId,
+          fieldPreimageCbor: artifact.fieldPreimageCbor,
+          policyIndex,
+        })
+      : planMintDeclaredAssetLimitStagedWalk({
+          transactionId: artifact.transactionId,
+          fieldPreimageCbor: artifact.fieldPreimageCbor,
+          policyIndex: Number(policyIndex),
+        }),
   });
 };
 

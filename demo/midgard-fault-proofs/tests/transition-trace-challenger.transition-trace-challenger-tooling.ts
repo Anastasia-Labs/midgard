@@ -27,6 +27,8 @@ import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js
 import {
   detectAuthenticatedFieldPreimageLengthEvidence,
   detectFieldPreimageLengthCompleteReplay,
+  type FieldPreimageLengthWorkflowEvidence,
+  inDomainFieldPreimageLengthEvidence,
 } from "../src/field-preimage-length-mismatch/evidence.js";
 import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
 import {
@@ -82,6 +84,12 @@ import {
   utxoRootWithDescriptors,
   withdrawalInfo,
 } from "./transition-trace-challenger.native-material.js";
+
+const inDomain = (evidence: FieldPreimageLengthWorkflowEvidence) => {
+  if (!inDomainFieldPreimageLengthEvidence(evidence))
+    throw new Error("expected an in-domain field-length finding");
+  return evidence;
+};
 
 describe("transition-trace challenger tooling", () => {
   it("reconstructs exact Aiken withdrawal asset maps and refuses alternate framing or root substitution", async () => {
@@ -569,10 +577,12 @@ describe("transition-trace challenger tooling", () => {
       actualLength: lengths[0]! - 1,
     });
     expect(direct.inclusion.l2TransactionSourceCbor).toBe(sourceCbor);
-    const production = await detectAuthenticatedFieldPreimageLengthEvidence({
-      observation: authenticatedObservation(fixture),
-      sources: [retainedSource(fixture)],
-    });
+    const production = inDomain(
+      await detectAuthenticatedFieldPreimageLengthEvidence({
+        observation: authenticatedObservation(fixture),
+        sources: [retainedSource(fixture)],
+      }),
+    );
     expect(production.prepared).toEqual(direct.prepared);
     expect(production.stageEvidence.acceptedInclusion).toMatchObject({
       nativeTxId: material.txId,
@@ -627,10 +637,12 @@ describe("transition-trace challenger tooling", () => {
         }),
       ],
     });
-    const production = await detectAuthenticatedFieldPreimageLengthEvidence({
-      observation: authenticatedObservation(fixture),
-      sources: [retainedSource(fixture)],
-    });
+    const production = inDomain(
+      await detectAuthenticatedFieldPreimageLengthEvidence({
+        observation: authenticatedObservation(fixture),
+        sources: [retainedSource(fixture)],
+      }),
+    );
     expect(production.prepared).toMatchObject({
       direction: "wrongfulRejection",
       fieldIndex: 0,

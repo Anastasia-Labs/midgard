@@ -239,7 +239,12 @@ export const createMintDeclaredAssetLimitActuator = (
             awaitConfirmation: false,
           });
         });
-      if (action.stage === "step_03")
+      if (action.stage === "step_03") {
+        const staged = admitted.staged;
+        if (!("walk" in staged))
+          throw new Error(
+            "mintDeclaredAssetLimit absent policy closes before the fold",
+          );
         return await capture(async (preSubmitBoundary) => {
           await submitMintDeclaredAssetLimitStep03({
             ownOutputs,
@@ -250,13 +255,14 @@ export const createMintDeclaredAssetLimitActuator = (
             threadOutRef: action.threadOutRef,
             evidence: admitted.evidence,
             nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
-            staged: admitted.staged,
+            staged,
             walkOrdinal: action.walkOrdinal,
             referenceScriptUtxo: config.references.steps[2],
             preSubmitBoundary,
             awaitConfirmation: false,
           });
         });
+      }
       if (action.stage === "step_04")
         return await capture(async (preSubmitBoundary) => {
           await submitMintDeclaredAssetLimitStep04({

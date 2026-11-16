@@ -373,8 +373,7 @@ latency, retained-DA reachability).
 ### MidgardWatcherProofFamilyCoverageGap
 
 **Meaning.** The watcher classified a committed block as unprovable: its
-earliest finding is one no installed fault-proof family proves (for example a
-forced transaction rejected for a coordinate the transaction does not have).
+earliest finding is one no installed fault-proof family proves.
 The `proof_family_coverage_gap` alert is active, one subject per header, and
 holds readiness (`active_alert`). The watcher keeps classifying and proving
 the later blocks. The alert clears by itself when the header is decided

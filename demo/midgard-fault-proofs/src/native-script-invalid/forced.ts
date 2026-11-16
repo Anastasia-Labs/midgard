@@ -10,6 +10,10 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  claimedFieldItems,
+  claimedItem,
+} from "../evidence/claimed-coordinate.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
@@ -54,15 +58,19 @@ export const detectNativeScriptInvalidForcedReplay = (
         throw new Error(
           "native-script-invalid: forced preimage differs from authenticated leaf",
         );
-      const scripts = decodeMidgardFieldPreimage(material.fieldPreimages[6]!);
-      const item =
-        scriptIndex >= 0n && scriptIndex <= BigInt(Number.MAX_SAFE_INTEGER)
-          ? scripts[Number(scriptIndex)]
-          : undefined;
-      if (item === undefined) return [];
-      const script = decodedWitnessScript(item);
+      // A malformed field 6 is the field-shape families' to prove.
+      const scripts = claimedFieldItems(material.fieldPreimages[6]!);
+      if (scripts === undefined) return [];
+      // A position field 6 lacks names no script, so canonical validation
+      // evaluated none there; step 02 closes it from the field's count.
+      const item = claimedItem(scripts, scriptIndex);
+      const script =
+        item === undefined ? undefined : decodedWitnessScript(item);
       // An item that does not decode is witnessScriptDecoding's to prove.
-      if (script === undefined || script.language !== "NativeCardano")
+      if (
+        item !== undefined &&
+        (script === undefined || script.language !== "NativeCardano")
+      )
         return [];
       const witnesses = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
       const signers = nativeScriptInvalidSignerSet(
@@ -71,6 +79,8 @@ export const detectNativeScriptInvalidForcedReplay = (
       );
       const body = material.canonical.body;
       if (
+        script !== undefined &&
+        script.language === "NativeCardano" &&
         !verifyMidgardNativeScript(script.nativeScript, {
           witnessSigners: new Set(
             signers.hashes.map((hash) => hash.toString("hex")),
@@ -121,7 +131,8 @@ export const detectNativeScriptInvalidForcedReplay = (
               transaction.fullTransactionCbor,
             ).toString("hex"),
             scriptIndex,
-            scriptItemCbor: Buffer.from(item).toString("hex"),
+            scriptItemCbor:
+              item === undefined ? "" : Buffer.from(item).toString("hex"),
             addrWitnessItemCbors: witnesses.map((value) =>
               Buffer.from(value).toString("hex"),
             ),

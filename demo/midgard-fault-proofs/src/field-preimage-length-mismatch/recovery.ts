@@ -34,8 +34,9 @@ import {
   createFieldPreimageLengthLucidSubmission,
 } from "./config.js";
 import {
-  type AuthenticatedFieldPreimageLengthEvidence,
+  type FieldPreimageLengthWorkflowEvidence,
   fieldPreimageLengthEvidenceFromCanonicalBlock,
+  inDomainFieldPreimageLengthEvidence,
 } from "./evidence.js";
 import type { FieldPreimageLengthAction } from "./workflow.js";
 
@@ -46,12 +47,13 @@ type BoundWorkflow = Pick<
 const CATEGORY = "fieldPreimageLengthMismatch";
 
 const proofMaterial = (
-  evidence: AuthenticatedFieldPreimageLengthEvidence,
-): AuthenticatedFieldPreimageLengthEvidence => ({
-  prepared: evidence.prepared,
-  fieldMaterial: evidence.fieldMaterial,
-  stageEvidence: evidence.stageEvidence,
-});
+  evidence: FieldPreimageLengthWorkflowEvidence,
+): FieldPreimageLengthWorkflowEvidence =>
+  ({
+    prepared: evidence.prepared,
+    fieldMaterial: evidence.fieldMaterial,
+    stageEvidence: evidence.stageEvidence,
+  }) as FieldPreimageLengthWorkflowEvidence;
 
 /** Existing submitters capture one evaluated body; shared recovery owns every durable attempt. */
 export const createFieldPreimageLengthRecoveryPorts = (
@@ -59,10 +61,10 @@ export const createFieldPreimageLengthRecoveryPorts = (
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
   let current:
-    | { digest: string; evidence: AuthenticatedFieldPreimageLengthEvidence }
+    | { digest: string; evidence: FieldPreimageLengthWorkflowEvidence }
     | undefined;
   const admit = (
-    evidence: AuthenticatedFieldPreimageLengthEvidence,
+    evidence: FieldPreimageLengthWorkflowEvidence,
     artifact?: JournalJsonObject,
   ) => {
     if (evidence.prepared.headerHash !== binding.definition.headerHash)
@@ -161,9 +163,16 @@ export const createFieldPreimageLengthRecoveryPorts = (
         throw new Error(
           `${CATEGORY} authenticated thread changed proof direction`,
         );
+      // A field outside the native layout is never opened, so it needs no
+      // carriage.
+      const carried = inDomainFieldPreimageLengthEvidence(evidence)
+        ? evidence
+        : undefined;
       const needsCarriage =
-        selected === "authenticate" ||
-        (selected === "dispatch" && evidence.prepared.sourceKind === "normal");
+        carried !== undefined &&
+        (selected === "authenticate" ||
+          (selected === "dispatch" &&
+            evidence.prepared.sourceKind === "normal"));
       const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           const builders = createConcreteFieldPreimageLengthLucidBuilders({
@@ -189,7 +198,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
               const carriage = needsCarriage
                 ? await resolveFieldPreimageLengthCarriage({
                     workflow,
-                    evidence,
+                    evidence: carried,
                     ownOutputs: workflowFieldCarriageOwnOutputs({
                       category: CATEGORY,
                       entries,
@@ -265,6 +274,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
     )
       return null;
     const evidence = requireMaterial(artifact);
+    if (!inDomainFieldPreimageLengthEvidence(evidence)) return null;
     if (
       action.input.stage !== "step_02" &&
       action.input.stage !== "step_03" &&

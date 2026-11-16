@@ -11,7 +11,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex } from "../evidence/claimed-coordinate.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
@@ -42,7 +41,8 @@ export type ObserverOrderInvalidReplayDetection = DetectionSubject &
     violationId: typeof OBSERVER_ORDER_INVALID_VIOLATION_ID;
     position: bigint;
     transactionId: string;
-    observerIndex: number;
+    /** Any integer the rejection codec admits, as the reason names it. */
+    observerIndex: bigint;
     source: "accepted" | "forced";
     direction: "wrongfulAcceptance" | "wrongfulRejection";
     forcedIndex?: number;
@@ -232,7 +232,7 @@ export const detectObserverOrderInvalidAcceptedRawReplay = (
           violationId: OBSERVER_ORDER_INVALID_VIOLATION_ID,
           position: BigInt(transaction.index),
           transactionId: transaction.nodeTxId,
-          observerIndex,
+          observerIndex: BigInt(observerIndex),
           source: "accepted",
           direction: "wrongfulAcceptance",
         }),
@@ -254,10 +254,7 @@ export const detectObserverOrderInvalidForcedReplay = (
       const reason = verdict.ForcedTxInvalid.reason;
       if (typeof reason === "string" || !("ObserverOrderInvalid" in reason))
         return;
-      const observerIndex = claimedIndex(
-        reason.ObserverOrderInvalid.observer_index,
-      );
-      if (observerIndex === undefined) return;
+      const observerIndex = reason.ObserverOrderInvalid.observer_index;
       const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
@@ -282,7 +279,7 @@ export const detectObserverOrderInvalidForcedReplay = (
             sourceKey: transaction.key,
             rejectionReason: reason,
           }),
-          observerIndex: BigInt(observerIndex),
+          observerIndex,
         },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

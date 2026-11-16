@@ -14,17 +14,18 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedIndex } from "../evidence/claimed-coordinate.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,
   outRefKey,
+  prepareResolvedOutputAbsentInputEvidence,
   prepareResolvedOutputNonCanonicalEvidence,
   type ResolvedOutputCoordinate,
-  type ResolvedOutputNonCanonicalEvidence,
   type ResolvedOutputPriorLedgerReplay,
+  type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 
 /**
@@ -109,10 +110,10 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
 }: {
   readonly block: CanonicalBlockEvidence;
   readonly priorLedger: ResolvedOutputPriorLedgerReplay;
-}): readonly ResolvedOutputNonCanonicalEvidence[] => {
+}): readonly ResolvedOutputWorkflowEvidence[] => {
   if (priorLedger.priorRoot !== block.header.prevUtxosRoot)
     return fail("predecessor replay root differs from authenticated header");
-  const detections: ResolvedOutputNonCanonicalEvidence[] = [];
+  const detections: ResolvedOutputWorkflowEvidence[] = [];
   const inspect = (
     bytes: Uint8Array,
     subject: VerdictSubject,
@@ -123,13 +124,9 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
         ? deriveMidgardForcedTxFaultEvidenceMaterial
         : deriveMidgardNativeTxFaultEvidenceMaterial
     )(bytes);
-    const selected = claimedItem(
-      decodeMidgardInputFieldPreimage(
-        material.fieldPreimages[coordinate.sourceKind]!,
-      ),
-      coordinate.inputIndex,
-    );
-    // Accepted coordinates are enumerated; only a forced claim can be absent.
+    const selected = decodeMidgardInputFieldPreimage(
+      material.fieldPreimages[coordinate.sourceKind]!,
+    )[coordinate.inputIndex];
     if (selected === undefined) return;
     const transactionId = Buffer.from(selected.txId).toString("hex");
     const resolved = priorLedger.outputs.get(
@@ -182,19 +179,39 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
     )
       return;
     const coordinate = reason.InputSpentOutputNonCanonical;
-    const sourceKind = claimedIndex(coordinate.source_kind);
-    const inputIndex = claimedIndex(coordinate.input_index);
-    if ((sourceKind !== 0 && sourceKind !== 1) || inputIndex === undefined)
+    const subject = forcedVerdictSubject({
+      transactionId: transaction.value.tx_id,
+      sourceKey: transaction.key,
+      rejectionReason: reason,
+    });
+    const sourceKind = coordinate.source_kind;
+    const inputIndex =
+      sourceKind === 0n || sourceKind === 1n
+        ? claimedIndex(
+            coordinate.input_index,
+            decodeMidgardInputFieldPreimage(
+              deriveMidgardForcedTxFaultEvidenceMaterial(
+                transaction.fullTransactionCbor,
+              ).fieldPreimages[Number(sourceKind)]!,
+            ).length,
+          )
+        : undefined;
+    // A coordinate naming no input of the transaction resolves no output,
+    // so the rejection is contradicted outright.
+    if (inputIndex === undefined) {
+      detections.push(
+        prepareResolvedOutputAbsentInputEvidence({
+          subject,
+          canonicalTransactionCbor: transaction.fullTransactionCbor,
+          priorRoot: priorLedger.priorRoot,
+        }),
+      );
       return;
-    inspect(
-      transaction.fullTransactionCbor,
-      forcedVerdictSubject({
-        transactionId: transaction.value.tx_id,
-        sourceKey: transaction.key,
-        rejectionReason: reason,
-      }),
-      { sourceKind, inputIndex },
-    );
+    }
+    inspect(transaction.fullTransactionCbor, subject, {
+      sourceKind: sourceKind === 0n ? 0 : 1,
+      inputIndex,
+    });
   });
   return Object.freeze(detections);
 };

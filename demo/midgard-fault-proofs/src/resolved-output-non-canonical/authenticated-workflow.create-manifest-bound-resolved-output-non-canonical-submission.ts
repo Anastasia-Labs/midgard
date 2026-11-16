@@ -17,7 +17,12 @@ import {
   type ResolvedOutputNonCanonicalRuntimeLoader,
 } from "./authenticated-workflow.derive-resolved-output-non-canonical-authenticated-source.js";
 import { type ManifestBoundResolvedOutputNonCanonicalConfig } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
-import { type ResolvedOutputEvidence } from "./resolved-output-non-canonical.js";
+import {
+  type ResolvedOutputEvidence,
+  resolvedOutputEvidenceIsAbsent,
+  resolvedOutputOpenedField,
+  type ResolvedOutputWorkflowEvidence,
+} from "./resolved-output-non-canonical.js";
 import { submitResolvedOutputNonCanonicalCancel } from "./submit-cancel.js";
 import { submitResolvedOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted.js";
 import { submitResolvedOutputNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
@@ -55,7 +60,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
       | "submitStep04Datum"
       | "submitStep05"
       | "removeDescendants",
-    evidence: ResolvedOutputEvidence,
+    evidence: ResolvedOutputWorkflowEvidence,
   ) => {
     if (evidence.subject.transaction_id.length !== 64)
       throw new Error(
@@ -90,7 +95,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           network: config.binding.network,
           contracts: config.contracts,
           signer: config.signer,
-          finding: evidence,
+          finding: present(evidence),
           threadUtxo: required(stage.threadUtxo, "step01 thread UTxO"),
           threadToken: required(stage.threadToken, "step01 thread token"),
           stateQueueBlockOutRef: required(
@@ -149,7 +154,8 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           stage.witnessSetCompactCbor,
           "witness-set compact CBOR",
         ),
-        publishCarriage: evidence.carriage === "RawUtxo",
+        publishCarriage:
+          resolvedOutputOpenedField(evidence)?.carriage === "RawUtxo",
         publishedCarriageUtxos: stage.publishedCarriageUtxos,
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
@@ -160,7 +166,9 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         preSubmitBoundary,
       });
       return {
-        stage: "step03" as const,
+        stage: resolvedOutputEvidenceIsAbsent(evidence)
+          ? ("step05" as const)
+          : ("step03" as const),
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };
@@ -173,7 +181,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         categoryId: config.binding.resolvedContracts.category.categoryId,
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step03 thread out-ref"),
-        evidence,
+        evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step03,
         witnessReferenceScripts: config.referenceScripts.witnesses,
         preSubmitBoundary,
@@ -194,7 +202,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           stage.threadOutRef,
           "reconstruction thread out-ref",
         ),
-        evidence,
+        evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step04,
         preSubmitBoundary,
       });
@@ -211,7 +219,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         categoryId: config.binding.resolvedContracts.category.categoryId,
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "datum thread out-ref"),
-        evidence,
+        evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step04Datum,
         preSubmitBoundary,
       });
@@ -269,7 +277,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
   },
   cancel: async (
     current: "step01" | "step02" | "step03" | "reconstructing" | "step04Datum",
-    evidence: ResolvedOutputEvidence,
+    evidence: ResolvedOutputWorkflowEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index =
@@ -304,3 +312,14 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
     };
   },
 });
+
+/** Steps past 02 run only for a present input; an absent one closes at 02. */
+const present = (
+  evidence: ResolvedOutputWorkflowEvidence,
+): ResolvedOutputEvidence => {
+  if (resolvedOutputEvidenceIsAbsent(evidence))
+    throw new Error(
+      "resolvedOutputNonCanonical absent-input evidence has no resolved output",
+    );
+  return evidence;
+};

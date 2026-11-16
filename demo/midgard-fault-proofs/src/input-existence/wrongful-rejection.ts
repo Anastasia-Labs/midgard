@@ -196,10 +196,13 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     ] of block.reconstruction.forcedTransactions.entries()) {
       if (forced.value.verdict === "ForcedTxValid") continue;
       const reason = forced.value.verdict.ForcedTxInvalid.reason;
+      // Either family proves a source kind outside the two input fields; the
+      // spend-input family owns it so the block has one decision.
       if (
         typeof reason !== "object" ||
         !("InputNotFound" in reason) ||
-        reason.InputNotFound.source_kind !== sourceKind
+        (reason.InputNotFound.source_kind !== sourceKind &&
+          !(sourceKind === 0n && reason.InputNotFound.source_kind !== 1n))
       )
         continue;
       try {

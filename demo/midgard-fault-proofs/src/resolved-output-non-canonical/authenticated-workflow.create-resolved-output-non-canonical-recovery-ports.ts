@@ -48,8 +48,9 @@ import {
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
-  type ResolvedOutputEvidence,
   resolvedOutputEvidenceIdentity,
+  resolvedOutputOpenedField,
+  type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.js";
 import {
   nextResolvedOutputAction,
@@ -79,7 +80,7 @@ export const createManifestBoundResolvedOutputNonCanonicalRuntime = ({
   return Object.freeze({
     runtimeVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     config,
-    runOrResume: async (evidence: ResolvedOutputEvidence) => {
+    runOrResume: async (evidence: ResolvedOutputWorkflowEvidence) => {
       const identity = resolvedOutputEvidenceIdentity(evidence);
       for (;;) {
         const stage = await submission.observe(identity);
@@ -278,18 +279,18 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
   }: LinearFamilyPrerequisiteInput): FieldCarriageRequirement | null => {
     if (action.input.stage !== "step_02") return null;
     const { evidence, source } = material.require(artifact);
+    const opened = resolvedOutputOpenedField(evidence);
+    if (opened === undefined) return null;
     const certificate = binding.fieldPreimageCertificate;
     if (certificate === null)
       throw new Error(`${category} omitted field certificate authority`);
     return {
       planned: planFaultProofFieldOpening({
         anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-        fieldIndex: evidence.coordinate.sourceKind,
+        fieldIndex: opened.fieldIndex,
         anchorTxId: evidence.subject.transaction_id,
         nativeTxCompactCbor: source.nativeTxCompactCbor,
-        itemCbors: decodeMidgardFieldPreimage(
-          Buffer.from(evidence.inputFieldPreimageHex, "hex"),
-        ),
+        itemCbors: decodeMidgardFieldPreimage(opened.preimage),
         owner: config.signer.paymentKeyHash,
         publish: true,
         label: `${category} field opening`,

@@ -25,7 +25,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
   PLUTUS_SCRIPT_REFUSED_RESULT_BASE,
@@ -364,13 +364,13 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
   const inspect = (
     subject: VerdictSubject,
     bytes: Uint8Array,
-    outputIndex: number,
+    outputIndex: bigint,
   ): void => {
     try {
       results.push(
         prepareOutputReferenceScriptDecodingEvidence({
           subject,
-          outputIndex: BigInt(outputIndex),
+          outputIndex,
           canonicalTransactionCbor: bytes,
         }),
       );
@@ -395,7 +395,7 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       material.transactionId.toString("hex"),
     );
     decodeMidgardFieldPreimage(material.fieldPreimages[2]!).forEach(
-      (_item, outputIndex) => inspect(subject, bytes, outputIndex),
+      (_item, outputIndex) => inspect(subject, bytes, BigInt(outputIndex)),
     );
   });
   block.reconstruction.forcedTransactions.forEach((forced) => {
@@ -413,16 +413,14 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       )
     )
       return;
-    const outputIndex = claimedIndex(
+    const outputIndex =
       "PlutusScriptUndecodable" in reason
         ? reason.PlutusScriptUndecodable.item_index
         : "OutputReferenceScriptMalformed" in reason
           ? reason.OutputReferenceScriptMalformed.output_index
           : "OutputReferenceScriptNodeLimit" in reason
             ? reason.OutputReferenceScriptNodeLimit.output_index
-            : reason.OutputReferenceScriptDepthLimit.output_index,
-    );
-    if (outputIndex === undefined) return;
+            : reason.OutputReferenceScriptDepthLimit.output_index;
     inspect(
       forcedVerdictSubject({
         transactionId: forced.value.tx_id,

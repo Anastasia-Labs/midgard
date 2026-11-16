@@ -7,6 +7,7 @@ import {
 } from "@al-ft/midgard-validation";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import { minAdaOutputFacts } from "./scan.js";
@@ -46,10 +47,7 @@ export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
         );
       const outputs = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);
       const outputMaterial = (outputIndex: bigint) => {
-        const item =
-          outputIndex >= 0n && outputIndex <= BigInt(Number.MAX_SAFE_INTEGER)
-            ? outputs[Number(outputIndex)]
-            : undefined;
+        const item = claimedItem(outputs, outputIndex);
         if (item === undefined) return undefined;
         const output = minAdaOutputFacts(item);
         if (output === null) return undefined;
@@ -63,13 +61,14 @@ export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
         };
       };
       // An accepted leaf is wrong at every output below the floor; a
-      // rejection is wrong only when its named output meets the floor.
+      // rejection is wrong when its named output meets the floor or is not
+      // an output of field 2 at all.
       const contradicted = accepted
         ? outputs.flatMap((_, index) => {
             const opened = outputMaterial(BigInt(index));
             return opened === undefined || opened.meets
               ? []
-              : [{ outputIndex: BigInt(index), output: opened.output }];
+              : [{ outputIndex: BigInt(index) }];
           })
         : (() => {
             const outputIndex = (
@@ -77,10 +76,12 @@ export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
                 OutputBelowMinAda: { output_index: bigint };
               }
             ).OutputBelowMinAda.output_index;
+            if (claimedItem(outputs, outputIndex) === undefined)
+              return [{ outputIndex }];
             const opened = outputMaterial(outputIndex);
             return opened === undefined || !opened.meets
               ? []
-              : [{ outputIndex, output: opened.output }];
+              : [{ outputIndex }];
           })();
       const direction = accepted ? 0n : 1n;
       const subject = forcedVerdictSubject({

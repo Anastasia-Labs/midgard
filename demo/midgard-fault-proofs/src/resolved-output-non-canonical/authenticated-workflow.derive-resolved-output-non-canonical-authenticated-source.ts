@@ -26,7 +26,7 @@ import {
   type ResolvedOutputNonCanonicalAuthenticatedSource,
   type ResolvedOutputNonCanonicalStage,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
-import { type ResolvedOutputEvidence } from "./resolved-output-non-canonical.js";
+import { type ResolvedOutputWorkflowEvidence } from "./resolved-output-non-canonical.js";
 import {
   type ResolvedOutputJournal,
   type ResolvedOutputStage,
@@ -38,7 +38,7 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSource = async ({
   evidence,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly evidence: ResolvedOutputEvidence;
+  readonly evidence: ResolvedOutputWorkflowEvidence;
 }): Promise<ResolvedOutputNonCanonicalAuthenticatedSource> => {
   if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
     const decoded = await Promise.all(
@@ -153,7 +153,7 @@ export type ResolvedOutputNonCanonicalRuntimeLoader = Readonly<{
       | "submitStep05"
       | "removeDescendants"
       | "cancel";
-    readonly evidence: ResolvedOutputEvidence;
+    readonly evidence: ResolvedOutputWorkflowEvidence;
   }) => Promise<ResolvedOutputNonCanonicalStage>;
 }>;
 

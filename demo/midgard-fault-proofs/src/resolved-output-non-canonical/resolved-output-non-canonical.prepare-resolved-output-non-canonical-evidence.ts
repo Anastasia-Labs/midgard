@@ -399,26 +399,70 @@ export const prepareResolvedOutputAbsentInputEvidence = ({
   });
 };
 
+export type ResolvedOutputWorkflowEvidence =
+  | ResolvedOutputNonCanonicalEvidence
+  | ResolvedOutputAbsentInputEvidence;
+
 export const resolvedOutputEvidenceIsAbsent = (
   evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence,
 ): evidence is ResolvedOutputAbsentInputEvidence =>
   "absent" in evidence && evidence.absent;
 
+/**
+ * The input field step 02 opens and its carriage tier, or undefined when the
+ * coordinate names no input field and step 02 opens nothing.
+ */
+export const resolvedOutputOpenedField = (
+  evidence: ResolvedOutputWorkflowEvidence,
+):
+  | Readonly<{
+      fieldIndex: number;
+      preimage: Buffer;
+      carriage: ResolvedOutputNonCanonicalEvidence["carriage"];
+    }>
+  | undefined => {
+  if (!resolvedOutputEvidenceIsAbsent(evidence))
+    return {
+      fieldIndex: evidence.coordinate.sourceKind,
+      preimage: Buffer.from(evidence.inputFieldPreimageHex, "hex"),
+      carriage: evidence.carriage,
+    };
+  if (!evidence.namesInputField) return undefined;
+  const fieldIndex = Number(evidence.coordinate.sourceKind);
+  const preimage = deriveMidgardForcedTxFaultEvidenceMaterial(
+    Buffer.from(evidence.canonicalTransactionCborHex, "hex"),
+  ).fieldPreimages[fieldIndex]!;
+  return {
+    fieldIndex,
+    preimage,
+    carriage: selectMidgardFieldCarriageTier(preimage.length),
+  };
+};
+
 export const resolvedOutputEvidenceIdentity = (
-  evidence: ResolvedOutputNonCanonicalEvidence,
+  evidence: ResolvedOutputWorkflowEvidence,
 ): string =>
-  [
-    evidence.subject.transaction_id,
-    evidence.subject.direction.toString(),
-    evidence.coordinate.sourceKind.toString(),
-    evidence.coordinate.inputIndex.toString(),
-    evidence.resolved.priorRoot,
-    evidence.resolved.transactionId,
-    evidence.resolved.outputIndex.toString(),
-    decodeMidgardLedgerOutputCommitment(
-      Buffer.from(evidence.resolved.descriptorCborHex, "hex"),
-    ).itemCommitment.toString("hex"),
-  ].join(":");
+  resolvedOutputEvidenceIsAbsent(evidence)
+    ? [
+        evidence.subject.transaction_id,
+        evidence.subject.direction.toString(),
+        evidence.coordinate.sourceKind.toString(),
+        evidence.coordinate.inputIndex.toString(),
+        evidence.resolved.priorRoot,
+        "absent",
+      ].join(":")
+    : [
+        evidence.subject.transaction_id,
+        evidence.subject.direction.toString(),
+        evidence.coordinate.sourceKind.toString(),
+        evidence.coordinate.inputIndex.toString(),
+        evidence.resolved.priorRoot,
+        evidence.resolved.transactionId,
+        evidence.resolved.outputIndex.toString(),
+        decodeMidgardLedgerOutputCommitment(
+          Buffer.from(evidence.resolved.descriptorCborHex, "hex"),
+        ).itemCommitment.toString("hex"),
+      ].join(":");
 
 export const resolvedOutputEvidenceCloses = (
   evidence: Pick<

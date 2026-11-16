@@ -10,6 +10,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedCoordinateDecimal } from "../evidence/claimed-coordinate.js";
 import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -170,7 +171,8 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
       detection.evidence.subject as never,
       RedeemerCanonicityVerdictSubjectSchema as never,
     ),
-    redeemerIndex: Number(detection.evidence.redeemerIndex),
+    // A rejection may name any codec integer, so the artifact carries its decimal.
+    redeemerIndex: claimedCoordinateDecimal(detection.evidence.redeemerIndex),
     fieldPreimageHex: detection.evidence.fieldPreimageHex,
     fieldCommitmentHex: detection.evidence.fieldCommitmentHex,
     nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),

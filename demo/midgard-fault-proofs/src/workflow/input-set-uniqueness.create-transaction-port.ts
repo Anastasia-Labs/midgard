@@ -11,6 +11,10 @@ import {
   submitInputSetUniquenessStep04Advance,
   submitInputSetUniquenessStep04Finalize,
 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-04.js";
+import {
+  inputSetPairNamesNoDuplicate,
+  type InputSetUniqueScanState,
+} from "../input-set-uniqueness/wrongful-rejection.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
@@ -242,10 +246,18 @@ export const createTransactionPort = (
         thread.datum,
         InputSetUniquenessStep04DatumSchema as never,
       ) as {
-        data: { cursor: bigint; spend_count: bigint; reference_count: bigint };
+        data: InputSetUniqueScanState;
       };
       const total = state.data.spend_count + state.data.reference_count;
-      if (state.data.cursor === total) {
+      // A pair naming no duplicate finalizes without a scan.
+      if (
+        state.data.cursor === total ||
+        inputSetPairNamesNoDuplicate({
+          bound: state.data.bound,
+          spendCount: state.data.spend_count,
+          referenceCount: state.data.reference_count,
+        })
+      ) {
         return Object.freeze({
           transaction: await captureLocallyEvaluatedTransaction(
             async (preSubmitBoundary) => {

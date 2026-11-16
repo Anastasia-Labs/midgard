@@ -7,10 +7,6 @@
  */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import {
-  absentForcedClaimDetections,
-  FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID,
-} from "@al-ft/midgard-fault-proofs";
-import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
@@ -110,31 +106,25 @@ const classifyClaim = async (inputIndex: bigint) => {
   });
 };
 
-/** The absent-coordinate detections for a leaf claiming `inputIndex`. */
-const absentDetections = async (inputIndex: bigint) => {
-  const { evidence } = await classifyClaim(inputIndex);
-  if (evidence === undefined)
-    throw new Error("classification kept no evidence");
-  return absentForcedClaimDetections(evidence).map(
-    ({ violationId }) => violationId,
-  );
+/** The category the block's decision convicts, or the decision itself. */
+const convicted = async (inputIndex: bigint) => {
+  const { decision } = await classifyClaim(inputIndex);
+  return decision.decision === "fault_detected" ? decision.category : decision;
 };
 
 describe("judging an input-asset rejection by its schedule position", () => {
-  it("does not call the spend input at the last schedule position absent", async () => {
-    expect(await absentDetections(1n)).toEqual([]);
-  }, 120_000);
-
-  it("calls the position past the schedule absent", async () => {
-    expect(await absentDetections(2n)).toEqual([
-      FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID,
-    ]);
-  }, 120_000);
-
-  it("contradicts a rejection at the position past the schedule", async () => {
-    const { decision } = await classifyClaim(2n);
-    expect(
-      decision.decision === "fault_detected" ? decision.category : decision,
-    ).toBe("distinctAssetAccumulationLimit");
-  }, 120_000);
+  it.each([
+    ["the spend input at the last schedule position", 1n],
+    ["the position past the schedule", 2n],
+    ["a negative position", -1n],
+    ["a position past 2^53", (1n << 53n) + 1n],
+  ])(
+    "contradicts a rejection naming %s",
+    async (_label, inputIndex) => {
+      expect(await convicted(inputIndex)).toBe(
+        "distinctAssetAccumulationLimit",
+      );
+    },
+    120_000,
+  );
 });

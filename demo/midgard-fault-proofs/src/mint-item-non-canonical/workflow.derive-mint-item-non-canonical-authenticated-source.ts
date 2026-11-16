@@ -21,6 +21,7 @@ import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/w
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { type createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
+  mintItemClaimIsUnreachable,
   type MintItemEvidence,
   type MintItemJournal,
   type MintItemStage,
@@ -89,12 +90,18 @@ export const deriveMintItemNonCanonicalAuthenticatedSource = async ({
       Data.to(key as never, OutputReferenceSchema as never) ===
         evidence.subject.source_key,
   );
-  if (forced === undefined || forced.value.verdict !== "ForcedTxValid") {
+  // A forced leaf is adjudicated when it was admitted, or when it was rejected
+  // for `MintItemMalformed`, which no machine step emits.
+  const unreachable = mintItemClaimIsUnreachable(evidence.subject);
+  if (
+    forced === undefined ||
+    (forced.value.verdict === "ForcedTxValid") === unreachable
+  ) {
     throw new Error(
       "mintItemNonCanonical forced subject disappeared from retained DA",
     );
   }
-  if (evidence.subject.rejection_reason !== null)
+  if (!unreachable && evidence.subject.rejection_reason !== null)
     throw new Error(
       "mintItemNonCanonical does not adjudicate rejected transactions",
     );
@@ -125,7 +132,7 @@ export const deriveMintItemNonCanonicalAuthenticatedSource = async ({
       reconstruction: block.reconstruction,
       eventKey,
     }),
-    forcedDirection: 0n,
+    forcedDirection: evidence.subject.direction,
   });
 };
 

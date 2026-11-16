@@ -18,7 +18,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   scanSignerWitnesses,
   type SignerWitnessScanCheckpoint,
@@ -312,10 +312,6 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
       !("ProtectedOutputSignerMissing" in reason)
     )
       return;
-    const outputIndex = claimedIndex(
-      reason.ProtectedOutputSignerMissing.output_index,
-    );
-    if (outputIndex === undefined) return;
     inspect(
       forcedVerdictSubject({
         transactionId: forced.value.tx_id,
@@ -323,7 +319,7 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
         rejectionReason: reason,
       }),
       forced.fullTransactionCbor,
-      BigInt(outputIndex),
+      reason.ProtectedOutputSignerMissing.output_index,
     );
   });
   return Object.freeze(detections);

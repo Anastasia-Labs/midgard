@@ -13,6 +13,7 @@ import {
 } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
+  mintItemClaimIsUnreachable,
   type MintItemEvidence,
   type MintItemStage,
 } from "./mint-item-non-canonical.js";
@@ -21,7 +22,10 @@ import { submitMintItemNonCanonicalStep01Accepted } from "./submit-step-01-accep
 import { submitMintItemNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
 import { submitMintItemNonCanonicalStep02 } from "./submit-step-02.js";
 import { submitMintItemNonCanonicalStep03 } from "./submit-step-03.js";
-import { submitMintItemNonCanonicalStep04 } from "./submit-step-04.js";
+import {
+  submitMintItemNonCanonicalStep04,
+  submitMintItemNonCanonicalStep04UnreachableClaim,
+} from "./submit-step-04.js";
 import {
   type MintItemNonCanonicalRuntimeLoader,
   required,
@@ -124,7 +128,10 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         preSubmitBoundary,
       });
       return {
-        stage: "step02" as const,
+        // An unreachable claim's step 01 writes the terminal state.
+        stage: mintItemClaimIsUnreachable(evidence.subject)
+          ? ("step04" as const)
+          : ("step02" as const),
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };
@@ -180,17 +187,19 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       };
     }
     if (action === "submitStep04") {
-      const result = await submitMintItemNonCanonicalStep04({
+      const step04 = {
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step04 thread out-ref"),
-        evidence,
         referenceScriptUtxo: config.referenceScripts.step04,
         witnessReferenceScripts: config.referenceScripts.witnesses,
         preSubmitBoundary,
-      });
+      };
+      const result = mintItemClaimIsUnreachable(evidence.subject)
+        ? await submitMintItemNonCanonicalStep04UnreachableClaim(step04)
+        : await submitMintItemNonCanonicalStep04({ ...step04, evidence });
       return {
         stage: "proven" as const,
         txHash: result.txHash,

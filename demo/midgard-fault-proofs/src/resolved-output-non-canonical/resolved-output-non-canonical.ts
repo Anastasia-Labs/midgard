@@ -26,6 +26,8 @@ export {
   resolvedOutputEvidenceIsAbsent,
   type ResolvedOutputFinding,
   type ResolvedOutputNonCanonicalEvidence,
+  resolvedOutputOpenedField,
   type ResolvedOutputPriorLedgerReplay,
   resolvedOutputScanControlData,
+  type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";

@@ -15,7 +15,7 @@ import {
   type CanonicalBlockEvidence,
   fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
+import { claimedFieldItems } from "../evidence/claimed-coordinate.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   acceptedTransactionSubject,
@@ -24,6 +24,7 @@ import {
 } from "../workflow/detection-subject.js";
 import {
   prepareRedeemerCanonicityEvidence,
+  REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX,
   REDEEMER_CANONICITY_FIELD_INDEX,
   type RedeemerCanonicityEvidence,
   redeemerCanonicityEvidenceCloses,
@@ -78,11 +79,13 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
         verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason;
       // An accepted forced transaction is committed state under the same
       // canonical-redeemer rule as an accepted L2 transaction, so every item
-      // is a wrongful-acceptance candidate. A rejected one is disputed only
-      // at the exact item its RedeemerMalformed reason names.
+      // is a wrongful-acceptance candidate. A rejected one is disputed at the
+      // exact coordinate its RedeemerMalformed reason names, held or not, and
+      // a Plutus execution failure only when field 8 has no redeemers.
       if (
         reason !== null &&
-        (typeof reason === "string" || !("RedeemerMalformed" in reason))
+        (typeof reason === "string" ||
+          !("RedeemerMalformed" in reason || "PlutusExecutionFailed" in reason))
       )
         return;
       const material = deriveMidgardForcedTxFaultEvidenceMaterial(
@@ -90,17 +93,21 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
       );
       const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX];
       if (field === undefined) return;
+      // A malformed field 8 belongs to the field-shape families.
+      const fieldItems = claimedFieldItems(field);
+      if (reason !== null && fieldItems === undefined) return;
+      if (
+        reason !== null &&
+        "PlutusExecutionFailed" in reason &&
+        fieldItems!.length > 0
+      )
+        return;
       const redeemerIndex =
         reason === null
           ? undefined
-          : claimedIndex(reason.RedeemerMalformed.redeemer_index);
-      if (
-        reason !== null &&
-        (redeemerIndex === undefined ||
-          claimedItem(decodeMidgardFieldPreimage(field), redeemerIndex) ===
-            undefined)
-      )
-        return;
+          : "RedeemerMalformed" in reason
+            ? reason.RedeemerMalformed.redeemer_index
+            : REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX;
       const subject = forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
@@ -111,7 +118,7 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
           ? prepareAllOrNone({ subject, field })
           : [
               prepareRedeemerCanonicityEvidence({
-                finding: { subject, redeemerIndex: BigInt(redeemerIndex) },
+                finding: { subject, redeemerIndex },
                 fieldPreimage: field,
                 committedFieldHashHex:
                   midgardFieldCommitment(field).toString("hex"),

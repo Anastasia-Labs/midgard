@@ -1,7 +1,4 @@
-import {
-  FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID,
-  type HeaderDecision,
-} from "@al-ft/midgard-fault-proofs";
+import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it } from "vitest";
 
 import { watcherProofFamilyCoverageGapAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
@@ -16,17 +13,19 @@ import {
   records,
 } from "./fault-decision-bridge.released-fixture.js";
 
-/** What the classifier seals for a forced leaf rejected for a coordinate its
- * transaction does not have: no installed family proves it. */
-const absentClaim = ({
+/** A finding no installed family proves. */
+const UNREGISTERED_VIOLATION_ID = "finding-no-family-proves";
+
+/** What the classifier seals for a finding no installed family proves. */
+const unprovableFinding = ({
   category: _category,
   ...fresh
 }: ReturnType<typeof decision>): HeaderDecision => ({
   ...fresh,
   decision: "unprovable",
   reason: "unregistered_violation",
-  violationId: FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID,
-  detectionId: `${FORCED_CLAIM_COORDINATE_ABSENT_VIOLATION_ID}:forced:0:${"aa".repeat(32)}`,
+  violationId: UNREGISTERED_VIOLATION_ID,
+  detectionId: `${UNREGISTERED_VIOLATION_ID}:forced:0:${"aa".repeat(32)}`,
   position: "0",
 });
 
@@ -53,7 +52,7 @@ describe("fault decision bridge on a finding no installed family proves", () => 
       },
       operationsSink: observability.sink,
       classifyOverride: (fresh) =>
-        fresh.headerHash === unprovableHash ? absentClaim(fresh) : fresh,
+        fresh.headerHash === unprovableHash ? unprovableFinding(fresh) : fresh,
     });
     h.admitted.add(later);
     h.admitted.add(moved);
@@ -112,7 +111,8 @@ describe("fault decision bridge on a finding no installed family proves", () => 
       current,
       categoryByHeader: { [headerHash]: "transitionTrace" },
       operationsSink: observability.sink,
-      classifyOverride: (fresh) => (reclassified ? fresh : absentClaim(fresh)),
+      classifyOverride: (fresh) =>
+        reclassified ? fresh : unprovableFinding(fresh),
     });
     await h.bridge.reconcileAndDispatch(current);
     expect(coverageGaps(observability)).toEqual([
@@ -134,7 +134,7 @@ describe("fault decision bridge on a finding no installed family proves", () => 
       },
       operationsSink: observability.sink,
       classifyOverride: (fresh) => ({
-        ...absentClaim(fresh),
+        ...unprovableFinding(fresh),
         reason: "predecessor_context_unavailable",
       }),
     });

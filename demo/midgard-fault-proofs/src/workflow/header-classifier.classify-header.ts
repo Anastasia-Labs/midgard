@@ -16,7 +16,6 @@ import {
   requireTransitionTraceEventAuthority,
   type TransitionTraceL1Events,
 } from "../transition-trace/l1-events.js";
-import { absentForcedClaimDetections } from "./absent-forced-claims.js";
 import { classifyCanonicalBlockViolations } from "./classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -299,13 +298,7 @@ export const classifyHeader = async ({
   });
   const classification = await classifyCanonicalBlockViolations({
     evidence: routed.evidence,
-    // A forced rejection naming a coordinate its transaction lacks is decided
-    // here rather than by a family; it is added only when nothing provable
-    // was found, so it never displaces a finding a family can prove.
-    detections:
-      detections.length === 0
-        ? absentForcedClaimDetections(routed.evidence)
-        : detections,
+    detections,
     minimumConfirmationDepth: authority.confirmationDepth,
   });
   if (

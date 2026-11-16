@@ -17,8 +17,10 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import {
+  mintItemClaimIsUnreachable,
   type MintItemEvidence,
   prepareMintItemEvidence,
+  prepareMintItemUnreachableClaimEvidence,
 } from "./mint-item-non-canonical.js";
 import { mintItemPolicyId } from "./scan.js";
 
@@ -89,10 +91,36 @@ export const transactionHasNonCanonicalMintItem = (txCbor: Buffer): boolean =>
     },
   ]).length > 0;
 
+/** Every forced leaf rejected for `MintItemMalformed`: no machine step emits
+ * that reason, so each such rejection is wrongful whatever policy it names.
+ * Its `transactionIndex` is the forced leaf's index, as `forced: true`. */
+const unreachableForcedClaims = (block: CanonicalBlockEvidence) =>
+  block.reconstruction.forcedTransactions.flatMap((forced, forcedIndex) => {
+    if (forced.value.verdict === "ForcedTxValid") return [];
+    const subject = forcedVerdictSubject({
+      transactionId: forced.value.tx_id,
+      sourceKey: forced.key,
+      rejectionReason: forced.value.verdict.ForcedTxInvalid.reason,
+    });
+    return mintItemClaimIsUnreachable(subject)
+      ? [
+          {
+            transactionIndex: forcedIndex,
+            forced: true as const,
+            evidence: prepareMintItemUnreachableClaimEvidence(subject),
+          },
+        ]
+      : [];
+  });
+
 export const findMintItemNonCanonicalBlockEvidence = (
   block: CanonicalBlockEvidence,
-) =>
-  findMintItemNonCanonicalEvidence([
+): readonly {
+  readonly transactionIndex: number;
+  readonly forced?: true;
+  readonly evidence: MintItemEvidence;
+}[] => [
+  ...findMintItemNonCanonicalEvidence([
     ...block.transactions,
     ...block.reconstruction.forcedTransactions.flatMap((forced) => {
       if (forced.value.verdict !== "ForcedTxValid") return [];
@@ -123,31 +151,35 @@ export const findMintItemNonCanonicalBlockEvidence = (
         },
       ];
     }),
-  ]);
+  ]),
+  ...unreachableForcedClaims(block),
+];
 
 /** The classifier's identity for one finding of this block. */
 export const mintItemNonCanonicalDetectionId = ({
   transactionIndex,
+  forced,
   evidence,
 }: {
   readonly transactionIndex: number;
+  readonly forced?: true;
   readonly evidence: MintItemEvidence;
 }): string =>
-  `mint-item-non-canonical:${transactionIndex}:${evidence.subject.transaction_id}:${evidence.itemIndex}`;
+  forced === true
+    ? `mint-item-non-canonical:forced:${transactionIndex}:${evidence.subject.transaction_id}:malformed`
+    : `mint-item-non-canonical:${transactionIndex}:${evidence.subject.transaction_id}:${evidence.itemIndex}`;
 
 export const detectMintItemNonCanonicalCompleteReplay = (
   block: CanonicalBlockEvidence,
 ): readonly CanonicalViolationDetection[] =>
-  findMintItemNonCanonicalBlockEvidence(block).map(
-    ({ transactionIndex, evidence }) => ({
-      ...verdictDetectionSubject(evidence.subject),
-      detectionId: mintItemNonCanonicalDetectionId({
-        transactionIndex,
-        evidence,
-      }),
-      headerHash: block.headerHash,
-      violationId: "mint-item-non-canonical",
-      position: BigInt(transactionIndex),
-      diagnostic: `transaction ${evidence.subject.transaction_id} mint policy item ${evidence.itemIndex} violates the field-5 grammar or policy ordering`,
-    }),
-  );
+  findMintItemNonCanonicalBlockEvidence(block).map((finding) => ({
+    ...verdictDetectionSubject(finding.evidence.subject),
+    detectionId: mintItemNonCanonicalDetectionId(finding),
+    headerHash: block.headerHash,
+    violationId: "mint-item-non-canonical",
+    position: BigInt(finding.transactionIndex),
+    diagnostic:
+      finding.forced === true
+        ? `forced transaction ${finding.evidence.subject.transaction_id} was rejected for a malformed mint item, which no validation step reports`
+        : `transaction ${finding.evidence.subject.transaction_id} mint policy item ${finding.evidence.itemIndex} violates the field-5 grammar or policy ordering`,
+  }));

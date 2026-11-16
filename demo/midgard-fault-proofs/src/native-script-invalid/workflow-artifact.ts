@@ -49,11 +49,15 @@ export const admitNativeScriptInvalidWorkflowArtifact = async (
       nativeTxCompactCbor: evidence.nativeTxCompactCbor,
       scriptIndex: evidence.scriptIndex,
       scriptItemCbor: evidence.scriptItemCbor,
-      scriptHash: hashMidgardVersionedScript(
-        decodeMidgardVersionedScript(
-          Buffer.from(evidence.scriptItemCbor, "hex"),
-        ),
-      ),
+      // A position field 6 lacks selects no script, so it has no hash.
+      scriptHash:
+        evidence.scriptItemCbor === ""
+          ? ""
+          : hashMidgardVersionedScript(
+              decodeMidgardVersionedScript(
+                Buffer.from(evidence.scriptItemCbor, "hex"),
+              ),
+            ),
       addrWitnessItemCbors: evidence.addrWitnessItemCbors,
       scriptWitnessItemCbors: evidence.scriptWitnessItemCbors,
     },

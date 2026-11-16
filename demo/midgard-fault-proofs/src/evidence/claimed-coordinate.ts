@@ -3,13 +3,13 @@
  *
  * A committed verdict (a forced leaf's `ForcedTxInvalid{reason}`) names
  * coordinates the block producer chose: a field index, an item index, an
- * input source kind, a script item kind. A claimed coordinate the transaction
- * does not have is a classification outcome, never a classifier error. Every
- * detector that opens such a coordinate goes through these openers, which
- * return `undefined` for a coordinate outside the transaction; the detector
- * then reports no finding of its own family for that claim, and the header
- * classifier decides what the claim means for the block
- * (`absentForcedClaimDetections`).
+ * input source kind, a script item kind. Each is any integer the rejection
+ * codec admits, -2^64 through 2^64 - 1. A claimed coordinate the transaction
+ * does not have is a classification outcome, never a classifier error: the
+ * family that owns the reason contradicts it, as its on-chain step does, from
+ * the authenticated item count alone. Every detector that opens such a
+ * coordinate goes through these openers, which compare the claim as an
+ * integer and narrow it to an array position only once it names an item.
  *
  * Only the claim is forgiven. Authenticated material that disagrees with its
  * commitment, or a decoder that disagrees with itself, still throws, so a
@@ -25,23 +25,27 @@ import {
   rejectionReasonPhase,
 } from "@al-ft/midgard-sdk";
 
-/** A claimed index as an array position, or `undefined` outside any array. */
-export const claimedIndex = (claimed: bigint | number): number | undefined => {
-  const value = typeof claimed === "bigint" ? Number(claimed) : claimed;
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-};
+/** The smallest and largest coordinates the rejection codec admits. */
+const CLAIMED_COORDINATE_LIMIT = 1n << 64n;
+
+/**
+ * The position `claimed` names among `count` items, or `undefined` when it
+ * names none of them: negative, at or past `count`, or past 2^53.
+ */
+export const claimedIndex = (
+  claimed: bigint,
+  count: number,
+): number | undefined =>
+  claimed >= 0n && claimed < BigInt(count) ? Number(claimed) : undefined;
 
 /** The item a claimed index names, or `undefined` when the list lacks it. */
 export const claimedItem = <T>(
   items: readonly T[],
-  claimed: bigint | number,
+  claimed: bigint,
 ): T | undefined => {
-  const position = claimedIndex(claimed);
+  const position = claimedIndex(claimed, items.length);
   return position === undefined ? undefined : items[position];
 };
-
-/** The smallest and largest coordinates the rejection codec admits. */
-const CLAIMED_COORDINATE_LIMIT = 1n << 64n;
 
 /** A claimed coordinate as an artifact carries it: its decimal string. */
 export const claimedCoordinateDecimal = (claimed: bigint): string =>

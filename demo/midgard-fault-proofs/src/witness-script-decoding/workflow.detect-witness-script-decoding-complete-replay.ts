@@ -13,7 +13,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT } from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
@@ -124,12 +123,7 @@ export const witnessScriptDecodingCompleteReplayFindings = (
         "witnessScriptDecoding forced transaction differs from its authenticated leaf",
       );
     const field = material.fieldPreimages[6]!;
-    const scriptIndex = claimedIndex(payload.script_index);
-    if (
-      scriptIndex === undefined ||
-      claimedItem(decodeMidgardFieldPreimage(field), scriptIndex) === undefined
-    )
-      continue;
+    const scriptIndex = payload.script_index;
     const prepared = prepareWitnessScriptDecodingEvidence({
       finding: {
         subject: forcedVerdictSubject({
@@ -140,7 +134,7 @@ export const witnessScriptDecodingCompleteReplayFindings = (
         witnessSetHash: decodeMidgardForcedTxCompact(
           material.proofSource.compactCbor,
         ).transactionWitnessSetHash.toString("hex"),
-        scriptIndex: BigInt(scriptIndex),
+        scriptIndex,
       },
       fieldPreimage: field,
       committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

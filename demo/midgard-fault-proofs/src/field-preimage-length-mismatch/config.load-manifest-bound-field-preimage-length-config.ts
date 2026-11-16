@@ -23,7 +23,7 @@ import {
 } from "./config.create-concrete-field-preimage-length-lucid-builders.js";
 import type {
   FieldPreimageLengthSubmissionKind,
-  PreparedFieldPreimageLengthWorkflow,
+  PreparedFieldPreimageLengthEvidence,
 } from "./workflow.js";
 
 /**
@@ -40,7 +40,7 @@ export const createFieldPreimageLengthLucidSubmission = ({
 }): Readonly<{
   submit: (
     action: FieldPreimageLengthSubmissionKind,
-    prepared: PreparedFieldPreimageLengthWorkflow,
+    prepared: PreparedFieldPreimageLengthEvidence,
   ) => Promise<string>;
 }> =>
   Object.freeze({

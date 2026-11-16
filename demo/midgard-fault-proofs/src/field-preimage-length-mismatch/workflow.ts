@@ -26,6 +26,29 @@ export type PreparedFieldPreimageLengthWorkflow = Readonly<{
   evidenceDigest: string;
 }>;
 
+/**
+ * A forced `FieldPreimageLengthMismatch` rejection naming a field outside the
+ * native layout. No field is opened, so it carries no lengths or preimage.
+ */
+export type PreparedFieldPreimageLengthOutOfDomain = Readonly<{
+  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW;
+  headerHash: string;
+  transactionId: string;
+  sourceKind: "forced";
+  direction: "wrongfulRejection";
+  outOfDomainFieldIndex: bigint;
+  evidenceDigest: string;
+}>;
+
+export type PreparedFieldPreimageLengthEvidence =
+  | PreparedFieldPreimageLengthWorkflow
+  | PreparedFieldPreimageLengthOutOfDomain;
+
+export const fieldPreimageLengthOutOfDomain = (
+  prepared: PreparedFieldPreimageLengthEvidence,
+): prepared is PreparedFieldPreimageLengthOutOfDomain =>
+  "outOfDomainFieldIndex" in prepared;
+
 const exactHex = (value: string, bytes: number, label: string): string => {
   if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)) {
     throw new Error(`${label} must be canonical ${bytes.toString()}-byte hex`);
@@ -126,6 +149,47 @@ export const prepareFieldPreimageLengthWorkflow = ({
     actualLength,
     preimageHex,
     carriage: selectMidgardFieldCarriageTier(actualLength),
+    evidenceDigest,
+  });
+};
+
+const FIELD_COUNT = 9n;
+const REJECTION_CODEC_LIMIT = 1n << 64n;
+
+export const prepareFieldPreimageLengthOutOfDomainWorkflow = ({
+  headerHash,
+  transactionId,
+  fieldIndex,
+}: {
+  readonly headerHash: string;
+  readonly transactionId: string;
+  readonly fieldIndex: bigint;
+}): PreparedFieldPreimageLengthOutOfDomain => {
+  if (fieldIndex >= 0n && fieldIndex < FIELD_COUNT)
+    throw new Error("field index is inside 0..8");
+  if (
+    fieldIndex < -REJECTION_CODEC_LIMIT ||
+    fieldIndex >= REJECTION_CODEC_LIMIT
+  )
+    throw new Error("field index is outside the rejection codec");
+  const normalizedHeader = exactHex(headerHash, 28, "header hash");
+  const normalizedTx = exactHex(transactionId, 32, "transaction id");
+  const evidenceDigest = createHash("sha256")
+    .update(FIELD_PREIMAGE_LENGTH_WORKFLOW)
+    .update("forced")
+    .update("wrongfulRejection")
+    .update("outOfDomain")
+    .update(normalizedHeader, "hex")
+    .update(normalizedTx, "hex")
+    .update(fieldIndex.toString())
+    .digest("hex");
+  return Object.freeze({
+    schemaVersion: FIELD_PREIMAGE_LENGTH_WORKFLOW,
+    headerHash: normalizedHeader,
+    transactionId: normalizedTx,
+    sourceKind: "forced",
+    direction: "wrongfulRejection",
+    outOfDomainFieldIndex: fieldIndex,
     evidenceDigest,
   });
 };
