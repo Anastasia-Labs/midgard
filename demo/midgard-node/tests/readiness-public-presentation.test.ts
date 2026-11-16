@@ -310,6 +310,33 @@ it("shows the landed-block holds that stop the follower as their typed reasons",
   );
 });
 
+it("shows the confirmed_ledger verification's failure under its source", () => {
+  const result = publicReadinessPresentation(
+    {
+      ready: false,
+      reasons: ["confirmed_ledger_verification_failed"],
+      livenessReasons: [
+        {
+          source: "confirmed_ledger_verification",
+          reason: "confirmed_ledger_verification_failed",
+        },
+      ],
+    },
+    "preprod-public",
+    {},
+  );
+  expect(result).toEqual({
+    ready: false,
+    reasons: ["confirmed_ledger_verification_failed"],
+    livenessReasons: [
+      {
+        source: "confirmed_ledger_verification",
+        reason: "confirmed_ledger_verification_failed",
+      },
+    ],
+  });
+});
+
 it("shows a stalled admission writer as its bounded reason and typed facts", () => {
   const source = {
     ready: false,

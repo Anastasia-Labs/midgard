@@ -53,7 +53,15 @@ export const applyDelta = (
   return ledger;
 };
 
-/** The net delta from `parent` to `after`: what went, and what is new or changed. */
+/**
+ * The net delta from `parent` to `after`: the outrefs that went, and the
+ * outputs at outrefs `parent` does not hold or holds with other bytes. The
+ * two never share an outref. A replay never changes the output at a held
+ * outref (an outref names one output), so a changed one appears only as
+ * produced, and the walk a commit base takes (`deltaFault`,
+ * `commit-block-header.landed-commit-base.ts`) refuses it: the ledger
+ * before the row already holds it.
+ */
 export const netDelta = (
   parent: LedgerMap,
   after: readonly Ledger.MinimalEntry[],
@@ -155,6 +163,27 @@ export const depositOutputs = (ids: readonly Buffer[]) =>
         }),
     ),
   );
+
+/**
+ * Runs `read` on one snapshot: a `REPEATABLE READ, READ ONLY` transaction
+ * of its own. A fold or unfold writes `confirmed_ledger`, the frontier and
+ * the landed rows in one transaction, so what `read` reads of them is one
+ * state a fold left: the entries are the post-state of the header the
+ * frontier names, and the rows chain from it. Read statement by statement,
+ * a fold, or an unfold on a rollback, committing between two of the reads
+ * would pair a frontier with a ledger that is not its post-state, which
+ * a root check would take for a divergence.
+ */
+export const onOneSnapshot = <A, E, R>(read: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.zipRight(
+        sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
+        read,
+      ),
+    );
+  });
 
 /** The ledger at the frontier and the processed chain after it. */
 export type LandedLedger = Readonly<{

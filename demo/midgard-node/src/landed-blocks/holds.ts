@@ -29,10 +29,12 @@ import {
 export const LANDED_BLOCK_INVALID = "landed_block_invalid";
 /**
  * This node's own landed block disagrees with its journal: the journal
- * names another base or root, or its delta on the parent's ledger does not
- * reach the header's root. A local fault (the block is this node's, and
- * its header binds the root), never attributed to the block; processing
- * stops at it until the journal is repaired.
+ * names another base or root, or its delta on the parent's ledger (one that
+ * derives the parent's root) does not reach the header's root. A parent
+ * ledger that does not derive it is `LANDED_BLOCK_LOCAL_FAULT` instead. A
+ * local fault (the block is this node's, and its header binds the root),
+ * never attributed to the block; processing stops at it until the journal
+ * is repaired.
  */
 export const LANDED_BLOCK_OWN_JOURNAL_MISMATCH =
   "landed_block_own_journal_mismatch";
@@ -104,7 +106,9 @@ export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
 /**
  * Importing a foreign block failed in this node's own computation, where
  * the block's input cannot make it fail (a runtime fault of a library the
- * replay runs, hashing, the payload roots). Never attributed to the block:
+ * replay runs, hashing, the payload roots), or a landed block's parent
+ * ledger, foreign or own, does not derive the parent's root (a local ledger
+ * divergence, `local-ledger-divergence.ts`). Never attributed to the block:
  * retried on the driver's backoff, with the `landed_block_local_fault`
  * alarm, and bounded as `LANDED_BLOCK_VERIFIER_UNAVAILABLE` is: the same
  * count of runs with no progress past the faulted block, then the same

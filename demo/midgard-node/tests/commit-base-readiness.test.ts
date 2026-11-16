@@ -6,7 +6,12 @@
  * window (a signed abandoned journal holds its header hash) names
  * `commit_window_pending` under `commit_window` by the same rule. A
  * submission refused before broadcast names `commit_submit_refused:<code>`
- * under `commit_submit`, a detail until its run escalates.
+ * under `commit_submit`, a detail until its run escalates. A commit refused
+ * because its base's entries do not derive the base's stored root names
+ * `commit_base_ledger_divergence:<check>` under `commit_base` in place of the
+ * wait, a catalogued reason, cleared by the same rule. A commit on a landed
+ * tail waiting for the verification of the frontier it builds from names
+ * `commit_base_ledger_unverified` under `commit_base` by the same rule.
  */
 import { Effect, Logger } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +19,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyCommitWorkerReadiness,
   clearCommitWorkerFailure,
+  COMMIT_BASE_LEDGER_DIVERGENCE,
+  COMMIT_BASE_LEDGER_UNVERIFIED,
   COMMIT_BASE_PENDING,
   COMMIT_BASE_SOURCE,
   COMMIT_SUBMIT_REFUSED,
@@ -27,6 +34,7 @@ import {
 } from "../src/fibers/block-commitment.worker-readiness.js";
 import { Globals } from "../src/services/globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
+import { parseReadinessLine } from "../src/services/readiness-catalogue.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 
 const BASE = "dd".repeat(28);
@@ -88,6 +96,67 @@ describe("commit base readiness", () => {
       }).pipe(Effect.provide(Globals.Default)),
     );
     expect(reasons).toEqual([]);
+  });
+});
+
+describe("commit base ledger divergence readiness", () => {
+  const DIVERGED: WorkerOutput = {
+    ...AWAITING_BASE,
+    detail: "local ledger divergence (commit_base_landed): the ledger diverges",
+    divergence: "commit_base_landed",
+  };
+  const DIVERGENCE = `${COMMIT_BASE_LEDGER_DIVERGENCE}:commit_base_landed`;
+
+  it("names the check that found it under commit_base, a catalogued reason", async () => {
+    expect(await reasonsAfter(DIVERGED)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: DIVERGENCE },
+    ]);
+    expect(parseReadinessLine(DIVERGENCE)).toMatchObject({
+      code: COMMIT_BASE_LEDGER_DIVERGENCE,
+      kind: "reason",
+    });
+  });
+
+  it("replaces the wait and clears on the next output that is neither", async () => {
+    expect(await reasonsAfter(AWAITING_BASE, DIVERGED)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: DIVERGENCE },
+    ]);
+    expect(await reasonsAfter(DIVERGED, AWAITING_BASE)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: COMMIT_BASE_PENDING },
+    ]);
+    expect(
+      await reasonsAfter(DIVERGED, { type: "NothingToCommitOutput" }),
+    ).toEqual([]);
+  });
+});
+
+describe("commit base verification readiness", () => {
+  const UNVERIFIED: WorkerOutput = {
+    ...AWAITING_BASE,
+    detail: `no verification of confirmed_ledger at frontier ${"f0".repeat(28)} has passed`,
+    unverified: true,
+  };
+
+  it("names the wait for the verification under commit_base, a catalogued reason", async () => {
+    expect(await reasonsAfter(UNVERIFIED)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: COMMIT_BASE_LEDGER_UNVERIFIED },
+    ]);
+    expect(parseReadinessLine(COMMIT_BASE_LEDGER_UNVERIFIED)).toMatchObject({
+      code: COMMIT_BASE_LEDGER_UNVERIFIED,
+      kind: "reason",
+    });
+  });
+
+  it("holds while the commit waits, and clears on the next output that is not a wait on the base", async () => {
+    expect(await reasonsAfter(UNVERIFIED, UNVERIFIED)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: COMMIT_BASE_LEDGER_UNVERIFIED },
+    ]);
+    expect(await reasonsAfter(UNVERIFIED, AWAITING_BASE)).toEqual([
+      { source: COMMIT_BASE_SOURCE, reason: COMMIT_BASE_PENDING },
+    ]);
+    expect(
+      await reasonsAfter(UNVERIFIED, { type: "NothingToCommitOutput" }),
+    ).toEqual([]);
   });
 });
 

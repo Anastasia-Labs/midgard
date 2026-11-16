@@ -28,6 +28,11 @@ import {
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
+import {
+  checkLedgerRoot,
+  countLedgerDivergence,
+  ledgerDivergenceDetail,
+} from "./local-ledger-divergence.js";
 
 /** The shared block replay's context over the node's ledger rows. */
 export type ImportedBlockReplayContext = Omit<
@@ -51,7 +56,8 @@ const ledgerRows = (
  * - `local_fault`: this node's own computation failed where the block's
  *   input cannot make it fail (hashing, the payload roots after their keys
  *   checked, the import's bookkeeping, a runtime fault named at its
- *   origin); retried;
+ *   origin), or the parent ledger this node supplied does not derive the
+ *   parent root it supplied with it (`local-ledger-divergence.ts`); retried;
  * - `incomplete`: the import failed for a reason it cannot pin on the block
  *   (a ledger root, or an unclassified typed replay failure); retried.
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
@@ -240,8 +246,9 @@ const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
  * Failures: a fault of the Ed25519 verifier, wherever it is raised (a
  * callback's included), is `verifier_unavailable`, checked first; otherwise
  * the caller's callbacks' pass through unchanged (their verdicts are the
- * caller's). A `ReplayLocalFault` defect (named where it arose) and
- * this import's own computations are `local_fault`, one marked `held` (the
+ * caller's). A `ReplayLocalFault` defect (named where it arose), a parent
+ * ledger that does not derive the parent root it came with, and this
+ * import's own computations are `local_fault`, one marked `held` (the
  * event replay's) `replay_held`; any other defect is
  * `invalid`: it may come from reading the block's or its events' bytes, so
  * it is never taken for a local fault.
@@ -302,14 +309,22 @@ export const verifyAndImportBlock = (
         "invalid",
         "foreign DA/header identity differs from the canonical observation",
       );
-    const baseRoot = yield* computeLedgerMpfRootFromLedgerEntries(
-      input.parentEntries,
+    // The parent's entries and root are both this node's (the header was
+    // checked against the root above): entries that do not derive it are
+    // this node's ledger divergence, never the block's.
+    yield* checkLedgerRoot({
+      check: "landed_parent",
+      headerHash: input.parentHeaderHash,
+      root: input.parentUtxosRoot,
+      derivedRoot: yield* computeLedgerMpfRootFromLedgerEntries(
+        input.parentEntries,
+      ),
+    }).pipe(
+      Effect.tapError(countLedgerDivergence),
+      Effect.catchAll((divergence) =>
+        fail("local_fault", ledgerDivergenceDetail(divergence)),
+      ),
     );
-    if (baseRoot !== input.parentUtxosRoot)
-      return yield* fail(
-        "invalid",
-        "foreign replay parent snapshot root mismatch",
-      );
     // Roots the payload's own entries cannot form (a key named twice) are
     // its fault; once its keys are distinct, a failure is this node's.
     const repeated = repeatedKeySection(payload.block_body);

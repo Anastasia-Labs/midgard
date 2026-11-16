@@ -2,7 +2,8 @@
  * Every rule in `demo/midgard-node/alert-rules.yml` selects a metric family
  * the node really exports under `listen --with-monitoring`: the production
  * alert-signal sampler, the role-wallet balance sampler, the
- * forced-admission counter and the merge failure counter, scraped through
+ * forced-admission counter, the local ledger divergence counter and the
+ * merge failure counter, scraped through
  * the real Prometheus exporter. A rule over a family the node never exports
  * would never fire.
  */
@@ -26,6 +27,7 @@ import {
   forcedAdmissionDivergenceCounter,
   SCREEN_FAILED,
 } from "../src/forced-orders/admission-divergence.js";
+import { localLedgerDivergenceCounter } from "../src/mpf/local-ledger-divergence.js";
 import { Globals } from "../src/services/globals.js";
 import { livenessReasonAgeGauge } from "../src/services/globals.liveness-reasons.js";
 import {
@@ -107,6 +109,13 @@ const exportedFamilies = () =>
             SCREEN_FAILED,
           ),
         );
+        yield* Metric.value(
+          Metric.tagged(
+            localLedgerDivergenceCounter,
+            "check",
+            "commit_base_landed",
+          ),
+        );
         yield* Metric.value(mergeFailureCounter);
         yield* Metric.value(
           Metric.tagged(
@@ -131,7 +140,7 @@ describe("the node's alert rules", () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../alert-rules.yml", import.meta.url), "utf8"),
     );
-    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(9);
+    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(10);
     for (const { alert, metric } of selectors)
       expect(families, `${alert} selects ${metric}`).toContain(metric);
   });

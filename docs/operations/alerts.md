@@ -137,6 +137,78 @@ line `event refused (<reason>): ...` for each event.
 **Escalate** any `l1_event_undecodable` (a decoder disagrees with the chain),
 and an `l1_event_identity_conflict` that survives past L1 finality.
 
+### MidgardLocalLedgerDivergence
+
+**Meaning.** The node's ledger entries (`confirmed_ledger` with the processed
+landed deltas) do not derive the root it stores for them
+(`midgard_local_ledger_divergence_total` increased, labelled `check`). Both
+come from the node's own stores, so the fault is this node's, never a
+block's. The `check` names where it was found:
+
+- `landed_parent`, `own_parent`: the parent ledger a landed block (foreign or
+  this node's own) is adopted on. The block is held as
+  `landed_block_local_fault`, not judged invalid. After
+  `LOCAL_FAULT_RUN_LIMIT` attempts in a row the node exits non-zero under that
+  reason.
+- `commit_base_landed`, `commit_base_confirmed_ledger`: the base a commit
+  builds on. The commit is refused on every tick, each refusal counted; the
+  node keeps running. A commit on a landed tail builds from the frontier at
+  which the verification below last passed. It applies each landed delta
+  after that frontier and checks it: the delta builds on the root before it,
+  names each outref once and none both spent and produced, every output it
+  spends is held, no output it produces is held already, and it changes the
+  root exactly when it is not empty. A delta that fails is a
+  `commit_base_landed` divergence.
+- `confirmed_ledger`, `confirmed_ledger_tail`: the node's verification of
+  the landed ledger, run off the commit path. It builds one trie from
+  `confirmed_ledger` and checks its root against the frontier's stored root
+  (`confirmed_ledger`). It then applies each processed landed delta up to
+  the queue tail, first checked with the commit's checks, and checks the
+  root it reaches against the tail's stored root (`confirmed_ledger_tail`;
+  a delta that fails the commit's checks is a `confirmed_ledger_tail`
+  divergence too). The two are checked and counted separately: a
+  `confirmed_ledger` entry a later delta spends is covered only by the
+  frontier's check, a delta byte only by the tail's. It runs at startup,
+  after each fold and every ten minutes, so it also catches a row (of
+  `confirmed_ledger` or a landed delta) changed outside a fold. Each check
+  counts once per run that finds its divergence. While none has passed at
+  the current frontier, commits on landed tails wait as
+  `commit_base_ledger_unverified`. The reason clears when a later run
+  passes. A run that cannot complete raises
+  `confirmed_ledger_verification_failed` under the same source instead,
+  and counts nothing.
+
+The node exports every `check` series at 0 from startup, so the first
+divergence after a start shows as an increase. A fold, or an unfold on a
+rollback, landing while a check reads does not fire it: the commit-base checks
+read the ledger and its root on one database snapshot. A commit base that
+landed-block processing has not folded to yet waits as `commit_base_pending`,
+not this alert.
+
+**First checks.** `GET /readyz` names `landed_block_local_fault` (landed
+blocks), `commit_base_ledger_divergence:<check>` (commits), or
+`commit_base_ledger_divergence:confirmed_ledger` or `:confirmed_ledger_tail`
+under `confirmed_ledger_verification` (the verification; when both diverge it
+names `confirmed_ledger`, the frontier's, and the log and the counter carry
+both). The node log carries
+`local ledger divergence (<check>): the ledger at <headerHash> derives root
+<derived>, its stored root is <stored>` (or, for a landed delta, `takes a
+delta that <fault>` in place of the derived root). It appears under a
+`LandedBlockLocalFault` error event or a `Commit refused on its base` error
+line, one line per divergence a verification run found. Each verification
+run also logs `confirmed_ledger verification at frontier <headerHash>, tail
+<headerHash>: verified` (or `diverged (<check>, ...)`) with its
+`confirmed_ledger` entry count and duration.
+
+**Action.** None in node state: the node neither adopts a block nor commits
+on the diverged ledger, and nothing repairs it automatically. No known
+transient fires it, so a restart does not clear it: the node reads the same
+ledger and fails the same check, and after a landed-block exit it exits
+again.
+
+**Escalate** every occurrence to the protocol developers, with the check,
+header hash, both roots and the deployment manifest.
+
 ### MidgardMergeFailures
 
 **Meaning.** For ten minutes the node's merge attempts have kept failing

@@ -19,6 +19,7 @@ import {
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
 import {
+  verifiedFrontierWorkerInput,
   WorkerInput,
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
@@ -87,6 +88,9 @@ export const buildAndSubmitCommitmentBlockAction = (
       "commit-block-header",
       nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
     );
+    // The frontier the main thread last verified `confirmed_ledger` at: a
+    // commit on a landed tail builds from it only.
+    const verifiedFrontier = yield* Ref.get(globals.VERIFIED_CONFIRMED_LEDGER);
     const ledgerStoreLeaseOwner =
       MpfEngineStateDB.nodeProcessCommitLeaseOwner();
     const intentJournal = yield* IntentJournal;
@@ -114,6 +118,7 @@ export const buildAndSubmitCommitmentBlockAction = (
         workerData: {
           nativeMpf: nativeMpfInput,
           history,
+          ...verifiedFrontierWorkerInput(verifiedFrontier),
           data: {
             availableConfirmedBlock: snapshot.tailCommitBase.utxo,
             currentBlockStartTimeMs: snapshot.tailCommitBase.blockEndTimeMs,
@@ -267,9 +272,13 @@ export const buildAndSubmitCommitmentBlockAction = (
         break;
       }
       case "AwaitingCommitBaseOutput": {
-        yield* Effect.logWarning(
-          `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
-        );
+        yield* workerOutput.divergence === undefined
+          ? Effect.logWarning(
+              `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
+            )
+          : Effect.logError(
+              `Commit refused on its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
+            );
         break;
       }
       case "AwaitingNextCommitWindowOutput": {

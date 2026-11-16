@@ -22,6 +22,7 @@ import {
   requestTxQueueProcessorWakeup,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
+import { exportLedgerDivergenceSeries } from "../mpf/local-ledger-divergence.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -284,6 +285,7 @@ export const runNode = (
     }
 
     yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
+    yield* exportLedgerDivergenceSeries;
     // Before the node serves or validates: a backlog tx's inputs stay
     // claimed across the restart (design D6).
     yield* rebuildAdmissionInputClaimsOnStartup();

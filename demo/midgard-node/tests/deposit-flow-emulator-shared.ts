@@ -235,6 +235,7 @@ import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
 } from "./helpers/native-owner-binary.js";
+import { verifiedFrontierNow } from "./helpers/verified-frontier.js";
 import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
@@ -742,6 +743,9 @@ export const runCommitWorker = async (
     latestBlock.datum,
   );
   const workerInput = {
+    // The node's verification runs off the commit path; here it runs before
+    // each attempt, so a landed tail builds from the stored frontier.
+    ...(await runNodeDatabaseEffect(verifiedFrontierNow)),
     data: {
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
@@ -761,6 +765,7 @@ export const runCommitWorker = async (
           contracts,
           lucidService,
           {
+            ...workerInput,
             data: {
               ...workerInput.data,
               stateQueueLeaseToken,

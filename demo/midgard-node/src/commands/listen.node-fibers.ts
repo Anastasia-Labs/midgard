@@ -25,6 +25,7 @@ import {
 } from "../fibers/index.js";
 import { settlementFiber } from "../fibers/settlement.js";
 import { importCheckFiber } from "../import-check/fiber.js";
+import { confirmedLedgerVerificationFiber } from "../mpf/confirmed-ledger-verification.js";
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
 import { onL1HeadChange } from "../services/l1-head-trigger.js";
@@ -159,6 +160,9 @@ export const nodeFibers = ({
     mkSchedule(VALIDATION_TRACE_DEFENSE_TICK_MS),
   ),
   mpfPayloadAudit: mpfPayloadAuditFiber,
+  confirmedLedgerVerification: confirmedLedgerVerificationFiber({
+    watchIntervalMs: nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
+  }),
   nativeMpfOwnerSupervisor: nativeMpfOwnerSupervisorFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
   ),

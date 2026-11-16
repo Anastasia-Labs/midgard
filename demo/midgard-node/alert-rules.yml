@@ -57,6 +57,16 @@ groups:
           summary: "Node {{ $labels.instance }} follower leaves L1 events out ({{ $labels.reason }})"
           runbook: "docs/operations/alerts.md#midgardl1eventrefusals"
 
+      - alert: MidgardLocalLedgerDivergence
+        # The node's ledger entries do not derive the root it stores for
+        # them; it neither adopts a landed block nor commits on them.
+        expr: increase(midgard_local_ledger_divergence_total[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} holds ledger entries that do not derive their stored root ({{ $labels.check }})"
+          runbook: "docs/operations/alerts.md#midgardlocalledgerdivergence"
+
       - alert: MidgardSettlementJobsStuck
         expr: midgard_settlement_jobs_stuck > 0
         labels:

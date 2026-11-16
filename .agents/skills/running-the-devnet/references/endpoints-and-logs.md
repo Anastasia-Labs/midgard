@@ -322,6 +322,40 @@ Commitment and liveness (raised by fibers, cleared by them):
 - `commit_base_pending`: the commit waits for a tail block that
   landed-block processing has not applied yet, or for this node's own block
   in flight to land. Wait.
+- `commit_base_ledger_unverified`: the commit on a landed tail waits for the
+  node's verification of `confirmed_ledger` at the current frontier, which
+  runs at startup, after each fold and every ten minutes. It clears when
+  the verification passes. While it waits, look under the source
+  `confirmed_ledger_verification`: `confirmed_ledger_verification_failed`
+  means the verification cannot complete, and
+  `commit_base_ledger_divergence:confirmed_ledger` or
+  `:confirmed_ledger_tail` means it found a divergence (both below). With neither raised, a run is still in
+  progress (about a minute at 100,000 entries); wait.
+- `confirmed_ledger_verification_failed`: the node's last verification of
+  `confirmed_ledger` failed before it could pass or find a divergence: its
+  database snapshot could not be read, or its worker thread failed (it
+  runs out of its 2 GB heap past about 240,000 ledger entries). The detail
+  names the failure. Commits on landed tails wait as
+  `commit_base_ledger_unverified` until a run passes; the next run that
+  completes clears it. A database error is retried at the next frontier
+  poll and the ten-minute re-check; a heap failure repeats until the
+  ledger is smaller or the limit raised. Report it with the detail.
+- `commit_base_ledger_divergence:<check>`: the commit is refused because its
+  base's ledger does not match the root this node stores for that base
+  (`check`: `commit_base_landed` or `commit_base_confirmed_ledger`). A local
+  fault, never the base block's; it repeats on every tick and a restart does
+  not clear it. Under the source `confirmed_ledger_verification`,
+  `check` is the node's verification's (at startup, after each fold and
+  every ten minutes): `confirmed_ledger` when `confirmed_ledger` does not
+  derive the frontier's stored root, `confirmed_ledger_tail` when, with the
+  processed landed deltas up to the queue tail applied, it does not derive
+  the tail's stored root, or one of those deltas does not apply to the
+  ledger before it. When both diverge it names `confirmed_ledger`; the
+  node log and `midgard_local_ledger_divergence_total` carry both. Commits
+  on landed tails then wait as `commit_base_ledger_unverified`.
+  The reason clears when a later verification passes. Report it with the
+  detail (see the `MidgardLocalLedgerDivergence` alert in
+  `docs/operations/alerts.md`).
 - `commit_scheduler_alignment_failed`: commit work is pending, but this
   node's scheduler alignment failed on its last tick, so it cannot take or
   pass on the scheduler turn. It escalates after ten minutes. Read the
@@ -651,9 +685,11 @@ first hold by priority is the reason, the rest are in its detail):
   link to its parent; it is never adopted, and no timer replays it again
   (the next follower change does). Report the block.
 - `landed_block_own_journal_mismatch`: this node's own landed block
-  disagrees with its journal. A local fault; processing stops until the
-  journal is repaired (no timer retries it): restore the node database from a backup that holds
-  the block's journal (plan §7.5, R5). Report it with the detail.
+  disagrees with its journal, applied on a parent ledger that derives the
+  parent's root (one that does not is `landed_block_local_fault`). A local
+  fault; processing stops until the journal is repaired (no timer retries
+  it): restore the node database from a backup that holds the block's
+  journal (plan §7.5, R5). Report it with the detail.
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
@@ -720,7 +756,10 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   answer. Never attributed to the block. Retried on the driver's backoff;
   after a fixed number of runs with no progress past that block the node
   exits non-zero for its supervisor to restart it. If it repeats after a
-  restart, check the node's libsodium install and read the detail.
+  restart, check the node's libsodium install and read the detail. A detail
+  naming `local ledger divergence (<check>)` is this node's parent ledger not
+  deriving the parent's stored root, for a foreign block or its own; a
+  restart does not clear it. Report it with the detail.
 - `landed_block_replay_held`, `landed_block_replay_stuck`: the event replay
   of a foreign block failed locally, which the block's input can reach.
   Never attributed to the block and never an exit: the block is held and

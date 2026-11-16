@@ -28,7 +28,9 @@
  *    replayed on its parent's ledger and must reach its header's root. A
  *    block that does not is never recorded: it holds `landed_block_invalid`
  *    and nothing after it is processed. A mismatch never feeds a fault-proof
- *    path.
+ *    path. A parent ledger that does not derive the parent's root is this
+ *    node's divergence (`local-ledger-divergence.ts`), for either kind: a
+ *    local fault on the block (`landed_block_local_fault`), never a verdict.
  * 4. A row the working ledger does not hold yet (any new one), or a removed
  *    row, runs the rebase (the driver's recompute, which
  *    also disposes of the dead own journals). One that cannot
@@ -54,6 +56,11 @@ import { type ImportChecks, importChecks } from "../import-check/deadline.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
+import {
+  checkLedgerRoot,
+  countLedgerDivergence,
+  ledgerDivergenceDetail,
+} from "../mpf/local-ledger-divergence.js";
 import type { Database } from "../services/database.js";
 import { followerWriteHoldOf } from "../services/follower-write-gate.js";
 import { failureHold } from "../services/l1-follower.failure-hold.js";
@@ -207,7 +214,27 @@ const newRow = <R>(
       const root = yield* computeLedgerMpfRootFromLedgerEntries(
         ledgerEntries(applyDelta(new Map(ledger), journal)),
       );
-      if (root !== node.header.utxosRoot)
+      if (root !== node.header.utxosRoot) {
+        // The journal is at fault only on a parent ledger that derives the
+        // parent's root; on one that does not, this node's ledger is.
+        const parentLedger = yield* Effect.either(
+          checkLedgerRoot({
+            check: "own_parent",
+            headerHash: parent.headerHash,
+            root: parent.utxosRoot,
+            derivedRoot: yield* computeLedgerMpfRootFromLedgerEntries(
+              ledgerEntries(ledger),
+            ),
+          }).pipe(Effect.tapError(countLedgerDivergence)),
+        );
+        if (parentLedger._tag === "Left") {
+          const detail = `own block ${node.headerHash}: ${ledgerDivergenceDetail(parentLedger.left)}`;
+          yield* replayOutcomeAlarm(node.headerHash, "local_fault", detail);
+          return {
+            kind: "held",
+            hold: replayOutcomeHold("local_fault", detail, node.headerHash),
+          } satisfies Step;
+        }
         return {
           kind: "held",
           hold: verdict(
@@ -215,6 +242,7 @@ const newRow = <R>(
             `own block ${node.headerHash}'s journal delta reaches root ${root} on its parent's ledger, its header commits ${node.header.utxosRoot}`,
           ),
         } satisfies Step;
+      }
       // The rebase applies it, as it does a foreign block: it projects its
       // events (the withdrawals with its journal's classification) and
       // writes its local effects, whether or not its journal was dead.
