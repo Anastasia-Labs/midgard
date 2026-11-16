@@ -1,19 +1,21 @@
 /**
  * State-queue merge transaction for advancing committed blocks into confirmed
  * state.
- * This module owns the off-chain merge flow that replays the oldest queued
- * block into the confirmed ledger and then submits the corresponding merge tx.
+ * This module owns the off-chain merge flow that builds and submits the merge
+ * transaction for the oldest queued block.
  *
  * It performs the following tasks:
  *
  * 1. Fetches the confirmed state and the block it points to (i.e. the oldest
  *    block in the queue).
  * 2. Fetches the transactions of that block by querying BlocksDB and its
- *    associated inputs table..
- * 3. Apply those transactions to ConfirmedLedgerDB and update the table to
- *    store the updated UTxO set.
- * 4. Remove all header hashes from BlocksDB associated with the merged block.
- * 5. Build and submit the merge transaction.
+ *    associated inputs table.
+ * 3. Builds, signs and submits the merge transaction, and waits for its L1
+ *    confirmation.
+ *
+ * The merge changes no local ledger: landed-block processing folds the block
+ * into `confirmed_ledger` once the follower's landed queue shows the merge
+ * (`landed-blocks/fold.ts`).
  */
 
 import "@al-ft/midgard-core/error-format";
@@ -37,9 +39,7 @@ import "../utils.js";
 import "../utils.wallet-view.js";
 import "./confirmed-ledger-snapshot.js";
 import "./merge-readiness.js";
-import "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
-import "./merge-to-confirmed-state.landed-unfinalized-merges.js";
-import "./merge-to-confirmed-state.finalize-submitted-merge.js";
+import "./merge-to-confirmed-state.merge-options.js";
 import "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import "./merge-to-confirmed-state.capture-merge-local-ledger-gate.js";
 import "./merge-to-confirmed-state.build-and-submit-merge-tx.js";
@@ -56,16 +56,7 @@ export {
   preflightDecodeBlockTxs,
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 export {
-  type ConfirmedMergeNativeOwnerObservation,
-  finalizeConfirmedMergeProgram,
-  finalizeConfirmedMergeTransaction,
-  observeNativeOwnerAfterConfirmedMerge,
-} from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
-export { finalizeSubmittedMerge } from "./merge-to-confirmed-state.finalize-submitted-merge.js";
-export {
-  type ConfirmedMergeFinalization,
   diagnoseMissingBlockTxs,
-  finalizeLandedMergesProgram,
-  finalizeMergesLandedThrough,
   MERGE_CONFIRMATION_PROVIDER_RETRIES,
-} from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+  type SubmittedMergeTx,
+} from "./merge-to-confirmed-state.merge-options.js";

@@ -7,10 +7,10 @@
  * reads over them are `pendingBlockFinalizations.derived-status.ts`.
  *
  * - `folded`: `confirmed_ledger` holds it: it is the frontier or a
- *   retained fold, whatever landed row is left (the merge finalization's
- *   frontier bootstrap folds in place), or, once its fold was pruned at
- *   finality, the state queue merged it (its newest queue terminal) and no
- *   landed row holds it;
+ *   retained fold, whatever landed row is left (a frontier set at the
+ *   block in place, not by a fold, leaves one), or, once its fold was
+ *   pruned at finality, the state queue merged it (its newest queue
+ *   terminal) and no landed row holds it;
  * - `applied`: a processed landed row holds the block and the working
  *   ledger took it in;
  * - `landed`: a processed landed row holds it, not applied yet;

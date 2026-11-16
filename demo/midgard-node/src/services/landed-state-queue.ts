@@ -290,6 +290,10 @@ export const landedStateQueueSnapshot = (
 /** How often, and how many times, a wait for the follower to land a tx re-reads P1. */
 export const LANDED_QUEUE_VISIBILITY_DELAY = Duration.seconds(1);
 export const LANDED_QUEUE_VISIBILITY_RETRIES = 180;
+/** How long a landing wait re-reads P1 at most: its retries at their spacing. */
+export const LANDED_QUEUE_VISIBILITY_BUDGET_MS =
+  Duration.toMillis(LANDED_QUEUE_VISIBILITY_DELAY) *
+  LANDED_QUEUE_VISIBILITY_RETRIES;
 
 /** The waits `awaitLandedStateQueueSnapshot` re-reads P1 on. */
 const VISIBILITY_WAITS = new WeakSet<object>();

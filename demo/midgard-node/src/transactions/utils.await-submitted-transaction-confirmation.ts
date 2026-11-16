@@ -118,7 +118,6 @@ export const awaitSubmittedTransactionConfirmation = (
     | "confirmationTimeoutMs"
     | "confirmationRetries"
     | "confirmationPollIntervalMs"
-    | "confirmationDeadlineMs"
     | "requiredOutputIndexes"
     | "label"
   > = {},
@@ -137,15 +136,13 @@ export const awaitSubmittedTransactionConfirmation = (
       !Number.isSafeInteger(confirmationRetries) ||
       confirmationRetries < 0 ||
       !Number.isSafeInteger(confirmationPollIntervalMs) ||
-      confirmationPollIntervalMs <= 0 ||
-      (options.confirmationDeadlineMs !== undefined &&
-        !Number.isSafeInteger(options.confirmationDeadlineMs))
+      confirmationPollIntervalMs <= 0
     ) {
       return yield* Effect.fail(
         new TxConfirmError({
           message: "Invalid transaction confirmation options",
           txHash,
-          cause: `timeout_ms=${confirmationTimeoutMs.toString()},retries=${confirmationRetries.toString()},poll_interval_ms=${confirmationPollIntervalMs.toString()},deadline_ms=${String(options.confirmationDeadlineMs)}`,
+          cause: `timeout_ms=${confirmationTimeoutMs.toString()},retries=${confirmationRetries.toString()},poll_interval_ms=${confirmationPollIntervalMs.toString()}`,
         }),
       );
     }
@@ -171,7 +168,6 @@ export const awaitSubmittedTransactionConfirmation = (
       ),
     );
 
-    const confirmationDeadlineMs = options.confirmationDeadlineMs;
     yield* awaitWithTimeout.pipe(
       Effect.zipRight(
         awaitRequiredOutputVisibility(
@@ -185,22 +181,6 @@ export const awaitSubmittedTransactionConfirmation = (
           ),
         ),
       ),
-      (wait) =>
-        confirmationDeadlineMs === undefined
-          ? wait
-          : wait.pipe(
-              Effect.timeoutFail({
-                duration: Duration.millis(
-                  Math.max(0, confirmationDeadlineMs - Date.now()),
-                ),
-                onTimeout: () =>
-                  new TxConfirmError({
-                    message: "Transaction confirmation deadline passed",
-                    txHash,
-                    cause: `deadline_ms=${confirmationDeadlineMs.toString()}`,
-                  }),
-              }),
-            ),
     );
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
     return txHash;

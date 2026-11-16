@@ -33,11 +33,6 @@ export type SubmitRecoveryInlineOptions = {
   readonly confirmationTimeoutMs?: number;
   readonly confirmationRetries?: number;
   readonly confirmationPollIntervalMs?: number;
-  /**
-   * Unix time (ms) at which the whole confirmation wait, retries included,
-   * fails with TxConfirmError whatever retries remain.
-   */
-  readonly confirmationDeadlineMs?: number;
   readonly inlineWaitPolicy?: Extract<InlineWaitPolicy, "allow_inline_wait">;
   readonly noInlineSubmitDefer?: never;
 };

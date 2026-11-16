@@ -9,15 +9,15 @@ import "../transactions/state-queue/merge-to-confirmed-state.js";
 import "./slot-aware-due-work.js";
 import "./merge.registered-merge-due-work-skip.js";
 import "./merge.merge-action-with-l1-control-plane-held.js";
-import "./merge.with-merge-history-producer.js";
+import "./merge.merge-action.js";
+export {
+  mergeAction,
+  type MergeActionOptions,
+  mergeFiber,
+  MergeIntentJournalUnavailable,
+} from "./merge.merge-action.js";
 export {
   type MergeActionResult,
   SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS,
   withScheduledMergeControlPlaneWait,
 } from "./merge.registered-merge-due-work-skip.js";
-export {
-  mergeAction,
-  type MergeActionOptions,
-  mergeFiber,
-  MergeProducerPermitUnavailable,
-} from "./merge.with-merge-history-producer.js";

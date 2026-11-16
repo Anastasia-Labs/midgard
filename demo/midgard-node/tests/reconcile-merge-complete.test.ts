@@ -74,11 +74,15 @@ describe("merge-complete reconciliation verdict", () => {
     });
   });
 
-  it("blocks while an unqueued header's block is landed or applied but not folded", () => {
+  it("is pending on the landed fold while an unqueued header's block is landed or applied", () => {
     for (const status of [Status.Landed, Status.Applied])
       expect(mergeCompletionVerdict(observed({ status }))).toMatchObject({
-        status: "blocked",
-        nextAction: expect.stringContaining(`its block is ${status}`),
+        status: "pending",
+        nextAction: expect.stringMatching(
+          new RegExp(
+            `^pending: landed fold not yet applied\\..*its block is ${status}`,
+          ),
+        ),
       });
   });
 

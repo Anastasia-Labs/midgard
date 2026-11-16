@@ -2,11 +2,12 @@ import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-prof
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { describe, expect } from "vitest";
 
 import {
@@ -23,10 +24,14 @@ import {
   retrieveMergeLinks,
   unfoldFrontier,
 } from "../../src/landed-blocks/confirmed-merges.js";
-import { Frontier } from "../../src/landed-blocks/store.js";
+import { foldToRoot } from "../../src/landed-blocks/fold.js";
+import { CONFIRMED_LEDGER_BASE_MISMATCH } from "../../src/landed-blocks/holds.js";
+import { ownFoldRow } from "../../src/landed-blocks/journal.js";
+import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
+import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/index.js";
 import { NodeConfig } from "../../src/services/config.js";
-import { finalizeConfirmedMergeTransaction } from "../../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
 import {
@@ -36,8 +41,13 @@ import {
 import { insertDeposits } from "../helpers/event-rows.js";
 import { materializeJournalLedger } from "../helpers/materialize-journal-ledger.js";
 import { prepareUnderTestLease } from "../helpers/mutation-lease.js";
-import { landApplied } from "../helpers/own-block-facts.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
+
+/** The production fold's ports with the view held. */
+const foldPorts = {
+  confirmView: () => Effect.succeed(true),
+  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
+} as unknown as LandedBlockPorts<never>;
 
 export const registerMpfTests = () => {
   describe("Phase 3 MPF durable state", () => {
@@ -282,9 +292,14 @@ export const registerMpfTests = () => {
                     })),
                   },
                 });
-                yield* landApplied(
-                  headers[index]!,
-                  headerValues[index]!.prevHeaderHash,
+                yield* insertRow(
+                  ownFoldRow(
+                    Option.getOrThrow(
+                      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+                        headers[index]!,
+                      ),
+                    ),
+                  ),
                 );
               });
             yield* prepare(0, [a[LedgerUtils.Columns.OUTREF]], [c]);
@@ -340,13 +355,6 @@ export const registerMpfTests = () => {
                     ].toString("hex")}`,
                 )
                 .sort();
-            const journalOf = (header: Buffer) =>
-              PendingBlockFinalizationsDB.retrieveByHeaderHash(header).pipe(
-                Effect.map((found) => {
-                  if (found._tag === "None") throw new Error("missing journal");
-                  return found.value;
-                }),
-              );
             const confirmedState = Effect.gen(function* () {
               const entries = yield* ConfirmedLedgerDB.retrieve;
               return {
@@ -374,13 +382,21 @@ export const registerMpfTests = () => {
                 });
               });
 
-            // The merge fiber folds each journal by its delta: the first
-            // (with no frontier yet) after the one-time bootstrap at its base.
+            // Landed-block processing folds each block by its delta once
+            // the merged root reaches it, from a frontier at the first's base.
+            const foldTo = (index: number) =>
+              foldToRoot(
+                foldPorts,
+                {} as View,
+                {
+                  headerHash: headers[index]!.toString("hex"),
+                  utxosRoot: roots[index + 1]!,
+                },
+                () => Effect.succeed(null),
+              );
+            yield* resetTo(0);
             for (let index = 0; index < headers.length; index += 1) {
-              const step = yield* finalizeConfirmedMergeTransaction({
-                journal: yield* journalOf(headers[index]!),
-              });
-              expect(step).toBe("folded");
+              expect(yield* foldTo(index)).toEqual({ kind: "at_root" });
               const confirmed = yield* confirmedState;
               expect(confirmed.set).toEqual(utxoSet(states[index + 1]!));
               expect(confirmed.root).toBe(roots[index + 1]);
@@ -397,11 +413,7 @@ export const registerMpfTests = () => {
               ),
             ).toBe(true);
             // A re-run converges without folding twice.
-            expect(
-              yield* finalizeConfirmedMergeTransaction({
-                journal: yield* journalOf(headers[2]!),
-              }),
-            ).toBe("already_folded");
+            expect(yield* foldTo(2)).toEqual({ kind: "at_root" });
             expect((yield* confirmedState).root).toBe(roots[3]);
 
             // Each merge's rollback restores the prior ledger, exactly.
@@ -417,7 +429,11 @@ export const registerMpfTests = () => {
             // A merge on its base folds, consuming its deposit.
             yield* resetTo(1);
             const mergeHeaderHash = headers[1]!;
-            const mergeJournal = yield* journalOf(mergeHeaderHash);
+            const mergeJournal = Option.getOrThrow(
+              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+                mergeHeaderHash,
+              ),
+            );
             const successTxHash = Buffer.alloc(32, 0x61);
             const successRows = [successTxHash.toString("hex")];
             const successDeposit = makeDepositEntry({
@@ -434,11 +450,7 @@ export const registerMpfTests = () => {
               );
             yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
             yield* insertDeposits([successDeposit]);
-            expect(
-              yield* finalizeConfirmedMergeTransaction({
-                journal: mergeJournal,
-              }),
-            ).toBe("folded");
+            expect(yield* foldTo(1)).toEqual({ kind: "at_root" });
             expect((yield* confirmedState).set).toEqual(utxoSet(states[2]!));
             expect((yield* confirmedState).root).toBe(roots[2]);
             // Its bodies stay until its fold is final (releaseFinalFolds).
@@ -447,8 +459,8 @@ export const registerMpfTests = () => {
               DepositsDB.Status.Consumed,
             );
 
-            // A frontier elsewhere defers the fold to landed-block
-            // processing; the block rows stay.
+            // A frontier off the block's lineage folds nothing; the block
+            // rows stay.
             yield* resetTo(0);
             const deferredDeposit = makeDepositEntry({
               [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
@@ -456,11 +468,7 @@ export const registerMpfTests = () => {
             });
             yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
             yield* insertDeposits([deferredDeposit]);
-            expect(
-              yield* finalizeConfirmedMergeTransaction({
-                journal: mergeJournal,
-              }),
-            ).toBe("deferred");
+            expect(yield* foldTo(1)).toMatchObject({ kind: "off_chain" });
             expect((yield* confirmedState).root).toBe(roots[0]);
             expect(yield* blockTxs(mergeHeaderHash)).toEqual(successRows);
             expect(yield* depositStatus(deferredDeposit)).toBe(
@@ -471,8 +479,9 @@ export const registerMpfTests = () => {
             // base header with another root, or a ledger lacking what the
             // merge spends.
             // (`resetTo` dropped the merge's retained fold; the block is
-            // applied again, as the rebase left it before its fold.)
-            yield* landApplied(mergeHeaderHash, headers[0]!);
+            // landed and applied again, as the rebase left it before its
+            // fold.)
+            yield* insertRow(ownFoldRow(mergeJournal));
             for (const wrong of [
               { utxosRoot: roots[2]!, ledger: 1 },
               { utxosRoot: roots[1]!, ledger: 0 },
@@ -483,12 +492,10 @@ export const registerMpfTests = () => {
                 utxosRoot: wrong.utxosRoot,
               };
               yield* Frontier.upsert(frontier);
-              const refused = yield* Effect.either(
-                finalizeConfirmedMergeTransaction({
-                  journal: mergeJournal,
-                }),
-              );
-              expect(refused._tag).toBe("Left");
+              expect(yield* foldTo(1)).toMatchObject({
+                kind: "held",
+                hold: { reason: CONFIRMED_LEDGER_BASE_MISMATCH },
+              });
               expect(yield* Frontier.retrieve).toEqual(frontier);
               expect((yield* confirmedState).root).toBe(roots[wrong.ledger]);
               expect(yield* blockTxs(mergeHeaderHash)).toEqual(successRows);

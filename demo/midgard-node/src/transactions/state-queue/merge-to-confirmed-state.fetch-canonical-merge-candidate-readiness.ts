@@ -29,7 +29,7 @@ import {
   type MergeErrorCode,
   mergeFailureCounter,
   mergeMissingBlockTxsCounter,
-} from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+} from "./merge-to-confirmed-state.merge-options.js";
 
 export type CanonicalMergeCandidateReadiness =
   | {

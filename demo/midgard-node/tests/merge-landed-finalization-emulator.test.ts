@@ -6,7 +6,7 @@ import {
   type LucidEvolution,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import { Effect, Either, Option, Ref } from "effect";
+import { Effect, Either, Option } from "effect";
 import { expect, it, vi } from "vitest";
 
 import {
@@ -16,9 +16,8 @@ import {
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { DRIVER_RECOMPUTE_PENDING } from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
-import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
+import { IntentJournal } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
@@ -40,28 +39,18 @@ import {
   runCommitWorkerUntilSubmitted,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
-import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { assertLandedMergeFoldedByProcessing } from "./helpers/merge-landed-finalization-folded-by-processing.js";
 import { assertMergeWaitsForLedgerTip } from "./helpers/merge-trailing-ledger-tip.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-// Every confirmed merge's in-flight local-finalization outcome as the merge
-// builder reports it, and an optional confirmation window replacing the
-// caller's deadline, so a test can make the confirmation wait give up.
+// `giveUpConfirmation` makes a merge's L1 confirmation wait give up at its
+// first refusal instead of retrying, so a test can leave a submitted merge
+// unconfirmed.
 const mergeHooks = vi.hoisted(() => ({
-  confirmedFinalizations: [] as {
-    readonly headerHash: string;
-    readonly succeeded: boolean;
-  }[],
-  confirmationWindowMs: undefined as number | undefined,
+  giveUpConfirmation: false,
   /** Slots the L1 clock runs ahead of the emulator's ledger tip. */
   l1ClockLeadSlots: 0,
-  /** Runs once, right after the next direct read of the landed queue (P1). */
-  afterLandedQueueRead: undefined as
-    | (() => import("effect").Effect.Effect<void, unknown, any>)
-    | undefined,
 }));
 // Between blocks the L1 clock (`slotNow`: the last tip plus elapsed time)
 // runs ahead of the ledger tip; a test sets how far.
@@ -75,67 +64,28 @@ vi.mock("../src/l1-heads.js", async (importOriginal) => {
     );
   return { ...actual, l1NowUnixTimeMs };
 });
-// The merge's landed-merge catch-up reads P1 directly (`readLandedStateQueue`);
-// a test can act right after that read, before the attempt reads P1 again.
-vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
-  const { Effect: E } = await import("effect");
-  const actual =
-    await importOriginal<
-      typeof import("../src/services/landed-state-queue.js")
-    >();
-  const readLandedStateQueue: typeof actual.readLandedStateQueue = (
-    stateQueue,
-  ) =>
-    E.tap(actual.readLandedStateQueue(stateQueue), () => {
-      const after = mergeHooks.afterLandedQueueRead;
-      mergeHooks.afterLandedQueueRead = undefined;
-      return after === undefined ? E.void : E.orDie(after());
-    });
-  return { ...actual, readLandedStateQueue };
-});
 vi.mock(
-  "../src/transactions/state-queue/merge-to-confirmed-state.js",
+  "../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js",
   async (importOriginal) => {
-    const { Effect: E, Exit: X } = await import("effect");
     const actual =
       await importOriginal<
-        typeof import("../src/transactions/state-queue/merge-to-confirmed-state.js")
+        typeof import("../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js")
       >();
-    const buildAndSubmitMergeTx: typeof actual.buildAndSubmitMergeTx = (
-      lucid,
-      fetchConfig,
-      contracts,
-      options,
-    ) =>
-      actual.buildAndSubmitMergeTx(lucid, fetchConfig, contracts, {
-        ...options,
-        ...(mergeHooks.confirmationWindowMs === undefined
-          ? {}
-          : {
-              confirmationDeadlineMs:
-                Date.now() + mergeHooks.confirmationWindowMs,
-            }),
-        onConfirmedFinalization: (outcome) => {
-          mergeHooks.confirmedFinalizations.push({
-            headerHash: outcome.headerHash,
-            succeeded: X.isSuccess(outcome.exit),
-          });
-          return options?.onConfirmedFinalization?.(outcome) ?? E.void;
-        },
+    const mergeSubmitRecoveryOptions: typeof actual.mergeSubmitRecoveryOptions =
+      (...args) => ({
+        ...actual.mergeSubmitRecoveryOptions(...args),
+        ...(mergeHooks.giveUpConfirmation
+          ? { confirmationRetries: 0, confirmationPollIntervalMs: 100 }
+          : {}),
       });
-    return { ...actual, buildAndSubmitMergeTx };
+    return { ...actual, mergeSubmitRecoveryOptions };
   },
 );
 
 const Status = PendingBlockFinalizationsDB.OwnBlockStatus;
 
-// A target no queued block has: the merge attempt runs its landed-merge
-// catch-up and then skips without building a transaction.
-const CATCH_UP_ONLY = { expectedHeaderHash: "ff".repeat(28) };
-
 const openMergeLifecycle = async () => {
-  mergeHooks.confirmedFinalizations.length = 0;
-  mergeHooks.confirmationWindowMs = undefined;
+  mergeHooks.giveUpConfirmation = false;
   const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
@@ -161,7 +111,9 @@ const openMergeLifecycle = async () => {
         Effect.provideService(NodeConfig, h.production.nodeConfig),
         Effect.provideService(MempoolLedgerCache, h.production.cache),
         Effect.provide(Database.layer),
-        Effect.provide(IntentJournalWithoutFollower),
+        // The node's journal records the merge, as `runNode`'s does: a merge
+        // never goes out unjournaled.
+        Effect.provideService(IntentJournal, h.production.journal),
       ) as Effect.Effect<A, E, never>,
     );
   const sqlRun = <A>(
@@ -177,7 +129,7 @@ const openMergeLifecycle = async () => {
         ).pipe(Effect.provide(Database.layer)),
       )
     ).blockCount;
-  /** The block's derived status: folded once its merge is finalized. */
+  /** The block's derived status: folded once its landed merge is folded. */
   const ownStatus = (headerHash: string) =>
     run(
       PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
@@ -185,7 +137,7 @@ const openMergeLifecycle = async () => {
       ),
     );
   // The block's deposits, all in `status`: projected while its merge is not
-  // finalized, consumed once it is.
+  // folded, consumed once it is.
   const expectDeposits = async (
     headerHash: string,
     status: DepositsDB.Status,
@@ -210,18 +162,6 @@ const openMergeLifecycle = async () => {
       PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
     ];
   };
-  /** The recompute the follower write gate holds writes for, if any. */
-  const gatePending = async () =>
-    (
-      await sqlRun(
-        (sql) =>
-          sql<{
-            readonly reason: string | null;
-          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
-      )
-    )[0]!.reason;
-  const catchUp = () => run(mergeAction(true, CATCH_UP_ONLY));
-
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
@@ -230,7 +170,7 @@ const openMergeLifecycle = async () => {
     return hash;
   };
   // One deposit, committed, landed, applied and attested: a
-  // block the merge fiber may fold once it matures.
+  // block the merge fiber may merge once it matures.
   const commitDepositBlock = async (lovelace: bigint, mature = true) => {
     await ensureSeparateCollateralUtxo(wallet);
     await advanceHistoryAdmissionClock(fixture, "deposit");
@@ -352,53 +292,40 @@ const openMergeLifecycle = async () => {
     return { ...lucidService, api };
   };
 
-  // A forced merge of the oldest block whose confirmation wait never sees the
-  // submitted merge and ends at its deadline, unfinalized. The merge then
-  // leaves the emulator's mempool (the emulator, unlike a real provider,
-  // hides a pending transaction's inputs), so L1 has not taken it; the signed
-  // merge is returned to hand to L1 again.
-  const expireMergeConfirmation = async (headerHash: string) => {
+  // A forced merge of the oldest block whose L1 confirmation wait gives up:
+  // the submitted merge stays in the emulator's mempool and the attempt
+  // fails unconfirmed, with nothing folded. The merge then leaves the
+  // mempool (the emulator, unlike a real provider, hides a pending
+  // transaction's inputs), so L1 has not taken it; the signed merge is
+  // returned to hand to L1 again.
+  const abandonMergeConfirmation = async (headerHash: string) => {
     let heldTxHash: string | undefined;
     let heldTxCbor: string | undefined;
-    const holdingLucid = withConfirmationWait(async (txHash) => {
+    const refusingLucid = withConfirmationWait(async (txHash) => {
       heldTxHash = txHash;
-      return new Promise<boolean>(() => {});
+      return false;
     });
     const submitThrough = fixture.emulator.submitTx;
     fixture.emulator.submitTx = async (signedCbor) => {
       heldTxCbor = signedCbor;
       return submitThrough.call(fixture.emulator, signedCbor);
     };
-    const reportedFinalizations = mergeHooks.confirmedFinalizations.length;
-    mergeHooks.confirmationWindowMs = 1_500;
-    let expired: Either.Either<MergeActionResult, unknown>;
+    mergeHooks.giveUpConfirmation = true;
+    let abandoned: Either.Either<MergeActionResult, unknown>;
     try {
-      expired = await Promise.race([
-        mergeUntilSubmitted(holdingLucid),
-        new Promise<never>((_resolve, reject) =>
-          setTimeout(
-            () =>
-              reject(new Error("the confirmation wait outlived its deadline")),
-            60_000,
-          ),
-        ),
-      ]);
+      abandoned = await mergeUntilSubmitted(refusingLucid);
     } finally {
-      mergeHooks.confirmationWindowMs = undefined;
+      mergeHooks.giveUpConfirmation = false;
       fixture.emulator.submitTx = submitThrough;
     }
     expect(heldTxHash).toBeDefined();
     expect(heldTxCbor).toBeDefined();
     expect(
-      Either.isLeft(expired) &&
-        formatUnknownError(expired.left, { includeCause: true }),
-    ).toMatch(
-      /local merge finalization blocked[\s\S]*Transaction confirmation deadline passed/,
-    );
-    expect(mergeHooks.confirmedFinalizations).toHaveLength(
-      reportedFinalizations,
-    );
+      Either.isLeft(abandoned) &&
+        formatUnknownError(abandoned.left, { includeCause: true }),
+    ).toContain("failed to confirm the merge tx");
     expect(await ownStatus(headerHash)).toBe(Status.Applied);
+    await expectDeposits(headerHash, DepositsDB.Status.Projected);
     dropPendingEmulatorTransaction(fixture.emulator, heldTxHash!);
     h.observer.forgetDropped(heldTxHash!);
     h.lucidService.api.clearUTxOOverride();
@@ -419,12 +346,10 @@ const openMergeLifecycle = async () => {
     ownStatus,
     expectDeposits,
     expectedRoot,
-    gatePending,
-    catchUp,
     commitDepositBlock,
     mergeUntilSubmitted,
     withConfirmationWait,
-    expireMergeConfirmation,
+    abandonMergeConfirmation,
     restart: async (afterStop?: () => Promise<void>) => {
       h = await initial.restartRuntime({ afterStop });
     },
@@ -432,7 +357,7 @@ const openMergeLifecycle = async () => {
       try {
         await h.close();
       } finally {
-        mergeHooks.confirmationWindowMs = undefined;
+        mergeHooks.giveUpConfirmation = false;
         mergeHooks.l1ClockLeadSlots = 0;
         vi.useRealTimers();
       }
@@ -452,125 +377,46 @@ const expectFinalizedOnce = async (m: MergeLifecycle, headerHash: string) => {
   expect(audit.diverged).toBe(false);
 };
 
-it("finalizes a landed merge whose local finalization failed after its fold or was held by a driver recompute, exactly once", async () => {
+/**
+ * The merge attempt writes no local ledger: when it returns, the follower's
+ * landed queue shows the merge, yet the block is only applied and its
+ * deposits projected. Landed-block processing folds it at the next driver
+ * run, once, and a further run changes nothing.
+ */
+it("leaves a confirmed merge's fold to landed-block processing, which folds it exactly once", async () => {
   const m = await openMergeLifecycle();
-  const { fixture } = m;
   try {
-    // --- A: the finalization fails after its ledger fold committed. -------
-    const first = await m.commitDepositBlock(12_000_000n);
-    expect(await m.queuedBlocks()).toBe(1);
-    const liveOwner = await Effect.runPromise(
-      Ref.get(m.h.globals.NATIVE_MPF_OWNER),
-    );
-    if (liveOwner === undefined) throw new Error("Expected live native owner");
-    let failures = 0;
-    const failingOwner = new Proxy(liveOwner, {
-      get(target, property) {
-        if (property === "diagnostics")
-          return async () => {
-            if (
-              failures === 0 &&
-              (await m.ownStatus(first)) === Status.Folded
-            ) {
-              failures += 1;
-              throw new Error("test: owner unreachable after the ledger fold");
-            }
-            return target.diagnostics();
-          };
-        const value = Reflect.get(target, property, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
+    const block = await m.commitDepositBlock(12_000_000n);
+    const merged = await m.mergeUntilSubmitted();
+    expect(Either.isRight(merged) && merged.right).toMatchObject({
+      status: "merged",
+      headerHash: block,
     });
-    await Effect.runPromise(
-      Ref.set(m.h.globals.NATIVE_MPF_OWNER, failingOwner),
-    );
-    let firstMerge: Either.Either<MergeActionResult, unknown>;
-    try {
-      firstMerge = await m.mergeUntilSubmitted();
-    } finally {
-      await Effect.runPromise(Ref.set(m.h.globals.NATIVE_MPF_OWNER, liveOwner));
-    }
-    expect(failures).toBe(1);
-    expect(Either.isLeft(firstMerge)).toBe(true);
-    expect(mergeHooks.confirmedFinalizations).toEqual([
-      { headerHash: first, succeeded: false },
-    ]);
     expect(await m.queuedBlocks()).toBe(0);
-    // The fold committed: the block is folded and the confirmed ledger is
-    // already at it, so the next merge attempt finds nothing to finalize.
-    await expectFinalizedOnce(m, first);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, first);
-
-    // --- B: a driver recompute holds the gate while the merge lands. ------
-    const second = await m.commitDepositBlock(9_000_000n);
-    expect(await m.queuedBlocks()).toBe(1);
-    let holds = 0;
-    const holdingLucid = m.withConfirmationWait(async (txHash, land) => {
-      await m.run(
-        holdFollowerWriteGate(
-          "test: a recompute began while the merge confirmed",
-        ),
-      );
-      holds += 1;
-      return land(txHash);
-    });
-    const refused = await m.mergeUntilSubmitted(holdingLucid);
-    expect(holds).toBe(1);
-    expect(Either.isLeft(refused)).toBe(true);
-    expect(await m.queuedBlocks()).toBe(0);
-    expect(mergeHooks.confirmedFinalizations.at(-1)).toEqual({
-      headerHash: second,
-      succeeded: false,
-    });
-    expect(
-      Either.isLeft(refused) &&
-        formatUnknownError(refused.left, { includeCause: true }),
-    ).toContain(DRIVER_RECOMPUTE_PENDING);
-    expect(await m.ownStatus(second)).toBe(Status.Applied);
-    await m.expectDeposits(second, DepositsDB.Status.Projected);
-    expect(await m.gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
-    // No merge attempt, and so no catch-up, runs while the gate is held.
-    const whileHeld = await m.run(
-      Effect.either(mergeAction(true, CATCH_UP_ONLY)),
-    );
-    expect(
-      Either.isLeft(whileHeld) &&
-        (whileHeld.left as { readonly _tag?: string })._tag,
-    ).toBe("MergeProducerPermitUnavailable");
-    expect(await m.ownStatus(second)).toBe(Status.Applied);
-
-    // The node restarts: the fresh driver's first view recomputes and
-    // reopens the gate, and startup leaves the merge's finalization to the
-    // runtime.
-    await m.restart();
-    expect(await m.gatePending()).toBeNull();
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, second);
-    // Finalized once: a further attempt finds nothing left to do.
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, second);
-    expect(await m.ownStatus(first)).toBe(Status.Folded);
-    expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
+    expect(await m.ownStatus(block)).toBe(Status.Applied);
+    await m.expectDeposits(block, DepositsDB.Status.Projected);
+    await m.h.synchronize();
+    await expectFinalizedOnce(m, block);
+    await m.h.synchronize();
+    await expectFinalizedOnce(m, block);
   } finally {
     await m.close();
   }
 });
 
-it("finalizes a merge that lands after its confirmation wait gave up, across a restart, and never before it lands", async () => {
+it("folds a merge that lands after its confirmation wait gave up, across a restart, and never before it lands", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
   try {
     const block = await m.commitDepositBlock(12_000_000n);
     expect(await m.queuedBlocks()).toBe(1);
 
-    // The confirmation wait ends at its deadline; the signed merge is kept to
-    // hand to L1 again below.
-    const held = await m.expireMergeConfirmation(block);
-    expect(mergeHooks.confirmedFinalizations).toEqual([]);
-    // Not landed: L1 still queues the block, and no attempt finalizes it.
+    // The confirmation wait gives up; the signed merge is kept to hand to L1
+    // again below.
+    const held = await m.abandonMergeConfirmation(block);
+    // Not landed: L1 still queues the block, and no driver run folds it.
     expect(await m.queuedBlocks()).toBe(1);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
+    await m.h.synchronize();
     expect(await m.ownStatus(block)).toBe(Status.Applied);
     await m.expectDeposits(block, DepositsDB.Status.Projected);
 
@@ -581,94 +427,19 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
       expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
     });
     expect(await m.queuedBlocks()).toBe(0);
-    // Landed-block processing folded it on restart; the catch-up finds
-    // nothing left to finalize.
+    // Landed-block processing folded it on restart, once.
     await expectFinalizedOnce(m, block);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
+    await m.h.synchronize();
     await expectFinalizedOnce(m, block);
-    expect(mergeHooks.confirmedFinalizations).toEqual([]);
   } finally {
     await m.close();
   }
 });
 
-it("leaves a landed merge that landed-block processing folded alone, whatever base its retained journal names", async () => {
+it("folds a landed merge by landed-block processing alone, whatever base its retained journal names", async () => {
   const m = await openMergeLifecycle();
   try {
-    await assertLandedMergeFoldedByProcessing(
-      m,
-      mergeHooks,
-      expectFinalizedOnce,
-    );
-  } finally {
-    await m.close();
-  }
-});
-
-/**
- * A previous merge that lands after an attempt's catch-up read L1, but before
- * the attempt builds, is finalized before the next block is merged on top of
- * it, so each is finalized exactly once. While it has not landed, the walk
- * from the last finalized merge leaves it and the block after it alone.
- */
-it("finalizes a merge that lands between an attempt's catch-up and its build before merging the next block, and never before it lands", async () => {
-  const m = await openMergeLifecycle();
-  const { fixture } = m;
-  try {
-    const first = await m.commitDepositBlock(12_000_000n);
-    const firstMerge = await m.mergeUntilSubmitted();
-    expect(Either.isRight(firstMerge) && firstMerge.right.status).toBe(
-      "merged",
-    );
-    await expectFinalizedOnce(m, first);
-
-    const second = await m.commitDepositBlock(9_000_000n);
-    const third = await m.commitDepositBlock(7_000_000n);
-    expect(await m.queuedBlocks()).toBe(2);
-    const held = await m.expireMergeConfirmation(second);
-
-    // Not landed: the walk starts at the first block's folded merge and
-    // finalizes neither queued block.
-    expect(await m.queuedBlocks()).toBe(2);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    for (const queued of [second, third]) {
-      expect(await m.ownStatus(queued)).toBe(Status.Applied);
-      await m.expectDeposits(queued, DepositsDB.Status.Projected);
-    }
-
-    // The held merge lands just after the next attempt's catch-up read the
-    // landed queue (P1), so that catch-up still sees the second block
-    // queued; the follower then sees the landing before the attempt's next
-    // read.
-    let landings = 0;
-    mergeHooks.afterLandedQueueRead = () =>
-      Effect.gen(function* () {
-        landings += 1;
-        expect(
-          yield* Effect.promise(() => fixture.emulator.submitTx(held.txCbor)),
-        ).toBe(held.txHash);
-        fixture.emulator.awaitBlock(1);
-        expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
-        yield* syncEmulatorChain(fixture.operatorLucid);
-      });
-    const merged = await m.run(Effect.either(mergeAction(true)));
-    expect(landings).toBe(1);
-    expect(Either.isRight(merged) && merged.right).toMatchObject({
-      status: "merged",
-      headerHash: third,
-    });
-    expect(await m.queuedBlocks()).toBe(0);
-    // The second block was finalized before the third was built on it, and
-    // the third by its own confirmed merge.
-    expect(mergeHooks.confirmedFinalizations).toEqual([
-      { headerHash: first, succeeded: true },
-      { headerHash: third, succeeded: true },
-    ]);
-    expect(await m.ownStatus(second)).toBe(Status.Folded);
-    await m.expectDeposits(second, DepositsDB.Status.Consumed);
-    await expectFinalizedOnce(m, third);
-    expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
-    await expectFinalizedOnce(m, third);
+    await assertLandedMergeFoldedByProcessing(m, expectFinalizedOnce);
   } finally {
     await m.close();
   }

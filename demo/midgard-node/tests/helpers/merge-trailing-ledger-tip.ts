@@ -26,7 +26,7 @@ type Submission = { readonly accepted: string } | { readonly refused: string };
  * sent (the node sent it, and the ledger refused it, OutsideValidityInterval);
  * a retry while the tip still trails stays deferred, although wall time is
  * past the due slot. Once the tip reaches the bound, the same merge lands on
- * the first send, and is finalized exactly once.
+ * the first send, and landed-block processing folds it exactly once.
  */
 export const assertMergeWaitsForLedgerTip = async (
   m: MergeLifecycle,
@@ -132,5 +132,6 @@ export const assertMergeWaitsForLedgerTip = async (
     hooks.l1ClockLeadSlots = 0;
   }
   expect(await m.queuedBlocks()).toBe(0);
+  await m.h.synchronize();
   await expectFinalizedOnce(m, block);
 };

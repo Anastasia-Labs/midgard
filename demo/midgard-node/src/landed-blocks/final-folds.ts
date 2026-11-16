@@ -11,9 +11,8 @@
  * the fold can never unfold, and its stored delta is deleted in the same
  * transaction (`pruneMerges`).
  *
- * The headers are every block whose fold just became final, own and foreign,
- * whichever path folded it (landed-block processing or the merge fiber; the
- * merge fiber's folds are released once processing has recorded their merge
+ * The headers are every block whose fold just became final, own and foreign
+ * (a startup-seeded fold is released once processing has recorded its merge
  * point). A block whose fold a rollback unfolds never reaches here.
  *
  * Released here, for each block:
@@ -23,8 +22,8 @@
  * - an own block's bodies, its `blocks` rows (`BlocksDB.clearBlock`; a
  *   foreign block has none). A merge that a rollback undoes leaves the block
  *   queued, and merging it again reads them.
- * Both stay from the fold until here, never deleted at the fold or at the
- * own merge finalization, so an unfold restores nothing for them: the rows
+ * Both stay from the fold until here, never deleted at the fold, so an
+ * unfold restores nothing for them: the rows
  * are still marked by the block it reopens, and a rollback that takes that
  * block off the landed chain clears the marks.
  */

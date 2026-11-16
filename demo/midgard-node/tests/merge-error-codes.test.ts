@@ -17,7 +17,6 @@ import {
 } from "../src/commands/listen-response.js";
 import {
   diagnoseMissingBlockTxs,
-  observeNativeOwnerAfterConfirmedMerge,
   preflightDecodeBlockTxs,
 } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 
@@ -161,74 +160,5 @@ describe("preflightDecodeBlockTxs", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].txId.equals(valid.txId)).toBe(true);
-  });
-});
-
-describe("confirmed merge native owner observation", () => {
-  const ownerDiagnostics = (durableRoot: string) => ({
-    ownerEpoch: Buffer.alloc(16),
-    durableRoot,
-    residentNodes: 1,
-    residentEdges: 0,
-    residentBytes: 64,
-    activeGenerations: 0,
-    generatedNodes: 0,
-    generatedBytes: 0,
-    rssBytes: 1024,
-    peakRssBytes: 1024,
-    childRestarts: 0,
-  });
-
-  it("observes the live Architecture G owner after the merge", async () => {
-    const durableRoot = "11".repeat(32);
-    const confirmedLedgerRoot = "22".repeat(32);
-    let ownerCalls = 0;
-
-    const result = await Effect.runPromise(
-      observeNativeOwnerAfterConfirmedMerge({
-        nativeMpfOwner: {
-          diagnostics: async () => {
-            ownerCalls += 1;
-            return ownerDiagnostics(durableRoot);
-          },
-        },
-        confirmedLedgerEntryCount: 7,
-        confirmedLedgerRoot,
-      }),
-    );
-
-    expect(ownerCalls).toBe(1);
-    expect(result).toEqual({
-      confirmedLedgerEntryCount: 7,
-      confirmedLedgerRoot,
-      durableLedgerRoot: durableRoot,
-      activeGenerations: 0,
-    });
-  });
-
-  it("fails closed when the Architecture G owner is missing", async () => {
-    await expect(
-      Effect.runPromise(
-        observeNativeOwnerAfterConfirmedMerge({
-          nativeMpfOwner: undefined,
-          confirmedLedgerEntryCount: 1,
-          confirmedLedgerRoot: "11".repeat(32),
-        }),
-      ),
-    ).rejects.toThrow("Architecture G native owner is not initialized");
-  });
-
-  it("fails closed on a malformed Architecture G durable root", async () => {
-    await expect(
-      Effect.runPromise(
-        observeNativeOwnerAfterConfirmedMerge({
-          nativeMpfOwner: {
-            diagnostics: async () => ownerDiagnostics("not-a-root"),
-          },
-          confirmedLedgerEntryCount: 1,
-          confirmedLedgerRoot: "11".repeat(32),
-        }),
-      ),
-    ).rejects.toThrow("Architecture G durable root");
   });
 });

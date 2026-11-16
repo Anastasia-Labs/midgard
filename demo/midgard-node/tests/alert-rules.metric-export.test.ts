@@ -33,7 +33,7 @@ import {
   IntentJournalWithoutFollower,
 } from "../src/services/intent-journal.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
-import { mergeFailureCounter } from "../src/transactions/state-queue/merge-to-confirmed-state.landed-unfinalized-merges.js";
+import { mergeFailureCounter } from "../src/transactions/state-queue/merge-to-confirmed-state.merge-options.js";
 import {
   applyCommitPlanningNotice,
   makeCommitPlanningNotice,

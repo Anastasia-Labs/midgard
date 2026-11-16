@@ -20,8 +20,8 @@ type MergeIdleGlobals = Pick<
 /**
  * True when the scheduled merge tick should be skipped: its last attempt found
  * no queued block, the queue is still empty, and the backoff has not elapsed.
- * That attempt also caught up every landed merge, so skipping defers no
- * finalization. A skipped tick still refreshes the merge heartbeat.
+ * Skipping defers nothing, because the landed fold applies merges. A skipped
+ * tick still refreshes the merge heartbeat.
  */
 export const skipIdleMergeTick = (
   globals: MergeIdleGlobals,

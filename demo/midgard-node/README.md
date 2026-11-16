@@ -432,14 +432,18 @@ is empty and the check never fails on a deadline, since pruning never removes
 still-challengeable evidence.
 
 `merge-complete` is read-only. It is `satisfied` only when the header has left
-the state queue and its confirmed-merge local finalization job completed. While
-the header is queued it is `pending`: the running node's scheduled merge fiber
-merges the oldest queued block once it is due and no halt holds the fiber, and
-merging is permissionless on L1, so another operator's merge completes it too.
-A merge that landed without its local finalization (a restart, a hold timeout
-or a follower recompute during the confirmation wait) needs no repair: every
-merge attempt first finalizes each merge L1 confirmed that the database has
-not.
+the state queue and landed-block processing has folded its block into
+`confirmed_ledger`. While the header is queued it is `pending`: the running
+node's scheduled merge fiber merges the oldest queued block once it is due and
+no halt holds the fiber, and merging is permissionless on L1, so another
+operator's merge completes it too. Once the header has left the queue but its
+block is not folded yet, it is `pending` with `landed fold not yet applied`:
+landed-block processing, the only writer of `confirmed_ledger`, folds every
+merged block in queue order once the follower's landed queue shows the merge
+and the working-ledger rebase has applied the block. A merge refuses to run
+without an intent journal that can record it. A fold refused on its base
+(`confirmed_ledger_base_mismatch`) keeps `/readyz` red but does not stop
+merges.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original
 state-changing step. Inspect the emitted evidence and next action first.

@@ -886,7 +886,8 @@ export const runMergeUntilMerged = async ({
           (program) =>
             production === undefined
               ? program.pipe(Effect.provideService(FollowerWriteFixture, true))
-              : // The merge action takes its own producer permit.
+              : // Landed-block processing folds the merge at the next
+                // synchronize, on the lifecycle's validation cache.
                 program.pipe(
                   Effect.provideService(MempoolLedgerCache, production.cache),
                 ),

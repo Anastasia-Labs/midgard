@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Ref } from "effect";
 
 import {
   MempoolDB,
@@ -7,7 +7,6 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -17,7 +16,6 @@ import {
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
-  awaitPostMergeSnapshot,
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
@@ -30,7 +28,7 @@ import {
   buildAndSubmitMergeTx,
   captureMergeLocalLedgerGate,
   fetchCanonicalMergeCandidateReadiness,
-  finalizeLandedMergesProgram,
+  type SubmittedMergeTx,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
 import {
   TxConfirmError,
@@ -39,23 +37,27 @@ import {
 } from "../transactions/utils.js";
 import {
   changedCandidateResult,
-  type ConfirmedMerge,
   logSemanticSkip,
-  MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  MERGE_LOCAL_FINALIZATION_RESERVE_MS,
   type MergeActionResult,
   mergeActionSemanticSkipResult,
   type MergeTrigger,
   mergeValidFromSlot,
   registeredMergeDueWorkSkip,
+  type SubmittedMerge,
 } from "./merge.registered-merge-due-work-skip.js";
 
+/**
+ * The part of a merge attempt that holds the L1 control plane: the candidate
+ * checks, the lease, and the merge transaction's build, sign, submit and L1
+ * confirmation. It ends with the skip, or with the submitted merge, whose
+ * landing the caller awaits after the hold.
+ */
 export const mergeActionWithL1ControlPlaneHeld = (
   force: boolean,
   expectedHeaderHash: string | undefined,
-  confirmed: Ref.Ref<Option.Option<ConfirmedMerge>>,
+  onSubmitted: (submitted: SubmittedMerge) => Effect.Effect<void>,
 ): Effect.Effect<
-  MergeActionResult,
+  MergeActionResult | SubmittedMerge,
   | SDK.CmlDeserializationError
   | SDK.DataCoercionError
   | SDK.HashingError
@@ -71,14 +73,10 @@ export const mergeActionWithL1ControlPlaneHeld = (
   Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
-    // The L1 control plane's hold began when this attempt acquired it.
-    const confirmationDeadlineMs =
-      Date.now() +
-      MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS -
-      MERGE_LOCAL_FINALIZATION_RESERVE_MS;
+    const startedAtMs = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
-    yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+    yield* Ref.set(globals.HEARTBEAT_MERGE, startedAtMs);
     const [initialUnconfirmedSubmittedBlockTxHash, initialResetInProgress] =
       yield* Effect.all(
         [
@@ -111,12 +109,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    // Finalize any merge that landed without its local finalization before
-    // deciding anything else, so even an attempt that skips catches it up.
-    // Its failure fails this attempt, and the attempt runs under the
-    // follower write gate, so only while the driver's view is published. A merge landing after
-    // this read is finalized by buildAndSubmitMergeTx before it builds on it.
-    yield* finalizeLandedMergesProgram(fetchConfig);
     const minQueueLength =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -307,18 +299,17 @@ export const mergeActionWithL1ControlPlaneHeld = (
             {
               bypassQueueLengthGuard: preflight.bypassQueueLengthGuard,
               leaseToken,
-              // The permit was proven at registration, before an unbounded
-              // wait for the L1 control plane; history recovery may have
-              // revoked it since. Re-prove it under the lease right before
-              // the transaction leaves, since the local finalization after
-              // the L1 confirmation cannot write without it.
+              // The lease was proven before the build; re-prove it right
+              // before the transaction leaves.
               assertSubmitAuthority: () =>
-                StateQueueMutationLeasesDB.revalidate(leaseToken).pipe(
-                  Effect.zipRight(withFollowerWrite(Effect.void)),
-                ),
-              onConfirmedFinalization: (outcome) =>
-                Ref.set(confirmed, Option.some({ ...outcome, trigger })),
-              confirmationDeadlineMs,
+                StateQueueMutationLeasesDB.revalidate(leaseToken),
+              onSubmitted: (submitted: SubmittedMergeTx) =>
+                onSubmitted({
+                  status: "submitted",
+                  ...submitted,
+                  startedAtMs,
+                  trigger,
+                }),
               referenceScriptsAddress: lucid.referenceScriptsAddress,
               submitSlotSnapshot: lucid.submitSlotSnapshot,
             },
@@ -344,21 +335,13 @@ export const mergeActionWithL1ControlPlaneHeld = (
                 : { nowUnixTime: mergeTxResult.nowUnixTime }),
             } satisfies MergeActionResult;
           }
-          const snapshot = yield* awaitPostMergeSnapshot(
-            stateQueueAuthValidator,
-            mergeTxResult.headerHash,
-          );
-          yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
-          yield* Effect.logInfo(
-            `🔸 Refreshed live state-queue tail after merge: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
-          );
           return {
-            status: "merged",
-            postMergeSnapshot: snapshot,
+            status: "submitted",
             headerHash: mergeTxResult.headerHash,
             txHash: mergeTxResult.txHash,
+            startedAtMs,
             trigger,
-          } satisfies MergeActionResult;
+          } satisfies SubmittedMerge;
         }),
       {
         ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,

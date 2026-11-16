@@ -20,7 +20,8 @@ import { fetchCanonicalStateQueueHeaderHashes } from "./reconcile.reconcile-phas
  * Reports a header's merge completion; it never merges and writes nothing.
  * The running node's scheduled merge fiber merges the oldest queued block once
  * it is due and no halt holds the fiber (merging is permissionless on L1, so
- * any operator's merge completes it).
+ * any operator's merge completes it), and landed-block processing folds the
+ * block once the follower's landed queue shows the merge.
  */
 export const reconcileMergeCompleteProgram = ({
   headerHash,
@@ -76,6 +77,8 @@ export const observeMergeCompletion = (headerHash: Buffer) =>
 /**
  * A merge is complete only when the header has left the state queue AND its
  * block is folded into `confirmed_ledger` (its journal derives `folded`).
+ * Between the two the merge is pending on the landed fold, the only writer
+ * of `confirmed_ledger`, which folds the block once it is applied.
  * The block's rows prove neither: they stay until its fold is final
  * (`releaseFinalFolds`), well after its merge completed, and a block
  * without L2 transactions never had rows.
@@ -99,8 +102,8 @@ export const mergeCompletionVerdict = (
     observed.status === PendingBlockFinalizationsDB.OwnBlockStatus.Landed
   )
     return {
-      status: "blocked",
-      nextAction: `The header left the state queue but its block is ${observed.status}, not folded; the running node's merge fiber finalizes a landed merge before every merge while the follower-change driver's view is published, and landed-block processing folds it in queue order. If it stays unfolded, inspect the node's landed-block holds.`,
+      status: "pending",
+      nextAction: `pending: landed fold not yet applied. The header left the state queue but its block is ${observed.status}, not folded; landed-block processing folds it in queue order once the working-ledger rebase has applied it. If it stays unfolded, inspect the node's landed-block holds.`,
     };
   return {
     status: "ambiguous",

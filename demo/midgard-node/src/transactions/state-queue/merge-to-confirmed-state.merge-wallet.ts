@@ -10,7 +10,7 @@ import { Effect, Metric } from "effect";
 import type { IntentJournal } from "../../services/intent-journal.js";
 import type { NodeWalletView } from "../../services/intent-journal.wallet-view.js";
 import { readSelectedWalletView } from "../utils.wallet-view.js";
-import { mergeFailureCounter } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+import { mergeFailureCounter } from "./merge-to-confirmed-state.merge-options.js";
 
 /** The view of the merge wallet selected on `lucid`. */
 export const readMergeWalletView = (

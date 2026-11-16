@@ -2,19 +2,21 @@ import { performance } from "node:perf_hooks";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
-import { Duration, Effect, Either, Exit, identity, Option, Ref } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import { DatabaseError } from "../src/database/utils/common.js";
-import { Database } from "../src/services/database.js";
 import {
-  DRIVER_RECOMPUTE_PENDING,
-  FOLLOWER_VIEW_STALE,
-  FOLLOWER_VIEW_UNAPPLIED,
+  Duration,
+  Effect,
+  Either,
+  Layer,
+  Logger,
+  LogLevel,
+  Option,
+  Ref,
+} from "effect";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
   FollowerWrite,
   FollowerWriteFixture,
-  followerWriteHoldOf,
   type FollowerWritePermit,
 } from "../src/services/follower-write-gate.js";
 import {
@@ -22,25 +24,27 @@ import {
   L1ControlPlaneTimeoutError,
   NodeConfig,
 } from "../src/services/index.js";
-import type {
-  StateQueueSnapshot,
-  StateQueueSnapshotReason,
+import {
+  INTENT_JOURNAL_NO_VIEW,
+  IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../src/services/intent-journal.js";
+import {
+  LANDED_QUEUE_VISIBILITY_BUDGET_MS,
+  type StateQueueSnapshot,
+  type StateQueueSnapshotReason,
 } from "../src/services/landed-state-queue.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
-import { writeFollowerTip } from "./helpers/follower-view.js";
-import {
-  holdFollowerWriteGate,
-  openFollowerWriteGateAt,
-} from "./helpers/follower-write-gate.js";
+import type { SubmittedMergeTx } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { TEST_PLAN } from "./helpers/intent-journal.js";
 import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
-import { resetApplicationTables } from "./utils.js";
 
 const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
+const requireLandedStateQueueMock = vi.hoisted(() => vi.fn());
 const buildAndSubmitMergeTxMock = vi.hoisted(() => vi.fn());
 const captureMergeLocalLedgerGateMock = vi.hoisted(() => vi.fn());
 const fetchCanonicalMergeCandidateReadinessMock = vi.hoisted(() => vi.fn());
-const finalizeLandedMergesProgramMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 const revalidateMock = vi.hoisted(() => vi.fn());
 
@@ -52,6 +56,7 @@ vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   return {
     ...actual,
     landedStateQueueSnapshot: landedStateQueueSnapshotMock,
+    requireLandedStateQueue: requireLandedStateQueueMock,
     // The post-merge wait reads the same snapshot, as `post_merge`.
     awaitPostMergeSnapshot: (stateQueue: unknown) =>
       landedStateQueueSnapshotMock(stateQueue, "post_merge"),
@@ -63,7 +68,6 @@ vi.mock("../src/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   captureMergeLocalLedgerGate: captureMergeLocalLedgerGateMock,
   fetchCanonicalMergeCandidateReadiness:
     fetchCanonicalMergeCandidateReadinessMock,
-  finalizeLandedMergesProgram: finalizeLandedMergesProgramMock,
   mergeSemanticSkipResult: (readiness: {
     readonly status:
       | "skipped_oldest_block_unattested"
@@ -108,7 +112,7 @@ vi.mock("../src/database/index.js", async (importOriginal) => {
 import {
   mergeAction,
   type MergeActionResult,
-  MergeProducerPermitUnavailable,
+  MergeIntentJournalUnavailable,
 } from "../src/fibers/merge.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
@@ -208,51 +212,36 @@ const noCandidate = {
 };
 
 /**
- * This process's follower write gate as the merge runs: `fixture` (no driver
- * epoch; the fixture capability runs the work unregistered, no database),
- * `applied` (a driver view; the merge registers and holds a permit, on
- * Postgres), `recomputing`, or `none` (no view and no fixture).
+ * How the merge runs: under an intent journal whose follower has a view
+ * (`view`, the default) or under none (`none`, a process with no follower).
+ * `fixture` adds the model-fixture capability; `recomputing` marks this
+ * process's driver as mid-recompute.
  */
 type MergeRunOptions = {
-  readonly gate?: "fixture" | "applied" | "recomputing" | "none";
-  /** Also provides the fixture capability to an `applied` gate. */
+  readonly journal?: "view" | "none";
   readonly fixture?: boolean;
-  /** Runs once the `applied` gate is open, before the merge registers. */
-  readonly afterOpen?: Effect.Effect<unknown, unknown, SqlClient.SqlClient>;
+  readonly recomputing?: boolean;
   readonly expectedHeaderHash?: string;
+  /** The process's globals, kept across runs; fresh ones by default. */
+  readonly globals?: Globals;
 };
 
-/** The permits `applied` gates opened, oldest first. */
-const openedPermits: FollowerWritePermit[] = [];
-
-/** A driver's publish: the gate opens at the follower's tip in a new epoch. */
-const openAtFollowerTip = Effect.flatMap(
-  writeFollowerTip(10),
-  openFollowerWriteGateAt,
-);
-
-/** Opens the gate as this process's driver's. */
-const applyFollowerView = Effect.gen(function* () {
-  yield* resetApplicationTables;
-  const permit = yield* openAtFollowerTip;
-  openedPermits.push(permit);
-  yield* Ref.update((yield* Globals).FOLLOWER_WRITE_GATE, (local) => ({
-    ...local,
-    epoch: permit.epoch,
-  }));
+/** A journal whose follower has a view: every plan opens at `TEST_PLAN`. */
+const JournalWithView = Layer.succeed(IntentJournal, {
+  ...Effect.runSync(
+    Effect.provide(IntentJournal, IntentJournalWithoutFollower),
+  ),
+  openPlan: Effect.succeed(TEST_PLAN),
 });
-
-/** The node database without the fixture capability (a runtime process). */
-const onNodeDatabase = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer));
 
 const mergeActionProgram = (
   force: boolean,
   {
-    gate = "fixture",
+    journal = "view",
     fixture = false,
-    afterOpen,
+    recomputing = false,
     expectedHeaderHash,
+    globals,
   }: MergeRunOptions = {},
 ) => {
   const lucidService = lucidServiceStub({
@@ -271,31 +260,27 @@ const mergeActionProgram = (
     }),
   });
 
-  const program = Effect.gen(function* () {
-    const globals = yield* Globals;
-    if (gate === "applied") {
-      yield* applyFollowerView;
-      if (afterOpen !== undefined) yield* afterOpen;
-    }
-    if (gate === "recomputing")
-      yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+  return Effect.gen(function* () {
+    if (recomputing)
+      yield* Ref.update((yield* Globals).FOLLOWER_WRITE_GATE, (local) => ({
         ...local,
         epoch: "1",
         recomputing: true,
       }));
     const merge = mergeAction(force, { expectedHeaderHash });
-    return yield* gate === "fixture" || fixture
+    return yield* fixture
       ? merge.pipe(Effect.provideService(FollowerWriteFixture, true))
       : merge;
   }).pipe(
+    Effect.provide(
+      journal === "view" ? JournalWithView : IntentJournalWithoutFollower,
+    ),
     Effect.provideService(LucidService, lucidService),
     Effect.provideService(MidgardContracts, fakeContracts as never),
-    Effect.provide(Globals.Default),
-  );
-  return (
-    gate === "applied"
-      ? onNodeDatabase(program)
-      : program.pipe(Effect.provide(NodeConfig.layer))
+    globals === undefined
+      ? Effect.provide(Globals.Default)
+      : Effect.provideService(Globals, globals),
+    Effect.provide(NodeConfig.layer),
   ) as Effect.Effect<MergeActionResult, unknown, never>;
 };
 
@@ -314,52 +299,44 @@ const recordPermitAndMerge = (seen: (FollowerWritePermit | null)[]) =>
     };
   });
 
-/** The named hold a permit-unavailable merge was refused for. */
-const permitRefusalReason = (outcome: Either.Either<unknown, unknown>) => {
-  const left = Either.isLeft(outcome) ? outcome.left : undefined;
-  expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
-  return followerWriteHoldOf((left as MergeProducerPermitUnavailable).cause)
-    ?.reason;
+const resetMergeMocks = () => {
+  slotAwareDueWorkRegistry.clearAll();
+  for (const mock of [
+    landedStateQueueSnapshotMock,
+    requireLandedStateQueueMock,
+    buildAndSubmitMergeTxMock,
+    captureMergeLocalLedgerGateMock,
+    fetchCanonicalMergeCandidateReadinessMock,
+    tryWithLeaseMock,
+    revalidateMock,
+    switchToOperatorsMergingWalletMock,
+  ])
+    mock.mockReset();
+  landedStateQueueSnapshotMock.mockImplementation(
+    (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
+      Effect.succeed(makeSnapshot(9, reason)),
+  );
+  fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
+    Effect.succeed(makeCandidate("ready")),
+  );
+  captureMergeLocalLedgerGateMock.mockImplementation(() =>
+    Effect.succeed({ status: "ready" as const }),
+  );
+  tryWithLeaseMock.mockImplementation(
+    (
+      _holder: string,
+      run: (token: string) => Effect.Effect<unknown, unknown, unknown>,
+    ) =>
+      Effect.gen(function* () {
+        const value = yield* run("test-lease-token");
+        return { _tag: "Ran" as const, value };
+      }),
+  );
+  revalidateMock.mockImplementation(() => Effect.void);
 };
 
 describe("merge maturity semantic preflight", () => {
-  beforeEach(() => {
-    slotAwareDueWorkRegistry.clearAll();
-    landedStateQueueSnapshotMock.mockReset();
-    buildAndSubmitMergeTxMock.mockReset();
-    captureMergeLocalLedgerGateMock.mockReset();
-    fetchCanonicalMergeCandidateReadinessMock.mockReset();
-    finalizeLandedMergesProgramMock.mockReset();
-    tryWithLeaseMock.mockReset();
-    revalidateMock.mockReset();
-    switchToOperatorsMergingWalletMock.mockReset();
-    openedPermits.length = 0;
-    finalizeLandedMergesProgramMock.mockImplementation(() =>
-      Effect.succeed([]),
-    );
-
-    landedStateQueueSnapshotMock.mockImplementation(
-      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
-        Effect.succeed(makeSnapshot(9, reason)),
-    );
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(makeCandidate("ready")),
-    );
-    captureMergeLocalLedgerGateMock.mockImplementation(() =>
-      Effect.succeed({ status: "ready" as const }),
-    );
-    tryWithLeaseMock.mockImplementation(
-      (
-        _holder: string,
-        run: (token: string) => Effect.Effect<unknown, unknown, unknown>,
-      ) =>
-        Effect.gen(function* () {
-          const value = yield* run("test-lease-token");
-          return { _tag: "Ran" as const, value };
-        }),
-    );
-    revalidateMock.mockImplementation(() => Effect.void);
-  });
+  beforeEach(resetMergeMocks);
 
   it("skips not-mature automatic and forced merges before taking the mutation lease", async () => {
     fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
@@ -384,46 +361,6 @@ describe("merge maturity semantic preflight", () => {
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
     expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
     expect(switchToOperatorsMergingWalletMock).not.toHaveBeenCalled();
-  });
-
-  it("finalizes landed merges before any skip, and a failed catch-up stops the attempt", async () => {
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(makeCandidate("skipped_oldest_block_not_mature")),
-    );
-
-    // An early skip still runs the catch-up first, under the permit.
-    const permits: (FollowerWritePermit | null)[] = [];
-    finalizeLandedMergesProgramMock.mockImplementation(() =>
-      Effect.gen(function* () {
-        const permit = yield* Effect.serviceOption(FollowerWrite);
-        permits.push(Option.getOrNull(permit));
-        return [];
-      }),
-    );
-    expect(await runMergeAction(false, { gate: "applied" })).toMatchObject({
-      status: "skipped_oldest_block_not_mature",
-    });
-    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledTimes(1);
-    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledWith({
-      stateQueueAddress: "addr_test1statequeue",
-      stateQueuePolicyId: "00".repeat(28),
-    });
-    expect(permits).toEqual([openedPermits[0]]);
-
-    // A catch-up failure fails the attempt: nothing is built on top of a
-    // landed merge that is not finalized.
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(makeCandidate("ready")),
-    );
-    finalizeLandedMergesProgramMock.mockImplementation(() =>
-      Effect.fail(new Error("landed merge finalization failed")),
-    );
-    await expect(runMergeAction(true)).rejects.toThrow(
-      "landed merge finalization failed",
-    );
-    expect(fetchCanonicalMergeCandidateReadinessMock).toHaveBeenCalledTimes(1);
-    expect(tryWithLeaseMock).not.toHaveBeenCalled();
-    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
   });
 
   it("skips DA-unattested candidates before taking the mutation lease", async () => {
@@ -496,24 +433,12 @@ describe("merge maturity semantic preflight", () => {
       }),
     );
 
-    const attemptStartedAt = Date.now();
     const result = await runMergeAction(false);
-    const attemptEndedAt = Date.now();
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_local_ledger_not_ready",
       reason: "local_submit_ledger_still_behind_after_wait",
     });
-    // The confirmation wait ends 30 s before the 180 s hold does, leaving
-    // the local finalization room inside the hold.
-    const { confirmationDeadlineMs } = buildAndSubmitMergeTxMock.mock
-      .calls[0]![3] as { readonly confirmationDeadlineMs: number };
-    expect(confirmationDeadlineMs).toBeGreaterThanOrEqual(
-      attemptStartedAt + 150_000,
-    );
-    expect(confirmationDeadlineMs).toBeLessThanOrEqual(
-      attemptEndedAt + 150_000,
-    );
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(fetchCanonicalMergeCandidateReadinessMock).toHaveBeenCalledTimes(2);
     expect(landedStateQueueSnapshotMock).toHaveBeenCalledTimes(1);
@@ -535,118 +460,51 @@ describe("merge maturity semantic preflight", () => {
   });
 });
 
-describe("merge follower write permit", () => {
-  beforeEach(() => {
-    slotAwareDueWorkRegistry.clearAll();
-    openedPermits.length = 0;
-    for (const mock of [
-      landedStateQueueSnapshotMock,
-      buildAndSubmitMergeTxMock,
-      captureMergeLocalLedgerGateMock,
-      fetchCanonicalMergeCandidateReadinessMock,
-      finalizeLandedMergesProgramMock,
-      tryWithLeaseMock,
-      revalidateMock,
-      switchToOperatorsMergingWalletMock,
-    ])
-      mock.mockReset();
-    finalizeLandedMergesProgramMock.mockImplementation(() =>
-      Effect.succeed([]),
-    );
-    landedStateQueueSnapshotMock.mockImplementation(
-      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
-        Effect.succeed(makeSnapshot(9, reason)),
-    );
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(makeCandidate("ready")),
-    );
-    captureMergeLocalLedgerGateMock.mockImplementation(() =>
-      Effect.succeed({ status: "ready" as const }),
-    );
-    tryWithLeaseMock.mockImplementation(
-      (
-        _holder: string,
-        run: (token: string) => Effect.Effect<unknown, unknown, unknown>,
-      ) =>
-        Effect.gen(function* () {
-          const value = yield* run("test-lease-token");
-          return { _tag: "Ran" as const, value };
-        }),
-    );
-    revalidateMock.mockImplementation(() => Effect.void);
-  });
+describe("merge intent journal guard", () => {
+  beforeEach(resetMergeMocks);
 
-  it("runs manual and scheduled merges under a follower write permit", async () => {
-    const seen: (FollowerWritePermit | null)[] = [];
-    buildAndSubmitMergeTxMock.mockImplementation(() =>
-      recordPermitAndMerge(seen),
-    );
-
-    const manual = await runMergeAction(true, { gate: "applied" });
-    const scheduled = await runMergeAction(false, { gate: "applied" });
-
-    expect(manual).toMatchObject({ status: "merged", trigger: "manual" });
-    expect(scheduled).toMatchObject({ status: "merged" });
-    expect(openedPermits).toHaveLength(2);
-    expect(seen).toEqual(openedPermits);
-  });
-
-  it("never lets the fixture bypass a driver's applied view", async () => {
-    const seen: (FollowerWritePermit | null)[] = [];
-    buildAndSubmitMergeTxMock.mockImplementation(() =>
-      recordPermitAndMerge(seen),
-    );
-
-    await runMergeAction(true, { gate: "applied", fixture: true });
-
-    expect(seen).toEqual([openedPermits[0]]);
-  });
-
-  it("refuses a merge before any L1 work while no driver applied a view", async () => {
+  it("refuses a merge before any L1 work when no intent journal can record it", async () => {
     const outcome = await Effect.runPromise(
-      Effect.either(mergeActionProgram(true, { gate: "none" })),
+      Effect.either(mergeActionProgram(true, { journal: "none" })),
     );
 
-    expect(permitRefusalReason(outcome)).toBe(FOLLOWER_VIEW_UNAPPLIED);
-    expect(finalizeLandedMergesProgramMock).not.toHaveBeenCalled();
+    const refusal = Either.isLeft(outcome) ? outcome.left : undefined;
+    expect(refusal).toBeInstanceOf(MergeIntentJournalUnavailable);
+    expect((refusal as MergeIntentJournalUnavailable).reason).toBe(
+      INTENT_JOURNAL_NO_VIEW,
+    );
     expect(fetchCanonicalMergeCandidateReadinessMock).not.toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [
-      "the driver is recomputing",
-      { gate: "recomputing" },
-      DRIVER_RECOMPUTE_PENDING,
-    ],
-    [
-      "a recompute is pending at the gate",
-      { gate: "applied", afterOpen: holdFollowerWriteGate("test recompute") },
-      DRIVER_RECOMPUTE_PENDING,
-    ],
-    [
-      "another driver took the gate",
-      { gate: "applied", afterOpen: openAtFollowerTip },
-      FOLLOWER_VIEW_STALE,
-    ],
-  ] as const)(
-    "reports a registration refused before the work as permit-unavailable (%s)",
-    async (_case, options, reason) => {
-      const outcome = await Effect.runPromise(
-        Effect.either(mergeActionProgram(true, options)),
-      );
+  it("lets only the model fixture run a merge without a journal view", async () => {
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge([]),
+    );
 
-      expect(permitRefusalReason(outcome)).toBe(reason);
-      expect(finalizeLandedMergesProgramMock).not.toHaveBeenCalled();
-      expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-    },
-  );
+    expect(
+      await runMergeAction(true, { journal: "none", fixture: true }),
+    ).toMatchObject({ status: "merged" });
+  });
 
-  it("hands the builder a pre-submit check of the lease and the follower write permit", async () => {
+  it("runs forced and scheduled merges under a journal view, with no follower write permit, while the driver recomputes", async () => {
+    const seen: (FollowerWritePermit | null)[] = [];
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      recordPermitAndMerge(seen),
+    );
+
+    const forced = await runMergeAction(true, { recomputing: true });
+    const scheduled = await runMergeAction(false, { recomputing: true });
+
+    expect(forced).toMatchObject({ status: "merged", trigger: "manual" });
+    expect(scheduled).toMatchObject({ status: "merged" });
+    expect(seen).toEqual([null, null]);
+  });
+
+  it("hands the builder a pre-submit check of the state-queue lease alone", async () => {
     type SubmitCheck = () => Effect.Effect<void, unknown, never>;
     let assertSubmitAuthority: SubmitCheck | undefined;
-    const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(
       (
         _lucid: unknown,
@@ -655,88 +513,260 @@ describe("merge follower write permit", () => {
         options: { readonly assertSubmitAuthority?: SubmitCheck },
       ) => {
         assertSubmitAuthority = options.assertSubmitAuthority;
-        return recordPermitAndMerge(seen);
+        return recordPermitAndMerge([]);
       },
     );
-    await runMergeAction(true, { gate: "applied" });
+    await runMergeAction(true, { recomputing: true });
     expect(assertSubmitAuthority).toBeDefined();
-    const permit = seen[0]!;
-    /** The check as the builder runs it (under the merge's permit): its failure. */
-    const failure = (withPermit = true) =>
+    /** The check as the builder runs it: its failure. */
+    const failure = () =>
       Effect.runPromise(
-        onNodeDatabase(
-          assertSubmitAuthority!().pipe(
-            withPermit
-              ? Effect.provideService(FollowerWrite, permit)
-              : identity,
-            Effect.flip,
-            Effect.option,
-          ),
-        ),
+        assertSubmitAuthority!().pipe(Effect.flip, Effect.option),
       ).then(Option.getOrUndefined);
-    const message = (error: unknown) =>
-      formatUnknownError(error, { includeCause: true });
 
-    // A lost lease refuses before the permit is consulted.
     revalidateMock.mockImplementation(() =>
       Effect.fail(new Error("state-queue lease lost")),
     );
-    expect(message(await failure())).toContain("state-queue lease lost");
+    expect(
+      formatUnknownError(await failure(), { includeCause: true }),
+    ).toContain("state-queue lease lost");
     expect(revalidateMock).toHaveBeenLastCalledWith("test-lease-token");
 
-    // With the lease held, the check passes while the permit is current.
+    // With the lease held it passes: no follower write permit is consulted.
     revalidateMock.mockImplementation(() => Effect.void);
     expect(await failure()).toBeUndefined();
+  });
 
-    // It needs a permit, and refuses one a recompute since superseded.
-    expect(message(await failure(false))).toContain(
-      "Missing follower write permit",
+  it("awaits the merge's landing in the follower's queue after releasing the L1 control plane, then refreshes the cached queue under a brief hold", async () => {
+    const holders: (string | null)[] = [];
+    const recordHolder = Effect.flatMap(Globals, (globals) =>
+      Ref.get(globals.L1_CONTROL_PLANE_ACTIVITY),
+    ).pipe(Effect.map(({ holder }) => holders.push(holder?.scope ?? null)));
+    buildAndSubmitMergeTxMock.mockImplementation(() =>
+      Effect.zipRight(recordHolder, recordPermitAndMerge([])),
     );
-    await Effect.runPromise(
-      onNodeDatabase(holdFollowerWriteGate("test recompute")),
+    landedStateQueueSnapshotMock.mockImplementation(
+      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
+        Effect.zipRight(
+          reason === "post_merge" ? recordHolder : Effect.void,
+          Effect.succeed(makeSnapshot(9, reason)),
+        ),
     );
-    expect(followerWriteHoldOf(await failure())?.reason).toBe(
-      DRIVER_RECOMPUTE_PENDING,
-    );
+
+    expect(await runMergeAction(true)).toMatchObject({
+      status: "merged",
+      postMergeSnapshot: { reason: "post_merge" },
+    });
+    // Submission under the hold, the landing wait outside it, the cached
+    // queue's refresh under it again.
+    expect(holders).toEqual(["state_queue_merge", null, "state_queue_merge"]);
+  });
+
+  describe("after a landing wait that failed", () => {
+    const submittedHeader = "aa".repeat(28);
+    const submittedTx = "bb".repeat(32);
+    const budgetMs = LANDED_QUEUE_VISIBILITY_BUDGET_MS;
+    const skippedWhileLanding = {
+      status: "skipped_merge_landing_pending",
+      reason: `awaiting_landing_tx=${submittedTx}`,
+      headerHash: submittedHeader,
+    };
+    // The monotonic clock: it moves only when a test or a landing wait moves it.
+    let nowMs = 1_000_000;
+    let monotonicClock: { mockRestore: () => void } | undefined;
+    beforeEach(() => {
+      nowMs = 1_000_000;
+      monotonicClock = vi
+        .spyOn(performance, "now")
+        .mockImplementation(() => nowMs);
+    });
+    afterEach(() => monotonicClock?.mockRestore());
+
+    /**
+     * One process's scheduled ticks: each merge submits `submittedHeader`,
+     * and its landing wait takes `waitMs` and fails until `land()`. The
+     * first wait runs `duringWait` at its end, before it fails.
+     */
+    const scheduledTicks = async ({
+      waitMs = 0,
+      duringWait,
+    }: {
+      waitMs?: number;
+      duringWait?: () => Promise<void>;
+    } = {}) => {
+      const globals = await Effect.runPromise(
+        Effect.provide(Globals, Globals.Default),
+      );
+      buildAndSubmitMergeTxMock.mockImplementation(() =>
+        recordPermitAndMerge([]),
+      );
+      let landed = false;
+      let hook = duringWait;
+      landedStateQueueSnapshotMock.mockImplementation(
+        (_stateQueue: unknown, reason: StateQueueSnapshotReason) => {
+          if (reason !== "post_merge" || landed)
+            return Effect.succeed(makeSnapshot(9, reason));
+          nowMs += waitMs;
+          const during = hook;
+          hook = undefined;
+          return Effect.promise(async () => during?.()).pipe(
+            Effect.zipRight(
+              Effect.fail(
+                new SDK.StateQueueError({
+                  message: "The landed queue never showed the merge",
+                  cause: submittedHeader,
+                }),
+              ),
+            ),
+          );
+        },
+      );
+      const warnings: string[] = [];
+      const recordWarnings = Logger.add(
+        Logger.make(({ logLevel, message }) => {
+          if (logLevel === LogLevel.Warning) warnings.push(String(message));
+        }),
+      );
+      return {
+        tick: () =>
+          Effect.runPromise(
+            Effect.either(mergeActionProgram(false, { globals })).pipe(
+              Effect.provide(recordWarnings),
+            ),
+          ),
+        /** The follower's landed queue shows these headers. */
+        queueShows: (headerHashes: readonly string[]) =>
+          requireLandedStateQueueMock.mockImplementation(() =>
+            Effect.succeed({
+              nodes: headerHashes.map((headerHash) => ({ headerHash })),
+            }),
+          ),
+        land: () => {
+          landed = true;
+        },
+        warnings,
+      };
+    };
+    const expectTimedOut = (result: Either.Either<unknown, unknown>) =>
+      expect(Either.isLeft(result) && result.left).toBeInstanceOf(
+        SDK.StateQueueError,
+      );
+    const expectSkipped = (result: Either.Either<unknown, unknown>) =>
+      expect(Either.isRight(result) && result.right).toEqual(
+        skippedWhileLanding,
+      );
+    const expectMerged = (result: Either.Either<unknown, unknown>) =>
+      expect(Either.isRight(result) && result.right).toMatchObject({
+        status: "merged",
+      });
+
+    it("skips scheduled merges while its merge's header is still queued, then merges once the queue advances", async () => {
+      const { tick, queueShows, land } = await scheduledTicks();
+
+      expectTimedOut(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(1);
+
+      queueShows([submittedHeader]);
+      expectSkipped(await tick());
+      expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(1);
+
+      queueShows(["cc".repeat(28)]);
+      land();
+      expectMerged(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("merges again once its merge's header stayed queued for a whole landing-wait budget", async () => {
+      const { tick, queueShows, land, warnings } = await scheduledTicks();
+      // The merge was dropped: the queue keeps showing its header.
+      queueShows([submittedHeader]);
+
+      expectTimedOut(await tick());
+      for (const elapsedMs of [0, budgetMs - 1]) {
+        nowMs = 1_000_000 + elapsedMs;
+        expectSkipped(await tick());
+      }
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(1);
+
+      nowMs = 1_000_000 + budgetMs;
+      land();
+      expectMerged(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(2);
+      expect(warnings).toEqual([
+        expect.stringMatching(
+          new RegExp(`did not land within its budget.*tx=${submittedTx}`),
+        ),
+      ]);
+    });
+
+    it("counts the budget from when a timed-out landing wait failed, not from the submission", async () => {
+      // A tick that runs while the wait still runs, here at its end.
+      const duringWait: Either.Either<unknown, unknown>[] = [];
+      const { tick, queueShows, land } = await scheduledTicks({
+        waitMs: budgetMs,
+        duringWait: async () => {
+          duringWait.push(await tick());
+        },
+      });
+      queueShows([submittedHeader]);
+
+      expectTimedOut(await tick());
+      const failedAtMs = nowMs;
+      expectSkipped(await tick());
+      nowMs = failedAtMs + budgetMs - 1;
+      expectSkipped(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(1);
+      // Its own wait never expires the record, however long it runs.
+      expect(duringWait).toHaveLength(1);
+      expectSkipped(duringWait[0]!);
+
+      nowMs = failedAtMs + budgetMs;
+      land();
+      expectMerged(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("clears the record without a warning when the queue advances after the wait failed", async () => {
+      const { tick, queueShows, land, warnings } = await scheduledTicks();
+      queueShows([submittedHeader]);
+      expectTimedOut(await tick());
+
+      // Landing shows up late, after the budget too: landing wins.
+      nowMs += budgetMs * 2;
+      queueShows(["cc".repeat(28)]);
+      land();
+      expectMerged(await tick());
+      expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(2);
+      expect(warnings).toEqual([]);
+    });
   });
 
   describe("past the L1 control-plane hold timeout", () => {
-    const confirmedHeader = "aa".repeat(28);
-    const confirmedTx = "bb".repeat(32);
-    type ConfirmedFinalizationHook = (outcome: {
-      readonly headerHash: string;
-      readonly txHash: string;
-      readonly exit: Exit.Exit<void, unknown>;
-    }) => Effect.Effect<void>;
-    /** Protected finalization takes 190 s, past the 180 s hold, then `exit`. */
-    const slowConfirmedFinalization =
-      (exit: Exit.Exit<void, unknown>) =>
-      (
-        _lucid: unknown,
-        _fetchConfig: unknown,
-        _contracts: unknown,
-        options: {
-          readonly onConfirmedFinalization?: ConfirmedFinalizationHook;
-        },
-      ) =>
-        Effect.uninterruptible(
-          Effect.sleep(Duration.seconds(190)).pipe(
-            Effect.zipRight(
-              options.onConfirmedFinalization!({
-                headerHash: confirmedHeader,
-                txHash: confirmedTx,
-                exit,
-              }),
-            ),
-            Effect.zipRight(exit),
-          ),
-        ).pipe(
-          Effect.as({
-            status: "merged" as const,
-            headerHash: confirmedHeader,
-            txHash: confirmedTx,
-          }),
-        );
+    const submittedHeader = "aa".repeat(28);
+    const submittedTx = "bb".repeat(32);
+    /** Submits, then waits 190 s for its confirmation, past the 180 s hold. */
+    const slowConfirmation = (
+      _lucid: unknown,
+      _fetchConfig: unknown,
+      _contracts: unknown,
+      options: {
+        readonly onSubmitted?: (
+          submitted: SubmittedMergeTx,
+        ) => Effect.Effect<void>;
+      },
+    ) =>
+      options.onSubmitted!({
+        headerHash: submittedHeader,
+        txHash: submittedTx,
+      }).pipe(
+        Effect.zipRight(Effect.sleep(Duration.seconds(190))),
+        Effect.as({
+          status: "merged" as const,
+          headerHash: submittedHeader,
+          txHash: submittedTx,
+        }),
+      );
     const runPastHold = async (force: boolean) => {
       vi.useFakeTimers();
       // Production uses perf_hooks; Vitest replaces only global performance.
@@ -759,53 +789,34 @@ describe("merge follower write permit", () => {
       [true, "manual"],
       [false, "threshold"],
     ] as const)(
-      "reports a merge whose finalization completed as merged (force=%s)",
+      "reports a merge submitted before the timeout as merged once it lands (force=%s)",
       async (force, trigger) => {
-        buildAndSubmitMergeTxMock.mockImplementation(
-          slowConfirmedFinalization(Exit.void),
-        );
+        buildAndSubmitMergeTxMock.mockImplementation(slowConfirmation);
         const outcome = await runPastHold(force);
         expect(Either.isRight(outcome) && outcome.right).toMatchObject({
           status: "merged",
-          headerHash: confirmedHeader,
-          txHash: confirmedTx,
+          headerHash: submittedHeader,
+          txHash: submittedTx,
           trigger,
           postMergeSnapshot: { reason: "post_merge" },
         });
       },
     );
 
-    it("reports a failed finalization's own error, not the timeout", async () => {
-      buildAndSubmitMergeTxMock.mockImplementation(
-        slowConfirmedFinalization(
-          Exit.fail(
-            new DatabaseError({
-              table: "confirmed_merge_finalization",
-              message: "confirmed ledger write refused",
-              cause: undefined,
-            }),
-          ),
-        ),
-      );
-      const outcome = await runPastHold(true);
-      expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
-        DatabaseError,
-      );
-      expect(
-        formatUnknownError(Either.isLeft(outcome) && outcome.left),
-      ).toContain("confirmed ledger write refused");
-    });
-
-    it("still reports the timeout when no merge was confirmed", async () => {
+    it("still reports the timeout when no merge was submitted", async () => {
       buildAndSubmitMergeTxMock.mockImplementation(() => Effect.never);
       const outcome = await runPastHold(true);
       expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
         L1ControlPlaneTimeoutError,
       );
+      expect(landedStateQueueSnapshotMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "post_merge",
+      );
     });
   });
 
-  it("keeps a builder failure's own type across the permit registration", async () => {
+  it("keeps a builder failure's own type", async () => {
     buildAndSubmitMergeTxMock.mockImplementation(() =>
       Effect.fail(new Error("submit refused by the ledger")),
     );
@@ -852,11 +863,8 @@ describe("merge follower write permit", () => {
       Effect.succeed(makeCandidate("ready")),
     );
     expect(
-      await runMergeAction(true, {
-        gate: "applied",
-        expectedHeaderHash: oldest,
-      }),
+      await runMergeAction(true, { expectedHeaderHash: oldest }),
     ).toMatchObject({ status: "merged" });
-    expect(seen).toEqual(openedPermits);
+    expect(seen).toEqual([null]);
   });
 });

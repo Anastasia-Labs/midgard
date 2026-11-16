@@ -141,7 +141,6 @@
     "tests/mempool-ledger-effects.test.ts": 2.3,
     "tests/merge-error-codes.test.ts": 2.9,
     "tests/merge-landed-finalization-emulator.test.ts": 73.2,
-    "tests/merge-landed-finalization.test.ts": 6.1,
     "tests/merge-maturity-builder.test.ts": 6,
     "tests/merge-maturity-preflight.test.ts": 4.7,
     "tests/merge-readiness.test.ts": 2.2,

@@ -29,7 +29,7 @@ import {
   type MergeTxResult,
   slotFromUnixTime,
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
-import { MERGE_CONFIRMATION_PROVIDER_RETRIES } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+import { MERGE_CONFIRMATION_PROVIDER_RETRIES } from "./merge-to-confirmed-state.merge-options.js";
 
 /**
  * The merge's submit recovery. Without an explicit reader, the submit-slot
@@ -42,11 +42,9 @@ export const mergeSubmitRecoveryOptions = (
     readonly invalidationKey: string;
   },
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
-  confirmationDeadlineMs?: number,
 ): NoInlineSubmitRecoveryOptions => ({
   label: "merge",
   confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
-  ...(confirmationDeadlineMs === undefined ? {} : { confirmationDeadlineMs }),
   ...(submitSlotSnapshot === undefined
     ? {}
     : { slotSnapshot: submitSlotSnapshot }),

@@ -5,9 +5,8 @@
  * frontier names the header `confirmed_ledger` is at.
  *
  * - A block, foreign or this node's own, folds once the working-ledger
- *   rebase applied it (its events' rows are then projected to it). The
- *   merge fiber may fold an own block first
- *   (`finalizeConfirmedMergeProgram`), through the same fold.
+ *   rebase applied it (its events' rows are then projected to it). This
+ *   is the only runtime fold; the merge fiber writes no local ledger.
  * - A fold whose base is wrong is refused and holds
  *   `confirmed_ledger_base_mismatch`, writing nothing.
  * - A root that is no longer on the frontier's lineage (a rollback undid a

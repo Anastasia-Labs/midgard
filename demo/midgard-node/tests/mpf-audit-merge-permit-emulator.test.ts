@@ -4,10 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import type { TxSignBuilder } from "@lucid-evolution/lucid";
-import { Effect, Either, Exit, Fiber, Option, Ref } from "effect";
+import { Effect, Either, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import { type MpfAuditResult, runMpfAudit } from "../src/commands/mpf-audit.js";
@@ -22,18 +21,17 @@ import {
 } from "../src/database/index.js";
 import {
   mergeAction,
-  MergeProducerPermitUnavailable,
+  MergeIntentJournalUnavailable,
 } from "../src/fibers/merge.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import {
-  DRIVER_RECOMPUTE_PENDING,
-  FOLLOWER_VIEW_UNAPPLIED,
-} from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
-import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
+import {
+  IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import { deserializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import {
@@ -60,63 +58,26 @@ import {
   runCommitWorkerUntilSubmitted,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 type LedgerEntries = Parameters<typeof hydrateLedgerMpfFromLedgerEntries>[1];
 
-// Every confirmed merge's local-finalization outcome as the merge builder
-// reports it to its caller, in order, recorded without changing the caller's
-// own handling.
-const confirmedFinalizations = vi.hoisted(
-  () => [] as { readonly headerHash: string; readonly succeeded: boolean }[],
-);
-vi.mock(
-  "../src/transactions/state-queue/merge-to-confirmed-state.js",
-  async (importOriginal) => {
-    const { Effect: E, Exit: X } = await import("effect");
-    const actual =
-      await importOriginal<
-        typeof import("../src/transactions/state-queue/merge-to-confirmed-state.js")
-      >();
-    const buildAndSubmitMergeTx: typeof actual.buildAndSubmitMergeTx = (
-      lucid,
-      fetchConfig,
-      contracts,
-      options,
-    ) =>
-      actual.buildAndSubmitMergeTx(lucid, fetchConfig, contracts, {
-        ...options,
-        onConfirmedFinalization: (outcome) => {
-          confirmedFinalizations.push({
-            headerHash: outcome.headerHash,
-            succeeded: X.isSuccess(outcome.exit),
-          });
-          return options?.onConfirmedFinalization?.(outcome) ?? E.void;
-        },
-      });
-    return { ...actual, buildAndSubmitMergeTx };
-  },
-);
-
 /**
  * Actual public deposits and commits, each applied when it lands, under
  * the production follower-change driver and Architecture G native owner; the
- * merges run through the merge action with no follower write permit taken by
- * the test, and reconciliation only reports.
+ * merges run under the node's intent journal, and landed-block processing
+ * folds each one.
  */
-it("audits the native MPF root at the committed tip, and merges only under a follower write permit", async () => {
-  const initial = await openProductionLifecycle();
-  let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
-  const { fixture, lucidService } = initial;
-  let { globals, production } = h;
+it("audits the native MPF root at the committed tip, and merges only under an intent journal", async () => {
+  const h = await openProductionLifecycle();
+  const { fixture, lucidService, globals, production } = h;
   const wallet = fixture.depositorLucid;
   const address = await wallet.wallet().address();
   const histories = SDK.requireEventHistoryContracts(fixture.contracts);
   const scratch = await mkdtemp(join(tmpdir(), "midgard-audit-leveldb-"));
 
-  // The production node's services, without a follower write permit or the
-  // fixture capability: exactly what the CLI gets.
+  // The production node's services under the journal of a process with no
+  // follower, without the fixture capability: exactly what the CLI gets.
   type RunOverrides = {
     readonly globals?: Globals;
     readonly nodeConfig?: NodeConfigDep;
@@ -290,7 +251,7 @@ it("audits the native MPF root at the committed tip, and merges only under a fol
         headerHash: Buffer.from(headerHash, "hex"),
       }),
     );
-  /** The node tables a merge or its finalization writes, as one digest. */
+  /** The node tables a merge or its fold writes, as one digest. */
   const nodeStateFingerprint = () =>
     sqlRun((sql) =>
       Effect.forEach(
@@ -370,16 +331,6 @@ it("audits the native MPF root at the committed tip, and merges only under a fol
       (sql) => sql`UPDATE node_landed_blocks SET applied = ${applied}
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
-  /** The recompute the follower write gate holds writes for, if any. */
-  const gatePending = async () =>
-    (
-      await sqlRun(
-        (sql) =>
-          sql<{
-            readonly reason: string | null;
-          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
-      )
-    )[0]!.reason;
   try {
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
@@ -606,8 +557,8 @@ it("audits the native MPF root at the committed tip, and merges only under a fol
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
 
-    // --- Bug C: merges only under the running node's follower write permit,
-    // and reconciliation never merges.
+    // --- Bug C: merges go out only under an intent journal, reconciliation
+    // never merges, and landed-block processing alone folds each merge.
     await advanceEmulatorPastUnixTime(
       fixture,
       mergeMaturityWindow(fixture.operatorLucid, second.blockTimeMs)
@@ -633,89 +584,35 @@ it("audits the native MPF root at the committed tip, and merges only under a fol
       ),
     ).toEqual([]);
     expect((await queue()).blockCount).toBe(2);
-    // A standalone process runs no follower-change driver, so it cannot take
-    // a follower write permit and must not merge.
+
+    // A standalone process runs no L1 follower, so no intent journal can
+    // record its merge: it refuses before any L1 work.
     const standalone = await run(Effect.either(mergeAction(true)), {
       globals: await makeGlobalsService(),
     });
     expect(Either.isLeft(standalone) && standalone.left).toBeInstanceOf(
-      MergeProducerPermitUnavailable,
+      MergeIntentJournalUnavailable,
     );
-    expect(
-      Either.isLeft(standalone) &&
-        formatUnknownError(standalone.left, { includeCause: true }),
-    ).toContain(FOLLOWER_VIEW_UNAPPLIED);
     expect((await queue()).blockCount).toBe(2);
     expect(await ownStatus(first.headerHash)).toBe(
       PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
     );
 
-    // A driver recompute holds the gate after the merge registered: the
-    // pre-submit check under the lease refuses before the transaction leaves,
-    // since the local finalization after it could no longer write.
-    expect(await gatePending()).toBeNull();
-    let revocations = 0;
-    const revokingLucid = {
-      ...lucidService,
-      switchToOperatorsMergingWallet: Effect.gen(function* () {
-        yield* holdFollowerWriteGate("test: a recompute began during a merge");
-        revocations += 1;
-        yield* lucidService.switchToOperatorsMergingWallet;
-      }),
-    };
-    // No follower synchronization after the hold: a fresh driver run would
-    // recompute and reopen the gate.
-    let revoked = await run(Effect.either(mergeAction(true)), {
-      lucid: revokingLucid,
-    });
-    for (
-      let round = 1;
-      round <= 3 &&
-      Either.isRight(revoked) &&
-      revoked.right.status === "skipped_oldest_block_local_ledger_not_ready";
-      round += 1
-    ) {
-      const dueWork = listSlotAwareDueWork().filter(
-        (entry) => entry.kind === "merge_submit_validity",
+    // The running node's merge, journaled; the synchronize after it folds
+    // the block by landed-block processing.
+    const mergeOnNode = () =>
+      run(
+        mergeAction(true).pipe(
+          Effect.provideService(IntentJournal, production.journal),
+        ),
       );
-      expect(dueWork).toHaveLength(1);
-      await advanceEmulatorToDueWork(fixture, dueWork[0]!);
-      await h.synchronize();
-      revoked = await run(Effect.either(mergeAction(true)), {
-        lucid: revokingLucid,
-      });
-    }
-    expect(revocations).toBe(1);
     expect(
-      Either.isLeft(revoked) &&
-        formatUnknownError(revoked.left, { includeCause: true }),
-    ).toContain(DRIVER_RECOMPUTE_PENDING);
-    expect((await queue()).blockCount).toBe(2);
-    expect(await ownStatus(first.headerHash)).toBe(
-      PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
-    );
-    expect(await gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
-    // The node restarts: the fresh driver's first view recomputes and
-    // reopens the gate.
-    h = await initial.restartRuntime();
-    ({ globals, production } = h);
-    expect(await gatePending()).toBeNull();
-
-    expect(
-      await untilMergeSubmitted(
-        () => run(mergeAction(true)),
-        (result) => result.status,
-      ),
+      await untilMergeSubmitted(mergeOnNode, (result) => result.status),
     ).toMatchObject({
       status: "merged",
       headerHash: first.headerHash,
       trigger: "manual",
     });
-    // The refused attempt never confirmed a merge; this one reported its
-    // finalization's success to the merge fiber.
-    expect(confirmedFinalizations).toEqual([
-      { headerHash: first.headerHash, succeeded: true },
-    ]);
     expect(await ownStatus(first.headerHash)).toBe(
       PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
     );
@@ -735,86 +632,9 @@ it("audits the native MPF root at the committed tip, and merges only under a fol
 
     // The second block's journal bound to its parent again, for its merge.
     await writeJournalFields(second.headerHash, secondFields);
-    // The merge of the second block is interrupted (as the L1 control
-    // plane's hold timeout would) after the L1 confirmation, while its local
-    // finalization observes the native owner after its fold: the
-    // finalization still completes.
-    const liveOwner = await Effect.runPromise(
-      Ref.get(globals.NATIVE_MPF_OWNER),
-    );
-    if (liveOwner === undefined) throw new Error("Expected live native owner");
-    let signalFinalizing!: () => void;
-    const finalizing = new Promise<void>((resolve) => {
-      signalFinalizing = resolve;
-    });
-    let releaseFinalization!: () => void;
-    const finalizationReleased = new Promise<void>((resolve) => {
-      releaseFinalization = resolve;
-    });
-    const pausingOwner = new Proxy(liveOwner, {
-      get(target, property) {
-        if (property === "diagnostics")
-          return async () => {
-            if (
-              (await ownStatus(second.headerHash)) ===
-              PendingBlockFinalizationsDB.OwnBlockStatus.Folded
-            ) {
-              signalFinalizing();
-              await finalizationReleased;
-            }
-            return target.diagnostics();
-          };
-        const value = Reflect.get(target, property, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    await Effect.runPromise(Ref.set(globals.NATIVE_MPF_OWNER, pausingOwner));
-    try {
-      let interrupted = false;
-      for (let round = 1; round <= 3 && !interrupted; round += 1) {
-        await h.synchronize();
-        const fiber = Effect.runFork(provideProduction(mergeAction(true)));
-        const raced = await Promise.race([
-          finalizing.then(() => "finalizing" as const),
-          Effect.runPromise(Fiber.join(fiber)),
-        ]);
-        if (raced === "finalizing") {
-          let interruptSettled = false;
-          const interruption = Effect.runPromise(Fiber.interrupt(fiber)).then(
-            (exit) => {
-              interruptSettled = true;
-              return exit;
-            },
-          );
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          expect(interruptSettled).toBe(false);
-          // The outcome is reported once the finalization ends, not before,
-          // and still reaches the (interrupted) caller.
-          expect(confirmedFinalizations).toHaveLength(1);
-          releaseFinalization();
-          expect(Exit.isInterrupted(await interruption)).toBe(true);
-          expect(confirmedFinalizations).toEqual([
-            { headerHash: first.headerHash, succeeded: true },
-            { headerHash: second.headerHash, succeeded: true },
-          ]);
-          interrupted = true;
-          break;
-        }
-        expect(raced.status).toBe(
-          "skipped_oldest_block_local_ledger_not_ready",
-        );
-        const dueWork = listSlotAwareDueWork().filter(
-          (entry) => entry.kind === "merge_submit_validity",
-        );
-        expect(dueWork).toHaveLength(1);
-        await advanceEmulatorToDueWork(fixture, dueWork[0]!);
-      }
-      expect(interrupted).toBe(true);
-    } finally {
-      releaseFinalization();
-      await Effect.runPromise(Ref.set(globals.NATIVE_MPF_OWNER, liveOwner));
-    }
-    await h.synchronize();
+    expect(
+      await untilMergeSubmitted(mergeOnNode, (result) => result.status),
+    ).toMatchObject({ status: "merged", headerHash: second.headerHash });
     expect(await ownStatus(second.headerHash)).toBe(
       PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
     );

@@ -45,7 +45,6 @@ import {
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import type { Globals } from "../src/services/globals.js";
 import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
-import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.events.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
@@ -410,15 +409,16 @@ describe(
         /retains no root of the processed landed chain/,
         MPF_CLOSURE_MISSING,
       );
-      // The merge fiber's step, on the journal as it reads it.
+      // Landed-block processing's fold once the merged root is the block.
       const merge = () =>
         run(
           globals,
           testWrite(
-            Effect.flatMap(Journals.retrieveByHeaderHash(HEADER), (found) =>
-              finalizeConfirmedMergeTransaction({
-                journal: Option.getOrThrow(found),
-              }),
+            foldToRoot(
+              foldPorts,
+              {} as View,
+              { headerHash: OWN, utxosRoot: reached },
+              () => Effect.succeed(null),
             ),
           ),
         );
@@ -433,12 +433,12 @@ describe(
           }),
         );
 
-      expect(await merge()).toBe("deferred");
+      expect(await merge()).toEqual({ kind: "awaiting_rebase" });
       expect(await folded()).toEqual({ rows: [[OWN, false]], frontier: base });
 
       native.retainsNothing = false;
       expectRebased(await attempt(globals));
-      expect(await merge()).toBe("folded");
+      expect(await merge()).toEqual({ kind: "at_root" });
       expect(await folded()).toEqual({
         rows: [],
         frontier: { headerHash: OWN, utxosRoot: reached },

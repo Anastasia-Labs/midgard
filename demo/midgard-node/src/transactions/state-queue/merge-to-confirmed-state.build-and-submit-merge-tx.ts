@@ -2,7 +2,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   LucidEvolution,
-  paymentCredentialOf,
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
@@ -10,7 +9,6 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import { seedPhraseAddress } from "../../services/config.operational-wallets.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
@@ -22,8 +20,9 @@ import {
   referenceScriptByName,
 } from "../reference-scripts.js";
 import {
+  awaitSubmittedTransactionConfirmation,
   fetchFirstBlockTxs,
-  handleSignSubmit,
+  signSubmitTransaction,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
@@ -47,16 +46,13 @@ import {
   preflightDecodeBlockTxs,
   slotFromUnixTime,
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
-import { mergeBlockCounter } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
-import { finalizeSubmittedMerge } from "./merge-to-confirmed-state.finalize-submitted-merge.js";
 import {
   diagnoseMissingBlockTxs,
-  finalizeMergesLandedThrough,
   mergeBlockTxDecodeFailureCounter,
   mergeDurationTimer,
   mergeFailureCounter,
   type MergeOptions,
-} from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
+} from "./merge-to-confirmed-state.merge-options.js";
 import {
   readMergeWalletView,
   requireMergeWalletInputs,
@@ -145,7 +141,6 @@ export const buildAndSubmitMergeTx = (
       const {
         confirmedUTxO,
         firstBlockUTxO,
-        blockHeader,
         readiness: oldestBlockReadiness,
       } = candidate;
       yield* Effect.logInfo(
@@ -180,14 +175,6 @@ export const buildAndSubmitMergeTx = (
         readyAfterUnixTime: oldestBlockReadiness.readyAfterUnixTime,
       };
       const recomputedHeaderHash = oldestBlockReadiness.headerHash;
-      // The merge spends exactly `confirmedUTxO`, so every merge up to its
-      // header is finalized first. A previous merge that landed after this
-      // attempt's catch-up read L1 would otherwise have its ledger delta
-      // folded into this block's finalization and never be finalized itself.
-      yield* finalizeMergesLandedThrough(
-        (yield* SDK.getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum))
-          .data,
-      );
       // Fetch transactions from the first block
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const {
@@ -393,7 +380,7 @@ export const buildAndSubmitMergeTx = (
       const onSubmitFailure = (err: TxSubmitError) =>
         Effect.gen(function* () {
           yield* Effect.logError(`Submit tx error: ${err.message}`);
-          yield* Effect.fail(
+          return yield* Effect.fail(
             new TxSubmitError({
               message: "failed to submit the merge tx",
               cause: err,
@@ -406,13 +393,10 @@ export const buildAndSubmitMergeTx = (
        */
       const onConfirmFailure = (err: TxConfirmError) =>
         Effect.gen(function* () {
-          yield* Effect.logError(
-            `Confirm tx error: ${err.message}; refusing local merge finalization until L1 confirmation is verified`,
-          );
-          yield* Effect.fail(
+          yield* Effect.logError(`Confirm tx error: ${err.message}`);
+          return yield* Effect.fail(
             new TxConfirmError({
-              message:
-                "failed to confirm the merge tx; local merge finalization blocked",
+              message: "failed to confirm the merge tx",
               cause: err,
               txHash: txBuilder.toHash(),
             }),
@@ -431,79 +415,43 @@ export const buildAndSubmitMergeTx = (
       const submitRecoveryOptions = mergeSubmitRecoveryOptions(
         submitDueWorkEvidence,
         options?.submitSlotSnapshot,
-        options?.confirmationDeadlineMs,
       );
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeLogged = finalizeSubmittedMerge({
-        headerHash,
-        header: blockHeader,
-        txIds: preflightDecodedBlockTxs.map((decoded) => decoded.txId),
-        // The key this node's own headers carry: the operator wallet's, not
-        // the merge wallet this transaction is signed with.
-        ownOperatorKeyHash: paymentCredentialOf(
-          seedPhraseAddress(
-            nodeConfig.L1_OPERATOR_SEED_PHRASE,
-            nodeConfig.NETWORK,
-          ),
-        ).hash,
-      });
-      // Only signing, submission and the L1 confirmation wait stay
-      // interruptible; the wait ends by `confirmationDeadlineMs` so the
-      // finalization still fits in the caller's hold. Once the merge is
-      // confirmed, its local finalization starts at once and runs to
-      // completion (or records a failed job) even if the caller is interrupted
-      // meanwhile. A merge that lands after the wait stopped, or whose
-      // finalization failed, is finalized by the next attempt's
-      // finalizeLandedMergesProgram. The exit goes to
-      // `onConfirmedFinalization`, so an interrupting caller can still report
-      // what actually happened.
-      const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
-        restore(
-          handleSignSubmit(
-            lucid,
-            txBuilder,
-            journaledIntent(
-              "merge",
-              `merge:head=${headerHash.toString("hex")}`,
-              plan,
-              headerHash,
-            ),
-            submitRecoveryOptions,
-          ).pipe(
-            Effect.as({ status: "submitted" } as const),
-            Effect.catchTag("NoInlineSubmitDefer", (defer) =>
-              Effect.succeed({ status: "deferred", defer } as const),
-            ),
-            Effect.catchTag("TxSubmitError", onSubmitFailure),
-            Effect.catchTag("TxConfirmError", onConfirmFailure),
-            Effect.withSpan("handleSignSubmit-merge-tx"),
-          ),
-        ).pipe(
-          Effect.map(
-            (rawSubmitOutcome) =>
-              rawSubmitOutcome ?? ({ status: "submitted" } as const),
-          ),
-          Effect.tap((outcome) =>
-            outcome.status === "submitted"
-              ? Effect.logInfo(
-                  "🔸 Merge transaction submitted, updating the db...",
-                ).pipe(
-                  Effect.zipRight(finalizeLocalMergeLogged),
-                  Effect.onExit((exit) =>
-                    options?.onConfirmedFinalization === undefined
-                      ? Effect.void
-                      : options.onConfirmedFinalization({
-                          headerHash: headerHash.toString("hex"),
-                          txHash,
-                          exit,
-                        }),
-                  ),
-                )
-              : Effect.void,
-          ),
+      // Only signing and submission; the merge writes no local ledger.
+      // Landed-block processing folds the block once the follower's landed
+      // queue shows the merge.
+      const submitOutcome = yield* signSubmitTransaction(
+        lucid,
+        txBuilder,
+        journaledIntent(
+          "merge",
+          `merge:head=${headerHash.toString("hex")}`,
+          plan,
+          headerHash,
         ),
+        submitRecoveryOptions,
+      ).pipe(
+        Effect.tap(() =>
+          options?.onSubmitted === undefined
+            ? Effect.void
+            : options.onSubmitted({
+                headerHash: headerHash.toString("hex"),
+                txHash,
+              }),
+        ),
+        Effect.map(
+          (submission) => ({ status: "submitted", submission }) as const,
+        ),
+        Effect.catchTag("NoInlineSubmitDefer", (defer) =>
+          Effect.succeed({ status: "deferred", defer } as const),
+        ),
+        Effect.catchTag("TxSubmitError", onSubmitFailure),
+        Effect.tapErrorTag("TxSignError", (e) =>
+          Effect.logError(`TxSignError: ${e.message}`),
+        ),
+        Effect.withSpan("handleSignSubmit-merge-tx"),
       );
       if (submitOutcome.status === "deferred") {
         const dueWork = yield* registerMergeNoInlineSubmitDueWork(
@@ -522,17 +470,15 @@ export const buildAndSubmitMergeTx = (
           nowUnixTime: oldestBlockReadiness.nowUnixTime,
         } satisfies MergeTxResult;
       }
-      yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
-
-      yield* Metric.increment(mergeBlockCounter).pipe(
-        Effect.withSpan("increment-merge-block-counter"),
+      yield* awaitSubmittedTransactionConfirmation(
+        lucid,
+        submitOutcome.submission,
+        submitRecoveryOptions,
+      ).pipe(
+        Effect.catchTag("TxConfirmError", onConfirmFailure),
+        Effect.withSpan("await-merge-tx-confirmation"),
       );
-      yield* mergeDurationTimer(
-        Effect.succeed(Duration.millis(Date.now() - mergeStartedAt)),
-      );
-
-      yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => Math.max(0, n - 1));
-      yield* emitQueueStateMetrics;
+      yield* Effect.logInfo("🔸 ☑️  Merge transaction confirmed on L1.");
       return {
         status: "merged",
         headerHash: headerHash.toString("hex"),

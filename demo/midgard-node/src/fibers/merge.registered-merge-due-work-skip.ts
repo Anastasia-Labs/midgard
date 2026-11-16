@@ -12,7 +12,6 @@ import { type StateQueueSnapshot } from "../services/landed-state-queue.js";
 import { type MergeReadinessStatus } from "../transactions/state-queue/merge-readiness.js";
 import {
   type CanonicalMergeCandidateReadiness,
-  type ConfirmedMergeFinalization,
   mergeSemanticSkipResult,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
 import {
@@ -41,7 +40,8 @@ export type MergeActionResult =
       readonly status:
         | Exclude<MergeReadinessStatus, "ready">
         | "skipped_state_queue_lease_busy"
-        | "skipped_l1_control_plane_busy";
+        | "skipped_l1_control_plane_busy"
+        | "skipped_merge_landing_pending";
       readonly reason: string;
       readonly headerHash?: string;
       readonly queueLength?: number;
@@ -63,13 +63,6 @@ export const SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS = 30_000;
 
 /** How long one merge attempt may hold the L1 control plane. */
 export const MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS = 180_000;
-
-/**
- * The part of the hold kept for the local finalization after an L1
- * confirmation: the confirmation wait gives up this long before the hold
- * ends, so a confirmed merge is finalized within its attempt.
- */
-export const MERGE_LOCAL_FINALIZATION_RESERVE_MS = 30_000;
 
 export const withScheduledMergeControlPlaneWait = <A, E, R>({
   globals,
@@ -240,8 +233,13 @@ export type MergeTrigger = Extract<
   { readonly status: "merged" }
 >["trigger"];
 
-/** A merge confirmed on L1 during this attempt, with its local finalization's
- * exit, recorded even if the attempt was interrupted afterwards. */
-export type ConfirmedMerge = ConfirmedMergeFinalization & {
+/** A merge transaction this attempt submitted under the L1 control plane;
+ * the attempt ends once the landed queue shows it. `startedAtMs` is when the
+ * attempt took the control plane. */
+export type SubmittedMerge = {
+  readonly status: "submitted";
+  readonly headerHash: string;
+  readonly txHash: string;
+  readonly startedAtMs: number;
   readonly trigger: MergeTrigger;
 };

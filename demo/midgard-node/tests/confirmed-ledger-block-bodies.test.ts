@@ -1,10 +1,14 @@
 /**
- * An own block's bodies (its `blocks` rows over the `immutable` payloads)
- * live until its fold is final (plan §10.5, N5-R1 item 2). The merge fiber's
- * finalization folds the block but releases nothing: a rollback of the merge
- * unfolds it and the block has to merge again, and that merge reads the
- * bodies. They are released (`releaseFinalFolds`) in the prune transaction
- * that makes the fold final, and nothing of the block is left behind then.
+ * An own block's merge is folded by landed-block processing alone (plan
+ * §5.5 P10): the merge confirming on L1 writes no local ledger, so a driver
+ * run at the pre-merge view that follows it never moves the ledger back.
+ *
+ * Its bodies (its `blocks` rows over the `immutable` payloads) live until
+ * its fold is final (plan §10.5, N5-R1 item 2). The fold releases nothing: a
+ * rollback of the merge unfolds it and the block has to merge again, and
+ * that merge reads the bodies. They are released (`releaseFinalFolds`) in
+ * the prune transaction that makes the fold final, and nothing of the block
+ * is left behind then.
  */
 
 import fs from "node:fs";
@@ -23,8 +27,9 @@ import { describe, expect, it } from "vitest";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
+  DepositsDB,
   ImmutableDB,
-  PendingBlockFinalizationsDB,
+  WithdrawalsDB,
 } from "../src/database/index.js";
 import type { LandedStateQueueElement } from "../src/l1-state-queue/index.js";
 import {
@@ -37,10 +42,15 @@ import { Frontier, markApplied } from "../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import {
   diagnoseMissingBlockTxs,
-  finalizeConfirmedMergeTransaction,
   preflightDecodeBlockTxs,
 } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { fetchFirstBlockTxs } from "../src/transactions/utils.js";
+import { databaseFixtureBytes } from "./database.test/fixtures.bytes.js";
+import {
+  makeDepositEntry,
+  makeHistoryWithdrawalEntry,
+} from "./database.test/fixtures.events.js";
+import { insertDeposits, insertWithdrawals } from "./helpers/event-rows.js";
 import { insertOwnJournal } from "./helpers/landed-blocks-sim.own.js";
 import {
   AFTER_A,
@@ -58,8 +68,6 @@ import {
   sortedKeys,
 } from "./landed-blocks-own.fixture.js";
 
-const Journals = PendingBlockFinalizationsDB;
-
 /** A Midgard-native transaction the merge's preflight decodes. */
 const nativeTx = () => {
   const [fixtureTx] = JSON.parse(
@@ -76,24 +84,6 @@ const nativeTx = () => {
   };
 };
 
-/** The pending-finalization record of the own block `a`, as the merge fiber reads it. */
-const recordOf = (a: Block, journal: OwnJournal) =>
-  ({
-    [Journals.Columns.HEADER_HASH]: Buffer.from(a.hash, "hex"),
-    [Journals.Columns.BASE_TAIL_HEADER_HASH]: Buffer.from(
-      journal.baseTailHeaderHash,
-      "hex",
-    ),
-    [Journals.Columns.BASE_UTXOS_ROOT]: journal.baseUtxosRoot,
-    [Journals.Columns.EXPECTED_UTXOS_ROOT]: journal.expectedUtxosRoot,
-    depositEventIds: journal.depositIds,
-    forcedTransactionEventIds: journal.forcedIds,
-    withdrawalEventIds: [],
-    withdrawalMembers: [],
-    mempoolTxIds: journal.txIds,
-    ledgerDelta: { spent: journal.spent, produced: journal.produced },
-  }) as unknown as PendingBlockFinalizationsDB.Record;
-
 /** A queue output as the history retains it, created at `slot`. */
 const createdAt = (
   element: LandedStateQueueElement,
@@ -104,6 +94,63 @@ const createdAt = (
 const bodies = (header: string) =>
   BlocksDB.retrieveTxHashesByHeaderHash(Buffer.from(header, "hex")).pipe(
     Effect.map((ids) => ids.map(hex)),
+  );
+
+/**
+ * Where `a`'s merge stands in the confirmed ledger's frontier and keys and in
+ * its deposit's and withdrawal's statuses: 0 before its fold, 1 after it, -1
+ * for anything else.
+ */
+const mergeProgress = (a: Block, deposit: Buffer, withdrawal: Buffer) =>
+  Effect.gen(function* () {
+    const frontier = (yield* Frontier.retrieve)?.headerHash;
+    const keys = (yield* confirmedKeys).join(",");
+    const depositRow = yield* DepositsDB.retrieveByEventId(deposit);
+    const withdrawalRow = yield* WithdrawalsDB.retrieveByEventId(withdrawal);
+    const depositStatus =
+      depositRow._tag === "Some"
+        ? depositRow.value[DepositsDB.Columns.STATUS]
+        : null;
+    const withdrawalStatus =
+      withdrawalRow._tag === "Some"
+        ? withdrawalRow.value[WithdrawalsDB.Columns.STATUS]
+        : null;
+    const stage = (value: unknown, before: unknown, after: unknown) =>
+      value === after ? 1 : value === before ? 0 : -1;
+    return {
+      frontier: stage(frontier, SDK.GENESIS_HEADER_HASH, a.hash),
+      ledger: stage(
+        keys,
+        sortedKeys(GENESIS).join(","),
+        sortedKeys(AFTER_A).join(","),
+      ),
+      deposit: stage(
+        depositStatus,
+        DepositsDB.Status.Projected,
+        DepositsDB.Status.Consumed,
+      ),
+      withdrawal: stage(
+        withdrawalStatus,
+        WithdrawalsDB.Status.Projected,
+        WithdrawalsDB.Status.Finalized,
+      ),
+    };
+  });
+
+type MergeProgress = Effect.Effect.Success<ReturnType<typeof mergeProgress>>;
+
+/** Every step at which a measure of `steps` moved back, or was unknown. */
+const regressions = (
+  steps: readonly (readonly [string, MergeProgress])[],
+): string[] =>
+  steps.flatMap(([step, progress], index) =>
+    Object.entries(progress).flatMap(([measure, value]) => {
+      const before =
+        index === 0 ? 0 : steps[index - 1]![1][measure as keyof MergeProgress];
+      return value < 0 || value < before
+        ? [`${step}: ${measure} ${before.toString()} -> ${value.toString()}`]
+        : [];
+    }),
   );
 
 const pruneIn = (slot: number) =>
@@ -124,7 +171,6 @@ const setUp = async () => {
     a,
     tx,
     state,
-    record: recordOf(a, journal),
     unmerged,
     // The merge created the root at slot 7.
     mergedAt7: { ...merged, root: createdAt(merged.root!, 7) },
@@ -149,8 +195,71 @@ const setUp = async () => {
   };
 };
 
+describe("an own block's merge folds forward only", () => {
+  it("never moves the confirmed ledger or the block's events back when a run at the pre-merge view follows the merge", async () => {
+    const s = await setUp();
+    const deposit = makeDepositEntry({
+      [DepositsDB.Columns.PROJECTED_HEADER_HASH]: Buffer.from(s.a.hash, "hex"),
+      [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+    });
+    const withdrawal = {
+      ...makeHistoryWithdrawalEntry(),
+      [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]: databaseFixtureBytes(
+        "block-bodies-withdrawal-settlement",
+        64,
+      ),
+      [WithdrawalsDB.Columns.VALIDITY]:
+        WithdrawalsDB.Validity.WithdrawalIsValid,
+      [WithdrawalsDB.Columns.VALIDITY_DETAIL]: { checked: true },
+      [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]: Buffer.from(
+        s.a.hash,
+        "hex",
+      ),
+      [WithdrawalsDB.Columns.STATUS]: WithdrawalsDB.Status.Projected,
+    };
+    await inNode(
+      Effect.gen(function* () {
+        const progress = mergeProgress(
+          s.a,
+          deposit[DepositsDB.Columns.ID],
+          withdrawal[WithdrawalsDB.Columns.ID],
+        );
+        const steps: [string, MergeProgress][] = [];
+        yield* s.commitBodies;
+        yield* insertDeposits([deposit]);
+        yield* insertWithdrawals([withdrawal]);
+        yield* processLandedQueue(ports(s.state), s.unmerged);
+        // The rebase applied `a` (its own suites cover the rebase).
+        yield* markApplied([s.a.hash]);
+        steps.push(["applied", yield* progress]);
+
+        // Guards against a reintroduced fiber-side fold: on current code the
+        // merge fiber writes no local ledger, so this step is a no-op.
+        steps.push(["merge confirmed", yield* progress]);
+
+        // A driver run at the pre-merge view, whose queue root is still
+        // genesis (a retried hold, or a run already in flight).
+        yield* processLandedQueue(ports(s.state), s.unmerged);
+        steps.push(["run at the pre-merge view", yield* progress]);
+
+        // The follower's view shows the merge.
+        yield* processLandedQueue(ports(s.state), s.mergedAt7);
+        steps.push(["merge landed", yield* progress]);
+
+        expect(regressions(steps)).toEqual([]);
+        expect(steps[steps.length - 1]![1]).toEqual({
+          frontier: 1,
+          ledger: 1,
+          deposit: 1,
+          withdrawal: 1,
+        });
+      }),
+    );
+  }, 120_000);
+});
+
 describe("an own block's bodies live until its fold is final", () => {
-  it("merges again after a rollback of its finalized merge, reading the bodies, onto the replayed ledger", async () => {
+  it("merges again after a rollback of its folded merge, reading the bodies, onto the replayed ledger", async () => {
     const s = await setUp();
     await inNode(
       Effect.gen(function* () {
@@ -159,13 +268,7 @@ describe("an own block's bodies live until its fold is final", () => {
         // The rebase applied `a` (its own suites cover the rebase).
         yield* markApplied([s.a.hash]);
 
-        // The merge lands; the merge fiber finalizes it, then processing
-        // records its merge point.
-        expect(
-          yield* finalizeConfirmedMergeTransaction({
-            journal: s.record,
-          }),
-        ).toBe("folded");
+        // The merge lands; processing folds it at its merge point.
         yield* processLandedQueue(ports(s.state), s.mergedAt7);
         expect((yield* retrieveMergeLinks).get(s.a.hash)?.merge?.slot).toBe(7);
 
@@ -190,12 +293,7 @@ describe("an own block's bodies live until its fold is final", () => {
           hex(s.tx.txId),
         ]);
 
-        // It lands and finalizes: the ledger is the fresh replay's.
-        expect(
-          yield* finalizeConfirmedMergeTransaction({
-            journal: s.record,
-          }),
-        ).toBe("folded");
+        // It lands and folds: the ledger is the fresh replay's.
         yield* processLandedQueue(ports(s.state), s.mergedAt7);
         const entries = yield* ConfirmedLedgerDB.retrieve;
         expect(sortedKeys(entries)).toEqual(sortedKeys(AFTER_A));
@@ -223,9 +321,6 @@ describe("an own block's bodies live until its fold is final", () => {
         yield* processLandedQueue(ports(s.state), s.unmerged);
         // The rebase applied `a` (its own suites cover the rebase).
         yield* markApplied([s.a.hash]);
-        yield* finalizeConfirmedMergeTransaction({
-          journal: s.record,
-        });
         yield* processLandedQueue(ports(s.state), s.mergedAt7);
 
         // Below the merge: not final, nothing released.

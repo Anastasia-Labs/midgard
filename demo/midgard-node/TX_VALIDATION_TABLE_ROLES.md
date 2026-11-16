@@ -137,10 +137,11 @@ Readers include:
 3. The same finalization path inserts `(header_hash, tx_id)` links into
    `blocks`.
 4. The merge worker later fetches the first queued block's tx ids from
-   `blocks`, fetches their payloads from `immutable`, and applies their effects
-   to `confirmed_ledger`.
-5. After successful local merge finalization, rows for that `header_hash` are
-   removed.
+   `blocks` and their payloads from `immutable` to build the merge
+   transaction.
+5. Once the merge lands, landed-block processing folds the block's effects
+   into `confirmed_ledger`; rows for that `header_hash` are removed once its
+   fold is final (`releaseFinalFolds`).
 
 ### Relationships
 

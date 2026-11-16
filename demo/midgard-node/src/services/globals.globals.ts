@@ -63,6 +63,15 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Needed for development to prevent other actions triggering while spending
     // all UTxOs at state queue.
     const RESET_IN_PROGRESS = yield* Ref.make<boolean>(false);
+    // The latest merge this process submitted whose landing it still awaits,
+    // and when its landing wait failed on the monotonic clock (null while it
+    // runs): a scheduled merge skips while the landed queue shows its header,
+    // until one landing-wait budget after that failure.
+    const MERGE_AWAITING_LANDING = yield* Ref.make<{
+      readonly txHash: string;
+      readonly headerHash: string;
+      readonly waitFailedAtMonotonicMs: number | null;
+    } | null>(null);
     // This operator's membership and the operator set, as the follower
     // driver's operator-set hook last derived them (unknown and unset until
     // its first run).
@@ -279,6 +288,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     return {
       BLOCKS_IN_QUEUE,
       RESET_IN_PROGRESS,
+      MERGE_AWAITING_LANDING,
       OPERATOR_MEMBERSHIP,
       OPERATOR_SET,
       COMMIT_WORKER_ACTIVE,
