@@ -230,7 +230,7 @@ export const prepareJourneyTransactionProof = async (input: {
         throw new Error("Protected-output transaction absent");
       const prepared = Proofs.prepareProtectedOutputSignerMissingEvidence({
         subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: Buffer.from(transaction.txCbor, "hex"),
       });
       if (!Proofs.protectedOutputSignerMissingEvidenceCloses(prepared))

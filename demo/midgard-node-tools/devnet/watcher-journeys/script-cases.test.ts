@@ -198,7 +198,7 @@ it
       expect(
         FP.redeemerCanonicityEvidenceCloses(
           FP.prepareRedeemerCanonicityEvidence({
-            finding: { subject, redeemerIndex: 0 },
+            finding: { subject, redeemerIndex: 0n },
             fieldPreimage: material.fieldPreimages[8]!,
             committedFieldHashHex: midgardFieldCommitment(
               material.fieldPreimages[8]!,
@@ -212,7 +212,7 @@ it
           FP.prepareWitnessScriptDecodingEvidence({
             finding: {
               subject,
-              scriptIndex: 0,
+              scriptIndex: 0n,
               witnessSetHash: Buffer.from(
                 material.compact.transactionWitnessSetHash,
               ).toString("hex"),
@@ -229,7 +229,7 @@ it
         FP.outputReferenceScriptEvidenceCloses(
           FP.prepareOutputReferenceScriptDecodingEvidence({
             subject,
-            outputIndex: 0,
+            outputIndex: 0n,
             canonicalTransactionCbor: forced.fullTransactionCbor,
           }),
         ),
