@@ -74,7 +74,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
           sourceKey: membership.key,
           rejectionReason,
         }),
-        redeemerIndex: 0,
+        redeemerIndex: 0n,
       },
       fieldPreimage:
         forced.forcedNativeTx.witnessSet.redeemerTxWitsPreimageCbor,

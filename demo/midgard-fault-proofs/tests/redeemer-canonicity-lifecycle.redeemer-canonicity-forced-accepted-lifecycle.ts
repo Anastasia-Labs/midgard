@@ -260,7 +260,7 @@ export const refuseFinalizeAgainstHonestCanonicalRedeemer = async () => {
         sourceKey: run.membership.key,
         rejectionReason: null,
       }),
-      redeemerIndex: 0,
+      redeemerIndex: 0n,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

@@ -54,7 +54,7 @@ export const submitRedeemerCanonicityStep03 = async (input: {
     stepIndex,
   });
   if (
-    state.bound.redeemer_index !== BigInt(input.evidence.redeemerIndex) ||
+    state.bound.redeemer_index !== input.evidence.redeemerIndex ||
     state.canonical !== input.evidence.canonical
   )
     throw new Error(

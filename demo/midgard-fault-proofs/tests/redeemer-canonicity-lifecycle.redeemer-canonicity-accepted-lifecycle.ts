@@ -94,7 +94,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     const evidence = prepareRedeemerCanonicityEvidence({
       finding: {
         subject: acceptedVerdictSubject(scenario.nativeTxId),
-        redeemerIndex: 0,
+        redeemerIndex: 0n,
       },
       fieldPreimage: scenario.committedPreimage,
       committedFieldHashHex: midgardFieldCommitment(
@@ -253,7 +253,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
       const evidence = prepareRedeemerCanonicityEvidence({
         finding: {
           subject: acceptedVerdictSubject(scenario.nativeTxId),
-          redeemerIndex: 0,
+          redeemerIndex: 0n,
         },
         fieldPreimage: scenario.committedPreimage,
         committedFieldHashHex: midgardFieldCommitment(

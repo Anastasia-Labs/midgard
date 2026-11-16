@@ -111,7 +111,7 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
           ? prepareAllOrNone({ subject, field })
           : [
               prepareRedeemerCanonicityEvidence({
-                finding: { subject, redeemerIndex },
+                finding: { subject, redeemerIndex: BigInt(redeemerIndex) },
                 fieldPreimage: field,
                 committedFieldHashHex:
                   midgardFieldCommitment(field).toString("hex"),
@@ -149,7 +149,7 @@ const prepareAllOrNone = ({
   try {
     return decodeMidgardFieldPreimage(field).map((_item, redeemerIndex) =>
       prepareRedeemerCanonicityEvidence({
-        finding: { subject, redeemerIndex },
+        finding: { subject, redeemerIndex: BigInt(redeemerIndex) },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),

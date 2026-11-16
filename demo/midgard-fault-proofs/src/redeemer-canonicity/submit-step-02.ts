@@ -114,7 +114,7 @@ export const submitRedeemerCanonicityStep02 = async ({
     family: "redeemer-canonicity",
     stepIndex,
   });
-  if (state.redeemer_index !== BigInt(evidence.redeemerIndex))
+  if (state.redeemer_index !== evidence.redeemerIndex)
     throw new Error(
       "redeemer-canonicity: opening coordinate differs from thread",
     );
@@ -213,7 +213,7 @@ export const submitRedeemerCanonicityStep02 = async ({
   const bound = {
     subject: evidence.subject,
     witness_set_hash: state.witness_set_hash,
-    redeemer_index: BigInt(evidence.redeemerIndex),
+    redeemer_index: evidence.redeemerIndex,
   };
   const plan = evidence.dataPlan;
   // A readable envelope opens the data step; any other item is decided here.

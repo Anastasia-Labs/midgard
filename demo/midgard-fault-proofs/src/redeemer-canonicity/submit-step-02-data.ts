@@ -99,7 +99,7 @@ export const submitRedeemerCanonicityStep02Data = async ({
     throw new Error(`${FAMILY}: data checkpoint is not in the planned read`);
   const expected = redeemerDataScanState(state.bound, plan, step);
   if (
-    state.bound.redeemer_index !== BigInt(evidence.redeemerIndex) ||
+    state.bound.redeemer_index !== evidence.redeemerIndex ||
     Data.to(state as never, RedeemerCanonicityDataScanStateSchema as never) !==
       Data.to(expected as never, RedeemerCanonicityDataScanStateSchema as never)
   )

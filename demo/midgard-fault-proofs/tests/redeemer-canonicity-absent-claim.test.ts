@@ -80,7 +80,7 @@ type ForcedShape = {
   /** Field 8 of the forced transaction. */
   readonly redeemers: readonly Buffer[];
   /** Rejects for `RedeemerMalformed` at this index; a Plutus execution failure when absent. */
-  readonly redeemerMalformedIndex?: number;
+  readonly redeemerMalformedIndex?: bigint;
 };
 
 /**
@@ -111,6 +111,14 @@ const boundForcedThread = async (
     await harness.funderLucid.wallet().address(),
   ).paymentCredential;
   if (credential?.type !== "Key") throw new Error("missing funder key");
+  const rejectionReason =
+    shape.redeemerMalformedIndex === undefined
+      ? ({
+          PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+        } as const)
+      : ({
+          RedeemerMalformed: { redeemer_index: shape.redeemerMalformedIndex },
+        } as const);
   const forced = await buildInvalidForcedTransitionTraceFixture({
     operatorVkey: credential.hash,
     now:
@@ -119,9 +127,7 @@ const boundForcedThread = async (
         harness.emulator.now() + 120_000,
       ) - 1,
     redeemers: shape.redeemers,
-    ...(shape.redeemerMalformedIndex === undefined
-      ? {}
-      : { redeemerMalformedIndex: shape.redeemerMalformedIndex }),
+    rejectionReason,
   });
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,
@@ -145,16 +151,6 @@ const boundForcedThread = async (
     reconstruction: forced.reconstruction,
     eventKey: forced.eventKey,
   });
-  const rejectionReason =
-    shape.redeemerMalformedIndex === undefined
-      ? ({
-          PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
-        } as const)
-      : ({
-          RedeemerMalformed: {
-            redeemer_index: BigInt(shape.redeemerMalformedIndex),
-          },
-        } as const);
   const fieldPreimage =
     forced.forcedNativeTx.witnessSet.redeemerTxWitsPreimageCbor;
   const finding = {
@@ -253,8 +249,17 @@ const refusedAtStep02 = {
 
 describe("redeemer-canonicity forced rejection of an absent coordinate", () => {
   it.each([
-    { coordinate: "past the last", redeemerMalformedIndex: 1 },
-    { coordinate: "negative", redeemerMalformedIndex: -1 },
+    { coordinate: "past the last", redeemerMalformedIndex: 1n },
+    { coordinate: "negative", redeemerMalformedIndex: -1n },
+    { coordinate: "2^53 + 1", redeemerMalformedIndex: 2n ** 53n + 1n },
+    {
+      coordinate: "2^64 - 1 (the codec's largest)",
+      redeemerMalformedIndex: 2n ** 64n - 1n,
+    },
+    {
+      coordinate: "-2^64 (the codec's smallest)",
+      redeemerMalformedIndex: -(2n ** 64n),
+    },
   ])(
     "convicts a RedeemerMalformed naming a $coordinate redeemer",
     async ({ redeemerMalformedIndex }) => {
@@ -273,7 +278,7 @@ describe("redeemer-canonicity forced rejection of an absent coordinate", () => {
 
   it("refuses on chain a claim that a held redeemer is absent", async () => {
     const thread = await boundForcedThread(
-      { redeemers: redeemersOf(1), redeemerMalformedIndex: 0 },
+      { redeemers: redeemersOf(1), redeemerMalformedIndex: 0n },
       { claimAbsent: true },
     );
     expect(thread.prepare().absent).toBe(false);
@@ -317,7 +322,7 @@ describe("redeemer-canonicity forced rejection of an absent coordinate", () => {
     async ({ negative }) => {
       const count = maximumRedeemerCount();
       expect(count).toBeGreaterThan(FIELD_GRAMMAR_WALKED_COUNT_LIMIT);
-      const redeemerMalformedIndex = negative ? -1 : count;
+      const redeemerMalformedIndex = negative ? -1n : BigInt(count);
       const thread = await boundForcedThread(
         { redeemers: redeemersOf(count), redeemerMalformedIndex },
         { withFieldGrammar: true },

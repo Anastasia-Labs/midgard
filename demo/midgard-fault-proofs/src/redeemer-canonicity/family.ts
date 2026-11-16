@@ -11,6 +11,7 @@ import {
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import { planRedeemerData, type RedeemerDataPlan } from "./data-plan.js";
 
 export const REDEEMER_CANONICITY_CATEGORY = "redeemerCanonicity" as const;
@@ -22,15 +23,16 @@ const fail = (message: string): never => {
   throw new Error(`${REDEEMER_CANONICITY_CATEGORY}: ${message}`);
 };
 
-const exactIndex = (value: number, label: string): number => {
-  if (!Number.isSafeInteger(value) || value < 0)
+const exactIndex = (value: bigint, label: string): bigint => {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
     return fail(`${label} must be a non-negative safe integer`);
   return value;
 };
 
 export type RedeemerCanonicityFinding = Readonly<{
   subject: VerdictSubject;
-  redeemerIndex: number;
+  /** Any integer the rejection codec admits; a rejection may name one field 8 lacks. */
+  redeemerIndex: bigint;
 }>;
 
 /**
@@ -38,7 +40,7 @@ export type RedeemerCanonicityFinding = Readonly<{
  * (`rule.execution_failed_redeemer_index`): it names no redeemer, so only a
  * transaction whose field 8 has no items answers it.
  */
-export const REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX = -1;
+export const REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX = -1n;
 
 /** Whether `subject` rejects the transaction for a Plutus execution failure. */
 export const claimsPlutusExecutionFailure = (subject: VerdictSubject) => {
@@ -56,22 +58,22 @@ export const classifyRedeemerCanonicityFinding = (
 ): RedeemerCanonicityFinding => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
+  if (typeof finding.redeemerIndex !== "bigint")
+    return fail("redeemer index must be an integer");
   if (claimsPlutusExecutionFailure(finding.subject)) {
     if (finding.redeemerIndex !== REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX)
       return fail("a Plutus execution failure binds no redeemer");
     return Object.freeze({ ...finding });
   }
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
-    // A rejection may name a negative redeemer coordinate, which field 8
+    // A rejection may name any redeemer coordinate, including one field 8
     // lacks; an acceptance names a redeemer the field holds.
-    if (!Number.isSafeInteger(finding.redeemerIndex))
-      return fail("redeemer index must be a safe integer");
     const reason = finding.subject.rejection_reason;
     if (
       typeof reason === "string" ||
       reason === null ||
       !("RedeemerMalformed" in reason) ||
-      Number(reason.RedeemerMalformed.redeemer_index) !== finding.redeemerIndex
+      reason.RedeemerMalformed.redeemer_index !== finding.redeemerIndex
     )
       return fail("typed reason/redeemer coordinate changed");
   } else if (
@@ -119,7 +121,9 @@ export const prepareRedeemerCanonicityEvidence = ({
     return fail("retained field 8 changed commitment");
   const items = decodeMidgardFieldPreimage(fieldPreimage);
   const executionFailure = claimsPlutusExecutionFailure(finding.subject);
-  const item = executionFailure ? undefined : items[finding.redeemerIndex];
+  const item = executionFailure
+    ? undefined
+    : claimedItem(items, finding.redeemerIndex);
   if (item === undefined) {
     // Canonical validation reads no redeemer field 8 lacks, and a
     // transaction with no redeemers runs no Plutus script: only a rejection
@@ -165,7 +169,11 @@ export const selectCanonicalRedeemerCanonicityEvidence = (
   if (values.length === 0) return fail("no authenticated detection");
   return [...values].sort(
     (left, right) =>
-      left.redeemerIndex - right.redeemerIndex ||
+      (left.redeemerIndex === right.redeemerIndex
+        ? 0
+        : left.redeemerIndex < right.redeemerIndex
+          ? -1
+          : 1) ||
       left.subject.transaction_id.localeCompare(right.subject.transaction_id),
   )[0]!;
 };

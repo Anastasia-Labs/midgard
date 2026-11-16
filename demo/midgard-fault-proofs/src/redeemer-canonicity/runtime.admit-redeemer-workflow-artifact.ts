@@ -215,8 +215,11 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
   ) as Parameters<
     typeof prepareRedeemerCanonicityEvidence
   >[0]["finding"]["subject"];
+  const { redeemerIndex } = artifact;
+  if (typeof redeemerIndex !== "number" || !Number.isSafeInteger(redeemerIndex))
+    throw new Error("redeemerCanonicity prepared artifact changed");
   const evidence = prepareRedeemerCanonicityEvidence({
-    finding: { subject, redeemerIndex: Number(artifact.redeemerIndex) },
+    finding: { subject, redeemerIndex: BigInt(redeemerIndex) },
     fieldPreimage: Buffer.from(
       cursorStringField(artifact, "fieldPreimageHex"),
       "hex",

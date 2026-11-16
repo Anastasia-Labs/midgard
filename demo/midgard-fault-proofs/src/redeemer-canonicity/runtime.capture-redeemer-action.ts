@@ -170,7 +170,7 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
       detection.evidence.subject as never,
       RedeemerCanonicityVerdictSubjectSchema as never,
     ),
-    redeemerIndex: detection.evidence.redeemerIndex,
+    redeemerIndex: Number(detection.evidence.redeemerIndex),
     fieldPreimageHex: detection.evidence.fieldPreimageHex,
     fieldCommitmentHex: detection.evidence.fieldCommitmentHex,
     nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),

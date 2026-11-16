@@ -43,7 +43,7 @@ const item = (data: string, index = 0) =>
 const evidence = (subject: typeof accepted, data: string, index = 0) => {
   const field = encodeMidgardFieldPreimage([item(data, index)]);
   return prepareRedeemerCanonicityEvidence({
-    finding: { subject, redeemerIndex: index },
+    finding: { subject, redeemerIndex: BigInt(index) },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
@@ -74,7 +74,7 @@ describe("redeemerCanonicity V1", () => {
     expect(() =>
       classifyRedeemerCanonicityFinding({
         subject: rejected(1),
-        redeemerIndex: 0,
+        redeemerIndex: 0n,
       }),
     ).toThrow(/coordinate changed/u);
     const wrong = forcedVerdictSubject({
@@ -87,7 +87,7 @@ describe("redeemerCanonicity V1", () => {
     expect(() =>
       classifyRedeemerCanonicityFinding({
         subject: wrong,
-        redeemerIndex: 0,
+        redeemerIndex: 0n,
       }),
     ).toThrow(/typed reason/u);
   });
@@ -96,14 +96,14 @@ describe("redeemerCanonicity V1", () => {
     const field = encodeMidgardFieldPreimage([item("00")]);
     expect(() =>
       prepareRedeemerCanonicityEvidence({
-        finding: { subject: accepted, redeemerIndex: 0 },
+        finding: { subject: accepted, redeemerIndex: 0n },
         fieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/commitment/u);
     expect(() =>
       prepareRedeemerCanonicityEvidence({
-        finding: { subject: accepted, redeemerIndex: 1 },
+        finding: { subject: accepted, redeemerIndex: 1n },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),
@@ -117,7 +117,7 @@ describe("redeemerCanonicity V1", () => {
       item("1800", 1),
     ]);
     const second = prepareRedeemerCanonicityEvidence({
-      finding: { subject: accepted, redeemerIndex: 1 },
+      finding: { subject: accepted, redeemerIndex: 1n },
       fieldPreimage: secondField,
       committedFieldHashHex:
         midgardFieldCommitment(secondField).toString("hex"),
