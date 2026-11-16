@@ -20,6 +20,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
   plutusItemScriptDecode,
@@ -56,8 +57,8 @@ const exactHex = (value: string, bytes: number, label: string): string => {
   return value;
 };
 
-const exactIndex = (value: number): number => {
-  if (!Number.isSafeInteger(value) || value < 0) {
+const exactIndex = (value: bigint): bigint => {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
     return fail("script index must be a non-negative safe integer");
   }
   return value;
@@ -65,7 +66,7 @@ const exactIndex = (value: number): number => {
 
 const accusedClassV1 = (
   reason: RejectionReason,
-  scriptIndex: number,
+  scriptIndex: bigint,
 ): WitnessScriptDecodingResultClass => {
   if (typeof reason === "string") return fail("typed reason is outside family");
   if ("PlutusScriptUndecodable" in reason) {
@@ -104,10 +105,7 @@ const accusedClassV1 = (
       const payload = (
         reason as unknown as Record<string, { script_index: bigint }>
       )[constructor];
-      if (
-        payload === undefined ||
-        payload.script_index !== BigInt(scriptIndex)
-      ) {
+      if (payload === undefined || payload.script_index !== scriptIndex) {
         return fail("typed reason script coordinate differs");
       }
       return resultClass;
@@ -119,7 +117,8 @@ const accusedClassV1 = (
 export type WitnessScriptDecodingFinding = Readonly<{
   subject: VerdictSubject;
   witnessSetHash: string;
-  scriptIndex: number;
+  /** Any integer the rejection codec admits; a rejection may name one field 6 lacks. */
+  scriptIndex: bigint;
 }>;
 
 export const classifyWitnessScriptDecodingFinding = (
@@ -132,10 +131,11 @@ export const classifyWitnessScriptDecodingFinding = (
   }
   // A rejection may cite any position, so a negative one is a coordinate
   // field 6 lacks; an acceptance binds an existing script.
+  if (typeof finding.scriptIndex !== "bigint") {
+    return fail("script index must be an integer");
+  }
   if (finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     exactIndex(finding.scriptIndex);
-  } else if (!Number.isSafeInteger(finding.scriptIndex)) {
-    return fail("script index must be a safe integer");
   }
   exactHex(finding.witnessSetHash, 32, "witness set hash");
   const accusedClass =
@@ -212,7 +212,10 @@ export const prepareWitnessScriptDecodingEvidence = ({
   ) {
     return fail("retained field preimage differs from committed field hash");
   }
-  const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.scriptIndex];
+  const item = claimedItem(
+    decodeMidgardFieldPreimage(fieldPreimage),
+    finding.scriptIndex,
+  );
   if (item === undefined) {
     // Canonical validation decodes no script at a position field 6 lacks, so
     // only a rejection citing one is wrong.
@@ -240,7 +243,7 @@ export const prepareWitnessScriptDecodingEvidence = ({
   }
   const bounded = buildMidgardBoundedItem({
     fieldIndex: WITNESS_SCRIPT_DECODING_FIELD_INDEX,
-    itemIndex: finding.scriptIndex,
+    itemIndex: Number(finding.scriptIndex),
     bytes: item,
   });
   const decoded = resultClassOfItem(item);
@@ -296,29 +299,31 @@ export const witnessScriptDecodingEvidenceCloses = (
     : evidence.resultClass !== accusedClass;
 };
 
-const cborHead = (major: number, value: number): Buffer => {
-  if (value < 24) return Buffer.from([(major << 5) | value]);
-  if (value <= 0xff) return Buffer.from([(major << 5) | 24, value]);
-  if (value <= 0xffff) {
-    const result = Buffer.alloc(3);
-    result[0] = (major << 5) | 25;
-    result.writeUInt16BE(value, 1);
-    return result;
+const cborHead = (major: number, input: bigint | number): Buffer => {
+  const value = BigInt(input);
+  if (value < 24n) return Buffer.from([(major << 5) | Number(value)]);
+  if (value >= 1n << 64n) {
+    return fail("CBOR head argument is wider than 8 bytes");
   }
-  if (value <= 0xffffffff) {
-    const result = Buffer.alloc(5);
-    result[0] = (major << 5) | 26;
-    result.writeUInt32BE(value, 1);
-    return result;
-  }
-  const result = Buffer.alloc(9);
-  result[0] = (major << 5) | 27;
-  result.writeBigUInt64BE(BigInt(value), 1);
-  return result;
+  const [width, additional] =
+    value <= 0xffn
+      ? [1, 24]
+      : value <= 0xffffn
+        ? [2, 25]
+        : value <= 0xffffffffn
+          ? [4, 26]
+          : [8, 27];
+  return Buffer.concat([
+    Buffer.from([(major << 5) | additional]),
+    Buffer.from(value.toString(16).padStart(width * 2, "0"), "hex"),
+  ]);
 };
-/** Twin of `cbor.serialise` on a safe integer of either sign. */
-const cborInteger = (value: number): Buffer =>
-  value < 0 ? cborHead(1, -1 - value) : cborHead(0, value);
+/**
+ * Twin of `cbor.serialise` on an integer the rejection codec admits, of
+ * either sign.
+ */
+const cborInteger = (value: bigint): Buffer =>
+  value < 0n ? cborHead(1, -1n - value) : cborHead(0, value);
 const cborBytes = (value: Buffer): Buffer =>
   Buffer.concat([cborHead(2, value.length), value]);
 

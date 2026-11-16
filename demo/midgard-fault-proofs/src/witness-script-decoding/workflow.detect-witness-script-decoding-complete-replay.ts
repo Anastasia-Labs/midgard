@@ -70,7 +70,7 @@ export const witnessScriptDecodingCompleteReplayFindings = (
         finding: {
           subject: acceptedVerdictSubject(transactionId),
           witnessSetHash,
-          scriptIndex,
+          scriptIndex: BigInt(scriptIndex),
         },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -146,7 +146,7 @@ export const witnessScriptDecodingCompleteReplayFindings = (
         witnessSetHash: decodeMidgardForcedTxCompact(
           material.proofSource.compactCbor,
         ).transactionWitnessSetHash.toString("hex"),
-        scriptIndex,
+        scriptIndex: BigInt(scriptIndex),
       },
       fieldPreimage: field,
       committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

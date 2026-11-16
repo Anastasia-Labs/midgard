@@ -83,12 +83,7 @@ const setupScenario = async (offset: bigint) => {
   const reason = reasonOf("WitnessNativeScriptMalformed", index);
   const h = await makeHarness();
   const forced = await h.forcedBlock(shape, reason);
-  const evidence = forcedEvidence(
-    shape,
-    forced.orderKey,
-    reason,
-    Number(index),
-  );
+  const evidence = forcedEvidence(shape, forced.orderKey, reason, index);
   const bound = await h.step01Forced(
     await h.init(forced.setup.fraudulentBlockOutRef, null),
     forced,
@@ -124,7 +119,7 @@ describe("forced WitnessNativeScriptMalformed coordinate the node writes", () =>
       h,
       opened.nextThreadOutRef,
       evidence,
-      acceptedEvidence(shape, 1),
+      acceptedEvidence(shape, 1n),
     );
     // The step authenticates the closed scan and the terminal rule, which
     // convicts only a class that differs from the accused one, returns false.

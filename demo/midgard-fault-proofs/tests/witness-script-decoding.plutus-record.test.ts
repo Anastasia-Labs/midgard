@@ -47,7 +47,7 @@ const undecodable = (itemKind: bigint, itemIndex: bigint, cls: bigint) =>
 const evidence = (subject: typeof accepted, item: Buffer) => {
   const preimage = encodeMidgardFieldPreimage([item]);
   return prepareWitnessScriptDecodingEvidence({
-    finding: { subject, witnessSetHash, scriptIndex: 0 },
+    finding: { subject, witnessSetHash, scriptIndex: 0n },
     fieldPreimage: preimage,
     committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
   });
@@ -94,7 +94,7 @@ describe("witnessScriptDecoding Plutus items", () => {
         classifyWitnessScriptDecodingFinding({
           subject,
           witnessSetHash,
-          scriptIndex: 0,
+          scriptIndex: 0n,
         }),
       ).toThrow(/coordinate differs/u);
     }

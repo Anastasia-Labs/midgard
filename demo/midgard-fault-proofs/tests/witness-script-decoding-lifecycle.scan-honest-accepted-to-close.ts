@@ -140,7 +140,7 @@ export const reasonOf = (
 ): SDK.RejectionReason =>
   ({ [arm]: { script_index: scriptIndex } }) as SDK.RejectionReason;
 
-export const acceptedEvidence = (shape: Shape, scriptIndex = 0) =>
+export const acceptedEvidence = (shape: Shape, scriptIndex = 0n) =>
   prepareWitnessScriptDecodingEvidence({
     finding: {
       subject: SDK.acceptedVerdictSubject(shape.txId),
@@ -155,7 +155,7 @@ export const forcedEvidence = (
   shape: Shape,
   orderKey: SDK.OutputReference,
   reason: SDK.RejectionReason,
-  scriptIndex = 0,
+  scriptIndex = 0n,
 ) =>
   prepareWitnessScriptDecodingEvidence({
     finding: {

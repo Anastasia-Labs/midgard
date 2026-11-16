@@ -171,7 +171,7 @@ const accusedClassOf = (
         plutusUndecodableAccusedClass(
           value,
           PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
-          Number(scriptIndex),
+          scriptIndex,
         )!,
       );
     } catch {

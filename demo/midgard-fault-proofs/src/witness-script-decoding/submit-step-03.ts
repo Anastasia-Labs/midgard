@@ -127,7 +127,7 @@ export const planWitnessScriptDecodingStep03Transition = ({
       args = nativeScriptDecodingScanArgsEvidence({
         segment,
         fieldIndex: 6,
-        itemIndex: evidence.finding.scriptIndex,
+        itemIndex: Number(evidence.finding.scriptIndex),
         itemBytes: Buffer.from(evidence.itemHex, "hex"),
       });
       const isLast = plan.segments.at(-1) === segment;
@@ -154,7 +154,7 @@ export const planWitnessScriptDecodingStep03Transition = ({
         ...nativeScriptDecodingWindowProofs({
           window: plan.verdict.window,
           fieldIndex: 6,
-          itemIndex: evidence.finding.scriptIndex,
+          itemIndex: Number(evidence.finding.scriptIndex),
           itemBytes: Buffer.from(evidence.itemHex, "hex"),
         }),
         frames: [],

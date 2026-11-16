@@ -390,7 +390,7 @@ export const makeHarness = async ({
     certificateUtxo?: UTxO,
     fieldGrammar?: FaultProofFieldGrammarDeployment,
   ) => {
-    const item = shape.items[evidence.finding.scriptIndex];
+    const item = shape.items[Number(evidence.finding.scriptIndex)];
     const recordUtxo =
       item && (await recordPlutusItem(harness.emulator, lucid, item));
     return (

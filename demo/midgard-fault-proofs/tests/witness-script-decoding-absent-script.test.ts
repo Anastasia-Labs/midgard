@@ -3,9 +3,10 @@
  * does not have by the field's authenticated count: step 02 closes the scan
  * with no fault, which contradicts the rejection, and the thread convicts. A
  * claim that a held script is absent is refused on chain. A negative position
- * is absent without reading the count. The absent route also convicts at
- * field 6's byte cap, past the last script through the field grammar
- * certificate and at a negative position without it.
+ * is absent without reading the count. A position past 2^53, up to either
+ * end of the rejection codec's range, convicts the same way. The absent route
+ * also convicts at field 6's byte cap, past the last script through the field
+ * grammar certificate and at a negative position without it.
  */
 import { buildMidgardBoundedItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -71,19 +72,48 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
     {
       position: "the script past the last",
       constructor: "WitnessScriptHeaderMalformed" as const,
-      scriptIndex: 1,
+      scriptIndex: 1n,
     },
     {
       position: "a negative script position",
       constructor: "WitnessNativeScriptNodeLimit" as const,
-      scriptIndex: -1,
+      scriptIndex: -1n,
+    },
+    {
+      position: "script 2^53 + 1",
+      constructor: "WitnessScriptHeaderMalformed" as const,
+      scriptIndex: 2n ** 53n + 1n,
+    },
+    {
+      position: "the codec's largest script position, 2^64 - 1",
+      constructor: "WitnessNativeScriptDepthLimit" as const,
+      scriptIndex: 2n ** 64n - 1n,
+    },
+    {
+      position: "the codec's smallest script position, -2^64",
+      constructor: "WitnessNativeScriptMalformed" as const,
+      scriptIndex: -(2n ** 64n),
+    },
+    {
+      position: "script 2^53 + 1",
+      constructor: "PlutusScriptUndecodable" as const,
+      scriptIndex: 2n ** 53n + 1n,
     },
   ])(
     "convicts a $constructor rejection naming $position",
     async ({ constructor, scriptIndex }) => {
       const h = await makeHarness();
       const shape = smallCanonicalShape();
-      const reason = reasonOf(constructor, BigInt(scriptIndex));
+      const reason =
+        constructor === "PlutusScriptUndecodable"
+          ? ({
+              PlutusScriptUndecodable: {
+                item_kind: 0n,
+                item_index: scriptIndex,
+                class: 3n,
+              },
+            } as never)
+          : reasonOf(constructor, scriptIndex);
       const forced = await h.forcedBlock(shape, reason);
       const evidence = forcedEvidence(
         shape,
@@ -96,7 +126,7 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
         await h.init(forced.setup.fraudulentBlockOutRef, null),
         forced,
         evidence.finding.witnessSetHash,
-        BigInt(scriptIndex),
+        scriptIndex,
       );
       const opened = await h.step02(bound, shape, evidence);
       expect(opened.scanState.result_class).toBe(
@@ -156,7 +186,7 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
     async ({ past }) => {
       const h = await makeHarness();
       const count = maximumScriptCount();
-      const scriptIndex = past ? count : -1;
+      const scriptIndex = past ? BigInt(count) : -1n;
       expect(count).toBeGreaterThan(FIELD_GRAMMAR_WALKED_COUNT_LIMIT);
       const shape = shapeOf(
         `${count.toString()} all[sig] scripts filling field 6 (Certified)`,
@@ -164,10 +194,7 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
         1_010n,
       );
       expect(shape.certified).toBe(true);
-      const reason = reasonOf(
-        "WitnessNativeScriptMalformed",
-        BigInt(scriptIndex),
-      );
+      const reason = reasonOf("WitnessNativeScriptMalformed", scriptIndex);
       const forced = await h.forcedBlock(shape, reason);
       const evidence = forcedEvidence(
         shape,
@@ -185,7 +212,7 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
         await h.init(forced.setup.fraudulentBlockOutRef, null),
         forced,
         evidence.finding.witnessSetHash,
-        BigInt(scriptIndex),
+        scriptIndex,
       );
       const opened = await captureEmulatorSubmission(h.harness.emulator, () =>
         h.step02(

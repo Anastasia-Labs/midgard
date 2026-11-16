@@ -97,7 +97,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
             "state-queue block out-ref",
           ),
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
-          scriptIndex: BigInt(evidence.finding.scriptIndex),
+          scriptIndex: evidence.finding.scriptIndex,
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
           preSubmitBoundary,
@@ -118,7 +118,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         header: required(stage.forcedHeader, "forced header"),
         membership: required(stage.forcedMembership, "forced membership"),
         witnessSetHash: evidence.finding.witnessSetHash,
-        scriptIndex: BigInt(evidence.finding.scriptIndex),
+        scriptIndex: evidence.finding.scriptIndex,
         referenceScriptUtxo: config.referenceScripts.step01,
         preSubmitBoundary,
       });

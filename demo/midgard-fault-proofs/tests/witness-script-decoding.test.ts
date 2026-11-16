@@ -53,11 +53,11 @@ const plutusItem = Buffer.from("820346450101004981", "hex");
 const evidence = ({
   subject = accepted,
   item = malformedHeaderItem,
-  scriptIndex = 0,
+  scriptIndex = 0n,
 }: {
   readonly subject?: typeof accepted;
   readonly item?: Buffer;
-  readonly scriptIndex?: number;
+  readonly scriptIndex?: bigint;
 } = {}) => {
   const preimage = encodeMidgardFieldPreimage([item]);
   return prepareWitnessScriptDecodingEvidence({
@@ -150,7 +150,7 @@ describe("witnessScriptDecoding V1 evidence", () => {
       const finding = classifyWitnessScriptDecodingFinding({
         subject: forced({ [constructor]: { script_index: 0n } }),
         witnessSetHash,
-        scriptIndex: 0,
+        scriptIndex: 0n,
       });
       expect(finding.accusedClass).toBe(expected);
     }
@@ -158,14 +158,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
       classifyWitnessScriptDecodingFinding({
         subject: forced({ WitnessScriptHeaderMalformed: { script_index: 1n } }),
         witnessSetHash,
-        scriptIndex: 0,
+        scriptIndex: 0n,
       }),
     ).toThrow(/coordinate differs/u);
     expect(() =>
       classifyWitnessScriptDecodingFinding({
         subject: forced({ ScriptIntegrityHashMissing: null }),
         witnessSetHash,
-        scriptIndex: 0,
+        scriptIndex: 0n,
       }),
     ).toThrow(/outside/u);
   });
@@ -174,14 +174,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
     const preimage = encodeMidgardFieldPreimage([signatureItem]);
     expect(() =>
       prepareWitnessScriptDecodingEvidence({
-        finding: { subject: accepted, witnessSetHash, scriptIndex: 0 },
+        finding: { subject: accepted, witnessSetHash, scriptIndex: 0n },
         fieldPreimage: preimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/differs/u);
     expect(() =>
       prepareWitnessScriptDecodingEvidence({
-        finding: { subject: accepted, witnessSetHash, scriptIndex: 1 },
+        finding: { subject: accepted, witnessSetHash, scriptIndex: 1n },
         fieldPreimage: preimage,
         committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
       }),
@@ -190,7 +190,7 @@ describe("witnessScriptDecoding V1 evidence", () => {
       classifyWitnessScriptDecodingFinding({
         subject: accepted,
         witnessSetHash: "aa",
-        scriptIndex: 0,
+        scriptIndex: 0n,
       }),
     ).toThrow(/32-byte/u);
   });

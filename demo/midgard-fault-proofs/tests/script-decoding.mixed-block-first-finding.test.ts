@@ -162,7 +162,7 @@ describe(
         canonical,
         decision.detectionId,
       );
-      expect(material.evidence.finding.scriptIndex).toBe(1);
+      expect(material.evidence.finding.scriptIndex).toBe(1n);
       expect(decision.detectionId.split(":")[3]).toBe("1");
     });
 
@@ -179,7 +179,7 @@ describe(
         canonical,
         decision.detectionId,
       );
-      expect(material.evidence.finding.scriptIndex).toBe(1);
+      expect(material.evidence.finding.scriptIndex).toBe(1n);
       expect(decision.detectionId.split(":")[3]).toBe("1");
     });
 
@@ -226,7 +226,7 @@ describe(
         canonical,
         selected.detectionId,
       );
-      expect(material.evidence.finding.scriptIndex).toBe(1);
+      expect(material.evidence.finding.scriptIndex).toBe(1n);
       expect(
         deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(canonical),
       ).toEqual(material.evidence);

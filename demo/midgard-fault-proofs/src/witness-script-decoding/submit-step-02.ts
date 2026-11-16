@@ -20,6 +20,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
@@ -126,7 +127,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
   const negative = bound.script_index < 0n;
   const item = negative
     ? undefined
-    : scriptWitnessItems[Number(bound.script_index)];
+    : claimedItem(scriptWitnessItems, bound.script_index);
   if (
     (evidence.absent
       ? item !== undefined
