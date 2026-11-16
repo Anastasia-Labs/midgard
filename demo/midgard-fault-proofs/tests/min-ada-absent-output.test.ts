@@ -6,7 +6,8 @@
  * once the field's grammar is complete, writing `MinAdaTxAbsent`; step 03
  * moves it to the terminal and step 04 mints the proof. A claim that a held
  * output is absent is refused at step 02, and both forms convict at the
- * field's byte cap.
+ * field's byte cap. An index past 2^53, up to either end of the rejection
+ * codec's range, convicts the same way.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -189,6 +190,23 @@ describe("minAda forced rejection of an absent output", () => {
     // No grammar transaction precedes the close.
     expect(closed.measurements).toHaveLength(1);
   }, 900_000);
+
+  it.each([
+    { label: "2^53 + 1", outputIndex: 2n ** 53n + 1n },
+    { label: "the codec's largest, 2^64 - 1", outputIndex: 2n ** 64n - 1n },
+    { label: "the codec's smallest, -2^64", outputIndex: -(2n ** 64n) },
+  ])(
+    "convicts an output coordinate at $label",
+    async ({ outputIndex }) => {
+      const thread = await boundThread({
+        prefixCount: 1,
+        namedOutputIndex: outputIndex,
+      });
+      expect(thread.f.prepared.badOutputIndex).toBe(outputIndex);
+      await convict(thread);
+    },
+    900_000,
+  );
 
   it("refuses on chain a claim that a held output is absent", async () => {
     const thread = await boundThread({

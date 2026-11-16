@@ -54,7 +54,7 @@ export let scenarioSequence = 0;
 export const setup = async ({
   transactionOf = (outputs: readonly Buffer[]): MidgardNativeTxFull =>
     makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbors: [...outputs] }),
-  namedOutputIndex = undefined as number | undefined,
+  namedOutputIndex = undefined as bigint | number | undefined,
   underfunded = false,
   accepted = false,
   depth = 0,
