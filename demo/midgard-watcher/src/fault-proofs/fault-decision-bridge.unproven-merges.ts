@@ -14,9 +14,11 @@ type DetectedFault = Readonly<{ category: string; decisionDigest: string }>;
  * the alert again from that record on its first pass, and an error line
  * names the header, its category and decision once, when it is recorded.
  * The alert is informational: it never clears, and nothing acknowledges it,
- * so it must not hold readiness forever. Paging reads the durable count of
- * recorded merges instead (`midgard_watcher_unproven_fault_merges_total`),
- * which rises once per new incident and survives restarts.
+ * so it must not hold readiness forever. Paging reads the time of the newest
+ * recorded merge instead
+ * (`midgard_watcher_latest_unproven_fault_merge_timestamp_seconds`): it moves
+ * once per new incident, including one first seen on a restart's first pass,
+ * and a restart that finds none new leaves it where it was.
  *
  * A header is faulty when its latest decision in this process is
  * `fault_detected`, or, for one this process has not classified (it merged
@@ -39,11 +41,8 @@ export const unprovenMergeRecorder = (
       active: true,
       observedAtMs: merge.observedAtMs,
     });
-  const count = (): void => {
-    const total = dependencies.unprovenFaultMerges?.().recorded();
-    if (total !== undefined)
-      dependencies.operationsSink?.recordUnprovenFaultMerges(total.toString());
-  };
+  const seen = (merge: WatcherUnprovenFaultMerge): void =>
+    dependencies.operationsSink?.recordUnprovenFaultMerge(merge.observedAtMs);
   const detected = async (
     headerHash: string,
   ): Promise<DetectedFault | undefined> =>
@@ -60,9 +59,10 @@ export const unprovenMergeRecorder = (
     /** Raises the recorded merges again, once per process. */
     reraise: (): void => {
       if (reraised) return;
-      for (const merge of dependencies.unprovenFaultMerges?.().list() ?? [])
+      for (const merge of dependencies.unprovenFaultMerges?.().list() ?? []) {
         raise(merge);
-      count();
+        seen(merge);
+      }
       reraised = true;
     },
     /** The header's latest classification decision in this process. */
@@ -90,11 +90,11 @@ export const unprovenMergeRecorder = (
       });
       const fresh = dependencies.unprovenFaultMerges?.().record(merge) ?? true;
       raise(merge);
-      count();
-      if (fresh)
-        process.stderr.write(
-          `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", event: "unproven_fault_merged", ...merge })}\n`,
-        );
+      if (!fresh) return;
+      seen(merge);
+      process.stderr.write(
+        `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", event: "unproven_fault_merged", ...merge })}\n`,
+      );
     },
     /** A rollback may change what a decision read: they are taken afresh. */
     reset: (): void => faults.clear(),

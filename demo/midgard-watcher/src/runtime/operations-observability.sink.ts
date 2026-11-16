@@ -71,7 +71,7 @@ export type WatcherOperationsRecord = Readonly<{
     | "activeAlertCount"
     | "unverifiedHeaders"
     | "deferredClassifications"
-    | "unprovenFaultMergesTotal"
+    | "latestUnprovenFaultMergeAtMs"
   >;
 }>;
 
@@ -138,7 +138,7 @@ export const createWatcherOperationsSink = (
   let latestDaBondPool: WatcherOperationsDaBondPool | null = null;
   let latestDaBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null =
     null;
-  let unprovenFaultMerges: bigint | null = null;
+  let latestUnprovenFaultMerge: bigint | null = null;
   const sourceAges = new Map<string, WatcherAgeAnchor>();
   const eventAges = new Map<string, WatcherAgeAnchor>();
   // Wall timestamps may cross a host clock adjustment. Unknown initial ages
@@ -269,10 +269,10 @@ export const createWatcherOperationsSink = (
         setAlert({ code, subjectDigest, active, observedAtMs });
       }
     },
-    recordUnprovenFaultMerges: (total) => {
-      const count = natural(total, "unproven fault merge count");
-      if (unprovenFaultMerges === null || count > unprovenFaultMerges)
-        unprovenFaultMerges = count;
+    recordUnprovenFaultMerge: (observedAtMs) => {
+      const at = natural(observedAtMs, "unproven fault merge time");
+      if (latestUnprovenFaultMerge === null || at > latestUnprovenFaultMerge)
+        latestUnprovenFaultMerge = at;
     },
     recordDaBondPoolReadFailure: (error, failedAtMs) => {
       natural(failedAtMs, "DA bond pool read failure time");
@@ -377,7 +377,8 @@ export const createWatcherOperationsSink = (
       activeAlertCount: alerts.active().length.toString(),
       unverifiedHeaders: unverifiedHeaders.summary(),
       deferredClassifications: unverifiedHeaders.deferred(),
-      unprovenFaultMergesTotal: unprovenFaultMerges?.toString() ?? null,
+      latestUnprovenFaultMergeAtMs:
+        latestUnprovenFaultMerge?.toString() ?? null,
     };
   };
 

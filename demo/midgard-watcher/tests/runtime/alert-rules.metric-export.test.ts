@@ -123,7 +123,7 @@ describe("the watcher's alert rules", () => {
     }
   });
 
-  it("page every new unproven merge from its monotonic count, not from the alert that never clears", async () => {
+  it("page every new unproven merge from the time of the newest one, not from the alert that never clears", async () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../../alert-rules.yml", import.meta.url), "utf8"),
     );
@@ -131,7 +131,9 @@ describe("the watcher's alert rules", () => {
       selectors
         .filter(({ alert }) => alert === "MidgardWatcherUnprovenFaultMerged")
         .map(({ metric }) => metric),
-    ).toEqual(["midgard_watcher_unproven_fault_merges_total"]);
+    ).toEqual([
+      "midgard_watcher_latest_unproven_fault_merge_timestamp_seconds",
+    ]);
   });
 
   it("page every fault-proof hold the execution names", async () => {

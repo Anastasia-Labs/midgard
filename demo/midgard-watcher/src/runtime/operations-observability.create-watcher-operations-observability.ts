@@ -177,7 +177,7 @@ export const createWatcherOperationsView = (
       activeAlertCount: recorded.activeAlertCount,
       unverifiedHeaders: recorded.unverifiedHeaders,
       deferredClassifications: recorded.deferredClassifications,
-      unprovenFaultMergesTotal: recorded.unprovenFaultMergesTotal,
+      latestUnprovenFaultMergeAtMs: recorded.latestUnprovenFaultMergeAtMs,
       l1Degradations: Object.freeze(
         Object.fromEntries(l1Degradations().map((d) => [d.reason, d.count])),
       ),

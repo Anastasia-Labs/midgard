@@ -57,18 +57,22 @@ const unprovenAlerts = (observability: ReturnType<typeof operations>) =>
     .activeAlerts.filter(({ code }) => code === "unproven_fault_merged")
     .map(({ subjectDigest }) => subjectDigest);
 
-/** The `/metrics` count of recorded unproven merges; undefined before the
- * watcher has read it. */
-const mergesTotal = async (observability: ReturnType<typeof operations>) => {
+/** When, in seconds, `/metrics` says the newest unproven merge was recorded;
+ * undefined while the watcher knows of none. */
+const latestMergeSeconds = async (
+  observability: ReturnType<typeof operations>,
+) => {
   const response = await observability.handleHttpRequest(
     new Request("http://127.0.0.1/metrics"),
   );
   const sample = (await response.text())
     .split("\n")
     .find((line) =>
-      line.startsWith("midgard_watcher_unproven_fault_merges_total "),
+      line.startsWith(
+        "midgard_watcher_latest_unproven_fault_merge_timestamp_seconds ",
+      ),
     );
-  return sample?.split(" ")[1];
+  return sample === undefined ? undefined : Number(sample.split(" ")[1]);
 };
 
 /** The error lines a callback writes. */
@@ -199,7 +203,7 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
     ]);
   });
 
-  it("counts every unproven merge on /metrics, so each new one pages, and keeps the count across a restart", async () => {
+  it("exports when the newest unproven merge was recorded, so each new one pages, and keeps that time across a restart", async () => {
     const journalRoot = await journalDirectory("midgard-unproven-merge");
     const current = queue("01", "02");
     const [first, second] = current.finalizedHeaders;
@@ -215,9 +219,12 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
           [second!.headerHash, proof(second!.headerHash)],
         ]),
       );
+    let clock = BigInt(Date.now());
+    const nowMs = () => clock;
     const observability = operations();
     const h = harness({
       current,
+      nowMs,
       categoryByHeader: {
         [first!.headerHash]: "doubleSpend",
         [second!.headerHash]: "doubleSpend",
@@ -226,20 +233,31 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
       mergedHeaders,
       unprovenFaultMerges: () => merges(journalRoot),
     });
-    const totals: (string | undefined)[] = [];
+    const seen: (number | undefined)[] = [];
+    const passes: bigint[] = [];
     await errorLines(async () => {
       for (let pass = 0; pass < 4; pass += 1) {
+        clock += 60_000n;
+        passes.push(clock);
         await h.bridge.reconcileAndDispatch(current);
-        totals.push(await mergesTotal(observability));
+        seen.push(await latestMergeSeconds(observability));
       }
     });
-    // Both alerts stay active; the count rises with each new incident and
+    // Both alerts stay active; the time moves with each new incident and
     // not with a pass over a known one.
-    expect(totals).toEqual(["0", "1", "2", "2"]);
+    const seconds = (ms: bigint) => Number(ms) / 1000;
+    expect(seen).toEqual([
+      undefined,
+      seconds(passes[1]!),
+      seconds(passes[2]!),
+      seconds(passes[2]!),
+    ]);
     expect(unprovenAlerts(observability)).toHaveLength(2);
 
-    // A restart neither resets the count nor raises it: no new incident.
+    // A restart hours later does not move it: no new incident, so a rule on
+    // its age stays quiet.
     closeWatcherJournalDatabase(journalRoot);
+    clock += 2n * 3_600_000n;
     const later = queue("03");
     const restarted = operations();
     const again = harness({
@@ -249,13 +267,14 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
       },
       classifyOverride: (fresh) => ({ ...fresh, decision: "healthy" }),
       operationsSink: restarted.sink,
+      nowMs,
       mergedHeaders: async () => new Map(),
       unprovenFaultMerges: () => merges(journalRoot),
     });
-    // Unknown until read: no sample rather than a reset to zero.
-    expect(await mergesTotal(restarted)).toBeUndefined();
+    // Unknown until read: no sample rather than a fresh time.
+    expect(await latestMergeSeconds(restarted)).toBeUndefined();
     await again.bridge.reconcileAndDispatch(later);
-    expect(await mergesTotal(restarted)).toBe("2");
+    expect(await latestMergeSeconds(restarted)).toBe(seconds(passes[2]!));
     expect(unprovenAlerts(restarted)).toHaveLength(2);
   });
 

@@ -461,11 +461,12 @@ hash.
 **Meaning.** A block this watcher found faulty merged into confirmed state
 before any proof removed it. The invalid block is now part of confirmed state.
 The watcher records the merge in its journal database, with one error line
-when it first records it, and counts every merge it has ever recorded in
-`midgard_watcher_unproven_fault_merges_total`. The count survives restarts
-(the watcher exports it from its first pass on), so this rule pages once for
-each new merge and does not page on a restart. The page resolves after its
-30-minute window; the merge itself stays listed as an active
+when it first records it, and exports when it saw the newest recorded merge
+as `midgard_watcher_latest_unproven_fault_merge_timestamp_seconds`. That time
+comes from the record, so it survives restarts: this rule pages for 30 minutes
+after each new merge, including one the watcher first sees on its first pass
+after an outage, and does not page on a restart that finds none new. The merge
+itself stays listed as an active
 `unproven_fault_merged` alert (one subject per header) in `GET /v1/status`,
 raised again after every restart. That alert never clears and nothing
 acknowledges it, so it is informational: it does not hold readiness.
