@@ -114,7 +114,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   });
   if (
     bound.subject.transaction_id !== evidence.subject.transaction_id ||
-    bound.output_index !== BigInt(evidence.outputIndex)
+    bound.output_index !== evidence.outputIndex
   )
     throw new Error(`${FAMILY}: retained output differs from bound subject`);
   const stepReference = requireLinearFaultReferenceScript({
@@ -341,7 +341,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       contracts.fieldPreimageCertificatePolicyId,
     // A negative coordinate closes without reading the field's count, so it
     // needs no field grammar certificate.
-    fieldGrammar: evidence.outputIndex < 0 ? undefined : fieldGrammar,
+    fieldGrammar: evidence.outputIndex < 0n ? undefined : fieldGrammar,
     label: `${FAMILY} field 2`,
   });
   return await submitOutputReferenceScriptDecodingStep02Raw({

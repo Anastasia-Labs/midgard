@@ -251,7 +251,7 @@ export const planOutputReferenceScriptDecodingStep05 = ({
       args = nativeScriptDecodingScanArgsEvidence({
         segment,
         fieldIndex: 2,
-        itemIndex: evidence.outputIndex,
+        itemIndex: Number(evidence.outputIndex),
         itemBytes: item,
       });
       const isLast = plan.segments.at(-1) === segment;
@@ -272,7 +272,7 @@ export const planOutputReferenceScriptDecodingStep05 = ({
         ...nativeScriptDecodingWindowProofs({
           window: plan.verdict.window,
           fieldIndex: 2,
-          itemIndex: evidence.outputIndex,
+          itemIndex: Number(evidence.outputIndex),
           itemBytes: item,
         }),
         frames: [],

@@ -97,7 +97,7 @@ export const makeOutputReferenceStages = ({
     initialized: Awaited<ReturnType<typeof init>>["result"],
     finding: {
       readonly subject: OutputReferenceScriptDecodingEvidence["subject"];
-      readonly outputIndex: number;
+      readonly outputIndex: bigint;
     },
     txInclusion: SubmitStep01TxInclusion,
   ) =>

@@ -61,7 +61,7 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         subject: finding.subject,
-        output_index: BigInt(finding.outputIndex),
+        output_index: finding.outputIndex,
         accused_class: BigInt(OutputReferenceScriptResultClasses.Pending),
       },
     } as never,
@@ -86,7 +86,7 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
           inclusion: { RedeemerCarriedInclusion: [inclusion] },
         },
       },
-      output_index: BigInt(finding.outputIndex),
+      output_index: finding.outputIndex,
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,

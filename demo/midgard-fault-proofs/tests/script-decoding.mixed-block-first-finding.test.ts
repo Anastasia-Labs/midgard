@@ -194,7 +194,7 @@ describe(
           canonical,
           selected.detectionId,
         );
-      expect(material.evidence.outputIndex).toBe(1);
+      expect(material.evidence.outputIndex).toBe(1n);
       expect(selected.detectionId.split(":")[4]).toBe("1");
     });
 
@@ -208,7 +208,7 @@ describe(
           canonical,
           selected.detectionId,
         );
-      expect(material.evidence.outputIndex).toBe(1);
+      expect(material.evidence.outputIndex).toBe(1n);
       expect(selected.detectionId.split(":")[4]).toBe("1");
     });
 
@@ -246,7 +246,7 @@ describe(
           canonical,
           selected.detectionId,
         );
-      expect(material.evidence.outputIndex).toBe(1);
+      expect(material.evidence.outputIndex).toBe(1n);
       expect(
         deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock(
           canonical,

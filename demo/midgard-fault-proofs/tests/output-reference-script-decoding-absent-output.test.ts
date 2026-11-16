@@ -37,12 +37,21 @@ import {
 
 const recorder = createMeasurementRecorder();
 
-const malformedAt = (outputIndex: number) =>
+const malformedAt = (outputIndex: bigint) =>
   ({
-    OutputReferenceScriptMalformed: { output_index: BigInt(outputIndex) },
+    OutputReferenceScriptMalformed: { output_index: outputIndex },
   }) as never;
 
-const forcedEvidence = (leaf: ForcedLeaf, outputIndex: number) =>
+const plutusUndecodableAt = (outputIndex: bigint) =>
+  ({
+    PlutusScriptUndecodable: {
+      item_kind: 1n,
+      item_index: outputIndex,
+      class: 3n,
+    },
+  }) as never;
+
+const forcedEvidence = (leaf: ForcedLeaf, outputIndex: bigint) =>
   prepareOutputReferenceScriptDecodingEvidence({
     subject: forcedVerdictSubject({
       transactionId: leaf.transaction.tx_id,
@@ -96,21 +105,21 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
           nativeTx: subjectTransaction([
             outputWithNativeScript(signatureScript()),
           ]),
-          reason: malformedAt(1),
+          reason: malformedAt(1n),
         },
         {
           nativeTx: subjectTransaction(
             [outputWithNativeScript(signatureScript())],
             8n,
           ),
-          reason: malformedAt(0),
+          reason: malformedAt(0n),
         },
         {
           nativeTx: subjectTransaction(
             [outputWithNativeScript(signatureScript())],
             9n,
           ),
-          reason: malformedAt(-1),
+          reason: malformedAt(-1n),
         },
       ],
       "output-reference-absent",
@@ -124,8 +133,8 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
       throw new Error("forced leaves absent");
 
     for (const [leaf, outputIndex] of [
-      [absentLeaf, 1],
-      [negativeLeaf, -1],
+      [absentLeaf, 1n],
+      [negativeLeaf, -1n],
     ] as const) {
       const evidence = forcedEvidence(leaf, outputIndex);
       expect(evidence.absent).toBe(true);
@@ -147,14 +156,14 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
 
     // Output 0 is held: its rejection is closed by scanning it, and a step 02
     // that claims it absent is refused.
-    const held = forcedEvidence(heldLeaf, 0);
+    const held = forcedEvidence(heldLeaf, 0n);
     expect(held.absent).toBe(false);
     const claimedAbsent: OutputReferenceScriptDecodingEvidence = {
       ...held,
       absent: true,
       outputLength: 0,
       referenceScriptItemHex: "",
-      referenceScriptItemCommitmentHex: forcedEvidence(absentLeaf, 1)
+      referenceScriptItemCommitmentHex: forcedEvidence(absentLeaf, 1n)
         .referenceScriptItemCommitmentHex,
       initialControlCbor: "",
       resultClass: OutputReferenceScriptResultClasses.NoFault,
@@ -182,8 +191,62 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
   }, 1_800_000);
 
   it.each([
-    { coordinate: "past the field", outputIndex: MAX_OUTPUT_COUNT },
-    { coordinate: "negative", outputIndex: -1 },
+    { label: "2^53 + 1", outputIndex: 2n ** 53n + 1n, reasonAt: malformedAt },
+    {
+      label: "the codec's largest, 2^64 - 1",
+      outputIndex: 2n ** 64n - 1n,
+      reasonAt: malformedAt,
+    },
+    {
+      label: "the codec's smallest, -2^64",
+      outputIndex: -(2n ** 64n),
+      reasonAt: malformedAt,
+    },
+    {
+      label: "2^53 + 1 in an undecodable-script rejection",
+      outputIndex: 2n ** 53n + 1n,
+      reasonAt: plutusUndecodableAt,
+    },
+  ])(
+    "convicts an output coordinate at $label",
+    async ({ outputIndex, reasonAt }) => {
+      const { block, stages } = await forcedScenario(
+        [
+          {
+            nativeTx: subjectTransaction([
+              outputWithNativeScript(signatureScript()),
+            ]),
+            reason: reasonAt(outputIndex),
+          },
+        ],
+        "output-reference-absent-wide",
+      );
+      const [leaf] = block.leaves;
+      if (leaf === undefined) throw new Error("forced leaf absent");
+      const evidence = forcedEvidence(leaf, outputIndex);
+      expect(evidence.absent).toBe(true);
+      const s1 = await stages.step01Forced(
+        stages.threadOf((await stages.init()).result),
+        evidence,
+        leaf,
+        block.header,
+      );
+      const s2 = await stages.step02(
+        s1.result.nextThreadOutRef,
+        evidence,
+        forcedSourceOf(leaf),
+      );
+      expect(s2.result.nextStage).toBe("step06");
+      const s6 = await stages.step06(s2.result.nextThreadOutRef, evidence);
+      expect(s6.result.fraudProofUnit).toBeTruthy();
+      await stages.remove(block.headerHash);
+    },
+    1_800_000,
+  );
+
+  it.each([
+    { coordinate: "past the field", outputIndex: BigInt(MAX_OUTPUT_COUNT) },
+    { coordinate: "negative", outputIndex: -1n },
   ])(
     "convicts a $coordinate output coordinate over a 761-output field",
     async ({ outputIndex }) => {
@@ -211,7 +274,7 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
       // A coordinate past the field reads its count through the field
       // grammar certificate; a negative one reads no count.
       const fieldGrammar =
-        outputIndex < 0
+        outputIndex < 0n
           ? undefined
           : (
               await deployHarnessFieldGrammarCertificate(

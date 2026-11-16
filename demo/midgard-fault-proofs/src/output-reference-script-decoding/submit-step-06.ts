@@ -129,7 +129,7 @@ export const submitOutputReferenceScriptDecodingStep06 = async ({
     !outputReferenceScriptEvidenceCloses(evidence) ||
     state.result_class === -1n ||
     state.bound.subject.transaction_id !== evidence.subject.transaction_id ||
-    state.bound.output_index !== BigInt(evidence.outputIndex)
+    state.bound.output_index !== evidence.outputIndex
   )
     throw new Error(
       `${FAMILY}: terminal state differs from retained contradiction`,

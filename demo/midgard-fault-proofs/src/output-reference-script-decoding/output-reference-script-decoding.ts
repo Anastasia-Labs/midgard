@@ -27,6 +27,7 @@ import {
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   claimedIndex,
+  claimedItem,
   claimedPlutusUndecodable,
 } from "../evidence/claimed-coordinate.js";
 import {
@@ -77,7 +78,7 @@ const fail = (message: string): never => {
   throw new Error(`${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY}: ${message}`);
 };
 
-const exactOutputIndex = (subject: VerdictSubject): number => {
+const exactOutputIndex = (subject: VerdictSubject): bigint => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("forced subject has the wrong typed reason");
@@ -85,12 +86,8 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
     "PlutusScriptUndecodable" in reason &&
     reason.PlutusScriptUndecodable.item_kind ===
       PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
-  ) {
-    const outputIndex = Number(reason.PlutusScriptUndecodable.item_index);
-    if (!Number.isSafeInteger(outputIndex))
-      return fail("typed output coordinate is invalid");
-    return outputIndex;
-  }
+  )
+    return reason.PlutusScriptUndecodable.item_index;
   const entries = [
     [
       "OutputReferenceScriptMalformed",
@@ -111,10 +108,7 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
       reason as unknown as Record<string, { output_index: bigint }>
     )[kind];
     if (payload === undefined) return fail("typed reason payload is absent");
-    const outputIndex = Number(payload.output_index);
-    if (!Number.isSafeInteger(outputIndex))
-      return fail("typed output coordinate is invalid");
-    return outputIndex;
+    return payload.output_index;
   }
   return fail("forced subject has the wrong typed reason");
 };
@@ -136,7 +130,7 @@ const accusedClass = (
       plutusUndecodableAccusedClass(
         reason,
         PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
-        Number(reason.PlutusScriptUndecodable.item_index),
+        reason.PlutusScriptUndecodable.item_index,
       ) ?? fail("typed reason is outside family")
     );
   return fail("typed reason is outside family");
@@ -144,7 +138,8 @@ const accusedClass = (
 
 export type OutputReferenceScriptDecodingFinding = Readonly<{
   subject: VerdictSubject;
-  outputIndex: number;
+  /** Any integer the rejection codec admits; a rejection may name one field 2 lacks. */
+  outputIndex: bigint;
 }>;
 
 export const classifyOutputReferenceScriptDecodingFinding = (
@@ -152,11 +147,11 @@ export const classifyOutputReferenceScriptDecodingFinding = (
 ): void => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("subject is not canonical");
-  // A rejection may name a negative output coordinate, which field 2 lacks;
+  // A rejection may name any output coordinate, including one field 2 lacks;
   // an acceptance names an output the field holds.
   if (
-    !Number.isSafeInteger(finding.outputIndex) ||
-    (finding.outputIndex < 0 &&
+    typeof finding.outputIndex !== "bigint" ||
+    (finding.outputIndex < 0n &&
       finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
   )
     return fail("output coordinate is invalid");
@@ -246,7 +241,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const field = material.fieldPreimages[2]!;
-  const output = decodeMidgardFieldPreimage(field)[outputIndex];
+  const output = claimedItem(decodeMidgardFieldPreimage(field), outputIndex);
   if (output === undefined) {
     // Canonical validation decodes no reference script at a position field 2
     // lacks, so only a rejection naming one is wrong.
@@ -298,7 +293,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   const item = carriesScript ? output.subarray(offset) : Buffer.alloc(0);
   const bounded = buildMidgardBoundedItem({
     fieldIndex: 2,
-    itemIndex: outputIndex,
+    itemIndex: Number(outputIndex),
     bytes: item,
   });
   for (let index = 0; index < bounded.frontier.count; index += 1)
@@ -373,7 +368,7 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       results.push(
         prepareOutputReferenceScriptDecodingEvidence({
           subject,
-          outputIndex,
+          outputIndex: BigInt(outputIndex),
           canonicalTransactionCbor: bytes,
         }),
       );

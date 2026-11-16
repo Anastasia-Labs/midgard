@@ -84,13 +84,13 @@ describe("outputReferenceScriptDecoding V1", () => {
       expect(() =>
         classifyOutputReferenceScriptDecodingFinding({
           subject,
-          outputIndex: 3,
+          outputIndex: 3n,
         }),
       ).not.toThrow();
       expect(() =>
         classifyOutputReferenceScriptDecodingFinding({
           subject,
-          outputIndex: 2,
+          outputIndex: 2n,
         }),
       ).toThrow(/coordinate differs/u);
     }
@@ -125,7 +125,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     const id = computeMidgardNativeTxId(tx).toString("hex");
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(id),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: bytes,
     });
     expect(evidence.resultClass).toBe(
@@ -137,7 +137,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject("ff".repeat(32)),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: bytes,
       }),
     ).toThrow(/identity was substituted/u);
@@ -159,7 +159,7 @@ describe("outputReferenceScriptDecoding V1", () => {
       });
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: forced("OutputReferenceScriptMalformed"),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(tx),
     });
     expect(evidence.resultClass).toBe(
@@ -168,7 +168,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(id),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: bytes,
       }),
     ).toThrow(/agrees with operator verdict/u);
@@ -196,7 +196,7 @@ describe("outputReferenceScriptDecoding V1", () => {
         subject: acceptedVerdictSubject(
           computeMidgardNativeTxId(tx).toString("hex"),
         ),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(tx),
       });
     };
@@ -213,7 +213,7 @@ describe("outputReferenceScriptDecoding V1", () => {
       scriptHex: string,
       itemKind: bigint,
       cls: bigint,
-      outputIndex = 0,
+      outputIndex = 0n,
     ) => {
       const tx = plutusTx(scriptHex);
       return prepareOutputReferenceScriptDecodingEvidence({
@@ -245,7 +245,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     }
     expect(() => forced("4401020304", 0n, 1n)).toThrow();
     expect(() => forced("4401020304", 1n, 0n)).toThrow();
-    expect(() => forced("4401020304", 1n, 1n, 1)).toThrow();
+    expect(() => forced("4401020304", 1n, 1n, 1n)).toThrow();
   });
 
   it("refuses output coordinate and non-family reason substitutions", () => {
@@ -255,7 +255,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(id),
-        outputIndex: 1,
+        outputIndex: 1n,
         canonicalTransactionCbor: bytes,
       }),
     ).toThrow(/out of range/u);
@@ -268,7 +268,7 @@ describe("outputReferenceScriptDecoding V1", () => {
             ProtectedOutputSignerMissing: { output_index: 0n },
           },
         }),
-        outputIndex: 0,
+        outputIndex: 0n,
       }),
     ).toThrow(/wrong typed reason/u);
   });
@@ -284,7 +284,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     const id = computeMidgardNativeTxId(tx).toString("hex");
     const accepted = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(id),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: bytes,
     });
     expect(accepted.referenceScriptItemHex).toBe("820040");
@@ -300,7 +300,7 @@ describe("outputReferenceScriptDecoding V1", () => {
           OutputReferenceScriptNodeLimit: { output_index: 0n },
         },
       }),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(tx),
     });
     expect(wrongArm.resultClass).toBe(
@@ -319,7 +319,7 @@ describe("outputReferenceScriptDecoding V1", () => {
       subject: acceptedVerdictSubject(
         computeMidgardNativeTxId(exact).toString("hex"),
       ),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(exact),
     });
     expect(evidence.outputLength).toBe(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);
@@ -332,7 +332,7 @@ describe("outputReferenceScriptDecoding V1", () => {
         subject: acceptedVerdictSubject(
           computeMidgardNativeTxId(over).toString("hex"),
         ),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(over),
       }),
     ).toThrow(/exceeds canonical size bound/u);
@@ -344,7 +344,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     const id = computeMidgardNativeTxId(tx).toString("hex");
     const honest = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(id),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: bytes,
       admitHonestVerdict: true,
     });

@@ -94,7 +94,7 @@ const forcedEvidence = (leaf: ForcedLeaf, admitHonestVerdict = false) =>
       sourceKey: leaf.membership.key,
       rejectionReason: leaf.reason,
     }),
-    outputIndex: 0,
+    outputIndex: 0n,
     canonicalTransactionCbor: leaf.canonicalCbor,
     admitHonestVerdict,
   });
@@ -148,7 +148,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     });
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(subject.nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: subject.canonicalCbor,
     });
     expect(evidence.outputLength).toBe(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);
@@ -162,7 +162,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(overBound.nativeTxId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: overBound.canonicalCbor,
       }),
     ).toThrow(/exceeds canonical size bound/u);
@@ -229,7 +229,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     progress("out-of-range coordinate");
     // Step 01 binds any coordinate; the field opening at step 02 refuses one
     // the committed field does not carry.
-    const outOfRange = { ...evidence, outputIndex: 1 };
+    const outOfRange = { ...evidence, outputIndex: 1n };
     const rangeThread = await stages.step01Accepted(
       (await stages.init()).result,
       outOfRange,
@@ -429,7 +429,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     // family closes malformed at the bind and never opens the scan.
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(empty.nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: empty.canonicalCbor,
     });
     expect(evidence.resultClass).toBe(
@@ -465,13 +465,13 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(honest.nativeTxId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: honest.canonicalCbor,
       }),
     ).toThrow(/agrees with operator verdict/u);
     const lying = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(honest.nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: honest.canonicalCbor,
       admitHonestVerdict: true,
     });
@@ -586,7 +586,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const thread = stages.threadOf((await stages.init()).result);
     const bound = {
       subject: evidence.subject,
-      outputIndex: 0,
+      outputIndex: 0n,
       accusedClass: evidence.accusedClass,
     };
     const forcedSource = {
@@ -612,14 +612,14 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: evidence.subject,
-        outputIndex: 1,
+        outputIndex: 1n,
         canonicalTransactionCbor: accused.canonicalCbor,
       }),
     ).toThrow(/coordinate differs/u);
     await door("forced_leaf_reason_coordinate", {
-      bound: { ...bound, outputIndex: 1 },
+      bound: { ...bound, outputIndex: 1n },
     });
-    await door("forced_leaf_reason_coordinate", { claimedOutputIndex: 1 });
+    await door("forced_leaf_reason_coordinate", { claimedOutputIndex: 1n });
     // A leaf committed under another family's typed reason.
     await door("forced_leaf_reason_coordinate", {
       bound: {
@@ -628,7 +628,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
           sourceKey: otherReasonLeaf.membership.key,
           rejectionReason: otherReasonLeaf.reason,
         }),
-        outputIndex: 0,
+        outputIndex: 0n,
         accusedClass: OutputReferenceScriptResultClasses.Malformed,
       },
       forcedSource: {
@@ -919,7 +919,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(() =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(leaf.transaction.tx_id),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(leaf.nativeTx),
       }),
     ).toThrow(/agrees with operator verdict/u);
@@ -930,7 +930,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
           sourceKey: leaf.membership.key,
           rejectionReason: leaf.reason,
         }),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: leaf.canonicalCbor,
       }),
     ).toThrow(/identity was substituted/u);

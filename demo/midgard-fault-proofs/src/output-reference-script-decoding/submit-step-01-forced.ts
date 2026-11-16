@@ -62,11 +62,11 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   readonly threadOutRef: string;
   readonly bound: {
     readonly subject: VerdictSubject;
-    readonly outputIndex: number;
+    readonly outputIndex: bigint;
     readonly accusedClass: number;
   };
   /** The redeemer's output coordinate; defaults to the datum's. */
-  readonly claimedOutputIndex?: number;
+  readonly claimedOutputIndex?: bigint;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -94,7 +94,7 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         subject: bound.subject,
-        output_index: BigInt(bound.outputIndex),
+        output_index: bound.outputIndex,
         accused_class: BigInt(bound.accusedClass),
       },
     } as never,
@@ -132,7 +132,7 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
                 output_index: outputIndex,
               },
             },
-            output_index: BigInt(claimedOutputIndex),
+            output_index: claimedOutputIndex,
           },
         ],
       } as never,

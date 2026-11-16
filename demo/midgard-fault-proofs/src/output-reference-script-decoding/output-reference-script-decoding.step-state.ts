@@ -40,15 +40,30 @@ export const outputReferenceScriptControlData = (
   reference_script_length: BigInt(control.referenceScriptLength),
 });
 
-const cborInteger = (value: number): Buffer => {
-  const major = value < 0 ? 1 : 0;
-  const normalized = value < 0 ? -1 - value : value;
-  if (normalized < 24) return Buffer.from([(major << 5) | normalized]);
-  if (normalized < 256) return Buffer.from([(major << 5) | 24, normalized]);
-  const result = Buffer.alloc(3);
-  result[0] = (major << 5) | 25;
-  result.writeUInt16BE(normalized, 1);
-  return result;
+/**
+ * Twin of `cbor.serialise` on an integer the rejection codec admits, of
+ * either sign: a CBOR head of at most 8 argument bytes.
+ */
+const cborInteger = (input: bigint | number): Buffer => {
+  const value = BigInt(input);
+  const major = value < 0n ? 1 : 0;
+  const normalized = value < 0n ? -1n - value : value;
+  if (normalized < 24n) return Buffer.from([(major << 5) | Number(normalized)]);
+  if (normalized >= 1n << 64n)
+    throw new Error("checkpoint integer is outside the CBOR head range");
+  const [width, additional] =
+    normalized <= 0xffn
+      ? [1, 24]
+      : normalized <= 0xffffn
+        ? [2, 25]
+        : normalized <= 0xffffffffn
+          ? [4, 26]
+          : [8, 27];
+  const argument = Buffer.from(
+    normalized.toString(16).padStart(width * 2, "0"),
+    "hex",
+  );
+  return Buffer.concat([Buffer.from([(major << 5) | additional]), argument]);
 };
 const cborBytes = (value: Buffer): Buffer =>
   value.length < 24

@@ -128,7 +128,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   if (
     state.outcome !== 1n ||
     state.item_hash !== evidence.outputHashHex ||
-    state.bound.output_index !== BigInt(evidence.outputIndex)
+    state.bound.output_index !== evidence.outputIndex
   )
     throw new Error(`${FAMILY}: canonical output binding changed`);
   const items = decodeMidgardFieldPreimage(

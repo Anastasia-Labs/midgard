@@ -269,7 +269,7 @@ describe("honest Plutus at the maximum shape", () => {
     const prepare = (admitHonestVerdict: boolean) =>
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(accepted.nativeTxId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: accepted.canonicalCbor,
         admitHonestVerdict,
       });

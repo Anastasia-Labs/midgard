@@ -145,7 +145,7 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     });
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(subject.nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: subject.canonicalCbor,
     });
     expect(evidence.outputLength).toBe(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);
@@ -300,7 +300,7 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
         sourceKey: leaf.membership.key,
         rejectionReason: leaf.reason,
       }),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: leaf.canonicalCbor,
     });
     expect(evidence.outputLength).toBe(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);

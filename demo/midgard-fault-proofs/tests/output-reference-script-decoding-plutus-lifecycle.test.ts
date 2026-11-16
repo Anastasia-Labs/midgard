@@ -50,7 +50,7 @@ const forcedEvidence = (leaf: ForcedLeaf, admitHonestVerdict = false) =>
       sourceKey: leaf.membership.key,
       rejectionReason: leaf.reason,
     }),
-    outputIndex: 0,
+    outputIndex: 0n,
     canonicalTransactionCbor: leaf.canonicalCbor,
     admitHonestVerdict,
   });
@@ -94,7 +94,7 @@ describe("outputReferenceScriptDecoding Plutus reference scripts", () => {
     });
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: acceptedVerdictSubject(subject.nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: subject.canonicalCbor,
     });
     expect(evidence.resultClass).toBe(REFUSED_CLASS_3);

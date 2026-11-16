@@ -90,7 +90,7 @@ export const plutusRecordResultClass = (
 export const plutusUndecodableAccusedClass = (
   reason: unknown,
   kind: bigint,
-  index: number,
+  index: bigint | number,
 ): number | undefined => {
   if (
     typeof reason !== "object" ||
