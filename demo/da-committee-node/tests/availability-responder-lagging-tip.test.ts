@@ -40,10 +40,9 @@ import {
 import { l1ClockAt } from "./helpers/l1-clock.js";
 
 /**
- * A plain responder whose observed tip trails its L1 clock past the
- * backdate: the interval ending at the deadline within the validator's
- * 120 s range would start past the tip, so it is anchored on the tip
- * instead, and the publication is built and signed now rather than after the
+ * A plain responder whose observed tip trails its L1 clock by more than
+ * 178 s: the interval ending at the deadline within the validator's 240 s
+ * range would start past the tip, so it is anchored on the tip instead, and the publication is built and signed now rather than after the
  * next block. The builder hands back a real unsigned body and records the
  * interval it is given; signing rejects with a marker, so the run stops
  * exactly where signing starts.
@@ -153,9 +152,9 @@ afterEach(() => {
 
 describe("a tip trailing the L1 clock anchors the publication window on it", () => {
   it.each([
-    [61_000, 59_000],
-    [90_000, 30_000],
-    [116_000, 30_000],
+    [179_000, 60_000],
+    [200_000, 40_000],
+    [236_000, 30_000],
   ])(
     "builds the publish with the tip %d ms behind the L1 clock and the deadline %d ms past it",
     async (lagMs, deadlineAfterMs) => {
@@ -170,7 +169,7 @@ describe("a tip trailing the L1 clock anchors the publication window on it", () 
       const { validFrom, validTo } = builtInterval();
       // The submit margin before the tip, and the longest range from it.
       expect(validFrom).toBe(BigInt(slotStart(TIP_SLOT - 2)));
-      expect(validTo).toBe(BigInt(slotStart(TIP_SLOT - 2 + 120)));
+      expect(validTo).toBe(BigInt(slotStart(TIP_SLOT - 2 + 240)));
       expect(validTo).toBeLessThanOrEqual(BigInt(deadlineMs) + 1n);
       // Still includable after the L1 clock's slot.
       expect(validTo).toBeGreaterThanOrEqual(BigInt(TIP_MS + lagMs + 2_000));
@@ -180,10 +179,10 @@ describe("a tip trailing the L1 clock anchors the publication window on it", () 
     },
   );
 
-  it("signs the publish now: a tip 61 s behind the L1 clock, the deadline 59 s ahead of it", async () => {
-    const l1NowMs = TIP_MS + 61_000;
-    const deadlineMs = l1NowMs + 59_000;
-    const { clock } = clockAt(61_000);
+  it("signs the publish now: a tip 200 s behind the L1 clock, the deadline 60 s ahead of it", async () => {
+    const l1NowMs = TIP_MS + 200_000;
+    const deadlineMs = l1NowMs + 60_000;
+    const { clock } = clockAt(200_000);
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(l1NowMs);
     const dir = mkdtempSync(join(tmpdir(), "availability-lagging-tip-"));
@@ -225,7 +224,9 @@ describe("a tip trailing the L1 clock anchors the publication window on it", () 
       expect(signing).toHaveBeenCalledOnce();
       expect(context.submit).not.toHaveBeenCalled();
       const { validFrom, validTo } = builtInterval();
-      expect(validFrom).toBeLessThanOrEqual(BigInt(slotStart(TIP_SLOT - 2)));
+      // Anchored on the tip, admissible there.
+      expect(validFrom).toBe(BigInt(slotStart(TIP_SLOT - 2)));
+      expect(validTo).toBe(BigInt(slotStart(TIP_SLOT - 2 + 240)));
       expect(validTo).toBeGreaterThan(BigInt(l1NowMs));
       expect(validTo).toBeLessThanOrEqual(BigInt(deadlineMs) + 1n);
       expect(validTo - validFrom).toBeLessThanOrEqual(
@@ -245,8 +246,9 @@ describe("a tip trailing the L1 clock anchors the publication window on it", () 
  * as the promise runtime does and checks its TTL on the adopted network
  * clock, whose upper bound (the wall plus the adopted skew) is the L1
  * clock's now, `lagMs` past the tip. With the 3 s propagation, 2 s stage
- * and 2 s drift allowances, the anchored TTL (118 slots past the tip) is
- * taken up to a lag of 60 s.
+ * and 2 s drift allowances the room is 58 slots, so the anchored TTL (238
+ * slots past the tip) is taken up to a lag of 180 s. Up to 178 s the
+ * lookahead's interval is admissible at the tip and is not anchored.
  */
 describe("a promise response on a tip trailing the L1 clock", () => {
   /** With `wallStepMs`, the TTL is checked at the build stage's end, the
@@ -270,7 +272,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
       deploymentIdentity,
       store: { getDaPayload: async () => record },
       reconcile: async () => "ready",
-      discover: async () => [withResponseDeadline(TIP_MS + 180_000)],
+      discover: async () => [withResponseDeadline(TIP_MS + 600_000)],
       execute: async (action) => {
         const tx = await availabilityResponderTransactionOperation(
           lucid,
@@ -304,7 +306,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
     return { network, ttls, reports, lines, loop, runPastRetryBurst };
   };
 
-  it.each([59_000, 60_000])(
+  it.each([179_000, 180_000])(
     "builds the response now with a tip %d ms behind, its TTL clearing the fifty-slot rule to the build stage's end",
     async (lagMs) => {
       const step = promiseResponderAt(lagMs);
@@ -319,9 +321,11 @@ describe("a promise response on a tip trailing the L1 clock", () => {
       expect(step.reports[0]).toMatchObject({ action: "publish" });
       const { validFrom, validTo } = builtInterval();
       expect(validFrom).toBe(BigInt(slotStart(TIP_SLOT - 2)));
-      expect(validTo).toBe(BigInt(slotStart(TIP_SLOT - 2 + 120)));
+      expect(validTo).toBe(BigInt(slotStart(TIP_SLOT - 2 + 240)));
       const ttl = step.ttls[0]!;
-      expect(ttl).toBe(TIP_SLOT - 2 + 120);
+      expect(ttl).toBe(TIP_SLOT - 2 + 240);
+      // The room of 58 slots past the clock's slot, `lagMs` past the tip.
+      expect(ttl - (TIP_SLOT + lagMs / 1_000)).toBeGreaterThanOrEqual(58);
       // The signed body's TTL is checked again until the build stage ends,
       // the wall up to the drift bound past the monotonic clock.
       expect(
@@ -336,7 +340,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
     },
   );
 
-  it.each([61_000, 90_000])(
+  it.each([181_000, 200_000])(
     "stays pending, never failed, with a tip %d ms behind: the anchored TTL is too short",
     async (lagMs) => {
       const step = promiseResponderAt(lagMs);
@@ -362,7 +366,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
     },
   );
 
-  it.each([59_000, 60_000, 61_000, 62_000])(
+  it.each([179_000, 180_000, 181_000, 182_000])(
     "never fails with a tip %d ms behind and the wall stepped the drift bound ahead during the build stage",
     async (lagMs) => {
       const step = promiseResponderAt(lagMs, 2_000);
@@ -378,7 +382,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
         vi.mocked(SDK.buildPublishDaAvailabilityChunkTxProgram).mock.calls
           .length,
       );
-      expect(step.ttls.length).toBe(lagMs <= 60_000 ? 1 : 0);
+      expect(step.ttls.length).toBe(lagMs <= 180_000 ? 1 : 0);
       expect(step.loop.reasons()).toEqual([]);
     },
   );

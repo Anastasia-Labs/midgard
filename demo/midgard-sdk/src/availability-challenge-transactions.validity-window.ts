@@ -83,13 +83,14 @@ export type DaAvailabilityValidityWindow =
  * instead: it starts the submit margin before the tip and ends the longest
  * range later, so it is admissible now rather than after the next block. It
  * is taken only while that end still runs the submit margin of slots past
- * the L1 clock's slot, so the slot after the current one can include it;
- * with one-second slots and the 120 s range, that covers a tip up to 116
- * slots behind the clock's slot. A caller whose own rule needs the upper
- * bound further past the clock names that room (`minimumRoomSlots`); the
- * anchored interval is then taken only while it still runs that far. Beyond,
- * or when `lowerLimitMs` is past the anchored start, the interval stays
- * `not_due`.
+ * the L1 clock's slot, so the slot after the current one can include it.
+ * With one-second slots and the 240 s range, the interval running the full
+ * lookahead is admissible with a tip up to 178 slots behind the clock's
+ * slot, and the anchored one up to 236. A caller whose own rule needs the
+ * upper bound further past the clock names that room (`minimumRoomSlots`);
+ * the anchored interval is then taken only while it still runs that far.
+ * Beyond, or when `lowerLimitMs` is past the anchored start, the interval
+ * stays `not_due`.
  */
 export const daAvailabilityValidityWindow = (input: {
   readonly lucid: LucidEvolution;

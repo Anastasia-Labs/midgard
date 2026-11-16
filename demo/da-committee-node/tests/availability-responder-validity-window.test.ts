@@ -166,12 +166,12 @@ afterEach(() => {
 });
 
 describe("responder publication validity on the committee L1 clock", () => {
-  it("never signs a lower bound past the tip: a tip 117 s behind the L1 clock defers the publish", async () => {
+  it("never signs a lower bound past the tip: a tip 237 s behind the L1 clock defers the publish", async () => {
     // The deadline is 30 s ahead of the L1 clock. The longest range the tip
     // admits ends 1 s after the L1 clock's slot, too soon for any block
     // after it, so nothing is built.
-    const { clock } = clockAt(117_000);
-    const action = publishOf(withDeadline(TIP_MS + 147_000));
+    const { clock } = clockAt(237_000);
+    const action = publishOf(withDeadline(TIP_MS + 267_000));
     const operation = availabilityResponderTransactionOperation(
       lucid,
       deployment,
@@ -208,8 +208,8 @@ describe("responder publication validity on the committee L1 clock", () => {
   });
 
   it("builds the deferred publish from the next block's tip, inside the deadline", async () => {
-    const deadlineMs = TIP_MS + 150_000;
-    const { clock } = clockAt(117_000);
+    const deadlineMs = TIP_MS + 270_000;
+    const { clock } = clockAt(237_000);
     const action = publishOf(withDeadline(deadlineMs));
     await expect(
       buildAvailabilityResponderTransaction(
@@ -219,8 +219,8 @@ describe("responder publication validity on the committee L1 clock", () => {
         availabilityResponderL1BuildTime(clock),
       ),
     ).rejects.toBeInstanceOf(AvailabilityResponderValidityDeferredError);
-    // A block lands at slot TIP + 116 and the next boundary read observes it.
-    clock.observeTipSlot(TIP_SLOT + 116);
+    // A block lands at slot TIP + 236 and the next boundary read observes it.
+    clock.observeTipSlot(TIP_SLOT + 236);
     await buildAvailabilityResponderTransaction(
       lucid,
       deployment,
@@ -230,7 +230,7 @@ describe("responder publication validity on the committee L1 clock", () => {
     const { validFrom, validTo } = interval(
       SDK.buildPublishDaAvailabilityChunkTxProgram,
     );
-    expect(validFrom).toBeLessThanOrEqual(BigInt(slotStart(TIP_SLOT + 116)));
+    expect(validFrom).toBeLessThanOrEqual(BigInt(slotStart(TIP_SLOT + 236)));
     expect(validTo).toBeLessThanOrEqual(BigInt(deadlineMs) + 1n);
   });
 
@@ -292,11 +292,11 @@ describe("responder completion validity", () => {
     );
     expect(windowLimits()).toBeUndefined();
     const close = interval(SDK.buildCloseDaAvailabilityChallengeTxProgram);
-    // The lookahead past the L1 clock, and the lower bound the longest
-    // range allows (it would otherwise be backdated 60 s from the tip).
+    // The lookahead past the L1 clock, and the lower bound backdated 60 s
+    // from the tip, well inside the longest range.
     for (const { validFrom, validTo } of [settle, close]) {
       expect(validTo).toBe(BigInt(TIP_MS + 5_000 + 60_000));
-      expect(validFrom).toBe(BigInt(TIP_MS + 5_000 + 60_000 - 120_000));
+      expect(validFrom).toBe(BigInt(TIP_MS - 60_000));
     }
   });
 
@@ -352,7 +352,7 @@ const runnerScene = () => {
 describe("an inadmissible window defers before signing", () => {
   it.each([
     [
-      "not due: the tip trails the L1 clock by 117 s, past the anchored range",
+      "not due: the tip trails the L1 clock by 237 s, past the anchored range",
       "ledger_tip_behind",
       () => publishOf(withDeadline(TIP_MS + 600_000)),
     ],
@@ -369,9 +369,9 @@ describe("an inadmissible window defers before signing", () => {
       },
     ],
   ])("%s", async (_name, reason, actionOf) => {
-    const { clock } = clockAt(117_000);
+    const { clock } = clockAt(237_000);
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(TIP_MS + 117_000);
+    vi.setSystemTime(TIP_MS + 237_000);
     const s = runnerScene();
     try {
       await expect(

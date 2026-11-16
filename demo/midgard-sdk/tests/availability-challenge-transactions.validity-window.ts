@@ -35,12 +35,18 @@ describe("availability validity window", () => {
     );
   });
 
-  it("is unchanged by anchoring while the old window is admissible at the tip", async () => {
-    for (const lagSlots of [0, 30, 58]) {
+  it("is unchanged by anchoring while the lookahead's window is admissible at the tip", async () => {
+    for (const [lagSlots, validFromMs] of [
+      // The lower bound backdated 60 s from the tip.
+      [0, -60_000],
+      [30, -90_000],
+      [120, -180_000],
+      // The lower bound the longest range allows from the lookahead.
+      [150, -180_000],
+      [178, -180_000],
+    ] as const) {
       const { emulator, lucid } = await scene(300);
       const nowMs = emulator.now();
-      // The lookahead past the L1 clock, and the lower bound the longest
-      // range allows from it.
       expect(
         daAvailabilityValidityWindow({
           lucid,
@@ -52,7 +58,7 @@ describe("availability validity window", () => {
         }),
       ).toEqual({
         status: "ready",
-        validFrom: BigInt(nowMs + 60_000 - 120_000),
+        validFrom: BigInt(nowMs + validFromMs),
         validTo: BigInt(nowMs + 60_000),
       });
     }
@@ -100,21 +106,21 @@ describe("availability validity window", () => {
     );
   };
 
-  it("is ready, anchored on the tip, while the tip trails the clock just past the backdate", async () => {
-    for (const lagSlots of [59, 61]) {
+  it("is ready, anchored on the tip, once the lookahead's window starts past the tip", async () => {
+    for (const lagSlots of [179, 200]) {
       const scene = await lagging(lagSlots);
       expectAdmissible(scene);
       // The lower bound the submit margin before the tip, and the longest
       // range from it.
       expect(scene.window).toMatchObject({
         validFrom: BigInt(scene.lucid.slotToUnixTime(scene.tipSlot - 2)),
-        validTo: BigInt(scene.lucid.slotToUnixTime(scene.tipSlot - 2 + 120)),
+        validTo: BigInt(scene.lucid.slotToUnixTime(scene.tipSlot - 2 + 240)),
       });
     }
   });
 
   it("is ready at the longest lag the range leaves the submit margin past the clock for", async () => {
-    const scene = await lagging(116);
+    const scene = await lagging(236);
     expectAdmissible(scene);
     expect(scene.window).toMatchObject({
       validTo: BigInt(scene.lucid.slotToUnixTime(scene.nowSlot + 2)),
@@ -122,7 +128,7 @@ describe("availability validity window", () => {
   });
 
   it("is not due once the tip trails the clock past the anchored range", async () => {
-    const { lucid, tipSlot, window } = await lagging(117);
+    const { lucid, tipSlot, window } = await lagging(237);
     expect(window).toMatchObject({ status: "not_due", tipSlot });
     if (window.status !== "not_due") return;
     expect(window.dueSlot).toBe(
@@ -131,22 +137,50 @@ describe("availability validity window", () => {
     expect(window.dueSlot).toBeGreaterThan(tipSlot);
   });
 
+  it("keeps every ready window within 240 s, from the lookahead to 178 slots behind and anchored to 236", async () => {
+    expect(DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS).toBe(240_000n);
+    const { emulator, lucid } = await scene(300);
+    const nowMs = emulator.now();
+    const lookaheadEnd = BigInt(nowMs + 60_000);
+    for (let lagSlots = 0; lagSlots <= 240; lagSlots++) {
+      const tipSlot = emulator.slot - lagSlots;
+      const window = daAvailabilityValidityWindow({
+        lucid,
+        tip: { currentSlot: emulator.slot, ledgerTipSlot: tipSlot },
+        nowMs,
+      });
+      expect(window.status, `lag ${lagSlots.toString()}`).toBe(
+        lagSlots <= 236 ? "ready" : "not_due",
+      );
+      if (window.status !== "ready") continue;
+      expect(window.validTo - window.validFrom).toBeLessThanOrEqual(240_000n);
+      expect(
+        lucid.unixTimeToSlot(Number(window.validFrom)) + 2,
+      ).toBeLessThanOrEqual(tipSlot);
+      // The lookahead's interval through 178 slots, anchored past it.
+      expect(
+        window.validTo === lookaheadEnd,
+        `lag ${lagSlots.toString()}`,
+      ).toBe(lagSlots <= 178);
+    }
+  });
+
   it("anchors a deadline-bounded window on the tip: a deadline past the anchored range is reached now", async () => {
-    // The deadline is 40 s past the L1 clock, the tip 90 s behind it: the
+    // The deadline is 40 s past the L1 clock, the tip 210 s behind it: the
     // range ending at the deadline starts past the tip.
-    const anchored = await lagging(90, ({ nowMs }) => ({
+    const anchored = await lagging(210, ({ nowMs }) => ({
       upperLimitMs: BigInt(nowMs + 40_000 + 1),
     }));
     expectAdmissible(anchored);
     expect(anchored.window).toMatchObject({
-      validTo: BigInt(anchored.lucid.slotToUnixTime(anchored.tipSlot + 118)),
+      validTo: BigInt(anchored.lucid.slotToUnixTime(anchored.tipSlot + 238)),
     });
     if (anchored.window.status === "ready")
       expect(anchored.window.validTo).toBeLessThanOrEqual(
         anchored.limits!.upperLimitMs!,
       );
     // A deadline inside the range from the tip caps the upper bound first.
-    const capped = await lagging(90, ({ nowMs }) => ({
+    const capped = await lagging(210, ({ nowMs }) => ({
       upperLimitMs: BigInt(nowMs + 20_000 + 1),
     }));
     expectAdmissible(capped);
@@ -154,14 +188,14 @@ describe("availability validity window", () => {
       validTo: BigInt(capped.nowMs + 20_000),
     });
     // Past the covered lag, the same deadline waits for the next block.
-    const beyond = await lagging(117, ({ nowMs }) => ({
+    const beyond = await lagging(237, ({ nowMs }) => ({
       upperLimitMs: BigInt(nowMs + 40_000 + 1),
     }));
     expect(beyond.window.status).toBe("not_due");
   });
 
   it("never starts a lower-limited window before its limit, however far the tip trails", async () => {
-    for (const lagSlots of [0, 61, 90, 116, 117])
+    for (const lagSlots of [0, 61, 179, 236, 237])
       for (const offsetMs of [-30_000, -2_000, -2_000 + 1, 0]) {
         const { limits, window } = await lagging(lagSlots, ({ tipMs }) => ({
           lowerLimitMs: BigInt(tipMs + offsetMs),
@@ -169,7 +203,7 @@ describe("availability validity window", () => {
         // Ready while the limit is the submit margin behind the tip and the
         // anchored range reaches past the clock; not due otherwise.
         expect(window.status).toBe(
-          lagSlots <= 116 && offsetMs <= -2_000 ? "ready" : "not_due",
+          lagSlots <= 236 && offsetMs <= -2_000 ? "ready" : "not_due",
         );
         if (window.status === "refused") continue;
         expect(window.validFrom).toBeGreaterThanOrEqual(limits!.lowerLimitMs!);
@@ -177,10 +211,10 @@ describe("availability validity window", () => {
   });
 
   it("waits rather than refuses a lower limit past the anchored range's end", async () => {
-    // The anchored interval ends 118 s past the tip, before the limit; the
+    // The anchored interval ends 238 s past the tip, before the limit; the
     // lookahead's still has room after it, once the tip reaches it.
-    const { tipSlot, window } = await lagging(90, ({ tipMs }) => ({
-      lowerLimitMs: BigInt(tipMs + 119_000),
+    const { tipSlot, window } = await lagging(210, ({ tipMs }) => ({
+      lowerLimitMs: BigInt(tipMs + 239_000),
     }));
     expect(window).toMatchObject({ status: "not_due", tipSlot });
   });
@@ -205,18 +239,18 @@ describe("availability validity window", () => {
             : { ...input, minimumRoomSlots },
         );
     };
-    // The anchored end is 118 slots past the tip: 56 slots of room is left
-    // up to a lag of 62.
-    expect((await roomed(62))(56).status).toBe("ready");
-    expect((await roomed(63))(56).status).toBe("not_due");
+    // The anchored end is 238 slots past the tip: 58 slots of room is left
+    // up to a lag of 180.
+    expect((await roomed(180))(58).status).toBe("ready");
+    expect((await roomed(181))(58).status).toBe("not_due");
     // A room under the submit margin is the submit margin.
-    expect((await roomed(116))(1).status).toBe("ready");
-    expect((await roomed(117))(1).status).toBe("not_due");
+    expect((await roomed(236))(1).status).toBe("ready");
+    expect((await roomed(237))(1).status).toBe("not_due");
     // The room gates only the anchored interval: the lookahead's is unchanged.
-    const at30 = await roomed(30);
-    expect(at30(100)).toEqual(at30());
-    const at62 = await roomed(62);
-    expect(() => at62(1.5)).toThrow("Invalid validity window minimum room");
+    const at150 = await roomed(150);
+    expect(at150(100)).toEqual(at150());
+    const at180 = await roomed(180);
+    expect(() => at180(1.5)).toThrow("Invalid validity window minimum room");
   });
 
   it("refuses an upper limit at or before the L1 clock: the window closed", async () => {

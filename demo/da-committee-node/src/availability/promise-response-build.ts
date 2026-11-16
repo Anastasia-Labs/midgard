@@ -40,7 +40,10 @@ export const PROMISE_RESPONSE_BUILD_STAGE_MS = 2_000;
  * the stage allowance ahead, plus the clock's wall/monotonic drift bound: a
  * wall step inside that bound during the stage moves the upper bound with
  * it. Short of that room the window stays not due, and the step waits for
- * the next block as before.
+ * the next block as before. With one-second slots and the 3 s propagation,
+ * 2 s stage and 2 s drift allowances, the room is 58 slots: the 240 s range
+ * covers a tip up to 178 slots behind the clock with the full lookahead, and
+ * up to 180 anchored on the tip.
  */
 export const promiseResponseBuildTime =
   (

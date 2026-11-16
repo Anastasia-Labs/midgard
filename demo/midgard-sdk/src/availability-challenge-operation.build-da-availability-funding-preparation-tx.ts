@@ -115,7 +115,7 @@ export const buildDaAvailabilityFundingPreparationTx = async (
     input.validTo > BigInt(Number.MAX_SAFE_INTEGER)
   )
     fail(
-      "Availability funding preparation needs positive amounts, an opening amount no other prepared output repeats, a positive fee and a validity interval of at most 120 s",
+      `Availability funding preparation needs positive amounts, an opening amount no other prepared output repeats, a positive fee and a validity interval of at most ${(DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS / 1_000n).toString()} s`,
       "preparation-invalid-request",
     );
   const walletAddress = await read(() => lucid.wallet().address());

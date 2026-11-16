@@ -16,14 +16,16 @@ import {
  * its provider, past the node's submit check, so the interval must be
  * admissible at the observed ledger tip when it is built. It asks for the
  * full lookahead of room past the L1 clock (`minimumRoomSlots`), so the
- * window never anchors on a lagging tip: while the tip has not reached the
- * lower bound of the interval running the lookahead past the clock (it
- * trails the L1 clock by more than the backdate allows, or `lowerLimitMs` is
- * past the last block), the command waits for the tip, as the node's
- * one-shot commands do, rather than submit an interval that ends soon after
- * the clock, and takes the interval again from the clock read after the
- * wait. An interval the window leaves no room for, or one that ends before
- * the L1 clock (no block can still include it), is refused.
+ * window never anchors on a lagging tip: an anchored interval ends no later
+ * than the lookahead, so it never runs that far unless it is the lookahead's
+ * own. While the tip has not reached the lower bound of the interval running
+ * the lookahead past the clock (with one-second slots and neither limit, it
+ * trails the L1 clock by more than 178 slots; or `lowerLimitMs` is past the
+ * last block), the command waits for the next block, as the node's one-shot
+ * commands do, rather than submit an interval that ends soon after the
+ * clock, and takes the interval again from the clock read after the wait.
+ * An interval the window leaves no room for, or one that ends before the L1
+ * clock (no block can still include it), is refused.
  */
 export const availabilityValidityWindow = (
   lucid: LucidEvolution,

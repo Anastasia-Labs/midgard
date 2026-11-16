@@ -417,22 +417,23 @@ describe("token-only DA challenger", () => {
 });
 
 describe("an availability command's validity window", () => {
-  it("waits for the next block with the tip 90 s behind the L1 clock, rather than take an interval anchored on it", async () => {
+  it("waits for the next block with the tip 190 s behind the L1 clock, rather than take an interval anchored on it", async () => {
     const emulator = new Emulator([]);
     const lucid = await Lucid(emulator, "Custom");
     emulator.awaitSlot(300);
-    // A block every 100 slots, the last one 90 slots ago.
-    const tip = blockSizedTip(lucid, emulator, 100);
+    // A block every 200 slots, the last one 190 slots ago: past the 178 slots
+    // the lookahead's interval is admissible for.
+    const tip = blockSizedTip(lucid, emulator, 200);
     observeEmulatorTip(lucid, emulator, tip.tipAt);
-    tip.lastBlockSlotsAgo(90);
-    const lastBlockSlot = emulator.slot - 90;
+    tip.lastBlockSlotsAgo(190);
+    const lastBlockSlot = emulator.slot - 190;
     const { validFrom, validTo } = await availabilityValidityWindow(
       lucid,
       "test",
     );
     // Taken once the next block lands, not at once.
     const fromSlot = lucid.unixTimeToSlot(Number(validFrom));
-    expect(emulator.slot).toBeGreaterThanOrEqual(lastBlockSlot + 100);
+    expect(emulator.slot).toBeGreaterThanOrEqual(lastBlockSlot + 200);
     expect(fromSlot + 2).toBeGreaterThan(lastBlockSlot);
     expect(fromSlot + 2).toBeLessThanOrEqual(tip.tipAt(emulator.slot));
     // The full lookahead past the L1 clock read after the wait.
