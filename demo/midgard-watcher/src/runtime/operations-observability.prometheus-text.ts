@@ -91,17 +91,13 @@ export const watcherPrometheusText = (
       ]),
     ),
     family(
-      "midgard_watcher_latest_unproven_fault_merge_timestamp_seconds",
+      "midgard_watcher_unproven_fault_merge_timestamp_seconds",
       "gauge",
-      "When the newest detected fault recorded as merged into confirmed state unproven was seen; durable across restarts, no sample while none is known.",
-      metrics.latestUnprovenFaultMergeAtMs === null
-        ? []
-        : [
-            [
-              {},
-              (Number(metrics.latestUnprovenFaultMergeAtMs) / 1000).toString(),
-            ],
-          ],
+      "When each detected fault recorded as merged into confirmed state unproven was seen, per header; durable across restarts.",
+      metrics.unprovenFaultMerges.map(({ headerHash, observedAtMs }) => [
+        { header: headerHash },
+        (Number(observedAtMs) / 1000).toString(),
+      ]),
     ),
     family(
       "midgard_watcher_replay_refusals_total",

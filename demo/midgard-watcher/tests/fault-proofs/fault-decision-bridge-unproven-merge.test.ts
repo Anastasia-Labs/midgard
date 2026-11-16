@@ -57,22 +57,23 @@ const unprovenAlerts = (observability: ReturnType<typeof operations>) =>
     .activeAlerts.filter(({ code }) => code === "unproven_fault_merged")
     .map(({ subjectDigest }) => subjectDigest);
 
-/** When, in seconds, `/metrics` says the newest unproven merge was recorded;
- * undefined while the watcher knows of none. */
-const latestMergeSeconds = async (
-  observability: ReturnType<typeof operations>,
-) => {
+const MERGE_SERIES = "midgard_watcher_unproven_fault_merge_timestamp_seconds";
+
+/** Each unproven merge `/metrics` exports, by its `header` label: when, in
+ * seconds, it was recorded. Empty while the watcher knows of none. */
+const mergeSeries = async (observability: ReturnType<typeof operations>) => {
   const response = await observability.handleHttpRequest(
     new Request("http://127.0.0.1/metrics"),
   );
-  const sample = (await response.text())
-    .split("\n")
-    .find((line) =>
-      line.startsWith(
-        "midgard_watcher_latest_unproven_fault_merge_timestamp_seconds ",
-      ),
-    );
-  return sample === undefined ? undefined : Number(sample.split(" ")[1]);
+  return Object.fromEntries(
+    (await response.text())
+      .split("\n")
+      .filter((line) => line.startsWith(`${MERGE_SERIES}{`))
+      .map((line) => {
+        const [series, value] = line.split(" ");
+        return [/header="([^"]*)"/.exec(series!)![1]!, Number(value)];
+      }),
+  );
 };
 
 /** The error lines a callback writes. */
@@ -203,7 +204,7 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
     ]);
   });
 
-  it("exports when the newest unproven merge was recorded, so each new one pages, and keeps that time across a restart", async () => {
+  it("exports one series per unproven merge, so a second merge within the paging window pages on its own, and restores them after a restart without making them new", async () => {
     const journalRoot = await journalDirectory("midgard-unproven-merge");
     const current = queue("01", "02");
     const [first, second] = current.finalizedHeaders;
@@ -233,29 +234,36 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
       mergedHeaders,
       unprovenFaultMerges: () => merges(journalRoot),
     });
-    const seen: (number | undefined)[] = [];
+    const seen: Record<string, number>[] = [];
     const passes: bigint[] = [];
     await errorLines(async () => {
+      // Ten minutes between passes: the second merge lands ten minutes
+      // after the first, inside its 30-minute paging window.
       for (let pass = 0; pass < 4; pass += 1) {
-        clock += 60_000n;
+        clock += 600_000n;
         passes.push(clock);
         await h.bridge.reconcileAndDispatch(current);
-        seen.push(await latestMergeSeconds(observability));
+        seen.push(await mergeSeries(observability));
       }
     });
-    // Both alerts stay active; the time moves with each new incident and
-    // not with a pass over a known one.
     const seconds = (ms: bigint) => Number(ms) / 1000;
+    const both = {
+      [first!.headerHash]: seconds(passes[1]!),
+      [second!.headerHash]: seconds(passes[2]!),
+    };
     expect(seen).toEqual([
-      undefined,
-      seconds(passes[1]!),
-      seconds(passes[2]!),
-      seconds(passes[2]!),
+      {},
+      { [first!.headerHash]: seconds(passes[1]!) },
+      both,
+      both,
     ]);
+    // Two distinct series, both still inside the window on the last pass.
+    for (const at of Object.values(seen[3]!))
+      expect(seconds(passes[3]!) - at).toBeLessThan(1800);
     expect(unprovenAlerts(observability)).toHaveLength(2);
 
-    // A restart hours later does not move it: no new incident, so a rule on
-    // its age stays quiet.
+    // A restart hours later restores both at their recorded times, which
+    // are past the window, so nothing pages again.
     closeWatcherJournalDatabase(journalRoot);
     clock += 2n * 3_600_000n;
     const later = queue("03");
@@ -272,9 +280,11 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
       unprovenFaultMerges: () => merges(journalRoot),
     });
     // Unknown until read: no sample rather than a fresh time.
-    expect(await latestMergeSeconds(restarted)).toBeUndefined();
+    expect(await mergeSeries(restarted)).toEqual({});
     await again.bridge.reconcileAndDispatch(later);
-    expect(await latestMergeSeconds(restarted)).toBe(seconds(passes[2]!));
+    expect(await mergeSeries(restarted)).toEqual(both);
+    for (const at of Object.values(both))
+      expect(seconds(clock) - at).toBeGreaterThanOrEqual(1800);
     expect(unprovenAlerts(restarted)).toHaveLength(2);
   });
 

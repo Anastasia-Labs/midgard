@@ -106,13 +106,15 @@ groups:
       - alert: MidgardWatcherUnprovenFaultMerged
         # A block this watcher found faulty merged into confirmed state
         # before any proof removed it. The active alert never clears, so it
-        # pages for 30 minutes from the newest recorded merge instead: each
-        # new merge pages, even one a restart's first pass records after a
-        # long outage, and a restart that finds none new does not.
+        # pages for 30 minutes from each recorded merge instead, one series
+        # (and alert) per header: each new merge pages on its own, even one
+        # a restart's first pass records after a long outage or one inside
+        # an earlier merge's window, and a restart that finds none new does
+        # not.
         expr: >-
-          time() - midgard_watcher_latest_unproven_fault_merge_timestamp_seconds < 1800
+          time() - midgard_watcher_unproven_fault_merge_timestamp_seconds < 1800
         labels:
           severity: critical
         annotations:
-          summary: "Watcher {{ $labels.instance }} saw a block it found faulty merge unproven"
+          summary: "Watcher {{ $labels.instance }} saw block {{ $labels.header }}, which it found faulty, merge unproven"
           runbook: "docs/operations/alerts.md#midgardwatcherunprovenfaultmerged"

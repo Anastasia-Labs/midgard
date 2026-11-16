@@ -311,9 +311,12 @@ export type WatcherOperationsMetrics = Readonly<{
    * local L1 source (`pending_l1`). Diagnostics, never a readiness reason.
    */
   deferredClassifications: string;
-  /** When the newest recorded unproven merge was seen, from the durable
-   * record, so a restart does not move it; null while none is known. */
-  latestUnprovenFaultMergeAtMs: string | null;
+  /** Each recorded unproven merge's header and when it was seen, from the
+   * durable record, so a restart does not move them; oldest first. */
+  unprovenFaultMerges: readonly Readonly<{
+    headerHash: string;
+    observedAtMs: string;
+  }>[];
   /** The count of each named L1 degradation. Never a readiness reason. */
   l1Degradations: Readonly<Record<string, string>>;
   /** Named L1 readiness reasons counted per held objective; zeros omitted. */
@@ -370,8 +373,9 @@ export type WatcherOperationsSink = Readonly<{
    * readout and both pool alerts keep their last good values.
    */
   recordDaBondPoolReadFailure(error: string, failedAtMs: string): void;
-  /** A recorded unproven merge's observation time; the latest one stays. */
-  recordUnprovenFaultMerge(observedAtMs: string): void;
+  /** A recorded unproven merge: its header and when it was seen. The first
+   * time recorded for a header stays. */
+  recordUnprovenFaultMerge(headerHash: string, observedAtMs: string): void;
 }>;
 
 export type WatcherOperationsObservability = Readonly<{

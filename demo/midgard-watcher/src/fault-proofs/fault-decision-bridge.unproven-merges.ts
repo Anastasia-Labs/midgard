@@ -14,11 +14,11 @@ type DetectedFault = Readonly<{ category: string; decisionDigest: string }>;
  * the alert again from that record on its first pass, and an error line
  * names the header, its category and decision once, when it is recorded.
  * The alert is informational: it never clears, and nothing acknowledges it,
- * so it must not hold readiness forever. Paging reads the time of the newest
- * recorded merge instead
- * (`midgard_watcher_latest_unproven_fault_merge_timestamp_seconds`): it moves
- * once per new incident, including one first seen on a restart's first pass,
- * and a restart that finds none new leaves it where it was.
+ * so it must not hold readiness forever. Paging reads each recorded merge's
+ * time instead, one series per header
+ * (`midgard_watcher_unproven_fault_merge_timestamp_seconds{header}`): each new
+ * incident is a new series, including one first seen on a restart's first
+ * pass, and a restart restores the known ones at their recorded times.
  *
  * A header is faulty when its latest decision in this process is
  * `fault_detected`, or, for one this process has not classified (it merged
@@ -42,7 +42,10 @@ export const unprovenMergeRecorder = (
       observedAtMs: merge.observedAtMs,
     });
   const seen = (merge: WatcherUnprovenFaultMerge): void =>
-    dependencies.operationsSink?.recordUnprovenFaultMerge(merge.observedAtMs);
+    dependencies.operationsSink?.recordUnprovenFaultMerge(
+      merge.headerHash,
+      merge.observedAtMs,
+    );
   const detected = async (
     headerHash: string,
   ): Promise<DetectedFault | undefined> =>

@@ -1,3 +1,4 @@
+import { MAX_UNPROVEN_FAULT_MERGES } from "../fault-proofs/watcher-unproven-fault-merges.js";
 import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
@@ -71,7 +72,7 @@ export type WatcherOperationsRecord = Readonly<{
     | "activeAlertCount"
     | "unverifiedHeaders"
     | "deferredClassifications"
-    | "latestUnprovenFaultMergeAtMs"
+    | "unprovenFaultMerges"
   >;
 }>;
 
@@ -138,7 +139,9 @@ export const createWatcherOperationsSink = (
   let latestDaBondPool: WatcherOperationsDaBondPool | null = null;
   let latestDaBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null =
     null;
-  let latestUnprovenFaultMerge: bigint | null = null;
+  // Header hash to observation time, oldest first; bounded as the durable
+  // record is, which it mirrors.
+  const unprovenFaultMerges = new Map<string, string>();
   const sourceAges = new Map<string, WatcherAgeAnchor>();
   const eventAges = new Map<string, WatcherAgeAnchor>();
   // Wall timestamps may cross a host clock adjustment. Unknown initial ages
@@ -269,10 +272,12 @@ export const createWatcherOperationsSink = (
         setAlert({ code, subjectDigest, active, observedAtMs });
       }
     },
-    recordUnprovenFaultMerge: (observedAtMs) => {
-      const at = natural(observedAtMs, "unproven fault merge time");
-      if (latestUnprovenFaultMerge === null || at > latestUnprovenFaultMerge)
-        latestUnprovenFaultMerge = at;
+    recordUnprovenFaultMerge: (headerHash, observedAtMs) => {
+      natural(observedAtMs, "unproven fault merge time");
+      if (unprovenFaultMerges.has(headerHash)) return;
+      unprovenFaultMerges.set(headerHash, observedAtMs);
+      if (unprovenFaultMerges.size > MAX_UNPROVEN_FAULT_MERGES)
+        unprovenFaultMerges.delete(unprovenFaultMerges.keys().next().value!);
     },
     recordDaBondPoolReadFailure: (error, failedAtMs) => {
       natural(failedAtMs, "DA bond pool read failure time");
@@ -377,8 +382,11 @@ export const createWatcherOperationsSink = (
       activeAlertCount: alerts.active().length.toString(),
       unverifiedHeaders: unverifiedHeaders.summary(),
       deferredClassifications: unverifiedHeaders.deferred(),
-      latestUnprovenFaultMergeAtMs:
-        latestUnprovenFaultMerge?.toString() ?? null,
+      unprovenFaultMerges: Object.freeze(
+        [...unprovenFaultMerges].map(([headerHash, observedAtMs]) =>
+          Object.freeze({ headerHash, observedAtMs }),
+        ),
+      ),
     };
   };
 
