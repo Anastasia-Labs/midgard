@@ -40,6 +40,32 @@ export const claimedItem = <T>(
   return position === undefined ? undefined : items[position];
 };
 
+/** The smallest and largest coordinates the rejection codec admits. */
+const CLAIMED_COORDINATE_LIMIT = 1n << 64n;
+
+/** A claimed coordinate as an artifact carries it: its decimal string. */
+export const claimedCoordinateDecimal = (claimed: bigint): string =>
+  claimed.toString();
+
+/**
+ * Reads back {@link claimedCoordinateDecimal}: refuses anything but the
+ * canonical decimal of an integer the rejection codec admits.
+ */
+export const admitClaimedCoordinateDecimal = (
+  value: unknown,
+  label: string,
+): bigint => {
+  if (typeof value !== "string" || !/^(?:0|-?[1-9][0-9]*)$/u.test(value))
+    throw new Error(`${label} is not a canonical integer decimal`);
+  const claimed = BigInt(value);
+  if (
+    claimed >= CLAIMED_COORDINATE_LIMIT ||
+    claimed < -CLAIMED_COORDINATE_LIMIT
+  )
+    throw new Error(`${label} is outside the rejection codec`);
+  return claimed;
+};
+
 /**
  * The items of a field preimage, or `undefined` when its bytes are not a
  * well-formed §5.1 field: such a field's item count is itself what a claim

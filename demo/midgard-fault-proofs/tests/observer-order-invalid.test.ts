@@ -45,7 +45,7 @@ import {
 const txId = "00".repeat(31).concat("01");
 const observer = (byte: number) => Buffer.alloc(28, byte);
 const accepted = acceptedVerdictSubject(txId);
-const rejected = (observerIndex: number) =>
+const rejected = (observerIndex: bigint | number) =>
   forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
@@ -56,7 +56,7 @@ const rejected = (observerIndex: number) =>
 const evidence = (
   subject: typeof accepted,
   values: readonly Buffer[],
-  observerIndex: number,
+  observerIndex: bigint | number,
 ) => {
   const field = encodeMidgardFieldPreimage(values);
   return prepareObserverOrderInvalidEvidence({
@@ -306,5 +306,56 @@ describe("observerOrderInvalid V1 semantics", () => {
         fieldPreimageCbor: `${artifact.fieldPreimageCbor.slice(0, -2)}ff`,
       }),
     ).toThrow(/commitment changed/u);
+  });
+  it.each([
+    ["a negative ordinal", -1n],
+    ["an ordinal past 2^53", 2n ** 53n + 1n],
+    ["the codec's largest ordinal", 2n ** 64n - 1n],
+    ["the codec's smallest ordinal", -(2n ** 64n)],
+  ])("round-trips a forced artifact citing %s", (_label, observerIndex) => {
+    const prepared = evidence(
+      rejected(observerIndex),
+      [observer(1), observer(2)],
+      observerIndex,
+    );
+    const artifact = buildObserverOrderInvalidArtifact({
+      headerHash: "22".repeat(28),
+      detectionId: `observer-order-invalid:forced:0:${txId}:${observerIndex.toString()}`,
+      position: 0n,
+      evidence: prepared,
+      sourceKind: "forced",
+      nativeTxCompactCbor: "80",
+      witnessSetCompactCbor: "80",
+      l2TransactionSourceCbor: "80",
+      transactionsPhasRoot: "33".repeat(32),
+      transactionMembershipCbor: "80",
+      forcedSourceCbor: "80",
+    });
+    const admitted = admitObserverOrderInvalidArtifact(
+      JSON.parse(JSON.stringify(artifact)),
+    );
+    expect(admitted.evidence).toEqual(prepared);
+    expect(admitted.evidence.observerIndex).toBe(observerIndex);
+  });
+  it.each([
+    ["past the codec's largest ordinal", (2n ** 64n).toString()],
+    ["below the codec's smallest ordinal", (-(2n ** 64n) - 1n).toString()],
+    ["with a leading zero", "01"],
+    ["as a number", 1],
+  ])("refuses an artifact ordinal %s", (_label, observerIndex) => {
+    const artifact = buildObserverOrderInvalidArtifact({
+      headerHash: "22".repeat(28),
+      detectionId: "observer-order-invalid:accepted:0:test:1",
+      position: 0n,
+      evidence: evidence(accepted, [observer(2), observer(1)], 1),
+      nativeTxCompactCbor: "80",
+      witnessSetCompactCbor: "80",
+      l2TransactionSourceCbor: "80",
+      transactionsPhasRoot: "33".repeat(32),
+      transactionMembershipCbor: "80",
+    });
+    expect(() =>
+      admitObserverOrderInvalidArtifact({ ...artifact, observerIndex }),
+    ).toThrow(/observer index/u);
   });
 });

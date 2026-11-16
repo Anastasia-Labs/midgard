@@ -5,6 +5,10 @@ import type { VerdictSubject } from "@al-ft/midgard-sdk";
 import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  admitClaimedCoordinateDecimal,
+  claimedCoordinateDecimal,
+} from "../evidence/claimed-coordinate.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
   type ObserverOrderInvalidEvidence,
@@ -27,7 +31,8 @@ export type ObserverOrderInvalidArtifact = JournalJsonObject &
     position: number;
     transactionId: string;
     sourceKind: "accepted" | "forced";
-    observerIndex: number;
+    /** The cited ordinal's decimal: a rejection may name any codec integer. */
+    observerIndex: string;
     subjectCbor: string;
     nativeTxCompactCbor: string;
     witnessSetCompactCbor: string;
@@ -87,8 +92,7 @@ export const buildObserverOrderInvalidArtifact = ({
     position: natural(Number(position), "position"),
     transactionId: evidence.subject.transaction_id,
     sourceKind,
-    // An artifact carries a detection, whose ordinal is an existing item.
-    observerIndex: natural(Number(evidence.observerIndex), "observer index"),
+    observerIndex: claimedCoordinateDecimal(evidence.observerIndex),
     subjectCbor: Data.to(
       evidence.subject as never,
       ObserverOrderInvalidVerdictSubjectSchema as never,
@@ -170,7 +174,12 @@ export const admitObserverOrderInvalidArtifact = (
               "observerOrderInvalid artifact source kind changed",
             );
           })(),
-    observerIndex: natural(raw.observerIndex, "observer index"),
+    observerIndex: claimedCoordinateDecimal(
+      admitClaimedCoordinateDecimal(
+        raw.observerIndex,
+        "observerOrderInvalid observer index",
+      ),
+    ),
     subjectCbor: hex(raw.subjectCbor, null, "subject"),
     nativeTxCompactCbor: hex(raw.nativeTxCompactCbor, null, "compact source"),
     witnessSetCompactCbor: hex(
@@ -205,13 +214,14 @@ export const admitObserverOrderInvalidArtifact = (
     throw new Error(
       "observerOrderInvalid artifact subject changed transaction",
     );
+  const observerIndex = BigInt(artifact.observerIndex);
   const field = Buffer.from(artifact.fieldPreimageCbor, "hex");
   if (
     midgardFieldCommitment(field).toString("hex") !== artifact.fieldCommitment
   )
     throw new Error("observerOrderInvalid artifact field commitment changed");
   const evidence = prepareObserverOrderInvalidEvidence({
-    finding: { subject, observerIndex: BigInt(artifact.observerIndex) },
+    finding: { subject, observerIndex },
     fieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
   });
@@ -226,7 +236,7 @@ export const admitObserverOrderInvalidArtifact = (
     staged: planObserverOrderInvalidStagedWalk({
       transactionId: artifact.transactionId,
       fieldPreimageCbor: artifact.fieldPreimageCbor,
-      observerIndex: BigInt(artifact.observerIndex),
+      observerIndex,
     }),
   });
 };
