@@ -58,12 +58,32 @@ groups:
 
       - alert: MidgardWatcherProofHeld
         expr: >-
-          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|prover_funding_unavailable|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation|fault_proof_l1_refused:.*"} > 0
+          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation|fault_proof_l1_refused:.*"} > 0
         labels:
           severity: critical
         annotations:
           summary: "Watcher {{ $labels.instance }} holds a fault proof ({{ $labels.reason }})"
           runbook: "docs/operations/alerts.md#midgardwatcherproofheld"
+
+      - alert: MidgardWatcherProverFundingUnavailable
+        # A fault-proof objective paused because the prover wallet cannot
+        # fund its next transaction; the next run after a top-up resumes it.
+        expr: midgard_watcher_active_alerts{code="prover_funding_unavailable"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} cannot fund a fault proof"
+          runbook: "docs/operations/alerts.md#midgardwatcherproverfundingunavailable"
+
+      - alert: MidgardWatcherProofStartedLate
+        # A fault proof started after its latest safe start; it must land
+        # before its header matures.
+        expr: midgard_watcher_active_alerts{code="maturity_deadline_risk"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} is racing a fault proof against maturity"
+          runbook: "docs/operations/alerts.md#midgardwatcherproofstartedlate"
 
       - alert: MidgardWatcherProofDeadline
         expr: midgard_watcher_readiness_reason{reason=~"deadline_at_risk|deadline_unsafe"} > 0
@@ -82,3 +102,13 @@ groups:
         annotations:
           summary: "Watcher {{ $labels.instance }} found a block it cannot prove faulty or healthy"
           runbook: "docs/operations/alerts.md#midgardwatcherprooffamilycoveragegap"
+
+      - alert: MidgardWatcherUnprovenFaultMerged
+        # A block this watcher found faulty merged into confirmed state
+        # before any proof removed it. Raised again after every restart.
+        expr: midgard_watcher_active_alerts{code="unproven_fault_merged"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} saw a block it found faulty merge unproven"
+          runbook: "docs/operations/alerts.md#midgardwatcherunprovenfaultmerged"

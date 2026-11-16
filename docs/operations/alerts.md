@@ -332,11 +332,10 @@ names why:
 
 | `reason`                              | What holds it                                                               | What clears it                               |
 | ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
-| `prover_funding_unavailable`          | The prover wallet cannot fund the next transaction                          | The next run after the wallet is topped up   |
 | `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                   | A later run that journals progress           |
 | `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff    | The first run that meets something else      |
 | `fault_proof_resubmission_required`   | The next action needs a fresh submission after the latest safe start passed | See escalation                               |
-| `fault_proof_start_deadline_passed`   | The objective's latest safe start passed before it signed any attempt       | Its header leaving the finalized state queue |
+| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                 | Its header leaving the finalized state queue |
 | `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired         | Its attempts retired past release finality   |
 | `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)   | The next run whose reads the source answers  |
 
@@ -344,17 +343,77 @@ names why:
 `GET /v1/status` give each held objective as `<category>/<headerHash>` with
 its detail.
 
-**Action.** Top up the prover wallet for `prover_funding_unavailable`.
-For the others, keep the watcher running: every hold except the two
+A pause on prover funding pages
+[MidgardWatcherProverFundingUnavailable](#midgardwatcherproverfundingunavailable)
+instead.
+
+**Action.** Keep the watcher running: every hold except the two
 deadline-bound ones clears by itself.
 
-**Escalate** `fault_proof_resubmission_required` and
-`fault_proof_start_deadline_passed` at once: no command at this release grants
-fresh submission authority to an objective whose safe start has passed.
-Another independent challenger can still prove the same fault while the
-challenge window is open (proving is permissionless). Escalate a
+**Escalate** `fault_proof_resubmission_required` at once: no command at this
+release grants fresh submission authority to an objective whose latest safe
+start passed after it signed an attempt. Another independent challenger can
+still prove the same fault while the challenge window is open (proving is
+permissionless). `fault_proof_start_deadline_passed` means the header matured
+unproven: no removal can land any more. If the header merged, its block is in
+confirmed state and
+[MidgardWatcherUnprovenFaultMerged](#midgardwatcherunprovenfaultmerged) fires;
+escalate as that section says. Escalate a
 `fault_proof_l1_refused:<reason>` hold that persists across observations:
 history the L1 source has pruned does not come back.
+
+### MidgardWatcherProverFundingUnavailable
+
+**Meaning.** A fault-proof objective is paused because the prover wallet
+cannot fund its next transaction (`prover_funding_unavailable` alert, one
+subject per objective). The watcher keeps observing the objective; the
+readiness reason `prover_funding_unavailable` names it as
+`<category>/<headerHash>` with the funding error. The alert clears once a run
+meets something else, as the first run after a top-up does, or once the
+objective settles.
+
+**First checks.** `l1Readiness` in `GET /v1/status`, and the prover wallet's
+plain-ADA coins (a coin holding a token is never spent, and collateral and
+funding are separate coins).
+
+**Action.** Top up the prover wallet with plain-ADA coins at once: the proof
+still has to land before its header matures, and `supervisor.deadlineHealth`
+and `remainingSafeStartMs` count the paused objective.
+
+**Escalate** when the alert stays active after a top-up, or when
+[MidgardWatcherProofStartedLate](#midgardwatcherproofstartedlate) fires with
+it.
+
+### MidgardWatcherProofStartedLate
+
+**Meaning.** A fault proof with nothing signed started after its header's
+latest safe start (`maturity_deadline_risk` alert). The latest safe start is a
+margin: the state queue accepts a completed fraud-proof removal until the
+header matures, so the watcher keeps trying until then. The watcher writes
+one error line naming the objective, and the readiness reason
+`fault_proof_started_late` names it as `<category>/<headerHash>` with its
+latest safe start and its maturity. The alert clears when the correction is
+included, another record resolves the objective, or the header leaves the
+queue. At maturity an objective with nothing signed is held as
+`fault_proof_start_deadline_passed`
+([MidgardWatcherProofHeld](#midgardwatcherproofheld)).
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/status"
+curl -s "$OPS/v1/diagnostics?kind=proof_step"
+```
+
+`supervisor.remainingSafeStartMs` is negative; the readiness detail gives the
+maturity time.
+
+**Action.** Remove whatever slows the proof at once: prover wallet funds
+([MidgardWatcherProverFundingUnavailable](#midgardwatcherproverfundingunavailable)),
+L1 provider latency, retained-DA reachability.
+
+**Escalate** at once to the other challengers: proving is permissionless, and
+another challenger can prove the same fault before maturity.
 
 ### MidgardWatcherProofDeadline
 
@@ -392,3 +451,34 @@ The verification record with outcome `unprovable_gap` names the header.
 
 **Escalate** every occurrence to the protocol developers with the header
 hash.
+
+### MidgardWatcherUnprovenFaultMerged
+
+**Meaning.** A block this watcher found faulty merged into confirmed state
+before any proof removed it (`unproven_fault_merged` alert, one subject per
+header). The invalid block is now part of confirmed state. The watcher records
+the merge in its journal database and raises the alert again after every
+restart, on its first pass, with one error line when it first records it. The
+alert never clears and nothing acknowledges it, so it is informational: it
+does not hold readiness.
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/diagnostics?kind=alert"
+curl -s "$OPS/v1/diagnostics?kind=verification"
+```
+
+The watcher log's `unproven_fault_merged` line names the header, its fault
+category, its decision digest and the merge transaction.
+
+**Action.** Keep the watcher running and preserve its state directory. Find
+why the proof did not land before maturity: the
+[MidgardWatcherProverFundingUnavailable](#midgardwatcherproverfundingunavailable),
+[MidgardWatcherProofStartedLate](#midgardwatcherproofstartedlate),
+[MidgardWatcherProofHeld](#midgardwatcherproofheld) and
+[MidgardWatcherProofSubmissionFailure](#midgardwatcherproofsubmissionfailure)
+alerts before the merge.
+
+**Escalate** every occurrence at once to the protocol developers with the
+header hash and the merge transaction.

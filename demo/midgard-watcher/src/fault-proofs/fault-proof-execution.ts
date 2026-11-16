@@ -33,6 +33,7 @@ import {
   WATCHER_FAULT_PROOF_L1_REFUSED,
 } from "./fault-proof-execution-holds.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
+import { createWatcherFaultProofObjectiveAlerts } from "./fault-proof-objective-alerts.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import {
   isWatcherFaultProofQuarantined,
@@ -50,6 +51,8 @@ import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 export type WatcherFaultProofExecutionAdmission = Readonly<{
   mode: "run" | "resume";
   funding: "create_or_resume" | "resume_only";
+  /** Past the latest safe start with nothing signed, before maturity. */
+  startedLate?: true;
 }>;
 
 export type WatcherFaultProofExecutionOutcome =
@@ -244,6 +247,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
   // observation, which clears or renews the hold. An objective that needs a
   // resubmission after its latest safe start is held by name the same way.
   const holds = new Map<string, Readonly<{ reason: string; detail: string }>>();
+  const alerts = createWatcherFaultProofObjectiveAlerts(
+    dependencies.operationsSink,
+  );
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   const holdOnRefusal = (
@@ -260,9 +266,10 @@ export const createWatcherFaultProofExecution = (dependencies: {
     return { kind: "pending", reason: `${reason}: ${refusal.detail}` };
   };
   return Object.freeze({
-    readiness: () => Object.freeze([...holds.values()]),
+    readiness: () => Object.freeze([...holds.values(), ...alerts.readiness()]),
     objectiveSettled: (objective) => {
       holds.delete(objectiveOf(objective));
+      alerts.settled(objective);
     },
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
@@ -379,6 +386,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
             `fault-proof execution has no installed ${category} runner`,
           );
         objectiveWork = true;
+        alerts.started(job, admission.startedLate === true);
         const fundingReservationPermit =
           await mintWatcherProverFundingReservationPermit({
             category,
@@ -413,11 +421,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
             result.kind === "terminal_included"
           ) {
             record(result.kind === "completed" ? "completed" : "confirmed");
+            alerts.finished(job);
             return { kind: result.kind, result };
           }
           // Not our conviction: the proof step ends cancelled, not completed.
           if (result.kind === "resolved_by_another_record") {
             record("cancelled");
+            alerts.finished(job);
             return { kind: result.kind, result };
           }
           // A dispute that made its move and awaits the other party's response
@@ -528,6 +538,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         throw error;
       } finally {
         if (held === undefined) holds.delete(objectiveOf(job));
+        alerts.funding(job, holds);
         settleWatcherFaultProofQuarantine({
           holds,
           job,

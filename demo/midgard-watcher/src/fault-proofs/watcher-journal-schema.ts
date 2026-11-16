@@ -10,6 +10,7 @@ export const WATCHER_JOURNALS = [
   "fault_decisions",
   "fault_proof_queue",
   "fault_proof_objectives",
+  "unproven_fault_merges",
 ] as const;
 
 export type WatcherJournalName = (typeof WATCHER_JOURNALS)[number];
@@ -20,6 +21,7 @@ export const WATCHER_JOURNAL_TABLES: Readonly<
   fault_decisions: "watcher_fault_decisions",
   fault_proof_queue: "watcher_fault_proof_queue",
   fault_proof_objectives: "watcher_fault_proof_objectives",
+  unproven_fault_merges: "watcher_unproven_fault_merges",
 });
 
 /** The row scope that ties a decision, a queued job and an objective to one
@@ -90,6 +92,13 @@ ALTER TABLE watcher_journal_heads DROP COLUMN mac;
 DROP TABLE watcher_journal_revisions;
 `;
 
+/** Detected faults whose header merged unproven: the durable record behind
+ * the `unproven_fault_merged` alert (watcher-unproven-fault-merges.ts). */
+const UNPROVEN_FAULT_MERGES_SQL = rowTable(
+  WATCHER_JOURNAL_TABLES.unproven_fault_merges,
+  "one row per detected fault whose header merged unproven, at most 1024; the oldest goes first",
+);
+
 /** The migration ledger, created before any migration. */
 export const WATCHER_JOURNAL_LEDGER_SQL = `
 -- class: A; retention: one row per applied migration, forever
@@ -108,5 +117,9 @@ export const WATCHER_JOURNAL_MIGRATIONS = Object.freeze({
     Object.freeze({ id: "0000_ledger", sql: WATCHER_JOURNAL_LEDGER_SQL }),
     Object.freeze({ id: "0001_journal_tables", sql: JOURNAL_TABLES_SQL }),
     Object.freeze({ id: "0002_head_counter", sql: HEAD_COUNTER_SQL }),
+    Object.freeze({
+      id: "0003_unproven_fault_merges",
+      sql: UNPROVEN_FAULT_MERGES_SQL,
+    }),
   ]),
 });

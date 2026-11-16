@@ -47,6 +47,16 @@ export const watcherProofFamilyCoverageGapAlertSubject = (
     .update(headerHash.toLowerCase())
     .digest("hex");
 
+/** One `unproven_fault_merged` subject per state-queue header; it is never
+ * cleared (fault-decision-bridge.unproven-merges.ts). */
+export const watcherUnprovenFaultMergedAlertSubject = (
+  headerHash: string,
+): string =>
+  createHash("sha256")
+    .update("midgard-watcher-unproven-fault-merged-alert-v1\u0000")
+    .update(headerHash.toLowerCase())
+    .digest("hex");
+
 /** Codes kept one subject per header, cleared by the header's outcome. */
 const PER_HEADER_CODES = Object.freeze([
   ["da_fetch_failure", watcherDaFetchAlertSubject],

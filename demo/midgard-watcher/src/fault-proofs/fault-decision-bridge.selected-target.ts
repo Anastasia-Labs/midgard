@@ -35,6 +35,7 @@ import type {
   WatcherFaultProofProgressRequest,
 } from "./fault-proof-progress-authority.js";
 import { type WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import type { WatcherUnprovenFaultMerges } from "./watcher-unproven-fault-merges.js";
 
 export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-bridge-v1" as const;
@@ -167,6 +168,8 @@ export type BridgeDependencies = Readonly<{
   ): void;
   nowMs?(): bigint;
   monotonicNowMs?(): number;
+  /** The durable record of detected faults whose header merged unproven. */
+  unprovenFaultMerges?(): WatcherUnprovenFaultMerges;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
   /**
    * Starts the removal of a proven correction's header from an Idle lock, or

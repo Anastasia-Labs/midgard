@@ -41,9 +41,10 @@ export type WatcherDecisionHold =
     }>;
 
 /**
- * - `fault_proof_start_deadline_passed`: the objective's latest safe start,
- *   fixed by its header, passed before it signed any attempt, so it can
- *   never start. Its detail is `<category>/<headerHash>`.
+ * - `fault_proof_start_deadline_passed`: the objective's header matured
+ *   before it signed any attempt, so no removal can land. (Past its latest
+ *   safe start but before maturity it still runs, late.) Its detail is
+ *   `<category>/<headerHash>`.
  * - `fault_proof_objective_unreadable`: startup could not read the
  *   objective's workflow rows (a corrupt row, a foreign execution, a storage
  *   error). Its detail is `<category>/<headerHash>: <failure>`. Once its

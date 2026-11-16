@@ -11,6 +11,7 @@ import {
   authenticatedHeaderObservation,
   type BridgeDependencies,
 } from "./fault-decision-bridge.selected-target.js";
+import { unprovenMergeRecorder } from "./fault-decision-bridge.unproven-merges.js";
 
 /**
  * A header that left the L1 queue at the watcher's release depth, merged
@@ -23,12 +24,20 @@ import {
  * is deleted. A header whose last classification in this process found it
  * healthy merged verified: its `verified` record stands and nothing is
  * recorded for the merge. The same release and decision events drive the
- * `proof_family_coverage_gap` alert (`coverageGapRecorder`).
+ * `proof_family_coverage_gap` alert (`coverageGapRecorder`) and, for a
+ * detected fault that merged, the `unproven_fault_merged` alert
+ * (`unprovenMergeRecorder`).
  */
 export const unverifiedMergedRecorder = (
   dependencies: Pick<
     BridgeDependencies,
-    "observationDigest" | "operationsSink" | "nowMs" | "monotonicNowMs" | "warn"
+    | "observationDigest"
+    | "operationsSink"
+    | "nowMs"
+    | "monotonicNowMs"
+    | "warn"
+    | "readRecords"
+    | "unprovenFaultMerges"
   >,
 ) => {
   const recorded = new Set<string>();
@@ -36,6 +45,7 @@ export const unverifiedMergedRecorder = (
   // healthy; one leaves the set once its merge is seen.
   const verified = new Set<string>();
   const coverageGaps = coverageGapRecorder(dependencies);
+  const unproven = unprovenMergeRecorder(dependencies);
   const record = async (
     observation: WatcherAuthenticatedStateQueueObservation,
     header: WatcherStateQueueHeaderObservation,
@@ -58,9 +68,10 @@ export const unverifiedMergedRecorder = (
       authenticatedHeaderObservation(observation, header),
     );
     const verification = verificationRecorder(dependencies, header.headerHash);
-    if (removal === null)
+    if (removal === null) {
       verification.recordMerged(subjectDigest, transactionHash);
-    else
+      await unproven.merged(header.headerHash, transactionHash);
+    } else
       verification.recordRemoved(
         subjectDigest,
         transactionHash,
@@ -92,6 +103,7 @@ export const unverifiedMergedRecorder = (
       );
       if ([...released.keys()].some((headerHash) => !queued.has(headerHash)))
         throw new Error("release proof names a header outside the observation");
+      unproven.reraise();
       for (const header of observation.finalizedHeaders) {
         const proof = released.get(header.headerHash);
         if (proof !== undefined) await record(observation, header, proof);
@@ -103,12 +115,14 @@ export const unverifiedMergedRecorder = (
       if (decision.decision === "healthy") verified.add(headerHash);
       else verified.delete(headerHash);
       coverageGaps.decided(headerHash, decision);
+      unproven.decided(headerHash, decision);
     },
     /** A rollback may return a header to the queue, and may move what its
      * healthy decision read: it is recorded afresh. */
     reset: (): void => {
       recorded.clear();
       verified.clear();
+      unproven.reset();
     },
   });
 };

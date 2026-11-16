@@ -566,7 +566,7 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("reports at-risk headroom and holds an unsafe job by name while later work runs, again after a restart", async () => {
+  it("reports at-risk headroom, runs a job past its latest safe start, and holds one past maturity by name while later work runs, again after a restart", async () => {
     const root = await directory();
     const gate = deferred<void>();
     const started = deferred<void>();
@@ -628,28 +628,53 @@ describe("production fault-proof supervisor", () => {
     });
     await waitUntil(() => supervisor.status().queuedJobCount === 2);
     gate.resolve();
+    await expect(run).resolves.toEqual({ kind: "completed" });
+    // Past its latest safe start but before maturity, the late objective
+    // still runs: a completed removal lands until maturity.
+    await expect(unsafe).resolves.toEqual({ kind: "completed" });
+    await expect(later).resolves.toEqual({ kind: "completed" });
+    expect(starts).toEqual([h28(0x91), h28(0x92), h28(0x93)]);
+
+    // At maturity no removal can land: an objective with nothing signed is
+    // held by name, and the objective queued behind it still runs.
+    nowMs = MIDGARD_RETENTION_WINDOW.maturityMs;
+    const matured = {
+      mode: "run",
+      category: "networkId",
+      headerHash: h28(0x94),
+      decisionDigest: "94".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x94), 0),
+    } as const;
     const hold = {
       kind: "objective",
       category: "networkId",
-      headerHash: h28(0x92),
-      decisionDigest: "92".repeat(32),
-      detail: `networkId/${h28(0x92)}`,
+      headerHash: h28(0x94),
+      decisionDigest: "94".repeat(32),
+      detail: `networkId/${h28(0x94)}`,
       readiness: "fault_proof_start_deadline_passed",
     } as const;
-    await expect(run).resolves.toEqual({ kind: "completed" });
-    // The late objective never starts; it is held by name and the next
-    // objective, queued behind it, still runs.
-    await expect(unsafe).resolves.toEqual({
+    const held = supervisor.unsafeRunOrResumeForTest(matured);
+    const fresh = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x95),
+      decisionDigest: "95".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x95), MIDGARD_RETENTION_WINDOW.maturityMs),
+    });
+    await expect(held).resolves.toEqual({
       kind: "pending",
       resume: "await_observation",
       reason: hold.detail,
     });
-    await expect(later).resolves.toEqual({ kind: "completed" });
-    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    await expect(fresh).resolves.toEqual({ kind: "completed" });
+    expect(starts).toEqual([h28(0x91), h28(0x92), h28(0x93), h28(0x95)]);
+    // The held objective still counts against its deadline.
     expect(supervisor.status()).toMatchObject({
       phase: "accepting",
       blockedJob: null,
-      deadlineHealth: "safe",
+      deadlineHealth: "unsafe",
       journalDecisionMissing: [hold],
     });
     expect(settled).toBe(false);
@@ -663,7 +688,7 @@ describe("production fault-proof supervisor", () => {
       () => (restartSettled = true),
       () => (restartSettled = true),
     );
-    await expect(restarted.unsafeRunOrResumeForTest(late)).resolves.toEqual({
+    await expect(restarted.unsafeRunOrResumeForTest(matured)).resolves.toEqual({
       kind: "pending",
       resume: "await_observation",
       reason: hold.detail,
@@ -671,9 +696,10 @@ describe("production fault-proof supervisor", () => {
     expect(restarted.status()).toMatchObject({
       phase: "accepting",
       blockedJob: null,
+      deadlineHealth: "unsafe",
       journalDecisionMissing: [hold],
     });
-    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(starts).toEqual([h28(0x91), h28(0x92), h28(0x93), h28(0x95)]);
     expect(restartSettled).toBe(false);
     await restarted.close();
   });

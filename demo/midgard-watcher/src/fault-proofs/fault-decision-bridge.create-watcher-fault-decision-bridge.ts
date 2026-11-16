@@ -31,6 +31,8 @@ import {
   watcherFaultProofDeadline,
   type WatcherFaultProofSupervisor,
 } from "./fault-proof-supervisor.js";
+import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
+import { watcherUnprovenFaultMerges } from "./watcher-unproven-fault-merges.js";
 
 const writeWarning: NonNullable<BridgeDependencies["warn"]> = (warning) =>
   process.stderr.write(
@@ -65,6 +67,12 @@ export const createWatcherFaultDecisionBridge = async (input: {
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       authenticationKey: input.authenticationKey,
     }));
+  const unprovenFaultMerges = watcherUnprovenFaultMerges(() =>
+    openWatcherJournalDatabase({
+      journalRoot: input.journalDirectory,
+      authenticationKey: input.authenticationKey,
+    }),
+  );
   return createBridge({
     application: input.application,
     maximumClassificationConcurrency: input.maximumClassificationConcurrency,
@@ -80,6 +88,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
           minimumConfirmationDepth: ACTION_CONFIRMATION_DEPTH,
         }),
       readRecords: async () => await (await decisions()).readAll(),
+      unprovenFaultMerges: () => unprovenFaultMerges,
       append: async (decision) =>
         await (await decisions()).appendLiveDecision(decision),
       assertActuationPermitIdentity: assertWorkflowActuationPermitIdentity,

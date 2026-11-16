@@ -32,6 +32,8 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "da_bond_pool_under_backed",
   "da_bond_pool_withdrawing",
   "validation_trace_replay_stuck",
+  "prover_funding_unavailable",
+  "unproven_fault_merged",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -44,7 +46,9 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * L1 rollback is routine before finality and the watcher replays through it.
  * A stuck script re-execution already holds its objective by name, and keeps
  * retrying, so the alert only tells the operator; the header's outcome
- * clears it.
+ * clears it. A detected fault whose header merged unproven is history no
+ * watcher action changes, and nothing acknowledges it: its durable alert
+ * stays listed across restarts but must not hold readiness forever.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -52,6 +56,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "da_bond_pool_withdrawing",
     "chain_rollback",
     "validation_trace_replay_stuck",
+    "unproven_fault_merged",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */

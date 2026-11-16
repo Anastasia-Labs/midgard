@@ -108,7 +108,7 @@ describe("the watcher's alert rules", () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../../alert-rules.yml", import.meta.url), "utf8"),
     );
-    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(8);
+    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(11);
     for (const { alert, metric, matchers } of selectors) {
       expect(families, `${alert} selects ${metric}`).toContain(metric);
       for (const { label, values } of matchers) {
@@ -138,10 +138,23 @@ describe("the watcher's alert rules", () => {
     const pages = new RegExp(`^(?:${matcher!.values.join("|")})$`, "u");
     const refusal: RawReadRefusal = "point_beyond_retention";
     for (const reason of [
-      ...PROOF_HOLD_REASONS,
+      ...PROOF_HOLD_REASONS.filter(
+        (hold) => hold !== WATCHER_PROVER_FUNDING_UNAVAILABLE,
+      ),
       WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
       `${WATCHER_FAULT_PROOF_L1_REFUSED}:${refusal}`,
     ])
       expect(reason, `MidgardWatcherProofHeld pages ${reason}`).toMatch(pages);
+    // A funding pause raises its own alert, which its own rule pages.
+    expect(
+      selectors.find(
+        ({ alert }) => alert === "MidgardWatcherProverFundingUnavailable",
+      )?.matchers,
+    ).toEqual([
+      expect.objectContaining({
+        label: "code",
+        values: [WATCHER_PROVER_FUNDING_UNAVAILABLE],
+      }),
+    ]);
   });
 });

@@ -1,7 +1,8 @@
 /**
  * An objective paused because the prover wallet cannot fund its next
- * transaction is named on readiness (`prover_funding_unavailable`) until a
- * later run meets something else, as one does after a top-up.
+ * transaction is named on readiness (`prover_funding_unavailable`), and its
+ * `prover_funding_unavailable` alert is active, until a later run meets
+ * something else, as one does after a top-up.
  */
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +22,7 @@ const RESERVATION =
 const OTHER = "transaction for walk is pending";
 
 describe("a fault-proof objective paused on prover funding", () => {
-  it("is named on readiness until a later run meets something else", async () => {
+  it("is named on readiness, with an active alert, until a later run meets something else", async () => {
     const test = await setupFaultProofExecution();
     const objective = `doubleSpend/${test.input.job.headerHash}`;
     const pend = async (reason: string) => {
@@ -51,10 +52,21 @@ describe("a fault-proof objective paused on prover funding", () => {
     } finally {
       stderr.mockRestore();
     }
-    // A pause a top-up resumes is no alarm on its own.
+    // One active alert while it stays paused; no error line, since a top-up
+    // resumes it.
     expect(logged).toEqual([]);
+    const alert = (active: boolean) => ({
+      code: HOLD,
+      subjectDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      active,
+      observedAtMs: expect.any(String),
+    });
+    expect(test.setAlert.mock.calls).toEqual([[alert(true)]]);
     expect(await pend(OTHER)).toEqual([]);
-    expect(test.setAlert).not.toHaveBeenCalled();
+    expect(test.setAlert.mock.calls).toEqual([[alert(true)], [alert(false)]]);
+    // The same subject clears it.
+    const [[raised], [cleared]] = test.setAlert.mock.calls;
+    expect(cleared.subjectDigest).toBe(raised.subjectDigest);
   });
 
   it("is named on readiness while a script-decode record transaction is unfunded, until a top-up", async () => {

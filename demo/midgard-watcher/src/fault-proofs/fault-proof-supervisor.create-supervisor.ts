@@ -30,6 +30,10 @@ import {
   runnerOutcomeKind,
 } from "./fault-proof-supervisor.admit-runner-completion.js";
 import {
+  createWatcherOpenProofDeadlines,
+  watcherProofStartTiming,
+} from "./fault-proof-supervisor.safe-start.js";
+import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
   MAX_RECOVERABLE_WORKFLOWS,
@@ -48,7 +52,6 @@ import {
 import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
-  WatcherProofDecisionMissingError,
 } from "./watcher-decision-hold.js";
 import {
   createWatcherJournalBusyHold,
@@ -125,6 +128,7 @@ export const createSupervisor = (input: {
       journalRoot: input.journalRoot,
       authenticationKey: input.queueAuthenticationKey,
     });
+  const openDeadlines = createWatcherOpenProofDeadlines();
   const createAuthority = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
@@ -133,7 +137,10 @@ export const createSupervisor = (input: {
       categories,
       authenticationKey: input.queueAuthenticationKey,
       retention: input.proofRetention,
-      onObjectiveSettled: input.dependencies.objectiveSettled,
+      onObjectiveSettled: (objective) => {
+        openDeadlines.settled(objective, progressAuthority.decisionHolds());
+        input.dependencies.objectiveSettled?.(objective);
+      },
       releaseDecisionFunding: input.dependencies.releaseDecisionFunding,
       jobInProcess: (objective) =>
         [jobs, registering, transportRetries].some((held) =>
@@ -265,8 +272,8 @@ export const createSupervisor = (input: {
   // A refused journal (`journal_integrity`), one that could not be opened
   // (`journal_unavailable`), work whose recorded decision is missing
   // (`journal_decision_missing`) or a busy database (`journal_busy`) holds
-  // the watcher unready and never fails the process, as does an objective
-  // past its latest safe start (`fault_proof_start_deadline_passed`); every
+  // the watcher unready and never fails the process, as does an unsigned
+  // objective past its maturity (`fault_proof_start_deadline_passed`); every
   // other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
@@ -388,6 +395,7 @@ export const createSupervisor = (input: {
     }
     activeJob = job;
     activeInvocationPermit = actuationPermit;
+    openDeadlines.track(job);
     let outcome: unknown;
     let failure: Error | undefined;
     try {
@@ -481,28 +489,13 @@ export const createSupervisor = (input: {
                 };
         }
       } else {
-        if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
-          // Past its latest safe start only signed work is reconciled. The
-          // deadline is fixed by the header, so an objective with no signed
-          // attempt can never start: it is held by name, never run again,
-          // and clears once its header leaves the finalized queue.
-          if (
-            execution === undefined ||
-            !execution.entries.some(
-              ({ event }) => event.kind === "submission_intent",
-            )
-          )
-            throw new WatcherProofDecisionMissingError({
-              kind: "objective",
-              category: job.category,
-              headerHash: job.headerHash,
-              decisionDigest: job.decisionDigest,
-              detail: `${job.category}/${job.headerHash}`,
-              readiness: "fault_proof_start_deadline_passed",
-            });
+        // Past the latest safe start a signed attempt is only reconciled;
+        // unsigned work runs late until maturity (fault-proof-supervisor.safe-start.ts).
+        const timing = watcherProofStartTiming(job, execution, BigInt(now()));
+        if (timing === "reconcile") {
           invocationPermit = await progressAuthority.reconcileExecution({
             objective: job,
-            execution,
+            execution: execution!,
             rollbackGeneration: job.rollbackGeneration,
           });
           activeInvocationPermit = invocationPermit;
@@ -526,6 +519,7 @@ export const createSupervisor = (input: {
             ) === true
               ? "resume_only"
               : "create_or_resume",
+          ...(timing === "late" ? { startedLate: true as const } : {}),
         };
         outcome = await input.dependencies.run({
           job: { ...invocationJob, mode: admission.mode },
@@ -631,6 +625,7 @@ export const createSupervisor = (input: {
         return;
       }
       processedContexts.set(key, contextKey(job));
+      openDeadlines.finished(job, runnerOutcomeKind(outcome));
       if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
       if (runnerOutcomeKind(outcome) === "retryable") {
@@ -1013,14 +1008,13 @@ export const createSupervisor = (input: {
       transportRetries.clear();
     },
     status: () => {
-      const earliestQueuedJob = queue.slice().sort(comparePending)[0]?.job;
-      const earliestDeadlineJob = (() => {
-        if (activeJob === null) return earliestQueuedJob ?? null;
-        if (earliestQueuedJob === undefined) return activeJob;
-        return compareJobs(activeJob, earliestQueuedJob) <= 0
-          ? activeJob
-          : earliestQueuedJob;
-      })();
+      // Held and waiting objectives count with queued and active jobs.
+      const earliestDeadlineJob =
+        [
+          ...(activeJob === null ? [] : [activeJob]),
+          ...queue.map((entry) => entry.job),
+          ...openDeadlines.jobs(),
+        ].sort(compareJobs)[0] ?? null;
       const remaining =
         earliestDeadlineJob === null
           ? null

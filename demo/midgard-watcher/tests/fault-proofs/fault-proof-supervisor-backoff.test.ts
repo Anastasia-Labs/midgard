@@ -77,7 +77,7 @@ describe("objective progress transport backoff", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("holds the objective by name, never extending its authenticated deadline, when observations arrive during retry", async () => {
+  it("holds the objective by name once it matures, never extending its authenticated deadline, when observations arrive during retry", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const root = await mkdtemp("/var/tmp/midgard-objective-deadline-");
     paths.push(root);
@@ -107,7 +107,8 @@ describe("objective progress transport backoff", () => {
       () => (settled = true),
       () => (settled = true),
     );
-    now += 1_000;
+    // The retry fires half a second past its header's maturity.
+    now += MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs + 1_000;
     await vi.advanceTimersByTimeAsync(1_000);
     await waitFor(
       () =>

@@ -36,6 +36,7 @@ export const harness = (input: {
     merged?: ReadonlySet<string>,
   ) => ReadonlySet<string>;
   readonly mergedHeaders?: BridgeDependencies["mergedHeaders"];
+  readonly unprovenFaultMerges?: BridgeDependencies["unprovenFaultMerges"];
   readonly warn?: BridgeDependencies["warn"];
   readonly resolvePredecessorOverride?: (
     header: WatcherStateQueueHeaderObservation,
@@ -113,6 +114,9 @@ export const harness = (input: {
       ...(input.mergedHeaders === undefined
         ? {}
         : { mergedHeaders: input.mergedHeaders }),
+      ...(input.unprovenFaultMerges === undefined
+        ? {}
+        : { unprovenFaultMerges: input.unprovenFaultMerges }),
       ...(input.warn === undefined ? {} : { warn: input.warn }),
       ...(input.driveProvenRemoval === undefined
         ? {}

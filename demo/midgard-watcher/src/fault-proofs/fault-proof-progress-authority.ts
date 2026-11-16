@@ -241,6 +241,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     for (const [key, hold] of held) {
       if (queued(observation, hold)) continue;
       held.delete(key);
+      input.onObjectiveSettled?.(hold);
       await release(hold);
     }
   };

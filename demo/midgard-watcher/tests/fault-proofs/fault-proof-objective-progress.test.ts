@@ -42,7 +42,10 @@ import type {
 } from "../../src/l1-follower/proof-retention.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
-import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
+import {
+  createWatcherOperationsObservability,
+  type WatcherOperationsSink,
+} from "../../src/runtime/operations-observability.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -58,6 +61,7 @@ import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervis
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
+import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
 import { registerPrepareStopTests } from "./fault-proof-objective-progress.prepare-stop.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
@@ -145,6 +149,10 @@ export const setup = async (
   headerEndTime = BigInt(Date.now()),
   terminalBeyondRecoveryHorizon = true,
   withoutSubmissionIntent = false,
+  operationsSink: Pick<
+    WatcherOperationsSink,
+    "recordProofStep" | "setAlert"
+  > = { recordProofStep: vi.fn(), setAlert: vi.fn() },
 ) => {
   const fixture = await setupFundingRecoveryFixture(
     withoutSubmissionIntent,
@@ -253,7 +261,7 @@ export const setup = async (
       workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-objective-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
-      operationsSink: { recordProofStep: vi.fn(), setAlert: vi.fn() },
+      operationsSink,
     });
   let execution: ReturnType<typeof createExecution> | undefined;
   const createSupervisor = (proofRetention = storelessProofRetention) => {
@@ -431,7 +439,7 @@ const journalStates = (
     .map(({ state }) => state);
 
 describe("proof objective progress with durable funding and journals", () => {
-  it("holds an objective past its latest safe start with no signed attempt by name, again after a restart, until its header leaves the queue", async () => {
+  it("holds an objective past its maturity with no signed attempt by name, again after a restart, until its header leaves the queue", async () => {
     const test = await setup(20n, true, true);
     const supervisor = test.createSupervisor();
     // Whether the running supervisor's liveness ended.
@@ -511,48 +519,6 @@ describe("proof objective progress with durable funding and journals", () => {
       blockedJob: null,
       journalDecisionMissing: [],
     });
-  });
-
-  it("drops a refusal hold once the deadline holds the objective under its own name", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      const startedAt = Date.now();
-      const latestSafeStartOffsetMs =
-        MIDGARD_RETENTION_WINDOW.maturityMs -
-        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
-      // Its latest safe start is a minute away.
-      const test = await setup(
-        BigInt(startedAt - latestSafeStartOffsetMs + 60_000),
-        true,
-        true,
-      );
-      let refuse = true;
-      test.setBeforeRun(async () => {
-        if (!refuse) return;
-        refuse = false;
-        throw new WatcherFaultProofL1RefusedError(
-          "untracked_address",
-          "addr_test1 is not tracked",
-        );
-      });
-      const supervisor = test.createSupervisor();
-      await test.request(supervisor, 1).accepted;
-      await test.idle(supervisor);
-      expect(test.readiness().map(({ reason }) => reason)).toEqual([
-        "fault_proof_l1_refused:untracked_address",
-      ]);
-      vi.setSystemTime(startedAt + 120_000);
-      await test.request(supervisor, 2).accepted;
-      await test.idle(supervisor);
-      // Never run again, so no run would clear the refusal: the hold does.
-      expect(supervisor.status().journalDecisionMissing).toMatchObject([
-        { readiness: "fault_proof_start_deadline_passed" },
-      ]);
-      expect(test.readiness()).toEqual([]);
-      expect(test.runOrResume).toHaveBeenCalledOnce();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("drops a refusal hold once its header leaves the queue with no signed attempt to reconcile", async () => {
@@ -1171,6 +1137,7 @@ describe("proof objective progress with durable funding and journals", () => {
   });
   registerPrepareStopTests(setup);
   registerFaultProofResubmissionVisibilityTest(setup);
+  registerLateStartTests(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

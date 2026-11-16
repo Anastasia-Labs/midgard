@@ -284,7 +284,10 @@ describe("supervisor execution adapter with durable funding", () => {
     });
     expect(test.runOrResume).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
-    expect(test.setAlert).not.toHaveBeenCalled();
+    // A funding pause, never a failed submission.
+    expect(
+      test.setAlert.mock.calls.map(([{ code, active }]) => ({ code, active })),
+    ).toEqual([{ code: "prover_funding_unavailable", active: true }]);
   });
 
   it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
