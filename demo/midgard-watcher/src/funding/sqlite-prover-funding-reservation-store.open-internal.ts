@@ -1132,11 +1132,16 @@ export const openInternal = async (
             current.pendingTransition.signedTransactionCborHex,
           ),
         ]);
+        // Once its outputs are released (`releaseProducedOutputs`), what
+        // this attempt produces funds other proofs, as a confirmed one's does.
         const active = [
           ...current.activeInputs.filter(({ outRef }) => !consumed.has(outRef)),
-          ...current.pendingTransition.producedInputs.filter(
-            ({ outRef }) => !producedOutputTaken(current.reservationId, outRef),
-          ),
+          ...(producedReleased(current.reservationId)
+            ? []
+            : current.pendingTransition.producedInputs.filter(
+                ({ outRef }) =>
+                  !producedOutputTaken(current.reservationId, outRef),
+              )),
         ];
         const next = nextRecord({
           current,
