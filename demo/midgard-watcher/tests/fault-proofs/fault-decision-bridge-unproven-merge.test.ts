@@ -57,6 +57,20 @@ const unprovenAlerts = (observability: ReturnType<typeof operations>) =>
     .activeAlerts.filter(({ code }) => code === "unproven_fault_merged")
     .map(({ subjectDigest }) => subjectDigest);
 
+/** The `/metrics` count of recorded unproven merges; undefined before the
+ * watcher has read it. */
+const mergesTotal = async (observability: ReturnType<typeof operations>) => {
+  const response = await observability.handleHttpRequest(
+    new Request("http://127.0.0.1/metrics"),
+  );
+  const sample = (await response.text())
+    .split("\n")
+    .find((line) =>
+      line.startsWith("midgard_watcher_unproven_fault_merges_total "),
+    );
+  return sample?.split(" ")[1];
+};
+
 /** The error lines a callback writes. */
 const errorLines = async (run: () => Promise<unknown>) => {
   const logged: string[] = [];
@@ -183,6 +197,66 @@ describe("fault decision bridge when a detected fault merges unproven", () => {
         decisionDigest: found.decisionDigest,
       },
     ]);
+  });
+
+  it("counts every unproven merge on /metrics, so each new one pages, and keeps the count across a restart", async () => {
+    const journalRoot = await journalDirectory("midgard-unproven-merge");
+    const current = queue("01", "02");
+    const [first, second] = current.finalizedHeaders;
+    const mergedHeaders = vi
+      .fn()
+      .mockResolvedValueOnce(new Map())
+      .mockResolvedValueOnce(
+        new Map([[first!.headerHash, proof(first!.headerHash)]]),
+      )
+      .mockResolvedValue(
+        new Map([
+          [first!.headerHash, proof(first!.headerHash)],
+          [second!.headerHash, proof(second!.headerHash)],
+        ]),
+      );
+    const observability = operations();
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleSpend",
+        [second!.headerHash]: "doubleSpend",
+      },
+      operationsSink: observability.sink,
+      mergedHeaders,
+      unprovenFaultMerges: () => merges(journalRoot),
+    });
+    const totals: (string | undefined)[] = [];
+    await errorLines(async () => {
+      for (let pass = 0; pass < 4; pass += 1) {
+        await h.bridge.reconcileAndDispatch(current);
+        totals.push(await mergesTotal(observability));
+      }
+    });
+    // Both alerts stay active; the count rises with each new incident and
+    // not with a pass over a known one.
+    expect(totals).toEqual(["0", "1", "2", "2"]);
+    expect(unprovenAlerts(observability)).toHaveLength(2);
+
+    // A restart neither resets the count nor raises it: no new incident.
+    closeWatcherJournalDatabase(journalRoot);
+    const later = queue("03");
+    const restarted = operations();
+    const again = harness({
+      current: later,
+      categoryByHeader: {
+        [later.finalizedHeaders[0]!.headerHash]: "transitionTrace",
+      },
+      classifyOverride: (fresh) => ({ ...fresh, decision: "healthy" }),
+      operationsSink: restarted.sink,
+      mergedHeaders: async () => new Map(),
+      unprovenFaultMerges: () => merges(journalRoot),
+    });
+    // Unknown until read: no sample rather than a reset to zero.
+    expect(await mergesTotal(restarted)).toBeUndefined();
+    await again.bridge.reconcileAndDispatch(later);
+    expect(await mergesTotal(restarted)).toBe("2");
+    expect(unprovenAlerts(restarted)).toHaveLength(2);
   });
 
   it("raises nothing when a healthy or an unclassified header merges", async () => {

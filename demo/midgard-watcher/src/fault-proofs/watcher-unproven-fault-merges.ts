@@ -26,6 +26,8 @@ export type WatcherUnprovenFaultMerges = Readonly<{
   /** Records the merge; false when the header was already recorded. */
   record(merge: WatcherUnprovenFaultMerge): boolean;
   list(): readonly WatcherUnprovenFaultMerge[];
+  /** How many merges were ever recorded, pruned ones included. */
+  recorded(): number;
 }>;
 
 const parse = (
@@ -83,6 +85,8 @@ export const watcherUnprovenFaultMerges = (
         return true;
       });
     },
+    // Each record is the journal's one write, so its revision counts them.
+    recorded: () => database().head(JOURNAL).revision,
     list: () => {
       const opened = database();
       return Object.freeze(

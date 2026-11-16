@@ -105,8 +105,11 @@ groups:
 
       - alert: MidgardWatcherUnprovenFaultMerged
         # A block this watcher found faulty merged into confirmed state
-        # before any proof removed it. Raised again after every restart.
-        expr: midgard_watcher_active_alerts{code="unproven_fault_merged"} > 0
+        # before any proof removed it. The active alert never clears, so it
+        # pages from the durable count of recorded merges instead: each new
+        # merge pages once, and a restart (which re-reads the count) does not.
+        expr: >-
+          increase(midgard_watcher_unproven_fault_merges_total[30m]) > 0
         labels:
           severity: critical
         annotations:

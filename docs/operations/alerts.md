@@ -330,14 +330,14 @@ the diagnostics name (prover wallet funds, L1 provider). See the
 **Meaning.** The watcher holds a fault-proof objective; the `reason` label
 names why:
 
-| `reason`                              | What holds it                                                               | What clears it                               |
-| ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
-| `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                   | A later run that journals progress           |
-| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff    | The first run that meets something else      |
-| `fault_proof_resubmission_required`   | The next action needs a fresh submission after the header matured           | See escalation                               |
-| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                 | Its header leaving the finalized state queue |
-| `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired         | Its attempts retired past release finality   |
-| `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)   | The next run whose reads the source answers  |
+| `reason`                              | What holds it                                                             | What clears it                               |
+| ------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
+| `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                 | A later run that journals progress           |
+| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff  | The first run that meets something else      |
+| `fault_proof_resubmission_required`   | The next action needs a fresh submission after the header matured         | See escalation                               |
+| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt               | Its header leaving the finalized state queue |
+| `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired       | Its attempts retired past release finality   |
+| `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history) | The next run whose reads the source answers  |
 
 **First checks.** `l1Readiness` and `supervisor.journalDecisionMissing` in
 `GET /v1/status` give each held objective as `<category>/<headerHash>` with
@@ -459,12 +459,16 @@ hash.
 ### MidgardWatcherUnprovenFaultMerged
 
 **Meaning.** A block this watcher found faulty merged into confirmed state
-before any proof removed it (`unproven_fault_merged` alert, one subject per
-header). The invalid block is now part of confirmed state. The watcher records
-the merge in its journal database and raises the alert again after every
-restart, on its first pass, with one error line when it first records it. The
-alert never clears and nothing acknowledges it, so it is informational: it
-does not hold readiness.
+before any proof removed it. The invalid block is now part of confirmed state.
+The watcher records the merge in its journal database, with one error line
+when it first records it, and counts every merge it has ever recorded in
+`midgard_watcher_unproven_fault_merges_total`. The count survives restarts
+(the watcher exports it from its first pass on), so this rule pages once for
+each new merge and does not page on a restart. The page resolves after its
+30-minute window; the merge itself stays listed as an active
+`unproven_fault_merged` alert (one subject per header) in `GET /v1/status`,
+raised again after every restart. That alert never clears and nothing
+acknowledges it, so it is informational: it does not hold readiness.
 
 **First checks.**
 

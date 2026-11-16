@@ -91,6 +91,14 @@ export const watcherPrometheusText = (
       ]),
     ),
     family(
+      "midgard_watcher_unproven_fault_merges_total",
+      "counter",
+      "Detected faults recorded as merged into confirmed state unproven; durable across restarts, no sample until read.",
+      metrics.unprovenFaultMergesTotal === null
+        ? []
+        : [[{}, metrics.unprovenFaultMergesTotal]],
+    ),
+    family(
       "midgard_watcher_replay_refusals_total",
       "counter",
       "Newly observed replayed-ledger refusals per phase and kind.",

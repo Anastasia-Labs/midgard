@@ -14,7 +14,9 @@ type DetectedFault = Readonly<{ category: string; decisionDigest: string }>;
  * the alert again from that record on its first pass, and an error line
  * names the header, its category and decision once, when it is recorded.
  * The alert is informational: it never clears, and nothing acknowledges it,
- * so it must not hold readiness forever.
+ * so it must not hold readiness forever. Paging reads the durable count of
+ * recorded merges instead (`midgard_watcher_unproven_fault_merges_total`),
+ * which rises once per new incident and survives restarts.
  *
  * A header is faulty when its latest decision in this process is
  * `fault_detected`, or, for one this process has not classified (it merged
@@ -37,6 +39,11 @@ export const unprovenMergeRecorder = (
       active: true,
       observedAtMs: merge.observedAtMs,
     });
+  const count = (): void => {
+    const total = dependencies.unprovenFaultMerges?.().recorded();
+    if (total !== undefined)
+      dependencies.operationsSink?.recordUnprovenFaultMerges(total.toString());
+  };
   const detected = async (
     headerHash: string,
   ): Promise<DetectedFault | undefined> =>
@@ -55,6 +62,7 @@ export const unprovenMergeRecorder = (
       if (reraised) return;
       for (const merge of dependencies.unprovenFaultMerges?.().list() ?? [])
         raise(merge);
+      count();
       reraised = true;
     },
     /** The header's latest classification decision in this process. */
@@ -82,6 +90,7 @@ export const unprovenMergeRecorder = (
       });
       const fresh = dependencies.unprovenFaultMerges?.().record(merge) ?? true;
       raise(merge);
+      count();
       if (fresh)
         process.stderr.write(
           `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", event: "unproven_fault_merged", ...merge })}\n`,
