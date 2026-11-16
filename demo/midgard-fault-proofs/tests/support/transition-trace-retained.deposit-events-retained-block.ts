@@ -3,6 +3,7 @@ import {
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -14,7 +15,10 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
 import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
-import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import {
+  EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
+  fixtureBlockSlotUnder,
+} from "./emulator/header-fixtures.js";
 import { fixtureLedgerAfter, fixtureLedgerEntries } from "./fixture-ledger.js";
 
 export const sealDepositPayload = async (payload: SDK.DaPayload) => {
@@ -59,6 +63,8 @@ const retainedDepositEvent = (input: DepositEventInput) => {
 
 /** Build deposit transitions from actual event outputs and the retained prior ledger. */
 export const depositEventsRetainedBlock = async (input: {
+  /** The slot mapping of the chain the block commits on. */
+  l1SlotConfig: L1SlotConfig;
   operatorVkey: string;
   startTime: bigint;
   endTime: bigint;
@@ -178,7 +184,11 @@ export const depositEventsRetainedBlock = async (input: {
     ...base.header,
     ...counts,
     operatorVkey: input.operatorVkey,
-    blockSlot: fixtureBlockSlot(input.endTime, input.blockSlot),
+    blockSlot: fixtureBlockSlotUnder(
+      input.l1SlotConfig,
+      input.endTime,
+      input.blockSlot,
+    ),
     depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, entries.deposits),
     eventToStepRoot: await root(
       SDK.ROOT_DOMAINS.eventToStep,
@@ -212,6 +222,7 @@ export const transitionTraceDepositRetainedFixture = async (
   const { operatorVkey, now, originalAssets, honest = false } = input;
   const predecessor = await withPlaceholderWithdrawalBlock(
     await depositEventsRetainedBlock({
+      l1SlotConfig: EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
       operatorVkey,
       startTime: BigInt(now),
       endTime: BigInt(now + 60_000),
@@ -223,6 +234,7 @@ export const transitionTraceDepositRetainedFixture = async (
     }),
   );
   const current = await depositEventsRetainedBlock({
+    l1SlotConfig: EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
     operatorVkey,
     startTime: predecessor.header.endTime,
     endTime: BigInt(now + 120_000),

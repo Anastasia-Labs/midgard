@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildCountedRoot,
   canonicalBlockEvidenceFromVerifiedPayload,
@@ -47,6 +48,7 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
       staged.depositMetadata,
     );
     const predecessor = await depositEventsRetainedBlock({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       operatorVkey: staged.current.header.operatorVkey,
       startTime: staged.predecessor.header.endTime,
       endTime: staged.current.header.endTime,

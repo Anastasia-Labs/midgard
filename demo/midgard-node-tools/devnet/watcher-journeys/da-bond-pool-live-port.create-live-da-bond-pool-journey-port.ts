@@ -1346,9 +1346,9 @@ export const createLiveDaBondPoolJourneyPort = async (
             nowMs: chain.now(),
           });
           const block = await depositEventsRetainedBlock({
+            l1SlotConfig: deployment.manifest.l1SlotConfig,
             operatorVkey: actor.operatorVkey,
-            startTime: interval.startTime,
-            endTime: interval.endTime,
+            ...interval,
             blockSlot: BigInt(
               deployment.operatorLucid.unixTimeToSlot(Number(interval.endTime)),
             ),

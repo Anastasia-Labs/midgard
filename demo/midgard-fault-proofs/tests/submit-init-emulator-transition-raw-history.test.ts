@@ -199,6 +199,7 @@ it.each(RAW_HISTORY_ROWS)(
         h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
       ) - 1;
     const retained = await depositEventsRetainedBlock({
+      l1SlotConfig: h.contracts.l1SlotConfig,
       operatorVkey: await funderPaymentKeyHash(h.funderLucid),
       startTime: BigInt(now),
       endTime: BigInt(now + 1000),

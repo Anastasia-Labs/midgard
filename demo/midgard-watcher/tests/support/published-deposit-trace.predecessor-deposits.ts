@@ -1,3 +1,4 @@
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -98,6 +99,8 @@ export const preparePredecessorDeposits = async (input: {
 
 /** Reconstruct fixture state from captured authenticated admissions; neither DA nor a persisted ledger is its authority. */
 export const publishedPredecessorLedger = async (
+  /** The slot mapping of the chain the predecessor committed on. */
+  l1SlotConfig: L1SlotConfig,
   predecessor: PublishedDepositTraceCheckpoint["predecessor"],
   priorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"],
   /** The ledger the predecessor extends; its own header root checks it. */
@@ -109,6 +112,7 @@ export const publishedPredecessorLedger = async (
     );
   const header = predecessor.header;
   const built = await depositEventsRetainedBlock({
+    l1SlotConfig,
     operatorVkey: header.operatorVkey,
     startTime: header.startTime,
     endTime: header.endTime,
@@ -133,6 +137,8 @@ export const publishedPredecessorLedger = async (
 
 /** Build a later deposit block from that exact reconstructed predecessor. */
 export const buildPublishedDepositBlock = async (input: {
+  /** The slot mapping of the chain the block commits on. */
+  l1SlotConfig: L1SlotConfig;
   predecessor: PublishedDepositTraceCheckpoint["predecessor"];
   /** The ledger the predecessor extends; empty for the confirmed genesis. */
   predecessorPriorLedger?: readonly SDK.DaPayloadEntry[];
@@ -144,10 +150,12 @@ export const buildPublishedDepositBlock = async (input: {
   honest: boolean;
 }) =>
   depositEventsRetainedBlock({
+    l1SlotConfig: input.l1SlotConfig,
     operatorVkey: input.operatorVkey,
     prevHeaderHash: input.predecessor.headerHash,
     prevUtxosRoot: input.predecessor.header.utxosRoot,
     priorLedger: await publishedPredecessorLedger(
+      input.l1SlotConfig,
       input.predecessor,
       input.priorDeposits,
       input.predecessorPriorLedger,

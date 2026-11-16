@@ -1,4 +1,5 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   replacePlutusConstrFieldCbor,
@@ -365,6 +366,7 @@ const buildFaultBlock = async (
       if (order.kind !== "Deposit")
         throw new Error("Staged deposit resolved to a withdrawal Order");
       return depositEventsRetainedBlock({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         operatorVkey: input.operatorVkey,
         startTime: input.predecessor.header.endTime,
         endTime: input.endTime,
@@ -383,18 +385,21 @@ const buildFaultBlock = async (
     }
     case "fabricatedDeposit":
       return buildJourneyFabricatedDeposit({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...timed,
         deposit: await stagedDeposit(opened),
       });
     case "fabricatedWithdrawal":
     case "withdrawalMistag":
       return buildJourneyWithdrawalEvent({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...timed,
         category,
         withdrawals: [await stagedWithdrawal(opened, 0)],
       });
     case "doubleWithdraw":
       return buildJourneyWithdrawalEvent({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...timed,
         category,
         withdrawals: [
@@ -405,6 +410,7 @@ const buildFaultBlock = async (
     case "withdrawnInput":
     case "withdrawnReferenceInput":
       return buildJourneyWithdrawnTransaction({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...timed,
         category,
         withdrawal: await stagedWithdrawal(opened, 0),

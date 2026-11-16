@@ -59,6 +59,7 @@ export const inputExistenceExecutionContext = async ({
   const material = present
     ? await (async () => {
         const prior = await depositEventsRetainedBlock({
+          l1SlotConfig: h.contracts.l1SlotConfig,
           operatorVkey,
           startTime: startTime - 30_000n,
           endTime: startTime,

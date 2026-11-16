@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitCompleteCanonicalReplayPredecessor,
   canonicalBlockEvidenceFromVerifiedPayload,
@@ -90,6 +91,7 @@ it
       staged.depositMetadata,
     );
     const predecessor = await depositEventsRetainedBlock({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       operatorVkey: staged.current.header.operatorVkey,
       startTime: staged.predecessor.header.endTime,
       endTime: staged.current.header.endTime,

@@ -236,6 +236,7 @@ export const stagePublishedDepositTrace = async (
   }) => {
     const order = await readMatchingDeposit(history, metadata);
     return buildPublishedDepositBlock({
+      l1SlotConfig: deployment.manifest.l1SlotConfig,
       predecessor: empty,
       predecessorPriorLedger: await ledgerPairs(empty.header.prevHeaderHash),
       priorDeposits: preparedPriorDeposits,
@@ -255,6 +256,7 @@ export const stagePublishedDepositTrace = async (
     const base = await readBase();
     // Validate the ledger before publishing another transaction.
     await depositEventsRetainedBlock({
+      l1SlotConfig: deployment.manifest.l1SlotConfig,
       operatorVkey,
       startTime: base.endTime,
       endTime: base.endTime + 1n,
@@ -344,6 +346,7 @@ export const stagePublishedDepositTrace = async (
         );
     }
     const empty = await depositEventsRetainedBlock({
+      l1SlotConfig: deployment.manifest.l1SlotConfig,
       operatorVkey,
       startTime: base.endTime,
       endTime: emptyEnd,
@@ -734,6 +737,7 @@ export const stagePublishedDepositTrace = async (
             "The unspent ordinary deposit is not due in the corrected successor interval",
           );
         const built = await buildPublishedDepositBlock({
+          l1SlotConfig: deployment.manifest.l1SlotConfig,
           predecessor: empty,
           predecessorPriorLedger: await ledgerPairs(
             empty.header.prevHeaderHash,

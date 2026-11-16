@@ -3,6 +3,7 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
+import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./emulator/header-fixtures.js";
 import { fixtureLedgerAfter } from "./fixture-ledger.js";
 import {
   depositEventsRetainedBlock,
@@ -26,6 +27,7 @@ export const transitionTraceTimingRetainedFixture = async (input: {
   const included = input.omitted ? input.companion : input.payload;
   const predecessor = await withPlaceholderWithdrawalBlock(
     await depositEventsRetainedBlock({
+      l1SlotConfig: EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
       operatorVkey: input.operatorVkey,
       startTime: BigInt(input.now),
       endTime: BigInt(input.now + 60_000),
@@ -37,6 +39,7 @@ export const transitionTraceTimingRetainedFixture = async (input: {
     }),
   );
   const current = await depositEventsRetainedBlock({
+    l1SlotConfig: EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
     operatorVkey: input.operatorVkey,
     startTime: predecessor.header.endTime,
     // An honest late event is admitted after the predecessor commits (from

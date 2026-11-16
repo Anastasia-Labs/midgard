@@ -1,4 +1,5 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,
@@ -39,6 +40,7 @@ export const buildRecoveryStageBlocks = async (input: {
   const predecessor = {
     ...persistableJourneyBlock(
       await depositEventsRetainedBlock({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         operatorVkey: input.operatorVkey,
         startTime: 0n,
         endTime: 60_000n,
@@ -58,6 +60,7 @@ export const buildRecoveryStageBlocks = async (input: {
     );
   const current = persistableJourneyBlock(
     await depositEventsRetainedBlock({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       operatorVkey: input.operatorVkey,
       startTime: predecessor.header.endTime,
       endTime: 120_000n,

@@ -7,6 +7,7 @@ import {
   encodeMidgardTxOutput,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as FP from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
@@ -98,6 +99,7 @@ const loadRetainedDeposit = async () => {
     staged.depositMetadata,
   );
   const predecessor = await depositEventsRetainedBlock({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     operatorVkey: staged.current.header.operatorVkey,
     startTime: staged.predecessor.header.endTime,
     endTime: staged.current.header.endTime,

@@ -101,6 +101,7 @@ describe("input existence on a submitted withdrawal", () => {
       const startTime = priorStart + 30_000n;
       const endTime = startTime + 30_000n;
       const priorDeposit = await depositEventsRetainedBlock({
+        l1SlotConfig: h.contracts.l1SlotConfig,
         operatorVkey,
         startTime: priorStart,
         endTime: startTime,

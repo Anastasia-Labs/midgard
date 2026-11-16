@@ -137,6 +137,7 @@ describe("registered event-relative input-existence lifecycle", () => {
           chronology === undefined
             ? undefined
             : await depositEventsRetainedBlock({
+                l1SlotConfig: h.contracts.l1SlotConfig,
                 operatorVkey,
                 startTime: startTime - 30_000n,
                 endTime: startTime,

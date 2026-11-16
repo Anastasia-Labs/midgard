@@ -227,6 +227,7 @@ export const setUpScene = async (
         : undefined;
   const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
+    l1SlotConfig: h.contracts.l1SlotConfig,
     operatorVkey,
     startTime: now,
     endTime: now + 1_000n,

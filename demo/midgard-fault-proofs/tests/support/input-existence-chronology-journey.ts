@@ -83,6 +83,7 @@ export const startChronologyJourney = async ({
     ) - 1,
   );
   const prior = await depositEventsRetainedBlock({
+    l1SlotConfig: h.contracts.l1SlotConfig,
     operatorVkey,
     startTime: startTime - 30_000n,
     endTime: startTime,

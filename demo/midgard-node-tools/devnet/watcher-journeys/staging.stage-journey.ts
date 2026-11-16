@@ -302,6 +302,7 @@ export async function stageJourney(
         history = {
           deploymentFingerprint: fingerprint,
           block: await build({
+            l1SlotConfig: deployment.manifest.l1SlotConfig,
             predecessor: retainedPredecessor,
             ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
             operatorVkey: maliciousKey,
@@ -336,6 +337,7 @@ export async function stageJourney(
               onStage(`staged ${name} interval elapsed unminted; rebuilding`);
               const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
               history.block = await build({
+                l1SlotConfig: deployment.manifest.l1SlotConfig,
                 predecessor: retainedPredecessor,
                 ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
@@ -370,6 +372,7 @@ export async function stageJourney(
               // reconcileCommit refreshed the wallet before this retry.
               const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
               history.block = await build({
+                l1SlotConfig: deployment.manifest.l1SlotConfig,
                 predecessor: retainedPredecessor,
                 ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
                 operatorVkey: maliciousKey,
@@ -432,6 +435,7 @@ export async function stageJourney(
   const buildFault = journeyBlockBuilder(async () => {
     const faultEndTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
     return prepared.buildFault({
+      l1SlotConfig: deployment.manifest.l1SlotConfig,
       predecessor: retainedPredecessor,
       ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
       operatorVkey: maliciousKey,
@@ -603,6 +607,7 @@ export async function stageJourney(
       const buildSuccessor = journeyBlockBuilder(async () => {
         const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
         const successorInput: JourneyFaultBuildInput = {
+          l1SlotConfig: deployment.manifest.l1SlotConfig,
           predecessor: successorRetainedPredecessor,
           ledgerOwnerSeedPhrase: daPath.ledgerOwnerSeedPhrase,
           operatorVkey: successorActor.operatorVkey,

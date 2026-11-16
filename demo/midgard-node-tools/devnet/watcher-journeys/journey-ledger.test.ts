@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it } from "vitest";
 
@@ -6,6 +7,7 @@ import { checkedJourneyConstruction } from "./journey-ledger.js";
 
 const emptyBlock = () =>
   depositEventsRetainedBlock({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     operatorVkey: "12".repeat(28),
     startTime: 0n,
     endTime: 60_000n,

@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
@@ -220,6 +221,7 @@ it.each([false, true])(
     expect(f.order.originalAssets).toEqual({ lovelace: 8_000_000n });
     for (const honest of [false, true]) {
       const block = await buildJourneyFabricatedDeposit({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         predecessor: f.predecessor,
         operatorVkey: "56".repeat(28),
         endTime: 200n,
@@ -269,6 +271,7 @@ it("refuses an out-of-window event and preserves captured original Value through
   const f = await fixture(false);
   await expect(
     buildJourneyFabricatedDeposit({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor: f.predecessor,
       operatorVkey: "56".repeat(28),
       endTime: 120n,
@@ -308,6 +311,7 @@ it.each([false, true])(
       ),
     ).toBe(true);
     const block = await buildJourneyFabricatedDeposit({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor: f.predecessor,
       operatorVkey: "56".repeat(28),
       endTime: 200n,
@@ -411,6 +415,7 @@ it.each([false, true])(
       blockSlot: 0n,
     };
     const honest = await buildJourneyWithdrawalEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...base,
       category: "withdrawalMistag",
       withdrawals: [staged],
@@ -420,6 +425,7 @@ it.each([false, true])(
       order!.infoCbor.toString("hex"),
     );
     const altered = await buildJourneyWithdrawalEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...base,
       category: "fabricatedWithdrawal",
       withdrawals: [staged],
@@ -431,6 +437,7 @@ it.each([false, true])(
       ),
     ).toBe(plutusConstrFieldCbor(order!.infoCbor.toString("hex"), [0, 4]));
     const repeated = await buildJourneyRepeatedWithdrawal({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...base,
       predecessor: honest,
       settled: honest,

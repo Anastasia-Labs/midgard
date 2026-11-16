@@ -1,5 +1,6 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type CheckedLedger,
   ledgerAfter,
@@ -29,6 +30,8 @@ export type JourneyRetainedBlock = JourneyBlock & {
 };
 
 export type JourneyFaultBuildInput = {
+  /** The slot mapping of the chain the block commits on. */
+  l1SlotConfig: L1SlotConfig;
   predecessor: JourneyRetainedBlock;
   ledgerOwnerSeedPhrase: string;
   operatorVkey: string;

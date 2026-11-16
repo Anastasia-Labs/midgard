@@ -48,6 +48,7 @@ import {
 import { inputExistenceChronologyFixture } from "./helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "./helpers/input-existence-chronology-seed.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./support/emulator/header-fixtures.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -108,6 +109,7 @@ const chronologyBlocks = async (
           ) - 1,
         );
   const predecessor = await depositEventsRetainedBlock({
+    l1SlotConfig: EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
     operatorVkey,
     startTime: startTime - 30_000n,
     endTime: startTime,

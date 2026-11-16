@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as FP from "@al-ft/midgard-fault-proofs";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
@@ -59,6 +60,7 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         staged.depositMetadata,
       );
       predecessor = await depositEventsRetainedBlock({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         operatorVkey: staged.current.header.operatorVkey,
         startTime: staged.predecessor.header.endTime,
         endTime: staged.current.header.endTime,

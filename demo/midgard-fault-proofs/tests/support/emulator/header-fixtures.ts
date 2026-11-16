@@ -109,20 +109,32 @@ export const EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG: L1SlotConfig =
   NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 
 /**
- * The block_slot a fixture header ending at `endTime` commits with on an
- * emulator deployment (block_time = endTime). A fixture whose `endTime` is not
- * a slot's last millisecond never commits and keeps `uncommittedSlot`.
+ * The block_slot a fixture header ending at `endTime` commits with on a chain
+ * whose slot mapping is `l1SlotConfig` (block_time = endTime). A fixture whose
+ * `endTime` is not a slot's last millisecond never commits and keeps
+ * `uncommittedSlot`.
  */
+export const fixtureBlockSlotUnder = (
+  l1SlotConfig: L1SlotConfig,
+  endTime: bigint,
+  uncommittedSlot: bigint,
+): bigint => {
+  const elapsed = endTime + 1n - BigInt(l1SlotConfig.zeroTime);
+  return elapsed > 0n && elapsed % BigInt(l1SlotConfig.slotLength) === 0n
+    ? commitSlotForBlockTime(l1SlotConfig, endTime)
+    : uncommittedSlot;
+};
+
+/** `fixtureBlockSlotUnder` on an emulator deployment. */
 export const fixtureBlockSlot = (
   endTime: bigint,
   uncommittedSlot = 0n,
-): bigint => {
-  const config = EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG;
-  const elapsed = endTime + 1n - BigInt(config.zeroTime);
-  return elapsed > 0n && elapsed % BigInt(config.slotLength) === 0n
-    ? commitSlotForBlockTime(config, endTime)
-    : uncommittedSlot;
-};
+): bigint =>
+  fixtureBlockSlotUnder(
+    EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG,
+    endTime,
+    uncommittedSlot,
+  );
 
 /**
  * `header` as committed at `blockTime` (default endTime): its block_slot is the

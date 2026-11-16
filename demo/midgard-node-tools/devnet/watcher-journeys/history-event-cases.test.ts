@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
@@ -121,6 +122,7 @@ const openFamilyWindow = async (deposits: number) => {
     ) - 1n;
   const feeSchedule = await stackNodeFeeSchedule();
   const genesis = await depositEventsRetainedBlock({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     ...feeSchedule,
     operatorVkey: stage.operatorVkey,
     startTime: opened - 60_000n,
@@ -132,6 +134,7 @@ const openFamilyWindow = async (deposits: number) => {
     events: [],
   });
   const predecessor = await depositEventsRetainedBlock({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     ...feeSchedule,
     operatorVkey: stage.operatorVkey,
     startTime: opened,
@@ -221,6 +224,7 @@ it("ordinary history admission and withdrawn-input honest control stay healthy",
   });
   const withdrawal = await stage.publishWithdrawal(body, 0);
   const block = await buildJourneyWithdrawnTransaction({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     predecessor,
     operatorVkey: stage.operatorVkey,
     endTime: latestInclusion([withdrawal]),
@@ -270,6 +274,7 @@ it.each([
     const slot = blockSlot++;
     for (const honest of [false, true]) {
       const block = await buildJourneyWithdrawnTransaction({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         predecessor,
         operatorVkey: stage.operatorVkey,
         endTime,
@@ -317,6 +322,7 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
   const slot = blockSlot++;
   for (const honest of [false, true]) {
     const block = await buildJourneyWithdrawalEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor,
       operatorVkey: stage.operatorVkey,
       endTime,
@@ -376,6 +382,7 @@ it("fabricatedDeposit proves a committed deposit leaf that is not its real publi
   const slot = blockSlot++;
   for (const honest of [false, true]) {
     const block = await buildJourneyFabricatedDeposit({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor,
       operatorVkey: stage.operatorVkey,
       endTime,
@@ -419,6 +426,7 @@ it("fabricatedWithdrawal proves a committed withdrawal body that is not its real
   const slot = blockSlot++;
   for (const honest of [false, true]) {
     const block = await buildJourneyWithdrawalEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor,
       operatorVkey: stage.operatorVkey,
       endTime,
@@ -464,6 +472,7 @@ it("withdrawalMistag proves a wrong verdict on a real published withdrawal and i
   const slot = blockSlot++;
   for (const honest of [false, true]) {
     const block = await buildJourneyWithdrawalEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor,
       operatorVkey: stage.operatorVkey,
       endTime,
@@ -533,6 +542,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
     const confirmed = await stage.confirmedState();
     const depositEnd = closeMinute(latestInclusion(deposits));
     const deposited = await depositEventsRetainedBlock({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       operatorVkey: stage.operatorVkey,
       startTime: confirmed.endTime,
       endTime: depositEnd,
@@ -565,6 +575,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
       );
       const withdrawalEnd = closeMinute(retired.inclusionTime);
       const withdrawalSource = await buildJourneyWithdrawalEvent({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         predecessor: deposited,
         operatorVkey: stage.operatorVkey,
         endTime: withdrawalEnd,
@@ -634,10 +645,12 @@ it.each(["Deposit", "Withdrawal"] as const)(
     const honest =
       kind === "Deposit"
         ? await buildJourneyFabricatedDeposit({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             ...honestTimed,
             deposit: fresh,
           })
         : await buildJourneyWithdrawalEvent({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             ...honestTimed,
             category: "fabricatedWithdrawal",
             withdrawals: [fresh],
@@ -775,6 +788,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
     );
     expect(endTime).toBeGreaterThan(source.header.endTime);
     const timed = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       predecessor: honest,
       operatorVkey: stage.operatorVkey,
       endTime,

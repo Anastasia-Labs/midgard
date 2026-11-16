@@ -1,5 +1,6 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
@@ -19,6 +20,8 @@ import {
 } from "./journey-ledger.js";
 
 export type HistoryEventBlockInput = {
+  /** The slot mapping of the chain the block commits on. */
+  l1SlotConfig: L1SlotConfig;
   predecessor: HistoryPredecessor;
   operatorVkey: string;
   endTime: bigint;
@@ -141,6 +144,7 @@ export const buildJourneyFabricatedDeposit = async (
         },
       };
   const block = await depositEventsRetainedBlock({
+    l1SlotConfig: input.l1SlotConfig,
     operatorVkey: input.operatorVkey,
     startTime: input.predecessor.header.endTime,
     endTime: input.endTime,
