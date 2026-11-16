@@ -23,18 +23,13 @@ import {
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  SCRIPT_DECODE_REFERENCE_SCRIPTS,
-  scriptDecodeDeploymentFromReferences,
-} from "../workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
 import { createManifestBoundOutputReferenceScriptDecodingSubmission } from "./authenticated-workflow.create-manifest-bound-output-reference-script-decoding-submission.js";
 import {
-  createOutputReferenceScriptDecodingBoundConfig,
   type LoadManifestBoundOutputReferenceScriptDecodingConfig,
   type ManifestBoundOutputReferenceScriptDecodingConfig,
   OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
@@ -64,7 +59,8 @@ export type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundOutputReferenceScriptDecodingWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundOutputReferenceScriptDecodingInstallation = Readonly<{
   deployment: FamilyDeploymentContext<
     "outputReferenceScriptDecoding",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
@@ -78,53 +74,6 @@ export type ManifestBoundOutputReferenceScriptDecodingWorkflow = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
-
-/** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
-  input: ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
-): Promise<ManifestBoundOutputReferenceScriptDecodingWorkflow> => {
-  const deployment = await bindManifestBoundFamilyWorkflow(
-    OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
-    {
-      ...input,
-      referenceScripts: {
-        steps: [
-          input.referenceScripts.step01,
-          input.referenceScripts.step02,
-          input.referenceScripts.step03,
-          input.referenceScripts.step04,
-          input.referenceScripts.step05,
-          input.referenceScripts.step06,
-        ],
-        witnesses: input.referenceScripts.witnesses,
-        fieldPreimageCertificateMint:
-          input.referenceScripts.fieldPreimageCertificateMint,
-        fieldGrammarCertificateSpend:
-          input.referenceScripts.fieldGrammarCertificateSpend,
-      },
-    },
-  );
-  const config = createOutputReferenceScriptDecodingBoundConfig(
-    input,
-    deployment.binding,
-    scriptDecodeDeploymentFromReferences({
-      blueprint: deployment.binding.blueprint,
-      network: deployment.binding.network,
-      references: deployment.auxiliaryReferences,
-    }),
-  );
-  const l1 = deployment.l1;
-  return Object.freeze({
-    deployment,
-    workflowVersion: OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
-};
 
 const SCRIPT_DECODE_RECORDED_BEFORE: ReadonlySet<string> = new Set([
   "init",

@@ -17,7 +17,11 @@ import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
+import {
+  executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
 import {
   SCRIPT_DECODE_REFERENCE_SCRIPTS,
   scriptDecodeDeploymentFromReferences,
@@ -25,7 +29,7 @@ import {
 import {
   type BoundContext,
   createWitnessScriptDecodingRecoveryPorts,
-  type ManifestBoundWitnessScriptDecodingWorkflow,
+  type ManifestBoundWitnessScriptDecodingInstallation,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   type RunContext,
   runs,
@@ -81,16 +85,19 @@ export const createManifestBoundWitnessScriptDecodingWorkflow = async (
       references: deployment.auxiliaryReferences,
     }),
   });
-  return Object.freeze({
-    deployment,
-    workflowVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
-    config,
-    binding: deployment.binding,
-    l1: deployment.l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
+      config,
+      binding: deployment.binding,
+      l1: deployment.l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+    }),
+    createWitnessScriptDecodingRecoveryAdapter,
+  );
 };
 
 const runFor = (context: BoundContext) => {
@@ -141,7 +148,7 @@ export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
 });
 
 export const createWitnessScriptDecodingRecoveryAdapter = (
-  workflow: ManifestBoundWitnessScriptDecodingWorkflow,
+  workflow: ManifestBoundWitnessScriptDecodingInstallation,
 ) => {
   const assembled = assembleBoundManifestBoundFamilyWorkflow(
     WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
@@ -155,6 +162,12 @@ export const createWitnessScriptDecodingRecoveryAdapter = (
   };
 };
 
+export type ManifestBoundWitnessScriptDecodingWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundWitnessScriptDecodingInstallation,
+    ReturnType<typeof createWitnessScriptDecodingRecoveryAdapter>
+  >;
+
 export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   workflow,
   sources,
@@ -164,9 +177,4 @@ export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }) =>
-  await executeManifestBoundFamilyRecovery({
-    ...workflow,
-    sources,
-    journal,
-    ...createWitnessScriptDecodingRecoveryAdapter(workflow),
-  });
+  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });

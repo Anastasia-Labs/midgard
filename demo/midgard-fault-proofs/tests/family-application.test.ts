@@ -20,6 +20,7 @@ import {
   createFamilyApplicationWorkflowRunner,
   createManifestBoundWorkflowRunner,
 } from "../src/workflow/runtime.js";
+import { unreachableRecoverySurfaceForTest } from "./support/family-common-infrastructure.js";
 
 const category = "minFee" as const;
 const headerHash = "aa".repeat(28);
@@ -51,7 +52,8 @@ type Workflow = Readonly<{
     definition: Readonly<{ category: typeof category; headerHash: string }>;
   }>;
   decisionDigest?: string;
-}>;
+}> &
+  typeof unreachableRecoverySurfaceForTest;
 
 const workflowOf = (
   overrides: Partial<Workflow["binding"]> = {},
@@ -62,6 +64,7 @@ const workflowOf = (
     ...overrides,
   },
   decisionDigest,
+  ...unreachableRecoverySurfaceForTest,
 });
 
 const fixture = (

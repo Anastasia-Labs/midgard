@@ -13,6 +13,8 @@ import {
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import {
   type MintItemEvidence,
@@ -95,7 +97,8 @@ type MintItemNonCanonicalDeployment = FamilyDeploymentContext<
   4
 >;
 
-export type ManifestBoundMintItemNonCanonicalWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundMintItemNonCanonicalInstallation = Readonly<{
   deployment: MintItemNonCanonicalDeployment;
   workflowVersion: typeof MINT_ITEM_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundMintItemNonCanonicalConfig;
@@ -131,16 +134,19 @@ export const createManifestBoundMintItemNonCanonicalWorkflow = async (
     deployment.binding,
   );
   const l1 = deployment.l1;
-  return Object.freeze({
-    deployment,
-    workflowVersion: MINT_ITEM_NON_CANONICAL_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: MINT_ITEM_NON_CANONICAL_WORKFLOW,
+      config,
+      binding: config.binding,
+      l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+    }),
+    createMintItemNonCanonicalRecoveryAdapter,
+  );
 };
 
 /**
@@ -190,7 +196,7 @@ export const runOrResumeManifestBoundMintItemNonCanonicalWorkflow =
   };
 
 export const createMintItemNonCanonicalRecoveryAdapter = (
-  workflow: ManifestBoundMintItemNonCanonicalWorkflow,
+  workflow: ManifestBoundMintItemNonCanonicalInstallation,
 ) => {
   const material = createCanonicalFamilyArtifactPort(
     async ({ evidence, classification }) =>
@@ -206,6 +212,12 @@ export const createMintItemNonCanonicalRecoveryAdapter = (
   );
 };
 
+export type ManifestBoundMintItemNonCanonicalWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundMintItemNonCanonicalInstallation,
+    ReturnType<typeof createMintItemNonCanonicalRecoveryAdapter>
+  >;
+
 /** The shared retained-DA runner over this family's cursor definition. */
 export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   workflow,
@@ -216,9 +228,4 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }) =>
-  await executeManifestBoundFamilyRecovery({
-    ...workflow,
-    sources,
-    journal,
-    ...createMintItemNonCanonicalRecoveryAdapter(workflow),
-  });
+  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });

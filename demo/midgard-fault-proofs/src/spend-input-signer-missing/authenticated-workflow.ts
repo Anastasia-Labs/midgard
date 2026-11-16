@@ -58,11 +58,11 @@ export {
   createManifestBoundSpendInputSignerMissingWorkflow,
   createSpendInputSignerMissingRecoveryAdapter,
   executeManifestBoundSpendInputSignerMissingWorkflow,
+  type ManifestBoundSpendInputSignerMissingWorkflow,
   runOrResumeManifestBoundSpendInputSignerMissingWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-spend-input-signer-missing-workflow.js";
 export {
   loadManifestBoundSpendInputSignerMissingConfig,
-  type ManifestBoundSpendInputSignerMissingWorkflow,
   type ManifestBoundSpendInputSignerMissingWorkflowConfig,
   SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.spend-input-signer-missing-family-definition.js";

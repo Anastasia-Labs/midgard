@@ -1,28 +1,59 @@
+import {
+  buildScriptDecodeValidator,
+  parseFaultProofBlueprint,
+  SCRIPT_DECODE_STAKER_CLASS_NAMES,
+  SCRIPT_DECODE_STAKER_MEMBERS,
+} from "@al-ft/midgard-sdk";
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
+import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
+import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.js";
 import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
+import {
+  WORKFLOW_RUNNER_FACTORIES,
+  WORKFLOW_RUNTIME_CONFIG,
+} from "../../src/workflow/runtime.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
 import type { customWorkflowRecoveryFixture } from "./custom-workflow-recovery.js";
+import { familyCommonInfrastructureForTest } from "./family-common-infrastructure.js";
 import {
   fieldGrammarCertificateValidatorFixture,
   realFaultProofBlueprint,
 } from "./field-grammar-certificate-deployment-fixture.js";
 
+type RecoveryFixture = Awaited<
+  ReturnType<typeof customWorkflowRecoveryFixture>
+>;
+
+const owner = "aa".repeat(28);
+const address = credentialToAddress("Preprod", { type: "Key", hash: owner });
+const signer = { paymentKeyHash: owner, address };
+const script = { type: "PlutusV3", script: "49480100002221200101" } as const;
+const reference: UTxO = {
+  txHash: "22".repeat(32),
+  outputIndex: 0,
+  address,
+  assets: { lovelace: 2_000_000n },
+  scriptRef: script,
+};
+const certificatePolicyId = "55".repeat(28);
+
 /**
- * Acquire a real assembly context for a saved-journal fixture. Manifest loading,
- * script identities and provider creation are isolated here; the binding and
- * its definition identity remain owned by the production assembly.
+ * Stands in for the manifest binding, the reference-script UTxO check and the
+ * L1 observation port of a saved-journal fixture's deployment until
+ * `restore`. `binding` extends the bound deployment, as a family whose
+ * constructor reads more of it needs.
  */
-export const bindFamilyRecoveryFixture = async (
-  workflow: Awaited<
-    ReturnType<typeof customWorkflowRecoveryFixture>
-  >["workflow"],
+const standInFamilyDeployment = (
+  workflow: RecoveryFixture["workflow"],
+  binding: Readonly<Record<string, unknown>> = {},
 ) => {
   const category = workflow.binding.definition.category;
   const definition = FAMILY_APPLICATION_REGISTRY[category].definition;
@@ -30,17 +61,6 @@ export const bindFamilyRecoveryFixture = async (
     throw new Error(
       `Recovery fixture has no family definition for ${category}`,
     );
-  const owner = "aa".repeat(28);
-  const address = credentialToAddress("Preprod", { type: "Key", hash: owner });
-  const script = { type: "PlutusV3", script: "49480100002221200101" } as const;
-  const reference: UTxO = {
-    txHash: "22".repeat(32),
-    outputIndex: 0,
-    address,
-    assets: { lovelace: 2_000_000n },
-    scriptRef: script,
-  };
-  const certificatePolicyId = "55".repeat(28);
   // A family that reads through the field grammar certificate resolves the
   // real certificate at startup: its published script and minting policy are
   // the blueprint's over this deployment's field-preimage certificate.
@@ -72,7 +92,7 @@ export const bindFamilyRecoveryFixture = async (
           };
         })()
       : undefined;
-  const binding = {
+  const bound = {
     ...workflow.binding,
     network: "Preprod",
     fieldPreimageCertificate: {
@@ -90,6 +110,7 @@ export const bindFamilyRecoveryFixture = async (
             ...grammar.referenceScriptsByContract,
           },
         }),
+    ...binding,
   };
   const l1 = {
     ...workflow.l1,
@@ -97,13 +118,33 @@ export const bindFamilyRecoveryFixture = async (
   };
   const bind = vi
     .spyOn(deployment, "bindFraudProofWorkflowDeployment")
-    .mockResolvedValue(binding as never);
+    .mockResolvedValue(bound as never);
   const references = vi
     .spyOn(deployment, "requireManifestBoundReferenceScriptUtxo")
     .mockImplementation(({ utxo }) => utxo);
   const observe = vi
     .spyOn(observations, "createFraudProofFamilyL1ObservationPort")
     .mockReturnValue(l1 as never);
+  return {
+    definition,
+    grammar,
+    restore: () => {
+      bind.mockRestore();
+      references.mockRestore();
+      observe.mockRestore();
+    },
+  };
+};
+
+/**
+ * Acquire a real assembly context for a saved-journal fixture. Manifest loading,
+ * script identities and provider creation are isolated here; the binding and
+ * its definition identity remain owned by the production assembly.
+ */
+export const bindFamilyRecoveryFixture = async (
+  workflow: RecoveryFixture["workflow"],
+) => {
+  const { definition, grammar, restore } = standInFamilyDeployment(workflow);
   try {
     return await bindManifestBoundFamilyWorkflow(
       definition as never,
@@ -113,7 +154,7 @@ export const bindFamilyRecoveryFixture = async (
         deploymentInfo: {},
         headerHash: workflow.binding.definition.headerHash,
         lucid: {},
-        signer: { paymentKeyHash: owner, address },
+        signer,
         referenceScripts: {
           steps: familyStepContractNames(definition).map(() => reference),
           witnesses: Object.fromEntries(
@@ -135,35 +176,122 @@ export const bindFamilyRecoveryFixture = async (
       } as never,
     );
   } finally {
-    bind.mockRestore();
-    references.mockRestore();
-    observe.mockRestore();
+    restore();
   }
 };
 
-/** Runs a family's shared executor over a saved-journal fixture as read-only
- * recovery, under a real assembly context. */
-export const runBoundFamilyRecovery = async (
-  execute: unknown,
-  input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
-): Promise<FraudProofWorkflowRunResult> =>
-  await (execute as (value: unknown) => Promise<FraudProofWorkflowRunResult>)({
-    ...input,
-    workflow: {
-      ...input.workflow,
-      deployment: await bindFamilyRecoveryFixture(input.workflow),
-      config: {
-        binding: input.workflow.binding,
-        // Read-only recovery must never use a provider or these builder-only inputs.
-        lucid: {},
-        signer: {
-          paymentKeyHash: "aa".repeat(28),
-          address: "unused-readonly-address",
+/** The script-decode members a family that records script decodes resolves:
+ * the blueprint's validator and stakers, each as its published reference. */
+const scriptDecodeReferences = (): Readonly<Record<string, UTxO>> => {
+  const validator = buildScriptDecodeValidator(
+    parseFaultProofBlueprint(realFaultProofBlueprint()),
+    "Preprod",
+  );
+  return Object.fromEntries([
+    [
+      SCRIPT_DECODE_SPEND_ROLE,
+      { ...reference, scriptRef: validator.spendingScript },
+    ],
+    ...SCRIPT_DECODE_STAKER_CLASS_NAMES.map((name) => [
+      SCRIPT_DECODE_STAKER_MEMBERS[name],
+      { ...reference, scriptRef: validator.stakers[name].withdrawalScript },
+    ]),
+  ]);
+};
+
+/**
+ * Continues a saved-journal fixture as the watcher does once its header has
+ * left the queue: the family's registered runner, under the fixture's
+ * reconciliation-only permit, binds the family's config from the loaded
+ * infrastructure and builds its workflow with the family's own constructor.
+ * Only the manifest binding, the reference-script UTxOs and the L1
+ * observation port are stood in for.
+ */
+export const runRegisteredFamilyReconciliation = async (
+  input: RecoveryFixture,
+  { rollbackGeneration = "0" }: Readonly<{ rollbackGeneration?: string }> = {},
+): Promise<FraudProofWorkflowRunResult> => {
+  const { binding } = input.workflow;
+  const { category, headerHash } = binding.definition;
+  const stepCount = familyStepContractNames(
+    FAMILY_APPLICATION_REGISTRY[category].definition!,
+  ).length;
+  const { grammar, restore } = standInFamilyDeployment(input.workflow, {
+    // The chain the family's constructor lays its contracts out from.
+    resolvedContracts: {
+      contracts: {
+        [category]: {
+          steps: Array.from({ length: stepCount }, () => ({})),
         },
-        contracts: {},
-        referenceScripts: {},
+        computationThread: {},
+        fraudProof: {},
       },
     },
-    decisionDigest: input.workflow.decisionDigest,
-    sources: [],
+    contractEntries: { hubOracleMint: { scriptHash: "66".repeat(28) } },
+    definition: {
+      ...binding.definition,
+      stateQueue: { policyId: "77".repeat(28) },
+    },
   });
+  try {
+    const published: Readonly<Record<string, UTxO>> = {
+      ...scriptDecodeReferences(),
+      ...(grammar === undefined
+        ? {}
+        : { fieldGrammarCertificateSpend: grammar.reference }),
+    };
+    const { deploymentFingerprint } = binding;
+    const { decisionDigest } = input.decision;
+    const runner = WORKFLOW_RUNNER_FACTORIES[category](async () => ({
+      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+      infrastructure: familyCommonInfrastructureForTest(
+        { headerHash, decisionDigest },
+        {
+          signer: signer as never,
+          stateQueueMutationLeaseCoordinator: input.workflow
+            .stateQueueMutationLeaseCoordinator as never,
+        },
+      ),
+      resolveReferenceScript: async ({ contractName }) =>
+        published[contractName] ?? reference,
+      // Reconciliation reads no retained DA.
+      retainedDaSources: [
+        new DaLibp2pRetainedDaSource({
+          deploymentFingerprint,
+          peers: [{ peerId: "12D3KooWreconciliationOnly" }],
+          transport: {
+            request: async () => {
+              throw new Error("reconciliation fetched retained DA");
+            },
+          },
+        }),
+      ],
+      close: async () => undefined,
+    }));
+    return (await runner.runOrResume({
+      mode: "resume",
+      category,
+      deploymentFingerprint,
+      headerHash,
+      decisionDigest,
+      actuationPermit: input.controller.permit,
+      fundingReservationPermit:
+        unsafeCreateWorkflowFundingReservationPermitForTest({
+          category,
+          actuationPermit: input.controller.permit,
+          deploymentFingerprint,
+          decisionDigest,
+          rollbackGeneration,
+        }),
+      // A fresh view of the saved journal: each run binds its own.
+      journal: {
+        load: async (workflowId: string) => await input.store.load(workflowId),
+        append: async (...entry: Parameters<typeof input.store.append>) =>
+          await input.store.append(...entry),
+      },
+      runtimeConfigPath: "/fixture/reconciliation-runtime.json",
+    })) as FraudProofWorkflowRunResult;
+  } finally {
+    restore();
+  }
+};

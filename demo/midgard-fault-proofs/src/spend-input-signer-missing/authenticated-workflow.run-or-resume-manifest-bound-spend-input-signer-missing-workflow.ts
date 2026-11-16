@@ -11,6 +11,8 @@ import {
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import {
   createSpendInputSignerMissingBoundConfig,
@@ -24,7 +26,7 @@ import {
 } from "./authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
 import {
   createManifestBoundSpendInputSignerMissingRuntime,
-  type ManifestBoundSpendInputSignerMissingWorkflow,
+  type ManifestBoundSpendInputSignerMissingInstallation,
   type ManifestBoundSpendInputSignerMissingWorkflowConfig,
   SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.spend-input-signer-missing-family-definition.js";
@@ -61,19 +63,22 @@ export const createManifestBoundSpendInputSignerMissingWorkflow = async (
     deployment.binding,
   );
   const l1 = deployment.l1;
-  return Object.freeze({
-    deployment,
-    workflowVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-    ...(input.replayContext === undefined
-      ? {}
-      : { replayContext: input.replayContext }),
-  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
+      config,
+      binding: config.binding,
+      l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+      ...(input.replayContext === undefined
+        ? {}
+        : { replayContext: input.replayContext }),
+    }),
+    createSpendInputSignerMissingRecoveryAdapter,
+  );
 };
 
 /**
@@ -137,7 +142,7 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
   };
 
 export const createSpendInputSignerMissingRecoveryAdapter = (
-  workflow: ManifestBoundSpendInputSignerMissingWorkflow,
+  workflow: ManifestBoundSpendInputSignerMissingInstallation,
 ) => {
   const { config } = workflow;
   const material = createCanonicalFamilyArtifactPort(
@@ -158,6 +163,12 @@ export const createSpendInputSignerMissingRecoveryAdapter = (
   );
 };
 
+export type ManifestBoundSpendInputSignerMissingWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundSpendInputSignerMissingInstallation,
+    ReturnType<typeof createSpendInputSignerMissingRecoveryAdapter>
+  >;
+
 export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   workflow,
   sources,
@@ -167,9 +178,4 @@ export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }) =>
-  await executeManifestBoundFamilyRecovery({
-    ...workflow,
-    sources,
-    journal,
-    ...createSpendInputSignerMissingRecoveryAdapter(workflow),
-  });
+  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });

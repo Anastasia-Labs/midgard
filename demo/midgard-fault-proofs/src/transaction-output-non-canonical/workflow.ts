@@ -39,7 +39,6 @@ export { createManifestBoundTransactionOutputNonCanonicalSubmission } from "./wo
 export {
   createManifestBoundTransactionOutputNonCanonicalRuntime,
   loadTransactionOutputNonCanonicalRuntime,
-  type ManifestBoundTransactionOutputNonCanonicalWorkflow,
   type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   prepareTransactionOutputNonCanonicalRecoveryMaterial,
 } from "./workflow.create-transaction-output-non-canonical-recovery-ports.js";
@@ -57,6 +56,7 @@ export {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
   createTransactionOutputNonCanonicalRecoveryAdapter,
   executeManifestBoundTransactionOutputNonCanonicalWorkflow,
+  type ManifestBoundTransactionOutputNonCanonicalWorkflow,
   runOrResumeManifestBoundTransactionOutputNonCanonicalWorkflow,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
 } from "./workflow.run-or-resume-manifest-bound-transaction-output-non-canonical-workflow.js";

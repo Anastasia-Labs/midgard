@@ -86,6 +86,7 @@ import {
   doubleSpendRecord,
   loadedRuntime,
   prepareRuntimeFunding,
+  recoverableDoubleSpendWorkflow,
   slashFundingFixture,
 } from "./workflow-runtime.slash-funding-fixture.js";
 
@@ -895,15 +896,9 @@ describe("compiled manifest-bound production runtime V1", () => {
     const close = vi.fn(async () => undefined);
     const loadRuntime = vi.fn(async () => loadedRuntime(actuation, { close }));
     const bindConfig = vi.fn(() => ({ releaseConfig: "manifest-bound" }));
-    const constructWorkflow = vi.fn(async (_config: unknown) => ({
-      binding: {
-        deploymentFingerprint: DEPLOYMENT,
-        definition: {
-          category: "doubleSpend" as const,
-          headerHash: actuation.headerHash,
-        },
-      },
-    }));
+    const constructWorkflow = vi.fn(async (_config: unknown) =>
+      recoverableDoubleSpendWorkflow(actuation.headerHash),
+    );
     const execute = vi.fn(async ({ journal, mode }) => {
       expect(journal).toBeInstanceOf(DirectoryFraudProofWorkflowJournalStore);
       expect(mode).toBe("resume");
@@ -985,15 +980,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     const actuation = await admittedActuation();
     const close = vi.fn(async () => undefined);
     const sources = [retainedDaSource()];
-    const workflow = {
-      binding: {
-        deploymentFingerprint: DEPLOYMENT,
-        definition: {
-          category: "doubleSpend" as const,
-          headerHash: actuation.headerHash,
-        },
-      },
-    };
+    const workflow = recoverableDoubleSpendWorkflow(actuation.headerHash);
     const loadRuntime = vi.fn(async () =>
       loadedRuntime(actuation, { retainedDaSources: sources, close }),
     );
@@ -1067,15 +1054,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     const runner = createManifestBoundWorkflowRunner({
       record: doubleSpendRecord({
         bindConfig: () => ({}),
-        constructWorkflow: async () => ({
-          binding: {
-            deploymentFingerprint: DEPLOYMENT,
-            definition: {
-              category: "doubleSpend" as const,
-              headerHash: actuation.headerHash,
-            },
-          },
-        }),
+        constructWorkflow: async () =>
+          recoverableDoubleSpendWorkflow(actuation.headerHash),
         execute,
       }),
       loadRuntime: async () =>
@@ -1352,15 +1332,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       roster: {},
       requires: ["replayContext"] as const,
       bindConfig: () => undefined,
-      constructWorkflow: async () => ({
-        binding: {
-          deploymentFingerprint: DEPLOYMENT,
-          definition: {
-            category: "doubleSpend" as const,
-            headerHash: actuation.headerHash,
-          },
-        },
-      }),
+      constructWorkflow: async () =>
+        recoverableDoubleSpendWorkflow(actuation.headerHash),
       execute: async () => ({}),
       bindsDecisionDigest: false,
     });
@@ -1408,15 +1381,11 @@ describe("compiled manifest-bound production runtime V1", () => {
     const identityOf = (
       actuation: Actuation,
       deploymentFingerprint: string = DEPLOYMENT,
-    ) => ({
-      binding: {
+    ) =>
+      recoverableDoubleSpendWorkflow(
+        actuation.headerHash,
         deploymentFingerprint,
-        definition: {
-          category: "doubleSpend" as const,
-          headerHash: actuation.headerHash,
-        },
-      },
-    });
+      );
     const invocationOf = (actuation: Actuation, journalDirectory: string) => ({
       mode: "run" as const,
       category: "doubleSpend" as const,
@@ -1616,14 +1585,14 @@ describe("compiled manifest-bound production runtime V1", () => {
       expect(rostered.execute).not.toHaveBeenCalled();
     });
 
-    it("exempts the record's requirements under reconciliation-only authority and then demands the recovery surface", async () => {
+    it("exempts the record's requirements under reconciliation-only authority and reconciles only a recorded workflow", async () => {
       const { outcome, close, execute } = await driveGenericRunOrResume({
         loaded: publicLoaded(),
         record: { requires: ["replayContext"] },
         restrictToReconciliation: true,
       });
       await expect(outcome).rejects.toThrow(
-        "manifest-bound workflow omitted its existing adapter recovery surface",
+        "recorded workflow has no prepared evidence",
       );
       expect(close).toHaveBeenCalledOnce();
       expect(execute).not.toHaveBeenCalled();
@@ -1640,13 +1609,7 @@ describe("compiled manifest-bound production runtime V1", () => {
             requires: [],
             bindConfig: () => undefined,
             constructWorkflow: async () => ({
-              binding: {
-                deploymentFingerprint: DEPLOYMENT,
-                definition: {
-                  category: "doubleSpend" as const,
-                  headerHash: actuation.headerHash,
-                },
-              },
+              ...recoverableDoubleSpendWorkflow(actuation.headerHash),
               decisionDigest: "ab".repeat(32),
             }),
             execute,

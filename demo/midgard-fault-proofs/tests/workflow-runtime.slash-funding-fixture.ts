@@ -33,6 +33,7 @@ import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fi
 import {
   emptyRosterReferenceScriptResolver,
   familyCommonInfrastructureForTest,
+  unreachableRecoverySurfaceForTest,
 } from "./support/family-common-infrastructure.js";
 import {
   admittedActuation,
@@ -63,6 +64,18 @@ export const loadedRuntime = (
 
 export type DoubleSpendIdentity =
   FamilyApplicationWorkflowIdentity<"doubleSpend">;
+
+/** A doubleSpend workflow whose recovery surface these runs never reach. */
+export const recoverableDoubleSpendWorkflow = (
+  headerHash: string,
+  deploymentFingerprint: string = DEPLOYMENT,
+) => ({
+  binding: {
+    deploymentFingerprint,
+    definition: { category: "doubleSpend" as const, headerHash },
+  },
+  ...unreachableRecoverySurfaceForTest,
+});
 
 /** A doubleSpend record with an empty roster and no requirements. */
 export const doubleSpendRecord = <Config, Workflow extends DoubleSpendIdentity>(

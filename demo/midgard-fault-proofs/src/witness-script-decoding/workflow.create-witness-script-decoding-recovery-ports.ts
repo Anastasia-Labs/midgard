@@ -55,7 +55,8 @@ export type ManifestBoundWitnessScriptDecodingWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundWitnessScriptDecodingWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundWitnessScriptDecodingInstallation = Readonly<{
   deployment: Deployment;
   workflowVersion: typeof WITNESS_SCRIPT_DECODING_WORKFLOW;
   config: ManifestBoundWitnessScriptDecodingConfig;
@@ -145,7 +146,7 @@ const SCRIPT_DECODE_RECORDED_BEFORE: ReadonlySet<string> = new Set([
 ]);
 
 export const createWitnessScriptDecodingRecoveryPorts = (
-  workflow: ManifestBoundWitnessScriptDecodingWorkflow,
+  workflow: ManifestBoundWitnessScriptDecodingInstallation,
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
   const category = "witnessScriptDecoding";
@@ -297,7 +298,7 @@ type Deployment = FamilyDeploymentContext<
 >;
 
 export type RunContext = Readonly<{
-  workflow: ManifestBoundWitnessScriptDecodingWorkflow;
+  workflow: ManifestBoundWitnessScriptDecodingInstallation;
 }>;
 
 export type BoundContext = FamilyAssemblyContext<

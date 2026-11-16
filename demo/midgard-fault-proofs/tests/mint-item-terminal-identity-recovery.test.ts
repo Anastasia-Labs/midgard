@@ -1,9 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import {
-  executeManifestBoundMintItemNonCanonicalWorkflow,
-  MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
-} from "../src/mint-item-non-canonical/workflow.js";
+import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow.js";
 import {
   bindWorkflowActuationJournal,
   bindWorkflowActuationRecoveryIdentity,
@@ -16,7 +13,7 @@ import {
   MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
-import { runBoundFamilyRecovery } from "./support/bound-family-recovery-fixture.js";
+import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture,
   verifyTerminalRecoveryFinality,
@@ -74,6 +71,9 @@ it("continues the retained terminal journal under refreshed authority without ch
   try {
     const recovery = {
       ...f,
+      controller,
+      decision: refreshed,
+      store,
       journal: bindWorkflowActuationJournal({
         journal: store,
         permit: controller.permit,
@@ -82,15 +82,13 @@ it("continues the retained terminal journal under refreshed authority without ch
         category: original.category,
         headerHash: original.headerHash,
       }),
-      workflow: { ...f.workflow, decisionDigest: refreshed.decisionDigest },
     };
     await verifyTerminalRecoveryFinality(
       recovery,
       async (input) =>
-        await runBoundFamilyRecovery(
-          executeManifestBoundMintItemNonCanonicalWorkflow,
-          input,
-        ),
+        await runRegisteredFamilyReconciliation(input, {
+          rollbackGeneration: "1",
+        }),
     );
     const completed = await store.load(f.workflowId);
     expect(completed.slice(0, entries.length)).toEqual(entries);

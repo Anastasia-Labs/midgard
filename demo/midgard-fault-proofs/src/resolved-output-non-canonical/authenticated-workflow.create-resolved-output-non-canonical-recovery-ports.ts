@@ -5,7 +5,6 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   type CompleteCanonicalReplayContext,
   completeCanonicalReplayPredecessorLedger,
@@ -111,7 +110,8 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
       replayContext?: CompleteCanonicalReplayContext;
     }>;
 
-export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundResolvedOutputNonCanonicalInstallation = Readonly<{
   deployment: Deployment;
   workflowVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundResolvedOutputNonCanonicalConfig;
@@ -182,7 +182,7 @@ export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
 };
 
 export const createResolvedOutputNonCanonicalRecoveryPorts = (
-  workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow,
+  workflow: ManifestBoundResolvedOutputNonCanonicalInstallation,
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
   const category = "resolvedOutputNonCanonical";
@@ -318,6 +318,5 @@ type Deployment = FamilyDeploymentContext<
 >;
 
 export type RunContext = Readonly<{
-  workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow;
-  sources: readonly RetainedDaPayloadSource[];
+  workflow: ManifestBoundResolvedOutputNonCanonicalInstallation;
 }>;

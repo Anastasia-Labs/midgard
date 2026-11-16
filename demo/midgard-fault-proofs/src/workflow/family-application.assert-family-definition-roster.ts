@@ -54,8 +54,7 @@ export type FamilyCommonInfrastructure = Readonly<{
  * The identity every constructed workflow carries. `decisionDigest` is present
  * only on the families whose record sets `bindsDecisionDigest`. The three
  * recovery members are what a reconciliation-only resume reads back an
- * already-submitted chain through; the shared runtime refuses to reconcile a
- * workflow that omits any of them.
+ * already-submitted chain through, so every family's constructor supplies them.
  */
 export type FamilyApplicationWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,
@@ -68,9 +67,9 @@ export type FamilyApplicationWorkflowIdentity<
     }>;
   }>;
   decisionDigest?: string;
-  adapter?: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier?: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority?: FraudProofReleaseFinalityAuthority;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
 /** Resolved published reference-script UTxOs, keyed by the record's roles. */

@@ -14,7 +14,11 @@ import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
-import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
+import {
+  executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
 import {
   TransactionOutputStep02DatumSchema,
   TransactionOutputStep03DatumDatumSchema,
@@ -27,7 +31,7 @@ import {
 } from "./transaction-output-non-canonical.js";
 import {
   createManifestBoundTransactionOutputNonCanonicalRuntime,
-  type ManifestBoundTransactionOutputNonCanonicalWorkflow,
+  type ManifestBoundTransactionOutputNonCanonicalInstallation,
   type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   type RunContext,
   runFor,
@@ -86,16 +90,19 @@ export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
         input.referenceScripts.fieldGrammarCertificateSpend,
     },
   });
-  return Object.freeze({
-    deployment,
-    workflowVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
-    config,
-    binding: deployment.binding,
-    l1: deployment.l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
+      config,
+      binding: deployment.binding,
+      l1: deployment.l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+    }),
+    createTransactionOutputNonCanonicalRecoveryAdapter,
+  );
 };
 
 /**
@@ -182,7 +189,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
 });
 
 export const createTransactionOutputNonCanonicalRecoveryAdapter = (
-  workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow,
+  workflow: ManifestBoundTransactionOutputNonCanonicalInstallation,
 ) => {
   const assembled = assembleBoundManifestBoundFamilyWorkflow(
     TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
@@ -196,6 +203,12 @@ export const createTransactionOutputNonCanonicalRecoveryAdapter = (
   };
 };
 
+export type ManifestBoundTransactionOutputNonCanonicalWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundTransactionOutputNonCanonicalInstallation,
+    ReturnType<typeof createTransactionOutputNonCanonicalRecoveryAdapter>
+  >;
+
 export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
   async ({
     workflow,
@@ -206,9 +219,4 @@ export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
     readonly sources: readonly RetainedDaPayloadSource[];
     readonly journal: FraudProofWorkflowJournalStore;
   }) =>
-    await executeManifestBoundFamilyRecovery({
-      ...workflow,
-      sources,
-      journal,
-      ...createTransactionOutputNonCanonicalRecoveryAdapter(workflow),
-    });
+    await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });

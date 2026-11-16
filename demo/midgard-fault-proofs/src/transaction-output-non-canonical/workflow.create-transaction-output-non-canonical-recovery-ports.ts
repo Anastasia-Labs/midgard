@@ -106,7 +106,8 @@ export type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundTransactionOutputNonCanonicalWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundTransactionOutputNonCanonicalInstallation = Readonly<{
   deployment: Deployment;
   workflowVersion: typeof TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundTransactionOutputNonCanonicalConfig;
@@ -163,7 +164,7 @@ export const prepareTransactionOutputNonCanonicalRecoveryMaterial = async (
 };
 
 const createTransactionOutputNonCanonicalRecoveryPorts = (
-  workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow,
+  workflow: ManifestBoundTransactionOutputNonCanonicalInstallation,
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
   const category = "transactionOutputNonCanonical";
@@ -295,7 +296,7 @@ type Deployment = FamilyDeploymentContext<
 >;
 
 export type RunContext = Readonly<{
-  workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow;
+  workflow: ManifestBoundTransactionOutputNonCanonicalInstallation;
 }>;
 
 type BoundContext = FamilyAssemblyContext<

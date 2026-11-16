@@ -37,10 +37,10 @@ export {
   createManifestBoundWitnessScriptDecodingWorkflow,
   createWitnessScriptDecodingRecoveryAdapter,
   executeManifestBoundWitnessScriptDecodingWorkflow,
+  type ManifestBoundWitnessScriptDecodingWorkflow,
   WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
 } from "./workflow.create-manifest-bound-witness-script-decoding-workflow.js";
 export {
-  type ManifestBoundWitnessScriptDecodingWorkflow,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   prepareWitnessScriptDecodingRecoveryMaterial,
 } from "./workflow.create-witness-script-decoding-recovery-ports.js";

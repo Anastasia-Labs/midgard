@@ -36,7 +36,6 @@ import "./authenticated-workflow.create-manifest-bound-resolved-output-non-canon
 import "./authenticated-workflow.create-resolved-output-non-canonical-recovery-ports.js";
 import "./authenticated-workflow.run-or-resume-manifest-bound-resolved-output-non-canonical-workflow.js";
 export {
-  type ManifestBoundResolvedOutputNonCanonicalWorkflow,
   type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
   prepareResolvedOutputNonCanonicalRecoveryMaterial,
 } from "./authenticated-workflow.create-resolved-output-non-canonical-recovery-ports.js";
@@ -60,6 +59,7 @@ export {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   createResolvedOutputNonCanonicalRecoveryAdapter,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
+  type ManifestBoundResolvedOutputNonCanonicalWorkflow,
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
   runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-resolved-output-non-canonical-workflow.js";

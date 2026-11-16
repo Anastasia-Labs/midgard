@@ -56,12 +56,12 @@ export {
   prepareOutputReferenceScriptDecodingRecoveryMaterial,
 } from "./authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 export {
+  createManifestBoundOutputReferenceScriptDecodingWorkflow,
   createOutputReferenceScriptDecodingRecoveryAdapter,
   executeManifestBoundOutputReferenceScriptDecodingWorkflow,
+  type ManifestBoundOutputReferenceScriptDecodingWorkflow,
 } from "./authenticated-workflow.execute-manifest-bound-output-reference-script-decoding-workflow.js";
 export {
-  createManifestBoundOutputReferenceScriptDecodingWorkflow,
-  type ManifestBoundOutputReferenceScriptDecodingWorkflow,
   type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.output-reference-script-decoding-family-definition.js";

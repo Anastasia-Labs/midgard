@@ -14,6 +14,8 @@ import {
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import {
   type FieldItemWidthJournal,
@@ -61,7 +63,8 @@ export type ManifestBoundFieldItemWidthIllegalWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundFieldItemWidthIllegalWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+type ManifestBoundFieldItemWidthIllegalInstallation = Readonly<{
   deployment: FamilyDeploymentContext<
     "fieldItemWidthIllegal",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
@@ -103,16 +106,19 @@ export const createManifestBoundFieldItemWidthIllegalWorkflow = async (
     deployment.binding,
   );
   const l1 = deployment.l1;
-  return Object.freeze({
-    deployment,
-    workflowVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
+      config,
+      binding: config.binding,
+      l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+    }),
+    createFieldItemWidthIllegalRecoveryAdapter,
+  );
 };
 
 /**
@@ -162,7 +168,7 @@ export const runOrResumeManifestBoundFieldItemWidthIllegalWorkflow =
   };
 
 export const createFieldItemWidthIllegalRecoveryAdapter = (
-  workflow: ManifestBoundFieldItemWidthIllegalWorkflow,
+  workflow: ManifestBoundFieldItemWidthIllegalInstallation,
 ) => {
   const { config } = workflow;
   const material = createCanonicalFamilyArtifactPort(
@@ -180,6 +186,12 @@ export const createFieldItemWidthIllegalRecoveryAdapter = (
   return { ...assembled };
 };
 
+export type ManifestBoundFieldItemWidthIllegalWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundFieldItemWidthIllegalInstallation,
+    ReturnType<typeof createFieldItemWidthIllegalRecoveryAdapter>
+  >;
+
 export const executeManifestBoundFieldItemWidthIllegalWorkflow = async ({
   workflow,
   sources,
@@ -189,9 +201,4 @@ export const executeManifestBoundFieldItemWidthIllegalWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }) =>
-  await executeManifestBoundFamilyRecovery({
-    ...workflow,
-    sources,
-    journal,
-    ...createFieldItemWidthIllegalRecoveryAdapter(workflow),
-  });
+  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });

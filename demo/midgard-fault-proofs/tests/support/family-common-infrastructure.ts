@@ -2,6 +2,11 @@ import type {
   FamilyCommonInfrastructure,
   FamilyReferenceScriptResolver,
 } from "../../src/workflow/family-application.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "../../src/workflow/orchestrator.js";
+import type { FraudProofReleaseFinalityAuthority } from "../../src/workflow/release-finality-policy.js";
 
 /**
  * The common infrastructure a host loads for one invocation, as a runtime
@@ -29,3 +34,13 @@ export const emptyRosterReferenceScriptResolver: FamilyReferenceScriptResolver =
   async () => {
     throw new Error("an empty roster resolves no reference script");
   };
+
+/**
+ * The recovery surface of a test workflow that never reconciles a recorded
+ * chain: inert placeholders no test may touch.
+ */
+export const unreachableRecoverySurfaceForTest = Object.freeze({
+  adapter: {} as FraudProofFamilyWorkflowAdapter,
+  terminalVerifier: {} as FraudProofWorkflowTerminalVerifier,
+  releaseFinalityAuthority: {} as FraudProofReleaseFinalityAuthority,
+});

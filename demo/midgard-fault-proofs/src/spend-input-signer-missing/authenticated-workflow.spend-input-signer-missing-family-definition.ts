@@ -142,7 +142,8 @@ export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
       replayContext?: CompleteCanonicalReplayContext;
     }>;
 
-export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundSpendInputSignerMissingInstallation = Readonly<{
   deployment: FamilyDeploymentContext<
     "spendInputSignerMissing",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",

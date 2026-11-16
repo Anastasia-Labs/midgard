@@ -54,14 +54,14 @@ export {
   prepareProtectedOutputSignerMissingRecoveryMaterial,
 } from "./authenticated-workflow.derive-protected-output-signer-missing-authenticated-source.js";
 export {
-  createManifestBoundProtectedOutputSignerMissingWorkflow,
   loadManifestBoundProtectedOutputSignerMissingConfig,
-  type ManifestBoundProtectedOutputSignerMissingWorkflow,
   type ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
   PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.protected-output-signer-missing-family-definition.js";
 export {
+  createManifestBoundProtectedOutputSignerMissingWorkflow,
   createProtectedOutputSignerMissingRecoveryAdapter,
   executeManifestBoundProtectedOutputSignerMissingWorkflow,
+  type ManifestBoundProtectedOutputSignerMissingWorkflow,
   runOrResumeManifestBoundProtectedOutputSignerMissingWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-protected-output-signer-missing-workflow.js";

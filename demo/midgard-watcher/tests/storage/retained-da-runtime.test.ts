@@ -8,6 +8,9 @@ import {
   DaLibp2pRetainedDaSource,
   defineFamilyApplication,
   type FamilyCommonInfrastructure,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofReleaseFinalityAuthority,
+  type FraudProofWorkflowTerminalVerifier,
   MemoryFraudProofWorkflowJournalStore,
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadSourceResult,
@@ -55,6 +58,9 @@ type TestDoubleSpendWorkflow = Readonly<{
       headerHash: string;
     }>;
   }>;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
 /** The infrastructure a test builder hands back for one invocation. */
@@ -722,6 +728,10 @@ describe("production retained-DA runtime V1", () => {
               headerHash: infrastructure.headerHash,
             },
           },
+          // The permit refusal precedes construction, so recovery is never read.
+          adapter: {} as FraudProofFamilyWorkflowAdapter,
+          terminalVerifier: {} as FraudProofWorkflowTerminalVerifier,
+          releaseFinalityAuthority: {} as FraudProofReleaseFinalityAuthority,
         }),
         constructWorkflow: async (config) => config,
         execute: async () => {

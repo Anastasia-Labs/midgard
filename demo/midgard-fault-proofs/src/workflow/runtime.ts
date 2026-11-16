@@ -187,14 +187,6 @@ const createManifestBoundWorkflowRunOrResume =
         journal,
         execute: (mode) => {
           if (reconciliationOnly) {
-            if (
-              workflow.adapter === undefined ||
-              workflow.terminalVerifier === undefined ||
-              workflow.releaseFinalityAuthority === undefined
-            )
-              throw new Error(
-                "manifest-bound workflow omitted its existing adapter recovery surface",
-              );
             return resumeRecordedFraudProofWorkflow({
               deploymentFingerprint: invocation.deploymentFingerprint,
               category,

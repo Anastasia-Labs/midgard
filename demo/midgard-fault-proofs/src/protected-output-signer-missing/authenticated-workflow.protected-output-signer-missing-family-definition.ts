@@ -24,7 +24,6 @@ import {
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -138,7 +137,8 @@ export type ManifestBoundProtectedOutputSignerMissingWorkflowConfig =
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundProtectedOutputSignerMissingWorkflow = Readonly<{
+/** The bound deployment a workflow's recovery surface is assembled over. */
+export type ManifestBoundProtectedOutputSignerMissingInstallation = Readonly<{
   deployment: FamilyDeploymentContext<
     "protectedOutputSignerMissing",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
@@ -152,47 +152,6 @@ export type ManifestBoundProtectedOutputSignerMissingWorkflow = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
-
-/** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundProtectedOutputSignerMissingWorkflow = async (
-  input: ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
-): Promise<ManifestBoundProtectedOutputSignerMissingWorkflow> => {
-  const deployment = await bindManifestBoundFamilyWorkflow(
-    PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
-    {
-      ...input,
-      referenceScripts: {
-        steps: [
-          input.referenceScripts.step01,
-          input.referenceScripts.step02,
-          input.referenceScripts.step03,
-          input.referenceScripts.step04,
-          input.referenceScripts.step05,
-        ],
-        witnesses: input.referenceScripts.witnesses,
-        fieldPreimageCertificateMint:
-          input.referenceScripts.fieldPreimageCertificateMint,
-        fieldGrammarCertificateSpend:
-          input.referenceScripts.fieldGrammarCertificateSpend,
-      },
-    },
-  );
-  const config = createProtectedOutputSignerMissingBoundConfig(
-    input,
-    deployment.binding,
-  );
-  const l1 = deployment.l1;
-  return Object.freeze({
-    deployment,
-    workflowVersion: PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
-};
 
 export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   "protectedOutputSignerMissing",

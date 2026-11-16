@@ -24,6 +24,7 @@ import {
 import {
   doubleSpendRecord,
   loadedRuntime,
+  recoverableDoubleSpendWorkflow,
 } from "./workflow-runtime.slash-funding-fixture.js";
 
 const paths: string[] = [];
@@ -148,15 +149,8 @@ const runnerFor = async (
   const runner = createManifestBoundWorkflowRunner({
     record: doubleSpendRecord({
       bindConfig: () => ({}),
-      constructWorkflow: async () => ({
-        binding: {
-          deploymentFingerprint: DEPLOYMENT,
-          definition: {
-            category: "doubleSpend" as const,
-            headerHash: actuation.headerHash,
-          },
-        },
-      }),
+      constructWorkflow: async () =>
+        recoverableDoubleSpendWorkflow(actuation.headerHash),
       execute,
     }),
     loadRuntime: async () => loadedRuntime(actuation, { close }),
