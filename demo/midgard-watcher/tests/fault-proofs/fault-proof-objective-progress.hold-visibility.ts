@@ -9,7 +9,7 @@ import type { setup } from "./fault-proof-objective-progress.test.js";
 export const registerFaultProofResubmissionVisibilityTest = (
   setupScenario: typeof setup,
 ): void => {
-  it("names an objective whose next action needs a new submission after its latest safe start on readiness and metrics until a run moves on", async () => {
+  it("names an objective whose next action needs a new submission after its header matured on readiness and metrics until a run moves on", async () => {
     const test = await setupScenario(20n);
     // The signed attempt reconciles, but the next step needs a new
     // submission, which reconciliation-only authority never makes.

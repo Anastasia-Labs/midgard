@@ -32,8 +32,8 @@ export const watcherProofObjectiveAlertSubject = (
  * The execution's per-objective alerts:
  *
  * - `maturity_deadline_risk`: a run started past the objective's latest safe
- *   start (the supervisor marks it `startedLate`), with nothing signed. The
- *   proof can still land before maturity, so the watcher keeps trying, and
+ *   start (the supervisor marks it `startedLate`), signed or not. The proof
+ *   can still land before maturity, so the watcher keeps trying, and
  *   says so loudly: an error line naming the objective, the active alert,
  *   and the `fault_proof_started_late` readiness entry.
  * - `prover_funding_unavailable`: the objective's last run was paused
@@ -71,7 +71,7 @@ export const createWatcherFaultProofObjectiveAlerts = (
       if (!startedLate || job.deadline === null || late.has(objective)) return;
       const entry = Object.freeze({
         reason: WATCHER_FAULT_PROOF_STARTED_LATE,
-        detail: `${objective}: started after its latest safe start ${job.deadline.latestSafeStartAtMs}; the proof must land before maturity at ${job.deadline.maturityAtMs}`,
+        detail: `${objective}: running after its latest safe start ${job.deadline.latestSafeStartAtMs}; the proof must land before maturity at ${job.deadline.maturityAtMs}`,
       });
       late.set(objective, entry);
       process.stderr.write(

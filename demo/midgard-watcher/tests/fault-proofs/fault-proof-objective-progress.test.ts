@@ -22,6 +22,7 @@ import {
   fixture as terminalFixture,
   rollBackTerminalFixture,
 } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
+import type { UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
@@ -61,6 +62,7 @@ import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervis
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
+import { registerLateMultiStepTests } from "./fault-proof-objective-progress.late-multi-step.js";
 import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
 import { registerPrepareStopTests } from "./fault-proof-objective-progress.prepare-stop.js";
 const finishControl = vi.hoisted(() => ({
@@ -161,7 +163,11 @@ export const setup = async (
     headerEndTime,
   );
   const getUtxos = vi.fn(async () => fixture.walletUtxos);
-  const getUtxosByOutRef = vi.fn(async () => []);
+  const getUtxosByOutRef = vi.fn(
+    async (
+      _outRefs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
+    ): Promise<UTxO[]> => [],
+  );
   const journal = fixture.objectiveJournal();
   const append = async (event: FraudProofWorkflowJournalEvent) => {
     const entries = await journal.load(fixture.initial.workflowId);
@@ -1138,6 +1144,7 @@ describe("proof objective progress with durable funding and journals", () => {
   registerPrepareStopTests(setup);
   registerFaultProofResubmissionVisibilityTest(setup);
   registerLateStartTests(setup);
+  registerLateMultiStepTests(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

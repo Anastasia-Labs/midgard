@@ -489,8 +489,8 @@ export const createSupervisor = (input: {
                 };
         }
       } else {
-        // Past the latest safe start a signed attempt is only reconciled;
-        // unsigned work runs late until maturity (fault-proof-supervisor.safe-start.ts).
+        // Past the latest safe start work runs late until maturity; at
+        // maturity a signed attempt is only reconciled (fault-proof-supervisor.safe-start.ts).
         const timing = watcherProofStartTiming(job, execution, BigInt(now()));
         if (timing === "reconcile") {
           invocationPermit = await progressAuthority.reconcileExecution({

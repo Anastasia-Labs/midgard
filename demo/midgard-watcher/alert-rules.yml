@@ -76,7 +76,7 @@ groups:
           runbook: "docs/operations/alerts.md#midgardwatcherproverfundingunavailable"
 
       - alert: MidgardWatcherProofStartedLate
-        # A fault proof started after its latest safe start; it must land
+        # A fault proof runs after its latest safe start; it must land
         # before its header matures.
         expr: midgard_watcher_active_alerts{code="maturity_deadline_risk"} > 0
         labels:

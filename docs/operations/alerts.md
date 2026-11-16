@@ -334,7 +334,7 @@ names why:
 | ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
 | `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                   | A later run that journals progress           |
 | `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff    | The first run that meets something else      |
-| `fault_proof_resubmission_required`   | The next action needs a fresh submission after the latest safe start passed | See escalation                               |
+| `fault_proof_resubmission_required`   | The next action needs a fresh submission after the header matured           | See escalation                               |
 | `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                 | Its header leaving the finalized state queue |
 | `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired         | Its attempts retired past release finality   |
 | `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)   | The next run whose reads the source answers  |
@@ -351,8 +351,9 @@ instead.
 deadline-bound ones clears by itself.
 
 **Escalate** `fault_proof_resubmission_required` at once: no command at this
-release grants fresh submission authority to an objective whose latest safe
-start passed after it signed an attempt. Another independent challenger can
+release grants fresh submission authority to an objective whose header
+matured after it signed an attempt; before maturity it keeps submitting,
+late. Another independent challenger can
 still prove the same fault while the challenge window is open (proving is
 permissionless). `fault_proof_start_deadline_passed` means the header matured
 unproven: no removal can land any more. If the header merged, its block is in
@@ -386,16 +387,19 @@ it.
 
 ### MidgardWatcherProofStartedLate
 
-**Meaning.** A fault proof with nothing signed started after its header's
-latest safe start (`maturity_deadline_risk` alert). The latest safe start is a
-margin: the state queue accepts a completed fraud-proof removal until the
-header matures, so the watcher keeps trying until then. The watcher writes
+**Meaning.** A fault proof ran after its header's latest safe start
+(`maturity_deadline_risk` alert), whether it started then or signed a step
+before. The latest safe start is a margin: the state queue accepts a
+completed fraud-proof removal until the header matures, so until then the
+watcher keeps every right an on-time run has: a fresh submission for each
+later step, and a new attempt for a signed step whose validity lapsed. The watcher writes
 one error line naming the objective, and the readiness reason
 `fault_proof_started_late` names it as `<category>/<headerHash>` with its
 latest safe start and its maturity. The alert clears when the correction is
 included, another record resolves the objective, or the header leaves the
 queue. At maturity an objective with nothing signed is held as
-`fault_proof_start_deadline_passed`
+`fault_proof_start_deadline_passed`, and one whose next action needs a fresh
+submission as `fault_proof_resubmission_required`
 ([MidgardWatcherProofHeld](#midgardwatcherproofheld)).
 
 **First checks.**

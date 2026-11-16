@@ -51,7 +51,7 @@ import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 export type WatcherFaultProofExecutionAdmission = Readonly<{
   mode: "run" | "resume";
   funding: "create_or_resume" | "resume_only";
-  /** Past the latest safe start with nothing signed, before maturity. */
+  /** Past the latest safe start, before maturity. */
   startedLate?: true;
 }>;
 
@@ -245,7 +245,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
   // A refused L1 read says nothing about the fault and is not a process
   // failure: the objective is held by name and runs again on the next
   // observation, which clears or renews the hold. An objective that needs a
-  // resubmission after its latest safe start is held by name the same way.
+  // resubmission after its header matured is held by name the same way.
   const holds = new Map<string, Readonly<{ reason: string; detail: string }>>();
   const alerts = createWatcherFaultProofObjectiveAlerts(
     dependencies.operationsSink,

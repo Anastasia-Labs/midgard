@@ -13,14 +13,15 @@ import {
  * fixes:
  *
  * - `on_time`: before its latest safe start, or deadline-free work.
- * - `reconcile`: past its latest safe start with a signed attempt; that
- *   attempt is only reconciled.
- * - `late`: past its latest safe start with nothing signed, but before the
- *   header's maturity. The latest safe start is a design margin (worst-case
- *   proof time before maturity), not the last moment a removal lands: the
- *   state queue accepts a completed fraud-proof removal until maturity. So
- *   the objective runs, funded afresh, and the run is marked late for the
- *   execution's alert.
+ * - `late`: past its latest safe start but before the header's maturity.
+ *   The latest safe start is a design margin (worst-case proof time before
+ *   maturity), not the last moment a removal lands: the state queue accepts
+ *   a completed fraud-proof removal until maturity. So the run keeps every
+ *   right an on-time run has, signed or not: a fresh submission for each
+ *   later step, and a new attempt for a signed step whose validity lapsed.
+ *   It is marked late for the execution's alert.
+ * - `reconcile`: at or past maturity with a signed attempt; that attempt is
+ *   only reconciled.
  *
  * At or past maturity no removal can land, so an objective with nothing
  * signed is held by name (`fault_proof_start_deadline_passed`) until its
@@ -33,13 +34,13 @@ export const watcherProofStartTiming = (
 ): "on_time" | "reconcile" | "late" => {
   if (job.deadline === null || nowMs < BigInt(job.deadline.latestSafeStartAtMs))
     return "on_time";
+  if (nowMs < BigInt(job.deadline.maturityAtMs)) return "late";
   if (
     execution?.entries.some(
       ({ event }) => event.kind === "submission_intent",
     ) === true
   )
     return "reconcile";
-  if (nowMs < BigInt(job.deadline.maturityAtMs)) return "late";
   throw new WatcherProofDecisionMissingError({
     kind: "objective",
     category: job.category,

@@ -108,7 +108,7 @@ const withAlarms = (
 
 /**
  * Holds a pending objective under its name: one that needs a new submission
- * after its latest safe start, one paused because the prover wallet cannot
+ * after its header matured, one paused because the prover wallet cannot
  * fund it, one in a state its family named, one whose session stalled, or
  * one still awaiting its counterparty past the response deadline (as of
  * `nowMs`) and its slack. The last two, and a named state its family marks

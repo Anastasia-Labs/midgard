@@ -64,8 +64,8 @@ transaction or acquiring an unfenced mutation lease.
   paid, release this workflow's reservation, and reconcile as an idempotent
   terminal result.
 - An objective held as `fault_proof_resubmission_required` or
-  `fault_proof_start_deadline_passed`: its latest safe start has passed and
-  the watcher holds reconciliation-only authority, so a restart does not
+  `fault_proof_start_deadline_passed`: its header has matured and the
+  watcher holds reconciliation-only authority, so a restart does not
   resubmit it. Preserve the journals and escalate while the challenge window
   is open; proving is permissionless, so another challenger can still prove
   the fault.
