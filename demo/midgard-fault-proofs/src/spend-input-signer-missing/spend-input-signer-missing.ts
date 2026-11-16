@@ -20,7 +20,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex } from "../evidence/claimed-coordinate.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import type {
   AuthenticatedPriorLedgerOutput,
   ResolvedOutputPriorLedgerReplay,
@@ -40,15 +40,16 @@ const fail = (message: string): never => {
   throw new Error(`${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: ${message}`);
 };
 
-const nonNegativeIndex = (value: number, label: string): number => {
-  if (!Number.isSafeInteger(value) || value < 0)
+const nonNegativeIndex = (value: bigint, label: string): bigint => {
+  if (typeof value !== "bigint" || value < 0n)
     return fail(`${label} is invalid`);
   return value;
 };
 
 export type SpendInputSignerMissingFinding = Readonly<{
   subject: VerdictSubject;
-  inputIndex: number;
+  /** The claimed position, unbounded like the on-chain coordinate. */
+  inputIndex: bigint;
 }>;
 
 /**
@@ -116,7 +117,7 @@ export const requireSpendInputSignerScanEvidence = (
   };
 };
 
-const exactForcedInputIndex = (subject: VerdictSubject): number => {
+const exactForcedInputIndex = (subject: VerdictSubject): bigint => {
   const reason = subject.rejection_reason;
   if (
     reason === null ||
@@ -124,10 +125,7 @@ const exactForcedInputIndex = (subject: VerdictSubject): number => {
     !("SpendInputSignerMissing" in reason)
   )
     return fail("forced subject has the wrong typed rejection reason");
-  const inputIndex = Number(reason.SpendInputSignerMissing.input_index);
-  if (!Number.isSafeInteger(inputIndex))
-    return fail("forced reason input coordinate is invalid");
-  return inputIndex;
+  return reason.SpendInputSignerMissing.input_index;
 };
 
 export const classifySpendInputSignerMissingFinding = ({
@@ -227,12 +225,10 @@ export const prepareSpendInputSignerMissingEvidence = ({
       );
     return evidence;
   };
-  const selected =
-    inputIndex < 0
-      ? undefined
-      : decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!)[
-          inputIndex
-        ];
+  const selected = claimedItem(
+    decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!),
+    inputIndex,
+  );
   if (selected === undefined) {
     directRoute(
       subject,
@@ -340,16 +336,17 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
   const inspect = (
     bytes: Uint8Array,
     subject: VerdictSubject,
-    inputIndex: number,
+    inputIndex: bigint,
   ): void => {
     const material = (
       subject.source_kind === 1n
         ? deriveMidgardForcedTxFaultEvidenceMaterial
         : deriveMidgardNativeTxFaultEvidenceMaterial
     )(bytes);
-    const selected = decodeMidgardInputFieldPreimage(
-      material.fieldPreimages[0]!,
-    )[inputIndex];
+    const selected = claimedItem(
+      decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!),
+      inputIndex,
+    );
     let resolved: AuthenticatedPriorLedgerOutput | undefined;
     if (selected !== undefined) {
       const transactionId = Buffer.from(selected.txId).toString("hex");
@@ -397,7 +394,7 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
       material.transactionId.toString("hex"),
     );
     decodeMidgardInputFieldPreimage(material.fieldPreimages[0]!).forEach(
-      (_input, inputIndex) => inspect(bytes, subject, inputIndex),
+      (_input, inputIndex) => inspect(bytes, subject, BigInt(inputIndex)),
     );
   });
   block.reconstruction.forcedTransactions.forEach((transaction) => {
@@ -414,7 +411,7 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
         sourceKey: transaction.key,
         rejectionReason: reason,
       }),
-      inputIndex,
+      BigInt(inputIndex),
     );
   });
   return Object.freeze(detections);

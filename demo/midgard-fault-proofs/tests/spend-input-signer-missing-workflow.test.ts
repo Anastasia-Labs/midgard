@@ -15,7 +15,7 @@ import {
 
 const evidence: SpendInputSignerMissingEvidence = Object.freeze({
   subject: acceptedVerdictSubject("11".repeat(32)),
-  inputIndex: 0,
+  inputIndex: 0n,
   canonicalTransactionCborHex: "80",
   inputFieldPreimageHex: "80",
   addressWitnessFieldPreimageHex: "80",

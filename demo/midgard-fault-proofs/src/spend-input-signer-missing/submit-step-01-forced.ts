@@ -77,7 +77,7 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         subject: evidence.subject,
-        input_index: BigInt(evidence.inputIndex),
+        input_index: evidence.inputIndex,
         prior_root: evidence.priorRoot,
         witness_set_hash: evidence.witnessSetHashHex,
       },
@@ -120,7 +120,7 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
                 output_index: outputIndex,
               },
             },
-            input_index: BigInt(evidence.inputIndex),
+            input_index: evidence.inputIndex,
           },
         ],
       } as never,

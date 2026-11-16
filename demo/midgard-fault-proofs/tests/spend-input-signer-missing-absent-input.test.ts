@@ -1,6 +1,7 @@
 /**
  * A forced `SpendInputSignerMissing` rejection naming a negative input
- * position is wrongful: the position names no input, so canonical validation
+ * position, or one past any field (up to the rejection codec's 64-bit
+ * bounds), is wrongful: the position names no input, so canonical validation
  * requires no signer there. Step 02 takes the direct route to the terminal
  * without resolving an input. A claim that a held input is absent is refused
  * at step 02, and the route convicts over field 0 at its byte cap.
@@ -123,7 +124,7 @@ const convict = async ({
 /** A forced-rejection evidence for `inputIndex`; the fixture wrapper projects
  * `nativeTx` into its forced form. */
 const forcedEvidence =
-  (nativeTx: NativeTx, inputIndex: number, priorRoot: string) =>
+  (nativeTx: NativeTx, inputIndex: bigint, priorRoot: string) =>
   (block: Awaited<ReturnType<typeof commitForcedBlock>>) =>
     prepareSpendInputSignerMissingEvidence({
       subject: block.subject,
@@ -132,7 +133,7 @@ const forcedEvidence =
       priorRoot,
     });
 
-describe("spendInputSignerMissing forced rejection of a negative coordinate", () => {
+describe("spendInputSignerMissing forced rejection of a coordinate naming no input", () => {
   it("convicts a negative input coordinate", async () => {
     const signerKey = ed25519Keypair(21);
     const prior = await priorLedgerFor(signerKey.keyHash, "2a".repeat(32));
@@ -146,10 +147,36 @@ describe("spendInputSignerMissing forced rejection of a negative coordinate", ()
         nativeTx,
         inputIndex: -1n,
         priorRoot: prior.priorRoot,
-        evidenceFor: forcedEvidence(nativeTx, -1, prior.priorRoot),
+        evidenceFor: forcedEvidence(nativeTx, -1n, prior.priorRoot),
       }),
     );
   }, 600_000);
+
+  it.each([
+    { label: "2^53 + 1", inputIndex: 2n ** 53n + 1n },
+    { label: "the codec's largest, 2^64 - 1", inputIndex: 2n ** 64n - 1n },
+    { label: "the codec's smallest, -2^64", inputIndex: -(2n ** 64n) },
+  ])(
+    "convicts an input coordinate at $label",
+    async ({ inputIndex }) => {
+      const signerKey = ed25519Keypair(25);
+      const prior = await priorLedgerFor(signerKey.keyHash, "2d".repeat(32));
+      const nativeTx = signedNativeTx({
+        outRefBytes: prior.outRefBytes,
+        fee: 29n,
+        witnesses: () => [],
+      });
+      await convict(
+        await boundThread({
+          nativeTx,
+          inputIndex,
+          priorRoot: prior.priorRoot,
+          evidenceFor: forcedEvidence(nativeTx, inputIndex, prior.priorRoot),
+        }),
+      );
+    },
+    600_000,
+  );
 
   it("refuses on chain a claim that a held input is absent", async () => {
     // The operator's rejection is right: input 0's signer never signs.
@@ -176,7 +203,7 @@ describe("spendInputSignerMissing forced rejection of a negative coordinate", ()
       evidenceFor: (block) => ({
         ...prepareSpendInputSignerMissingEvidence({
           subject: acceptedVerdictSubject(block.nativeTxId),
-          inputIndex: 0,
+          inputIndex: 0n,
           canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
           resolved: prior.resolved,
         }),
@@ -227,7 +254,7 @@ describe("spendInputSignerMissing forced rejection of a negative coordinate", ()
       nativeTx,
       inputIndex: -1n,
       priorRoot,
-      evidenceFor: forcedEvidence(nativeTx, -1, priorRoot),
+      evidenceFor: forcedEvidence(nativeTx, -1n, priorRoot),
     });
     expect(thread.evidence.inputCarriage).toBe("Certified");
     const { direct, minted } = await convict(thread);

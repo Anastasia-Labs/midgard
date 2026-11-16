@@ -71,7 +71,7 @@ describe("spendInputSignerMissing steps 02-04 under the workflow capture boundar
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(block.nativeTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });

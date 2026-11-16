@@ -124,10 +124,10 @@ describe("spendInputSignerMissing V1", () => {
       rejectionReason: { SpendInputSignerMissing: { input_index: 3n } },
     });
     expect(() =>
-      classifySpendInputSignerMissingFinding({ subject, inputIndex: 3 }),
+      classifySpendInputSignerMissingFinding({ subject, inputIndex: 3n }),
     ).not.toThrow();
     expect(() =>
-      classifySpendInputSignerMissingFinding({ subject, inputIndex: 2 }),
+      classifySpendInputSignerMissingFinding({ subject, inputIndex: 2n }),
     ).toThrow(/coordinate was substituted/u);
     expect(() =>
       classifySpendInputSignerMissingFinding({
@@ -138,7 +138,7 @@ describe("spendInputSignerMissing V1", () => {
             InputNotFound: { source_kind: 0n, input_index: 3n },
           },
         }),
-        inputIndex: 3,
+        inputIndex: 3n,
       }),
     ).toThrow(/wrong typed rejection reason/u);
   });
@@ -148,7 +148,7 @@ describe("spendInputSignerMissing V1", () => {
     const emptyTxId = computeMidgardNativeTxId(empty).toString("hex");
     const missing = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(emptyTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(empty),
       resolved,
     });
@@ -159,7 +159,7 @@ describe("spendInputSignerMissing V1", () => {
     const invalidTxId = computeMidgardNativeTxId(invalid).toString("hex");
     const invalidEvidence = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(invalidTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
       resolved,
     });
@@ -171,7 +171,7 @@ describe("spendInputSignerMissing V1", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(validTxId),
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
         resolved,
       }),
@@ -183,7 +183,7 @@ describe("spendInputSignerMissing V1", () => {
         sourceKey: { transactionId: "55".repeat(32), outputIndex: 0n },
         rejectionReason: { SpendInputSignerMissing: { input_index: 0n } },
       }),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
       resolved,
     });
@@ -196,7 +196,7 @@ describe("spendInputSignerMissing V1", () => {
     const txId = computeMidgardNativeTxId(transaction).toString("hex");
     const args = {
       subject: acceptedVerdictSubject(txId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
     };
     expect(() =>
@@ -225,7 +225,7 @@ describe("spendInputSignerMissing V1", () => {
     const maximumTxId = computeMidgardNativeTxId(maximum).toString("hex");
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(maximumTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(maximum),
       resolved,
     });
@@ -241,7 +241,7 @@ describe("spendInputSignerMissing V1", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(overTxId),
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(over),
         resolved,
       }),
@@ -281,7 +281,7 @@ describe("spendInputSignerMissing V1", () => {
       });
     const scriptLocked = prepareSpendInputSignerMissingEvidence({
       subject: forced(0n),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor,
       resolved: scriptResolved,
     });
@@ -295,7 +295,7 @@ describe("spendInputSignerMissing V1", () => {
     // does not exist, so no prior-ledger output is resolved.
     const outOfRange = prepareSpendInputSignerMissingEvidence({
       subject: forced(1n),
-      inputIndex: 1,
+      inputIndex: 1n,
       canonicalTransactionCbor,
       priorRoot,
     });
@@ -306,14 +306,14 @@ describe("spendInputSignerMissing V1", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: forced(1n),
-        inputIndex: 1,
+        inputIndex: 1n,
         canonicalTransactionCbor,
       }),
     ).toThrow(/prior-ledger root is required/u);
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: forced(0n),
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor,
         priorRoot,
       }),
@@ -322,7 +322,7 @@ describe("spendInputSignerMissing V1", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(txId),
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
         resolved: scriptResolved,
       }),
@@ -330,7 +330,7 @@ describe("spendInputSignerMissing V1", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(txId),
-        inputIndex: 1,
+        inputIndex: 1n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
         priorRoot,
       }),
@@ -338,7 +338,7 @@ describe("spendInputSignerMissing V1", () => {
     // The witness-scan route is unchanged for a pub-key coordinate.
     const scan = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(txId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
       resolved,
     });

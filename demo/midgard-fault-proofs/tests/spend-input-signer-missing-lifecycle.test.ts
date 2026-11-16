@@ -114,7 +114,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(block.nativeTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
@@ -298,7 +298,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: block.subject,
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
@@ -399,7 +399,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: accepted,
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
         resolved: prior.resolved,
       }),
@@ -410,7 +410,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         sourceKey: transitionTraceOutRef("f9"),
         rejectionReason: { SpendInputSignerMissing: { input_index: 0n } },
       }),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
@@ -492,7 +492,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       subject: acceptedVerdictSubject(
         computeMidgardNativeTxId(foreignTx).toString("hex"),
       ),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(foreignTx),
       resolved: prior.resolved,
     });
@@ -547,14 +547,14 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     const mutated = await run.initThread(block.blockOutRef);
     const boundOutOfRange = await run.step01Accepted(
       mutated,
-      { ...honest, inputIndex: 1 },
+      { ...honest, inputIndex: 1n },
       block.blockOutRef,
       block.txInclusion,
     );
     await expectRefusedOnChain(() =>
       run.step02(
         boundOutOfRange.nextThreadOutRef,
-        { ...honest, inputIndex: 1 },
+        { ...honest, inputIndex: 1n },
         block.compactCbor,
         block.witnessSetCompactCbor,
       ),
@@ -597,14 +597,14 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     expect(() =>
       prepareSpendInputSignerMissingEvidence({
         subject: block.subject,
-        inputIndex: 0,
+        inputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
         resolved: prior.resolved,
       }),
     ).toThrow(/agrees with the operator verdict/u);
     const contradicting = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(block.nativeTxId),
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
@@ -627,7 +627,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
           sourceKey: block.sourceKey,
           rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
         }),
-        inputIndex: 0,
+        inputIndex: 0n,
       }),
     ).toThrow(/wrong typed rejection reason/u);
     const { references, certificateReference } = await publishReferences(
@@ -659,7 +659,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     await expectRefusedOnChain(() =>
       run.step01Forced(
         thread.threadOutRef,
-        { ...honest, subject: shifted, inputIndex: 1 },
+        { ...honest, subject: shifted, inputIndex: 1n },
         block.forcedSource,
       ),
     );
@@ -737,7 +737,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: block.subject,
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });

@@ -124,7 +124,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
     stepIndex,
   });
   if (
-    state.input_index !== BigInt(evidence.inputIndex) ||
+    state.input_index !== evidence.inputIndex ||
     state.prior_root !== evidence.priorRoot ||
     state.witness_set_hash !== evidence.witnessSetHashHex
   )

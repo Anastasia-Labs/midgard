@@ -159,7 +159,7 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
       subject: block.subject,
-      inputIndex: 0,
+      inputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved,
     });
@@ -204,7 +204,7 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
     // to the forced leaf: the thread carries the written coordinate honestly.
     const contradicting = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(block.nativeTxId),
-      inputIndex: Number(written),
+      inputIndex: written,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved,
     });

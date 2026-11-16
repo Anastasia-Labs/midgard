@@ -60,7 +60,7 @@ export const submitSpendInputSignerMissingStep01Accepted = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         subject: evidence.subject,
-        input_index: BigInt(evidence.inputIndex),
+        input_index: evidence.inputIndex,
         prior_root: evidence.priorRoot,
         witness_set_hash: evidence.witnessSetHashHex,
       },
@@ -86,7 +86,7 @@ export const submitSpendInputSignerMissingStep01Accepted = async ({
           inclusion: { RedeemerCarriedInclusion: [inclusion] },
         },
       },
-      input_index: BigInt(evidence.inputIndex),
+      input_index: evidence.inputIndex,
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
