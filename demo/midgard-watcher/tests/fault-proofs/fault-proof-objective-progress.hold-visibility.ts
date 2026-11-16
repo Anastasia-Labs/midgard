@@ -1,6 +1,7 @@
 import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs";
 import { expect, it, vi } from "vitest";
 
+import { WATCHER_FAULT_PROOF_STARTED_LATE } from "../../src/fault-proofs/fault-proof-objective-alerts.js";
 import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { deploymentIdentity } from "../support/fault-proof-funding-fixture.js";
@@ -21,7 +22,15 @@ export const registerFaultProofResubmissionVisibilityTest = (
     await test.request(supervisor, 2).accepted;
     await test.idle(supervisor);
     const objective = `doubleSpend/${test.fixture.old.headerHash}`;
-    expect(test.readiness()).toEqual([
+    // Past maturity it also ran past its latest safe start, which stays
+    // named until its header leaves the queue.
+    const resubmission = () =>
+      test
+        .readiness()
+        .filter(
+          ({ reason }) => reason === WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED,
+        );
+    expect(resubmission()).toEqual([
       {
         reason: WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED,
         detail: `${objective}: ${FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED}`,
@@ -47,6 +56,7 @@ export const registerFaultProofResubmissionVisibilityTest = (
     });
     expect(operations.api.metrics().l1Readiness).toEqual({
       [WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED]: "1",
+      [WATCHER_FAULT_PROOF_STARTED_LATE]: "1",
     });
     expect(test.fixture.adapter.preflight).not.toHaveBeenCalled();
     expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
@@ -54,7 +64,9 @@ export const registerFaultProofResubmissionVisibilityTest = (
     await test.request(supervisor, 3).accepted;
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(2);
-    expect(test.readiness()).toEqual([]);
-    expect(operations.api.metrics().l1Readiness).toEqual({});
+    expect(resubmission()).toEqual([]);
+    expect(operations.api.metrics().l1Readiness).toEqual({
+      [WATCHER_FAULT_PROOF_STARTED_LATE]: "1",
+    });
   });
 };

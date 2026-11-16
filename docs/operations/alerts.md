@@ -395,7 +395,8 @@ watcher keeps every right an on-time run has: a fresh submission for each
 later step, and a new attempt for a signed step whose validity lapsed. The watcher writes
 one error line naming the objective, and the readiness reason
 `fault_proof_started_late` names it as `<category>/<headerHash>` with its
-latest safe start and its maturity. The alert clears when the correction is
+latest safe start and its maturity. A restarted watcher raises both again on
+the objective's first run, before or after maturity. The alert clears when the correction is
 included, another record resolves the objective, or the header leaves the
 queue. At maturity an objective with nothing signed is held as
 `fault_proof_start_deadline_passed`, and one whose next action needs a fresh

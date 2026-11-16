@@ -41,7 +41,10 @@ import {
   quarantineWatcherFaultProof,
   settleWatcherFaultProofQuarantine,
 } from "./fault-proof-quarantine.js";
-import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
+import type {
+  WatcherFaultProofDeadline,
+  WatcherFaultProofJob,
+} from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 import { isWatcherSqliteBusyError } from "./watcher-journal-busy.js";
@@ -51,8 +54,9 @@ import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 export type WatcherFaultProofExecutionAdmission = Readonly<{
   mode: "run" | "resume";
   funding: "create_or_resume" | "resume_only";
-  /** Past the latest safe start, before maturity. */
-  startedLate?: true;
+  /** The deadline whose latest safe start the run is past, before or after
+   * maturity (a reconciling run's job carries none). */
+  startedLate?: WatcherFaultProofDeadline;
 }>;
 
 export type WatcherFaultProofExecutionOutcome =
@@ -386,7 +390,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
             `fault-proof execution has no installed ${category} runner`,
           );
         objectiveWork = true;
-        alerts.started(job, admission.startedLate === true);
+        alerts.started(job, admission.startedLate);
         const fundingReservationPermit =
           await mintWatcherProverFundingReservationPermit({
             category,

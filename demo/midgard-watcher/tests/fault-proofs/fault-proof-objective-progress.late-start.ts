@@ -171,6 +171,83 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     expect(test.readiness()).toEqual([]);
   });
 
+  it("raises a late objective's deadline alert again after a restart, before and after its maturity, while its signed attempt reconciles", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      const startedAt = Date.now();
+      // Its latest safe start passed a minute ago.
+      const headerEndTime = startedAt - LATEST_SAFE_START_OFFSET_MS - 60_000;
+      const forward: { sink?: WatcherOperationsSink } = {};
+      const test = await setupScenario(BigInt(headerEndTime), true, false, {
+        recordProofStep: (step) => forward.sink?.recordProofStep(step),
+        setAlert: (alert) => forward.sink?.setAlert(alert),
+      });
+      // Its signed step stays in flight throughout.
+      test.fixture.chain.mockImplementation(async (txHash: string) => ({
+        kind: "pending",
+        txHash,
+      }));
+      /** One watcher process: a supervisor and its own operations view. */
+      const start = () => {
+        const supervisor = test.createSupervisor();
+        const operations = createWatcherOperationsObservability({
+          deploymentFingerprint: deploymentIdentity.manifestId,
+          supervisor,
+          launchScopeStatus: () => ({
+            installedCategoryCount: 1,
+            requiredCategoryCount: 1,
+          }),
+          retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+          durableProofQueueStatus: () => supervisor.durableQueueStatus(),
+          l1Readiness: test.readiness,
+        });
+        forward.sink = operations.sink;
+        return { supervisor, operations };
+      };
+      const late = async (
+        process: ReturnType<typeof start>,
+        generation: number,
+      ) => {
+        await test.request(process.supervisor, generation).accepted;
+        await test.idle(process.supervisor);
+        return {
+          alerts: process.operations.api
+            .status()
+            .activeAlerts.map(({ code }) => code),
+          readiness: test.readiness().map(({ reason }) => reason),
+        };
+      };
+      const raised = {
+        alerts: ["maturity_deadline_risk"],
+        readiness: ["fault_proof_started_late"],
+      };
+      const first = start();
+      expect(await late(first, 2)).toEqual(raised);
+      await first.supervisor.close();
+
+      // A restart before maturity raises them again.
+      await test.fixture.restartStore();
+      const second = start();
+      expect(await late(second, 3)).toEqual(raised);
+      await second.supervisor.close();
+
+      // So does one after maturity, while the signed attempt only reconciles.
+      vi.setSystemTime(
+        headerEndTime + MIDGARD_RETENTION_WINDOW.maturityMs + 60_000,
+      );
+      await test.fixture.restartStore();
+      const third = start();
+      expect(await late(third, 4)).toEqual(raised);
+      expect(test.runOrResume).toHaveBeenCalledTimes(3);
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("drops a refusal hold once maturity holds the objective under its own name", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {

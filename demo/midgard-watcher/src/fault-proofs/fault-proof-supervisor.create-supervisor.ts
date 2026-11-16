@@ -524,7 +524,7 @@ export const createSupervisor = (input: {
             ) === true
               ? "resume_only"
               : "create_or_resume",
-          ...(timing === "late" ? { startedLate: true as const } : {}),
+          ...(timing === "on_time" ? {} : { startedLate: job.deadline! }),
         };
         outcome = await input.dependencies.run({
           job: { ...invocationJob, mode: admission.mode },
