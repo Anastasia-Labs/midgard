@@ -5,9 +5,10 @@
  * against the field's authenticated count (the directly opened field's, or
  * the certified walk's once the grammar is complete), then writes the
  * absent-script state, which step 03 finalizes into a proof without
- * evaluating a script. A claim that a held script is absent is refused at
- * step 02, and the route convicts at the last raw field and at the field's
- * byte cap.
+ * evaluating a script. A position past 2^53, up to either end of the
+ * rejection codec's range, convicts the same way. A claim that a held script
+ * is absent is refused at step 02, and the route convicts at the last raw
+ * field and at the field's byte cap.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -107,6 +108,23 @@ describe("nativeScriptInvalid forced rejection of an absent script", () => {
     });
     expect((await convict(thread)).step02Measurements).toHaveLength(1);
   }, 600_000);
+
+  it.each([
+    { label: "2^53 + 1", position: 2n ** 53n + 1n },
+    { label: "the codec's largest, 2^64 - 1", position: 2n ** 64n - 1n },
+    { label: "the codec's smallest, -2^64", position: -(2n ** 64n) },
+  ])(
+    "convicts a script position at $label",
+    async ({ position }) => {
+      const thread = await boundThread({
+        prefixCount: 1,
+        committedScriptIndex: position,
+      });
+      expect(thread.f.scriptIndex).toBe(position);
+      await convict(thread);
+    },
+    600_000,
+  );
 
   it("refuses on chain a claim that a held script is absent", async () => {
     const thread = await boundThread({
