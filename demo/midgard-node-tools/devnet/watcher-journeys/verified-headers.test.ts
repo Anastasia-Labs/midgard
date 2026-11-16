@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -92,6 +92,8 @@ const watcher = () => {
 };
 
 let directory: string;
+/** The run's head beside the family directory, as a run directory holds it. */
+const runHead = () => join(directory, "head.json");
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "journey-verified-headers-"));
 });
@@ -102,7 +104,7 @@ afterEach(async () => {
 describe("journey verified-header evidence", () => {
   it("waits for every healthy block, then retains records the verifier accepts", async () => {
     const source = watcher();
-    const headers = createJourneyVerifiedHeaders(source, directory);
+    const headers = createJourneyVerifiedHeaders(source, directory, runHead());
     source.record(PREDECESSOR, "verified");
     expect(await headers.collect([PREDECESSOR])).toHaveLength(1);
     expect(
@@ -133,7 +135,7 @@ describe("journey verified-header evidence", () => {
       join(directory, "successor-predecessor.json"),
       ADOPTED_HEAD,
     );
-    const headers = createJourneyVerifiedHeaders(source, directory);
+    const headers = createJourneyVerifiedHeaders(source, directory, runHead());
     source.record(PREDECESSOR, "verified");
     source.record(SUCCESSOR, "verified");
     expect(
@@ -158,6 +160,7 @@ describe("journey verified-header evidence", () => {
         observe: () => current.observe(),
       },
       directory,
+      runHead(),
     );
     first.record(block("d4"), "verified");
     first.record(block("d5"), "verified");
@@ -177,6 +180,7 @@ describe("journey verified-header evidence", () => {
     const headers = createJourneyVerifiedHeaders(
       { operations: (path) => current.operations(path) },
       directory,
+      runHead(),
     );
     current.record(block("d4"), "verified");
     current.record(block("d5"), "verified");
@@ -191,17 +195,47 @@ describe("journey verified-header evidence", () => {
 
   it("resumes from the records an earlier attempt retained", async () => {
     const earlier = watcher();
-    const first = createJourneyVerifiedHeaders(earlier, directory);
+    const first = createJourneyVerifiedHeaders(earlier, directory, runHead());
     earlier.record(PREDECESSOR, "verified");
     earlier.record(SUCCESSOR, "verified");
     await first.collectHealthy(PREDECESSOR, SUCCESSOR);
     await first.retain();
     // The restarted watcher never re-verifies headers it decided before.
-    const resumed = createJourneyVerifiedHeaders(watcher(), directory);
+    const resumed = createJourneyVerifiedHeaders(
+      watcher(),
+      directory,
+      runHead(),
+    );
     expect(await resumed.collect([PREDECESSOR])).toHaveLength(1);
     expect(await resumed.collectHealthy(PREDECESSOR, SUCCESSOR)).toHaveLength(
       3,
     );
+  });
+
+  it("takes the run head's verified record from a family a restarted watcher ran", async () => {
+    const headPath = join(directory, "head.json");
+    const earlierFamily = join(directory, "earlier");
+    const nextFamily = join(directory, "next");
+    await mkdir(earlierFamily);
+    await mkdir(nextFamily);
+    const earlier = watcher();
+    const first = createJourneyVerifiedHeaders(
+      earlier,
+      earlierFamily,
+      headPath,
+    );
+    earlier.record(PREDECESSOR, "verified");
+    earlier.record(SUCCESSOR, "verified");
+    await first.collectHealthy(PREDECESSOR, SUCCESSOR);
+    await first.retain();
+    await first.handOn({
+      deploymentFingerprint: "11".repeat(32),
+      block: { ...SUCCESSOR, commitTxHash: "cd".repeat(32) },
+    });
+    // The next family builds on the head in a new session, whose watcher
+    // never re-verifies a header an earlier process decided.
+    const next = createJourneyVerifiedHeaders(watcher(), nextFamily, headPath);
+    expect(await next.collect([SUCCESSOR])).toHaveLength(1);
   });
 
   it("still binds a retained record to its block's payload", async () => {
@@ -217,7 +251,11 @@ describe("journey verified-header evidence", () => {
         },
       ],
     );
-    const headers = createJourneyVerifiedHeaders(watcher(), directory);
+    const headers = createJourneyVerifiedHeaders(
+      watcher(),
+      directory,
+      runHead(),
+    );
     await expect(headers.collect([PREDECESSOR])).rejects.toThrow(
       /another payload envelope/u,
     );
@@ -225,7 +263,7 @@ describe("journey verified-header evidence", () => {
 
   it("pages through more records than one diagnostics page holds", async () => {
     const source = watcher();
-    const headers = createJourneyVerifiedHeaders(source, directory);
+    const headers = createJourneyVerifiedHeaders(source, directory, runHead());
     for (let index = 0; index < 150; index += 1)
       source.record(block("e6"), "verified");
     source.record(PREDECESSOR, "verified");
@@ -241,7 +279,11 @@ describe("journey verified-header evidence", () => {
     "fails a healthy block the watcher reports with %s",
     async (_label, outcome, digest) => {
       const source = watcher();
-      const headers = createJourneyVerifiedHeaders(source, directory);
+      const headers = createJourneyVerifiedHeaders(
+        source,
+        directory,
+        runHead(),
+      );
       source.record(
         PREDECESSOR,
         outcome,
@@ -276,6 +318,7 @@ describe("journey verified-header evidence", () => {
           observe: () => ({ pid: 4242 }),
         },
         directory,
+        runHead(),
       );
       await expect(headers.collect([PREDECESSOR])).rejects.toThrow(
         `Header ${PREDECESSOR.headerHash} was ${release} on L1 before the watcher verified it (${outcome})`,
@@ -285,7 +328,7 @@ describe("journey verified-header evidence", () => {
 
   it("keeps a verified header verified when a restarted watcher later reports it released", async () => {
     const source = watcher();
-    const headers = createJourneyVerifiedHeaders(source, directory);
+    const headers = createJourneyVerifiedHeaders(source, directory, runHead());
     source.record(PREDECESSOR, "verified");
     expect(await headers.collect([PREDECESSOR])).toHaveLength(1);
     // A stale observation replayed after a restart lists the header L1 has
@@ -297,7 +340,11 @@ describe("journey verified-header evidence", () => {
   });
 
   it("refuses to retain evidence before every healthy block was verified", async () => {
-    const headers = createJourneyVerifiedHeaders(watcher(), directory);
+    const headers = createJourneyVerifiedHeaders(
+      watcher(),
+      directory,
+      runHead(),
+    );
     await expect(headers.retain()).rejects.toThrow(
       /Healthy blocks were not verified/u,
     );
@@ -307,7 +354,7 @@ describe("journey verified-header evidence", () => {
 describe("journey verified-header verifier", () => {
   const retained = async () => {
     const source = watcher();
-    const headers = createJourneyVerifiedHeaders(source, directory);
+    const headers = createJourneyVerifiedHeaders(source, directory, runHead());
     source.record(PREDECESSOR, "verified");
     source.record(SUCCESSOR, "verified");
     await headers.collectHealthy(PREDECESSOR, SUCCESSOR);

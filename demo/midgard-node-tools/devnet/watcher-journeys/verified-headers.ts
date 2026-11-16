@@ -121,7 +121,9 @@ export const readJourneySuccessorPredecessor = async (
  * run. A restarted watcher numbers its diagnostics from one again, so a new
  * process id restarts the cursor. It never re-verifies a header it decided in
  * an earlier process, so a resumed journey starts from the verified records an
- * earlier attempt retained; each is still bound to its block's payload. A
+ * earlier attempt retained, and from the record the run's head was handed on
+ * with (`headPath`): a family in a new session builds on the head an earlier
+ * session's watcher verified. Each is still bound to its block's payload. A
  * watcher the journey does not run (`observe` absent: a stack's own) may
  * restart unseen, so every read pages its diagnostics from the start.
  */
@@ -131,6 +133,7 @@ export const createJourneyVerifiedHeaders = (
     observe?(): { pid: number | null };
   },
   directory: string,
+  headPath: string,
 ) => {
   const decided = new Map<string, WatcherVerificationDiagnostic>();
   let cursor = "0";
@@ -140,12 +143,24 @@ export const createJourneyVerifiedHeaders = (
   /** Verified records of `blocks` once all are seen; any other decided outcome fails. */
   const collect = async (blocks: readonly JourneyBlock[]) => {
     const retainedPath = join(directory, JOURNEY_VERIFIED_HEADERS_ARTIFACT);
-    if (!retained && existsSync(retainedPath))
-      for (const record of await readJourneyArtifact<
-        WatcherVerificationDiagnostic[]
-      >(retainedPath))
+    if (!retained) {
+      const records = existsSync(retainedPath)
+        ? await readJourneyArtifact<WatcherVerificationDiagnostic[]>(
+            retainedPath,
+          )
+        : [];
+      const head = existsSync(headPath)
+        ? await readJourneyArtifact<{
+            verified?: WatcherVerificationDiagnostic;
+          }>(headPath)
+        : {};
+      for (const record of [
+        ...(head.verified === undefined ? [] : [head.verified]),
+        ...records,
+      ])
         if (record.outcome === "verified" && record.headerHash !== undefined)
           decided.set(record.headerHash, record);
+    }
     retained = true;
     const current = watcher.observe?.().pid;
     if (current === undefined || current !== processId) {
@@ -182,6 +197,24 @@ export const createJourneyVerifiedHeaders = (
         join(directory, JOURNEY_VERIFIED_HEADERS_ARTIFACT),
         healthy,
       );
+    },
+    /**
+     * Hand the verified successor on as the run's head, with the record the
+     * watcher verified it by, for the next family to build on.
+     */
+    handOn: async ({
+      deploymentFingerprint,
+      block,
+    }: Readonly<{
+      deploymentFingerprint: string;
+      block: JourneySuccessor;
+    }>) => {
+      assert(healthy !== undefined, "Healthy blocks were not verified");
+      await writeJourneyArtifact(headPath, {
+        deploymentFingerprint,
+        block,
+        verified: assertJourneyVerifiedHeader(healthy.at(-1), block),
+      });
     },
   };
 };

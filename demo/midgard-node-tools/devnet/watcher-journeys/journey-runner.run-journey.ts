@@ -154,7 +154,11 @@ export const runJourney = async (
       },
     });
     const { requireLive, operations, watcherProgress } = running;
-    const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
+    const verifiedHeaders = createJourneyVerifiedHeaders(
+      running,
+      directory,
+      join(context.runDirectory, "work/journeys/head.json"),
+    );
     const workflowBaseline = baseline.get(staged.current.headerHash) ?? [];
     await poll(
       `automatic ${fixture.category} decision`,
@@ -242,13 +246,10 @@ export const runJourney = async (
       stallTimeoutMs: timing.allowances.healthySuccessorObservationMs,
     });
     await verifiedHeaders.retain();
-    await writeJourneyArtifact(
-      join(context.runDirectory, "work/journeys/head.json"),
-      {
-        deploymentFingerprint: deployment.manifest.manifestId,
-        block: successor,
-      },
-    );
+    await verifiedHeaders.handOn({
+      deploymentFingerprint: deployment.manifest.manifestId,
+      block: successor,
+    });
     const observedTerminal = (
       await readJourneyWorkflowEntries({
         watcherStore: mode.watcherStore,
