@@ -267,7 +267,10 @@ const forcedSubjectOf = ({ block }: Pick<Scenario, "block">) => {
 /** A block whose forced leaf rejects `nativeTx` for `coordinate`. */
 const commitForcedCoordinate = async (
   nativeTx: MidgardNativeTxFull,
-  coordinate: { readonly sourceKind: number; readonly inputIndex: number },
+  coordinate: {
+    readonly sourceKind: bigint | number;
+    readonly inputIndex: bigint | number;
+  },
 ) => {
   const context = await makeResolvedOutputContext();
   const prior = await priorLedgerOf(0);
@@ -377,7 +380,10 @@ describe("forced InputSpentOutputNonCanonical coordinate outside the input field
     const lying: ResolvedOutputAbsentInputEvidence = {
       absent: true,
       subject: forcedSubjectOf(scenario),
-      coordinate: scenario.coordinate,
+      coordinate: {
+        sourceKind: BigInt(scenario.coordinate.sourceKind),
+        inputIndex: BigInt(scenario.coordinate.inputIndex),
+      },
       resolved: { priorRoot: scenario.prior.priorRoot },
       outputIsNonCanonical: false,
       canonicalTransactionCborHex: scenario.block.canonicalCbor.toString("hex"),
@@ -391,6 +397,48 @@ describe("forced InputSpentOutputNonCanonical coordinate outside the input field
       },
     );
   }, 900_000);
+});
+
+describe("forced InputSpentOutputNonCanonical coordinate past 2^53", () => {
+  it.each([
+    {
+      coordinateName: "spend position 2^53 + 1",
+      sourceKind: 0n,
+      inputIndex: 2n ** 53n + 1n,
+    },
+    {
+      coordinateName: "the codec's largest spend position, 2^64 - 1",
+      sourceKind: 0n,
+      inputIndex: 2n ** 64n - 1n,
+    },
+    {
+      coordinateName: "the codec's smallest spend position, -2^64",
+      sourceKind: 0n,
+      inputIndex: -(2n ** 64n),
+    },
+    {
+      coordinateName: "the codec's largest source kind, 2^64 - 1",
+      sourceKind: 2n ** 64n - 1n,
+      inputIndex: 0n,
+    },
+  ])(
+    "convicts $coordinateName",
+    async ({ sourceKind, inputIndex }) => {
+      const scenario = await commitForcedCoordinate(shapes[0].nativeTx, {
+        sourceKind,
+        inputIndex,
+      });
+      const evidence = absentEvidenceOf(scenario);
+      expect(evidence.coordinate).toStrictEqual({ sourceKind, inputIndex });
+      const named = sourceKind === 0n && inputIndex >= 0n;
+      expect(evidence.namesInputField).toBe(named);
+      const { opened } = await convictAbsent(scenario, evidence);
+      // A position past the field is closed by the field's count; any
+      // other coordinate names no input without opening a field.
+      expect(opened.result.carriageTier !== null).toBe(named);
+    },
+    900_000,
+  );
 });
 
 const maxShapeInputs = (): readonly Buffer[] => {

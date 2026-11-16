@@ -338,7 +338,8 @@ export const prepareResolvedOutputNonCanonicalEvidence = ({
 export type ResolvedOutputAbsentInputEvidence = Readonly<{
   absent: true;
   subject: VerdictSubject;
-  coordinate: Readonly<{ sourceKind: number; inputIndex: number }>;
+  /** The rejection's coordinate, any integers the rejection codec admits. */
+  coordinate: Readonly<{ sourceKind: bigint; inputIndex: bigint }>;
   resolved: Readonly<{ priorRoot: string }>;
   outputIsNonCanonical: false;
   canonicalTransactionCborHex: string;
@@ -366,22 +367,23 @@ export const prepareResolvedOutputAbsentInputEvidence = ({
     !("InputSpentOutputNonCanonical" in reason)
   )
     return fail("subject is not an InputSpentOutputNonCanonical rejection");
-  const sourceKind = Number(reason.InputSpentOutputNonCanonical.source_kind);
-  const inputIndex = Number(reason.InputSpentOutputNonCanonical.input_index);
-  if (!Number.isSafeInteger(sourceKind) || !Number.isSafeInteger(inputIndex))
-    return fail("reason coordinate is outside the safe integer range");
+  const sourceKind = reason.InputSpentOutputNonCanonical.source_kind;
+  const inputIndex = reason.InputSpentOutputNonCanonical.input_index;
   const material = deriveMidgardForcedTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const namesInputField =
-    (sourceKind === 0 || sourceKind === 1) && inputIndex >= 0;
+    (sourceKind === 0n || sourceKind === 1n) && inputIndex >= 0n;
   if (
     namesInputField &&
     inputIndex <
-      decodeMidgardInputFieldPreimage(material.fieldPreimages[sourceKind]!)
-        .length
+      BigInt(
+        decodeMidgardInputFieldPreimage(
+          material.fieldPreimages[Number(sourceKind)]!,
+        ).length,
+      )
   )
     return fail("input coordinate is present");
   return Object.freeze({

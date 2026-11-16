@@ -131,7 +131,7 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   const fieldIndex =
     absent && !evidence.namesInputField
       ? undefined
-      : evidence.coordinate.sourceKind;
+      : Number(evidence.coordinate.sourceKind);
   const planned =
     fieldIndex === undefined
       ? undefined
