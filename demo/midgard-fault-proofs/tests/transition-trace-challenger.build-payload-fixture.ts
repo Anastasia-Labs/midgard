@@ -7,6 +7,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  detectAuthenticatedFieldPreimageLengthEvidence,
+  inDomainFieldPreimageLengthEvidence,
+} from "../src/field-preimage-length-mismatch/evidence.js";
+import {
   buildCountedRoot,
   reconstructDaPayload,
   type TransitionTraceReconstruction,
@@ -266,6 +270,19 @@ export const retainedSource = (
     attempts: [],
   }),
 });
+
+/** Detects the fixture's field-length finding, refusing one outside the layout. */
+export const detectInDomainFieldPreimageLength = async (
+  fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
+) => {
+  const evidence = await detectAuthenticatedFieldPreimageLengthEvidence({
+    observation: authenticatedObservation(fixture),
+    sources: [retainedSource(fixture)],
+  });
+  if (!inDomainFieldPreimageLengthEvidence(evidence))
+    throw new Error("expected an in-domain field-length finding");
+  return evidence;
+};
 
 export const forcedEventKey = (id: SDK.OutputReference): SDK.EventKey => ({
   ForcedTransactionEventKey: { tx_order_id: id },

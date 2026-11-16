@@ -5,88 +5,18 @@
  * throws. Each such wrongful rejection is decided as the fault of the family
  * that owns the reason: the coordinate may be negative, at or past the item
  * count of the field it names, past 2^53, or at either bound of the codec.
- *
- * The forced transaction spends one input, pays one output without a
- * reference script, mints under one native policy and carries one native
- * witness script, one address witness and no redeemers, reference inputs,
- * observers or required signers.
  */
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
-import * as FP from "@al-ft/midgard-fault-proofs";
-import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
-import {
-  buildCanonicalBlockFixture,
-  outRefCbor,
-} from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
+import { describe, expect, it } from "vitest";
+
 import {
-  CML,
-  generateEmulatorAccount,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it } from "vitest";
-
-import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
-import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
-import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
-import { stackNodeFeeSchedule } from "./stack-fee-schedule.test-support.js";
-
-const account = generateEmulatorAccount({ lovelace: 100_000_000n });
-const owner = Buffer.from(
-  CML.PrivateKey.from_bech32(
-    walletFromSeed(account.seedPhrase, { network: "Custom" }).paymentKey,
-  )
-    .to_public()
-    .hash()
-    .to_raw_bytes(),
-);
-const orderKey = { transactionId: "a1".repeat(32), outputIndex: 0n };
-
-type Predecessor = Parameters<
-  typeof prepareJourneyForcedTransaction
->[0]["predecessor"];
-let predecessor: Predecessor;
-let forced: Readonly<{
-  transaction: ReturnType<
-    typeof prepareJourneyForcedTransaction
-  >["transaction"];
-  orderKey: typeof orderKey;
-}>;
-beforeAll(async () => {
-  predecessor = await checkedFixtureBlock(
-    await buildCanonicalBlockFixture({
-      transactions: [],
-      ...(await stackNodeFeeSchedule()),
-      utxos: [
-        {
-          key: outRefCbor(0x81, 0n),
-          value: encodeMidgardTxOutput({
-            address: Buffer.concat([Buffer.from([0x60]), owner]),
-            value: { lovelace: 100_000_000n, assets: new Map() },
-          }),
-        },
-      ],
-    }),
-  );
-  forced = {
-    transaction: prepareJourneyForcedTransaction({
-      predecessor,
-      ledgerOwnerSeedPhrase: account.seedPhrase,
-    }).transaction,
-    orderKey,
-  };
-});
-
-/** The largest coordinate a `RejectionReasonV1` encodes. */
-const MAX = (1n << 64n) - 1n;
-/** The smallest coordinate a `RejectionReasonV1` encodes. */
-const MIN = -(1n << 64n);
-/** The first coordinate past the integers a JavaScript number holds exactly. */
-const BIG = (1n << 53n) + 1n;
-
-const reason = (arm: string, fields: Record<string, bigint>) =>
-  ({ [arm]: fields }) as unknown as SDK.RejectionReason;
+  BIG,
+  classify,
+  fault,
+  MAX,
+  MIN,
+  reason,
+} from "./forced-claim.test-support.js";
 
 /** A duplicate claim pairing the first spend input with the given input. */
 const duplicateOf = (second_field_index: bigint, second_item_index: bigint) =>
@@ -107,40 +37,6 @@ const plutusUndecodable = (
     item_index,
     class: decodeClass,
   });
-
-const fault = (category: string) => `fault_detected:${category}`;
-
-const outcome = (decision: HeaderDecision): string =>
-  decision.decision === "fault_detected"
-    ? fault(decision.category)
-    : decision.decision === "unprovable"
-      ? `unprovable:${decision.violationId}`
-      : decision.decision;
-
-const classifyFull = async (claimed: SDK.RejectionReason) => {
-  const block = await retainedTransactionFixture({
-    canonicalTransactionCbor: forced.transaction.canonicalCbor,
-    predecessor,
-    ledgerEntries: predecessor.ledger.entries,
-    operatorVkey: "82".repeat(28),
-    endTime: predecessor.header.endTime + 40_000n,
-    blockSlot: predecessor.header.blockSlot + 40n,
-    source: {
-      kind: "forced",
-      orderKey,
-      verdict: { ForcedTxInvalid: { reason: claimed } },
-    },
-  });
-  return await classifyFullCatalogueTransactionFixture({
-    block,
-    predecessor,
-    history: [],
-    forced,
-  });
-};
-
-const classify = async (claimed: SDK.RejectionReason): Promise<string> =>
-  outcome((await classifyFull(claimed)).decision);
 
 /** One claim per coordinate: past the field, negative, past 2^53, at MAX. */
 const absentAt = (
@@ -468,95 +364,6 @@ describe("classifying a wrongful forced rejection whose reason names a coordinat
     "%s",
     async (_label, claimed, expected) => {
       expect(await classify(claimed)).toBe(expected);
-    },
-    120_000,
-  );
-});
-
-/** Durable proof material for a decided claim, through each family's own
- * preparer, as the watcher records it before proving. */
-const MATERIAL: readonly (readonly [
-  string,
-  SDK.RejectionReason,
-  string,
-  (
-    full: Awaited<ReturnType<typeof classifyFull>>,
-    detectionId: string,
-  ) => Promise<unknown>,
-])[] = [
-  [
-    "malformed mint item past 2^53",
-    reason("MintItemMalformed", { policy_index: BIG }),
-    "mintItemNonCanonical",
-    (full, id) =>
-      FP.prepareMintItemNonCanonicalRecoveryMaterial(full.evidence!, id),
-  ],
-  [
-    "non-canonical output past 2^53",
-    reason("OutputNonCanonical", { output_index: BIG }),
-    "transactionOutputNonCanonical",
-    (full, id) =>
-      FP.prepareTransactionOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-      ),
-  ],
-  [
-    "non-canonical output at a negative index",
-    reason("OutputNonCanonical", { output_index: -1n }),
-    "transactionOutputNonCanonical",
-    (full, id) =>
-      FP.prepareTransactionOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-      ),
-  ],
-  [
-    "non-canonical spent output of a spend input past 2^53",
-    reason("InputSpentOutputNonCanonical", {
-      source_kind: 0n,
-      input_index: BIG,
-    }),
-    "resolvedOutputNonCanonical",
-    (full, id) =>
-      FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-        full.predecessor!,
-      ),
-  ],
-  [
-    "non-canonical spent output of an input kind past 2^53",
-    reason("InputSpentOutputNonCanonical", {
-      source_kind: BIG,
-      input_index: 0n,
-    }),
-    "resolvedOutputNonCanonical",
-    (full, id) =>
-      FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-        full.predecessor!,
-      ),
-  ],
-];
-
-describe("recording proof material for a wrongful forced rejection whose reason names a coordinate the transaction lacks", () => {
-  it.each(MATERIAL)(
-    "%s",
-    async (_label, claimed, category, prepare) => {
-      const full = await classifyFull(claimed);
-      if (full.decision.decision !== "fault_detected")
-        throw new Error(`expected a fault, got ${outcome(full.decision)}`);
-      expect(full.decision.category).toBe(category);
-      const { detectionId } = full.decision;
-      const material = await prepare(full, detectionId);
-      expect(material).toMatchObject({ category, detectionId });
-      const recorded = JSON.parse(
-        JSON.stringify(FP.encodeWorkflowArtifact(material)),
-      );
-      const fresh = await prepare(full, detectionId);
-      expect(FP.requireWorkflowArtifactMatches(recorded, fresh)).toBe(fresh);
     },
     120_000,
   );

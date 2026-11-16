@@ -19,6 +19,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -39,7 +40,6 @@ import {
   type FraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,

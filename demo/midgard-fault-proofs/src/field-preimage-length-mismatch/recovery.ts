@@ -34,8 +34,8 @@ import {
   createFieldPreimageLengthLucidSubmission,
 } from "./config.js";
 import {
-  type FieldPreimageLengthWorkflowEvidence,
   fieldPreimageLengthEvidenceFromCanonicalBlock,
+  type FieldPreimageLengthWorkflowEvidence,
   inDomainFieldPreimageLengthEvidence,
 } from "./evidence.js";
 import type { FieldPreimageLengthAction } from "./workflow.js";
