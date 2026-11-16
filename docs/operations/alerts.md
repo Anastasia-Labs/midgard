@@ -186,9 +186,9 @@ block's. The `check` names where it was found:
 The node exports every `check` series at 0 from startup, so the first
 divergence after a start shows as an increase. A fold, or an unfold on a
 rollback, landing while a check reads does not fire it: the commit-base checks
-read the ledger and its root on one database snapshot. A commit base that
-landed-block processing has not folded to yet waits as `commit_base_pending`,
-not this alert.
+read the ledger and its root on one database snapshot. A commit base on a
+tail that landed-block processing has not processed yet waits as
+`commit_base_pending`, not this alert.
 
 **First checks.** `GET /readyz` names `landed_block_local_fault` (landed
 blocks), `commit_base_ledger_divergence:<check>` (commits), or

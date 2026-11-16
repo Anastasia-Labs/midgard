@@ -158,8 +158,9 @@ type VerifiedLandedLedger = Effect.Effect<
 /**
  * The post-state of `headerHash` on `landed`: its ledger and root, and the
  * row naming it (none at the frontier), or undefined off the processed
- * chain. Fails with `CommitBaseUnverifiedError` unless `landed`'s frontier is
- * `verified`, at the generation it was read at (the same header and root
+ * chain, whatever the verification (the commit waits for processing, not
+ * for it). Fails with `CommitBaseUnverifiedError` unless `landed`'s frontier
+ * is `verified`, at the generation it was read at (the same header and root
  * at another generation is another ledger), and with a `commit_base_landed`
  * divergence on the first row up to `headerHash` whose delta does not
  * apply.
@@ -171,6 +172,11 @@ export const verifiedLandedLedgerAt = (
 ): VerifiedLandedLedger =>
   Effect.suspend((): VerifiedLandedLedger => {
     const { frontier, generation } = landed;
+    if (
+      frontier.headerHash !== headerHash &&
+      !landed.chain.some((row) => row.headerHash === headerHash)
+    )
+      return Effect.succeed(undefined);
     if (
       verified?.headerHash !== frontier.headerHash ||
       verified.utxosRoot !== frontier.utxosRoot ||

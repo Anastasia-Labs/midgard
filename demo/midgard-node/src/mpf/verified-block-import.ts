@@ -309,22 +309,6 @@ export const verifyAndImportBlock = (
         "invalid",
         "foreign DA/header identity differs from the canonical observation",
       );
-    // The parent's entries and root are both this node's (the header was
-    // checked against the root above): entries that do not derive it are
-    // this node's ledger divergence, never the block's.
-    yield* checkLedgerRoot({
-      check: "landed_parent",
-      headerHash: input.parentHeaderHash,
-      root: input.parentUtxosRoot,
-      derivedRoot: yield* computeLedgerMpfRootFromLedgerEntries(
-        input.parentEntries,
-      ),
-    }).pipe(
-      Effect.tapError(countLedgerDivergence),
-      Effect.catchAll((divergence) =>
-        fail("local_fault", ledgerDivergenceDetail(divergence)),
-      ),
-    );
     // Roots the payload's own entries cannot form (a key named twice) are
     // its fault; once its keys are distinct, a failure is this node's.
     const repeated = repeatedKeySection(payload.block_body);
@@ -373,6 +357,24 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
+    // The parent's entries and root are both this node's (the header was
+    // checked against the root above): entries that do not derive it are
+    // this node's ledger divergence, never the block's. Checked after every
+    // check of the payload that does not read them, so a payload fault is
+    // judged on any parent ledger.
+    yield* checkLedgerRoot({
+      check: "landed_parent",
+      headerHash: input.parentHeaderHash,
+      root: input.parentUtxosRoot,
+      derivedRoot: yield* computeLedgerMpfRootFromLedgerEntries(
+        input.parentEntries,
+      ),
+    }).pipe(
+      Effect.tapError(countLedgerDivergence),
+      Effect.catchAll((divergence) =>
+        fail("local_fault", ledgerDivergenceDetail(divergence)),
+      ),
+    );
     const collector = blockChecksCollector({
       blockTimeMs: input.blockTimeMs,
       blockSlot: input.blockSlot,

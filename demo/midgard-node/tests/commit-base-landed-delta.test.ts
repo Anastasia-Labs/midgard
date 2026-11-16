@@ -6,7 +6,9 @@
  * hold, produces one it already holds, names an outref twice or as both
  * spent and produced, or changes the root exactly when it is empty, is a
  * `commit_base_landed` divergence; a frontier that is not the verified one
- * waits for the verification.
+ * waits for the verification. A header off the processed chain (not landed,
+ * or not processed yet) is off it whatever the verification, so the commit
+ * waits for processing, not for the verification.
  */
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
@@ -275,5 +277,16 @@ describe("a landed commit base before its frontier is verified", () => {
       expect(error).toBeInstanceOf(CommitBaseUnverifiedError);
       expect(error).toMatchObject({ headerHash: H2 });
     }
+  });
+
+  it("is off the chain for a header no processed row names, whatever the verification", async () => {
+    for (const verified of [
+      undefined,
+      { ...VERIFIED_F, headerHash: "e0".repeat(28) },
+      { ...VERIFIED_F, generation: "6" },
+    ])
+      expect(
+        Either.getOrThrow(await at(landed(), "c3".repeat(28), verified)),
+      ).toBe(undefined);
   });
 });

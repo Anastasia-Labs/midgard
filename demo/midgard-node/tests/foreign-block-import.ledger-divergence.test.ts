@@ -7,6 +7,9 @@
  * same block imports on entries that derive it. A block whose header names
  * another parent root is still `invalid`, and so is one whose replay on a
  * parent ledger deriving its root misses the post-state root it commits.
+ * A payload fault that does not depend on the parent ledger (a key named
+ * twice, a count its header or body does not commit) is judged `invalid`
+ * before the parent's entries are checked, on any parent ledger.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
@@ -97,6 +100,53 @@ describe("a foreign block replayed on a parent ledger that does not derive the p
         reason: "invalid",
         detail: "foreign replay UTxO root mismatch",
       });
+    expect(await divergences()).toBe(before);
+  });
+
+  it("calls a payload naming a key twice invalid on a parent ledger that does not derive the parent's root", async () => {
+    const payload = await fixture();
+    const traces = payload.block_body.validation_traces;
+    const before = await divergences();
+    const result = await verdict(
+      {
+        ...payload,
+        block_body: {
+          ...payload.block_body,
+          validation_traces: [...traces, traces[0]!],
+        },
+      },
+      { parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT, parentEntries: [stray] },
+    );
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        reason: "invalid",
+        detail: "foreign DA payload names a validation_traces key twice",
+      },
+    });
+    expect(await divergences()).toBe(before);
+  });
+
+  it("calls a payload whose counts its body does not commit invalid on a parent ledger that does not derive the parent's root", async () => {
+    const payload = await fixture();
+    const before = await divergences();
+    const result = await verdict(
+      {
+        ...payload,
+        block_body: {
+          ...payload.block_body,
+          counts: { ...payload.block_body.counts, depositCount: 5n },
+        },
+      },
+      { parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT, parentEntries: [stray] },
+    );
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        reason: "invalid",
+        detail: "foreign DA commitment mismatch: depositCount",
+      },
+    });
     expect(await divergences()).toBe(before);
   });
 });
