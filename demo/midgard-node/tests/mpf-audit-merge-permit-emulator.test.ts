@@ -10,7 +10,6 @@ import type { TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Either, Exit, Fiber, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
-import { getMergeHandler } from "../src/commands/listen-router.js";
 import { type MpfAuditResult, runMpfAudit } from "../src/commands/mpf-audit.js";
 import {
   reconcileMergeCompleteProgram,
@@ -21,7 +20,10 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { mergeAction } from "../src/fibers/merge.js";
+import {
+  mergeAction,
+  MergeProducerPermitUnavailable,
+} from "../src/fibers/merge.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
@@ -100,10 +102,10 @@ vi.mock(
 /**
  * Actual public deposits and commits, each applied when it lands, under
  * the production follower-change driver and Architecture G native owner; the
- * merges run through the admin GET /merge handler and `reconcile
- * merge-complete --repair` with no follower write permit taken by the test.
+ * merges run through the merge action with no follower write permit taken by
+ * the test, and reconciliation only reports.
  */
-it("audits the native MPF root at the committed tip, and merges manually only under a follower write permit", async () => {
+it("audits the native MPF root at the committed tip, and merges only under a follower write permit", async () => {
   const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
@@ -114,7 +116,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   const scratch = await mkdtemp(join(tmpdir(), "midgard-audit-leveldb-"));
 
   // The production node's services, without a follower write permit or the
-  // fixture capability: exactly what the admin router and the CLI get.
+  // fixture capability: exactly what the CLI gets.
   type RunOverrides = {
     readonly globals?: Globals;
     readonly nodeConfig?: NodeConfigDep;
@@ -282,20 +284,30 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     }
     throw new Error("Merge did not submit after three rounds");
   };
-  const reconcile = (
-    headerHash: string,
-    repair: boolean,
-    overrides: { readonly globals?: Globals } = {},
-  ): Promise<ReconciliationResult> =>
+  const reconcile = (headerHash: string): Promise<ReconciliationResult> =>
     run(
       reconcileMergeCompleteProgram({
         headerHash: Buffer.from(headerHash, "hex"),
-        repair,
       }),
-      overrides,
     );
-  const evidenceDetail = (result: ReconciliationResult, kind: string) =>
-    result.evidence.find((entry) => entry.kind === kind)?.detail;
+  /** The node tables a merge or its finalization writes, as one digest. */
+  const nodeStateFingerprint = () =>
+    sqlRun((sql) =>
+      Effect.forEach(
+        [
+          "confirmed_ledger",
+          "pending_block_finalizations",
+          "node_landed_blocks",
+          "node_confirmed_merges",
+          "blocks",
+          "deposits_utxos",
+          "state_queue_mutation_leases",
+        ],
+        (table) =>
+          sql<{ readonly digest: string | null }>`SELECT md5(string_agg(
+            t::text, ',' ORDER BY t::text)) AS digest FROM ${sql(table)} t`,
+      ),
+    ).then((rows) => JSON.stringify(rows));
   const ownStatus = (headerHash: string) =>
     run(
       PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
@@ -368,17 +380,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
           }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
       )
     )[0]!.reason;
-  const decodeMergeBody = (response: {
-    readonly status: number;
-    readonly body: { readonly _tag: string; readonly body?: unknown };
-  }) => {
-    if (response.body._tag !== "Uint8Array")
-      throw new Error(`Unexpected merge body ${response.body._tag}`);
-    return JSON.parse(
-      new TextDecoder().decode(response.body.body as Uint8Array),
-    ) as Record<string, any>;
-  };
-
   try {
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
@@ -605,7 +606,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
 
-    // --- Bug C: manual merges under the running node's follower write permit.
+    // --- Bug C: merges only under the running node's follower write permit,
+    // and reconciliation never merges.
     await advanceEmulatorPastUnixTime(
       fixture,
       mergeMaturityWindow(fixture.operatorLucid, second.blockTimeMs)
@@ -613,36 +615,36 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     );
     vi.setSystemTime(fixture.emulator.now());
 
-    expect(await reconcile(first.headerHash, false)).toMatchObject({
-      status: "pending",
-    });
-    const notOldest = await reconcile(second.headerHash, true);
-    expect(notOldest).toMatchObject({
-      status: "blocked",
-      repairActions: [],
-      nextAction: expect.stringContaining(first.headerHash),
-    });
-    // A standalone CLI process runs no follower-change driver, so it cannot
-    // take a follower write permit and must not merge.
-    const standalone = await reconcile(first.headerHash, true, {
+    // Both blocks are due, yet reconciliation only reports: it names the
+    // scheduled merge fiber and writes nothing, on L1 or in the database.
+    const beforeReconcile = await nodeStateFingerprint();
+    for (const headerHash of [first.headerHash, second.headerHash])
+      expect(await reconcile(headerHash)).toMatchObject({
+        status: "pending",
+        repairActions: [],
+        nextAction: expect.stringMatching(
+          /scheduled merge fiber.*permissionless/,
+        ),
+      });
+    expect(await nodeStateFingerprint()).toBe(beforeReconcile);
+    expect(
+      listSlotAwareDueWork().filter(
+        (entry) => entry.kind === "merge_submit_validity",
+      ),
+    ).toEqual([]);
+    expect((await queue()).blockCount).toBe(2);
+    // A standalone process runs no follower-change driver, so it cannot take
+    // a follower write permit and must not merge.
+    const standalone = await run(Effect.either(mergeAction(true)), {
       globals: await makeGlobalsService(),
     });
-    expect(standalone).toMatchObject({
-      status: "blocked",
-      repairActions: [],
-      nextAction: expect.stringContaining("GET /merge"),
-    });
-    expect(evidenceDetail(standalone, "merge_producer_permit")).toMatchObject({
-      available: false,
-      reason: expect.stringContaining(FOLLOWER_VIEW_UNAPPLIED),
-    });
-    const standaloneAdmin = await run(getMergeHandler, {
-      globals: await makeGlobalsService(),
-    });
-    expect(standaloneAdmin.status).toBe(503);
-    expect(decodeMergeBody(standaloneAdmin).error_code).toBe(
-      "E_MERGE_PRODUCER_UNAVAILABLE",
+    expect(Either.isLeft(standalone) && standalone.left).toBeInstanceOf(
+      MergeProducerPermitUnavailable,
     );
+    expect(
+      Either.isLeft(standalone) &&
+        formatUnknownError(standalone.left, { includeCause: true }),
+    ).toContain(FOLLOWER_VIEW_UNAPPLIED);
     expect((await queue()).blockCount).toBe(2);
     expect(await ownStatus(first.headerHash)).toBe(
       PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
@@ -693,31 +695,20 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
     );
     expect(await gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
-    // A node whose gate is held blocks the repair with evidence.
-    const notReady = await reconcile(first.headerHash, true);
-    expect(notReady).toMatchObject({ status: "blocked", repairActions: [] });
-    expect(evidenceDetail(notReady, "merge_producer_permit")).toMatchObject({
-      available: false,
-      reason: expect.stringContaining(DRIVER_RECOMPUTE_PENDING),
-    });
-    expect((await queue()).blockCount).toBe(2);
     // The node restarts: the fresh driver's first view recomputes and
     // reopens the gate.
     h = await initial.restartRuntime();
     ({ globals, production } = h);
     expect(await gatePending()).toBeNull();
 
-    const repaired = await untilMergeSubmitted(
-      () => reconcile(first.headerHash, true),
-      (result) => evidenceDetail(result, "merge_result")?.status,
-    );
-    expect(repaired).toMatchObject({
-      status: "repaired",
-      repairActions: ["merge_action"],
-      nextAction: null,
-    });
-    expect(evidenceDetail(repaired, "merge_result")).toMatchObject({
+    expect(
+      await untilMergeSubmitted(
+        () => run(mergeAction(true)),
+        (result) => result.status,
+      ),
+    ).toMatchObject({
       status: "merged",
+      headerHash: first.headerHash,
       trigger: "manual",
     });
     // The refused attempt never confirmed a merge; this one reported its
@@ -729,7 +720,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
     );
     expect((await queue()).blockCount).toBe(1);
-    expect(await reconcile(first.headerHash, false)).toMatchObject({
+    expect(await reconcile(first.headerHash)).toMatchObject({
       status: "satisfied",
       nextAction: null,
     });
@@ -744,7 +735,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
 
     // The second block's journal bound to its parent again, for its merge.
     await writeJournalFields(second.headerHash, secondFields);
-    // The admin merge of the second block is interrupted (as the L1 control
+    // The merge of the second block is interrupted (as the L1 control
     // plane's hold timeout would) after the L1 confirmation, while its local
     // finalization observes the native owner after its fold: the
     // finalization still completes.
@@ -782,7 +773,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       let interrupted = false;
       for (let round = 1; round <= 3 && !interrupted; round += 1) {
         await h.synchronize();
-        const fiber = Effect.runFork(provideProduction(getMergeHandler));
+        const fiber = Effect.runFork(provideProduction(mergeAction(true)));
         const raced = await Promise.race([
           finalizing.then(() => "finalizing" as const),
           Effect.runPromise(Fiber.join(fiber)),
@@ -809,8 +800,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
           interrupted = true;
           break;
         }
-        const body = decodeMergeBody(raced);
-        expect(body.result.status).toBe(
+        expect(raced.status).toBe(
           "skipped_oldest_block_local_ledger_not_ready",
         );
         const dueWork = listSlotAwareDueWork().filter(
@@ -835,7 +825,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
         ),
       ),
     ).toEqual([]);
-    expect(await reconcile(second.headerHash, false)).toMatchObject({
+    expect(await reconcile(second.headerHash)).toMatchObject({
       status: "satisfied",
     });
     expect((await queue()).blockCount).toBe(0);

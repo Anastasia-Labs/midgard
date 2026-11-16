@@ -231,7 +231,7 @@ Every contract item merges before the validator freeze.
   reference-script, admin and release keys. Never take seeds from arguments.
 - **Action map.** Open. Classify every route and command as public, operator
   only, admin or internal, and test the route graph. Protect `/init`,
-  `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB` and `/logGlobals`.
+  `/commit`, `/stateQueue`, `/logBlocksDB` and `/logGlobals`.
 - **Request limits.** In progress. Bound request bodies, content types, per-IP
   and global rates, and pagination at the proxy and in the app, including
   `/tx/evaluate`, and prove the bounds with a load test. The app limits every

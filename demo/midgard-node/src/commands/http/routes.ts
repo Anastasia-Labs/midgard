@@ -8,8 +8,6 @@ export const TX_ENDPOINT: string = "tx";
 
 export const ADDRESS_HISTORY_ENDPOINT: string = "txs";
 
-export const MERGE_ENDPOINT: string = "merge";
-
 export const UTXO_ENDPOINT: string = "utxo";
 
 export const UTXOS_ENDPOINT: string = "utxos";
@@ -60,7 +58,6 @@ export const HTTP_ROUTE_ACTIONS = [
   ["POST", "/peer/inventory", "peer"],
   ["POST", "/init", "admin"],
   ["POST", "/commit", "admin"],
-  ["POST", "/merge", "admin"],
   ["GET", "/stateQueue", "admin"],
   ["POST", "/logBlocksDB", "admin"],
   ["POST", "/logGlobals", "admin"],

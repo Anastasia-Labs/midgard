@@ -9,7 +9,6 @@ import { authorizeAdminRoute, isAdminRoutePath } from "./listen-utils.js";
 export const ADMIN_MUTATION_PATHS: ReadonlySet<string> = new Set([
   "/init",
   "/commit",
-  "/merge",
   "/logBlocksDB",
   "/logGlobals",
 ]);

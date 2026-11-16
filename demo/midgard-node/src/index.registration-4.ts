@@ -54,35 +54,27 @@ reconcile
 
 reconcile
   .command("merge-complete")
-  .description("Reconcile merge completion for a committed block header")
-  .requiredOption("--header-hash <hex>", "28-byte block header hash")
-  .option(
-    "--repair",
-    "Merge the header if it is the oldest queued block; refused outside the running node's follower write gate (use its admin GET /merge)",
+  .description(
+    "Report merge completion for a committed block header (read-only; the node's scheduled merge fiber merges)",
   )
+  .requiredOption("--header-hash <hex>", "28-byte block header hash")
   .option("--json", "Print machine-readable JSON output", true)
-  .action(
-    async (options: {
-      readonly headerHash: string;
-      readonly repair?: boolean;
-    }) => {
-      let headerHash: Buffer;
-      try {
-        headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
-      } catch (error) {
-        failCli("reconcile merge-complete", error);
-        return;
-      }
-      const mainEffect = provideNodeRuntimeServices(
-        ReconcileCommand.reconcileMergeCompleteProgram({
-          headerHash,
-          repair: options.repair === true,
-        }).pipe(tapJson()),
-      );
+  .action(async (options: { readonly headerHash: string }) => {
+    let headerHash: Buffer;
+    try {
+      headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+    } catch (error) {
+      failCli("reconcile merge-complete", error);
+      return;
+    }
+    const mainEffect = provideNodeRuntimeServices(
+      ReconcileCommand.reconcileMergeCompleteProgram({
+        headerHash,
+      }).pipe(tapJson()),
+    );
 
-      runCliEffect(mainEffect);
-    },
-  );
+    runCliEffect(mainEffect);
+  });
 
 program
   .command("init")

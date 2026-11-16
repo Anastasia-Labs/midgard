@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   type MergeCompletionObservation,
   mergeCompletionVerdict,
+  parseReconciliationResult,
+  RECONCILIATION_SCHEMA_VERSION,
 } from "../src/commands/reconcile.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
@@ -78,5 +80,33 @@ describe("merge-complete reconciliation verdict", () => {
         status: "blocked",
         nextAction: expect.stringContaining(`its block is ${status}`),
       });
+  });
+
+  it("names the scheduled merge fiber and permissionless merging for a queued header", () => {
+    const { nextAction } = mergeCompletionVerdict(
+      observed({ canonicalHeaders: [HEADER_HASH], canonical: true }),
+    );
+    expect(nextAction).toContain("scheduled merge fiber");
+    expect(nextAction).toContain("permissionless");
+  });
+
+  it("refuses a result that claims the deleted merge repair", () => {
+    const repairedBy = (action: string) => ({
+      schemaVersion: RECONCILIATION_SCHEMA_VERSION,
+      milestone: "merge-complete",
+      target: { headerHash: HEADER_HASH },
+      status: "repaired",
+      safeToRetryOriginalStep: true,
+      evidence: [],
+      nextAction: null,
+      repairActions: [action],
+    });
+    // Another milestone's repair still parses; `merge_action` no longer does.
+    expect(
+      parseReconciliationResult(repairedBy("backfill_missing_da_payload")),
+    ).toEqual(repairedBy("backfill_missing_da_payload"));
+    expect(() => parseReconciliationResult(repairedBy("merge_action"))).toThrow(
+      "repairActions[0] must be one of",
+    );
   });
 });

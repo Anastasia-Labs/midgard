@@ -9,7 +9,6 @@ export {
   resolveL1ProviderReadinessSnapshot,
   runExactGatedDirectL1ProviderProbe,
 } from "./http/l1-provider-probe.js";
-export { getMergeHandler } from "./http/operator-actions.js";
 export {
   encodePipelineStatusCounts,
   encodePipelineStatusOldestActive,

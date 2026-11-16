@@ -351,7 +351,6 @@ session.
 | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST` | `/init`            | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
 | `POST` | `/commit`          | Trigger a manual block commitment.                                                                                                                                                    |
-| `POST` | `/merge`           | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
 | `GET`  | `/stateQueue`      | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
 | `POST` | `/logBlocksDB`     | Log a compact summary of block-link rows.                                                                                                                                             |
 | `POST` | `/logGlobals`      | Log the current process-global coordination state.                                                                                                                                    |

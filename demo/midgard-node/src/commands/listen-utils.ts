@@ -12,7 +12,6 @@ import {
 export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/init",
   "/commit",
-  "/merge",
   "/stateQueue",
   "/logBlocksDB",
   "/logGlobals",

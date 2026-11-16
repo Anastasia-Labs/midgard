@@ -109,8 +109,8 @@ export type MergeActionOptions = {
 };
 
 /**
- * The single entry point for every merge trigger: the scheduled fiber, the
- * admin `GET /merge` route and `reconcile merge-complete --repair`.
+ * The single entry point for a merge attempt; the scheduled merge fiber runs
+ * it.
  *
  * It holds a follower write permit for the whole attempt, so no caller can
  * reach the local finalization writes without it, and it runs under the

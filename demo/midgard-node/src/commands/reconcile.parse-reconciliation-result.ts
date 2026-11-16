@@ -219,7 +219,6 @@ export const parseReconciliationResult = (
           "register_phas_membership_reward_account",
           "ensure_node_runtime_reference_scripts",
           "backfill_missing_da_payload",
-          "merge_action",
         ]),
     ),
   };

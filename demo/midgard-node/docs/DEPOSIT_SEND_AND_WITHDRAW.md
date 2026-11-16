@@ -11,7 +11,7 @@ This runbook covers the operator-facing preprod flow for:
 Keep `listen` running throughout. Its commit and merge workers advance the
 state queue; its settlement worker absorbs consumed deposits and initializes,
 funds, and concludes valid withdrawal payouts. The normal flow below only
-submits user actions and observes those workers. Do not call `/commit`, `/merge`,
+submits user actions and observes those workers. Do not call `/commit`,
 `absorb-confirmed-deposit-to-reserve`, `initialize-payout`,
 `add-reserve-funds-to-payout`, or `conclude-payout` alongside the workers:
 they compete for the same protocol UTxOs and bypass the worker's receipts.

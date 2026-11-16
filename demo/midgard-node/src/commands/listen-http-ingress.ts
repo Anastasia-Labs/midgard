@@ -385,9 +385,7 @@ export const admitHttpRequest = (
     request.method === "POST" &&
     !proofBody &&
     kind !== "peer" &&
-    !["/init", "/commit", "/merge", "/logBlocksDB", "/logGlobals"].includes(
-      path,
-    ) &&
+    !["/init", "/commit", "/logBlocksDB", "/logGlobals"].includes(path) &&
     request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() !==
       "application/json"
   )

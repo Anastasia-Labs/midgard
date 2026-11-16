@@ -115,7 +115,6 @@ const knownCodes: ReadonlySet<string> = new Set([
   "E_MERGE_LAYOUT_DERIVATION_FAILED",
   "E_MERGE_REDEEMER_INDEX_MISMATCH",
   "E_MERGE_UPLC_EVAL_FAILED",
-  "E_MERGE_PRODUCER_UNAVAILABLE",
 ]);
 const knownFields: ReadonlySet<string> = new Set([
   "error_code",

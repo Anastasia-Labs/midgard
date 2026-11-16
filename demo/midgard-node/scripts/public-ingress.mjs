@@ -97,7 +97,7 @@ http {
   uwsgi_temp_path /tmp/uwsgi;
   scgi_temp_path /tmp/scgi;
   map $request_method $log_method { default other; GET GET; POST POST; OPTIONS OPTIONS; }
-  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /init init; /commit commit; /merge merge; /peer/txs peer-txs; /peer/inventory peer-inventory; }
+  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /init init; /commit commit; /peer/txs peer-txs; /peer/inventory peer-inventory; }
   log_format public escape=json '{"method":"$log_method","route":"$log_route","status":$status,"bytes":$body_bytes_sent,"seconds":$request_time}';
   access_log /dev/stdout public;
   limit_req_zone $binary_remote_addr zone=liveness_ip:1m rate=10r/s;

@@ -406,7 +406,7 @@ node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json
 node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
 node dist/index.js reconcile da-attested --header-hash <hash> --committee-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
 node dist/index.js reconcile block-committed --header-hash <hash> --json
-node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
+node dist/index.js reconcile merge-complete --header-hash <hash> --json
 node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 ```
 
@@ -431,16 +431,15 @@ would list every merged payload from the moment it merges. Without it `alerts`
 is empty and the check never fails on a deadline, since pruning never removes
 still-challengeable evidence.
 
-`merge-complete` is `satisfied` only when the header has left the state queue
-and its confirmed-merge local finalization job completed. Its `--repair` merges
-only the oldest queued block, and only under the running node's follower
-write permit. When the permit cannot be taken (a standalone CLI process runs
-no follower-change driver; a node's driver may be recomputing) nothing runs: it
-reports `blocked` with `merge_producer_permit` evidence and points at the
-node's admin `GET /merge`, which answers `503` in the same situation. A merge
-that landed without its local finalization (a restart, a hold timeout or a
-follower recompute during the confirmation wait) needs no repair: every merge
-attempt first finalizes each merge L1 confirmed that the database has not.
+`merge-complete` is read-only. It is `satisfied` only when the header has left
+the state queue and its confirmed-merge local finalization job completed. While
+the header is queued it is `pending`: the running node's scheduled merge fiber
+merges the oldest queued block once it is due and no halt holds the fiber, and
+merging is permissionless on L1, so another operator's merge completes it too.
+A merge that landed without its local finalization (a restart, a hold timeout
+or a follower recompute during the confirmation wait) needs no repair: every
+merge attempt first finalizes each merge L1 confirmed that the database has
+not.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original
 state-changing step. Inspect the emitted evidence and next action first.

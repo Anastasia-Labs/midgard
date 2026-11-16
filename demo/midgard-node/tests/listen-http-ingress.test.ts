@@ -12,6 +12,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { buildListenRouter } from "../src/commands/http/router.js";
 import { HTTP_ROUTE_ACTIONS } from "../src/commands/http/routes.js";
 import {
   claimAdminMutation,
@@ -194,7 +195,7 @@ describe("HTTP admission quotas and admin replay", () => {
   it("binds mutation signatures to method/target/session and claims even failed execution", async () => {
     const id = await session();
     const headers = signed(id);
-    expect(claimAdminMutation(config, "01".repeat(32), "/merge", headers)).toBe(
+    expect(claimAdminMutation(config, "01".repeat(32), "/init", headers)).toBe(
       401,
     );
     expect(
@@ -227,13 +228,7 @@ describe("HTTP admission quotas and admin replay", () => {
     ).toBe(401);
   });
   it("declares every protected mutation as POST", () => {
-    for (const path of [
-      "/init",
-      "/commit",
-      "/merge",
-      "/logBlocksDB",
-      "/logGlobals",
-    ])
+    for (const path of ["/init", "/commit", "/logBlocksDB", "/logGlobals"])
       expect(HTTP_ROUTE_ACTIONS.filter((action) => action[1] === path)).toEqual(
         [["POST", path, "admin"]],
       );
@@ -334,6 +329,47 @@ describe("HTTP admission quotas and admin replay", () => {
         await call("/tx", "GET", { "x-forwarded-for": "198.51.100.1" }),
       ).toBe(429);
       expect(invoked).toBe(30);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+  it("serves no merge route: the node's router answers /merge as unknown", async () => {
+    // Only the ingress runs: it refuses an unknown target before any handler
+    // reaches the services left unprovided here.
+    const router = buildListenRouter().pipe(
+      Effect.provideService(NodeConfig, config),
+    ) as unknown as Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      never,
+      HttpServerRequest.HttpServerRequest
+    >;
+    const server = createServer(
+      Effect.runSync(NodeHttpServer.makeHandler(router)),
+    );
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+    const call = (path: string, method: string, headers = {}) =>
+      new Promise<number>((resolve, reject) => {
+        const req = httpRequest(
+          { hostname: "127.0.0.1", port, path, method, headers },
+          (res) => {
+            res.resume();
+            res.once("end", () => resolve(res.statusCode!));
+          },
+        );
+        req.once("error", reject);
+        req.end();
+      });
+    try {
+      const signedMerge = signed(await session(), "/merge");
+      expect(await call("/merge", "POST", signedMerge)).toBe(404);
+      expect(await call("/merge", "POST")).toBe(404);
+      expect(await call("/merge", "GET")).toBe(404);
+      // A route that exists answers a wrong method with 405, not 404.
+      expect(await call("/commit", "GET")).toBe(405);
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

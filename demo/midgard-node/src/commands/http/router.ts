@@ -35,11 +35,7 @@ import { failWith500 } from "../listen-response.js";
 import { READINESS_ENDPOINT } from "../readiness.js";
 import { getDepositStatusHandler } from "./deposits.js";
 import { postTxEvaluateHandler } from "./evaluate.js";
-import {
-  getCommitEndpoint,
-  getInitHandler,
-  getMergeHandler,
-} from "./operator-actions.js";
+import { getCommitEndpoint, getInitHandler } from "./operator-actions.js";
 import {
   getLogBlocksDBHandler,
   getLogGlobalsHandler,
@@ -61,7 +57,6 @@ import {
   DEPOSIT_STATUS_ENDPOINT,
   HEALTH_ENDPOINT,
   INIT_ENDPOINT,
-  MERGE_ENDPOINT,
   OPERATOR_STATUS_ENDPOINT,
   PIPELINE_STATUS_ENDPOINT,
   PROTOCOL_INFO_ENDPOINT,
@@ -163,10 +158,6 @@ export const buildListenRouter = (
       HttpRouter.post(
         `/${COMMIT_ENDPOINT}`,
         withAdminAccess(COMMIT_ENDPOINT, getCommitEndpoint),
-      ),
-      HttpRouter.post(
-        `/${MERGE_ENDPOINT}`,
-        withAdminAccess(MERGE_ENDPOINT, getMergeHandler),
       ),
       HttpRouter.get(
         "/admin/session",

@@ -87,13 +87,7 @@ describe("early startup HTTP listener", () => {
             reasons: ["startup_incomplete"],
             stage: "runtime_services",
           });
-          for (const path of [
-            "init",
-            "commit",
-            "merge",
-            "utxos",
-            "protocol-info",
-          ])
+          for (const path of ["init", "commit", "utxos", "protocol-info"])
             expect(
               (yield* Effect.promise(() => get(`${url}/${path}`))).status,
             ).toBe(503);

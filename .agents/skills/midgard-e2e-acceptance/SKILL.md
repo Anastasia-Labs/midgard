@@ -99,9 +99,9 @@ by `docs/agents/state-reset.md`. [review]
   generated `<runDirectory>/services/compose.json` override. Do not use the
   node README's plain `docker compose ... up` on a stack node directory.
   [review]
-- Do not use manual SQL rewrites, manual `/merge`,
-  `reconcile merge-complete --repair`, local-only finalization, or disabled
-  local UPLC evaluation to make a run pass. [review]
+- Do not use manual SQL rewrites, local-only finalization, or disabled local
+  UPLC evaluation to make a run pass. Merges come only from the node's
+  scheduled merge fiber; there is no manual merge entry point. [review]
 - Preserve `attempts/`, `stack-journal.json` and every receipt. Report compact
   failure summaries with artifact paths, never secrets or large bodies.
   [review]

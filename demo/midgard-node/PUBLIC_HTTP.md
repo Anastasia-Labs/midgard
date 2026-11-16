@@ -105,7 +105,7 @@ array, under `finalityVocabulary.txStatusCommittedMeaning`.
 
 Protected reads are `GET /stateQueue`, `/operator/status` and `/admin/session`.
 They require `X-Midgard-Admin-Key`; the session response is not cacheable.
-Protected mutations are **POST** `/init`, `/commit`, `/merge`, `/logBlocksDB` and
+Protected mutations are **POST** `/init`, `/commit`, `/logBlocksDB` and
 `/logGlobals`. GET mutations are refused before execution. Each mutation has an
 empty body and no query, and carries these headers:
 

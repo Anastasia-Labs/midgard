@@ -1321,15 +1321,19 @@ export const registerLedgerTests = () => {
             nextAction: null,
             repairActions: [action],
           });
-          expect(parseReconciliationResult(repairedBy("merge_action"))).toEqual(
-            repairedBy("merge_action"),
-          );
-          // `reconcile deposit-projected --repair` is deleted; nothing can
-          // produce these actions, so a result claiming them is refused.
+          expect(
+            parseReconciliationResult(
+              repairedBy("backfill_missing_da_payload"),
+            ),
+          ).toEqual(repairedBy("backfill_missing_da_payload"));
+          // `reconcile deposit-projected --repair` and `reconcile
+          // merge-complete --repair` are deleted; nothing can produce these
+          // actions, so a result claiming them is refused.
           for (const deleted of [
             "reconcile_deposit_submission_attempt",
             "reconcile_visible_deposit_utxos",
             "project_deposits_to_mempool_ledger",
+            "merge_action",
           ]) {
             expect(() =>
               parseReconciliationResult(repairedBy(deleted)),

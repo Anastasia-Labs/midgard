@@ -303,7 +303,8 @@ export const classifyNextSafeAction = (
   if (
     summary.http.some(
       (entry) =>
-        entry.label === "merge" && entry.semanticStatus !== "satisfied",
+        entry.label === "pipeline-status" &&
+        entry.semanticStatus !== "satisfied",
     ) ||
     summary.notes.some((note) => note.includes("state_queue_lease"))
   ) {

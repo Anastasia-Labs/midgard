@@ -222,16 +222,16 @@ describe("e2e run summary", () => {
     expect(summary.nextSafeAction).toBe("investigate_unknown");
   });
 
-  it("routes merge blockers to lease inspection", () => {
+  it("routes a blocked pipeline status to lease inspection", () => {
     const summary = updateE2ERunSummary(
       createE2ERunSummary({ runId: "e2e-run-3" }),
       {
         steps: [step({ id: "merge", status: "success" })],
         http: [
           {
-            label: "merge",
+            label: "pipeline-status",
             method: "GET",
-            url: "http://127.0.0.1:3000/merge",
+            url: "http://127.0.0.1:3000/pipeline-status",
             statusCode: 200,
             semanticStatus: "blocked",
             source: "runner",
