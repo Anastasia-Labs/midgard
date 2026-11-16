@@ -63,7 +63,7 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   readonly bound: {
     readonly subject: VerdictSubject;
     readonly outputIndex: bigint;
-    readonly accusedClass: number;
+    readonly accusedClass: bigint;
   };
   /** The redeemer's output coordinate; defaults to the datum's. */
   readonly claimedOutputIndex?: bigint;
@@ -95,7 +95,7 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
       data: {
         subject: bound.subject,
         output_index: bound.outputIndex,
-        accused_class: BigInt(bound.accusedClass),
+        accused_class: bound.accusedClass,
       },
     } as never,
     OutputReferenceStep02DatumSchema as never,

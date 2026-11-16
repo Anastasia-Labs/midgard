@@ -5,7 +5,6 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import {
   claimedFieldItems,
   claimedIndex,
-  claimedPlutusUndecodable,
 } from "../evidence/claimed-coordinate.js";
 import type { CanonicalViolationDetection } from "./classification.js";
 import { forcedTransactionSubject } from "./detection-subject.js";
@@ -210,17 +209,16 @@ const claimsAbsentCoordinate = (
   ])
     if (payload !== undefined)
       return itemAbsent(fields, MINT, payload.policy_index);
-  if ("PlutusScriptUndecodable" in reason) {
-    const claimed = claimedPlutusUndecodable(reason.PlutusScriptUndecodable);
-    return (
-      claimed === undefined ||
-      itemAbsent(
-        fields,
-        claimed.itemKind === 0 ? SCRIPT_WITNESSES : OUTPUTS,
-        reason.PlutusScriptUndecodable.item_index,
-      )
+  // The output family binds the reference-script item kind; the witness
+  // family binds every other one.
+  if ("PlutusScriptUndecodable" in reason)
+    return itemAbsent(
+      fields,
+      reason.PlutusScriptUndecodable.item_kind === 1n
+        ? OUTPUTS
+        : SCRIPT_WITNESSES,
+      reason.PlutusScriptUndecodable.item_index,
     );
-  }
   return false;
 };
 

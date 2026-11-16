@@ -13,13 +13,9 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  claimedIndex,
-  claimedItem,
-  claimedPlutusUndecodable,
-} from "../evidence/claimed-coordinate.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { PLUTUS_SCRIPT_ITEM_KIND_WITNESS } from "../script-decode/item-record.js";
+import { PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT } from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
   acceptedTransactionSubject,
@@ -107,11 +103,9 @@ export const witnessScriptDecodingCompleteReplayFindings = (
             : "WitnessNativeScriptDepthLimit" in reason
               ? reason.WitnessNativeScriptDepthLimit
               : "PlutusScriptUndecodable" in reason &&
-                  reason.PlutusScriptUndecodable.item_kind ===
-                    PLUTUS_SCRIPT_ITEM_KIND_WITNESS
-                ? claimedPlutusUndecodable(reason.PlutusScriptUndecodable) && {
-                    script_index: reason.PlutusScriptUndecodable.item_index,
-                  }
+                  reason.PlutusScriptUndecodable.item_kind !==
+                    PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
+                ? { script_index: reason.PlutusScriptUndecodable.item_index }
                 : undefined;
     if (payload === undefined) continue;
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(

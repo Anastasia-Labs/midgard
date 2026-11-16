@@ -74,7 +74,7 @@ describe("witnessScriptDecoding Plutus items", () => {
 
   it("binds the Plutus undecodable reason to its item, kind, and class", () => {
     const honest = evidence(undecodable(0n, 0n, 1n), undecodablePlutusItem);
-    expect(honest.finding.accusedClass).toBe(101);
+    expect(honest.finding.accusedClass).toBe(101n);
     expect(witnessScriptDecodingEvidenceCloses(honest)).toBe(false);
     for (const [subject, item] of [
       [undecodable(0n, 0n, 3n), undecodablePlutusItem],
@@ -85,11 +85,23 @@ describe("witnessScriptDecoding Plutus items", () => {
         true,
       );
     }
+    // An item kind other than the witness one, or no decode class, accuses
+    // the class no item closes with, so every replay contradicts it.
     for (const subject of [
-      undecodable(1n, 0n, 1n),
-      undecodable(0n, 1n, 1n),
+      undecodable(2n, 0n, 1n),
+      undecodable(-1n, 0n, 1n),
       undecodable(0n, 0n, 0n),
+      undecodable(0n, 0n, -5n),
     ]) {
+      const finding = evidence(subject, undecodablePlutusItem);
+      expect(finding.finding.accusedClass).toBe(100n);
+      expect(witnessScriptDecodingEvidenceCloses(finding)).toBe(true);
+    }
+    expect(
+      evidence(undecodable(0n, 0n, (1n << 64n) - 1n), undecodablePlutusItem)
+        .finding.accusedClass,
+    ).toBe((1n << 64n) + 99n);
+    for (const subject of [undecodable(1n, 0n, 1n), undecodable(0n, 1n, 1n)]) {
       expect(() =>
         classifyWitnessScriptDecodingFinding({
           subject,

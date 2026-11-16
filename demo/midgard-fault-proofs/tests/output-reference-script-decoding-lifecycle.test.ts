@@ -578,7 +578,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       OutputReferenceScriptResultClasses.NoFault,
     );
     expect(evidence.accusedClass).toBe(
-      OutputReferenceScriptResultClasses.NodeLimit,
+      BigInt(OutputReferenceScriptResultClasses.NodeLimit),
     );
     expect(evidence.chunkProofCount).toBeGreaterThan(1);
 
@@ -629,7 +629,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
           rejectionReason: otherReasonLeaf.reason,
         }),
         outputIndex: 0n,
-        accusedClass: OutputReferenceScriptResultClasses.Malformed,
+        accusedClass: BigInt(OutputReferenceScriptResultClasses.Malformed),
       },
       forcedSource: {
         ...forcedSource,
@@ -850,7 +850,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     });
     const evidence = forcedEvidence(leaf);
     expect(evidence.accusedClass).toBe(
-      OutputReferenceScriptResultClasses.DepthLimit,
+      BigInt(OutputReferenceScriptResultClasses.DepthLimit),
     );
     const s1 = await stages.step01Forced(
       stages.threadOf((await stages.init()).result),
@@ -993,7 +993,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       OutputReferenceScriptResultClasses.NoFault,
     );
     expect(evidence.accusedClass).toBe(
-      OutputReferenceScriptResultClasses.Malformed,
+      BigInt(OutputReferenceScriptResultClasses.Malformed),
     );
     const s1 = await stages.step01Forced(
       stages.threadOf((await stages.init()).result),

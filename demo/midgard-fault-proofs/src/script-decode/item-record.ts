@@ -83,15 +83,26 @@ export const plutusRecordResultClass = (
     : PLUTUS_SCRIPT_REFUSED_RESULT_BASE + record.class;
 
 /**
+ * The class a rejection naming a Plutus item kind no family decodes, or no
+ * decode class, accuses: no item closes with it, so any replay contradicts
+ * it. Twin of the on-chain `result_unreachable_class`.
+ */
+export const PLUTUS_SCRIPT_UNREACHABLE_ACCUSED_CLASS = 100n;
+
+/**
  * The result class `PlutusScriptUndecodable { item_kind, item_index, class }`
- * accuses, when it names `kind` and `index`; the on-chain binding requires
- * `class >= 1`.
+ * accuses when the family that decodes `kind` binds it at `index`: exact twin
+ * of the on-chain binding. The witness family binds every item kind but the
+ * reference-script one; the output family binds only its own. A reason naming
+ * `kind` with `class >= 1` accuses `100 + class`; any other admitted reason
+ * accuses `PLUTUS_SCRIPT_UNREACHABLE_ACCUSED_CLASS`. Undefined when the reason
+ * is not `PlutusScriptUndecodable`; throws when the family does not bind it.
  */
 export const plutusUndecodableAccusedClass = (
   reason: unknown,
   kind: bigint,
-  index: bigint | number,
-): number | undefined => {
+  index: bigint,
+): bigint | undefined => {
   if (
     typeof reason !== "object" ||
     reason === null ||
@@ -107,14 +118,13 @@ export const plutusUndecodableAccusedClass = (
       };
     }
   ).PlutusScriptUndecodable;
-  if (
-    payload.item_kind !== kind ||
-    payload.item_index !== BigInt(index) ||
-    payload.class < 1n ||
-    payload.class > BigInt(Number.MAX_SAFE_INTEGER - 100)
-  )
-    throw new Error(
-      "PlutusScriptUndecodable reason names another item or no class",
-    );
-  return PLUTUS_SCRIPT_REFUSED_RESULT_BASE + Number(payload.class);
+  const bindsKind =
+    kind === PLUTUS_SCRIPT_ITEM_KIND_WITNESS
+      ? payload.item_kind !== PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
+      : payload.item_kind === kind;
+  if (!bindsKind || payload.item_index !== index)
+    throw new Error("PlutusScriptUndecodable reason names another item");
+  return payload.item_kind === kind && payload.class >= 1n
+    ? BigInt(PLUTUS_SCRIPT_REFUSED_RESULT_BASE) + payload.class
+    : PLUTUS_SCRIPT_UNREACHABLE_ACCUSED_CLASS;
 };

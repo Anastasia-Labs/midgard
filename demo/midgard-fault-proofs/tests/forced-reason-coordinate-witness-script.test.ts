@@ -112,7 +112,7 @@ describe("forced WitnessNativeScriptMalformed coordinate the node writes", () =>
     expect(evidence.resultClass).toBe(
       WitnessScriptDecodingResultClasses.NativeMalformed,
     );
-    expect(evidence.resultClass).toBe(evidence.finding.accusedClass);
+    expect(BigInt(evidence.resultClass)).toBe(evidence.finding.accusedClass);
     // The prover's planner has no wrongful rejection to scan for, so the
     // scan runs on the arguments an accepted-direction twin of the item plans.
     const closed = await scanHonestAcceptedToClose(

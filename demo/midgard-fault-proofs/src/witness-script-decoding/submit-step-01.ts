@@ -167,13 +167,11 @@ const accusedClassOf = (
   }
   if ("PlutusScriptUndecodable" in (value as object)) {
     try {
-      return BigInt(
-        plutusUndecodableAccusedClass(
-          value,
-          PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
-          scriptIndex,
-        )!,
-      );
+      return plutusUndecodableAccusedClass(
+        value,
+        PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+        scriptIndex,
+      )!;
     } catch {
       throw new Error(`${FAMILY}: rejection coordinate differs`);
     }

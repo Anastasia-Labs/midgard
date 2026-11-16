@@ -25,11 +25,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  claimedIndex,
-  claimedItem,
-  claimedPlutusUndecodable,
-} from "../evidence/claimed-coordinate.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
   PLUTUS_SCRIPT_REFUSED_RESULT_BASE,
@@ -74,6 +70,12 @@ export type OutputReferenceScriptResultClass =
   | (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses]
   | PlutusScriptRefusedResultClass;
 
+/**
+ * The class a rejection accuses, as the on-chain binding computes it: an
+ * integer of any width, since a rejection may name any decode class.
+ */
+export type OutputReferenceScriptAccusedClass = bigint;
+
 const fail = (message: string): never => {
   throw new Error(`${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY}: ${message}`);
 };
@@ -115,16 +117,16 @@ const exactOutputIndex = (subject: VerdictSubject): bigint => {
 
 const accusedClass = (
   subject: VerdictSubject,
-): OutputReferenceScriptResultClass => {
+): OutputReferenceScriptAccusedClass => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("typed reason is absent");
   if ("OutputReferenceScriptMalformed" in reason)
-    return OutputReferenceScriptResultClasses.Malformed;
+    return BigInt(OutputReferenceScriptResultClasses.Malformed);
   if ("OutputReferenceScriptNodeLimit" in reason)
-    return OutputReferenceScriptResultClasses.NodeLimit;
+    return BigInt(OutputReferenceScriptResultClasses.NodeLimit);
   if ("OutputReferenceScriptDepthLimit" in reason)
-    return OutputReferenceScriptResultClasses.DepthLimit;
+    return BigInt(OutputReferenceScriptResultClasses.DepthLimit);
   if ("PlutusScriptUndecodable" in reason)
     return (
       plutusUndecodableAccusedClass(
@@ -205,7 +207,7 @@ export type OutputReferenceScriptDecodingEvidence =
       referenceScriptItemHex: string;
       referenceScriptItemCommitmentHex: string;
       resultClass: OutputReferenceScriptResultClass;
-      accusedClass: OutputReferenceScriptResultClass;
+      accusedClass: OutputReferenceScriptAccusedClass;
       carriage: "Inline" | "RawUtxo" | "Certified";
       chunkProofCount: number;
       initialControlCbor: string;
@@ -331,7 +333,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
     accusedClass:
       subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
         ? accusedClass(subject)
-        : OutputReferenceScriptResultClasses.Pending,
+        : BigInt(OutputReferenceScriptResultClasses.Pending),
     carriage: selectMidgardFieldCarriageTier(field.length),
     chunkProofCount: bounded.frontier.count,
     initialControlCbor:
@@ -351,7 +353,7 @@ export const outputReferenceScriptEvidenceCloses = (
   evidence: OutputReferenceScriptDecodingEvidence,
 ): boolean =>
   evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
-    ? evidence.resultClass !== evidence.accusedClass
+    ? BigInt(evidence.resultClass) !== evidence.accusedClass
     : terminalVerdictContradiction(evidence.subject, evidence.resultClass >= 0);
 
 /** Exhaustive replay over every accepted output and exact forced coordinate. */
@@ -411,16 +413,15 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       )
     )
       return;
-    const outputIndex =
+    const outputIndex = claimedIndex(
       "PlutusScriptUndecodable" in reason
-        ? claimedPlutusUndecodable(reason.PlutusScriptUndecodable)?.itemIndex
-        : claimedIndex(
-            "OutputReferenceScriptMalformed" in reason
-              ? reason.OutputReferenceScriptMalformed.output_index
-              : "OutputReferenceScriptNodeLimit" in reason
-                ? reason.OutputReferenceScriptNodeLimit.output_index
-                : reason.OutputReferenceScriptDepthLimit.output_index,
-          );
+        ? reason.PlutusScriptUndecodable.item_index
+        : "OutputReferenceScriptMalformed" in reason
+          ? reason.OutputReferenceScriptMalformed.output_index
+          : "OutputReferenceScriptNodeLimit" in reason
+            ? reason.OutputReferenceScriptNodeLimit.output_index
+            : reason.OutputReferenceScriptDepthLimit.output_index,
+    );
     if (outputIndex === undefined) return;
     inspect(
       forcedVerdictSubject({
@@ -435,10 +436,18 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
   return Object.freeze(results);
 };
 
+/**
+ * The violation id of the class a finding closes or accuses. Every class from
+ * `PLUTUS_SCRIPT_REFUSED_RESULT_BASE` up is a `PlutusScriptUndecodable` one,
+ * the unreachable class a rejection may accuse included.
+ */
 export const outputReferenceScriptDecodingViolationId = (
-  resultClass: OutputReferenceScriptResultClass,
+  input: bigint | number,
 ): OutputReferenceScriptDecodingViolationId => {
-  switch (resultClass) {
+  const resultClass = BigInt(input);
+  if (resultClass >= BigInt(PLUTUS_SCRIPT_REFUSED_RESULT_BASE))
+    return OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID;
+  switch (Number(resultClass)) {
     case OutputReferenceScriptResultClasses.Malformed:
       return OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID;
     case OutputReferenceScriptResultClasses.NodeLimit:
@@ -446,8 +455,6 @@ export const outputReferenceScriptDecodingViolationId = (
     case OutputReferenceScriptResultClasses.DepthLimit:
       return OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
     default:
-      return resultClass > PLUTUS_SCRIPT_REFUSED_RESULT_BASE
-        ? OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID
-        : fail("terminal result has no output-reference violation id");
+      return fail("terminal result has no output-reference violation id");
   }
 };

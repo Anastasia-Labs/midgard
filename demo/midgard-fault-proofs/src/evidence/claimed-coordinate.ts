@@ -74,29 +74,3 @@ export const claimedReasonReachesPhase = (
     "PlutusScriptUndecodable" in reason &&
     !SCRIPT_ITEM_KINDS.has(reason.PlutusScriptUndecodable.item_kind)
   ) && rejectionReasonPhase(reason, context) >= phase;
-
-/** The highest decode class `PlutusScriptUndecodable.class` can name. */
-const MAX_PLUTUS_DECODE_CLASS = Number.MAX_SAFE_INTEGER - 100;
-
-/**
- * A claimed `PlutusScriptUndecodable` payload as positions, or `undefined`
- * when it names an item kind no transaction carries, an index outside any
- * array, or a decode class outside `1..MAX_SAFE_INTEGER - 100`.
- */
-export const claimedPlutusUndecodable = (
-  reason: Readonly<{ item_kind: bigint; item_index: bigint; class: bigint }>,
-):
-  | Readonly<{ itemKind: 0 | 1; itemIndex: number; decodeClass: number }>
-  | undefined => {
-  const itemIndex = claimedIndex(reason.item_index);
-  const decodeClass = claimedIndex(reason.class);
-  if (
-    !SCRIPT_ITEM_KINDS.has(reason.item_kind) ||
-    itemIndex === undefined ||
-    decodeClass === undefined ||
-    decodeClass < 1 ||
-    decodeClass > MAX_PLUTUS_DECODE_CLASS
-  )
-    return undefined;
-  return { itemKind: reason.item_kind === 0n ? 0 : 1, itemIndex, decodeClass };
-};

@@ -243,8 +243,17 @@ describe("outputReferenceScriptDecoding V1", () => {
         outputReferenceScriptEvidenceCloses(forced(scriptHex, 1n, cls)),
       ).toBe(true);
     }
+    // No decode class accuses the class no item closes with.
+    for (const cls of [0n, -5n]) {
+      const unreachable = forced("4401020304", 1n, cls);
+      expect(unreachable.accusedClass).toBe(100n);
+      expect(outputReferenceScriptEvidenceCloses(unreachable)).toBe(true);
+    }
+    expect(forced("4401020304", 1n, (1n << 64n) - 1n).accusedClass).toBe(
+      (1n << 64n) + 99n,
+    );
     expect(() => forced("4401020304", 0n, 1n)).toThrow();
-    expect(() => forced("4401020304", 1n, 0n)).toThrow();
+    expect(() => forced("4401020304", 2n, 1n)).toThrow();
     expect(() => forced("4401020304", 1n, 1n, 1n)).toThrow();
   });
 
@@ -307,7 +316,7 @@ describe("outputReferenceScriptDecoding V1", () => {
       OutputReferenceScriptResultClasses.Malformed,
     );
     expect(wrongArm.accusedClass).toBe(
-      OutputReferenceScriptResultClasses.NodeLimit,
+      BigInt(OutputReferenceScriptResultClasses.NodeLimit),
     );
   });
 

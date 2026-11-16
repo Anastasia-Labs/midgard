@@ -142,10 +142,10 @@ describe("witnessScriptDecoding V1 evidence", () => {
 
   it("binds all four exact typed reasons and refuses another constructor or coordinate", () => {
     for (const [constructor, expected] of [
-      ["WitnessScriptHeaderMalformed", 0],
-      ["WitnessNativeScriptMalformed", 1],
-      ["WitnessNativeScriptNodeLimit", 2],
-      ["WitnessNativeScriptDepthLimit", 3],
+      ["WitnessScriptHeaderMalformed", 0n],
+      ["WitnessNativeScriptMalformed", 1n],
+      ["WitnessNativeScriptNodeLimit", 2n],
+      ["WitnessNativeScriptDepthLimit", 3n],
     ] as const) {
       const finding = classifyWitnessScriptDecodingFinding({
         subject: forced({ [constructor]: { script_index: 0n } }),

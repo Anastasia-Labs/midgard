@@ -800,7 +800,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       const reason = reasonOf(arm, 0n);
       const forced = await h.forcedBlock(shape, reason);
       const evidence = forcedEvidence(shape, forced.orderKey, reason);
-      expect(evidence.resultClass).toBe(evidence.finding.accusedClass);
+      expect(BigInt(evidence.resultClass)).toBe(evidence.finding.accusedClass);
       const bound = await h.step01Forced(
         await h.init(forced.setup.fraudulentBlockOutRef, null),
         forced,

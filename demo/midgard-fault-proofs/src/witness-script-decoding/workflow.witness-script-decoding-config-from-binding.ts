@@ -40,18 +40,28 @@ export const WITNESS_SCRIPT_DECODING_VIOLATION_IDS = Object.freeze({
   PlutusScriptUndecodable: "witness-plutus-script-undecodable",
 } as const);
 
+/**
+ * The violation id of the class a finding closes or accuses. Every class from
+ * `PLUTUS_SCRIPT_REFUSED_RESULT_BASE` up is a `PlutusScriptUndecodable` one,
+ * the unreachable class a rejection may accuse included.
+ */
 export const witnessScriptDecodingViolationId = (
-  resultClass: number,
+  input: bigint | number,
 ): (typeof WITNESS_SCRIPT_DECODING_VIOLATION_IDS)[keyof typeof WITNESS_SCRIPT_DECODING_VIOLATION_IDS] => {
-  if (resultClass === WitnessScriptDecodingResultClasses.HeaderMalformed)
+  const resultClass = BigInt(input);
+  if (
+    resultClass === BigInt(WitnessScriptDecodingResultClasses.HeaderMalformed)
+  )
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.HeaderMalformed;
-  if (resultClass === WitnessScriptDecodingResultClasses.NativeMalformed)
+  if (
+    resultClass === BigInt(WitnessScriptDecodingResultClasses.NativeMalformed)
+  )
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.NativeMalformed;
-  if (resultClass === WitnessScriptDecodingResultClasses.NodeLimit)
+  if (resultClass === BigInt(WitnessScriptDecodingResultClasses.NodeLimit))
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.NodeLimit;
-  if (resultClass === WitnessScriptDecodingResultClasses.DepthLimit)
+  if (resultClass === BigInt(WitnessScriptDecodingResultClasses.DepthLimit))
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.DepthLimit;
-  if (resultClass > PLUTUS_SCRIPT_REFUSED_RESULT_BASE)
+  if (resultClass >= BigInt(PLUTUS_SCRIPT_REFUSED_RESULT_BASE))
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.PlutusScriptUndecodable;
   throw new Error(
     "witnessScriptDecoding result has no exact classifier violation ID",

@@ -2,7 +2,10 @@ import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/index.js";
+import {
+  detectWitnessScriptDecodingCompleteReplay,
+  WitnessScriptDecodingResultClasses,
+} from "../src/witness-script-decoding/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
@@ -113,7 +116,7 @@ describe("witnessScriptDecoding Plutus items", () => {
     const reason = undecodableReason(1n);
     const forced = await h.forcedBlock(shape, reason);
     const evidence = forcedEvidence(shape, forced.orderKey, reason);
-    expect(evidence.finding.accusedClass).toBe(101);
+    expect(evidence.finding.accusedClass).toBe(101n);
     expect(evidence.resultClass).toBe(
       WitnessScriptDecodingResultClasses.NoFault,
     );
@@ -149,7 +152,7 @@ describe("witnessScriptDecoding Plutus items", () => {
     const reason = undecodableReason(1n);
     const forced = await h.forcedBlock(shape, reason);
     const evidence = forcedEvidence(shape, forced.orderKey, reason);
-    expect(evidence.resultClass).toBe(evidence.finding.accusedClass);
+    expect(BigInt(evidence.resultClass)).toBe(evidence.finding.accusedClass);
     const opened = await h.step02(
       await h.step01Forced(
         await h.init(forced.setup.fraudulentBlockOutRef, null),
@@ -164,4 +167,65 @@ describe("witnessScriptDecoding Plutus items", () => {
     await expectOnchainRefusal(() => h.step04Raw(closed.threadOutRef));
     await h.cancel(closed.threadOutRef, 3);
   }, 900_000);
+
+  // The binding accuses `100 + class` only for the witness item kind with a
+  // decode class; any other kind but the reference-script one, or no decode
+  // class, accuses the class no item closes with. The item really decodes to
+  // class 1 (101), so each rejection is contradicted.
+  it.each([
+    { label: "item kind 2", itemKind: 2n, cls: 1n, accused: 100n },
+    { label: "item kind -1", itemKind: -1n, cls: 1n, accused: 100n },
+    { label: "class 0", itemKind: 0n, cls: 0n, accused: 100n },
+    { label: "class -5", itemKind: 0n, cls: -5n, accused: 100n },
+    {
+      label: "class 2^64 - 1",
+      itemKind: 0n,
+      cls: (1n << 64n) - 1n,
+      accused: (1n << 64n) + 99n,
+    },
+  ])(
+    "convicts an undecodable rejection naming $label",
+    async ({ itemKind, cls, accused }) => {
+      const h = await makeHarness();
+      const shape = undecodablePlutusShape();
+      const reason = {
+        PlutusScriptUndecodable: {
+          item_kind: itemKind,
+          item_index: 0n,
+          class: cls,
+        },
+      } as SDK.RejectionReason;
+      const forced = await h.forcedBlock(shape, reason);
+      const evidence = forcedEvidence(shape, forced.orderKey, reason);
+      expect(evidence.finding.accusedClass).toBe(accused);
+      expect(evidence.resultClass).toBe(101);
+      expect(
+        detectWitnessScriptDecodingCompleteReplay({
+          headerHash: forced.block.headerHash,
+          transactions: [],
+          reconstruction: forced.block.reconstruction,
+        } as never).map(({ violationId }) => violationId),
+      ).toEqual(["witness-plutus-script-undecodable"]);
+      const opened = await h.step02(
+        await h.step01Forced(
+          await h.init(forced.setup.fraudulentBlockOutRef, null),
+          forced,
+          evidence.finding.witnessSetHash,
+          0n,
+        ),
+        shape,
+        evidence,
+      );
+      expect(opened.scanState.result_class).toBe(101n);
+      const closed = await h.scanToClose(
+        opened.nextThreadOutRef,
+        evidence,
+        null,
+      );
+      await h.step04(closed.threadOutRef, evidence, null);
+      await h.expectThreadsGone(forced.setup.headerHash);
+      await h.remove(forced.setup.headerHash, null);
+    },
+    900_000,
+  );
 });

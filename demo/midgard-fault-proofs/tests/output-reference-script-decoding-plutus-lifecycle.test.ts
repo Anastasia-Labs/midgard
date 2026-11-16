@@ -234,4 +234,67 @@ describe("outputReferenceScriptDecoding Plutus reference scripts", () => {
     await expectOnchainRefusal(() => stages.step06Raw(closed));
     await stages.cancel(closed, 5);
   }, 900_000);
+
+  // The binding accuses `100 + class` for a decode class and, with no decode
+  // class, the class no item closes with. The script really decodes to class
+  // 3 (103), so each rejection is contradicted.
+  it("convicts undecodable rejections naming class 0, -5 and 2^64 - 1", async () => {
+    const context = await makeOutputReferenceHarness();
+    const cases = [
+      { cls: 0n, accused: 100n },
+      { cls: -5n, accused: 100n },
+      { cls: (1n << 64n) - 1n, accused: (1n << 64n) + 99n },
+    ];
+    const block = await commitForcedBlock(
+      context,
+      cases.map(({ cls }, index) => ({
+        nativeTx: subjectTransaction(
+          [outputWithPlutusScript(UNDECODABLE)],
+          9n + BigInt(index),
+        ),
+        reason: undecodableReason(cls),
+      })),
+    );
+    const stages = makeOutputReferenceStages({
+      context,
+      fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+      ...(await publishFamilyReferences(
+        context,
+        createMeasurementRecorder(),
+        "output-reference-plutus-accused",
+      )),
+    });
+    for (const [index, { accused }] of cases.entries()) {
+      const leaf = block.leaves[index];
+      if (leaf === undefined) throw new Error("forced leaf absent");
+      const evidence = forcedEvidence(leaf);
+      expect(evidence.accusedClass).toBe(accused);
+      expect(evidence.resultClass).toBe(REFUSED_CLASS_3);
+      const s1 = await stages.step01Forced(
+        stages.threadOf((await stages.init()).result),
+        evidence,
+        leaf,
+        block.header,
+      );
+      const s2 = await stages.step02(
+        s1.result.nextThreadOutRef,
+        evidence,
+        forcedSourceOf(leaf),
+      );
+      const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
+      const s4 = await stages.step04(
+        s3.threadOutRef,
+        evidence,
+        leaf.transaction.submitted_source.compact_cbor,
+        s2.result,
+      );
+      expect(await resultClassOf(context, s4.result.nextThreadOutRef)).toBe(
+        BigInt(REFUSED_CLASS_3),
+      );
+      const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
+      expect(s5.result.closed).toBe(true);
+      const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
+      expect(s6.result.fraudProofUnit).toBeTruthy();
+    }
+  }, 900_000);
 });

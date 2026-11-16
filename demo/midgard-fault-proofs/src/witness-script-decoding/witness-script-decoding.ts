@@ -20,6 +20,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { cborDefiniteBytes, cborSerialiseInteger } from "../cbor-serialise.js";
 import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
@@ -64,10 +65,16 @@ const exactIndex = (value: bigint): bigint => {
   return value;
 };
 
+/**
+ * The class a finding accuses, as the on-chain binding computes it: an
+ * integer of any width, since a rejection may name any decode class.
+ */
+export type WitnessScriptDecodingAccusedClass = bigint;
+
 const accusedClassV1 = (
   reason: RejectionReason,
   scriptIndex: bigint,
-): WitnessScriptDecodingResultClass => {
+): WitnessScriptDecodingAccusedClass => {
   if (typeof reason === "string") return fail("typed reason is outside family");
   if ("PlutusScriptUndecodable" in reason) {
     try {
@@ -108,7 +115,7 @@ const accusedClassV1 = (
       if (payload === undefined || payload.script_index !== scriptIndex) {
         return fail("typed reason script coordinate differs");
       }
-      return resultClass;
+      return BigInt(resultClass);
     }
   }
   return fail("typed reason is outside witness-script-decoding");
@@ -124,7 +131,7 @@ export type WitnessScriptDecodingFinding = Readonly<{
 export const classifyWitnessScriptDecodingFinding = (
   finding: WitnessScriptDecodingFinding,
 ): WitnessScriptDecodingFinding & {
-  readonly accusedClass: WitnessScriptDecodingResultClass;
+  readonly accusedClass: WitnessScriptDecodingAccusedClass;
 } => {
   if (!verdictSubjectIsCanonical(finding.subject)) {
     return fail("verdict subject is not canonical");
@@ -146,7 +153,7 @@ export const classifyWitnessScriptDecodingFinding = (
       : finding.subject.direction ===
             PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE &&
           finding.subject.rejection_reason === null
-        ? WitnessScriptDecodingResultClasses.Pending
+        ? BigInt(WitnessScriptDecodingResultClasses.Pending)
         : fail("direction/reason polarity is invalid");
   return Object.freeze({ ...finding, accusedClass });
 };
@@ -296,36 +303,8 @@ export const witnessScriptDecodingEvidenceCloses = (
   const faultHolds = evidence.resultClass >= 0;
   return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
     ? faultHolds
-    : evidence.resultClass !== accusedClass;
+    : BigInt(evidence.resultClass) !== accusedClass;
 };
-
-const cborHead = (major: number, input: bigint | number): Buffer => {
-  const value = BigInt(input);
-  if (value < 24n) return Buffer.from([(major << 5) | Number(value)]);
-  if (value >= 1n << 64n) {
-    return fail("CBOR head argument is wider than 8 bytes");
-  }
-  const [width, additional] =
-    value <= 0xffn
-      ? [1, 24]
-      : value <= 0xffffn
-        ? [2, 25]
-        : value <= 0xffffffffn
-          ? [4, 26]
-          : [8, 27];
-  return Buffer.concat([
-    Buffer.from([(major << 5) | additional]),
-    Buffer.from(value.toString(16).padStart(width * 2, "0"), "hex"),
-  ]);
-};
-/**
- * Twin of `cbor.serialise` on an integer the rejection codec admits, of
- * either sign.
- */
-const cborInteger = (value: bigint): Buffer =>
-  value < 0n ? cborHead(1, -1n - value) : cborHead(0, value);
-const cborBytes = (value: Buffer): Buffer =>
-  Buffer.concat([cborHead(2, value.length), value]);
 
 /** Exact twin of Aiken `checkpoint_v1`. */
 export const witnessScriptDecodingCheckpoint = ({
@@ -344,11 +323,11 @@ export const witnessScriptDecodingCheckpoint = ({
       "ascii",
     ),
     encodeVerdictSubject(evidence.finding.subject),
-    cborInteger(evidence.finding.scriptIndex),
-    cborHead(0, evidence.itemLength),
-    cborBytes(Buffer.from(evidence.itemCommitmentHex, "hex")),
-    cborBytes(Buffer.from(controlCbor, "hex")),
-    cborBytes(Buffer.from(nextHash, "hex")),
+    cborSerialiseInteger(evidence.finding.scriptIndex),
+    cborSerialiseInteger(BigInt(evidence.itemLength)),
+    cborDefiniteBytes(Buffer.from(evidence.itemCommitmentHex, "hex")),
+    cborDefiniteBytes(Buffer.from(controlCbor, "hex")),
+    cborDefiniteBytes(Buffer.from(nextHash, "hex")),
   ]);
   return Effect.runSync(hashHexWithBlake2b(bytes.toString("hex"), 32));
 };

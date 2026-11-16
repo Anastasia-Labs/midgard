@@ -7,6 +7,7 @@ import { type MidgardLedgerOutputScanControl } from "@al-ft/midgard-core";
 import { encodeVerdictSubject, hashHexWithBlake2b } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { cborDefiniteBytes, cborSerialiseInteger } from "../cbor-serialise.js";
 import type { OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 
 export const outputReferenceScriptControlData = (
@@ -40,36 +41,6 @@ export const outputReferenceScriptControlData = (
   reference_script_length: BigInt(control.referenceScriptLength),
 });
 
-/**
- * Twin of `cbor.serialise` on an integer the rejection codec admits, of
- * either sign: a CBOR head of at most 8 argument bytes.
- */
-const cborInteger = (input: bigint | number): Buffer => {
-  const value = BigInt(input);
-  const major = value < 0n ? 1 : 0;
-  const normalized = value < 0n ? -1n - value : value;
-  if (normalized < 24n) return Buffer.from([(major << 5) | Number(normalized)]);
-  if (normalized >= 1n << 64n)
-    throw new Error("checkpoint integer is outside the CBOR head range");
-  const [width, additional] =
-    normalized <= 0xffn
-      ? [1, 24]
-      : normalized <= 0xffffn
-        ? [2, 25]
-        : normalized <= 0xffffffffn
-          ? [4, 26]
-          : [8, 27];
-  const argument = Buffer.from(
-    normalized.toString(16).padStart(width * 2, "0"),
-    "hex",
-  );
-  return Buffer.concat([Buffer.from([(major << 5) | additional]), argument]);
-};
-const cborBytes = (value: Buffer): Buffer =>
-  value.length < 24
-    ? Buffer.concat([Buffer.from([0x40 | value.length]), value])
-    : Buffer.concat([Buffer.from([0x58, value.length]), value]);
-
 /** Exact off-chain twin of `rule.checkpoint_v1`. */
 export const outputReferenceScriptCheckpoint = ({
   evidence,
@@ -88,14 +59,16 @@ export const outputReferenceScriptCheckpoint = ({
           "ascii",
         ),
         encodeVerdictSubject(evidence.subject),
-        cborInteger(evidence.outputIndex),
-        cborInteger(evidence.accusedClass),
-        cborInteger(Buffer.from(evidence.referenceScriptItemHex, "hex").length),
-        cborBytes(
+        cborSerialiseInteger(evidence.outputIndex),
+        cborSerialiseInteger(evidence.accusedClass),
+        cborSerialiseInteger(
+          BigInt(Buffer.from(evidence.referenceScriptItemHex, "hex").length),
+        ),
+        cborDefiniteBytes(
           Buffer.from(evidence.referenceScriptItemCommitmentHex, "hex"),
         ),
-        cborBytes(Buffer.from(controlCbor, "hex")),
-        cborBytes(Buffer.from(nextExpectedScriptHash, "hex")),
+        cborDefiniteBytes(Buffer.from(controlCbor, "hex")),
+        cborDefiniteBytes(Buffer.from(nextExpectedScriptHash, "hex")),
       ]).toString("hex"),
       32,
     ),
