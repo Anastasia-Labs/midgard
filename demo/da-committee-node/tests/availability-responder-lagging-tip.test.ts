@@ -15,7 +15,6 @@ import { runPlainAvailabilityResponderOperation } from "../src/availability/plai
 import { committeePromiseNetworkClock } from "../src/availability/promise-network-clock.js";
 import {
   PROMISE_RESPONSE_BUILD_STAGE_MS,
-  PROMISE_RESPONSE_MIN_FUTURE_SLOTS,
   PROMISE_RESPONSE_PROPAGATION_MS,
   promiseResponseBuildTime,
   promiseResponseTtl,
@@ -38,6 +37,7 @@ import {
   withResponseDeadline,
 } from "./helpers/availability-challenge.js";
 import { l1ClockAt } from "./helpers/l1-clock.js";
+import { testPromiseCausalPolicy } from "./helpers/promise-causal-policy.js";
 
 /**
  * A plain responder whose observed tip trails its L1 clock by more than
@@ -240,20 +240,27 @@ describe("a tip trailing the L1 clock anchors the publication window on it", () 
 
 /**
  * Promise mode anchors on a lagging tip only while the anchored TTL still
- * clears the fifty-slot rule at the build stage's end, the wall stepped as
- * far as the drift bound allows; short of that the step stays pending until
- * the next block, as before, and never fails. The step builds the response
- * as the promise runtime does and checks its TTL on the adopted network
- * clock, whose upper bound (the wall plus the adopted skew) is the L1
- * clock's now, `lagMs` past the tip. With the 3 s propagation, 2 s stage
- * and 2 s drift allowances the room is 58 slots, so the anchored TTL (238
- * slots past the tip) is taken up to a lag of 180 s. Up to 178 s the
- * lookahead's interval is admissible at the tip and is not anchored.
+ * clears the adopted calibration's rule at the build stage's end, the wall
+ * stepped as far as the drift bound allows; short of that the step stays
+ * pending until the next block, as before, and never fails. The step builds
+ * the response as the promise runtime does and checks its TTL on the adopted
+ * network clock, whose upper bound (the wall plus the adopted skew) is the
+ * L1 clock's now, `lagMs` past the tip. With the adopted minimum of 50
+ * slots and the 3 s propagation, 2 s stage and 2 s drift allowances the
+ * room is 58 slots, so the anchored TTL (238 slots past the tip) is taken
+ * up to a lag of 180 s. Up to 178 s the lookahead's interval is admissible
+ * at the tip and is not anchored.
  */
 describe("a promise response on a tip trailing the L1 clock", () => {
+  /** The adopted calibration's TTL rule. */
+  const adopted = testPromiseCausalPolicy().authority.causal!;
   /** With `wallStepMs`, the TTL is checked at the build stage's end, the
    * wall stepped that far past the monotonic clock. */
-  const promiseResponderAt = (lagMs: number, wallStepMs?: number) => {
+  const promiseResponderAt = (
+    lagMs: number,
+    wallStepMs?: number,
+    rule: Pick<typeof adopted, "minimumEligibleFutureSlots"> = adopted,
+  ) => {
     const { clock: l1Clock } = clockAt(lagMs);
     let wallMs = TIP_MS + lagMs - 2_000;
     let monotonicMs = 0;
@@ -265,6 +272,7 @@ describe("a promise response on a tip trailing the L1 clock", () => {
       monotonicMs: () => monotonicMs,
     });
     const ttls: number[] = [];
+    const built: Parameters<typeof promiseResponseTtl>[0][] = [];
     const reports: AvailabilityResponderReport[] = [];
     const lines: string[] = [];
     const responder = new AvailabilityResponder({
@@ -278,13 +286,14 @@ describe("a promise response on a tip trailing the L1 clock", () => {
           lucid,
           deployment,
           action,
-          promiseResponseBuildTime(l1Clock, network),
+          promiseResponseBuildTime(l1Clock, network, rule),
         ).build(new AbortController().signal);
         if (wallStepMs !== undefined) {
           monotonicMs += PROMISE_RESPONSE_BUILD_STAGE_MS;
           wallMs += PROMISE_RESPONSE_BUILD_STAGE_MS + wallStepMs;
         }
-        ttls.push(promiseResponseTtl(tx, network));
+        ttls.push(promiseResponseTtl(tx, network, rule));
+        built.push(tx);
         return "pending";
       },
       now: () => committeeL1NowMs(l1Clock),
@@ -303,11 +312,11 @@ describe("a promise response on a tip trailing the L1 clock", () => {
       for (let i = 0; i < AVAILABILITY_RESPONDER_RETRY_POLICY.retries + 2; i++)
         await loop.run();
     };
-    return { network, ttls, reports, lines, loop, runPastRetryBurst };
+    return { network, ttls, built, reports, lines, loop, runPastRetryBurst };
   };
 
   it.each([179_000, 180_000])(
-    "builds the response now with a tip %d ms behind, its TTL clearing the fifty-slot rule to the build stage's end",
+    "builds the response now with a tip %d ms behind, its TTL clearing the adopted rule to the build stage's end",
     async (lagMs) => {
       const step = promiseResponderAt(lagMs);
       await step.runPastRetryBurst();
@@ -335,7 +344,8 @@ describe("a promise response on a tip trailing the L1 clock", () => {
             PROMISE_RESPONSE_BUILD_STAGE_MS +
             step.network.maxWallMonotonicDriftMs,
         ),
-      ).toBeGreaterThanOrEqual(PROMISE_RESPONSE_MIN_FUTURE_SLOTS);
+      ).toBeGreaterThanOrEqual(adopted.minimumEligibleFutureSlots);
+      expect(adopted.minimumEligibleFutureSlots).toBe(50);
       expect(step.loop.reasons()).toEqual([]);
     },
   );
@@ -386,4 +396,43 @@ describe("a promise response on a tip trailing the L1 clock", () => {
       expect(step.loop.reasons()).toEqual([]);
     },
   );
+
+  it("takes both the anchoring room and the TTL check from the adopted minimum", async () => {
+    // A minimum of 40 leaves a room of 48 slots: the anchored TTL (238 slots
+    // past the tip) is taken up to a lag of 190 s, past the adopted 50's 180.
+    const lower = { ...adopted, minimumEligibleFutureSlots: 40 };
+    const at190 = promiseResponderAt(190_000, undefined, lower);
+    await at190.loop.run();
+    expect(at190.ttls).toEqual([TIP_SLOT - 2 + 240]);
+    expect(at190.reports[0]).toMatchObject({
+      status: "pending",
+      action: "publish",
+    });
+    // Its TTL leaves 44 eligible slots: inside the lower minimum, short of 50.
+    const tx = at190.built[0]!;
+    expect(promiseResponseTtl(tx, at190.network, lower)).toBe(
+      TIP_SLOT - 2 + 240,
+    );
+    expect(() => promiseResponseTtl(tx, at190.network, adopted)).toThrow(
+      "Built response TTL has insufficient future slots",
+    );
+    expect(at190.loop.reasons()).toEqual([]);
+    // The adopted 50 defers the same lag before anything is built; so does
+    // the lower minimum one slot further behind.
+    for (const [lagMs, rule] of [
+      [190_000, adopted],
+      [191_000, lower],
+    ] as const) {
+      const step = promiseResponderAt(lagMs, undefined, rule);
+      await step.loop.run();
+      expect(step.reports[0]).toMatchObject({
+        status: "pending",
+        action: "publish",
+        detail: expect.stringContaining(
+          "has not reached the interval's lower bound",
+        ),
+      });
+      expect(step.ttls).toEqual([]);
+    }
+  });
 });

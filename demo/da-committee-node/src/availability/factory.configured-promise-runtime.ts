@@ -35,7 +35,6 @@ import {
 import { committeePromiseStoreReadOwner } from "./promise-owned-read.js";
 import {
   PROMISE_RESPONSE_BUILD_STAGE_MS,
-  PROMISE_RESPONSE_MIN_FUTURE_SLOTS,
   PROMISE_RESPONSE_PROPAGATION_MS,
   promiseResponseBuildTime,
   promiseResponseTtl,
@@ -152,6 +151,9 @@ export const configuredCommitteePromiseRuntime = async (input: {
     await storeReads.join();
     setup.close();
   }
+  // The adopted calibration's TTL rule, read by the build and both TTL checks.
+  const ttlRule = adoption.authority.causal;
+  if (!ttlRule) throw new Error("Adopted causal policy has no TTL rule");
   const claims = committeeClaimReconciliation({
     journal,
     actorId,
@@ -315,7 +317,11 @@ export const configuredCommitteePromiseRuntime = async (input: {
               action.challenge.record.datum.commitment.header_hash &&
             row.state === "expired",
         );
-      const buildTime = promiseResponseBuildTime(l1Clock, adoption.clock);
+      const buildTime = promiseResponseBuildTime(
+        l1Clock,
+        adoption.clock,
+        ttlRule,
+      );
       const operation = availabilityResponderTransactionOperation(
         lucid,
         deployment,
@@ -363,10 +369,10 @@ export const configuredCommitteePromiseRuntime = async (input: {
             adoption.clock.eligibleFutureSlots(
               builtTtl,
               PROMISE_RESPONSE_PROPAGATION_MS,
-            ) < PROMISE_RESPONSE_MIN_FUTURE_SLOTS
+            ) < ttlRule.minimumEligibleFutureSlots
           )
             throw new Error(
-              "Actual signed-body TTL has fewer than fifty future eligible slots",
+              `Actual signed-body TTL has fewer than ${ttlRule.minimumEligibleFutureSlots.toString()} future eligible slots`,
             );
         },
       };
@@ -412,7 +418,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
                       action,
                       buildTime,
                     ).build(builderScope.signal, builderScope);
-                    builtTtl = promiseResponseTtl(tx, adoption.clock);
+                    builtTtl = promiseResponseTtl(tx, adoption.clock, ttlRule);
                     return tx;
                   } finally {
                     await storeReads.join();

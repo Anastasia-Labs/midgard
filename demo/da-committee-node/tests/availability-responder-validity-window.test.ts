@@ -28,6 +28,7 @@ import {
   withResponseDeadline,
 } from "./helpers/availability-challenge.js";
 import { l1ClockAt } from "./helpers/l1-clock.js";
+import { testPromiseCausalPolicy } from "./helpers/promise-causal-policy.js";
 
 /**
  * The responder's validity interval and deadline decisions are taken on the
@@ -447,6 +448,8 @@ describe("promise-mode response validity", () => {
       nowMs: () => wallMs,
       monotonicMs: () => 0,
     });
+  /** The adopted calibration's TTL rule. */
+  const adopted = testPromiseCausalPolicy().authority.causal!;
   const promiseBuild = async (
     action: AvailabilityResponderAction,
     useNetworkClock: boolean,
@@ -457,13 +460,13 @@ describe("promise-mode response validity", () => {
       deployment,
       action,
       useNetworkClock
-        ? promiseResponseBuildTime(clock, network())
+        ? promiseResponseBuildTime(clock, network(), adopted)
         : () => availabilityResponderL1BuildTime(clock),
     ).build(new AbortController().signal);
-    return promiseResponseTtl(tx, network());
+    return promiseResponseTtl(tx, network(), adopted);
   };
 
-  it("passes the fifty-slot TTL rule with the L1 clock 20 s behind the wall", async () => {
+  it("passes the adopted fifty-slot TTL rule with the L1 clock 20 s behind the wall", async () => {
     const deadlineMs = TIP_MS + 600_000;
     const ttl = await promiseBuild(publishOf(withDeadline(deadlineMs)), true);
     expect(network().eligibleFutureSlots(ttl, 3_000)).toBeGreaterThanOrEqual(
