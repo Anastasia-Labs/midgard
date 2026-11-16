@@ -141,6 +141,11 @@ export const createSupervisor = (input: {
         openDeadlines.settled(objective, progressAuthority.decisionHolds());
         input.dependencies.objectiveSettled?.(objective);
       },
+      // A merged or departed header ends the race against maturity once.
+      onObjectiveDeparted: (objective) => {
+        if (openDeadlines.departed(objective))
+          input.dependencies.objectiveSettled?.(objective);
+      },
       releaseDecisionFunding: input.dependencies.releaseDecisionFunding,
       jobInProcess: (objective) =>
         [jobs, registering, transportRetries].some((held) =>

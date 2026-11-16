@@ -116,6 +116,61 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     });
   });
 
+  it("settles a late signed objective's deadline and clears its alerts once its header leaves the queue, while its attempt still reconciles", async () => {
+    const forward: { sink?: WatcherOperationsSink } = {};
+    const test = await setupScenario(
+      BigInt(Date.now() - LATEST_SAFE_START_OFFSET_MS - 60_000),
+      true,
+      false,
+      {
+        recordProofStep: (step) => forward.sink?.recordProofStep(step),
+        setAlert: (alert) => forward.sink?.setAlert(alert),
+      },
+    );
+    // Its signed step stays in flight throughout.
+    test.fixture.chain.mockImplementation(async (txHash: string) => ({
+      kind: "pending",
+      txHash,
+    }));
+    const supervisor = test.createSupervisor();
+    const operations = createWatcherOperationsObservability({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      supervisor,
+      launchScopeStatus: () => ({
+        installedCategoryCount: 1,
+        requiredCategoryCount: 1,
+      }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+      durableProofQueueStatus: () => supervisor.durableQueueStatus(),
+      l1Readiness: test.readiness,
+    });
+    forward.sink = operations.sink;
+    const alerts = () =>
+      operations.api.status().activeAlerts.map(({ code }) => code);
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      await test.request(supervisor, 2).accepted;
+      await test.idle(supervisor);
+    } finally {
+      stderr.mockRestore();
+    }
+    expect(alerts()).toEqual(["maturity_deadline_risk"]);
+    expect(supervisor.status().deadlineHealth).toBe("unsafe");
+    // The header merges: it leaves the queue with the attempt unresolved.
+    await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledTimes(2);
+    expect(supervisor.status()).toMatchObject({
+      unfinishedObjectiveCount: 1,
+      deadlineHealth: "safe",
+      remainingSafeStartMs: null,
+    });
+    expect(alerts()).toEqual([]);
+    expect(test.readiness()).toEqual([]);
+  });
+
   it("drops a refusal hold once maturity holds the objective under its own name", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {

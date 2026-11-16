@@ -84,6 +84,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
   /** Told when an objective stops being driven (`objectiveSettled`). */
   readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
+  /** Told at each observation that no longer queues the header of an
+   * objective still reconciling a signed attempt. */
+  readonly onObjectiveDeparted?: (objective: WatcherProofObjective) => void;
   /** Whether a job of the objective is queued, running or handed over in
    * this process; its workflow rows stay while it is. */
   readonly jobInProcess?: (objective: WatcherProofObjective) => boolean;
@@ -552,6 +555,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
             }
             continue;
           }
+          if (!queued(request.observation, objective.decision))
+            input.onObjectiveDeparted?.(objective.decision);
           if (objective.historical?.generation !== request.rollbackGeneration) {
             const controller = createWorkflowReconciliationPermitController({
               decision: objective.decision,

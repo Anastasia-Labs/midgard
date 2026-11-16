@@ -94,6 +94,10 @@ export const createWatcherOpenProofDeadlines = () => {
       )
         open.delete(keyOf(objective));
     },
+    /** Its header merged or left the queue: the race against maturity is
+     * over. True the first time, when it was still open. */
+    departed: (objective: WatcherProofObjective): boolean =>
+      open.delete(keyOf(objective)),
     jobs: (): readonly WatcherFaultProofJob[] => [...open.values()],
   });
 };

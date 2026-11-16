@@ -102,7 +102,7 @@ export type WatcherFaultProofExecution = Readonly<{
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
    * The supervisor no longer drives the objective (held under another name,
-   * completed, or its header left the queue with nothing signed), so no run
+   * completed, or its header left the queue, merged or removed), so no run
    * or completion check would clear its hold: this does.
    */
   objectiveSettled(objective: WatcherProofObjective): void;
