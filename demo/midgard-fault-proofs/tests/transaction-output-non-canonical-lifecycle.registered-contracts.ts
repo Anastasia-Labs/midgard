@@ -239,10 +239,10 @@ export type Registered = Awaited<ReturnType<typeof registeredContracts>>;
 export const evidenceOf = (
   subject: VerdictSubject,
   nativeTx: NativeTx,
-  itemIndex: number,
+  itemIndex: bigint | number,
 ): Evidence =>
   prepareTransactionOutputEvidence({
-    finding: { subject, fieldIndex: 2, itemIndex },
+    finding: { subject, fieldIndex: 2, itemIndex: BigInt(itemIndex) },
     fieldPreimage: nativeTx.body.outputsPreimageCbor,
     committedFieldHashHex: midgardFieldCommitment(
       nativeTx.body.outputsPreimageCbor,

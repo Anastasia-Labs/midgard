@@ -434,7 +434,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     const initialState = scanStateOf(malformedEvidence, 0, 0n);
     const mutated = await bindAccepted(malformedInclusion, {
       ...malformedEvidence,
-      itemIndex: 2,
+      itemIndex: 2n,
     });
     await expectOnchainRefusal(
       async () =>
@@ -605,7 +605,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     const overBound = await bindAccepted(overBoundInclusion, {
       ...malformedEvidence,
       subject: overBoundSubject,
-      itemIndex: 0,
+      itemIndex: 0n,
     });
     await expectOnchainRefusal(
       async () =>

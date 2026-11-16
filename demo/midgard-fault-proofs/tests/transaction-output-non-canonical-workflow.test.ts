@@ -247,7 +247,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
       deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock(
         block as never,
       );
-    expect(evidence.itemIndex).toBe(1);
+    expect(evidence.itemIndex).toBe(1n);
     expect(evidence.fieldIndex).toBe(2);
     expect(evidence.subject.transaction_id).toBe(nodeTxId);
     expect(evidence.itemHex).toBe(malformed.toString("hex"));

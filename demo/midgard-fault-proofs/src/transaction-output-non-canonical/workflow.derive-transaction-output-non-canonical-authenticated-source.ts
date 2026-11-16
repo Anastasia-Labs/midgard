@@ -18,6 +18,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -47,7 +48,7 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock = (
   }: {
     readonly canonicalCbor: Uint8Array;
     readonly subject: ReturnType<typeof acceptedVerdictSubject>;
-    readonly forcedCoordinate?: { readonly itemIndex: number };
+    readonly forcedCoordinate?: { readonly itemIndex: bigint };
   }) => {
     const material = (
       subject.source_kind === 1n
@@ -62,19 +63,18 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock = (
     const coordinates =
       forcedCoordinate === undefined
         ? decodeMidgardFieldPreimage(material.fieldPreimages[2]!).map(
-            (_, itemIndex) => ({ itemIndex }),
+            (_, itemIndex) => ({ itemIndex: BigInt(itemIndex) }),
           )
         : [forcedCoordinate];
     for (const coordinate of coordinates) {
       const fieldPreimage = material.fieldPreimages[2]!;
-      const item =
-        decodeMidgardFieldPreimage(fieldPreimage)[coordinate.itemIndex];
-      if (item === undefined) {
-        throw new Error(
-          "transactionOutputNonCanonical retained-DA reason coordinate is absent",
-        );
-      }
-      if (item.length > 16_384) continue;
+      const item = claimedItem(
+        decodeMidgardFieldPreimage(fieldPreimage),
+        coordinate.itemIndex,
+      );
+      // The complete replay finds no output at a coordinate field 2 lacks;
+      // the header classifier answers such a claim, not this family.
+      if (item === undefined || item.length > 16_384) continue;
       const prepared = prepareTransactionOutputEvidence({
         finding: { subject, fieldIndex: 2, itemIndex: coordinate.itemIndex },
         fieldPreimage,
@@ -115,7 +115,7 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock = (
         rejectionReason: reason,
       }),
       forcedCoordinate: {
-        itemIndex: Number(coordinate.output_index),
+        itemIndex: coordinate.output_index,
       },
     });
   }

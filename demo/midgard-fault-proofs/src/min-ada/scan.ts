@@ -22,7 +22,7 @@ export const minAdaOutputScanEvidence = (
     finding: {
       subject: acceptedVerdictSubject(transactionId),
       fieldIndex: 2,
-      itemIndex: Number(outputIndex),
+      itemIndex: outputIndex,
     },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

@@ -154,7 +154,7 @@ const setupForcedThread = async ({
       rejectionReason: forced.rejectionReason,
     }),
     forced.nativeTx,
-    Number(outputIndex),
+    outputIndex,
   );
   const source = {
     nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
@@ -321,6 +321,30 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
     expect(minted.result.fraudProofUnit).toBeTruthy();
     await s.expectBlockRemoved();
   }, 900_000);
+
+  // The codec admits any coordinate in [-2^64, 2^64 - 1]; field 2 has none
+  // of these, so step 02 closes each by the field's count and convicts.
+  it.each([
+    { position: "-1", outputIndex: -1n },
+    { position: "-2^64", outputIndex: -(1n << 64n) },
+    { position: "2^53 + 1", outputIndex: (1n << 53n) + 1n },
+    { position: "2^64 - 1", outputIndex: (1n << 64n) - 1n },
+  ])(
+    "convicts the coordinate $position, which field 2 does not have",
+    async ({ outputIndex }) => {
+      const s = await setupForcedThread({
+        forcedTransaction: transaction,
+        outputIndex,
+      });
+      expect(s.evidence.absent).toBe(true);
+      const authenticated = (await s.authenticate()).result;
+      expect(authenticated.nextStage).toBe("step04");
+      const minted = await s.mint(authenticated.nextThreadOutRef);
+      expect(minted.result.fraudProofUnit).toBeTruthy();
+      await s.expectBlockRemoved();
+    },
+    900_000,
+  );
 
   it("refuses on chain a claim that the written coordinate is absent", async () => {
     const s = await setupForcedThread({

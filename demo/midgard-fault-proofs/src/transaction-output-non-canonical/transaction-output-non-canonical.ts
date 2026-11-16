@@ -21,6 +21,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   planTransactionOutputDatum,
   type TransactionOutputDatumPlan,
@@ -37,18 +38,17 @@ export const TRANSACTION_OUTPUT_OUTCOME_ABSENT = 3n;
 const fail = (message: string): never => {
   throw new Error(`${TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY}: ${message}`);
 };
-const exactIndex = (value: number, name: string): number => {
-  if (!Number.isSafeInteger(value) || value < 0) fail(`${name} is invalid`);
-  return value;
-};
-
 export type TransactionOutputFinding = {
   readonly subject: VerdictSubject;
   readonly fieldIndex: 2;
-  readonly itemIndex: number;
+  /**
+   * Any integer the rejection codec admits; a rejection may name an output
+   * field 2 lacks, a negative one included.
+   */
+  readonly itemIndex: bigint;
 };
 
-const reasonOutputIndex = (reason: RejectionReason | null): number => {
+const reasonOutputIndex = (reason: RejectionReason | null): bigint => {
   if (
     reason === null ||
     typeof reason === "string" ||
@@ -56,10 +56,7 @@ const reasonOutputIndex = (reason: RejectionReason | null): number => {
   ) {
     return fail("typed rejection reason is not OutputNonCanonical");
   }
-  return exactIndex(
-    Number(reason.OutputNonCanonical.output_index),
-    "reason output index",
-  );
+  return reason.OutputNonCanonical.output_index;
 };
 
 export const classifyTransactionOutputFinding = ({
@@ -70,7 +67,7 @@ export const classifyTransactionOutputFinding = ({
   if (!verdictSubjectIsCanonical(subject))
     fail("verdict subject is not canonical");
   if (fieldIndex !== 2) fail("only field 2 belongs to this family");
-  exactIndex(itemIndex, "output index");
+  if (typeof itemIndex !== "bigint") fail("output index is not an integer");
   if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = subject.rejection_reason;
     if (reason === null) fail("forced subject omitted its reason");
@@ -81,6 +78,9 @@ export const classifyTransactionOutputFinding = ({
     subject.rejection_reason !== null
   ) {
     fail("direction/reason polarity is invalid");
+  } else if (itemIndex < 0n || itemIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+    // An acceptance binds an output field 2 holds.
+    fail("output index is invalid");
   }
   return Object.freeze({ subject, fieldIndex, itemIndex });
 };
@@ -168,7 +168,10 @@ export const prepareTransactionOutputEvidence = ({
     midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actualCommitment !== committedFieldHashHex)
     fail("field commitment differs");
-  const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.itemIndex];
+  const item = claimedItem(
+    decodeMidgardFieldPreimage(fieldPreimage),
+    finding.itemIndex,
+  );
   if (item === undefined) {
     // Canonical validation reads no output at a position field 2 lacks, so
     // only a rejection naming one is wrong.
@@ -243,7 +246,7 @@ export const encodeTransactionOutputBoundOutput = (
 ): string => {
   const exact = classifyTransactionOutputFinding(finding);
   return Data.to(
-    { subject: exact.subject, output_index: BigInt(exact.itemIndex) } as never,
+    { subject: exact.subject, output_index: exact.itemIndex } as never,
     TransactionOutputBoundOutputSchema as never,
   );
 };

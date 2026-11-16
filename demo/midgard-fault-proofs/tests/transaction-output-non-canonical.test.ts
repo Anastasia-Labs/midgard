@@ -43,7 +43,7 @@ const evidence = (
 ) => {
   const fieldPreimage = encodeMidgardFieldPreimage([item, ...extra]);
   return prepareTransactionOutputEvidence({
-    finding: { subject, fieldIndex: 2, itemIndex: 0 },
+    finding: { subject, fieldIndex: 2, itemIndex: 0n },
     fieldPreimage,
     committedFieldHashHex:
       midgardFieldCommitment(fieldPreimage).toString("hex"),
@@ -71,7 +71,7 @@ describe("transactionOutputNonCanonical V1", () => {
       classifyTransactionOutputFinding({
         subject: forced(1),
         fieldIndex: 2,
-        itemIndex: 0,
+        itemIndex: 0n,
       }),
     ).toThrow(/coordinate differs/u);
     const wrong = forcedVerdictSubject({
@@ -83,7 +83,7 @@ describe("transactionOutputNonCanonical V1", () => {
       classifyTransactionOutputFinding({
         subject: wrong,
         fieldIndex: 2,
-        itemIndex: 0,
+        itemIndex: 0n,
       }),
     ).toThrow(/not OutputNonCanonical/u);
   });
@@ -92,7 +92,7 @@ describe("transactionOutputNonCanonical V1", () => {
     const fieldPreimage = encodeMidgardFieldPreimage([canonical]);
     expect(() =>
       prepareTransactionOutputEvidence({
-        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
+        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0n },
         fieldPreimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
@@ -100,7 +100,7 @@ describe("transactionOutputNonCanonical V1", () => {
     const over = encodeMidgardFieldPreimage([Buffer.alloc(16_385)]);
     expect(() =>
       prepareTransactionOutputEvidence({
-        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
+        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0n },
         fieldPreimage: over,
         committedFieldHashHex: midgardFieldCommitment(over).toString("hex"),
       }),
@@ -112,7 +112,7 @@ describe("transactionOutputNonCanonical V1", () => {
     expect(maximumField).toHaveLength(32_768);
     expect(
       prepareTransactionOutputEvidence({
-        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
+        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0n },
         fieldPreimage: maximumField,
         committedFieldHashHex:
           midgardFieldCommitment(maximumField).toString("hex"),
@@ -125,7 +125,7 @@ describe("transactionOutputNonCanonical V1", () => {
     expect(oversizedField).toHaveLength(32_769);
     expect(() =>
       prepareTransactionOutputEvidence({
-        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
+        finding: { subject: accepted, fieldIndex: 2, itemIndex: 0n },
         fieldPreimage: oversizedField,
         committedFieldHashHex:
           midgardFieldCommitment(oversizedField).toString("hex"),

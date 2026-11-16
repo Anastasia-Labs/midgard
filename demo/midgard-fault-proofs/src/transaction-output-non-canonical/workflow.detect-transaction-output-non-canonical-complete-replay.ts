@@ -12,6 +12,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedItem } from "../evidence/claimed-coordinate.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
@@ -58,7 +59,7 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
             finding: {
               subject: acceptedVerdictSubject(transactionId),
               fieldIndex,
-              itemIndex,
+              itemIndex: BigInt(itemIndex),
             },
             fieldPreimage,
             committedFieldHashHex:
@@ -105,12 +106,12 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
       }
       const coordinate = reason.OutputNonCanonical;
       const fieldIndex = 2 as const;
-      const itemIndex = Number(coordinate.output_index);
+      const itemIndex = coordinate.output_index;
       const preimage = material.fieldPreimages[fieldIndex];
       const item =
         preimage === undefined
           ? undefined
-          : decodeMidgardFieldPreimage(preimage)[itemIndex];
+          : claimedItem(decodeMidgardFieldPreimage(preimage), itemIndex);
       if (item === undefined || item.length > 16_384) {
         return [];
       }
