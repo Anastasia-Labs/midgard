@@ -480,8 +480,14 @@ test q27_min_ada_tx_rejects_a_forged_or_malformed_output_opening() fail {
 // step 03 contradicts only a rejection with it.
 
 /// Step 02 over the one-output fixture field, its grammar certified when
-/// `certified`, handing `claimed` on as the absent state in `direction`.
-fn run_absent_step_02(direction: Int, claimed: Int, certified: Bool) -> Bool {
+/// `certified`, handing `claimed` on as the absent state in `direction` to a
+/// successor at the `successor` script.
+fn run_absent_step_02(
+  direction: Int,
+  claimed: Int,
+  certified: Bool,
+  successor: ByteArray,
+) -> Bool {
   let output_cbor = encode_midgard_tx_output(output_at_delta(-1))
   let block = fixture.native_block_fixture_v1(
     transaction_with_output(output_at_delta(-1)),
@@ -518,10 +524,17 @@ fn run_absent_step_02(direction: Int, claimed: Int, certified: Bool) -> Bool {
     fault: MinAdaTx { output_index: claimed },
   }
   let next_state_data: Data = MinAdaTxAbsent { direction }
-  let base_tx = fixture.continue_mid_step_l1_tx_v1(
+  let mid_tx = fixture.continue_mid_step_l1_tx_v1(
     fixture.ct_token_asset_name(block),
     next_state_data,
   )
+  expect [successor_output] = mid_tx.outputs
+  let base_tx = Transaction {
+    ..mid_tx,
+    outputs: [
+      Output { ..successor_output, address: address.from_script(successor) },
+    ],
+  }
   let step_datum = ct.StepDatum {
     fraud_prover: fixture.fraud_prover_key_hash,
     data: Some(state),
@@ -564,23 +577,36 @@ fn run_absent_step_02(direction: Int, claimed: Int, certified: Bool) -> Bool {
 }
 
 test q27_min_ada_step_02_hands_a_negative_output_on_as_absent() {
-  run_absent_step_02(1, -1, False)
+  run_absent_step_02(1, -1, False, fixture.next_step_script_hash)
 }
 
 test q27_min_ada_step_02_hands_an_output_at_the_count_on_as_absent() {
-  run_absent_step_02(1, 1, True)
+  run_absent_step_02(1, 1, True, fixture.next_step_script_hash)
 }
 
 test q27_min_ada_step_02_hands_a_huge_output_on_as_absent() {
-  run_absent_step_02(1, 9_223_372_036_854_775_808, True)
+  run_absent_step_02(
+    1,
+    9_223_372_036_854_775_808,
+    True,
+    fixture.next_step_script_hash,
+  )
 }
 
 test q27_min_ada_step_02_refuses_the_last_output_as_absent() fail {
-  run_absent_step_02(1, 0, True)
+  run_absent_step_02(1, 0, True, fixture.next_step_script_hash)
 }
 
 test q27_min_ada_step_02_refuses_an_absent_output_before_certification() fail {
-  run_absent_step_02(1, 1, False)
+  run_absent_step_02(1, 1, False, fixture.next_step_script_hash)
+}
+
+test q27_min_ada_step_02_hands_a_negative_absent_output_only_to_step_03() fail {
+  run_absent_step_02(1, -1, False, tx_yield_hash)
+}
+
+test q27_min_ada_step_02_hands_an_absent_output_at_the_count_only_to_step_03() fail {
+  run_absent_step_02(1, 1, True, tx_yield_hash)
 }
 
 fn run_absent_step_03(direction: Int, successor: ByteArray) -> Bool {
