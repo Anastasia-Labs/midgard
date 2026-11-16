@@ -107,7 +107,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(() =>
       classifyProtectedOutputSignerMissingFinding({
         subject: acceptedVerdictSubject(txId),
-        outputIndex: 3,
+        outputIndex: 3n,
       }),
     ).not.toThrow();
   });
@@ -123,13 +123,13 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(() =>
       classifyProtectedOutputSignerMissingFinding({
         subject,
-        outputIndex: 3,
+        outputIndex: 3n,
       }),
     ).not.toThrow();
     expect(() =>
       classifyProtectedOutputSignerMissingFinding({
         subject,
-        outputIndex: 2,
+        outputIndex: 2n,
       }),
     ).toThrow(/coordinate was substituted/u);
   });
@@ -143,7 +143,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(() =>
       classifyProtectedOutputSignerMissingFinding({
         subject,
-        outputIndex: 3,
+        outputIndex: 3n,
       }),
     ).toThrow(/wrong typed rejection reason/u);
   });
@@ -154,7 +154,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
       const id = computeMidgardNativeTxId(transaction).toString("hex");
       const evidence = prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(id),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
       });
       expect(evidence.signerPresent).toBe(false);
@@ -166,7 +166,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(() =>
       prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(validId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
       }),
     ).toThrow(/agrees with the operator verdict/u);
@@ -178,7 +178,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
           ProtectedOutputSignerMissing: { output_index: 0n },
         },
       }),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
     });
     expect(forced.signerPresent).toBe(true);
@@ -195,7 +195,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
             ProtectedOutputSignerMissing: { output_index: 0n },
           },
         }),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardForcedTxCanonical(missing),
       }),
     ).toThrow(/agrees with the operator verdict/u);
@@ -207,7 +207,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     const maximumId = computeMidgardNativeTxId(maximum).toString("hex");
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject: acceptedVerdictSubject(maximumId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(maximum),
     });
     expect(evidence.checkpoints.at(-1)).toEqual({
@@ -221,7 +221,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(() =>
       prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(overflowId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(overflow),
       }),
     ).toThrow(/frontier exceeds the canonical maximum/u);
@@ -294,7 +294,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
                 },
               })
             : acceptedVerdictSubject(id),
-        outputIndex,
+        outputIndex: BigInt(outputIndex),
         canonicalTransactionCbor: (direction === "forced"
           ? encodeMidgardForcedTxCanonical
           : encodeMidgardNativeTxCanonical)(transaction),

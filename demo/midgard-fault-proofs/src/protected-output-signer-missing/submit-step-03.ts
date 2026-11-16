@@ -85,7 +85,7 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
   if (
     protectedState.transaction_id !== evidence.subject.transaction_id ||
     protectedState.witness_set_hash !== evidence.witnessSetHashHex ||
-    protectedState.output_index !== BigInt(evidence.outputIndex) ||
+    protectedState.output_index !== evidence.outputIndex ||
     protectedState.payment_credential !== evidence.paymentCredentialHex
   )
     throw new Error(

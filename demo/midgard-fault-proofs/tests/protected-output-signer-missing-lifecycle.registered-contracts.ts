@@ -223,7 +223,7 @@ export const evidenceFor = (
 ): ProtectedOutputSignerMissingEvidence =>
   prepareProtectedOutputSignerMissingEvidence({
     subject,
-    outputIndex: 0,
+    outputIndex: 0n,
     canonicalTransactionCbor: fixtureBytes(nativeTx, subject.source_kind),
   });
 

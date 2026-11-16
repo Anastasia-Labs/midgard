@@ -78,7 +78,7 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
       data: {
         bound: {
           subject: evidence.subject,
-          output_index: BigInt(evidence.outputIndex),
+          output_index: evidence.outputIndex,
         },
         witness_set_hash: evidence.witnessSetHashHex,
       },
@@ -121,7 +121,7 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
                 output_index: outputIndex,
               },
             },
-            output_index: BigInt(evidence.outputIndex),
+            output_index: evidence.outputIndex,
           },
         ],
       } as never,

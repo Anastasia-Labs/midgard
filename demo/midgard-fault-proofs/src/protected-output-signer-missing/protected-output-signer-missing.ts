@@ -18,7 +18,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { claimedIndex } from "../evidence/claimed-coordinate.js";
+import { claimedIndex, claimedItem } from "../evidence/claimed-coordinate.js";
 import {
   scanSignerWitnesses,
   type SignerWitnessScanCheckpoint,
@@ -36,7 +36,8 @@ const fail = (message: string): never => {
 
 export type ProtectedOutputSignerMissingFinding = Readonly<{
   subject: VerdictSubject;
-  outputIndex: number;
+  /** The claimed position, unbounded like the on-chain coordinate. */
+  outputIndex: bigint;
 }>;
 
 /**
@@ -91,7 +92,7 @@ export const requireProtectedOutputSignerScanEvidence = (
   };
 };
 
-const exactForcedOutputIndex = (subject: VerdictSubject): number => {
+const exactForcedOutputIndex = (subject: VerdictSubject): bigint => {
   const reason = subject.rejection_reason;
   if (
     reason === null ||
@@ -100,10 +101,7 @@ const exactForcedOutputIndex = (subject: VerdictSubject): number => {
   ) {
     return fail("forced subject has the wrong typed rejection reason");
   }
-  const outputIndex = Number(reason.ProtectedOutputSignerMissing.output_index);
-  if (!Number.isSafeInteger(outputIndex))
-    return fail("forced reason output coordinate is invalid");
-  return outputIndex;
+  return reason.ProtectedOutputSignerMissing.output_index;
 };
 
 export const classifyProtectedOutputSignerMissingFinding = ({
@@ -115,8 +113,8 @@ export const classifyProtectedOutputSignerMissingFinding = ({
   // A negative coordinate names no output: only a forced rejection can cite
   // one, and step 02 answers it on the out-of-range route.
   if (
-    !Number.isSafeInteger(outputIndex) ||
-    (outputIndex < 0 &&
+    typeof outputIndex !== "bigint" ||
+    (outputIndex < 0n &&
       subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION)
   )
     return fail("output coordinate is invalid");
@@ -181,7 +179,7 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const outputItems = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);
-  const outputCbor = outputIndex < 0 ? undefined : outputItems[outputIndex];
+  const outputCbor = claimedItem(outputItems, outputIndex);
   const route = classifyRoute(subject, outputCbor);
   const witnessItems = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
   if (witnessItems.length > PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES)
@@ -267,7 +265,7 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
   const inspect = (
     subject: VerdictSubject,
     transaction: Uint8Array,
-    outputIndex: number,
+    outputIndex: bigint,
   ): void => {
     try {
       const evidence = prepareProtectedOutputSignerMissingEvidence({
@@ -303,7 +301,7 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
       material.transactionId.toString("hex"),
     );
     decodeMidgardFieldPreimage(material.fieldPreimages[2]!).forEach(
-      (_output, outputIndex) => inspect(subject, bytes, outputIndex),
+      (_output, outputIndex) => inspect(subject, bytes, BigInt(outputIndex)),
     );
   });
   block.reconstruction.forcedTransactions.forEach((forced) => {
@@ -325,7 +323,7 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
         rejectionReason: reason,
       }),
       forced.fullTransactionCbor,
-      outputIndex,
+      BigInt(outputIndex),
     );
   });
   return Object.freeze(detections);

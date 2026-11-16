@@ -61,7 +61,7 @@ export const submitProtectedOutputSignerMissingStep01Accepted = async ({
       data: {
         bound: {
           subject: evidence.subject,
-          output_index: BigInt(evidence.outputIndex),
+          output_index: evidence.outputIndex,
         },
         witness_set_hash: evidence.witnessSetHashHex,
       },
@@ -87,7 +87,7 @@ export const submitProtectedOutputSignerMissingStep01Accepted = async ({
           inclusion: { RedeemerCarriedInclusion: [inclusion] },
         },
       },
-      output_index: BigInt(evidence.outputIndex),
+      output_index: evidence.outputIndex,
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,

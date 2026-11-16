@@ -86,7 +86,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     stepIndex: 1,
   });
   if (
-    state.bound.output_index !== BigInt(evidence.outputIndex) ||
+    state.bound.output_index !== evidence.outputIndex ||
     state.witness_set_hash !== evidence.witnessSetHashHex
   )
     throw new Error(
@@ -154,7 +154,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
             subject: evidence.subject,
             transaction_id: evidence.subject.transaction_id,
             witness_set_hash: evidence.witnessSetHashHex,
-            output_index: BigInt(evidence.outputIndex),
+            output_index: evidence.outputIndex,
             payment_credential:
               requireProtectedOutputSignerScanEvidence(evidence)
                 .paymentCredentialHex,

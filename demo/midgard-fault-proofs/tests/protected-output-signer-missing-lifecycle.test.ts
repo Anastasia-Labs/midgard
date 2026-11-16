@@ -230,7 +230,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       console.info("protected-output-signer-missing:max:block-ready");
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject: acceptedVerdictSubject(nativeTxId),
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor:
         "validity" in nativeTx
           ? encodeMidgardNativeTxCanonical(nativeTx)
@@ -617,7 +617,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         thread,
         Object.freeze({
           ...evidence,
-          outputIndex: 1,
+          outputIndex: 1n,
           subject: forcedVerdictSubject({
             transactionId: s.block.nativeTxId,
             sourceKey: FORCED_ORDER_KEY,
@@ -940,7 +940,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     const overBoundEvidence: ProtectedOutputSignerMissingEvidence =
       Object.freeze({
         subject: acceptedVerdictSubject(overBoundId),
-        outputIndex: 0,
+        outputIndex: 0n,
         route: "witness_scan" as const,
         signerRequired: true,
         canonicalTransactionCborHex:
@@ -962,7 +962,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     expect(() =>
       prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(overBoundId),
-        outputIndex: 0,
+        outputIndex: 0n,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(overBoundTx),
       }),
     ).toThrow(/frontier exceeds the canonical maximum/u);

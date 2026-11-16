@@ -179,7 +179,7 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     );
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject,
-      outputIndex: 0,
+      outputIndex: 0n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(adjudicated),
     });
     expect(evidence.signerPresent).toBe(true);
@@ -216,7 +216,7 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     const evidence = Object.freeze({
       ...prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(s.block.nativeTxId),
-        outputIndex: Number(written),
+        outputIndex: written,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       }),
       subject,
@@ -255,7 +255,7 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     const { s, subject, remove } = await setupScenario(-1n);
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject,
-      outputIndex: -1,
+      outputIndex: -1n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(adjudicated),
     });
     expect(evidence.route).toBe("coordinate_out_of_range");
@@ -272,13 +272,42 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
   }, 600_000);
 
+  it.each([
+    { label: "2^53 + 1", outputIndex: 2n ** 53n + 1n },
+    { label: "the codec's largest, 2^64 - 1", outputIndex: 2n ** 64n - 1n },
+    { label: "the codec's smallest, -2^64", outputIndex: -(2n ** 64n) },
+  ])(
+    "convicts an output coordinate at $label",
+    async ({ outputIndex }) => {
+      const { s, subject, remove } = await setupScenario(outputIndex);
+      const evidence = prepareProtectedOutputSignerMissingEvidence({
+        subject,
+        outputIndex,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(adjudicated),
+      });
+      expect(evidence.route).toBe("coordinate_out_of_range");
+      const bound = await s.forced01(await s.init(), evidence);
+      const direct = await s.step02(
+        bound.nextThreadOutRef,
+        evidence,
+        adjudicated,
+      );
+      expect(direct.stage).toBe("step05");
+      expect(
+        (await s.step05(direct.nextThreadOutRef, evidence)).fraudProofUnit,
+      ).toContain(s.category.categoryId);
+      expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
+    },
+    600_000,
+  );
+
   it("refuses on chain a claim that a held output is absent", async () => {
     const written = await writtenOutputIndex();
     const { s, subject } = await setupScenario(written);
     const held = Object.freeze({
       ...prepareProtectedOutputSignerMissingEvidence({
         subject: acceptedVerdictSubject(s.block.nativeTxId),
-        outputIndex: Number(written),
+        outputIndex: written,
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       }),
       subject,
@@ -316,7 +345,7 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
     const { s, subject, remove } = await setupScenario(-1n, maximum);
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject,
-      outputIndex: -1,
+      outputIndex: -1n,
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(forced),
     });
     expect(evidence.outputCarriage).toBe("Certified");
