@@ -23,6 +23,7 @@ import {
   maximumLastViolationShape,
   reasonAt,
   stagedOf,
+  twoOrderedShape,
 } from "./observer-order-invalid-lifecycle.forced-success.js";
 import { makeHarness } from "./observer-order-invalid-lifecycle.make-harness.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -133,6 +134,30 @@ describe("forced ObserverOrderInvalid negative ordinal", () => {
     expect(stagedOf(shape, -1).walk).toHaveLength(1);
     await forcedSuccess("coordinate-negative", shape, -1);
   }, 900_000);
+
+  // Ordinals past 2^53 and at the codec's bounds name no observer either.
+  // Past the end of a strictly ascending field the walk exhausts it; a
+  // negative ordinal exhausts before any item. Either way the scan decides
+  // the field ordered at the cited ordinal.
+  it.each([
+    {
+      label: "2^53 + 1",
+      fixture: twoOrderedShape(),
+      ordinal: (1n << 53n) + 1n,
+    },
+    {
+      label: "2^64 - 1",
+      fixture: twoOrderedShape(),
+      ordinal: (1n << 64n) - 1n,
+    },
+    { label: "-2^64", fixture: shape, ordinal: -(1n << 64n) },
+  ])(
+    "convicts the ordinal $label, which names no observer",
+    async ({ label, fixture, ordinal }) => {
+      await forcedSuccess(`coordinate-${label}`, fixture, ordinal);
+    },
+    900_000,
+  );
 
   it("refuses on chain a scan that closes the written ordinal as ordered", async () => {
     const index = await writtenObserverIndex();

@@ -22,35 +22,30 @@ export const OBSERVER_ORDER_INVALID_ITEM_BUDGET = 24 as const;
 const fail = (message: string): never => {
   throw new Error(`${OBSERVER_ORDER_INVALID_CATEGORY}: ${message}`);
 };
-const natural = (value: number, label: string): number => {
-  if (!Number.isSafeInteger(value) || value < 0)
+const natural = (value: bigint, label: string): bigint => {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
     return fail(`${label} must be a non-negative safe integer`);
   return value;
 };
-const safeInteger = (value: number, label: string): number => {
-  if (!Number.isSafeInteger(value))
-    return fail(`${label} must be a safe integer`);
-  return value;
-};
-const reasonIndex = (reason: RejectionReason): number => {
+const reasonIndex = (reason: RejectionReason): bigint => {
   if (typeof reason === "string" || !("ObserverOrderInvalid" in reason))
     return fail("typed rejection reason is not ObserverOrderInvalid");
-  return safeInteger(
-    Number(reason.ObserverOrderInvalid.observer_index),
-    "reason observer index",
-  );
+  return reason.ObserverOrderInvalid.observer_index;
 };
 
 export type ObserverOrderInvalidFinding = Readonly<{
   subject: VerdictSubject;
-  observerIndex: number;
+  /** Any integer the rejection codec admits; a rejection may name any ordinal. */
+  observerIndex: bigint;
 }>;
 export const classifyObserverOrderInvalidFinding = (
   finding: ObserverOrderInvalidFinding,
 ): ObserverOrderInvalidFinding => {
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
-  const observerIndex = safeInteger(finding.observerIndex, "observer index");
+  const observerIndex = finding.observerIndex;
+  if (typeof observerIndex !== "bigint")
+    return fail("observer index must be an integer");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     // Every ordinal a forced leaf can name is admissible: ordinal 0, a
     // negative ordinal, or one past the field's end names no offending later
@@ -64,7 +59,7 @@ export const classifyObserverOrderInvalidFinding = (
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
-  } else if (natural(observerIndex, "observer index") === 0) {
+  } else if (natural(observerIndex, "observer index") === 0n) {
     return fail("observer index must name the later item of an adjacent pair");
   }
   return Object.freeze({ subject: finding.subject, observerIndex });
@@ -86,16 +81,18 @@ export type ObserverOrderInvalidScanResult = Readonly<{
  */
 export const scanObserverOrderInvalid = (
   items: readonly Uint8Array[],
-  observerIndex: number,
+  observerIndex: bigint,
 ): ObserverOrderInvalidScanResult => {
-  safeInteger(observerIndex, "observer index");
   let previous = Buffer.alloc(0);
-  const scanned = Math.min(observerIndex, items.length - 1);
+  const scanned =
+    observerIndex < BigInt(items.length - 1)
+      ? Number(observerIndex)
+      : items.length - 1;
   for (let index = 0; index <= scanned; index += 1) {
     const current = Buffer.from(items[index]!);
     if (current.length !== 28) return fail("observer item is not 28 bytes");
     const violation = index > 0 && Buffer.compare(previous, current) >= 0;
-    if (index === observerIndex)
+    if (BigInt(index) === observerIndex)
       return Object.freeze({
         violation,
         previousObserverHex: previous.toString("hex"),

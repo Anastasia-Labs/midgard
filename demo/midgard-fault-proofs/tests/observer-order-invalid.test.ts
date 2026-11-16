@@ -60,7 +60,7 @@ const evidence = (
 ) => {
   const field = encodeMidgardFieldPreimage(values);
   return prepareObserverOrderInvalidEvidence({
-    finding: { subject, observerIndex },
+    finding: { subject, observerIndex: BigInt(observerIndex) },
     fieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
@@ -104,7 +104,7 @@ describe("observerOrderInvalid V1 semantics", () => {
     expect(() =>
       classifyObserverOrderInvalidFinding({
         subject: rejected(2),
-        observerIndex: 1,
+        observerIndex: 1n,
       }),
     ).toThrow(/coordinate changed/u);
     expect(() =>
@@ -114,7 +114,7 @@ describe("observerOrderInvalid V1 semantics", () => {
           sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
           rejectionReason: { OutputNonCanonical: { output_index: 0n } },
         }),
-        observerIndex: 1,
+        observerIndex: 1n,
       }),
     ).toThrow(/not ObserverOrderInvalid/u);
   });
@@ -122,24 +122,24 @@ describe("observerOrderInvalid V1 semantics", () => {
     const field = encodeMidgardFieldPreimage([observer(1), observer(2)]);
     expect(() =>
       prepareObserverOrderInvalidEvidence({
-        finding: { subject: accepted, observerIndex: 1 },
+        finding: { subject: accepted, observerIndex: 1n },
         fieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/do not match/u);
     expect(() =>
-      scanObserverOrderInvalid([observer(1), Buffer.alloc(27)], 1),
+      scanObserverOrderInvalid([observer(1), Buffer.alloc(27)], 1n),
     ).toThrow(/28 bytes/u);
     expect(() =>
-      scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 2),
+      scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 2n),
     ).toThrow(/earlier/u);
     expect(() =>
-      scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 5),
+      scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 5n),
     ).toThrow(/earlier/u);
     expect(() =>
       classifyObserverOrderInvalidFinding({
         subject: accepted,
-        observerIndex: 0,
+        observerIndex: 0n,
       }),
     ).toThrow(/later item/u);
   });
@@ -180,14 +180,14 @@ describe("observerOrderInvalid V1 semantics", () => {
     const short = planObserverOrderInvalidStagedWalk({
       transactionId: txId,
       fieldPreimageCbor: shortField.toString("hex"),
-      observerIndex: 9,
+      observerIndex: 9n,
     });
     expect(short.walk.map(({ nextItemIndex }) => nextItemIndex)).toEqual([2]);
     expect(short.violation).toBe(false);
     const empty = planObserverOrderInvalidStagedWalk({
       transactionId: txId,
       fieldPreimageCbor: encodeMidgardFieldPreimage([]).toString("hex"),
-      observerIndex: 1,
+      observerIndex: 1n,
     });
     expect(empty.walk).toHaveLength(1);
     expect(empty.walk[0]).toEqual(empty.initialWalk);
@@ -195,7 +195,7 @@ describe("observerOrderInvalid V1 semantics", () => {
     const boundary = planObserverOrderInvalidStagedWalk({
       transactionId: txId,
       fieldPreimageCbor: encodeMidgardFieldPreimage(exact).toString("hex"),
-      observerIndex: 60,
+      observerIndex: 60n,
     });
     expect(boundary.walk.map(({ nextItemIndex }) => nextItemIndex)).toEqual([
       24, 48,
@@ -210,7 +210,7 @@ describe("observerOrderInvalid V1 semantics", () => {
     const input = {
       transactionId: txId,
       fieldPreimageCbor: field.toString("hex"),
-      observerIndex: 48,
+      observerIndex: 48n,
     } as const;
     const first = planObserverOrderInvalidStagedWalk(input);
     expect(first).toEqual(planObserverOrderInvalidStagedWalk(input));

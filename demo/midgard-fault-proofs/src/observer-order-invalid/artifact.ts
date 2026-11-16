@@ -87,7 +87,8 @@ export const buildObserverOrderInvalidArtifact = ({
     position: natural(Number(position), "position"),
     transactionId: evidence.subject.transaction_id,
     sourceKind,
-    observerIndex: evidence.observerIndex,
+    // An artifact carries a detection, whose ordinal is an existing item.
+    observerIndex: natural(Number(evidence.observerIndex), "observer index"),
     subjectCbor: Data.to(
       evidence.subject as never,
       ObserverOrderInvalidVerdictSubjectSchema as never,
@@ -210,7 +211,7 @@ export const admitObserverOrderInvalidArtifact = (
   )
     throw new Error("observerOrderInvalid artifact field commitment changed");
   const evidence = prepareObserverOrderInvalidEvidence({
-    finding: { subject, observerIndex: artifact.observerIndex },
+    finding: { subject, observerIndex: BigInt(artifact.observerIndex) },
     fieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
   });
@@ -225,7 +226,7 @@ export const admitObserverOrderInvalidArtifact = (
     staged: planObserverOrderInvalidStagedWalk({
       transactionId: artifact.transactionId,
       fieldPreimageCbor: artifact.fieldPreimageCbor,
-      observerIndex: artifact.observerIndex,
+      observerIndex: BigInt(artifact.observerIndex),
     }),
   });
 };

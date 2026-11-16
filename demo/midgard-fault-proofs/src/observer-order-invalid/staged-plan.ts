@@ -67,7 +67,7 @@ export const planObserverOrderInvalidStagedWalk = ({
 }: {
   readonly transactionId: string;
   readonly fieldPreimageCbor: string;
-  readonly observerIndex: number;
+  readonly observerIndex: bigint;
   readonly itemBudget?: number;
 }): ObserverOrderInvalidStagedPlan => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget <= 0 || itemBudget > 24)
@@ -101,7 +101,10 @@ export const planObserverOrderInvalidStagedWalk = ({
   // field is shorter: the validator then exhausts the scan as ordered. An
   // empty field, or a negative ordinal, still needs one scan transaction to
   // reach that decision.
-  const target = Math.min(observerIndex + 1, items.length);
+  const target =
+    observerIndex + 1n < BigInt(items.length)
+      ? Number(observerIndex + 1n)
+      : items.length;
   const walk: ObserverOrderWalkCheckpoint[] = [];
   let walkCursor = initialWalk;
   while (walkCursor.nextItemIndex < target) {
@@ -132,13 +135,13 @@ export const observerOrderPrefix = ({
 }: {
   readonly items: readonly Uint8Array[];
   readonly nextItemIndex: number;
-  readonly observerIndex: number;
+  readonly observerIndex: bigint;
 }): Readonly<{ seen: number; previousObserver: string }> => {
   // A negative ordinal names no item: its walk never leaves the start.
   if (
     !Number.isSafeInteger(nextItemIndex) ||
     nextItemIndex < 0 ||
-    nextItemIndex > Math.max(observerIndex, 0)
+    BigInt(nextItemIndex) > (observerIndex > 0n ? observerIndex : 0n)
   )
     throw new Error("observerOrderInvalid prefix cursor is invalid");
   let previousObserver = "";

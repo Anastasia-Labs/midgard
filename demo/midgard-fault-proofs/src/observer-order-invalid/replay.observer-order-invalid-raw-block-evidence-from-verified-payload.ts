@@ -194,7 +194,7 @@ const acceptedEvidence = (
     const evidence = prepareObserverOrderInvalidEvidence({
       finding: {
         subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
-        observerIndex,
+        observerIndex: BigInt(observerIndex),
       },
       fieldPreimage: field,
       committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -282,7 +282,7 @@ export const detectObserverOrderInvalidForcedReplay = (
             sourceKey: transaction.key,
             rejectionReason: reason,
           }),
-          observerIndex,
+          observerIndex: BigInt(observerIndex),
         },
         fieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

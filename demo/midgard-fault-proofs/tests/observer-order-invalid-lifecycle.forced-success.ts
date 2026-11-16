@@ -121,16 +121,16 @@ export const earlierViolationShape = () =>
     observers: [observerAt(1), observerAt(0), observerAt(2)],
   });
 
-export const reasonAt = (observerIndex: number): RejectionReason => ({
+export const reasonAt = (observerIndex: bigint | number): RejectionReason => ({
   ObserverOrderInvalid: { observer_index: BigInt(observerIndex) },
 });
 
 export const acceptedFinding = (
   shape: ObserverFieldShape,
-  observerIndex: number,
+  observerIndex: bigint | number,
 ): ObserverOrderInvalidFinding => ({
   subject: acceptedVerdictSubject(transactionIdOf(shape)),
-  observerIndex,
+  observerIndex: BigInt(observerIndex),
 });
 
 export const evidenceOf = (
@@ -147,18 +147,18 @@ export const evidenceOf = (
 
 export const stagedOf = (
   shape: ObserverFieldShape,
-  observerIndex: number,
+  observerIndex: bigint | number,
 ): ObserverOrderInvalidStagedPlan =>
   planObserverOrderInvalidStagedWalk({
     transactionId: transactionIdOf(shape),
     fieldPreimageCbor: Buffer.from(shape.fieldPreimage).toString("hex"),
-    observerIndex,
+    observerIndex: BigInt(observerIndex),
   });
 
 export const forcedFinding = (
   leaf: ForcedObserverLeaf,
   sourceKey: { transactionId: string; outputIndex: bigint },
-  observerIndex: number,
+  observerIndex: bigint | number,
   rejectionReason: RejectionReason = reasonAt(observerIndex),
 ): ObserverOrderInvalidFinding => ({
   subject: forcedVerdictSubject({
@@ -166,7 +166,7 @@ export const forcedFinding = (
     sourceKey,
     rejectionReason,
   }),
-  observerIndex,
+  observerIndex: BigInt(observerIndex),
 });
 
 type Harness = Awaited<ReturnType<typeof makeHarness>>;
@@ -200,7 +200,7 @@ export const acceptedBlock = async (
 export const forcedBlock = async (
   h: Harness,
   shape: ObserverFieldShape,
-  observerIndex: number,
+  observerIndex: bigint | number,
   rejectionReason: RejectionReason = reasonAt(observerIndex),
 ) => {
   const credential = getAddressDetails(
@@ -256,7 +256,7 @@ type ForcedContext = Harness &
 export const forcedSuccess = async (
   prefix: string,
   shape: ObserverFieldShape,
-  observerIndex: number,
+  observerIndex: bigint | number,
   beforeRemoval: (context: ForcedContext) => Promise<void> = async () => {},
 ) => {
   const h = await makeHarness();
