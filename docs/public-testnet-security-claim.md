@@ -77,8 +77,9 @@ manifest.
 ## Other P1 limitations
 
 - DA payloads carry neither validation-trace states nor the UTxO set.
-- A watcher does not start a proof after that proof's latest safe start. It
-  holds the objective visibly, and no command at this release re-drives it.
+- A watcher that reaches a proof after that proof's latest safe start still
+  runs it until the block matures, and raises a late-start alert. At maturity
+  it holds the objective visibly, and no command at this release re-drives it.
   Any other challenger may still prove the fault while the challenge window is
   open.
 - Strikes are permissionless and rotate operator shifts. They can still rotate

@@ -143,8 +143,9 @@ establish alert delivery, incident ownership and drills.
 
 - Curated operators, fixed for P1's life; permissionless fraud provers and DA
   challengers. Watchers submit the proofs they find automatically. A watcher
-  does not start a proof after its latest safe start; it holds the objective
-  visibly, and no command at this release re-drives it.
+  that reaches a proof after its latest safe start still runs it until the
+  block matures, and raises a late-start alert; at maturity it holds the
+  objective visibly, and no command at this release re-drives it.
 - Native-only forced transactions. No reference-script outputs, Plutus witnesses,
   redeemers, auxiliary data or L2 validity upper bound; canonical and noncanonical inline datums
   remain permitted at L1 admission. Funds needing Plutus or
