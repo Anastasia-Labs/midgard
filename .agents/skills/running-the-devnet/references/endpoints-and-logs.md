@@ -891,13 +891,16 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   objective cap, or name a decision they do not hold. The watcher stays up.
   Read the journal paragraphs of `demo/midgard-watcher/README.md` (Runtime
   and commands) before moving journals aside or restarting.
-- `fault_proof_start_deadline_passed`: an objective's latest safe start passed
-  before it signed any attempt, so it never starts; the detail is
+- `fault_proof_start_deadline_passed`: an objective's header matured before
+  it signed any attempt, so no removal can land; the detail is
   `<category>/<headerHash>`. Held, never run again, the process up; clears
-  once its header leaves the finalized queue. Report it.
+  once its header leaves the finalized queue. Report it. An objective past
+  its latest safe start but before maturity still runs, late
+  (`fault_proof_started_late`).
 - `fault_proof_resubmission_required`: an objective running under
-  reconciliation-only authority (such as one past its latest safe start)
-  reached an action that needs a fresh submission; the detail is
+  reconciliation-only authority (a signed objective at or past its header's
+  maturity, or one that is not the watcher's current proof target) reached
+  an action that needs a fresh submission; the detail is
   `<category>/<headerHash>: <reason>`. It is held by name and runs again on
   the next observation, which clears or renews the hold. The next action
   needs manual submission; report it with the detail.

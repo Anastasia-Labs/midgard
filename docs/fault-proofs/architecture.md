@@ -69,8 +69,10 @@ records. Provisional completion continues authenticated finality verification.
 A completed journal is acknowledged only after canonical terminal verification,
 without opening a signer, allocating funding, or invoking the runner. Its
 cached verification is bound to the journal revision and canonical generation.
-After the new-start deadline, an existing signed attempt can still reconcile
-under a separate read-only permit; the deadline does not authorize a fresh spend.
+Past the latest safe start, a run keeps full submission authority until the
+header matures, and is marked late. At or past maturity, and while a signed
+objective is not the current proof target, its signed attempt only reconciles
+under a separate read-only permit, which does not authorize a fresh spend.
 
 Unfinished objectives are indexed from existing records at restart. Canonical
 observations wake affected work; identical observations do not spin the worker.

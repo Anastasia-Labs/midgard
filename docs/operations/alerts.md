@@ -330,14 +330,14 @@ the diagnostics name (prover wallet funds, L1 provider). See the
 **Meaning.** The watcher holds a fault-proof objective; the `reason` label
 names why:
 
-| `reason`                              | What holds it                                                             | What clears it                               |
-| ------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
-| `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                 | A later run that journals progress           |
-| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff  | The first run that meets something else      |
-| `fault_proof_resubmission_required`   | The next action needs a fresh submission after the header matured         | See escalation                               |
-| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt               | Its header leaving the finalized state queue |
-| `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired       | Its attempts retired past release finality   |
-| `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history) | The next run whose reads the source answers  |
+| `reason`                              | What holds it                                                                | What clears it                               |
+| ------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
+| `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                    | A later run that journals progress           |
+| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff     | The first run that meets something else      |
+| `fault_proof_resubmission_required`   | The next action needs a fresh submission under reconciliation-only authority | See escalation                               |
+| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                  | Its header leaving the finalized state queue |
+| `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired          | Its attempts retired past release finality   |
+| `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)    | The next run whose reads the source answers  |
 
 **First checks.** `l1Readiness` and `supervisor.journalDecisionMissing` in
 `GET /v1/status` give each held objective as `<category>/<headerHash>` with
@@ -350,10 +350,11 @@ instead.
 **Action.** Keep the watcher running: every hold except the two
 deadline-bound ones clears by itself.
 
-**Escalate** `fault_proof_resubmission_required` at once: no command at this
-release grants fresh submission authority to an objective whose header
-matured after it signed an attempt; before maturity it keeps submitting,
-late. Another independent challenger can
+**Escalate** `fault_proof_resubmission_required` at once: a signed objective
+holds reconciliation-only authority at or past its header's maturity, and
+while it is not the watcher's current proof target, and no command at this
+release grants it fresh submission authority. Before maturity the current
+target keeps submitting, late. Another independent challenger can
 still prove the same fault while the challenge window is open (proving is
 permissionless). `fault_proof_start_deadline_passed` means the header matured
 unproven: no removal can land any more. If the header merged, its block is in
@@ -399,8 +400,8 @@ latest safe start and its maturity. A restarted watcher raises both again on
 the objective's first run, before or after maturity. The alert clears when the correction is
 included, another record resolves the objective, or the header leaves the
 queue. At maturity an objective with nothing signed is held as
-`fault_proof_start_deadline_passed`, and one whose next action needs a fresh
-submission as `fault_proof_resubmission_required`
+`fault_proof_start_deadline_passed`, and a signed one whose next action needs
+a fresh submission as `fault_proof_resubmission_required`
 ([MidgardWatcherProofHeld](#midgardwatcherproofheld)).
 
 **First checks.**

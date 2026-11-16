@@ -151,7 +151,9 @@ single L1 transaction. Other Plutus verdicts are challengeable through the
 interactive validation dispute game. DA payloads carry no validation-trace
 states; the nine families that once read them prove their faults directly, and
 the public profile enables all nine. Watchers submit proofs
-automatically but do not start a proof after its latest safe start. Strikes
+automatically; a watcher that reaches a proof after its latest safe start
+still runs it until the block matures, and raises a late-start alert. At
+maturity it holds the objective visibly. Strikes
 rotate shifts; the public profile sets the ejection threshold out of reach for
 P1 operation.
 
