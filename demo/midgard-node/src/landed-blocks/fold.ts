@@ -18,7 +18,7 @@
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
 import { ConfirmedLedgerDB } from "../database/index.js";
 import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
@@ -140,7 +140,8 @@ const baseMismatchOf = (error: unknown) => {
       : undefined;
 };
 
-/** Runs a fold or unfold write; a refused base is the named hold. */
+/** Runs a fold or unfold write: its committed result, or a refused base
+ * as the named hold. */
 const checkedFold = <R, A>(
   ports: LandedBlockPorts<R>,
   view: View,
@@ -148,13 +149,15 @@ const checkedFold = <R, A>(
 ) =>
   Effect.gen(function* () {
     const result = yield* Effect.either(viewChecked(ports, view, work));
-    if (result._tag === "Right") return undefined;
+    if (Either.isRight(result)) return Either.right(result.right);
     const refused = baseMismatchOf(result.left);
     if (refused === undefined) return yield* Effect.fail(result.left);
-    return notRetried({
-      reason: CONFIRMED_LEDGER_BASE_MISMATCH,
-      detail: refused.detail,
-    });
+    return Either.left(
+      notRetried({
+        reason: CONFIRMED_LEDGER_BASE_MISMATCH,
+        detail: refused.detail,
+      }),
+    );
   });
 
 export type FoldOutcome =
@@ -168,6 +171,9 @@ export type FoldOutcome =
 /**
  * Folds every processed block up to the merged root `root`, in order;
  * `mergePoint` names the root output that made a header the queue root.
+ * Each fold, once committed, goes to the `folded` port with the frontier
+ * generations it read and left: the one place the node's confirmed-ledger
+ * verification advances (`advanceVerifiedConfirmedLedger`).
  */
 export const foldToRoot = <R>(
   ports: LandedBlockPorts<R>,
@@ -203,9 +209,11 @@ export const foldToRoot = <R>(
       if (!next.applied)
         return { kind: "awaiting_rebase" } satisfies FoldOutcome;
       const point = yield* mergePoint(next.headerHash);
-      const refused = yield* checkedFold(ports, view, foldMerge(next, point));
-      if (refused !== undefined)
-        return { kind: "held", hold: refused } satisfies FoldOutcome;
+      const folded = yield* checkedFold(ports, view, foldMerge(next, point));
+      if (Either.isLeft(folded))
+        return { kind: "held", hold: folded.left } satisfies FoldOutcome;
+      if (ports.folded !== undefined)
+        yield* ports.folded({ row: next, ...folded.right });
     }
   });
 
@@ -249,13 +257,14 @@ export const rewindToRoot = <R>(
       if (onChain.has(lineage.anchor)) return undefined;
       target = back.indexOf(lineage.anchor);
     }
-    return yield* checkedFold(
+    const unfolded = yield* checkedFold(
       ports,
       view,
       Effect.forEach(ancestors.slice(0, target), unfoldFrontier, {
         discard: true,
       }),
     );
+    return Either.isLeft(unfolded) ? unfolded.left : undefined;
   });
 
 /** What a run needs besides the queue. */

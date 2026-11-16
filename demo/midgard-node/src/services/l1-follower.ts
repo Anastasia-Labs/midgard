@@ -236,6 +236,7 @@ const followL1 = <R>(
             )
         ).response_geometry,
       }),
+      globals,
     );
     const admissionDivergences = forcedAdmissionDivergences();
     // The blocks processing commits: progress past a local fault (R1).

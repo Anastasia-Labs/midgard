@@ -14,7 +14,7 @@ import type {
 } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
-import type { WithdrawalMembership } from "./store.js";
+import type { LandedBlockRow, WithdrawalMembership } from "./store.js";
 
 /** This node's journal of a block it committed, as processing reads it. */
 export type OwnJournal = Readonly<{
@@ -29,6 +29,16 @@ export type OwnJournal = Readonly<{
   withdrawals: readonly WithdrawalMembership[];
   txIds: readonly Buffer[];
 }>;
+
+/** The frontier generations a fold read (under its frontier lock) and
+ * left (`foldMerge`). */
+export type FoldGenerations = Readonly<{
+  readGeneration: string;
+  generation: string;
+}>;
+
+/** A fold processing committed: the folded row and its generations. */
+export type CommittedFold = FoldGenerations & Readonly<{ row: LandedBlockRow }>;
 
 export type LandedBlockPorts<R> = Readonly<{
   /** Whether the follower is still at `view`; runs inside the write's transaction. */
@@ -76,6 +86,13 @@ export type LandedBlockPorts<R> = Readonly<{
   rebase: (
     reason: string,
   ) => Effect.Effect<DriverHold | undefined, unknown, R | Database>;
+  /**
+   * Called once processing's fold of the next processed block toward the
+   * merged root has committed (`foldToRoot`), not on an unfold or any other
+   * fold: the node advances its confirmed-ledger verification over it
+   * (`advanceVerifiedConfirmedLedger`).
+   */
+  folded?: (fold: CommittedFold) => Effect.Effect<void>;
 }>;
 
 /** The follower moved off the view a write was computed at. */

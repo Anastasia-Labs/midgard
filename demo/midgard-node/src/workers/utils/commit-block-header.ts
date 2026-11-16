@@ -19,9 +19,11 @@ export type WorkerInput = {
   readonly history?: import("../../services/follower-write-gate.js").FollowerWritePermit;
   /**
    * The frontier the main thread last verified `confirmed_ledger` derives
-   * the root of (`confirmed-ledger-verification.ts`), built by
-   * `verifiedFrontierWorkerInput` and read by `parseVerifiedFrontier`.
-   * Absent until a verification passes, and after one finds a divergence.
+   * the root of (`confirmed-ledger-verification.ts`), at the generation it
+   * read, or the frontier a clean fold advanced that verification to
+   * (`confirmed-ledger-advance.ts`); built by `verifiedFrontierWorkerInput`
+   * and read by `parseVerifiedFrontier`. Absent until a verification
+   * passes, and after one finds a divergence.
    */
   readonly verifiedFrontier?: VerifiedFrontier;
   readonly nativeMpf?: {
@@ -51,10 +53,17 @@ export type WorkerInput = {
   };
 };
 
-/** A frontier header (56 hex) and the root of its post-state (64 hex). */
+/**
+ * A frontier header (56 hex), the root of its post-state (64 hex) and the
+ * frontier generation it was verified at (a positive `bigint`, in decimal
+ * with no leading zero; migration 0038). The generation names the ledger
+ * verified: a frontier unfolded and folded back to the same header and
+ * root, or `confirmed_ledger` written outside a fold, carries another.
+ */
 export type VerifiedFrontier = Readonly<{
   headerHash: string;
   utxosRoot: string;
+  generation: string;
 }>;
 
 /** `WorkerInput.verifiedFrontier` is not a frontier the parent could send. */
@@ -64,9 +73,16 @@ export class MalformedVerifiedFrontierError extends Data.TaggedError(
 
 const HEADER_HASH_HEX = /^[0-9a-f]{56}$/u;
 const ROOT_HEX = /^[0-9a-f]{64}$/u;
+const GENERATION = /^[1-9][0-9]{0,18}$/u;
+const GENERATION_MAX = 9_223_372_036_854_775_807n;
+
+const isGeneration = (value: unknown): value is string =>
+  typeof value === "string" &&
+  GENERATION.test(value) &&
+  BigInt(value) <= GENERATION_MAX;
 
 /** The `WorkerInput` field the parent sends for `verified`: none while no
- * verification has passed. */
+ * verification has passed. Only the frontier and its generation cross. */
 export const verifiedFrontierWorkerInput = (
   verified: VerifiedFrontier | undefined,
 ): Pick<WorkerInput, "verifiedFrontier"> =>
@@ -76,6 +92,7 @@ export const verifiedFrontierWorkerInput = (
         verifiedFrontier: {
           headerHash: verified.headerHash,
           utxosRoot: verified.utxosRoot,
+          generation: verified.generation,
         },
       };
 
@@ -92,15 +109,20 @@ export const parseVerifiedFrontier = (
   const pair = value as Partial<Record<keyof VerifiedFrontier, unknown>>;
   return typeof value === "object" &&
     value !== null &&
-    Object.keys(value).sort().join() === "headerHash,utxosRoot" &&
+    Object.keys(value).sort().join() === "generation,headerHash,utxosRoot" &&
     typeof pair.headerHash === "string" &&
     HEADER_HASH_HEX.test(pair.headerHash) &&
     typeof pair.utxosRoot === "string" &&
-    ROOT_HEX.test(pair.utxosRoot)
-    ? Effect.succeed({ headerHash: pair.headerHash, utxosRoot: pair.utxosRoot })
+    ROOT_HEX.test(pair.utxosRoot) &&
+    isGeneration(pair.generation)
+    ? Effect.succeed({
+        headerHash: pair.headerHash,
+        utxosRoot: pair.utxosRoot,
+        generation: pair.generation,
+      })
     : Effect.fail(
         new MalformedVerifiedFrontierError({
-          detail: `verifiedFrontier is not exactly a 56-hex header hash and a 64-hex root: ${JSON.stringify(value)}`,
+          detail: `verifiedFrontier is not exactly a 56-hex header hash, a 64-hex root and a decimal generation: ${JSON.stringify(value)}`,
         }),
       );
 };

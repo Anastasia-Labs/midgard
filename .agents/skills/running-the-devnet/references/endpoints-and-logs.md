@@ -323,9 +323,11 @@ Commitment and liveness (raised by fibers, cleared by them):
   landed-block processing has not applied yet, or for this node's own block
   in flight to land. Wait.
 - `commit_base_ledger_unverified`: the commit on a landed tail waits for the
-  node's verification of `confirmed_ledger` at the current frontier, which
-  runs at startup, after each fold and every ten minutes. It clears when
-  the verification passes. While it waits, look under the source
+  node's verification of `confirmed_ledger` at the current frontier and
+  frontier generation, which runs at startup, after each fold or other
+  write to `confirmed_ledger` and every ten minutes; a clean fold by
+  landed-block processing carries a pass to the folded block. It clears
+  when the verification passes. While it waits, look under the source
   `confirmed_ledger_verification`: `confirmed_ledger_verification_failed`
   means the verification cannot complete, and
   `commit_base_ledger_divergence:confirmed_ledger` or

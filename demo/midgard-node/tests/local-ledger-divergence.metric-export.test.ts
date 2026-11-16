@@ -10,7 +10,8 @@
  * is counted under its check, `confirmed_ledger` at the frontier or
  * `confirmed_ledger_tail` at the tail, the first named on `/readyz`, and
  * clears the verified frontier commits build from; the next pass records it
- * again and clears the reason.
+ * again and clears the reason. A divergence from a run below the recorded
+ * generation is counted too, but raises nothing and leaves the record.
  */
 import { Effect, Either, Ref } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -133,19 +134,22 @@ describe("the local ledger divergence counter", { concurrent: false }, () => {
       recordConfirmedLedgerVerification(node, {
         kind: "verified",
         frontier,
+        generation: "1",
         tail: frontier,
+        tailDigests: new Map(),
         entries: 1,
         durationMs: 1,
       }),
     );
     expect(
       await Effect.runPromise(Ref.get(node.VERIFIED_CONFIRMED_LEDGER)),
-    ).toEqual(frontier);
+    ).toEqual({ ...frontier, generation: "1", tailDigests: new Map() });
     const before = await exported();
     await Effect.runPromise(
       recordConfirmedLedgerVerification(node, {
         kind: "diverged",
         frontier,
+        generation: "1",
         tail,
         entries: 1,
         durationMs: 1,
@@ -184,7 +188,9 @@ describe("the local ledger divergence counter", { concurrent: false }, () => {
       recordConfirmedLedgerVerification(node, {
         kind: "verified",
         frontier,
+        generation: "1",
         tail: frontier,
+        tailDigests: new Map(),
         entries: 1,
         durationMs: 1,
       }),
@@ -192,6 +198,62 @@ describe("the local ledger divergence counter", { concurrent: false }, () => {
     expect(await reasons()).toEqual([]);
     expect(
       await Effect.runPromise(Ref.get(node.VERIFIED_CONFIRMED_LEDGER)),
-    ).toEqual(frontier);
+    ).toEqual({ ...frontier, generation: "1", tailDigests: new Map() });
+  });
+
+  it("counts a divergence from a run below the recorded generation, raising nothing and leaving the record", async () => {
+    const node = await globals();
+    const frontier = { headerHash: BASE, utxosRoot: "ab".repeat(32) };
+    const tail = { headerHash: "c1".repeat(28), utxosRoot: "ac".repeat(32) };
+    const verified = {
+      kind: "verified",
+      frontier,
+      generation: "12",
+      tail: frontier,
+      tailDigests: new Map(),
+      entries: 1,
+      durationMs: 1,
+    } as const;
+    await Effect.runPromise(recordConfirmedLedgerVerification(node, verified));
+    const before = await exported();
+    // A run that read generation 9 (before a fold or another write moved
+    // it to 12) still found a ledger that does not derive its root.
+    await Effect.runPromise(
+      recordConfirmedLedgerVerification(node, {
+        kind: "diverged",
+        frontier,
+        generation: "9",
+        tail,
+        entries: 1,
+        durationMs: 1,
+        divergences: [
+          {
+            check: "confirmed_ledger",
+            headerHash: BASE,
+            root: frontier.utxosRoot,
+            derivedRoot: "cd".repeat(32),
+          },
+          {
+            check: "confirmed_ledger_tail",
+            headerHash: tail.headerHash,
+            root: tail.utxosRoot,
+            derivedRoot: "ce".repeat(32),
+          },
+        ],
+      }),
+    );
+    expect(await exported()).toEqual({
+      ...before,
+      confirmed_ledger: (before.confirmed_ledger ?? 0) + 1,
+      confirmed_ledger_tail: (before.confirmed_ledger_tail ?? 0) + 1,
+    });
+    expect(
+      (await Effect.runPromise(activeLivenessReasons(node))).filter(
+        ({ source }) => source === CONFIRMED_LEDGER_VERIFICATION_SOURCE,
+      ),
+    ).toEqual([]);
+    expect(
+      await Effect.runPromise(Ref.get(node.VERIFIED_CONFIRMED_LEDGER)),
+    ).toEqual({ ...frontier, generation: "12", tailDigests: new Map() });
   });
 });

@@ -217,27 +217,72 @@ export const markApplied = (hashes: readonly string[]) =>
       WHERE header_hash = ANY(${pg.array(byHashes(hashes))}::bytea[])`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to mark landed blocks"));
 
-const singleRow = (table: string) => ({
-  retrieve: Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const [row] = yield* sql<{ header_hash: Buffer; utxos_root: string }>`
-      SELECT header_hash, utxos_root FROM ${sql(table)}`;
-    return row === undefined
-      ? undefined
-      : ({
-          headerHash: Buffer.from(row.header_hash).toString("hex"),
-          utxosRoot: row.utxos_root,
-        } satisfies HeaderRoot);
-  }).pipe(sqlErrorToDatabaseError(table, `Failed to read ${table}`)),
+/**
+ * A frontier with its generation (migration 0038): drawn by every frontier
+ * write and every statement that writes `confirmed_ledger`, so it names
+ * exactly the ledger it was read with. Decimal, as Postgres's `bigint`.
+ */
+export type GeneratedFrontier = HeaderRoot & Readonly<{ generation: string }>;
+
+/** A generation as Postgres returns a `bigint`, in decimal. */
+export const generationOf = (value: string | number | bigint) =>
+  BigInt(value).toString();
+
+export type RawFrontier = {
+  header_hash: Buffer;
+  utxos_root: string;
+  generation: string | number | bigint;
+};
+
+export const decodeFrontier = (row: RawFrontier): GeneratedFrontier => ({
+  headerHash: Buffer.from(row.header_hash).toString("hex"),
+  utxosRoot: row.utxos_root,
+  generation: generationOf(row.generation),
+});
+
+const readFrontier = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [row] = yield* sql<RawFrontier>`
+    SELECT header_hash, utxos_root, generation FROM ${sql(frontierTableName)}`;
+  return row === undefined ? undefined : decodeFrontier(row);
+}).pipe(
+  sqlErrorToDatabaseError(
+    frontierTableName,
+    `Failed to read ${frontierTableName}`,
+  ),
+);
+
+/** The header whose post-state `confirmed_ledger` holds. */
+export const Frontier = {
+  retrieve: readFrontier.pipe(
+    Effect.map((frontier) =>
+      frontier === undefined
+        ? undefined
+        : ({
+            headerHash: frontier.headerHash,
+            utxosRoot: frontier.utxosRoot,
+          } satisfies HeaderRoot),
+    ),
+  ),
+  /** The frontier with the generation it was read at. */
+  retrieveWithGeneration: readFrontier,
+  /** Moves the frontier to `value`, drawing a new generation; returns it. */
   upsert: (value: HeaderRoot) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ${sql(table)} (id, header_hash, utxos_root)
+      const [row] = yield* sql<Pick<RawFrontier, "generation">>`
+        INSERT INTO ${sql(frontierTableName)} (id, header_hash, utxos_root)
         VALUES (true, ${Buffer.from(value.headerHash, "hex")}, ${value.utxosRoot})
         ON CONFLICT (id) DO UPDATE SET header_hash = EXCLUDED.header_hash,
-          utxos_root = EXCLUDED.utxos_root, updated_at = NOW()`;
-    }).pipe(sqlErrorToDatabaseError(table, `Failed to write ${table}`)),
-});
-
-/** The header whose post-state `confirmed_ledger` holds. */
-export const Frontier = singleRow(frontierTableName);
+          utxos_root = EXCLUDED.utxos_root,
+          generation = nextval('node_confirmed_ledger_generation'),
+          updated_at = NOW()
+        RETURNING generation`;
+      return generationOf(row!.generation);
+    }).pipe(
+      sqlErrorToDatabaseError(
+        frontierTableName,
+        `Failed to write ${frontierTableName}`,
+      ),
+    ),
+};

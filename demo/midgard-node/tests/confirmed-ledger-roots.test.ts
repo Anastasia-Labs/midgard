@@ -80,6 +80,7 @@ const landed = async ({
   };
   return {
     frontier: { headerHash: F, utxosRoot: r0 },
+    generation: "1",
     confirmed: stored(confirmed),
     chain: [row],
   };

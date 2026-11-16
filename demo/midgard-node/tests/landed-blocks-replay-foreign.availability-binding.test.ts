@@ -33,6 +33,7 @@ import {
   EVENTS_CONFIG,
 } from "./helpers/l1-events-chain.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
+import { noVerification } from "./helpers/verified-frontier.js";
 import {
   attested,
   AVAILABILITY,
@@ -388,6 +389,7 @@ describe("the node's binding pass in the driver run", () => {
       },
       () => Effect.succeed(undefined),
       () => AVAILABILITY,
+      noVerification(),
     );
     serveDa((peer) => (peer === 0 ? recompressed(honest) : honest), 2);
     expect(

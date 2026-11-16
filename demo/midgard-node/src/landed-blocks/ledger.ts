@@ -185,20 +185,24 @@ export const onOneSnapshot = <A, E, R>(read: Effect.Effect<A, E, R>) =>
     );
   });
 
-/** The ledger at the frontier and the processed chain after it. */
+/** The ledger at the frontier and the processed chain after it, with the
+ * frontier generation read with them (migration 0038). */
 export type LandedLedger = Readonly<{
   frontier: HeaderRoot;
+  generation: string;
   confirmed: readonly Ledger.EntryNoTimeStamp[];
   chain: readonly LandedBlockRow[];
 }>;
 
 export const landedLedger = (rows: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
-    const frontier = yield* Frontier.retrieve;
-    if (frontier === undefined) return undefined;
+    const read = yield* Frontier.retrieveWithGeneration;
+    if (read === undefined) return undefined;
+    const { generation, ...frontier } = read;
     const confirmed = yield* ConfirmedLedgerDB.retrieve;
     return {
       frontier,
+      generation,
       confirmed,
       chain: processedChain(rows, frontier.headerHash),
     } satisfies LandedLedger;

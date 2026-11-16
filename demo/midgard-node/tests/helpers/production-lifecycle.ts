@@ -246,6 +246,7 @@ export const openProductionLifecycle = async (
             ? Effect.succeed(undefined)
             : late.recompute.rebaseIfDue(reason),
         ),
+      verified: globals,
     });
     const before = options.beforePreparation;
     const driver = await runtime.runPromise(

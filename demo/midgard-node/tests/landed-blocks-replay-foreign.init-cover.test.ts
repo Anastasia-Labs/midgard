@@ -28,6 +28,7 @@ import { db } from "./helpers/forced-orders-node-store.js";
 import { ELSEWHERE, EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
+import { noVerification } from "./helpers/verified-frontier.js";
 import { AVAILABILITY } from "./landed-blocks-replay-foreign.availability.js";
 import {
   clock,
@@ -97,6 +98,7 @@ const portsOver = (store: FactStore) =>
     // Not reached: no landed row asks for a rebase here.
     () => Effect.succeed(undefined),
     () => AVAILABILITY,
+    noVerification(),
   );
 
 /** Retains `block` and replays it through the ports at the view (or `input`'s), its node output entered at `enteredSlot` (default: the view's slot). */

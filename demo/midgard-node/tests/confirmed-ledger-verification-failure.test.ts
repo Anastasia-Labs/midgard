@@ -46,7 +46,9 @@ const pass = (globals: Node) =>
     recordConfirmedLedgerVerification(globals, {
       kind: "verified",
       frontier: FRONTIER,
+      generation: "1",
       tail: TAIL,
+      tailDigests: new Map(),
       entries: 2,
       durationMs: 1,
     }),
@@ -78,7 +80,11 @@ describe("a confirmed_ledger verification run that fails", () => {
     expect(await verifiedFrontier(globals)).toBeUndefined();
     await pass(globals);
     await fail(globals);
-    expect(await verifiedFrontier(globals)).toEqual(FRONTIER);
+    expect(await verifiedFrontier(globals)).toEqual({
+      ...FRONTIER,
+      generation: "1",
+      tailDigests: new Map(),
+    });
   });
 
   it("clears on the next run that completes, whatever it found", async () => {
@@ -98,6 +104,7 @@ describe("a confirmed_ledger verification run that fails", () => {
       recordConfirmedLedgerVerification(globals, {
         kind: "diverged",
         frontier: FRONTIER,
+        generation: "1",
         tail: TAIL,
         entries: 2,
         durationMs: 1,

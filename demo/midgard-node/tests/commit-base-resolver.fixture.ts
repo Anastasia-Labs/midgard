@@ -13,6 +13,7 @@ import type * as Ledger from "../src/database/utils/ledger.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
   Frontier,
+  type HeaderRoot,
   insertRow,
   type LandedBlockRow,
 } from "../src/landed-blocks/store.js";
@@ -143,29 +144,40 @@ export const fixture = async (setup: Setup) => {
 
 /**
  * The frontier a verification of the stored `confirmed_ledger` records, as
- * the main thread's does (`verifyConfirmedLedger`), its roots derived in
- * this thread: none unless it passes.
+ * the main thread's does (`verifyConfirmedLedger`), at the frontier
+ * generation it read, its roots derived in this thread: none unless it
+ * passes.
  */
 export const verifiedNow = () =>
   run(verifyConfirmedLedger(deriveConfirmedLedgerRoots)).then(
     (outcome): VerifiedFrontier | undefined =>
-      outcome.kind === "verified" ? outcome.frontier : undefined,
+      outcome.kind === "verified"
+        ? { ...outcome.frontier, generation: outcome.generation }
+        : undefined,
   );
 
 /** The resolver's outcome on `tail`, as a commit worker that received
- * `verified` (by default, what a verification now records) resolves it. */
+ * `verified` (by default, what a verification now records) resolves it; a
+ * `verified` frontier with no generation is taken at the frontier
+ * generation stored now. */
 export const resolve = async (
   tail: Awaited<ReturnType<typeof tailOf>>["tail"],
   nativeMpfRoot: string,
   genesisUtxos?: readonly UTxO[],
-  verified: VerifiedFrontier | "none" | "verify" = "verify",
+  verified: HeaderRoot | VerifiedFrontier | "none" | "verify" = "verify",
 ) => {
   const verifiedFrontier =
     verified === "verify"
       ? await verifiedNow()
       : verified === "none"
         ? undefined
-        : verified;
+        : "generation" in verified
+          ? verified
+          : {
+              ...verified,
+              generation:
+                (await run(Frontier.retrieveWithGeneration))?.generation ?? "1",
+            };
   const resolved = Effect.either(
     resolveCommitBaseLedgerEntries({
       availableConfirmedBlock: tail,

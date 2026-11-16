@@ -14,6 +14,7 @@ const bytes = (hex) => Buffer.from(hex, "hex");
 const { landed } = workerData;
 const ledger = {
   frontier: landed.frontier,
+  generation: landed.generation,
   confirmed: landed.confirmed.map((entry) => ({
     tx_id: Buffer.alloc(32),
     address: "addr",

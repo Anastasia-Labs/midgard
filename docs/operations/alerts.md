@@ -169,12 +169,17 @@ block's. The `check` names where it was found:
   divergence too). The two are checked and counted separately: a
   `confirmed_ledger` entry a later delta spends is covered only by the
   frontier's check, a delta byte only by the tail's. It runs at startup,
-  after each fold and every ten minutes, so it also catches a row (of
+  after each fold or other write to `confirmed_ledger` (each draws a new
+  frontier generation) and every ten minutes, so it also catches a row (of
   `confirmed_ledger` or a landed delta) changed outside a fold. Each check
-  counts once per run that finds its divergence. While none has passed at
-  the current frontier, commits on landed tails wait as
-  `commit_base_ledger_unverified`. The reason clears when a later run
-  passes. A run that cannot complete raises
+  counts once per run that finds its divergence. A pass names the frontier
+  generation it read, and a clean fold by landed-block processing carries
+  it to the folded block when that block's delta is the one the run
+  checked. A pass from a run that read an older generation is ignored; a
+  divergence it finds is counted and logged at warn, but raises nothing and
+  leaves the recorded pass alone. While no pass holds at the current frontier and generation, commits on landed tails
+  wait as `commit_base_ledger_unverified`. The reason clears when a later
+  run passes. A run that cannot complete raises
   `confirmed_ledger_verification_failed` under the same source instead,
   and counts nothing.
 

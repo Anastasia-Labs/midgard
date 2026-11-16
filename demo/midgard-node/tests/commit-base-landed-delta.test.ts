@@ -26,6 +26,9 @@ const entry = (label: number, output = `output-${label.toString()}`) => ({
 });
 
 const F = { headerHash: "f0".repeat(28), utxosRoot: "a0".repeat(32) };
+/** The frontier generation the ledger is read at, and F verified at it. */
+const GENERATION = "7";
+const VERIFIED_F = { ...F, generation: GENERATION };
 const H1 = "b1".repeat(28);
 const H2 = "b2".repeat(28);
 
@@ -59,6 +62,7 @@ const landed = (
   } = {},
 ): LandedLedger => ({
   frontier: F,
+  generation: GENERATION,
   confirmed: [entry(1), entry(2)].map((each) => ({
     ...each,
     tx_id: Buffer.alloc(32),
@@ -83,18 +87,23 @@ const landed = (
 });
 
 /** The base at `headerHash` on `ledger`, from the frontier `verified`
- * (none when undefined); F unless given. */
+ * (none when undefined); F at the ledger's generation unless given. */
 const at = (
   ledger: LandedLedger,
   headerHash: string,
-  ...verified: [] | [{ headerHash: string; utxosRoot: string } | undefined]
+  ...verified:
+    | []
+    | [
+        | { headerHash: string; utxosRoot: string; generation: string }
+        | undefined,
+      ]
 ) =>
   Effect.runPromise(
     Effect.either(
       verifiedLandedLedgerAt(
         ledger,
         headerHash,
-        verified.length === 0 ? F : verified[0],
+        verified.length === 0 ? VERIFIED_F : verified[0],
       ),
     ),
   );
@@ -251,11 +260,14 @@ describe("a landed commit base from the verified frontier", () => {
 });
 
 describe("a landed commit base before its frontier is verified", () => {
-  it("waits while no verification has passed, or the last was at another frontier", async () => {
+  it("waits while no verification has passed, or the last was at another frontier or generation", async () => {
     for (const verified of [
       undefined,
-      { headerHash: "e0".repeat(28), utxosRoot: F.utxosRoot },
-      { headerHash: F.headerHash, utxosRoot: "e1".repeat(32) },
+      { ...VERIFIED_F, headerHash: "e0".repeat(28) },
+      { ...VERIFIED_F, utxosRoot: "e1".repeat(32) },
+      // The same frontier and root, read before `confirmed_ledger` was
+      // written again.
+      { ...VERIFIED_F, generation: "6" },
     ]) {
       const outcome = await at(landed(), H2, verified);
       expect(Either.isLeft(outcome)).toBe(true);

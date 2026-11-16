@@ -2,7 +2,8 @@
  * The node's landed-block ports: the follower-change driver's write
  * capability (the hook's run provides it) for writes, the follower store
  * for the view check, the foreign replay, the node's block journals, and
- * the driver's recompute for the rebase.
+ * the driver's recompute for the rebase, and the advance of the node's
+ * confirmed-ledger verification over each committed fold.
  */
 import type { FactStore, OriginConfig } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
@@ -13,13 +14,15 @@ import { followerViewValid } from "../database/follower-schema.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import type { DriverHold } from "../l1-events/driver.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
+import { advanceVerifiedConfirmedLedger } from "../mpf/confirmed-ledger-advance.js";
 import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { NodeConfig } from "../services/config.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
+import type { Globals } from "../services/globals.js";
 import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
-import type { LandedBlockPorts } from "./ports.js";
+import type { CommittedFold, LandedBlockPorts } from "./ports.js";
 import {
   foreignBlockReplayer,
   type replayForeignBlock,
@@ -45,7 +48,9 @@ const genesis = Effect.gen(function* () {
  * The node's landed-block ports over `store`, with the follower plan's
  * configs (with its origin's `hubOracleOneShot`, which the protocol-init tx
  * spends), the driver's recompute as the rebase, and the deployment's
- * availability commitment authority.
+ * availability commitment authority; each fold processing commits advances
+ * `verified`, the node's verified confirmed ledger
+ * (`advanceVerifiedConfirmedLedger`).
  */
 export const nodeLandedBlockPorts = (
   store: FactStore,
@@ -57,6 +62,7 @@ export const nodeLandedBlockPorts = (
   },
   rebase: (reason: string) => Effect.Effect<DriverHold | undefined>,
   availability: () => SDK.DaPayloadAvailabilityAuthority,
+  verified: Pick<Globals, "VERIFIED_CONFIRMED_LEDGER">,
 ) => {
   const replayer = foreignBlockReplayer({
     store,
@@ -74,6 +80,8 @@ export const nodeLandedBlockPorts = (
     ownJournal,
     genesis,
     rebase,
+    folded: (fold: CommittedFold) =>
+      advanceVerifiedConfirmedLedger(verified, fold),
   } satisfies LandedBlockPorts<NodeLandedBlockContext>;
 };
 

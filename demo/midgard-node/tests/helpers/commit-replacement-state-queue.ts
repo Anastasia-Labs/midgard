@@ -117,6 +117,7 @@ export const openNodeServices = async (life: Lifecycle) => {
                     availabilityParametersFromExplicitEnvironment()
                       .response_geometry,
                 }),
+                life.globals,
               ),
               read.queue,
             ),

@@ -3,15 +3,13 @@ import { Deferred, Effect, MutableRef, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
+import type { VerifiedConfirmedLedger } from "../mpf/confirmed-ledger-advance.js";
 import {
   initialValidationTraceDefenseHealth,
   type ValidationTraceDefenseHealth,
 } from "../validation-trace-defense/health.js";
 import type { CommitPlanningSnapshot } from "../workers/commit-planning-notice.js";
-import {
-  SerializedStateQueueUTxO,
-  type VerifiedFrontier,
-} from "../workers/utils/commit-block-header.js";
+import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   type AdmissionInputClaims,
@@ -203,11 +201,13 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       undefined,
     );
     // The frontier whose `confirmed_ledger` the main thread last verified
-    // derives its root; none until one passes, and after one diverges
-    // (`confirmed-ledger-verification.ts`). Commit workers build landed
-    // bases from it.
+    // derives its root, at the generation it read, with the digests of the
+    // landed deltas it checked; none until one passes, and after one
+    // diverges (`confirmed-ledger-verification.ts`). A clean fold advances
+    // it (`confirmed-ledger-advance.ts`). Commit workers build landed bases
+    // from it.
     const VERIFIED_CONFIRMED_LEDGER = yield* Ref.make<
-      VerifiedFrontier | undefined
+      VerifiedConfirmedLedger | undefined
     >(undefined);
 
     // Hybrid durable-admission backlog gauge. These fields share one cell so

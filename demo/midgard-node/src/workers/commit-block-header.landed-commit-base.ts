@@ -3,7 +3,9 @@
  * verified frontier. The main thread verifies off the commit path that
  * `confirmed_ledger` derives the frontier's root and, with the processed
  * deltas, the queue tail's (`confirmed-ledger-verification.ts`), and the
- * worker receives the frontier it verified at. The tail's post-state is `confirmed_ledger` plus
+ * worker receives the frontier it verified at, with the frontier generation
+ * it read (or the frontier a clean fold advanced it to,
+ * `confirmed-ledger-advance.ts`). The tail's post-state is `confirmed_ledger` plus
  * the processed landed deltas from that frontier, so the commit checks only
  * those deltas: each row builds on the root before it, and its delta
  * applies cleanly (each outref once, none both spent and produced, every
@@ -44,17 +46,19 @@ const repeated = (outRefs: readonly Buffer[]): string | undefined => {
 };
 
 /**
- * What in `row`'s delta does not apply to `ledger`, the ledger at the root
- * `root` before it, if anything. A delta is a set of outrefs that went and
- * a set of outputs at outrefs that are new: each outref at most once, none
- * both spent and produced (an outref names one output, so no transaction
- * spends and re-creates it). It changes the root exactly when it is not
- * empty.
+ * What in `row`'s delta is malformed on the root `root` before it, reading
+ * no ledger, if anything. A delta is a set of outrefs that went and a set of
+ * outputs at outrefs that are new: each outref at most once, none both
+ * spent and produced (an outref names one output, so no transaction spends
+ * and re-creates it). It builds on `root`, and changes the root exactly
+ * when it is not empty.
  */
-const deltaFault = (
-  ledger: LedgerMap,
+export const deltaShapeFault = (
   root: string,
-  row: LandedBlockRow,
+  row: Pick<
+    LandedBlockRow,
+    "parentUtxosRoot" | "utxosRoot" | "spent" | "produced"
+  >,
 ): string | undefined => {
   if (row.parentUtxosRoot !== root)
     return `builds on root ${row.parentUtxosRoot}, the root before it is ${root}`;
@@ -71,8 +75,24 @@ const deltaFault = (
   const respent = row.produced.find((entry) =>
     spent.has(entry.outref.toString("hex")),
   );
-  if (respent !== undefined)
-    return `spends and produces ${respent.outref.toString("hex")}`;
+  return respent === undefined
+    ? undefined
+    : `spends and produces ${respent.outref.toString("hex")}`;
+};
+
+/**
+ * What in `row`'s delta does not apply to `ledger`, the ledger at the root
+ * `root` before it, if anything: a malformed delta (`deltaShapeFault`), an
+ * output it spends that `ledger` does not hold, or one it produces that
+ * `ledger` holds already.
+ */
+const deltaFault = (
+  ledger: LedgerMap,
+  root: string,
+  row: LandedBlockRow,
+): string | undefined => {
+  const shape = deltaShapeFault(root, row);
+  if (shape !== undefined) return shape;
   const missing = row.spent.find(
     (outRef) => !ledger.has(outRef.toString("hex")),
   );
@@ -139,8 +159,10 @@ type VerifiedLandedLedger = Effect.Effect<
  * The post-state of `headerHash` on `landed`: its ledger and root, and the
  * row naming it (none at the frontier), or undefined off the processed
  * chain. Fails with `CommitBaseUnverifiedError` unless `landed`'s frontier is
- * `verified`, and with a `commit_base_landed` divergence on the first row up
- * to `headerHash` whose delta does not apply.
+ * `verified`, at the generation it was read at (the same header and root
+ * at another generation is another ledger), and with a `commit_base_landed`
+ * divergence on the first row up to `headerHash` whose delta does not
+ * apply.
  */
 export const verifiedLandedLedgerAt = (
   landed: LandedLedger,
@@ -148,10 +170,11 @@ export const verifiedLandedLedgerAt = (
   verified: VerifiedFrontier | undefined,
 ): VerifiedLandedLedger =>
   Effect.suspend((): VerifiedLandedLedger => {
-    const { frontier } = landed;
+    const { frontier, generation } = landed;
     if (
       verified?.headerHash !== frontier.headerHash ||
-      verified.utxosRoot !== frontier.utxosRoot
+      verified.utxosRoot !== frontier.utxosRoot ||
+      verified.generation !== generation
     )
       return Effect.fail(
         new CommitBaseUnverifiedError({
@@ -159,7 +182,7 @@ export const verifiedLandedLedgerAt = (
           detail:
             verified === undefined
               ? `no verification of confirmed_ledger at frontier ${frontier.headerHash} has passed`
-              : `confirmed_ledger was last verified at frontier ${verified.headerHash}, the frontier is ${frontier.headerHash}`,
+              : `confirmed_ledger was last verified at frontier ${verified.headerHash} (generation ${verified.generation}), the frontier is ${frontier.headerHash} (generation ${generation})`,
         }),
       );
     return walkLandedLedger(landed, headerHash, "commit_base_landed");

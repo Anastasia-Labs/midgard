@@ -36,6 +36,7 @@ import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
 import admissionTerminalRetentionSql from "./sql/0035_admission_terminal_retention.sql";
 import ownLandedBlocksUnappliedSql from "./sql/0036_own_landed_blocks_unapplied.sql";
 import ownBlockDerivedStatusSql from "./sql/0037_own_block_derived_status.sql";
+import confirmedLedgerGenerationSql from "./sql/0038_confirmed_ledger_generation.sql";
 
 export type Migration = {
   readonly version: number;
@@ -303,6 +304,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "own_block_derived_status",
     checksumSha256: sha256Hex(ownBlockDerivedStatusSql),
     sql: ownBlockDerivedStatusSql,
+    transactional: true,
+  },
+  {
+    version: 38,
+    name: "confirmed_ledger_generation",
+    checksumSha256: sha256Hex(confirmedLedgerGenerationSql),
+    sql: confirmedLedgerGenerationSql,
     transactional: true,
   },
 ] as const;

@@ -8,11 +8,16 @@
  * each first checked as the commit checks it (`walkLandedLedger`), and
  * checked against the tail row's root. Every `confirmed_ledger` entry and
  * every stored delta byte up to the tail is under a root it is checked
- * against. A pass records the frontier in `VERIFIED_CONFIRMED_LEDGER`,
- * which every commit worker receives (`WorkerInput.verifiedFrontier`): a
- * commit on a landed tail builds from that frontier only, applying the
- * landed deltas after it (`verifiedLandedLedgerAt`), and waits as
- * `commit_base_ledger_unverified` while the frontier is another. A
+ * against. A pass records the frontier in `VERIFIED_CONFIRMED_LEDGER`, with
+ * the frontier generation read on the same snapshot (migration 0038) and
+ * the digest of each delta it checked, and every commit worker receives
+ * the frontier and generation (`WorkerInput.verifiedFrontier`): a commit on
+ * a landed tail builds from that frontier only, at that generation,
+ * applying the landed deltas after it (`verifiedLandedLedgerAt`), and waits
+ * as `commit_base_ledger_unverified` while the frontier or its generation
+ * is another. A clean fold advances the record to the folded block
+ * (`confirmed-ledger-advance.ts`), and a run's outcome below the recorded
+ * generation (a run that read the ledger before such a fold) is ignored. A
  * divergence clears the record and is counted under its check,
  * `confirmed_ledger` at the frontier or `confirmed_ledger_tail` at the
  * tail, in `midgard_local_ledger_divergence_total`; the run raises
@@ -22,11 +27,12 @@
  * `confirmed_ledger_verification_failed` there instead, leaving the record
  * as it was. The next run that completes clears either.
  *
- * It runs at startup and once the frontier moves, each fold commit (the
- * frontier is watched every `watchIntervalMs`), and again every
- * `CONFIRMED_LEDGER_RECHECK_INTERVAL_MS`, which catches a row changed
- * outside a fold. One run at a time: one due while another runs is skipped,
- * not queued.
+ * It runs at startup and once the frontier or its generation moves, each
+ * fold commit and each write to `confirmed_ledger` (the frontier is watched
+ * every `watchIntervalMs`), and again every
+ * `CONFIRMED_LEDGER_RECHECK_INTERVAL_MS`, which catches a landed row changed
+ * outside processing. One run at a time: one due while another runs is
+ * skipped, not queued.
  */
 import { Worker } from "node:worker_threads";
 
@@ -37,6 +43,7 @@ import {
   CONFIRMED_LEDGER_VERIFICATION_FAILED,
 } from "../fibers/block-commitment.worker-readiness.js";
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
+import { landedDeltaDigest } from "../landed-blocks/delta-digest.js";
 import {
   type LandedLedger,
   landedLedger,
@@ -44,6 +51,7 @@ import {
 } from "../landed-blocks/ledger.js";
 import {
   Frontier,
+  type GeneratedFrontier,
   type HeaderRoot,
   retrieveRows,
 } from "../landed-blocks/store.js";
@@ -55,6 +63,7 @@ import {
 } from "../services/liveness-halt.js";
 import { BUNDLED_WORKER_EXEC_ARGV } from "../services/validation-pool.bundled-worker-exec-argv.js";
 import { walkLandedLedger } from "../workers/commit-block-header.landed-commit-base.js";
+import { generationBelow } from "./confirmed-ledger-advance.js";
 import {
   type ConfirmedLedgerDeltaOp,
   type ConfirmedLedgerRoots,
@@ -150,21 +159,26 @@ export type DeriveConfirmedLedgerRoots = (
   input: ConfirmedLedgerRootsInput,
 ) => Effect.Effect<ConfirmedLedgerRoots, unknown>;
 
-/** What a verification run found: at the frontier and the queue tail it
- * read (the frontier itself, with no processed row after it). A divergence
- * run names each check that failed, the frontier's first. */
+/** What a verification run found: at the frontier, the frontier
+ * generation and the queue tail it read (the frontier itself, with no
+ * processed row after it). A pass carries the digest of each delta it
+ * checked, by header; a divergence names each check that failed, the
+ * frontier's first. */
 export type ConfirmedLedgerVerification =
   | Readonly<{ kind: "no_frontier" }>
   | Readonly<{
       kind: "verified";
       frontier: HeaderRoot;
+      generation: string;
       tail: HeaderRoot;
+      tailDigests: ReadonlyMap<string, string>;
       entries: number;
       durationMs: number;
     }>
   | Readonly<{
       kind: "diverged";
       frontier: HeaderRoot;
+      generation: string;
       tail: HeaderRoot;
       divergences: readonly [LedgerDivergence, ...LedgerDivergence[]];
       entries: number;
@@ -247,13 +261,20 @@ export const verifyLandedLedger = (
       });
     const result = {
       frontier,
+      generation: landed.generation,
       tail,
       entries: landed.confirmed.length,
       durationMs: Date.now() - startedAt,
     };
     const [first, ...rest] = divergences;
     return first === undefined
-      ? ({ kind: "verified", ...result } as const)
+      ? ({
+          kind: "verified",
+          ...result,
+          tailDigests: new Map(
+            chain.map((row) => [row.headerHash, landedDeltaDigest(row)]),
+          ),
+        } as const)
       : ({
           kind: "diverged",
           ...result,
@@ -261,31 +282,72 @@ export const verifyLandedLedger = (
         } as const);
   });
 
-/** Records `outcome`: the verified frontier, or each divergence's count
- * and the first's reason, with one detail line per divergence; either
- * clears a failure an earlier run raised. */
+/** Records `outcome`: the verified frontier at its generation, or each
+ * divergence's count and the first's reason, with one detail line per
+ * divergence; either clears a failure an earlier run raised. An outcome
+ * below the recorded generation leaves the record and readiness as they
+ * are: the record names a later ledger, which a later run or a clean fold
+ * verified. Its divergences are still counted and logged, since some
+ * writer produced a ledger that does not derive its root. */
 export const recordConfirmedLedgerVerification = (
   globals: Pick<Globals, "LIVENESS_REASONS" | "VERIFIED_CONFIRMED_LEDGER">,
   outcome: ConfirmedLedgerVerification,
 ): Effect.Effect<void> => {
+  if (outcome.kind === "no_frontier")
+    return Effect.zipRight(
+      Ref.set(globals.VERIFIED_CONFIRMED_LEDGER, undefined),
+      clearLivenessIncident(globals, CONFIRMED_LEDGER_VERIFICATION_SOURCE),
+    );
+  return Ref.modify(globals.VERIFIED_CONFIRMED_LEDGER, (recorded) =>
+    recorded !== undefined &&
+    generationBelow(outcome.generation, recorded.generation)
+      ? [recorded, recorded]
+      : [
+          undefined,
+          outcome.kind === "verified"
+            ? {
+                headerHash: outcome.frontier.headerHash,
+                utxosRoot: outcome.frontier.utxosRoot,
+                generation: outcome.generation,
+                tailDigests: outcome.tailDigests,
+              }
+            : undefined,
+        ],
+  ).pipe(
+    Effect.flatMap((newer) =>
+      newer === undefined
+        ? recordedOutcome(globals, outcome)
+        : outcome.kind === "verified"
+          ? Effect.logInfo(
+              `confirmed_ledger verification at generation ${outcome.generation} ignored: the record is at generation ${newer.generation}`,
+            )
+          : Effect.zipRight(
+              Effect.forEach(outcome.divergences, countLedgerDivergence, {
+                discard: true,
+              }),
+              Effect.logWarning(
+                `confirmed_ledger verification at generation ${outcome.generation}, below the recorded generation ${newer.generation}, diverged; counted, the record and readiness left as they are:\n${outcome.divergences.map(ledgerDivergenceDetail).join("\n")}`,
+              ),
+            ),
+    ),
+  );
+};
+
+/** The incident an outcome recorded at or above the recorded generation
+ * raises or clears, and the divergences it counts. */
+const recordedOutcome = (
+  globals: Pick<Globals, "LIVENESS_REASONS">,
+  outcome: Exclude<ConfirmedLedgerVerification, { kind: "no_frontier" }>,
+): Effect.Effect<void> => {
   switch (outcome.kind) {
-    case "no_frontier":
-      return Effect.zipRight(
-        Ref.set(globals.VERIFIED_CONFIRMED_LEDGER, undefined),
-        clearLivenessIncident(globals, CONFIRMED_LEDGER_VERIFICATION_SOURCE),
-      );
     case "verified":
-      return Effect.zipRight(
-        Ref.set(globals.VERIFIED_CONFIRMED_LEDGER, {
-          headerHash: outcome.frontier.headerHash,
-          utxosRoot: outcome.frontier.utxosRoot,
-        }),
-        clearLivenessIncident(globals, CONFIRMED_LEDGER_VERIFICATION_SOURCE),
+      return clearLivenessIncident(
+        globals,
+        CONFIRMED_LEDGER_VERIFICATION_SOURCE,
       );
     case "diverged":
       return Effect.all(
         [
-          Ref.set(globals.VERIFIED_CONFIRMED_LEDGER, undefined),
           Effect.forEach(outcome.divergences, countLedgerDivergence, {
             discard: true,
           }),
@@ -320,12 +382,18 @@ export const recordConfirmedLedgerVerificationFailure = (
     ),
   );
 
-const sameFrontier = (left: HeaderRoot | undefined, right: HeaderRoot) =>
-  left?.headerHash === right.headerHash && left.utxosRoot === right.utxosRoot;
+const sameFrontier = (
+  left: GeneratedFrontier | undefined,
+  right: GeneratedFrontier,
+) =>
+  left?.headerHash === right.headerHash &&
+  left.utxosRoot === right.utxosRoot &&
+  left.generation === right.generation;
 
 /**
- * The verification's fiber: a run at startup and whenever the frontier is
- * not the one the last completed run read, polled every `watchIntervalMs`,
+ * The verification's fiber: a run at startup and whenever the frontier or
+ * its generation is not the one the last completed run read, polled every
+ * `watchIntervalMs`,
  * and a run every `recheckIntervalMs` after the last. A run due while
  * another runs is skipped; a failed run raises
  * `confirmed_ledger_verification_failed` and the frontier it would have read
@@ -343,7 +411,7 @@ export const confirmedLedgerVerificationFiber = ({
   Effect.gen(function* () {
     const globals = yield* Globals;
     const permit = yield* Effect.makeSemaphore(1);
-    const lastRead = yield* Ref.make<HeaderRoot | undefined>(undefined);
+    const lastRead = yield* Ref.make<GeneratedFrontier | undefined>(undefined);
     const run = permit.withPermitsIfAvailable(1)(
       verifyConfirmedLedger(deriveRoots).pipe(
         Effect.tap((outcome) =>
@@ -352,12 +420,14 @@ export const confirmedLedgerVerificationFiber = ({
               recordConfirmedLedgerVerification(globals, outcome),
               Ref.set(
                 lastRead,
-                outcome.kind === "no_frontier" ? undefined : outcome.frontier,
+                outcome.kind === "no_frontier"
+                  ? undefined
+                  : { ...outcome.frontier, generation: outcome.generation },
               ),
               outcome.kind === "no_frontier"
                 ? Effect.void
                 : Effect.logInfo(
-                    `confirmed_ledger verification at frontier ${outcome.frontier.headerHash}, tail ${outcome.tail.headerHash}: ${outcome.kind === "diverged" ? `diverged (${outcome.divergences.map(({ check }) => check).join(", ")})` : outcome.kind} (entries=${outcome.entries.toString()}, ${outcome.durationMs.toString()} ms)`,
+                    `confirmed_ledger verification at frontier ${outcome.frontier.headerHash} (generation ${outcome.generation}), tail ${outcome.tail.headerHash}: ${outcome.kind === "diverged" ? `diverged (${outcome.divergences.map(({ check }) => check).join(", ")})` : outcome.kind} (entries=${outcome.entries.toString()}, ${outcome.durationMs.toString()} ms)`,
                   ),
             ],
             { discard: true },
@@ -369,7 +439,7 @@ export const confirmedLedgerVerificationFiber = ({
       ),
     );
     const watch = Effect.gen(function* () {
-      const frontier = yield* Frontier.retrieve;
+      const frontier = yield* Frontier.retrieveWithGeneration;
       if (frontier !== undefined && !sameFrontier(yield* lastRead, frontier))
         yield* run;
     }).pipe(
