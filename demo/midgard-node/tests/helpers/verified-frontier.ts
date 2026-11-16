@@ -4,11 +4,14 @@
  * `confirmed_ledger` records (`verifyConfirmedLedger`), at the frontier
  * generation it read, its roots derived in this thread. None unless it passes, as in the node.
  */
-import { Effect, Ref } from "effect";
+import { Effect, MutableRef, Ref } from "effect";
 
-import type { VerifiedConfirmedLedger } from "../../src/mpf/confirmed-ledger-advance.js";
+import {
+  emptyConfirmedLedgerFoldLog,
+  type VerifiedConfirmedLedger,
+} from "../../src/mpf/confirmed-ledger-advance.js";
 import { deriveConfirmedLedgerRoots } from "../../src/mpf/confirmed-ledger-roots.js";
-import { verifyConfirmedLedger } from "../../src/mpf/confirmed-ledger-verification.js";
+import { verifyConfirmedLedger } from "../../src/mpf/confirmed-ledger-run.js";
 import { verifiedFrontierWorkerInput } from "../../src/workers/utils/commit-block-header.js";
 
 export const verifiedFrontierNow = verifyConfirmedLedger(
@@ -29,4 +32,5 @@ export const noVerification = () => ({
   VERIFIED_CONFIRMED_LEDGER: Ref.unsafeMake<
     VerifiedConfirmedLedger | undefined
   >(undefined),
+  CONFIRMED_LEDGER_FOLD_LOG: MutableRef.make(emptyConfirmedLedgerFoldLog),
 });

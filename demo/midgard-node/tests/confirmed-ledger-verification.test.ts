@@ -258,10 +258,10 @@ describe("confirmed_ledger verification", { concurrent: false }, () => {
           confirmedLedgerVerificationFiber({
             watchIntervalMs: 50,
             recheckIntervalMs: 200,
-            deriveRoots: (input) =>
+            deriveRoots: (delta) =>
               failing
                 ? Effect.fail(new Error("the root worker ran out of heap"))
-                : deriveConfirmedLedgerRoots(input),
+                : deriveConfirmedLedgerRoots(delta),
           }),
         );
 

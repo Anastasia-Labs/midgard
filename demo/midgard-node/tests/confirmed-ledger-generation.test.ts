@@ -6,8 +6,10 @@
  * last verification waits once `confirmed_ledger` is written outside a
  * fold, even at the same frontier and root; a pass from a run during which
  * the frontier was unfolded and folded again never verifies the refolded
- * ledger; and a clean fold landed processing commits advances the
- * verification, so the commit on it builds with no wait.
+ * ledger; a clean fold landed processing commits advances the
+ * verification, so the commit on it builds with no wait; and a fold
+ * committed while a run reads is replayed onto the run's pass when it is
+ * recorded, so the commit on it builds with no wait too.
  */
 import { SqlClient } from "@effect/sql";
 import { Deferred, Effect, Either, Fiber, Ref } from "effect";
@@ -22,12 +24,12 @@ import {
   retrieveRows,
 } from "../src/landed-blocks/store.js";
 import { advanceVerifiedConfirmedLedger } from "../src/mpf/confirmed-ledger-advance.js";
-import { deriveConfirmedLedgerRoots } from "../src/mpf/confirmed-ledger-roots.js";
 import {
   type DeriveConfirmedLedgerRoots,
-  recordConfirmedLedgerVerification,
-  verifyConfirmedLedger,
-} from "../src/mpf/confirmed-ledger-verification.js";
+  deriveConfirmedLedgerRoots,
+} from "../src/mpf/confirmed-ledger-roots.js";
+import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
+import { recordConfirmedLedgerVerification } from "../src/mpf/confirmed-ledger-verification.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.js";
 import {
@@ -174,16 +176,17 @@ describe("the confirmed-ledger generation", { concurrent: false }, () => {
         expect((yield* Frontier.retrieve)?.headerHash).toBe(a.hash);
         const read = yield* generation;
 
-        // A run reads the ledger at `a`, then waits in its roots.
+        // A run takes its snapshot at `a`, then waits as its roots session
+        // starts, before it reads `confirmed_ledger` on that snapshot.
         const started = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
-        const gated: DeriveConfirmedLedgerRoots = (input) =>
+        const gated: DeriveConfirmedLedgerRoots = (delta) =>
           Effect.zipRight(
             Effect.zipRight(
               Deferred.succeed(started, undefined),
               Deferred.await(release),
             ),
-            deriveConfirmedLedgerRoots(input),
+            deriveConfirmedLedgerRoots(delta),
           );
         const inFlight = yield* Effect.fork(verifyConfirmedLedger(gated));
         yield* Deferred.await(started);
@@ -246,6 +249,69 @@ describe("the confirmed-ledger generation", { concurrent: false }, () => {
         yield* processLandedQueue(advancing, queueOf(confirmedAt(a, ""), []));
         const frontier = yield* Frontier.retrieveWithGeneration;
         expect(frontier?.headerHash).toBe(a.hash);
+        expect(yield* Ref.get(globals.VERIFIED_CONFIRMED_LEDGER)).toMatchObject(
+          {
+            headerHash: a.hash,
+            utxosRoot: a.header.utxosRoot,
+            generation: frontier!.generation,
+          },
+        );
+        const built = yield* commitAt(globals, a.hash);
+        expect(Either.getOrThrow(built)?.root).toBe(a.header.utxosRoot);
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+  }, 120_000);
+
+  it("replays a fold committed while a run reads onto the run's pass, so the commit on it builds with no wait", async () => {
+    const { a, genesisState, journalA } = await ownFixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    await inNode(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const advancing: LandedBlockPorts<never> = {
+          ...ports(state),
+          folded: (fold) => advanceVerifiedConfirmedLedger(globals, fold),
+        };
+        yield* processLandedQueue(advancing, queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
+
+        // A run takes its snapshot at the genesis frontier, then waits as
+        // its roots session starts.
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const gated: DeriveConfirmedLedgerRoots = (delta) =>
+          Effect.zipRight(
+            Effect.zipRight(
+              Deferred.succeed(started, undefined),
+              Deferred.await(release),
+            ),
+            deriveConfirmedLedgerRoots(delta),
+          );
+        const inFlight = yield* Effect.fork(verifyConfirmedLedger(gated));
+        yield* Deferred.await(started);
+
+        // The merge lands while it reads: the fold of `a` has no record to
+        // advance, and is logged.
+        yield* processLandedQueue(advancing, queueOf(confirmedAt(a, ""), []));
+        expect(
+          yield* Ref.get(globals.VERIFIED_CONFIRMED_LEDGER),
+        ).toBeUndefined();
+        const frontier = yield* Frontier.retrieveWithGeneration;
+        expect(frontier?.headerHash).toBe(a.hash);
+
+        yield* Deferred.succeed(release, undefined);
+        const pass = yield* Fiber.join(inFlight);
+        expect(pass).toMatchObject({
+          kind: "verified",
+          tail: { headerHash: a.hash },
+        });
+        expect(
+          pass.kind === "verified" && BigInt(pass.generation),
+        ).toBeLessThan(BigInt(frontier!.generation));
+
+        // Recorded, the pass is replayed over the fold to `a`.
+        yield* recordConfirmedLedgerVerification(globals, pass);
         expect(yield* Ref.get(globals.VERIFIED_CONFIRMED_LEDGER)).toMatchObject(
           {
             headerHash: a.hash,

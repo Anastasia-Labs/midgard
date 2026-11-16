@@ -18,7 +18,7 @@ import {
   type LandedBlockRow,
 } from "../src/landed-blocks/store.js";
 import { deriveConfirmedLedgerRoots } from "../src/mpf/confirmed-ledger-roots.js";
-import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-verification.js";
+import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { LocalLedgerDivergenceError } from "../src/mpf/local-ledger-divergence.js";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";

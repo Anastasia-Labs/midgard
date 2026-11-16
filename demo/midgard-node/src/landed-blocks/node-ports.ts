@@ -62,7 +62,10 @@ export const nodeLandedBlockPorts = (
   },
   rebase: (reason: string) => Effect.Effect<DriverHold | undefined>,
   availability: () => SDK.DaPayloadAvailabilityAuthority,
-  verified: Pick<Globals, "VERIFIED_CONFIRMED_LEDGER">,
+  verified: Pick<
+    Globals,
+    "VERIFIED_CONFIRMED_LEDGER" | "CONFIRMED_LEDGER_FOLD_LOG"
+  >,
 ) => {
   const replayer = foreignBlockReplayer({
     store,

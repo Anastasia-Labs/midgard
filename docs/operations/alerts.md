@@ -172,14 +172,26 @@ block's. The `check` names where it was found:
   after each fold or other write to `confirmed_ledger` (each draws a new
   frontier generation) and every ten minutes, so it also catches a row (of
   `confirmed_ledger` or a landed delta) changed outside a fold. Each check
-  counts once per run that finds its divergence. A pass names the frontier
+  counts once per run that finds its divergence. A run reads
+  `confirmed_ledger` a page at a time on one database snapshot, so its
+  memory does not grow with the ledger. A pass names the frontier
   generation it read, and a clean fold by landed-block processing carries
   it to the folded block when that block's delta is the one the run
-  checked. A pass from a run that read an older generation is ignored; a
-  divergence it finds is counted and logged at warn, but raises nothing and
-  leaves the recorded pass alone. While no pass holds at the current frontier and generation, commits on landed tails
-  wait as `commit_base_ledger_unverified`. The reason clears when a later
-  run passes. A run that cannot complete raises
+  checked. Each fold is logged, and a pass is replayed over the folds
+  committed while its run was reading, so it reaches the current frontier
+  without a second run. The log holds 256 folds; a fold past that drops it
+  and makes a full run due, at most one in flight, which brings the pass to
+  the current frontier. Replay keeps the pass current only while fewer than
+  256 folds land during one run and each folded block was processed before
+  the run read; otherwise commits on landed tails wait for the next run,
+  which follows every frontier move. A pass from a run that read an older generation,
+  and that its replay does not bring to the recorded generation, is
+  ignored; a divergence it finds is counted and logged at warn, but raises
+  nothing and leaves the recorded pass alone. While no pass holds at the
+  current frontier and generation, commits on landed tails wait as
+  `commit_base_ledger_unverified`. The reason clears when a later run
+  passes, or when a fold or replay carries the pass there. A run that
+  cannot complete raises
   `confirmed_ledger_verification_failed` under the same source instead,
   and counts nothing.
 
@@ -201,9 +213,15 @@ both). The node log carries
 delta that <fault>` in place of the derived root). It appears under a
 `LandedBlockLocalFault` error event or a `Commit refused on its base` error
 line, one line per divergence a verification run found. Each verification
-run also logs `confirmed_ledger verification at frontier <headerHash>, tail
-<headerHash>: verified` (or `diverged (<check>, ...)`) with its
-`confirmed_ledger` entry count and duration.
+run also logs `confirmed_ledger verification at frontier <headerHash>
+(generation <n>), tail <headerHash>: verified (entries=<count>, <ms> ms)` (or
+`diverged (<check>, ...)` in place of `verified`). A pass replayed over folds
+made during its run logs `confirmed_ledger verification at generation <n>
+replayed <count> folds made during the run, to <headerHash> (generation
+<n>)`, with `; stopped at <headerHash>: <fault>` when a fold did not apply
+(at warn unless the run had not checked that fold's delta). A full fold log
+logs `confirmed_ledger fold log past 256 folds: dropped, a full verification
+run is due`.
 
 **Action.** None in node state: the node neither adopts a block nor commits
 on the diverged ledger, and nothing repairs it automatically. No known

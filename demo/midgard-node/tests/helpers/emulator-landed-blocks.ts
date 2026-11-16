@@ -50,7 +50,10 @@ export const openLandedBlocks = async (args: {
   /** The driver's recompute when the rebase is due (`rebaseIfDue`). */
   readonly rebase: (reason: string) => Effect.Effect<DriverHold | undefined>;
   /** The node's verified confirmed ledger, which each committed fold advances. */
-  readonly verified: Pick<Globals, "VERIFIED_CONFIRMED_LEDGER">;
+  readonly verified: Pick<
+    Globals,
+    "VERIFIED_CONFIRMED_LEDGER" | "CONFIRMED_LEDGER_FOLD_LOG"
+  >;
 }) => {
   const { contracts, nodeConfig } = args;
   const stateQueue = stateQueueProjectionConfig(contracts.stateQueue);

@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import type * as Ledger from "../src/database/utils/ledger.js";
 import type { LandedLedger } from "../src/landed-blocks/ledger.js";
 import type { LandedBlockRow } from "../src/landed-blocks/store.js";
-import { verifyLandedLedger } from "../src/mpf/confirmed-ledger-verification.js";
+import { verifyLandedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 
 /** A Midgard output holding `lovelace` (below 2^32). */
