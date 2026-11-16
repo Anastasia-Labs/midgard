@@ -7,7 +7,6 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/fraud_proofs/min_ada/step_03 as step_03
 use midgard/fraud_proofs/min_ada/yield
 use midgard/state_queue_yield.{require_authenticated_zero_yield}
 
@@ -67,17 +66,14 @@ validator main(
           tx.extra_signatories,
         )
         expect Some(_) = m_input_state_data
-        expect _shape = if output_script_hash == own_script_hash {
-          expect _: State = output_state_data
-          True
-        } else {
-          expect output_script_hash == step_03_validator_script_hash
-          expect next: step_03.State = output_state_data
-          when next is {
-            step_03.MinAdaTxScan { .. } | step_03.MinAdaTxAbsent { .. } -> True
-            step_03.MinAdaTxDescriptor { .. } -> False
+        expect
+          if output_script_hash == own_script_hash {
+            expect _: State = output_state_data
+            True
+          } else {
+            // step-02-yields.ak requires a step-03 state equal to its exact MinAdaTxScan or MinAdaTxAbsent.
+            output_script_hash == step_03_validator_script_hash
           }
-        }
         expect _yield_hash = require_authenticated_zero_yield(
           reference_inputs,
           withdrawals,

@@ -4,10 +4,11 @@
  * validation applies no minimum-Ada rule there. Step 02 closes a negative
  * index at once and compares any other against the certified walk's count
  * once the field's grammar is complete, writing `MinAdaTxAbsent`; step 03
- * moves it to the terminal and step 04 mints the proof. A claim that a held
- * output is absent is refused at step 02, and both forms convict at the
- * field's byte cap. An index past 2^53, up to either end of the rejection
- * codec's range, convicts the same way.
+ * moves it to the terminal and step 04 mints the proof. Both forms convict
+ * at the field's byte cap, and an index past 2^53, up to either end of the
+ * rejection codec's range, convicts the same way. A claim that a held output
+ * is absent, or a step-03 successor carrying a descriptor in place of the
+ * output's scan, is refused at step 02.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -208,15 +209,22 @@ describe("minAda forced rejection of an absent output", () => {
     900_000,
   );
 
-  it("refuses on chain a claim that a held output is absent", async () => {
+  /**
+   * A raw step 02 over a held output (ordinal 1) once field 2's grammar is
+   * complete, writing `successor` to step 03. The grammar completes in one
+   * transaction, which stops short of the output's scan.
+   */
+  const rawStep02OverHeldOutput = async (
+    successor?: Parameters<
+      typeof submitRawMinAdaAbsentOutputStep02
+    >[0]["successor"],
+  ) => {
     const thread = await boundThread({
       underfunded: true,
       prefixCount: 1,
       namedOutputIndex: 1,
     });
     const { f } = thread;
-    // The field's grammar completes in one transaction, which stops short of
-    // the output's scan.
     const grammar = await submitMinAdaTxStep02({
       ownOutputs: thread.ownOutputs,
       ...f.common,
@@ -230,18 +238,33 @@ describe("minAda forced rejection of an absent output", () => {
     });
     expect(grammar.nextStepIndex).toBe(1);
     await f.h.proverLucid.awaitTx(grammar.txHash);
+    return await submitRawMinAdaAbsentOutputStep02({
+      ...f.common,
+      threadOutRef: grammar.nextThreadOutRef,
+      nativeTxCompactCbor: f.prepared.nativeTxCompactCbor,
+      outputItemCbors: f.prepared.outputItemCbors,
+      publishedCarriageUtxos: thread.carriage,
+      referenceScriptUtxo: f.refs[1]!,
+      yieldReferenceScriptUtxo: f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
+      ...(successor === undefined ? {} : { successor }),
+    });
+  };
+
+  it("refuses on chain a claim that a held output is absent", async () => {
+    await expectOnchainRefusal(() => rawStep02OverHeldOutput(), {
+      refusedBy: "fraud_proofs/min_ada/step_02_yields",
+      check: /^Validator returned false$/u,
+    });
+  }, 900_000);
+
+  it("refuses on chain a step-03 successor carrying a descriptor no scan produced", async () => {
+    // Step 03 reads a descriptor only from its own scan of the opened output;
+    // step 02 must hand it that scan, never a finished descriptor.
     await expectOnchainRefusal(
       () =>
-        submitRawMinAdaAbsentOutputStep02({
-          ...f.common,
-          threadOutRef: grammar.nextThreadOutRef,
-          nativeTxCompactCbor: f.prepared.nativeTxCompactCbor,
-          outputItemCbors: f.prepared.outputItemCbors,
-          publishedCarriageUtxos: thread.carriage,
-          referenceScriptUtxo: f.refs[1]!,
-          yieldReferenceScriptUtxo:
-            f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
-        }),
+        rawStep02OverHeldOutput((direction) => ({
+          MinAdaTxDescriptor: { direction, total_length: 64n, lovelace: 0n },
+        })),
       {
         refusedBy: "fraud_proofs/min_ada/step_02_yields",
         check: /^Validator returned false$/u,

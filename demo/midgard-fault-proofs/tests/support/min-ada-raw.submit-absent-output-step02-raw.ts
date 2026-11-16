@@ -41,10 +41,11 @@ import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 
 /**
  * Min-ada step 02 built by hand on a thread whose field-2 grammar is
- * complete: the thread takes the absent-output close, with field 2 opened
- * from `outputItemCbors` and `MinAdaTxAbsent` written to step 03, whatever
- * the field holds. No builder check runs on whether the bound output index is
- * past the field's last output.
+ * complete: field 2 is opened from `outputItemCbors` and the thread moves to
+ * step 03 carrying `successor` (by default `MinAdaTxAbsent`, the
+ * absent-output close), whatever the field holds. No builder check runs on
+ * whether the bound output index is past the field's last output, or on
+ * which step-03 state the walk would produce.
  */
 export const submitRawMinAdaAbsentOutputStep02 = async ({
   lucid,
@@ -57,6 +58,7 @@ export const submitRawMinAdaAbsentOutputStep02 = async ({
   publishedCarriageUtxos,
   referenceScriptUtxo,
   yieldReferenceScriptUtxo,
+  successor = (direction) => ({ MinAdaTxAbsent: { direction } }),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinAdaContracts;
@@ -68,6 +70,7 @@ export const submitRawMinAdaAbsentOutputStep02 = async ({
   readonly publishedCarriageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
   readonly yieldReferenceScriptUtxo: UTxO;
+  readonly successor?: (direction: bigint) => Step03Datum["data"];
 }): Promise<string> => {
   const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
     lucid,
@@ -112,7 +115,7 @@ export const submitRawMinAdaAbsentOutputStep02 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: { MinAdaTxAbsent: { direction: state.direction } },
+      data: successor(state.direction),
     },
     Step03Datum,
   );
