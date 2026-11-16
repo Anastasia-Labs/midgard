@@ -183,7 +183,8 @@ describe("outputReferenceScriptDecoding forced rejection of an absent output", (
         ),
       {
         refusedBy: "fraud_proofs/output_reference_script_decoding/step_02",
-        check: /^Validator returned false$/u,
+        check:
+          /^expect or \{ bound\.output_index < 0, bound\.output_index >= opened_certified_field_item_count\(/u,
       },
     );
 

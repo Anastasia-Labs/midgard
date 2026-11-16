@@ -107,15 +107,17 @@ describe("fieldPreimageLengthMismatch forced rejection of a field outside the la
       leaf: "a rejection naming the layout's last field",
       verdict: "rejected" as const,
       index: BigInt(MIDGARD_FIELD_COUNT - 1),
+      check: /^expect field_index_out_of_domain_v1\(field_index\)/u,
     },
     {
       leaf: "an accepted leaf",
       verdict: "valid" as const,
       index: BigInt(MIDGARD_FIELD_COUNT),
+      check: /^expect Some\(reason\) = subject\.rejection_reason/u,
     },
   ])(
     "refuses on chain the out-of-layout route for $leaf",
-    async ({ verdict, index }) => {
+    async ({ verdict, index, check }) => {
       const { fixture, dispatch } = await pendingThread(verdict, {
         rejectedFieldIndex: index,
       });
@@ -131,7 +133,7 @@ describe("fieldPreimageLengthMismatch forced rejection of a field outside the la
         {
           refusedBy:
             "fraud_proofs/field_preimage_length_mismatch/step_02_forced",
-          check: /^Validator returned false$/u,
+          check,
         },
       );
     },

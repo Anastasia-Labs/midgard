@@ -401,7 +401,8 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
         }),
       {
         refusedBy: "fraud_proofs/transaction_output_non_canonical/step_02",
-        check: /^Validator returned false$/u,
+        check:
+          /^expect or \{ bound\.output_index < 0, bound\.output_index >= opened_certified_field_item_count\(/u,
       },
     );
   }, 900_000);

@@ -41,6 +41,7 @@ import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
+import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import {
@@ -147,7 +148,7 @@ export const makeHarness = async ({
           label: `witness-script-decoding step ${(index + 1).toString()}`,
         }),
       );
-      if (!publicationsRecorded) {
+      if (!publicationsRecorded && !TRACED_REFUSALS) {
         record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);

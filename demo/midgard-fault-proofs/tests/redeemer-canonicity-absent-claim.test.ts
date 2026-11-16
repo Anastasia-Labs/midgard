@@ -244,7 +244,7 @@ const boundForcedThread = async (
 
 const refusedAtStep02 = {
   refusedBy: "fraud_proofs/redeemer_canonicity/step_02",
-  check: /^Validator returned false$/u,
+  check: /^expect claimed_coordinate_absent_v1\( bound,/u,
 };
 
 describe("redeemer-canonicity forced rejection of an absent coordinate", () => {

@@ -144,7 +144,7 @@ describe("nativeScriptInvalid forced rejection of an absent script", () => {
         }),
       {
         refusedBy: "fraud_proofs/native_script_invalid/step_02",
-        check: /^Validator returned false$/u,
+        check: /^expect or \{ script_index < 0, script_index >= /u,
       },
     );
   }, 600_000);

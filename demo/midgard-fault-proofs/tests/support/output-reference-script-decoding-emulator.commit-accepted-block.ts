@@ -35,6 +35,7 @@ import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./emulator/registered-chain.js";
+import { TRACED_REFUSALS } from "./emulator/traced-refusals.js";
 import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
 import { makeNativeTx } from "./submit-init-emulator-shared.js";
 
@@ -234,6 +235,7 @@ export const createMeasurementRecorder = () => {
     }
   };
   const recordPublication = (stepIndex: number, measurement: Measurement) => {
+    if (TRACED_REFUSALS) return;
     const name = `publish-step0${(stepIndex + 1).toString()}`;
     expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(15_872);
   };

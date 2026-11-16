@@ -50,6 +50,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   compactCborHex,
@@ -140,7 +141,7 @@ export const makeHarness = async () => {
           label: `observer-order-step-${(index + 1).toString()}`,
         }),
       );
-      if (!publicationsRecorded) {
+      if (!publicationsRecorded && !TRACED_REFUSALS) {
         record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);

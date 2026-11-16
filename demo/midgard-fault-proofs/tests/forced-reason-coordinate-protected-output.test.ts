@@ -328,7 +328,8 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
         ),
       {
         refusedBy: "fraud_proofs/protected_output_signer_missing/step_02",
-        check: /^Validator returned false$/u,
+        check:
+          /^expect bound\.output_index < 0 \|\| bound\.output_index >= opened_certified_field_item_count\(/u,
       },
     );
   }, 600_000);

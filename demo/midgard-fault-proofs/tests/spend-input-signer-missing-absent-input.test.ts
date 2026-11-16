@@ -214,6 +214,8 @@ describe("spendInputSignerMissing forced rejection of a coordinate naming no inp
       }),
     });
     expect(thread.evidence.signerMissing).toBe(true);
+    // Step 02 routes a held position to the ledger membership proof, which the
+    // out-of-range route does not carry.
     await expectOnchainRefusal(
       () =>
         thread.run.step02(
@@ -229,7 +231,7 @@ describe("spendInputSignerMissing forced rejection of a coordinate naming no inp
         ),
       {
         refusedBy: "fraud_proofs/spend_input_signer_missing/step_02",
-        check: /^Validator returned false$/u,
+        check: /^expect \[Pair\(_, redeemer\)\] = redeemers/u,
       },
     );
   }, 600_000);

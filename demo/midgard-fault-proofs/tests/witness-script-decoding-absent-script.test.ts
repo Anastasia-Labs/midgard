@@ -173,7 +173,8 @@ describe("witness-script-decoding forced rejection of an absent script", () => {
         ),
       {
         refusedBy: "fraud_proofs/witness_script_decoding/step_02",
-        check: /^Validator returned false$/u,
+        check:
+          /^expect or \{ bound\.script_index < 0, bound\.script_index >= opened_certified_field_item_count\(/u,
       },
     );
   }, 600_000);

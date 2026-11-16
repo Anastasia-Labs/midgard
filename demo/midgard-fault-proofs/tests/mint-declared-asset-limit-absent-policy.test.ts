@@ -333,7 +333,7 @@ describe("mintDeclaredAssetLimit forced rejection of an absent policy", () => {
     expect(thread.prepare().absent).toBe(false);
     await expectOnchainRefusal(() => thread.authenticate(), {
       refusedBy: "fraud_proofs/mint_declared_asset_limit/step_02",
-      check: /^Validator returned false$/u,
+      check: /^expect or \{ bound\.policy_index < 0, bound\.policy_index >= /u,
     });
   }, 900_000);
 
