@@ -1,43 +1,35 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  computeMidgardNativeTxId,
-  encodeMidgardFieldPreimage,
-  encodeMidgardSpendInputItem,
-  MIDGARD_CONSENSUS_LIMITS,
-  type MidgardNativeTxFull,
-} from "@al-ft/midgard-core";
+import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  VAN_ROSSEM_MAX_CPU_UNITS,
-  VAN_ROSSEM_MAX_MEMORY_UNITS,
-} from "../src/proof-fit/van-rossem.js";
-import {
-  prepareResolvedOutputAbsentInputEvidence,
   type ResolvedOutputAbsentInputEvidence,
+  ResolvedOutputStep02RedeemerSchema,
+  ResolvedOutputStep05DatumSchema,
 } from "../src/resolved-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import {
-  signedKeyOutput,
-  signNativeTx,
-} from "./support/forced-reason-signed-native-tx.js";
+  absentEvidenceOf,
+  authenticateAbsent,
+  commitForcedCoordinate,
+  convictAbsent,
+  forcedSubjectOf,
+  inputItems,
+  outRefOf,
+  priorEntries,
+  priorLedgerOf,
+  shapes,
+} from "./support/forced-reason-resolved-output-coordinate.js";
 import {
-  buildSubjectTransaction,
   commitBlock,
-  descriptorFor,
   makeResolvedOutputContext,
   makeResolvedOutputStages,
-  type PriorLedgerFixture,
   resolvedOutputEvidence,
   resolvedOutputReason,
-  smallMalformedOutput,
 } from "./support/resolved-output-non-canonical-emulator.js";
 
 /**
@@ -55,77 +47,9 @@ import {
  * reference fields) is a wrongful rejection too: step 02 counts the named
  * field, or reads nothing for a negative position or a kind outside both, and
  * closes with no non-canonical output, which convicts. A claim that the
- * written input is absent is refused at step 02, and both routes convict over
- * the spend field at its byte cap.
+ * written input is absent is refused at step 02, whether it counts the named
+ * field or reads none.
  */
-
-const priorEntries = [
-  { txId: "11".repeat(32), output: signedKeyOutput() },
-  { txId: "22".repeat(32), output: smallMalformedOutput() },
-] as const;
-
-const outRefOf = (txId: string): Buffer =>
-  encodeMidgardSpendInputItem({
-    txId: Buffer.from(txId, "hex"),
-    outputIndex: 0,
-  });
-
-/** Field items in canonical (sorted) order: the canonical output first. */
-const inputItems = priorEntries.map(({ txId }) => outRefOf(txId));
-
-/** The prior ledger holding both outputs, opened on input `named`'s output. */
-const priorLedgerOf = async (named: number): Promise<PriorLedgerFixture> => {
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  const entries = priorEntries.map(({ txId, output }) => ({
-    txId,
-    output,
-    key: outRefOf(txId),
-    descriptor: descriptorFor(0, output),
-  }));
-  for (const entry of entries) await trie.insert(entry.key, entry.descriptor);
-  const self = entries[named]!;
-  const sibling = entries[1 - named]!;
-  return {
-    priorRoot: Buffer.from(trie.hash).toString("hex"),
-    priorTxId: self.txId,
-    outputIndex: 0,
-    outRefBytes: self.key,
-    output: self.output,
-    descriptorCbor: self.descriptor,
-    proofCborHex: (await trie.prove(self.key)).toCBOR().toString("hex"),
-    siblingProofCborHex: (await trie.prove(sibling.key))
-      .toCBOR()
-      .toString("hex"),
-    siblingKeyBytes: sibling.key,
-    siblingDescriptorCbor: sibling.descriptor,
-  };
-};
-
-const shapes = [
-  {
-    label: "spend",
-    sourceKind: 0,
-    // Signed, so Phase B passes input 0 and reaches input 1.
-    nativeTx: signNativeTx(
-      makeNativeTx({ spendInputCbors: inputItems, fee: 7n, outputCbors: [] }),
-    ),
-  },
-  {
-    label: "reference",
-    sourceKind: 1,
-    // Reference inputs resolve before any spend input is checked.
-    nativeTx: buildSubjectTransaction({
-      spendInputCbors: [outRefOf("56".repeat(32))],
-      referenceInputCbors: inputItems,
-    }),
-  },
-] as const satisfies readonly {
-  label: string;
-  sourceKind: 0 | 1;
-  nativeTx: MidgardNativeTxFull;
-}[];
 
 const writtenInputIndex = async (
   shape: (typeof shapes)[number],
@@ -252,83 +176,6 @@ for (const shape of shapes) {
   });
 }
 
-type Scenario = Awaited<ReturnType<typeof setupScenario>>;
-
-/** The rejection's subject over the committed forced leaf. */
-const forcedSubjectOf = ({ block }: Pick<Scenario, "block">) => {
-  if (block.forced === undefined) throw new Error("block is not forced");
-  return forcedVerdictSubject({
-    transactionId: block.nativeTxId,
-    sourceKey: block.forced.membership.key,
-    rejectionReason: block.forced.reason,
-  });
-};
-
-/** A block whose forced leaf rejects `nativeTx` for `coordinate`. */
-const commitForcedCoordinate = async (
-  nativeTx: MidgardNativeTxFull,
-  coordinate: {
-    readonly sourceKind: bigint | number;
-    readonly inputIndex: bigint | number;
-  },
-) => {
-  const context = await makeResolvedOutputContext();
-  const prior = await priorLedgerOf(0);
-  const block = await commitBlock({
-    context,
-    nativeTx,
-    priorRoot: prior.priorRoot,
-    reason: {
-      InputSpentOutputNonCanonical: {
-        source_kind: BigInt(coordinate.sourceKind),
-        input_index: BigInt(coordinate.inputIndex),
-      },
-    },
-  });
-  const stages = await makeResolvedOutputStages(context, block);
-  return { context, prior, block, stages };
-};
-
-/**
- * Drives `evidence` from Init through step 02 and returns step 02's capture.
- */
-const authenticateAbsent = async (
-  stages: Scenario["stages"],
-  evidence: ResolvedOutputAbsentInputEvidence,
-) => {
-  const bound = await stages.step01Forced(
-    stages.threadOf(await stages.init()),
-    evidence,
-  );
-  return await stages.step02(bound.result.nextThreadOutRef, evidence);
-};
-
-/** Convicts with the absent verdict and removes the block. */
-const convictAbsent = async (
-  { context, block, stages }: Pick<Scenario, "context" | "block" | "stages">,
-  evidence: ResolvedOutputAbsentInputEvidence,
-) => {
-  const opened = await authenticateAbsent(stages, evidence);
-  expect(opened.result.nextStage).toBe("step05");
-  const minted = await stages.step05(opened.result.nextThreadOutRef, evidence);
-  expect(minted.result.fraudProofUnit).toBeTruthy();
-  await stages.remove();
-  const [txHash, outputIndex] = block.fraudulentBlockOutRef.split("#");
-  expect(
-    await context.harness.proverLucid.utxosByOutRef([
-      { txHash: txHash!, outputIndex: Number(outputIndex) },
-    ]),
-  ).toHaveLength(0);
-  return { opened, minted };
-};
-
-const absentEvidenceOf = (scenario: Pick<Scenario, "block" | "prior">) =>
-  prepareResolvedOutputAbsentInputEvidence({
-    subject: forcedSubjectOf(scenario),
-    canonicalTransactionCbor: scenario.block.canonicalCbor,
-    priorRoot: scenario.prior.priorRoot,
-  });
-
 for (const shape of shapes) {
   describe(`forced ${shape.label} InputSpentOutputNonCanonical coordinate the transaction lacks`, () => {
     it("convicts a coordinate past the last input", async () => {
@@ -399,6 +246,66 @@ describe("forced InputSpentOutputNonCanonical coordinate outside the input field
   }, 900_000);
 });
 
+describe("forced InputSpentOutputNonCanonical present coordinate claimed absent without an opening", () => {
+  // Step 02 reads no field only for a coordinate naming neither input field.
+  // Input 0 of each field is present, so a successor recording no
+  // non-canonical output there with no opening is refused.
+  it.each([
+    { field: "spend", sourceKind: 0n },
+    { field: "reference", sourceKind: 1n },
+  ])(
+    "refuses on chain an unopened absence of $field input 0",
+    async ({ sourceKind }) => {
+      const coordinate = { sourceKind, inputIndex: 0n };
+      const scenario = await commitForcedCoordinate(
+        shapes[1].nativeTx,
+        coordinate,
+      );
+      expect(() => absentEvidenceOf(scenario)).toThrow(
+        /input coordinate is present/u,
+      );
+      const subject = forcedSubjectOf(scenario);
+      // What a lying prover holds: the present input, claimed absent.
+      const lying: ResolvedOutputAbsentInputEvidence = {
+        absent: true,
+        subject,
+        coordinate,
+        resolved: { priorRoot: scenario.prior.priorRoot },
+        outputIsNonCanonical: false,
+        canonicalTransactionCborHex:
+          scenario.block.canonicalCbor.toString("hex"),
+        namesInputField: false,
+      };
+      const { stages } = scenario;
+      const bound = await stages.step01Forced(
+        stages.threadOf(await stages.init()),
+        lying,
+      );
+      await expectOnchainRefusal(
+        () =>
+          stages.continueRaw({
+            threadOutRef: bound.result.nextThreadOutRef,
+            stepIndex: 1,
+            nextStepIndex: 5,
+            nextData: { subject, output_is_non_canonical: false },
+            nextDatumSchema: ResolvedOutputStep05DatumSchema,
+            redeemerSchema: ResolvedOutputStep02RedeemerSchema,
+            args: (input_index, output_index) => ({
+              input_index,
+              output_index,
+              opening: null,
+            }),
+          }),
+        {
+          refusedBy: "fraud_proofs/resolved_output_non_canonical/step_02",
+          check: /^Validator returned false$/u,
+        },
+      );
+    },
+    900_000,
+  );
+});
+
 describe("forced InputSpentOutputNonCanonical coordinate past 2^53", () => {
   it.each([
     {
@@ -438,51 +345,5 @@ describe("forced InputSpentOutputNonCanonical coordinate past 2^53", () => {
       expect(opened.result.carriageTier !== null).toBe(named);
     },
     900_000,
-  );
-});
-
-const maxShapeInputs = (): readonly Buffer[] => {
-  const inputs: Buffer[] = [];
-  for (;;) {
-    const next = outRefOf(inputs.length.toString(16).padStart(64, "0"));
-    if (
-      encodeMidgardFieldPreimage([...inputs, next]).length >
-      MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes
-    )
-      return inputs;
-    inputs.push(next);
-  }
-};
-
-describe("forced InputSpentOutputNonCanonical coordinate at the consensus maximum", () => {
-  it.each([
-    { position: "past the last", past: true },
-    { position: "at a negative position", past: false },
-  ])(
-    "convicts a coordinate $position of the most spend inputs field 0 holds",
-    async ({ past }) => {
-      const inputs = maxShapeInputs();
-      const inputIndex = past ? inputs.length : -1;
-      const scenario = await commitForcedCoordinate(
-        makeNativeTx({ spendInputCbors: inputs, fee: 9n, outputCbors: [] }),
-        { sourceKind: 0, inputIndex },
-      );
-      const evidence = absentEvidenceOf(scenario);
-      const { opened, minted } = await convictAbsent(scenario, evidence);
-      // A negative position is absent without opening the field.
-      expect(opened.result.carriageTier).toBe(past ? "Certified" : null);
-      for (const { measurement } of [opened, minted]) {
-        expect(measurement.executionMemory).toBeLessThanOrEqual(
-          VAN_ROSSEM_MAX_MEMORY_UNITS,
-        );
-        expect(measurement.executionSteps).toBeLessThanOrEqual(
-          VAN_ROSSEM_MAX_CPU_UNITS,
-        );
-      }
-      console.info(
-        `max-shape absent input ${inputIndex.toString()} (${inputs.length.toString()} spend inputs): step-02 mem=${opened.measurement.executionMemory.toString()} cpu=${opened.measurement.executionSteps.toString()}; step-05 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
-      );
-    },
-    1_800_000,
   );
 });

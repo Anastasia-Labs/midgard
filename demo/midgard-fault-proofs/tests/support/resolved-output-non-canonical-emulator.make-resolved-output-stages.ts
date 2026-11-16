@@ -801,6 +801,7 @@ export const makeResolvedOutputStages = async (
     readDatumState,
     step05,
     step05Raw,
+    continueRaw,
     cancel,
     remove,
     certifyField,
